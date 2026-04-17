@@ -1807,6 +1807,7 @@ function applyView(targetId){
     document.documentElement.style.setProperty("--slot-min-h", view.compact ? "128px" : (window.innerWidth<480?"138px":(window.innerWidth<700?"148px":"184px")));
     document.documentElement.style.setProperty("--slot-font", view.compact ? "12px" : (window.innerWidth<480?"13px":(window.innerWidth<700?"14px":"17px")));
     document.documentElement.style.setProperty("--mat-font", view.compact ? "10px" : (window.innerWidth<700?"11px":"14px"));
+    buildSporplan();
   }else{
     document.documentElement.style.setProperty("--table-min", view.compact ? "620px" : (window.innerWidth<480?"700px":(window.innerWidth<700?"760px":"980px")));
     document.documentElement.style.setProperty("--cell-min", view.compact ? "46px" : (window.innerWidth<480?"54px":(window.innerWidth<700?"58px":"72px")));
