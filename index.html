@@ -804,11 +804,11 @@ function convertLegacyKveldRow(row){
     a:String(row.a || ""),
     b:String(row.b || ""),
     c:String(row.c || ""),
-    d:(wash === "j" || wash === "ja" || wash === "j1" || wash === "ja1") ? "ja" : "",
+    d:(wash === "ja" || wash === "ja1") ? "ja" : "",
     e:String(row.f || ""),
     f:String(row.g || ""),
     g:String(row.d || ""),
-    h:(wash === "j" || wash === "ja" || wash === "j2" || wash === "ja2") ? "ja" : "",
+    h:(wash === "ja" || wash === "ja2") ? "ja" : "",
     i:String(row.h || ""),
     j:String(row.i || "")
   };
@@ -824,8 +824,7 @@ function normalizeVehicleToken(v){
 }
 
 function parseSingleWashValue(v){
-  const s = String(v || "").trim().toLowerCase();
-  return s === "j" || s === "ja";
+  return String(v || "").trim().toLowerCase() === "ja";
 }
 
 
@@ -1227,7 +1226,7 @@ function mergeRowsIntoResult(rows,result,map){
     const isKveldRow = "j" in row;
 
     const mat1=isKveldRow ? getEffectiveKveldVehicleValue(row,"c") : String(row.c||"").trim();
-    const wash1=isKveldRow ? parseSingleWashValue(row.d) : (["j","ja","j1","ja1"].includes(String(row.e||"").trim().toLowerCase()));
+    const wash1=isKveldRow ? parseSingleWashValue(row.d) : (String(row.e||"").trim().toLowerCase()==="ja" || String(row.e||"").trim().toLowerCase()==="ja1");
     const spor1=normalizeSlot(isKveldRow ? row.e : row.f);
     if(mat1&&spor1&&map[spor1]!==undefined){
       result[map[spor1]].tog=tog;
@@ -1236,7 +1235,7 @@ function mergeRowsIntoResult(rows,result,map){
     }
 
     const mat2=isKveldRow ? getEffectiveKveldVehicleValue(row,"g") : String(row.d || "").trim();
-    const wash2=isKveldRow ? parseSingleWashValue(row.h) : (["j","ja","j2","ja2"].includes(String(row.e||"").trim().toLowerCase()));
+    const wash2=isKveldRow ? parseSingleWashValue(row.h) : (String(row.e||"").trim().toLowerCase()==="ja" || String(row.e||"").trim().toLowerCase()==="ja2");
     const spor2=normalizeSlot(isKveldRow ? row.i : row.h);
     if(mat2&&spor2&&map[spor2]!==undefined){
       result[map[spor2]].tog=tog;
@@ -1731,11 +1730,10 @@ function buildSporplan(){
     .filter(Boolean);
 
   if(hallSlots.length === 4){
-    const gridRect = grid.getBoundingClientRect();
-    const rawLeft = Math.min(...hallSlots.map(el => el.getBoundingClientRect().left)) - gridRect.left;
-    const rawTop = Math.min(...hallSlots.map(el => el.getBoundingClientRect().top)) - gridRect.top;
-    const rawRight = Math.max(...hallSlots.map(el => el.getBoundingClientRect().right)) - gridRect.left;
-    const rawBottom = Math.max(...hallSlots.map(el => el.getBoundingClientRect().bottom)) - gridRect.top;
+    const rawLeft = Math.min(...hallSlots.map(el => el.offsetLeft));
+    const rawTop = Math.min(...hallSlots.map(el => el.offsetTop));
+    const rawRight = Math.max(...hallSlots.map(el => el.offsetLeft + el.offsetWidth));
+    const rawBottom = Math.max(...hallSlots.map(el => el.offsetTop + el.offsetHeight));
     const inset = 6;
 
     const left = rawLeft + inset;
@@ -1808,7 +1806,7 @@ function applyView(targetId){
     document.documentElement.style.setProperty("--slot-min-h", view.compact ? "128px" : (window.innerWidth<480?"138px":(window.innerWidth<700?"148px":"184px")));
     document.documentElement.style.setProperty("--slot-font", view.compact ? "12px" : (window.innerWidth<480?"13px":(window.innerWidth<700?"14px":"17px")));
     document.documentElement.style.setProperty("--mat-font", view.compact ? "10px" : (window.innerWidth<700?"11px":"14px"));
-    buildSporplan();
+    scheduleSporplanRefresh();
   }else{
     document.documentElement.style.setProperty("--table-min", view.compact ? "620px" : (window.innerWidth<480?"700px":(window.innerWidth<700?"760px":"980px")));
     document.documentElement.style.setProperty("--cell-min", view.compact ? "46px" : (window.innerWidth<480?"54px":(window.innerWidth<700?"58px":"72px")));
@@ -1828,6 +1826,20 @@ function setResponsiveDefaultViews(force=false){
     if(force || untouched){
       state.views[id].scale = getDefaultScaleForTarget(id);
     }
+  });
+}
+
+let sporplanRefreshRaf1 = 0;
+let sporplanRefreshRaf2 = 0;
+function scheduleSporplanRefresh(){
+  if(sporplanRefreshRaf1) cancelAnimationFrame(sporplanRefreshRaf1);
+  if(sporplanRefreshRaf2) cancelAnimationFrame(sporplanRefreshRaf2);
+  sporplanRefreshRaf1 = requestAnimationFrame(()=>{
+    sporplanRefreshRaf2 = requestAnimationFrame(()=>{
+      buildSporplan();
+      sporplanRefreshRaf1 = 0;
+      sporplanRefreshRaf2 = 0;
+    });
   });
 }
 
@@ -1880,7 +1892,7 @@ function initViewControls(){
 window.addEventListener("resize",()=>{
   setResponsiveDefaultViews();
   ["yardZoom","kveldZoom","nattZoom","inndataZoom","apiCombinedZoom"].forEach(applyView);
-  buildSporplan();
+  scheduleSporplanRefresh();
 });
 
 
