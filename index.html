@@ -169,15 +169,6 @@ text-align:center;
 font-size:var(--input-font);
 border-radius:8px
 }
-td input.locked-input{
-font-weight:600;
-color:var(--text);
-cursor:default;
-}
-td.locked-cell,th.locked-col{
-width:1%;
-white-space:nowrap;
-}
 td.wash-col,th.wash-col{background:var(--wash)}
 .slotcol{font-weight:700}
 .yard-wrap{
@@ -913,24 +904,6 @@ function splitVehicleNumbers(value){
   return [parts[0] || "", parts[1] || ""];
 }
 
-function getAutoVehiclePairForTrain(tog){
-  const vehicleString = getVehicleForTrain(tog);
-  return splitVehicleNumbers(vehicleString);
-}
-
-function getEffectiveTurneringValue(row,key){
-  if(!row || row.type) return "";
-  const manual = String(row[key] || "").trim();
-  if(manual) return manual;
-
-  const tog = normalizeTognr(row.b);
-  if(!tog) return "";
-
-  if(key === "c") return getAutoVehiclePairForTrain(tog)[0] || "";
-  if(key === "d") return getAutoVehiclePairForTrain(tog)[1] || "";
-  return manual;
-}
-
 
 function updateBaliseViewButtons(){
   const todayBtn = document.getElementById("showTodayBtn");
@@ -1113,7 +1086,7 @@ function mergeRowsIntoResult(rows,result,map){
     const wash=parseWashCommand(row.e);
 
 
-    const mat1=getEffectiveTurneringValue(row,"c");
+    const mat1=String(row.c||"").trim();
     const spor1=normalizeSlot(row.f);
     if(mat1&&spor1&&map[spor1]!==undefined){
       result[map[spor1]].tog=tog;
@@ -1122,7 +1095,7 @@ function mergeRowsIntoResult(rows,result,map){
     }
 
 
-    const mat2=getEffectiveTurneringValue(row,"d");
+    const mat2=String(row.d||"").trim();
     const spor2=normalizeSlot(row.h);
     if(mat2&&spor2&&map[spor2]!==undefined){
       result[map[spor2]].tog=tog;
@@ -1148,15 +1121,16 @@ function buildTurnering(tableId,key){
   table.innerHTML="";
   const body=document.createElement("tbody");
 
+
   state[key].forEach((row,ri)=>{
     const tr=document.createElement("tr");
+
 
     if(row.type==="header"){
       cols.forEach((k,idx)=>{
         const th=document.createElement("th");
         th.textContent=row[k]||"";
         if(idx===4) th.classList.add("wash-col");
-        if(idx===0 || idx===1) th.classList.add("locked-col");
         tr.appendChild(th);
       });
     }else if(row.type==="section"){
@@ -1172,44 +1146,27 @@ function buildTurnering(tableId,key){
       cols.forEach((k,idx)=>{
         const td=document.createElement("td");
         if(idx===4) td.classList.add("wash-col");
-        if(idx===0 || idx===1) td.classList.add("locked-cell");
-
         const inp=document.createElement("input");
         inp.type="text";
         inp.inputMode="text";
         inp.autocapitalize="off";
         inp.autocorrect="off";
         inp.spellcheck=false;
-
-        const isLocked = (k==="a" || k==="b");
-        const displayValue = (k==="c" || k==="d")
-          ? getEffectiveTurneringValue(row,k)
-          : (row[k]||"");
-
-        inp.value = displayValue;
-
-        if(isLocked){
-          inp.readOnly = true;
-          inp.classList.add("locked-input");
-          inp.tabIndex = -1;
-        }else{
-          inp.addEventListener("input",e=>{
-            state[key][ri][k]=e.target.value;
-            buildTurnering("turneringKveldTable","turneringKveld");
-            buildTurnering("turneringNattTable","turneringNatt");
-            buildInndata();
-            buildSporplan();
-            buildOppstilling();
-            persist(true);
-          });
-        }
-
+        inp.value=row[k]||"";
+        inp.addEventListener("input",e=>{
+          state[key][ri][k]=e.target.value;
+          buildInndata();
+          buildSporplan();
+          buildOppstilling();
+          persist(true);
+        });
         td.appendChild(inp);
         tr.appendChild(td);
       });
     }
     body.appendChild(tr);
   });
+
 
   table.appendChild(body);
 }
