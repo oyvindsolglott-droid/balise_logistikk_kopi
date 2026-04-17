@@ -1717,6 +1717,7 @@ function initViewControls(){
 window.addEventListener("resize",()=>{
   setResponsiveDefaultViews();
   ["yardZoom","kveldZoom","nattZoom","inndataZoom","apiCombinedZoom"].forEach(applyView);
+  buildSporplan();
 });
 
 
