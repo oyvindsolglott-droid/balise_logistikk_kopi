@@ -1,60 +1,45 @@
-# Balise-logistikkprototype
+# Skien sporplan
 
-Dette er en første prototype for å bygge en lokal logistikkoversikt basert på publiserte sider fra Balise.
+Dette repoet inneholder den fungerende nettversjonen av Skien sporplan.
 
-## Hva den gjør
+## Status nå
 
-- henter liste over sett for en materielltype, for eksempel Type 70
-- henter sammensetning for ett eller flere sett, for eksempel 70-12
-- henter togside for valgte tognummer og datoer
-- lagrer alt til en lokal SQLite-database
-- viser resultatet i et enkelt webdashboard
+- Nettsiden kjører via GitHub Pages
+- Data leses fra statiske JSON-filer
+- Oppdatering av data skjer via GitHub Actions
+- Løsningen fungerer uten at Mac eller terminal må stå på
 
-## Viktige forbehold
+## Viktige filer
 
-Dette er bevisst bygget som et **observasjonssystem**, ikke som en full fasit.
+- `index.html` – selve nettsiden
+- `data/api_idag.json` – statiske data for idag
+- `data/api_imorgen.json` – statiske data for imorgen
+- `.github/workflows/update-static-data.yml` – oppdaterer de statiske datafilene
 
-- Balise opplyser at ikke alle tog er synlige offentlig.
-- HTML-strukturen kan endres.
-- Noen togvisninger ser ut til å laste rutedetaljer dynamisk, så stopp-tabellen kan bli tom selv når tog/materiell er funnet.
-- URL-mønster og datoformat på togvisningene kan måtte justeres videre når du tester mot de togene du faktisk følger.
+## Viktig regel
 
-## Installering
+Ikke gjør store arkitekturendringer uten god grunn.
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
+Ikke rør disse filene uten å vite nøyaktig hvorfor:
+- `index.html`
+- `data/api_idag.json`
+- `data/api_imorgen.json`
+- `.github/workflows/update-static-data.yml`
 
-## Hent data
+## Rydding i 7_0
 
-Eksempel:
+Gamle backup- og testfiler er flyttet til:
+- `archive_7_0/`
 
-```bash
-python update_data.py --vehicle-type 70 --vehicle-set 70-12 --train 2470 --train 856 --days 5
-```
+## Lokal utvikling
 
-Dette oppretter eller oppdaterer databasen `balise_logistikk.db`.
+Arbeidsmappe:
+- `balise_logistikk-kopi`
 
-## Start dashboard
+GitHub-repo:
+- `balise_logistikk_kopi`
 
-```bash
-python app.py
-```
+## Neste prinsipp
 
-Åpne deretter `http://127.0.0.1:5000` i nettleseren.
-
-## Forslag til neste steg
-
-1. Legg til en scheduler, for eksempel cron eller Task Scheduler.
-2. Lag en tabell for endringshistorikk, slik at systemet varsler når materiell på et tog skifter.
-3. Utvid med egne regler for togene du bryr deg om mest.
-4. Bytt parseren over til en mer direkte JSON-kilde dersom du senere finner et stabilt API eller nettverkskall.
-
-## Filer
-
-- `balise_client.py` – henting, parsing og databasefunksjoner
-- `update_data.py` – kommandolinjejobb for oppdatering
-- `app.py` – enkelt dashboard i Flask
-- `requirements.txt` – avhengigheter
+Små, trygge endringer.
+Bevar fungerende nettløsning først.
