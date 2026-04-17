@@ -169,6 +169,11 @@ text-align:center;
 font-size:var(--input-font);
 border-radius:8px
 }
+td input.locked-input{
+font-weight:600;
+color:var(--text);
+cursor:default;
+}
 td.wash-col,th.wash-col{background:var(--wash)}
 .slotcol{font-weight:700}
 .yard-wrap{
@@ -1153,13 +1158,20 @@ function buildTurnering(tableId,key){
         inp.autocorrect="off";
         inp.spellcheck=false;
         inp.value=row[k]||"";
-        inp.addEventListener("input",e=>{
-          state[key][ri][k]=e.target.value;
-          buildInndata();
-          buildSporplan();
-          buildOppstilling();
-          persist(true);
-        });
+        const isLocked = (k==="a" || k==="b");
+        if(isLocked){
+          inp.readOnly = true;
+          inp.classList.add("locked-input");
+          inp.tabIndex = -1;
+        }else{
+          inp.addEventListener("input",e=>{
+            state[key][ri][k]=e.target.value;
+            buildInndata();
+            buildSporplan();
+            buildOppstilling();
+            persist(true);
+          });
+        }
         td.appendChild(inp);
         tr.appendChild(td);
       });
