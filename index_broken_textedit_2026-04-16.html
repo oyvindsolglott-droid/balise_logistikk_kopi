@@ -1,0 +1,1666 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.4">
+  <style type="text/css">
+    body {background-color: #edeff2}
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica; min-height: 14.0px}
+  </style>
+</head>
+<body>
+<p class="p1">&lt;!DOCTYPE html&gt;</p>
+<p class="p1">&lt;html lang="no"&gt;</p>
+<p class="p1">&lt;head&gt;</p>
+<p class="p1">&lt;meta charset="UTF-8" /&gt;</p>
+<p class="p1">&lt;meta name="viewport" content="width=device-width, initial-scale=0.8, maximum-scale=5, minimum-scale=0.3, viewport-fit=cover, user-scalable=yes" /&gt;</p>
+<p class="p1">&lt;title&gt;Skien sporplan iPhone&lt;/title&gt;</p>
+<p class="p1">&lt;style&gt;</p>
+<p class="p1">:root{</p>
+<p class="p1">--bg:#f4f5f7;</p>
+<p class="p1">--card:#fff;</p>
+<p class="p1">--line:#d3d7dd;</p>
+<p class="p1">--text:#111827;</p>
+<p class="p1">--muted:#6b7280;</p>
+<p class="p1">--blue:#d9eaf7;</p>
+<p class="p1">--blue-text:#7d97bf;</p>
+<p class="p1">--yellow:#fff200;</p>
+<p class="p1">--yellow-text:#9a9100;</p>
+<p class="p1">--orange:#f3e2d2;</p>
+<p class="p1">--orange-text:#b97b44;</p>
+<p class="p1">--grey:#bfbfbf;</p>
+<p class="p1">--green:#c6efce;</p>
+<p class="p1">--green-border:#6aa84f;</p>
+<p class="p1">--platform:#d99694;</p>
+<p class="p1">--hall:#c00000;</p>
+<p class="p1">--wash:#fff7b8;</p>
+<p class="p2"><br></p>
+<p class="p1">--yard-col:78px;</p>
+<p class="p1">--yard-gap:6px;</p>
+<p class="p1">--yard-min:1180px;</p>
+<p class="p1">--slot-min-h:92px;</p>
+<p class="p1">--slot-font:17px;</p>
+<p class="p1">--mat-font:14px;</p>
+<p class="p2"><br></p>
+<p class="p1">--table-min:980px;</p>
+<p class="p1">--cell-min:72px;</p>
+<p class="p1">--cell-h:46px;</p>
+<p class="p1">--input-h:36px;</p>
+<p class="p1">--input-font:16px;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}</p>
+<p class="p1">html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}</p>
+<p class="p1">body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0}</p>
+<p class="p1">.app{max-width:1280px;margin:0 auto;padding:12px}</p>
+<p class="p1">h1{font-size:22px;margin:0 0 6px}</p>
+<p class="p1">h3{margin:0 0 8px;font-size:16px}</p>
+<p class="p1">.sub{margin:0 0 12px;color:var(--muted);font-size:14px}</p>
+<p class="p1">.ios-banner{background:#eef5ff;border:1px solid #bfd4ff;color:#274472;border-radius:14px;padding:10px 12px;margin-bottom:12px;font-size:14px}</p>
+<p class="p1">.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}</p>
+<p class="p1">button{</p>
+<p class="p1">appearance:none;</p>
+<p class="p1">-webkit-appearance:none;</p>
+<p class="p1">border:1px solid var(--line);</p>
+<p class="p1">background:#fff;</p>
+<p class="p1">border-radius:12px;</p>
+<p class="p1">padding:12px 14px;</p>
+<p class="p1">font:inherit;</p>
+<p class="p1">color:var(--text);</p>
+<p class="p1">min-height:44px;</p>
+<p class="p1">cursor:pointer;</p>
+<p class="p1">}</p>
+<p class="p1">button.compact{</p>
+<p class="p1">padding:8px 10px;</p>
+<p class="p1">min-height:36px</p>
+<p class="p1">}</p>
+<p class="p1">.segmented{</p>
+<p class="p1">display:grid;</p>
+<p class="p1">grid-template-columns:1fr 1fr 1fr 1fr 1fr;</p>
+<p class="p1">gap:6px;</p>
+<p class="p1">background:#e9ecf1;</p>
+<p class="p1">border-radius:14px;</p>
+<p class="p1">padding:6px;</p>
+<p class="p1">margin-bottom:12px;</p>
+<p class="p1">position:sticky;</p>
+<p class="p1">top:0;</p>
+<p class="p1">z-index:10</p>
+<p class="p1">}</p>
+<p class="p1">.segmented button{</p>
+<p class="p1">border:none;</p>
+<p class="p1">background:transparent;</p>
+<p class="p1">min-height:44px;</p>
+<p class="p1">font-weight:600</p>
+<p class="p1">}</p>
+<p class="p1">.segmented button.active{</p>
+<p class="p1">background:#fff;</p>
+<p class="p1">box-shadow:0 1px 2px rgba(0,0,0,.08)</p>
+<p class="p1">}</p>
+<p class="p1">.panel{</p>
+<p class="p1">display:none;</p>
+<p class="p1">background:var(--card);</p>
+<p class="p1">border:1px solid var(--line);</p>
+<p class="p1">border-radius:16px;</p>
+<p class="p1">padding:12px;</p>
+<p class="p1">overflow:auto</p>
+<p class="p1">}</p>
+<p class="p1">.panel.active{display:block}</p>
+<p class="p1">.note{</p>
+<p class="p1">background:#fafafa;</p>
+<p class="p1">border:1px dashed var(--line);</p>
+<p class="p1">border-radius:12px;</p>
+<p class="p1">padding:10px 12px;</p>
+<p class="p1">margin-bottom:12px;</p>
+<p class="p1">font-size:14px</p>
+<p class="p1">}</p>
+<p class="p1">.view-tools{</p>
+<p class="p1">display:flex;</p>
+<p class="p1">gap:8px;</p>
+<p class="p1">flex-wrap:wrap;</p>
+<p class="p1">align-items:center;</p>
+<p class="p1">margin-bottom:10px</p>
+<p class="p1">}</p>
+<p class="p1">.view-tools .label{</p>
+<p class="p1">font-size:13px;</p>
+<p class="p1">color:var(--muted)</p>
+<p class="p1">}</p>
+<p class="p1">.zoom-wrap{</p>
+<p class="p1">overflow:auto;</p>
+<p class="p1">-webkit-overflow-scrolling:touch;</p>
+<p class="p1">touch-action:pan-x pan-y pinch-zoom;</p>
+<p class="p1">overscroll-behavior:contain</p>
+<p class="p1">}</p>
+<p class="p1">.zoom-inner{</p>
+<p class="p1">transform-origin:top left;</p>
+<p class="p1">width:max-content</p>
+<p class="p1">}</p>
+<p class="p1">table{</p>
+<p class="p1">border-collapse:collapse;</p>
+<p class="p1">width:100%;</p>
+<p class="p1">min-width:var(--table-min);</p>
+<p class="p1">background:#fff</p>
+<p class="p1">}</p>
+<p class="p1">th,td{</p>
+<p class="p1">border:1px solid var(--line);</p>
+<p class="p1">text-align:center;</p>
+<p class="p1">min-width:var(--cell-min);</p>
+<p class="p1">height:var(--cell-h);</p>
+<p class="p1">padding:4px 6px</p>
+<p class="p1">}</p>
+<p class="p1">th{</p>
+<p class="p1">background:#f3f4f6;</p>
+<p class="p1">position:sticky;</p>
+<p class="p1">top:0;</p>
+<p class="p1">z-index:2</p>
+<p class="p1">}</p>
+<p class="p1">td input{</p>
+<p class="p1">width:100%;</p>
+<p class="p1">height:var(--input-h);</p>
+<p class="p1">border:none;</p>
+<p class="p1">outline:none;</p>
+<p class="p1">background:transparent;</p>
+<p class="p1">text-align:center;</p>
+<p class="p1">font-size:var(--input-font);</p>
+<p class="p1">border-radius:8px</p>
+<p class="p1">}</p>
+<p class="p1">td.wash-col,th.wash-col{background:var(--wash)}</p>
+<p class="p1">.slotcol{font-weight:700}</p>
+<p class="p1">.yard-wrap{</p>
+<p class="p1">overflow:auto;</p>
+<p class="p1">-webkit-overflow-scrolling:touch;</p>
+<p class="p1">touch-action:pan-x pan-y pinch-zoom;</p>
+<p class="p1">overscroll-behavior:contain</p>
+<p class="p1">}</p>
+<p class="p1">.yard{</p>
+<p class="p1">min-width:var(--yard-min);</p>
+<p class="p1">padding:8px 0 18px;</p>
+<p class="p1">width:max-content</p>
+<p class="p1">}</p>
+<p class="p1">.yard-grid{</p>
+<p class="p1">display:grid;</p>
+<p class="p1">grid-template-columns:repeat(14,var(--yard-col));</p>
+<p class="p1">gap:var(--yard-gap);</p>
+<p class="p1">align-items:stretch</p>
+<p class="p1">}</p>
+<p class="p1">.head{text-align:center;font-weight:700}</p>
+<p class="p1">.slot{</p>
+<p class="p1">border:2px solid #000;</p>
+<p class="p1">border-radius:7px;</p>
+<p class="p1">min-height:var(--slot-min-h);</p>
+<p class="p1">display:flex;</p>
+<p class="p1">flex-direction:column;</p>
+<p class="p1">justify-content:space-between;</p>
+<p class="p1">align-items:center;</p>
+<p class="p1">padding:8px;</p>
+<p class="p1">text-align:center;</p>
+<p class="p1">white-space:pre-line;</p>
+<p class="p1">font-weight:700;</p>
+<p class="p1">font-size:var(--slot-font);</p>
+<p class="p1">line-height:1.15</p>
+<p class="p1">}</p>
+<p class="p1">.slot.empty.blue{background:var(--blue);color:var(--blue-text)}</p>
+<p class="p1">.slot.empty.yellow{background:var(--yellow);color:var(--yellow-text)}</p>
+<p class="p1">.slot.empty.orange{background:var(--orange);color:var(--orange-text)}</p>
+<p class="p1">.slot.filled{background:var(--grey);color:#000}</p>
+<p class="p1">.slot.wash-filled{background:var(--green);color:#000;border-color:var(--green-border)}</p>
+<p class="p1">.slot-top{display:block;width:100%}</p>
+<p class="p1">.slot-bottom{display:block;width:100%}</p>
+<p class="p1">.mat{color:#c00000;font-style:italic;font-size:var(--mat-font)}</p>
+<p class="p1">.platform{</p>
+<p class="p1">background:var(--platform);</p>
+<p class="p1">writing-mode:vertical-rl;</p>
+<p class="p1">transform:rotate(180deg);</p>
+<p class="p1">text-align:center;</p>
+<p class="p1">font-weight:700;</p>
+<p class="p1">border-radius:7px;</p>
+<p class="p1">display:flex;</p>
+<p class="p1">align-items:center;</p>
+<p class="p1">justify-content:center;</p>
+<p class="p1">min-height:var(--slot-min-h)</p>
+<p class="p1">}</p>
+<p class="p1">.empty-space{min-height:1px}</p>
+<p class="p1">.hall{border-color:var(--hall)!important}</p>
+<p class="p1">.stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}</p>
+<p class="p1">.chip{</p>
+<p class="p1">background:#fff;</p>
+<p class="p1">border:1px solid var(--line);</p>
+<p class="p1">border-radius:999px;</p>
+<p class="p1">padding:8px 10px;</p>
+<p class="p1">font-size:14px</p>
+<p class="p1">}</p>
+<p class="p1">.save-indicator{</p>
+<p class="p1">font-size:13px;</p>
+<p class="p1">color:var(--muted);</p>
+<p class="p1">margin-left:4px;</p>
+<p class="p1">display:flex;</p>
+<p class="p1">align-items:center</p>
+<p class="p1">}</p>
+<p class="p1">.opp-yellow td{background:#d6d62f !important}</p>
+<p class="p1">.opp-yellow td input{background:transparent}</p>
+<p class="p1">.opp-red{color:#c00000;font-weight:700}</p>
+<p class="p1">.opp-greytext{color:#bdbdbd;font-weight:600}</p>
+<p class="p1">.opp-bold{font-weight:700}</p>
+<p class="p1">.file-input{</p>
+<p class="p1">width:100%;</p>
+<p class="p1">max-width:420px;</p>
+<p class="p1">border:1px solid var(--line);</p>
+<p class="p1">border-radius:12px;</p>
+<p class="p1">padding:10px;</p>
+<p class="p1">background:#fff;</p>
+<p class="p1">font:inherit;</p>
+<p class="p1">}</p>
+<p class="p1">.balise-toggle-bar{</p>
+<p class="p1">display:flex;</p>
+<p class="p1">gap:8px;</p>
+<p class="p1">flex-wrap:wrap;</p>
+<p class="p1">align-items:center;</p>
+<p class="p1">margin-bottom:12px;</p>
+<p class="p1">}</p>
+<p class="p1">.balise-toggle-bar button.active{</p>
+<p class="p1">background:#dfefff;</p>
+<p class="p1">border-color:#9ec5ff;</p>
+<p class="p1">font-weight:700;</p>
+<p class="p1">}</p>
+<p class="p1">.api-box{</p>
+<p class="p1">background:#f7fbff;</p>
+<p class="p1">border:1px solid #cfe2ff;</p>
+<p class="p1">border-radius:12px;</p>
+<p class="p1">padding:12px;</p>
+<p class="p1">margin-bottom:12px;</p>
+<p class="p1">}</p>
+<p class="p1">.api-grid{</p>
+<p class="p1">display:grid;</p>
+<p class="p1">grid-template-columns:1fr 1fr;</p>
+<p class="p1">gap:12px;</p>
+<p class="p1">margin-bottom:12px;</p>
+<p class="p1">}</p>
+<p class="p1">.api-mini-table{</p>
+<p class="p1">width:100%;</p>
+<p class="p1">min-width:0;</p>
+<p class="p1">border-collapse:collapse;</p>
+<p class="p1">background:#fff;</p>
+<p class="p1">}</p>
+<p class="p1">.api-mini-table th,</p>
+<p class="p1">.api-mini-table td{</p>
+<p class="p1">border:1px solid var(--line);</p>
+<p class="p1">padding:8px 10px;</p>
+<p class="p1">height:auto;</p>
+<p class="p1">min-width:0;</p>
+<p class="p1">}</p>
+<p class="p1">.api-mini-table th{</p>
+<p class="p1">position:static;</p>
+<p class="p1">background:#f3f4f6;</p>
+<p class="p1">}</p>
+<p class="p1">.api-error{</p>
+<p class="p1">color:#b00020;</p>
+<p class="p1">font-weight:700;</p>
+<p class="p1">}</p>
+<p class="p1">.api-muted{</p>
+<p class="p1">color:var(--muted);</p>
+<p class="p1">font-size:13px;</p>
+<p class="p1">}</p>
+<p class="p1">@media (max-width:1100px){</p>
+<p class="p1">.segmented{grid-template-columns:1fr 1fr 1fr}</p>
+<p class="p1">}</p>
+<p class="p1">@media (max-width:700px){</p>
+<p class="p1">:root{</p>
+<p class="p1">--yard-col:64px;</p>
+<p class="p1">--yard-gap:4px;</p>
+<p class="p1">--yard-min:980px;</p>
+<p class="p1">--slot-min-h:74px;</p>
+<p class="p1">--slot-font:14px;</p>
+<p class="p1">--mat-font:11px;</p>
+<p class="p1">--table-min:760px;</p>
+<p class="p1">--cell-min:58px;</p>
+<p class="p1">--cell-h:38px;</p>
+<p class="p1">--input-h:30px;</p>
+<p class="p1">--input-font:14px;</p>
+<p class="p1">}</p>
+<p class="p1">.app{padding:10px}</p>
+<p class="p1">h1{font-size:20px}</p>
+<p class="p1">.panel{padding:10px}</p>
+<p class="p1">.ios-banner,.note,.sub{font-size:12px}</p>
+<p class="p1">.segmented{grid-template-columns:1fr 1fr}</p>
+<p class="p1">.api-grid{grid-template-columns:1fr}</p>
+<p class="p1">}</p>
+<p class="p1">&lt;/style&gt;</p>
+<p class="p1">&lt;/head&gt;</p>
+<p class="p1">&lt;body&gt;</p>
+<p class="p1">&lt;div class="app"&gt;</p>
+<p class="p1">&lt;h1&gt;Skien sporplan&lt;/h1&gt;</p>
+<p class="p1">&lt;p class="sub"&gt;versjon 3.1.6 / tråd 2&lt;/p&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div class="ios-banner"&gt;Data legges inn i ark "Turnering Kveld" og "Turnering Natt". Last helst inn datostemplet Balise-JSON når du vil ha klokkeslett og kjøretøy i Tursatt.&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div class="toolbar"&gt;</p>
+<p class="p1">&lt;button id="saveBtn" type="button"&gt;Lagre&lt;/button&gt;</p>
+<p class="p1">&lt;button id="resetBtn" type="button"&gt;Nullstill&lt;/button&gt;</p>
+<p class="p1">&lt;span class="save-indicator" id="saveStateText"&gt;Ikke lagret ennå&lt;/span&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div class="segmented"&gt;</p>
+<p class="p1">&lt;button class="seg active" type="button" data-tab="sporplan"&gt;Sporplan&lt;/button&gt;</p>
+<p class="p1">&lt;button class="seg" type="button" data-tab="turneringKveld"&gt;Turnering Kveld&lt;/button&gt;</p>
+<p class="p1">&lt;button class="seg" type="button" data-tab="turneringNatt"&gt;Turnering Natt&lt;/button&gt;</p>
+<p class="p1">&lt;button class="seg" type="button" data-tab="inndata"&gt;Inndata&lt;/button&gt;</p>
+<p class="p1">&lt;button class="seg" type="button" data-tab="oppstilling"&gt;Tursatt&lt;/button&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;section class="panel active" id="sporplan"&gt;</p>
+<p class="p1">&lt;div class="note"&gt;Tom slot viser nr. på sporplassering. Fylt slot blir grå. Hvis vask-raden er merket med ja/ja1/ja2 = &lt;strong&gt;ja&lt;/strong&gt;, blir planlagt sporplassering grønn i stedet.&lt;/div&gt;</p>
+<p class="p1">&lt;div class="view-tools"&gt;</p>
+<p class="p1">&lt;span class="label"&gt;Sporplan visning&lt;/span&gt;</p>
+<p class="p1">&lt;button class="compact zoom-out" data-target="yardZoom"&gt;Zoom ut&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact zoom-in" data-target="yardZoom"&gt;Zoom inn&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact compact-toggle" data-target="yardZoom"&gt;Kompakt visning&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact reset-view" data-target="yardZoom"&gt;Standard&lt;/button&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;div class="yard-wrap zoom-wrap"&gt;</p>
+<p class="p1">&lt;div class="yard zoom-inner" id="yardZoom"&gt;</p>
+<p class="p1">&lt;div class="yard-grid" id="yardGrid"&gt;&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;div class="stats" id="stats"&gt;&lt;/div&gt;</p>
+<p class="p1">&lt;/section&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;section class="panel" id="turneringKveld"&gt;</p>
+<p class="p1">&lt;div class="note"&gt;Fyll inn kveld her. Natt kan overskrive ved konflikt.&lt;/div&gt;</p>
+<p class="p1">&lt;div class="view-tools"&gt;</p>
+<p class="p1">&lt;span class="label"&gt;Turnering Kveld visning&lt;/span&gt;</p>
+<p class="p1">&lt;button class="compact zoom-out" data-target="kveldZoom"&gt;Zoom ut&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact zoom-in" data-target="kveldZoom"&gt;Zoom inn&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact compact-toggle" data-target="kveldZoom"&gt;Kompakt visning&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact reset-view" data-target="kveldZoom"&gt;Standard&lt;/button&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;div class="zoom-wrap"&gt;</p>
+<p class="p1">&lt;div class="zoom-inner" id="kveldZoom"&gt;</p>
+<p class="p1">&lt;table id="turneringKveldTable"&gt;&lt;/table&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/section&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;section class="panel" id="turneringNatt"&gt;</p>
+<p class="p1">&lt;div class="note"&gt;Fyll inn natt her. Ved konflikt vinner natt fordi den leses sist.&lt;/div&gt;</p>
+<p class="p1">&lt;div class="view-tools"&gt;</p>
+<p class="p1">&lt;span class="label"&gt;Turnering Natt visning&lt;/span&gt;</p>
+<p class="p1">&lt;button class="compact zoom-out" data-target="nattZoom"&gt;Zoom ut&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact zoom-in" data-target="nattZoom"&gt;Zoom inn&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact compact-toggle" data-target="nattZoom"&gt;Kompakt visning&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact reset-view" data-target="nattZoom"&gt;Standard&lt;/button&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;div class="zoom-wrap"&gt;</p>
+<p class="p1">&lt;div class="zoom-inner" id="nattZoom"&gt;</p>
+<p class="p1">&lt;table id="turneringNattTable"&gt;&lt;/table&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/section&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;section class="panel" id="inndata"&gt;</p>
+<p class="p1">&lt;div class="note"&gt;Leses automatisk fra Turnering Kveld og Turnering Natt.&lt;/div&gt;</p>
+<p class="p1">&lt;div class="view-tools"&gt;</p>
+<p class="p1">&lt;span class="label"&gt;Inndata visning&lt;/span&gt;</p>
+<p class="p1">&lt;button class="compact zoom-out" data-target="inndataZoom"&gt;Zoom ut&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact zoom-in" data-target="inndataZoom"&gt;Zoom inn&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact compact-toggle" data-target="inndataZoom"&gt;Kompakt visning&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact reset-view" data-target="inndataZoom"&gt;Standard&lt;/button&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;div class="zoom-wrap"&gt;</p>
+<p class="p1">&lt;div class="zoom-inner" id="inndataZoom"&gt;</p>
+<p class="p1">&lt;table id="inndataTable"&gt;&lt;/table&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/section&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;section class="panel" id="oppstilling"&gt;</p>
+<p class="p1">&lt;div class="note"&gt;Tursatte tog vises samlet her. Ved &lt;strong&gt;Nullstill&lt;/strong&gt; slettes kjøretøydata, men tognumrene blir stående. Flask-API brukes nå for hardkodede ankomster og avganger. Kjøretøy skal ikke være hardkodet i frontend.&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div class="api-box"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;button type="button" id="refreshApiBtn"&gt;Hent fra app.py&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;span id="apiStatus" class="save-indicator"&gt;API ikke lest ennå&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;div id="apiMeta" class="api-muted"&gt;Ingen data fra /api/balise-vehicles ennå.&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div class="api-grid"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;div class="api-box"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;h3&gt;Hardkodede avganger fra app.py&lt;/h3&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div class="zoom-wrap"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;table class="api-mini-table" id="apiDeparturesTable"&gt;&lt;/table&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;div class="api-box"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;h3&gt;Hardkodede ankomster fra app.py&lt;/h3&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;div class="zoom-wrap"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;table class="api-mini-table" id="apiArrivalsTable"&gt;&lt;/table&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div class="balise-toggle-bar"&gt;</p>
+<p class="p1">&lt;button type="button" id="showTodayBtn" class="active"&gt;Vis Balise i dag&lt;/button&gt;</p>
+<p class="p1">&lt;button type="button" id="showTomorrowBtn"&gt;Vis Balise i morgen&lt;/button&gt;</p>
+<p class="p1">&lt;span id="baliseViewState" class="save-indicator"&gt;Viser: i dag&lt;/span&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div class="note"&gt;</p>
+<p class="p1">&lt;strong&gt;Balise-import&lt;/strong&gt;&lt;br&gt;</p>
+<p class="p1">Velg helst fila av typen &lt;strong&gt;skien_balise_YYYY-MM-DD.json&lt;/strong&gt; for å få både kjøretøy og klokkeslett. Fila &lt;strong&gt;balise_vehicles.json&lt;/strong&gt; virker også, men den har bare kjøretøy.</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;"&gt;</p>
+<p class="p1">&lt;input class="file-input" type="file" id="baliseJsonFile" accept=".json"&gt;</p>
+<p class="p1">&lt;button type="button" id="importBaliseJsonBtn"&gt;Last inn Balise-JSON&lt;/button&gt;</p>
+<p class="p1">&lt;button type="button" id="clearBaliseJsonBtn"&gt;Tøm valgt Balise-data&lt;/button&gt;</p>
+<p class="p1">&lt;span id="baliseStatus" class="save-indicator"&gt;Ingen Balise-fil lastet inn&lt;/span&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div class="note"&gt;</p>
+<p class="p1">&lt;strong&gt;Manuell kjøretøydata&lt;/strong&gt;&lt;br&gt;</p>
+<p class="p1">Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for valgt visning, brukes det kjøretøyet. Ellers blir tognummeret bare registrert uten hardkodet fallback.</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px;"&gt;</p>
+<p class="p1">&lt;textarea id="kjoretoyImport" style="width:100%;min-height:120px;border:1px solid var(--line);border-radius:12px;padding:10px;font:inherit;" placeholder="802&amp;#10;804&amp;#10;852"&gt;&lt;/textarea&gt;</p>
+<p class="p1">&lt;div style="display:flex;gap:8px;flex-wrap:wrap;"&gt;</p>
+<p class="p1">&lt;button type="button" id="importKjoretoyBtn"&gt;Importer tognummer&lt;/button&gt;</p>
+<p class="p1">&lt;button type="button" id="clearKjoretoyBtn"&gt;Tøm manuell kjøretøydata&lt;/button&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;div class="view-tools"&gt;</p>
+<p class="p1">&lt;span class="label"&gt;Tursatt visning&lt;/span&gt;</p>
+<p class="p1">&lt;button class="compact zoom-out" data-target="oppstillingZoom"&gt;Zoom ut&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact zoom-in" data-target="oppstillingZoom"&gt;Zoom inn&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact compact-toggle" data-target="oppstillingZoom"&gt;Kompakt visning&lt;/button&gt;</p>
+<p class="p1">&lt;button class="compact reset-view" data-target="oppstillingZoom"&gt;Standard&lt;/button&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;div class="zoom-wrap"&gt;</p>
+<p class="p1">&lt;div class="zoom-inner" id="oppstillingZoom"&gt;</p>
+<p class="p1">&lt;table id="oppstillingTable"&gt;&lt;/table&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p1">&lt;/section&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;script&gt;</p>
+<p class="p1">const STORAGE_KEY="skien_sporplan_iphone_v13";</p>
+<p class="p2"><br></p>
+<p class="p1">const header={</p>
+<p class="p1">type:"header",</p>
+<p class="p1">a:"ank. kl.",</p>
+<p class="p1">b:"tognr.",</p>
+<p class="p1">c:"sett nr.1",</p>
+<p class="p1">d:"sett nr.2",</p>
+<p class="p1">e:"vask",</p>
+<p class="p1">f:"Sett 1-&gt;spor",</p>
+<p class="p1">g:"1 til tognr.",</p>
+<p class="p1">h:"Sett 2-&gt;spor",</p>
+<p class="p1">i:"2 til tognr."</p>
+<p class="p1">};</p>
+<p class="p2"><br></p>
+<p class="p1">const initialKveldRows=[</p>
+<p class="p1">header,</p>
+<p class="p1">{a:"14:49",b:"2482",c:"",d:"Notodden",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"14:53",b:"817",c:"",d:"",e:"",f:"T",g:"",h:"",i:""},</p>
+<p class="p1">{a:"15:38",b:"2483",c:"",d:"Porsgrunn",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"15:53",b:"819",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"16:18",b:"2484",c:"",d:"Notodden",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"16:26",b:"851",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"16:53",b:"821",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"17:02",b:"2485",c:"",d:"Porsgrunn",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"17:30",b:"853",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"17:42",b:"861",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"17:53",b:"823",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"17:59",b:"2486",c:"",d:"Notodden",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"18:30",b:"855",c:"",d:"",e:"",f:"1",g:"",h:"",i:""},</p>
+<p class="p1">{a:"18:42",b:"863",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"18:53",b:"825",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"19:01",b:"2487",c:"",d:"Porsgrunn",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"19:31",b:"12487",c:"",d:"Skien",e:"",f:"10 s",g:"",h:"",i:""},</p>
+<p class="p1">{a:"19:53",b:"827",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"20:53",b:"829",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"20:59",b:"2489",c:"",d:"Skien",e:"",f:"10 N",g:"",h:"",i:""},</p>
+<p class="p1">{a:"21:53",b:"831",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{type:"section",b:"ukjente tognr."},</p>
+<p class="p1">...Array.from({length:11},()=&gt;({a:"",b:"ikke tursatt",c:"",d:"",e:"",f:"",g:"",h:"",i:""}))</p>
+<p class="p1">];</p>
+<p class="p2"><br></p>
+<p class="p1">const initialNattRows=[</p>
+<p class="p1">header,</p>
+<p class="p1">{a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"23:53",b:"835",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"00:50",b:"837",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"01:45",b:"839",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{a:"07:42",b:"873",c:"",d:"",e:"",f:"",g:"",h:"",i:""},</p>
+<p class="p1">{type:"section",b:"ukjente tognr."},</p>
+<p class="p1">...Array.from({length:11},()=&gt;({a:"",b:"ikke tursatt",c:"",d:"",e:"",f:"",g:"",h:"",i:""}))</p>
+<p class="p1">];</p>
+<p class="p2"><br></p>
+<p class="p1">const fixedOppstillingRows=[</p>
+<p class="p1">{time:"04:10",train:"802",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"04:29",train:"852",mode:"enk",highlight:false,togClass:"",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"05:11",train:"804",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"05:25",train:"854",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"05:27",train:"2470",mode:"enk",highlight:false,togClass:"",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"05:37",train:"862",mode:"enk",highlight:false,togClass:"",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"06:01",train:"12472",mode:"enk",highlight:true,togClass:"opp-red",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"06:07",train:"806",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"06:17",train:"864",mode:"enk",highlight:false,togClass:"",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"06:25",train:"856",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"06:49",train:"2472",mode:"enk",highlight:true,togClass:"opp-red",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"07:09",train:"808",mode:"dobb",highlight:true,togClass:"opp-bold",modeClass:"opp-greytext"},</p>
+<p class="p1">{time:"08:09",train:"810",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"}</p>
+<p class="p1">];</p>
+<p class="p2"><br></p>
+<p class="p1">const inputSlots=["1N","1S","2N","2S","3N","3M","3S","4N","4M","4S","5N","5M","5S","6N","6S","6SS","7N","7S","7SS","8N","8S","8SS","9","10N","10S","11N","11S","12N","12S"];</p>
+<p class="p1">const topRow=["12N","11N","10N","9","8N","7N","platform","6N","5N","4N","3N","platform","2N","1N"];</p>
+<p class="p1">const midRow=["12S","11S","10S",null,"8S","7S","platform","6S","5M","4M","3M","platform","2S","1S"];</p>
+<p class="p1">const botRow=[null,null,null,null,"8SS","7SS","platform","6SS","5S","4S","3S",null,null,null];</p>
+<p class="p2"><br></p>
+<p class="p1">function makeDefaultState(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>turneringKveld:JSON.parse(JSON.stringify(initialKveldRows)),</p>
+<p class="p1"><span class="Apple-converted-space">    </span>turneringNatt:JSON.parse(JSON.stringify(initialNattRows)),</p>
+<p class="p1"><span class="Apple-converted-space">    </span>oppstillingModes:Object.fromEntries(fixedOppstillingRows.map(r=&gt;[r.train,r.mode])),</p>
+<p class="p1"><span class="Apple-converted-space">    </span>kjoretoy:{},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>baliseToday:{},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>baliseTomorrow:{},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>baliseTodayDepartures:{},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>baliseTomorrowDepartures:{},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>baliseMetaToday:null,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>baliseMetaTomorrow:null,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>baliseSelectedMode:"idag",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>apiBalise:{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>ok:false,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>updatedAt:"",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>departures:{},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>arrivals:{},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>departureVehicles:{},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>arrivalVehicles:{},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>allowedMaterialPrefixes:[],</p>
+<p class="p1"><span class="Apple-converted-space">      </span>materialFormat:"",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>error:""</p>
+<p class="p1"><span class="Apple-converted-space">    </span>},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>views:{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>yardZoom:{scale:1,compact:false},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>kveldZoom:{scale:1,compact:false},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>nattZoom:{scale:1,compact:false},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>inndataZoom:{scale:1,compact:false},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>oppstillingZoom:{scale:1,compact:false}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>};</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">let state=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null");</p>
+<p class="p1">if(!state) state=makeDefaultState();</p>
+<p class="p2"><br></p>
+<p class="p1">if(!state.turneringKveld) state.turneringKveld=JSON.parse(JSON.stringify(initialKveldRows));</p>
+<p class="p1">if(!state.turneringNatt) state.turneringNatt=JSON.parse(JSON.stringify(initialNattRows));</p>
+<p class="p1">if(!state.oppstillingModes) state.oppstillingModes=Object.fromEntries(fixedOppstillingRows.map(r=&gt;[r.train,r.mode]));</p>
+<p class="p1">if(!state.kjoretoy) state.kjoretoy={};</p>
+<p class="p1">if(!state.baliseToday) state.baliseToday={};</p>
+<p class="p1">if(!state.baliseTomorrow) state.baliseTomorrow={};</p>
+<p class="p1">if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};</p>
+<p class="p1">if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};</p>
+<p class="p1">if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;</p>
+<p class="p1">if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;</p>
+<p class="p1">if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";</p>
+<p class="p1">if(!state.apiBalise){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>state.apiBalise={</p>
+<p class="p1"><span class="Apple-converted-space">    </span>ok:false,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>updatedAt:"",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>departures:{},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>arrivals:{},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>departureVehicles:{},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>arrivalVehicles:{},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>allowedMaterialPrefixes:[],</p>
+<p class="p1"><span class="Apple-converted-space">    </span>materialFormat:"",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>error:""</p>
+<p class="p1"><span class="Apple-converted-space">  </span>};</p>
+<p class="p1">}</p>
+<p class="p1">if(!state.apiBalise.departureVehicles) state.apiBalise.departureVehicles={};</p>
+<p class="p1">if(!state.apiBalise.arrivalVehicles) state.apiBalise.arrivalVehicles={};</p>
+<p class="p1">if(!state.views){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>state.views={</p>
+<p class="p1"><span class="Apple-converted-space">    </span>yardZoom:{scale:1,compact:false},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>kveldZoom:{scale:1,compact:false},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>nattZoom:{scale:1,compact:false},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>inndataZoom:{scale:1,compact:false},</p>
+<p class="p1"><span class="Apple-converted-space">    </span>oppstillingZoom:{scale:1,compact:false}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>};</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function markSaved(t){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.getElementById("saveStateText").textContent=t;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function normalizeSlot(v){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return String(v||"").toUpperCase().replace(/\s+/g,"");</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function normalizeTognr(v){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return String(v||"").trim();</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function isInvalidVehicleValue(v){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const s = String(v || "").trim();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return !s || s === "❌" || s === "-" || s.toLowerCase() === "ukjent";</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function sanitizeVehicleValue(v){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const s = String(v || "").trim();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return isInvalidVehicleValue(s) ? "" : s;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function normalizeTimeString(v){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const s = String(v || "").trim();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const m = s.match(/\b(\d{1,2}):(\d{2})\b/);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!m) return "";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return `${m[1].padStart(2,"0")}:${m[2]}`;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function readTrainNo(obj){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!obj || typeof obj !== "object") return "";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return normalizeTognr(</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.train_no ??</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.trainNo ??</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.train ??</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.tognr ??</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.tognummer ??</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.number ??</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.no ??</p>
+<p class="p1"><span class="Apple-converted-space">    </span>""</p>
+<p class="p1"><span class="Apple-converted-space">  </span>);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function readDepartureTime(obj){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!obj || typeof obj !== "object") return "";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const candidates = [</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.time,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.departure,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.departure_time,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.departureTime,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.advertised_time,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.advertisedTime,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.scheduled_time,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.scheduledTime,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.public_time,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>obj.publicTime</p>
+<p class="p1"><span class="Apple-converted-space">  </span>];</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>for(const candidate of candidates){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const t = normalizeTimeString(candidate);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(t) return t;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return "";</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function persist(auto=false){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>localStorage.setItem(STORAGE_KEY,JSON.stringify(state));</p>
+<p class="p1"><span class="Apple-converted-space">  </span>markSaved(auto?"Lagret automatisk":"Lagret");</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getSelectedBaliseMap(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return state.baliseSelectedMode === "imorgen"</p>
+<p class="p1"><span class="Apple-converted-space">    </span>? (state.baliseTomorrow || {})</p>
+<p class="p1"><span class="Apple-converted-space">    </span>: (state.baliseToday || {});</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getSelectedDepartureMap(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return state.baliseSelectedMode === "imorgen"</p>
+<p class="p1"><span class="Apple-converted-space">    </span>? (state.baliseTomorrowDepartures || {})</p>
+<p class="p1"><span class="Apple-converted-space">    </span>: (state.baliseTodayDepartures || {});</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getApiDepartureMap(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return state.apiBalise?.departures || {};</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getApiArrivalMap(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return state.apiBalise?.arrivals || {};</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getApiDepartureVehicleMap(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return state.apiBalise?.departureVehicles || {};</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getApiArrivalVehicleMap(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return state.apiBalise?.arrivalVehicles || {};</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getVehicleForTrain(tog){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const train = normalizeTognr(tog);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const baliseValue = sanitizeVehicleValue(getSelectedBaliseMap()[train]);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(baliseValue) return baliseValue;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const manualValue = sanitizeVehicleValue(state.kjoretoy[train]);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(manualValue) return manualValue;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return "";</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getDepartureVehicleForTrain(tog){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const train = normalizeTognr(tog);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const apiValue = sanitizeVehicleValue(getApiDepartureVehicleMap()[train]);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(apiValue) return apiValue;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return getVehicleForTrain(train);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getArrivalVehicleForTrain(tog){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const train = normalizeTognr(tog);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const apiValue = sanitizeVehicleValue(getApiArrivalVehicleMap()[train]);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(apiValue) return apiValue;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return getVehicleForTrain(train);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function updateBaliseViewButtons(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const todayBtn = document.getElementById("showTodayBtn");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const tomorrowBtn = document.getElementById("showTomorrowBtn");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>todayBtn.classList.toggle("active", state.baliseSelectedMode === "idag");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>tomorrowBtn.classList.toggle("active", state.baliseSelectedMode === "imorgen");</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function updateBaliseViewState(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const el = document.getElementById("baliseViewState");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!el) return;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>el.textContent = `Viser: ${state.baliseSelectedMode === "imorgen" ? "i morgen" : "i dag"}`;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseViewButtons();</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function updateBaliseStatus(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const el=document.getElementById("baliseStatus");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!el) return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const meta = state.baliseSelectedMode === "imorgen"</p>
+<p class="p1"><span class="Apple-converted-space">    </span>? state.baliseMetaTomorrow</p>
+<p class="p1"><span class="Apple-converted-space">    </span>: state.baliseMetaToday;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const map = getSelectedBaliseMap();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const departures = getSelectedDepartureMap();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const count = Object.values(map).filter(v =&gt; sanitizeVehicleValue(v)).length;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const depCount = Object.keys(departures).length;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(meta &amp;&amp; meta.date){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const src = meta.source ? ` (${meta.source})` : "";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>el.textContent = `Balise ${meta.mode}: ${meta.date}${src}, ${count} kjøretøy, ${depCount} avganger`;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>el.textContent = `Ingen Balise-fil lastet inn for ${state.baliseSelectedMode}`;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function buildDepartureMapFromPayload(payload){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const map = {};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const departures = Array.isArray(payload?.departures)</p>
+<p class="p1"><span class="Apple-converted-space">    </span>? payload.departures</p>
+<p class="p1"><span class="Apple-converted-space">    </span>: Array.isArray(payload?.data?.departures)</p>
+<p class="p1"><span class="Apple-converted-space">      </span>? payload.data.departures</p>
+<p class="p1"><span class="Apple-converted-space">      </span>: [];</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>departures.forEach(dep=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tog = readTrainNo(dep);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const time = readDepartureTime(dep);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(tog &amp;&amp; time &amp;&amp; !map[tog]){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>map[tog] = time;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return map;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function buildVehicleMapFromPayload(payload){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const vehiclesRaw = payload?.vehicles ?? payload?.data?.vehicles;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const cleanedVehicles = {};</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(Array.isArray(vehiclesRaw)){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>vehiclesRaw.forEach(item=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(!item || typeof item !== "object") return;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const tog = readTrainNo(item);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const value = sanitizeVehicleValue(</p>
+<p class="p1"><span class="Apple-converted-space">        </span>item.vehicle ??</p>
+<p class="p1"><span class="Apple-converted-space">        </span>item.vehicles ??</p>
+<p class="p1"><span class="Apple-converted-space">        </span>item.material ??</p>
+<p class="p1"><span class="Apple-converted-space">        </span>item.kjoretoy ??</p>
+<p class="p1"><span class="Apple-converted-space">        </span>item.value ??</p>
+<p class="p1"><span class="Apple-converted-space">        </span>""</p>
+<p class="p1"><span class="Apple-converted-space">      </span>);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(tog) cleanedVehicles[tog] = value;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">    </span>return cleanedVehicles;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(vehiclesRaw &amp;&amp; typeof vehiclesRaw === "object"){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>Object.entries(vehiclesRaw).forEach(([key,val])=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const tog = normalizeTognr(key);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(!tog) return;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>cleanedVehicles[tog] = sanitizeVehicleValue(val);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">    </span>return cleanedVehicles;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>throw new Error("JSON-fila mangler gyldig 'vehicles'-mapping.");</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function importBaliseJsonObject(payload){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!payload || typeof payload !== "object"){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>throw new Error("Ugyldig JSON-format");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const cleanedVehicles = buildVehicleMapFromPayload(payload);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const mode = String(payload.mode || payload?.data?.mode || state.baliseSelectedMode || "").trim().toLowerCase();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const date = String(payload.date || payload?.data?.date || "").trim();</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(mode !== "idag" &amp;&amp; mode !== "imorgen"){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>throw new Error("JSON-fila mangler gyldig mode ('idag' eller 'imorgen').");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const departureMap = buildDepartureMapFromPayload(payload);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const meta = {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>source: payload.source || payload?.data?.source || "balise.no",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>mode,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>date,</p>
+<p class="p1"><span class="Apple-converted-space">    </span>generated_at: payload.generated_at || payload?.data?.generated_at || "",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>hasDepartures: Object.keys(departureMap).length &gt; 0</p>
+<p class="p1"><span class="Apple-converted-space">  </span>};</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(mode === "idag"){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseToday = cleanedVehicles;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseTodayDepartures = departureMap;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseMetaToday = meta;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseTomorrow = cleanedVehicles;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseTomorrowDepartures = departureMap;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseMetaTomorrow = meta;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseStatus();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseViewState();</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function parseWashCommand(v){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const s=String(v||"").trim().toLowerCase();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>set1: s==="ja" || s==="ja1",</p>
+<p class="p1"><span class="Apple-converted-space">    </span>set2: s==="ja" || s==="ja2"</p>
+<p class="p1"><span class="Apple-converted-space">  </span>};</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function mergeRowsIntoResult(rows,result,map){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>rows.forEach(row=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(row.type) return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tog=String(row.b||"").trim();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const wash=parseWashCommand(row.e);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const mat1=String(row.c||"").trim();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const spor1=normalizeSlot(row.f);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(mat1&amp;&amp;spor1&amp;&amp;map[spor1]!==undefined){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>result[map[spor1]].tog=tog;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>result[map[spor1]].mat=mat1;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>result[map[spor1]].wash=wash.set1;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const mat2=String(row.d||"").trim();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const spor2=normalizeSlot(row.h);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(mat2&amp;&amp;spor2&amp;&amp;map[spor2]!==undefined){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>result[map[spor2]].tog=tog;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>result[map[spor2]].mat=mat2;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>result[map[spor2]].wash=wash.set2;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function computeInndata(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const result=inputSlots.map(slot=&gt;({slot,tog:"",mat:"",wash:false}));</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const map=Object.fromEntries(result.map((r,i)=&gt;[r.slot,i]));</p>
+<p class="p1"><span class="Apple-converted-space">  </span>mergeRowsIntoResult(state.turneringKveld,result,map);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>mergeRowsIntoResult(state.turneringNatt,result,map);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return result;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function buildTurnering(tableId,key){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const cols=["a","b","c","d","e","f","g","h","i"];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const table=document.getElementById(tableId);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>table.innerHTML="";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const body=document.createElement("tbody");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>state[key].forEach((row,ri)=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tr=document.createElement("tr");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(row.type==="header"){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>cols.forEach((k,idx)=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">        </span>const th=document.createElement("th");</p>
+<p class="p1"><span class="Apple-converted-space">        </span>th.textContent=row[k]||"";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>if(idx===4) th.classList.add("wash-col");</p>
+<p class="p1"><span class="Apple-converted-space">        </span>tr.appendChild(th);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>});</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}else if(row.type==="section"){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>cols.forEach((k,i)=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">        </span>const td=document.createElement("td");</p>
+<p class="p1"><span class="Apple-converted-space">        </span>if(i===1){</p>
+<p class="p1"><span class="Apple-converted-space">          </span>td.textContent=row.b||"";</p>
+<p class="p1"><span class="Apple-converted-space">          </span>td.style.fontWeight="700";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>tr.appendChild(td);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>});</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>cols.forEach((k,idx)=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">        </span>const td=document.createElement("td");</p>
+<p class="p1"><span class="Apple-converted-space">        </span>if(idx===4) td.classList.add("wash-col");</p>
+<p class="p1"><span class="Apple-converted-space">        </span>const inp=document.createElement("input");</p>
+<p class="p1"><span class="Apple-converted-space">        </span>inp.type="text";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>inp.inputMode="text";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>inp.autocapitalize="off";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>inp.autocorrect="off";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>inp.spellcheck=false;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>inp.value=row[k]||"";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>inp.addEventListener("input",e=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">          </span>state[key][ri][k]=e.target.value;</p>
+<p class="p1"><span class="Apple-converted-space">          </span>buildInndata();</p>
+<p class="p1"><span class="Apple-converted-space">          </span>buildSporplan();</p>
+<p class="p1"><span class="Apple-converted-space">          </span>buildOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">          </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>});</p>
+<p class="p1"><span class="Apple-converted-space">        </span>td.appendChild(inp);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>tr.appendChild(td);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>});</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>body.appendChild(tr);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>table.appendChild(body);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function buildInndata(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const data=computeInndata();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const table=document.getElementById("inndataTable");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>table.innerHTML="&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Slot&lt;/th&gt;&lt;th&gt;Tognummer&lt;/th&gt;&lt;th&gt;Materiellnr&lt;/th&gt;&lt;th class='wash-col'&gt;Vask&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const body=document.createElement("tbody");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>data.forEach(r=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tr=document.createElement("tr");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>tr.innerHTML=`&lt;td class="slotcol"&gt;${r.slot}&lt;/td&gt;&lt;td&gt;${escapeHtml(r.tog)}&lt;/td&gt;&lt;td&gt;${escapeHtml(r.mat)}&lt;/td&gt;&lt;td class="wash-col"&gt;${r.wash?"ja":""}&lt;/td&gt;`;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>body.appendChild(tr);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>table.appendChild(body);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function computeOppstillingLookup(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const lookup={};</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>function applyRows(rows){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>rows.forEach(row=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(row.type) return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const tog=normalizeTognr(row.b);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(!tog || tog.toLowerCase()==="ikke tursatt") return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(!lookup[tog]){</p>
+<p class="p1"><span class="Apple-converted-space">        </span>lookup[tog]={</p>
+<p class="p1"><span class="Apple-converted-space">          </span>sett1:"",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>sett2:"",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>time:"",</p>
+<p class="p1"><span class="Apple-converted-space">          </span>sources:[]</p>
+<p class="p1"><span class="Apple-converted-space">        </span>};</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const time = normalizeTimeString(row.a);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(time) lookup[tog].time = time;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>lookup[tog].sett1=String(row.f||"").trim();</p>
+<p class="p1"><span class="Apple-converted-space">      </span>lookup[tog].sett2=String(row.h||"").trim();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>applyRows(state.turneringKveld);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>applyRows(state.turneringNatt);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return lookup;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function importKjoretoyFromText(raw){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const lines=String(raw||"").split(/\r?\n/);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const map={...state.kjoretoy};</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>lines.forEach(line=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tog=normalizeTognr(line);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(!tog) return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const baliseCurrent = sanitizeVehicleValue(getSelectedBaliseMap()[tog]);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>map[tog] = baliseCurrent || "";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>state.kjoretoy=map;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildOppstilling();</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getAllRelevantTursattTrains(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const trains = new Set();</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>function addTrain(tog){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const t = normalizeTognr(tog);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(!t) return;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(t.toLowerCase() === "ikke tursatt") return;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>trains.add(t);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>fixedOppstillingRows.forEach(r =&gt; addTrain(r.train));</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>state.turneringKveld.forEach(r =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(!r.type) addTrain(r.b);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>state.turneringNatt.forEach(r =&gt; {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(!r.type) addTrain(r.b);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>Object.keys(getApiDepartureMap()).forEach(addTrain);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>Object.keys(state.apiBalise?.arrivals || {}).forEach(addTrain);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return trains;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function getRelevantTrainListForApi(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return Array.from(getAllRelevantTursattTrains()).sort((a,b)=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const na = Number(a);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const nb = Number(b);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(!Number.isNaN(na) &amp;&amp; !Number.isNaN(nb)) return na - nb;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>return String(a).localeCompare(String(b), "no");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function sortTimeAndTrainEntries(a,b){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const ta = a.sortMinutes ?? 9999;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const tb = b.sortMinutes ?? 9999;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(ta !== tb) return ta - tb;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const na = Number(a.train);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const nb = Number(b.train);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!Number.isNaN(na) &amp;&amp; !Number.isNaN(nb)) return na - nb;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return String(a.train).localeCompare(String(a.train), "no");</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function buildDepartureRowsForOppstilling(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return Object.entries(getApiDepartureMap())</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.map(([train,time])=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const cleanTime = normalizeTimeString(time);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const [hh,mm] = cleanTime.split(":").map(Number);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const sortMinutes = Number.isNaN(hh) || Number.isNaN(mm) ? 9999 : (hh * 60 + mm);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>return {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>train: normalizeTognr(train),</p>
+<p class="p1"><span class="Apple-converted-space">        </span>time: cleanTime,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>displayTime: cleanTime,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>sortMinutes</p>
+<p class="p1"><span class="Apple-converted-space">      </span>};</p>
+<p class="p1"><span class="Apple-converted-space">    </span>})</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.filter(row=&gt;row.train)</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.sort(sortTimeAndTrainEntries);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function buildArrivalRowsForOppstilling(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return Object.entries(getApiArrivalMap())</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.map(([train,info])=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const cleanTime = normalizeTimeString(info?.time);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const [hh,mm] = cleanTime.split(":").map(Number);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const nextDay = Boolean(info?.nextDay);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const baseMinutes = Number.isNaN(hh) || Number.isNaN(mm) ? 9999 : (hh * 60 + mm);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const sortMinutes = baseMinutes === 9999 ? 9999 : baseMinutes + (nextDay ? 1440 : 0);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>return {</p>
+<p class="p1"><span class="Apple-converted-space">        </span>train: normalizeTognr(train),</p>
+<p class="p1"><span class="Apple-converted-space">        </span>time: cleanTime,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>displayTime: cleanTime + (nextDay ? " (+1)" : ""),</p>
+<p class="p1"><span class="Apple-converted-space">        </span>nextDay,</p>
+<p class="p1"><span class="Apple-converted-space">        </span>sortMinutes</p>
+<p class="p1"><span class="Apple-converted-space">      </span>};</p>
+<p class="p1"><span class="Apple-converted-space">    </span>})</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.filter(row=&gt;row.train)</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.sort(sortTimeAndTrainEntries);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function createOppstillingVehicleCells(train, side){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const vehicleCell1=document.createElement("td");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const vehicleCell2=document.createElement("td");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>let vehicleString = "";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(side === "arrival"){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>vehicleString = getArrivalVehicleForTrain(train);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>vehicleString = getDepartureVehicleForTrain(train);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const parts = String(vehicleString || "")</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.split(",")</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.map(v=&gt;v.trim())</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.filter(Boolean);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const first = parts[0] || "";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const second = parts[1] || "";</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>vehicleCell1.textContent = first || "Ikke Tursatt";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>vehicleCell2.textContent = second || "";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!second) vehicleCell2.classList.add("opp-red");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return [vehicleCell1, vehicleCell2];</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function buildOppstilling(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const table=document.getElementById("oppstillingTable");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>table.innerHTML="";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const thead=document.createElement("thead");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>thead.innerHTML="&lt;tr&gt;&lt;th&gt;Tognr.&lt;/th&gt;&lt;th&gt;Avgangstid&lt;/th&gt;&lt;th&gt;Kjøretøy 1 nr.&lt;/th&gt;&lt;th&gt;Kjøretøy 2 nr.&lt;/th&gt;&lt;th&gt;Tognr.&lt;/th&gt;&lt;th&gt;Ankomsttid&lt;/th&gt;&lt;th&gt;Kjøretøy 1 nr.&lt;/th&gt;&lt;th&gt;Kjøretøy 2 nr.&lt;/th&gt;&lt;/tr&gt;";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>table.appendChild(thead);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const body=document.createElement("tbody");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const departures = buildDepartureRowsForOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const arrivals = buildArrivalRowsForOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const maxLen = Math.max(departures.length, arrivals.length);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>for(let i=0;i&lt;maxLen;i++){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tr=document.createElement("tr");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const dep = departures[i];</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(dep){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const tdTrain=document.createElement("td");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tdTrain.textContent=dep.train;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tr.appendChild(tdTrain);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const tdTime=document.createElement("td");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tdTime.textContent=dep.displayTime;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tr.appendChild(tdTime);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const depVehicleCells = createOppstillingVehicleCells(dep.train, "departure");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tr.appendChild(depVehicleCells[0]);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tr.appendChild(depVehicleCells[1]);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>for(let j=0;j&lt;4;j++) tr.appendChild(document.createElement("td"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const arr = arrivals[i];</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(arr){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const tdTrain=document.createElement("td");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tdTrain.textContent=arr.train;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tr.appendChild(tdTrain);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const tdTime=document.createElement("td");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tdTime.textContent=arr.displayTime;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tr.appendChild(tdTime);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const arrVehicleCells = createOppstillingVehicleCells(arr.train, "arrival");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tr.appendChild(arrVehicleCells[0]);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>tr.appendChild(arrVehicleCells[1]);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>for(let j=0;j&lt;4;j++) tr.appendChild(document.createElement("td"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>body.appendChild(tr);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>table.appendChild(body);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function slotKind(slot){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!slot) return "";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(slot.endsWith("N")||slot==="9") return "blue";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(slot.endsWith("M")) return "yellow";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return "orange";</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function buildSporplan(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const data=Object.fromEntries(computeInndata().map(r=&gt;[r.slot,r]));</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const grid=document.getElementById("yardGrid");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>grid.innerHTML="";</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>["12","11","10","9","8","7","","6","5","4","3","","2","1"].forEach(txt=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const d=document.createElement("div");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>d.className="head";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>d.textContent=txt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>grid.appendChild(d);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>function appendRow(row){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>row.forEach(slot=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(slot==="platform"){</p>
+<p class="p1"><span class="Apple-converted-space">        </span>const p=document.createElement("div");</p>
+<p class="p1"><span class="Apple-converted-space">        </span>p.className="platform";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>p.textContent="Plattform";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>grid.appendChild(p);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>return;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(!slot){</p>
+<p class="p1"><span class="Apple-converted-space">        </span>const e=document.createElement("div");</p>
+<p class="p1"><span class="Apple-converted-space">        </span>e.className="empty-space";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>grid.appendChild(e);</p>
+<p class="p1"><span class="Apple-converted-space">        </span>return;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const info=data[slot]||{tog:"",mat:"",wash:false};</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const filled=Boolean((info.tog||"").trim()||(info.mat||"").trim());</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const fillClass=filled?(info.wash?"wash-filled":"filled"):"empty";</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>const div=document.createElement("div");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>div.className=`slot ${fillClass} ${slotKind(slot)}`;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(["7N","7S","8N","8S"].includes(slot)) div.classList.add("hall");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(filled){</p>
+<p class="p1"><span class="Apple-converted-space">        </span>let html="";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>if(info.tog){</p>
+<p class="p1"><span class="Apple-converted-space">          </span>html += "&lt;span class='slot-top'&gt;" + escapeHtml(info.tog) + "&lt;/span&gt;";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>if(info.mat){</p>
+<p class="p1"><span class="Apple-converted-space">          </span>html += "&lt;span class='slot-bottom mat'&gt;" + escapeHtml(info.mat) + "&lt;/span&gt;";</p>
+<p class="p1"><span class="Apple-converted-space">        </span>}</p>
+<p class="p1"><span class="Apple-converted-space">        </span>div.innerHTML=html;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">        </span>div.textContent=slot;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">      </span>grid.appendChild(div);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>appendRow(topRow);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>appendRow(midRow);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>appendRow(botRow);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const values=Object.values(data);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const filledCount=values.filter(v=&gt;(v.tog||"").trim()||(v.mat||"").trim()).length;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const washCount=values.filter(v=&gt;v.wash&amp;&amp;((v.tog||"").trim()||(v.mat||"").trim())).length;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.getElementById("stats").innerHTML=`&lt;div class="chip"&gt;Fylte slots: ${filledCount}&lt;/div&gt;&lt;div class="chip"&gt;Totalt slots: ${inputSlots.length}&lt;/div&gt;&lt;div class="chip"&gt;Vask = ja: ${washCount}&lt;/div&gt;`;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function activateTab(name){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.querySelectorAll(".seg").forEach(btn=&gt;btn.classList.toggle("active",btn.dataset.tab===name));</p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.querySelectorAll(".panel").forEach(p=&gt;p.classList.toggle("active",p.id===name));</p>
+<p class="p1"><span class="Apple-converted-space">  </span>window.scrollTo({top:0,behavior:"smooth"});</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function escapeHtml(s){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>return String(s||"").replaceAll("&amp;","&amp;amp;").replaceAll("&lt;","&amp;lt;").replaceAll("&gt;","&amp;gt;");</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function applyView(targetId){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const el=document.getElementById(targetId);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const view=state.views[targetId];</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!el||!view) return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>el.style.transform=`scale(${view.scale})`;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>el.style.transformOrigin="top left";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>el.style.marginBottom=`${Math.max(0,(view.scale-1)*120)}px`;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(targetId==="yardZoom"){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--yard-col", view.compact ? "56px" : (window.innerWidth&lt;700?"64px":"78px"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--yard-gap", view.compact ? "3px" : (window.innerWidth&lt;700?"4px":"6px"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--yard-min", view.compact ? "860px" : (window.innerWidth&lt;700?"980px":"1180px"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--slot-min-h", view.compact ? "64px" : (window.innerWidth&lt;700?"74px":"92px"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--slot-font", view.compact ? "12px" : (window.innerWidth&lt;700?"14px":"17px"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--mat-font", view.compact ? "10px" : (window.innerWidth&lt;700?"11px":"14px"));</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--table-min", view.compact ? "620px" : (window.innerWidth&lt;700?"760px":"980px"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--cell-min", view.compact ? "46px" : (window.innerWidth&lt;700?"58px":"72px"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--cell-h", view.compact ? "32px" : (window.innerWidth&lt;700?"38px":"46px"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--input-h", view.compact ? "24px" : (window.innerWidth&lt;700?"30px":"36px"));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.documentElement.style.setProperty("--input-font", view.compact ? "12px" : (window.innerWidth&lt;700?"14px":"16px"));</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function initViewControls(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.querySelectorAll(".zoom-in").forEach(btn=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>btn.addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const id=btn.dataset.target;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>state.views[id].scale=Math.min(1.8,(state.views[id].scale||1)+0.1);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>applyView(id);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.querySelectorAll(".zoom-out").forEach(btn=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>btn.addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const id=btn.dataset.target;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>state.views[id].scale=Math.max(0.45,(state.views[id].scale||1)-0.1);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>applyView(id);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.querySelectorAll(".compact-toggle").forEach(btn=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>btn.addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const id=btn.dataset.target;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>state.views[id].compact=!state.views[id].compact;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>applyView(id);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.querySelectorAll(".reset-view").forEach(btn=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>btn.addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const id=btn.dataset.target;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>state.views[id]={scale:1,compact:false};</p>
+<p class="p1"><span class="Apple-converted-space">      </span>applyView(id);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>["yardZoom","kveldZoom","nattZoom","inndataZoom","oppstillingZoom"].forEach(applyView);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function normalizeApiDepartureMap(raw){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const map = {};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!raw || typeof raw !== "object") return map;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>Object.entries(raw).forEach(([train, value])=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tog = normalizeTognr(train);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const time = normalizeTimeString(typeof value === "string" ? value : value?.time);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(tog &amp;&amp; time) map[tog] = time;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return map;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function normalizeApiArrivalMap(raw){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const map = {};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!raw || typeof raw !== "object") return map;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>Object.entries(raw).forEach(([train, value])=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tog = normalizeTognr(train);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(!tog || !value || typeof value !== "object") return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const time = normalizeTimeString(value.time);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(!time) return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>map[tog] = {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>time,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>nextDay:Boolean(value.nextDay)</p>
+<p class="p1"><span class="Apple-converted-space">    </span>};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return map;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function normalizeApiVehicleMap(raw){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const map = {};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!raw || typeof raw !== "object") return map;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>Object.entries(raw).forEach(([train, value])=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tog = normalizeTognr(train);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const vehicle = sanitizeVehicleValue(value);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(tog &amp;&amp; vehicle) map[tog] = vehicle;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>return map;</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">function renderApiTables(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const departuresTable = document.getElementById("apiDeparturesTable");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const arrivalsTable = document.getElementById("apiArrivalsTable");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const apiStatus = document.getElementById("apiStatus");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const apiMeta = document.getElementById("apiMeta");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const api = state.apiBalise || {};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const departures = api.departures || {};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const arrivals = api.arrivals || {};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const departureVehicles = api.departureVehicles || {};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const arrivalVehicles = api.arrivalVehicles || {};</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!api.ok){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>departuresTable.innerHTML = "&lt;tr&gt;&lt;td&gt;Ingen avganger fra API ennå&lt;/td&gt;&lt;/tr&gt;";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>arrivalsTable.innerHTML = "&lt;tr&gt;&lt;td&gt;Ingen ankomster fra API ennå&lt;/td&gt;&lt;/tr&gt;";</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(api.error){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>apiStatus.innerHTML = `&lt;span class="api-error"&gt;${escapeHtml(api.error)}&lt;/span&gt;`;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>apiMeta.textContent = "Klarte ikke å hente data fra /api/balise-vehicles.";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>apiStatus.textContent = "API ikke lest ennå";</p>
+<p class="p1"><span class="Apple-converted-space">      </span>apiMeta.textContent = "Ingen data fra /api/balise-vehicles ennå.";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">    </span>return;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>apiStatus.textContent = `API lest: ${Object.keys(departures).length} avganger, ${Object.keys(arrivals).length} ankomster`;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const prefixes = Array.isArray(api.allowedMaterialPrefixes) ? api.allowedMaterialPrefixes.join(", ") : "";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>apiMeta.textContent = `updatedAt: ${api.updatedAt || "ukjent"} | tillatte materiellprefiks: ${prefixes || "ukjent"} | format: ${api.materialFormat || "ukjent"} | avgang-kjøretøy: ${Object.keys(departureVehicles).length} | ankomst-kjøretøy: ${Object.keys(arrivalVehicles).length}`;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const depRows = Object.entries(departures)</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.sort((a,b)=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const ta = a[1] || "99:99";</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const tb = b[1] || "99:99";</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(ta !== tb) return ta.localeCompare(tb, "no");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>return a[0].localeCompare(b[0], "no");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>departuresTable.innerHTML = "&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Tognr.&lt;/th&gt;&lt;th&gt;Avgang&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const depBody = document.createElement("tbody");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>depRows.forEach(([train, time])=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tr = document.createElement("tr");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>tr.innerHTML = `&lt;td&gt;${escapeHtml(train)}&lt;/td&gt;&lt;td&gt;${escapeHtml(time)}&lt;/td&gt;`;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>depBody.appendChild(tr);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(depRows.length === 0){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tr = document.createElement("tr");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>tr.innerHTML = "&lt;td colspan='2'&gt;Ingen avganger i API-data&lt;/td&gt;";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>depBody.appendChild(tr);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>departuresTable.appendChild(depBody);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const arrRows = Object.entries(arrivals)</p>
+<p class="p1"><span class="Apple-converted-space">    </span>.sort((a,b)=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const ta = a[1]?.time || "99:99";</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const tb = b[1]?.time || "99:99";</p>
+<p class="p1"><span class="Apple-converted-space">      </span>if(ta !== tb) return ta.localeCompare(tb, "no");</p>
+<p class="p1"><span class="Apple-converted-space">      </span>return a[0].localeCompare(b[0], "no");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>});</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>arrivalsTable.innerHTML = "&lt;thead&gt;&lt;tr&gt;&lt;th&gt;Tognr.&lt;/th&gt;&lt;th&gt;Ankomst&lt;/th&gt;&lt;th&gt;Neste dag&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const arrBody = document.createElement("tbody");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>arrRows.forEach(([train, info])=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tr = document.createElement("tr");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>tr.innerHTML = `&lt;td&gt;${escapeHtml(train)}&lt;/td&gt;&lt;td&gt;${escapeHtml(info.time || "")}&lt;/td&gt;&lt;td&gt;${info.nextDay ? "ja" : ""}&lt;/td&gt;`;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>arrBody.appendChild(tr);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(arrRows.length === 0){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const tr = document.createElement("tr");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>tr.innerHTML = "&lt;td colspan='3'&gt;Ingen ankomster i API-data&lt;/td&gt;";</p>
+<p class="p1"><span class="Apple-converted-space">    </span>arrBody.appendChild(tr);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>arrivalsTable.appendChild(arrBody);</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">async function fetchBaliseApi(){</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const apiStatus = document.getElementById("apiStatus");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const apiMeta = document.getElementById("apiMeta");</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>apiStatus.textContent = "Henter data fra /api/balise-vehicles ...";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>apiMeta.textContent = "Laster ...";</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>try{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const params = new URLSearchParams();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>params.set("mode", state.baliseSelectedMode);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const trains = getRelevantTrainListForApi();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(trains.length){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>params.set("trains", trains.join(","));</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const response = await fetch(`/api/balise-vehicles?${params.toString()}`, {cache:"no-store"});</p>
+<p class="p1"><span class="Apple-converted-space">    </span>if(!response.ok){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>throw new Error(`HTTP ${response.status}`);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>const payload = await response.json();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const normalizedDepartureVehicles = normalizeApiVehicleMap(payload.departureVehicles);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>const normalizedArrivalVehicles = normalizeApiVehicleMap(payload.arrivalVehicles);</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.apiBalise = {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>ok:Boolean(payload.ok),</p>
+<p class="p1"><span class="Apple-converted-space">      </span>updatedAt:String(payload.updatedAt || ""),</p>
+<p class="p1"><span class="Apple-converted-space">      </span>departures:normalizeApiDepartureMap(payload.departures),</p>
+<p class="p1"><span class="Apple-converted-space">      </span>arrivals:normalizeApiArrivalMap(payload.arrivals),</p>
+<p class="p1"><span class="Apple-converted-space">      </span>departureVehicles:normalizedDepartureVehicles,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>arrivalVehicles:normalizedArrivalVehicles,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>allowedMaterialPrefixes:Array.isArray(payload.allowedMaterialPrefixes) ? payload.allowedMaterialPrefixes.map(v=&gt;String(v)) : [],</p>
+<p class="p1"><span class="Apple-converted-space">      </span>materialFormat:String(payload.materialFormat || ""),</p>
+<p class="p1"><span class="Apple-converted-space">      </span>error:""</p>
+<p class="p1"><span class="Apple-converted-space">    </span>};</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>renderApiTables();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>buildOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}catch(err){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.apiBalise = {</p>
+<p class="p1"><span class="Apple-converted-space">      </span>ok:false,</p>
+<p class="p1"><span class="Apple-converted-space">      </span>updatedAt:"",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>departures:{},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>arrivals:{},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>departureVehicles:{},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>arrivalVehicles:{},</p>
+<p class="p1"><span class="Apple-converted-space">      </span>allowedMaterialPrefixes:[],</p>
+<p class="p1"><span class="Apple-converted-space">      </span>materialFormat:"",</p>
+<p class="p1"><span class="Apple-converted-space">      </span>error:`API-feil: ${err.message}`</p>
+<p class="p1"><span class="Apple-converted-space">    </span>};</p>
+<p class="p1"><span class="Apple-converted-space">    </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>renderApiTables();</p>
+<p class="p1"><span class="Apple-converted-space">    </span>buildOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p1">}</p>
+<p class="p2"><br></p>
+<p class="p1">document.querySelectorAll(".seg").forEach(btn=&gt;btn.addEventListener("click",()=&gt;activateTab(btn.dataset.tab)));</p>
+<p class="p1">document.getElementById("saveBtn").addEventListener("click",()=&gt;persist(false));</p>
+<p class="p2"><br></p>
+<p class="p1">document.getElementById("resetBtn").addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!confirm("Nullstille hele appen?")) return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>localStorage.removeItem(STORAGE_KEY);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>state=makeDefaultState();</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildTurnering("turneringKveldTable","turneringKveld");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildTurnering("turneringNattTable","turneringNatt");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildInndata();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildSporplan();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>initViewControls();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseStatus();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseViewState();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>renderApiTables();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>activateTab("sporplan");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>markSaved("Nullstilt");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>fetchBaliseApi();</p>
+<p class="p1">});</p>
+<p class="p2"><br></p>
+<p class="p1">document.getElementById("refreshApiBtn").addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>fetchBaliseApi();</p>
+<p class="p1">});</p>
+<p class="p2"><br></p>
+<p class="p1">document.getElementById("showTodayBtn").addEventListener("click", ()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>state.baliseSelectedMode = "idag";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseStatus();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseViewState();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>fetchBaliseApi();</p>
+<p class="p1">});</p>
+<p class="p2"><br></p>
+<p class="p1">document.getElementById("showTomorrowBtn").addEventListener("click", ()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>state.baliseSelectedMode = "imorgen";</p>
+<p class="p1"><span class="Apple-converted-space">  </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseStatus();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseViewState();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>fetchBaliseApi();</p>
+<p class="p1">});</p>
+<p class="p2"><br></p>
+<p class="p1">document.getElementById("importBaliseJsonBtn").addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const fileInput=document.getElementById("baliseJsonFile");</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const file=fileInput.files &amp;&amp; fileInput.files[0];</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!file){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>alert("Velg en JSON-fil først.");</p>
+<p class="p1"><span class="Apple-converted-space">    </span>return;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>const reader=new FileReader();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>reader.onload=()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>try{</p>
+<p class="p1"><span class="Apple-converted-space">      </span>const payload=JSON.parse(reader.result);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>importBaliseJsonObject(payload);</p>
+<p class="p1"><span class="Apple-converted-space">      </span>alert(`Balise-JSON lastet inn for ${payload.mode || payload?.data?.mode || "ukjent modus"}.`);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}catch(err){</p>
+<p class="p1"><span class="Apple-converted-space">      </span>alert("Klarte ikke å lese JSON-fil: " + err.message);</p>
+<p class="p1"><span class="Apple-converted-space">    </span>}</p>
+<p class="p1"><span class="Apple-converted-space">  </span>};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>reader.readAsText(file,"utf-8");</p>
+<p class="p1">});</p>
+<p class="p2"><br></p>
+<p class="p1">document.getElementById("clearBaliseJsonBtn").addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!confirm("Tømme innlest Balise-data for valgt visning?")) return;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(state.baliseSelectedMode === "imorgen"){</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseTomorrow = {};</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseTomorrowDepartures = {};</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseMetaTomorrow = null;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}else{</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseToday = {};</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseTodayDepartures = {};</p>
+<p class="p1"><span class="Apple-converted-space">    </span>state.baliseMetaToday = null;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>}</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildOppstilling();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseStatus();</p>
+<p class="p1"><span class="Apple-converted-space">  </span>updateBaliseViewState();</p>
+<p class="p1">});</p>
+<p class="p2"><br></p>
+<p class="p1">document.getElementById("importKjoretoyBtn").addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>const raw=document.getElementById("kjoretoyImport").value;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>importKjoretoyFromText(raw);</p>
+<p class="p1">});</p>
+<p class="p2"><br></p>
+<p class="p1">document.getElementById("clearKjoretoyBtn").addEventListener("click",()=&gt;{</p>
+<p class="p1"><span class="Apple-converted-space">  </span>if(!confirm("Tømme alle manuelle kjøretøydata?")) return;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>state.kjoretoy={};</p>
+<p class="p1"><span class="Apple-converted-space">  </span>persist(true);</p>
+<p class="p1"><span class="Apple-converted-space">  </span>buildOppstilling();</p>
+<p class="p1">});</p>
+<p class="p2"><br></p>
+<p class="p1">buildTurnering("turneringKveldTable","turneringKveld");</p>
+<p class="p1">buildTurnering("turneringNattTable","turneringNatt");</p>
+<p class="p1">buildInndata();</p>
+<p class="p1">buildSporplan();</p>
+<p class="p1">buildOppstilling();</p>
+<p class="p1">initViewControls();</p>
+<p class="p1">updateBaliseStatus();</p>
+<p class="p1">updateBaliseViewState();</p>
+<p class="p1">renderApiTables();</p>
+<p class="p1">activateTab("sporplan");</p>
+<p class="p1">markSaved("Klar");</p>
+<p class="p1">fetchBaliseApi();</p>
+<p class="p1">&lt;/script&gt;</p>
+<p class="p1">&lt;/body&gt;</p>
+<p class="p1">&lt;/html&gt;</p>
+</body>
+</html>

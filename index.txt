@@ -1,0 +1,1632 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=0.8, maximum-scale=5, minimum-scale=0.3, viewport-fit=cover, user-scalable=yes" />
+<title>Skien sporplan iPhone</title>
+<style>
+:root{
+--bg:#f4f5f7;
+--card:#fff;
+--line:#d3d7dd;
+--text:#111827;
+--muted:#6b7280;
+--blue:#d9eaf7;
+--blue-text:#7d97bf;
+--yellow:#fff200;
+--yellow-text:#9a9100;
+--orange:#f3e2d2;
+--orange-text:#b97b44;
+--grey:#bfbfbf;
+--green:#c6efce;
+--green-border:#6aa84f;
+--platform:#d99694;
+--hall:#c00000;
+--wash:#fff7b8;
+--soft-red:#ffd9d9;
+--soft-red-text:#b00020;
+
+--yard-col:78px;
+--yard-gap:6px;
+--yard-min:1180px;
+--slot-min-h:92px;
+--slot-font:17px;
+--mat-font:14px;
+
+--table-min:980px;
+--cell-min:72px;
+--cell-h:46px;
+--input-h:36px;
+--input-font:16px;
+}
+
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0}
+.app{max-width:1280px;margin:0 auto;padding:12px}
+h1{font-size:22px;margin:0 0 6px}
+h3{margin:0 0 8px;font-size:16px}
+.sub{margin:0 0 12px;color:var(--muted);font-size:14px}
+.ios-banner{background:#eef5ff;border:1px solid #bfd4ff;color:#274472;border-radius:14px;padding:10px 12px;margin-bottom:12px;font-size:14px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+button{
+appearance:none;
+-webkit-appearance:none;
+border:1px solid var(--line);
+background:#fff;
+border-radius:12px;
+padding:12px 14px;
+font:inherit;
+color:var(--text);
+min-height:44px;
+cursor:pointer;
+}
+button.compact{
+padding:8px 10px;
+min-height:36px
+}
+.segmented{
+display:grid;
+grid-template-columns:1fr 1fr 1fr 1fr 1fr;
+gap:6px;
+background:#e9ecf1;
+border-radius:14px;
+padding:6px;
+margin-bottom:12px;
+position:sticky;
+top:0;
+z-index:10
+}
+.segmented button{
+border:none;
+background:transparent;
+min-height:44px;
+font-weight:600
+}
+.segmented button.active{
+background:#fff;
+box-shadow:0 1px 2px rgba(0,0,0,.08)
+}
+.panel{
+display:none;
+background:var(--card);
+border:1px solid var(--line);
+border-radius:16px;
+padding:12px;
+overflow:auto
+}
+.panel.active{display:block}
+.note{
+background:#fafafa;
+border:1px dashed var(--line);
+border-radius:12px;
+padding:10px 12px;
+margin-bottom:12px;
+font-size:14px
+}
+.view-tools{
+display:flex;
+gap:8px;
+flex-wrap:wrap;
+align-items:center;
+margin-bottom:10px
+}
+.view-tools .label{
+font-size:13px;
+color:var(--muted)
+}
+.zoom-wrap{
+overflow:auto;
+-webkit-overflow-scrolling:touch;
+touch-action:pan-x pan-y pinch-zoom;
+overscroll-behavior:contain
+}
+.zoom-inner{
+transform-origin:top left;
+width:max-content
+}
+table{
+border-collapse:collapse;
+width:100%;
+min-width:var(--table-min);
+background:#fff
+}
+th,td{
+border:1px solid var(--line);
+text-align:center;
+min-width:var(--cell-min);
+height:var(--cell-h);
+padding:4px 6px
+}
+th{
+background:#f3f4f6;
+position:sticky;
+top:0;
+z-index:2
+}
+td input{
+width:100%;
+height:var(--input-h);
+border:none;
+outline:none;
+background:transparent;
+text-align:center;
+font-size:var(--input-font);
+border-radius:8px
+}
+td.wash-col,th.wash-col{background:var(--wash)}
+.slotcol{font-weight:700}
+.yard-wrap{
+overflow:auto;
+-webkit-overflow-scrolling:touch;
+touch-action:pan-x pan-y pinch-zoom;
+overscroll-behavior:contain
+}
+.yard{
+min-width:var(--yard-min);
+padding:8px 0 18px;
+width:max-content
+}
+.yard-grid{
+display:grid;
+grid-template-columns:repeat(14,var(--yard-col));
+gap:var(--yard-gap);
+align-items:stretch
+}
+.head{text-align:center;font-weight:700}
+.slot{
+border:2px solid #000;
+border-radius:7px;
+min-height:var(--slot-min-h);
+display:flex;
+flex-direction:column;
+justify-content:space-between;
+align-items:center;
+padding:8px;
+text-align:center;
+white-space:pre-line;
+font-weight:700;
+font-size:var(--slot-font);
+line-height:1.15
+}
+.slot.empty.blue{background:var(--blue);color:var(--blue-text)}
+.slot.empty.yellow{background:var(--yellow);color:var(--yellow-text)}
+.slot.empty.orange{background:var(--orange);color:var(--orange-text)}
+.slot.filled{background:var(--grey);color:#000}
+.slot.wash-filled{background:var(--green);color:#000;border-color:var(--green-border)}
+.slot-top{display:block;width:100%}
+.slot-bottom{display:block;width:100%}
+.mat{color:#c00000;font-style:italic;font-size:var(--mat-font)}
+.platform{
+background:var(--platform);
+writing-mode:vertical-rl;
+transform:rotate(180deg);
+text-align:center;
+font-weight:700;
+border-radius:7px;
+display:flex;
+align-items:center;
+justify-content:center;
+min-height:var(--slot-min-h)
+}
+.empty-space{min-height:1px}
+.hall{border-color:var(--hall)!important}
+.stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.chip{
+background:#fff;
+border:1px solid var(--line);
+border-radius:999px;
+padding:8px 10px;
+font-size:14px
+}
+.save-indicator{
+font-size:13px;
+color:var(--muted);
+margin-left:4px;
+display:flex;
+align-items:center
+}
+.opp-yellow td{background:#d6d62f !important}
+.opp-red{color:#c00000;font-weight:700}
+.opp-greytext{color:#bdbdbd;font-weight:600}
+.opp-bold{font-weight:700}
+.file-input{
+width:100%;
+max-width:420px;
+border:1px solid var(--line);
+border-radius:12px;
+padding:10px;
+background:#fff;
+font:inherit;
+}
+.balise-toggle-bar{
+display:flex;
+gap:8px;
+flex-wrap:wrap;
+align-items:center;
+margin-bottom:12px;
+}
+.balise-toggle-bar button.active{
+background:#dfefff;
+border-color:#9ec5ff;
+font-weight:700;
+}
+.api-box{
+background:#f7fbff;
+border:1px solid #cfe2ff;
+border-radius:12px;
+padding:12px;
+margin-bottom:12px;
+}
+.api-muted{
+color:var(--muted);
+font-size:13px;
+}
+#oppstillingTable{
+min-width:760px;
+table-layout:fixed;
+}
+#oppstillingTable th,
+#oppstillingTable td{
+min-width:0;
+padding:4px 6px;
+height:38px;
+font-size:13px;
+white-space:nowrap;
+}
+#oppstillingTable th{
+position:static;
+}
+#oppstillingTable .opp-group{
+background:#eef5ff;
+font-weight:700;
+}
+#oppstillingTable .opp-missing-second{
+background:var(--soft-red);
+color:var(--soft-red-text);
+font-weight:700;
+}
+@media (max-width:1100px){
+.segmented{grid-template-columns:1fr 1fr 1fr}
+}
+@media (max-width:700px){
+:root{
+--yard-col:64px;
+--yard-gap:4px;
+--yard-min:980px;
+--slot-min-h:74px;
+--slot-font:14px;
+--mat-font:11px;
+--table-min:760px;
+--cell-min:58px;
+--cell-h:38px;
+--input-h:30px;
+--input-font:14px;
+}
+.app{padding:10px}
+h1{font-size:20px}
+.panel{padding:10px}
+.ios-banner,.note,.sub{font-size:12px}
+.segmented{grid-template-columns:1fr 1fr}
+#oppstillingTable{
+min-width:700px;
+}
+#oppstillingTable th,
+#oppstillingTable td{
+font-size:12px;
+padding:3px 4px;
+}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>Skien sporplan</h1>
+<p class="sub">versjon 3.1.6 / tråd 2</p>
+
+<div class="ios-banner">Data legges inn i ark "Turnering Kveld" og "Turnering Natt". Last helst inn datostemplet Balise-JSON når du vil ha klokkeslett og kjøretøy i Tursatt.</div>
+
+<div class="toolbar">
+<button id="saveBtn" type="button">Lagre</button>
+<button id="resetBtn" type="button">Nullstill</button>
+<span class="save-indicator" id="saveStateText">Ikke lagret ennå</span>
+</div>
+
+<div class="segmented">
+<button class="seg active" type="button" data-tab="sporplan">Sporplan</button>
+<button class="seg" type="button" data-tab="turneringKveld">Turnering Kveld</button>
+<button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
+<button class="seg" type="button" data-tab="inndata">Inndata</button>
+<button class="seg" type="button" data-tab="oppstilling">Tursatt</button>
+</div>
+
+<section class="panel active" id="sporplan">
+<div class="note">Tom slot viser nr. på sporplassering. Fylt slot blir grå. Hvis vask-raden er merket med ja/ja1/ja2 = <strong>ja</strong>, blir planlagt sporplassering grønn i stedet.</div>
+<div class="view-tools">
+<span class="label">Sporplan visning</span>
+<button class="compact zoom-out" data-target="yardZoom">Zoom ut</button>
+<button class="compact zoom-in" data-target="yardZoom">Zoom inn</button>
+<button class="compact compact-toggle" data-target="yardZoom">Kompakt visning</button>
+<button class="compact reset-view" data-target="yardZoom">Standard</button>
+</div>
+<div class="yard-wrap zoom-wrap">
+<div class="yard zoom-inner" id="yardZoom">
+<div class="yard-grid" id="yardGrid"></div>
+</div>
+</div>
+<div class="stats" id="stats"></div>
+</section>
+
+<section class="panel" id="turneringKveld">
+<div class="note">Fyll inn kveld her. Natt kan overskrive ved konflikt.</div>
+<div class="view-tools">
+<span class="label">Turnering Kveld visning</span>
+<button class="compact zoom-out" data-target="kveldZoom">Zoom ut</button>
+<button class="compact zoom-in" data-target="kveldZoom">Zoom inn</button>
+<button class="compact compact-toggle" data-target="kveldZoom">Kompakt visning</button>
+<button class="compact reset-view" data-target="kveldZoom">Standard</button>
+</div>
+<div class="zoom-wrap">
+<div class="zoom-inner" id="kveldZoom">
+<table id="turneringKveldTable"></table>
+</div>
+</div>
+</section>
+
+<section class="panel" id="turneringNatt">
+<div class="note">Fyll inn natt her. Ved konflikt vinner natt fordi den leses sist.</div>
+<div class="view-tools">
+<span class="label">Turnering Natt visning</span>
+<button class="compact zoom-out" data-target="nattZoom">Zoom ut</button>
+<button class="compact zoom-in" data-target="nattZoom">Zoom inn</button>
+<button class="compact compact-toggle" data-target="nattZoom">Kompakt visning</button>
+<button class="compact reset-view" data-target="nattZoom">Standard</button>
+</div>
+<div class="zoom-wrap">
+<div class="zoom-inner" id="nattZoom">
+<table id="turneringNattTable"></table>
+</div>
+</div>
+</section>
+
+<section class="panel" id="inndata">
+<div class="note">Leses automatisk fra Turnering Kveld og Turnering Natt.</div>
+<div class="view-tools">
+<span class="label">Inndata visning</span>
+<button class="compact zoom-out" data-target="inndataZoom">Zoom ut</button>
+<button class="compact zoom-in" data-target="inndataZoom">Zoom inn</button>
+<button class="compact compact-toggle" data-target="inndataZoom">Kompakt visning</button>
+<button class="compact reset-view" data-target="inndataZoom">Standard</button>
+</div>
+<div class="zoom-wrap">
+<div class="zoom-inner" id="inndataZoom">
+<table id="inndataTable"></table>
+</div>
+</div>
+</section>
+
+<section class="panel" id="oppstilling">
+<div class="note">Tursatte tog vises samlet her. Ved <strong>Nullstill</strong> slettes kjøretøydata, men tognumrene blir stående. Flask-API brukes nå for avganger og ankomster. Kjøretøy skal ikke være hardkodet i frontend.</div>
+
+<div class="api-box">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+    <button type="button" id="refreshApiBtn">Hent fra app.py</button>
+    <span id="apiStatus" class="save-indicator">API ikke lest ennå</span>
+  </div>
+  <div id="apiMeta" class="api-muted">Ingen data fra /api/balise-vehicles ennå.</div>
+</div>
+
+<div class="zoom-wrap" style="margin-bottom:12px;">
+  <table id="oppstillingTable"></table>
+</div>
+
+<div class="balise-toggle-bar">
+<button type="button" id="showTodayBtn" class="active">Vis Balise i dag</button>
+<button type="button" id="showTomorrowBtn">Vis Balise i morgen</button>
+<span id="baliseViewState" class="save-indicator">Viser: i dag</span>
+</div>
+
+<div class="note">
+<strong>Balise-import</strong><br>
+Velg helst fila av typen <strong>skien_balise_YYYY-MM-DD.json</strong> for å få både kjøretøy og klokkeslett. Fila <strong>balise_vehicles.json</strong> virker også, men den har bare kjøretøy.
+</div>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;">
+<input class="file-input" type="file" id="baliseJsonFile" accept=".json">
+<button type="button" id="importBaliseJsonBtn">Last inn Balise-JSON</button>
+<button type="button" id="clearBaliseJsonBtn">Tøm valgt Balise-data</button>
+<span id="baliseStatus" class="save-indicator">Ingen Balise-fil lastet inn</span>
+</div>
+
+<div class="note">
+<strong>Manuell kjøretøydata</strong><br>
+Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for valgt visning, brukes det kjøretøyet. Ellers blir tognummeret bare registrert uten hardkodet fallback.
+</div>
+
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px;">
+<textarea id="kjoretoyImport" style="width:100%;min-height:120px;border:1px solid var(--line);border-radius:12px;padding:10px;font:inherit;" placeholder="802&#10;804&#10;852"></textarea>
+<div style="display:flex;gap:8px;flex-wrap:wrap;">
+<button type="button" id="importKjoretoyBtn">Importer tognummer</button>
+<button type="button" id="clearKjoretoyBtn">Tøm manuell kjøretøydata</button>
+</div>
+</div>
+
+<div class="view-tools">
+<span class="label">Tursatt visning</span>
+<button class="compact zoom-out" data-target="oppstillingZoom">Zoom ut</button>
+<button class="compact zoom-in" data-target="oppstillingZoom">Zoom inn</button>
+<button class="compact compact-toggle" data-target="oppstillingZoom">Kompakt visning</button>
+<button class="compact reset-view" data-target="oppstillingZoom">Standard</button>
+</div>
+</section>
+</div>
+
+<script>
+const STORAGE_KEY="skien_sporplan_iphone_v13";
+
+const header={
+type:"header",
+a:"ank. kl.",
+b:"tognr.",
+c:"sett nr.1",
+d:"sett nr.2",
+e:"vask",
+f:"Sett 1->spor",
+g:"1 til tognr.",
+h:"Sett 2->spor",
+i:"2 til tognr."
+};
+
+const initialKveldRows=[
+header,
+{a:"14:49",b:"2482",c:"",d:"Notodden",e:"",f:"",g:"",h:"",i:""},
+{a:"14:53",b:"817",c:"",d:"",e:"",f:"T",g:"",h:"",i:""},
+{a:"15:38",b:"2483",c:"",d:"Porsgrunn",e:"",f:"",g:"",h:"",i:""},
+{a:"15:53",b:"819",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"16:18",b:"2484",c:"",d:"Notodden",e:"",f:"",g:"",h:"",i:""},
+{a:"16:26",b:"851",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"16:53",b:"821",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"17:02",b:"2485",c:"",d:"Porsgrunn",e:"",f:"",g:"",h:"",i:""},
+{a:"17:30",b:"853",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"17:42",b:"861",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"17:53",b:"823",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"17:59",b:"2486",c:"",d:"Notodden",e:"",f:"",g:"",h:"",i:""},
+{a:"18:30",b:"855",c:"",d:"",e:"",f:"1",g:"",h:"",i:""},
+{a:"18:42",b:"863",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"18:53",b:"825",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"19:01",b:"2487",c:"",d:"Porsgrunn",e:"",f:"",g:"",h:"",i:""},
+{a:"19:31",b:"12487",c:"",d:"Skien",e:"",f:"10 s",g:"",h:"",i:""},
+{a:"19:53",b:"827",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"20:53",b:"829",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"20:59",b:"2489",c:"",d:"Skien",e:"",f:"10 N",g:"",h:"",i:""},
+{a:"21:53",b:"831",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{type:"section",b:"ukjente tognr."},
+...Array.from({length:11},()=>({a:"",b:"ikke tursatt",c:"",d:"",e:"",f:"",g:"",h:"",i:""}))
+];
+
+const initialNattRows=[
+header,
+{a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"23:53",b:"835",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"00:50",b:"837",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"01:45",b:"839",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"07:42",b:"873",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{type:"section",b:"ukjente tognr."},
+...Array.from({length:11},()=>({a:"",b:"ikke tursatt",c:"",d:"",e:"",f:"",g:"",h:"",i:""}))
+];
+
+const fixedOppstillingRows=[
+{time:"04:10",train:"802",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},
+{time:"04:29",train:"852",mode:"enk",highlight:false,togClass:"",modeClass:"opp-greytext"},
+{time:"05:11",train:"804",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},
+{time:"05:25",train:"854",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},
+{time:"05:27",train:"2470",mode:"enk",highlight:false,togClass:"",modeClass:"opp-greytext"},
+{time:"05:37",train:"862",mode:"enk",highlight:false,togClass:"",modeClass:"opp-greytext"},
+{time:"06:01",train:"12472",mode:"enk",highlight:true,togClass:"opp-red",modeClass:"opp-greytext"},
+{time:"06:07",train:"806",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},
+{time:"06:17",train:"864",mode:"enk",highlight:false,togClass:"",modeClass:"opp-greytext"},
+{time:"06:25",train:"856",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},
+{time:"06:49",train:"2472",mode:"enk",highlight:true,togClass:"opp-red",modeClass:"opp-greytext"},
+{time:"07:09",train:"808",mode:"dobb",highlight:true,togClass:"opp-bold",modeClass:"opp-greytext"},
+{time:"08:09",train:"810",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"}
+];
+
+const inputSlots=["1N","1S","2N","2S","3N","3M","3S","4N","4M","4S","5N","5M","5S","6N","6S","6SS","7N","7S","7SS","8N","8S","8SS","9","10N","10S","11N","11S","12N","12S"];
+const topRow=["12N","11N","10N","9","8N","7N","platform","6N","5N","4N","3N","platform","2N","1N"];
+const midRow=["12S","11S","10S",null,"8S","7S","platform","6S","5M","4M","3M","platform","2S","1S"];
+const botRow=[null,null,null,null,"8SS","7SS","platform","6SS","5S","4S","3S",null,null,null];
+
+function makeDefaultState(){
+  return {
+    turneringKveld:JSON.parse(JSON.stringify(initialKveldRows)),
+    turneringNatt:JSON.parse(JSON.stringify(initialNattRows)),
+    oppstillingModes:Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode])),
+    kjoretoy:{},
+    baliseToday:{},
+    baliseTomorrow:{},
+    baliseTodayDepartures:{},
+    baliseTomorrowDepartures:{},
+    baliseMetaToday:null,
+    baliseMetaTomorrow:null,
+    baliseSelectedMode:"idag",
+    apiBalise:{
+      ok:false,
+      updatedAt:"",
+      departures:{},
+      arrivals:{},
+      departureVehicles:{},
+      arrivalVehicles:{},
+      allowedMaterialPrefixes:[],
+      materialFormat:"",
+      error:""
+    },
+    views:{
+      yardZoom:{scale:1,compact:false},
+      kveldZoom:{scale:1,compact:false},
+      nattZoom:{scale:1,compact:false},
+      inndataZoom:{scale:1,compact:false},
+      oppstillingZoom:{scale:1,compact:false}
+    }
+  };
+}
+
+let state=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null");
+if(!state) state=makeDefaultState();
+
+if(!state.turneringKveld) state.turneringKveld=JSON.parse(JSON.stringify(initialKveldRows));
+if(!state.turneringNatt) state.turneringNatt=JSON.parse(JSON.stringify(initialNattRows));
+if(!state.oppstillingModes) state.oppstillingModes=Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode]));
+if(!state.kjoretoy) state.kjoretoy={};
+if(!state.baliseToday) state.baliseToday={};
+if(!state.baliseTomorrow) state.baliseTomorrow={};
+if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
+if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
+if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;
+if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
+if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
+if(!state.apiBalise){
+  state.apiBalise={
+    ok:false,
+    updatedAt:"",
+    departures:{},
+    arrivals:{},
+    departureVehicles:{},
+    arrivalVehicles:{},
+    allowedMaterialPrefixes:[],
+    materialFormat:"",
+    error:""
+  };
+}
+if(!state.apiBalise.departureVehicles) state.apiBalise.departureVehicles={};
+if(!state.apiBalise.arrivalVehicles) state.apiBalise.arrivalVehicles={};
+if(!state.views){
+  state.views={
+    yardZoom:{scale:1,compact:false},
+    kveldZoom:{scale:1,compact:false},
+    nattZoom:{scale:1,compact:false},
+    inndataZoom:{scale:1,compact:false},
+    oppstillingZoom:{scale:1,compact:false}
+  };
+}
+
+function markSaved(t){
+  document.getElementById("saveStateText").textContent=t;
+}
+
+function normalizeSlot(v){
+  return String(v||"").toUpperCase().replace(/\s+/g,"");
+}
+
+function normalizeTognr(v){
+  return String(v||"").trim();
+}
+
+function isInvalidVehicleValue(v){
+  const s = String(v || "").trim();
+  return !s || s === "❌" || s === "-" || s.toLowerCase() === "ukjent";
+}
+
+function sanitizeVehicleValue(v){
+  const s = String(v || "").trim();
+  return isInvalidVehicleValue(s) ? "" : s;
+}
+
+function normalizeTimeString(v){
+  const s = String(v || "").trim();
+  const m = s.match(/\b(\d{1,2}):(\d{2})\b/);
+  if(!m) return "";
+  return `${m[1].padStart(2,"0")}:${m[2]}`;
+}
+
+function readTrainNo(obj){
+  if(!obj || typeof obj !== "object") return "";
+  return normalizeTognr(
+    obj.train_no ??
+    obj.trainNo ??
+    obj.train ??
+    obj.tognr ??
+    obj.tognummer ??
+    obj.number ??
+    obj.no ??
+    ""
+  );
+}
+
+function readDepartureTime(obj){
+  if(!obj || typeof obj !== "object") return "";
+  const candidates = [
+    obj.time,
+    obj.departure,
+    obj.departure_time,
+    obj.departureTime,
+    obj.advertised_time,
+    obj.advertisedTime,
+    obj.scheduled_time,
+    obj.scheduledTime,
+    obj.public_time,
+    obj.publicTime
+  ];
+
+  for(const candidate of candidates){
+    const t = normalizeTimeString(candidate);
+    if(t) return t;
+  }
+
+  return "";
+}
+
+function persist(auto=false){
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+  markSaved(auto?"Lagret automatisk":"Lagret");
+}
+
+function getSelectedBaliseMap(){
+  return state.baliseSelectedMode === "imorgen"
+    ? (state.baliseTomorrow || {})
+    : (state.baliseToday || {});
+}
+
+function getSelectedDepartureMap(){
+  return state.baliseSelectedMode === "imorgen"
+    ? (state.baliseTomorrowDepartures || {})
+    : (state.baliseTodayDepartures || {});
+}
+
+function getApiDepartureMap(){
+  return state.apiBalise?.departures || {};
+}
+
+function getApiArrivalMap(){
+  return state.apiBalise?.arrivals || {};
+}
+
+function getApiDepartureVehicleMap(){
+  return state.apiBalise?.departureVehicles || {};
+}
+
+function getApiArrivalVehicleMap(){
+  return state.apiBalise?.arrivalVehicles || {};
+}
+
+function getVehicleForTrain(tog){
+  const train = normalizeTognr(tog);
+
+  const baliseValue = sanitizeVehicleValue(getSelectedBaliseMap()[train]);
+  if(baliseValue) return baliseValue;
+
+  const manualValue = sanitizeVehicleValue(state.kjoretoy[train]);
+  if(manualValue) return manualValue;
+
+  return "";
+}
+
+function getDepartureVehicleForTrain(tog){
+  const train = normalizeTognr(tog);
+
+  const apiValue = sanitizeVehicleValue(getApiDepartureVehicleMap()[train]);
+  if(apiValue) return apiValue;
+
+  return getVehicleForTrain(train);
+}
+
+function getArrivalVehicleForTrain(tog){
+  const train = normalizeTognr(tog);
+
+  const apiValue = sanitizeVehicleValue(getApiArrivalVehicleMap()[train]);
+  if(apiValue) return apiValue;
+
+  return getVehicleForTrain(train);
+}
+
+function splitVehicleNumbers(value){
+  const clean = sanitizeVehicleValue(value);
+  if(!clean) return ["",""];
+
+  const parts = clean
+    .split(",")
+    .map(v => String(v || "").trim())
+    .filter(Boolean);
+
+  return [parts[0] || "", parts[1] || ""];
+}
+
+function updateBaliseViewButtons(){
+  const todayBtn = document.getElementById("showTodayBtn");
+  const tomorrowBtn = document.getElementById("showTomorrowBtn");
+  todayBtn.classList.toggle("active", state.baliseSelectedMode === "idag");
+  tomorrowBtn.classList.toggle("active", state.baliseSelectedMode === "imorgen");
+}
+
+function updateBaliseViewState(){
+  const el = document.getElementById("baliseViewState");
+  if(!el) return;
+  el.textContent = `Viser: ${state.baliseSelectedMode === "imorgen" ? "i morgen" : "i dag"}`;
+  updateBaliseViewButtons();
+}
+
+function updateBaliseStatus(){
+  const el=document.getElementById("baliseStatus");
+  if(!el) return;
+
+  const meta = state.baliseSelectedMode === "imorgen"
+    ? state.baliseMetaTomorrow
+    : state.baliseMetaToday;
+
+  const map = getSelectedBaliseMap();
+  const departures = getSelectedDepartureMap();
+  const count = Object.values(map).filter(v => sanitizeVehicleValue(v)).length;
+  const depCount = Object.keys(departures).length;
+
+  if(meta && meta.date){
+    const src = meta.source ? ` (${meta.source})` : "";
+    el.textContent = `Balise ${meta.mode}: ${meta.date}${src}, ${count} kjøretøy, ${depCount} avganger`;
+  }else{
+    el.textContent = `Ingen Balise-fil lastet inn for ${state.baliseSelectedMode}`;
+  }
+}
+
+function buildDepartureMapFromPayload(payload){
+  const map = {};
+  const departures = Array.isArray(payload?.departures)
+    ? payload.departures
+    : Array.isArray(payload?.data?.departures)
+      ? payload.data.departures
+      : [];
+
+  departures.forEach(dep=>{
+    const tog = readTrainNo(dep);
+    const time = readDepartureTime(dep);
+    if(tog && time && !map[tog]){
+      map[tog] = time;
+    }
+  });
+
+  return map;
+}
+
+function buildVehicleMapFromPayload(payload){
+  const vehiclesRaw = payload?.vehicles ?? payload?.data?.vehicles;
+  const cleanedVehicles = {};
+
+  if(Array.isArray(vehiclesRaw)){
+    vehiclesRaw.forEach(item=>{
+      if(!item || typeof item !== "object") return;
+      const tog = readTrainNo(item);
+      const value = sanitizeVehicleValue(
+        item.vehicle ??
+        item.vehicles ??
+        item.material ??
+        item.kjoretoy ??
+        item.value ??
+        ""
+      );
+      if(tog) cleanedVehicles[tog] = value;
+    });
+    return cleanedVehicles;
+  }
+
+  if(vehiclesRaw && typeof vehiclesRaw === "object"){
+    Object.entries(vehiclesRaw).forEach(([key,val])=>{
+      const tog = normalizeTognr(key);
+      if(!tog) return;
+      cleanedVehicles[tog] = sanitizeVehicleValue(val);
+    });
+    return cleanedVehicles;
+  }
+
+  throw new Error("JSON-fila mangler gyldig 'vehicles'-mapping.");
+}
+
+function importBaliseJsonObject(payload){
+  if(!payload || typeof payload !== "object"){
+    throw new Error("Ugyldig JSON-format");
+  }
+
+  const cleanedVehicles = buildVehicleMapFromPayload(payload);
+
+  const mode = String(payload.mode || payload?.data?.mode || state.baliseSelectedMode || "").trim().toLowerCase();
+  const date = String(payload.date || payload?.data?.date || "").trim();
+
+  if(mode !== "idag" && mode !== "imorgen"){
+    throw new Error("JSON-fila mangler gyldig mode ('idag' eller 'imorgen').");
+  }
+
+  const departureMap = buildDepartureMapFromPayload(payload);
+
+  const meta = {
+    source: payload.source || payload?.data?.source || "balise.no",
+    mode,
+    date,
+    generated_at: payload.generated_at || payload?.data?.generated_at || "",
+    hasDepartures: Object.keys(departureMap).length > 0
+  };
+
+  if(mode === "idag"){
+    state.baliseToday = cleanedVehicles;
+    state.baliseTodayDepartures = departureMap;
+    state.baliseMetaToday = meta;
+  }else{
+    state.baliseTomorrow = cleanedVehicles;
+    state.baliseTomorrowDepartures = departureMap;
+    state.baliseMetaTomorrow = meta;
+  }
+
+  persist(true);
+  buildOppstilling();
+  updateBaliseStatus();
+  updateBaliseViewState();
+}
+
+function parseWashCommand(v){
+  const s=String(v||"").trim().toLowerCase();
+  return {
+    set1: s==="ja" || s==="ja1",
+    set2: s==="ja" || s==="ja2"
+  };
+}
+
+function mergeRowsIntoResult(rows,result,map){
+  rows.forEach(row=>{
+    if(row.type) return;
+
+    const tog=String(row.b||"").trim();
+    const wash=parseWashCommand(row.e);
+
+    const mat1=String(row.c||"").trim();
+    const spor1=normalizeSlot(row.f);
+    if(mat1&&spor1&&map[spor1]!==undefined){
+      result[map[spor1]].tog=tog;
+      result[map[spor1]].mat=mat1;
+      result[map[spor1]].wash=wash.set1;
+    }
+
+    const mat2=String(row.d||"").trim();
+    const spor2=normalizeSlot(row.h);
+    if(mat2&&spor2&&map[spor2]!==undefined){
+      result[map[spor2]].tog=tog;
+      result[map[spor2]].mat=mat2;
+      result[map[spor2]].wash=wash.set2;
+    }
+  });
+}
+
+function computeInndata(){
+  const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
+  const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
+  mergeRowsIntoResult(state.turneringKveld,result,map);
+  mergeRowsIntoResult(state.turneringNatt,result,map);
+  return result;
+}
+
+function buildTurnering(tableId,key){
+  const cols=["a","b","c","d","e","f","g","h","i"];
+  const table=document.getElementById(tableId);
+  table.innerHTML="";
+  const body=document.createElement("tbody");
+
+  state[key].forEach((row,ri)=>{
+    const tr=document.createElement("tr");
+
+    if(row.type==="header"){
+      cols.forEach((k,idx)=>{
+        const th=document.createElement("th");
+        th.textContent=row[k]||"";
+        if(idx===4) th.classList.add("wash-col");
+        tr.appendChild(th);
+      });
+    }else if(row.type==="section"){
+      cols.forEach((k,i)=>{
+        const td=document.createElement("td");
+        if(i===1){
+          td.textContent=row.b||"";
+          td.style.fontWeight="700";
+        }
+        tr.appendChild(td);
+      });
+    }else{
+      cols.forEach((k,idx)=>{
+        const td=document.createElement("td");
+        if(idx===4) td.classList.add("wash-col");
+        const inp=document.createElement("input");
+        inp.type="text";
+        inp.inputMode="text";
+        inp.autocapitalize="off";
+        inp.autocorrect="off";
+        inp.spellcheck=false;
+        inp.value=row[k]||"";
+        inp.addEventListener("input",e=>{
+          state[key][ri][k]=e.target.value;
+          buildInndata();
+          buildSporplan();
+          buildOppstilling();
+          persist(true);
+        });
+        td.appendChild(inp);
+        tr.appendChild(td);
+      });
+    }
+    body.appendChild(tr);
+  });
+
+  table.appendChild(body);
+}
+
+function buildInndata(){
+  const data=computeInndata();
+  const table=document.getElementById("inndataTable");
+  table.innerHTML="<thead><tr><th>Slot</th><th>Tognummer</th><th>Materiellnr</th><th class='wash-col'>Vask</th></tr></thead>";
+  const body=document.createElement("tbody");
+
+  data.forEach(r=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td class="slotcol">${r.slot}</td><td>${escapeHtml(r.tog)}</td><td>${escapeHtml(r.mat)}</td><td class="wash-col">${r.wash?"ja":""}</td>`;
+    body.appendChild(tr);
+  });
+
+  table.appendChild(body);
+}
+
+function computeOppstillingLookup(){
+  const lookup={};
+
+  function applyRows(rows){
+    rows.forEach(row=>{
+      if(row.type) return;
+
+      const tog=normalizeTognr(row.b);
+      if(!tog || tog.toLowerCase()==="ikke tursatt") return;
+
+      if(!lookup[tog]){
+        lookup[tog]={
+          sett1:"",
+          sett2:"",
+          time:"",
+          sources:[]
+        };
+      }
+
+      const time = normalizeTimeString(row.a);
+      if(time) lookup[tog].time = time;
+
+      lookup[tog].sett1=String(row.f||"").trim();
+      lookup[tog].sett2=String(row.h||"").trim();
+    });
+  }
+
+  applyRows(state.turneringKveld);
+  applyRows(state.turneringNatt);
+
+  return lookup;
+}
+
+function importKjoretoyFromText(raw){
+  const lines=String(raw||"").split(/\r?\n/);
+  const map={...state.kjoretoy};
+
+  lines.forEach(line=>{
+    const tog=normalizeTognr(line);
+    if(!tog) return;
+
+    const baliseCurrent = sanitizeVehicleValue(getSelectedBaliseMap()[tog]);
+    map[tog] = baliseCurrent || "";
+  });
+
+  state.kjoretoy=map;
+  persist(true);
+  buildOppstilling();
+}
+
+function getAllRelevantTursattTrains(){
+  const trains = new Set();
+
+  function addTrain(tog){
+    const t = normalizeTognr(tog);
+    if(!t) return;
+    if(t.toLowerCase() === "ikke tursatt") return;
+    trains.add(t);
+  }
+
+  fixedOppstillingRows.forEach(r => addTrain(r.train));
+
+  state.turneringKveld.forEach(r => {
+    if(!r.type) addTrain(r.b);
+  });
+
+  state.turneringNatt.forEach(r => {
+    if(!r.type) addTrain(r.b);
+  });
+
+  Object.keys(getApiDepartureMap()).forEach(addTrain);
+  Object.entries(state.apiBalise?.arrivals || {}).forEach(([train, info]) => {
+    if(info && info.nextDay) addTrain(train);
+  });
+
+  return trains;
+}
+
+function getRelevantTrainListForApi(){
+  return Array.from(getAllRelevantTursattTrains()).sort((a,b)=>{
+    const na = Number(a);
+    const nb = Number(b);
+
+    if(!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    return String(a).localeCompare(String(b), "no");
+  });
+}
+
+function sortTimeAndTrainEntries(a,b){
+  const ta = a.sortMinutes ?? 9999;
+  const tb = b.sortMinutes ?? 9999;
+
+  if(ta !== tb) return ta - tb;
+
+  const na = Number(a.train);
+  const nb = Number(b.train);
+
+  if(!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+
+  return String(a.train).localeCompare(String(b.train), "no");
+}
+
+function buildDepartureRowsForOppstilling(){
+  return Object.entries(getApiDepartureMap())
+    .map(([train,time])=>{
+      const cleanTime = normalizeTimeString(time);
+      const [hh,mm] = cleanTime.split(":").map(Number);
+      const sortMinutes = Number.isNaN(hh) || Number.isNaN(mm) ? 9999 : (hh * 60 + mm);
+
+      return {
+        train: normalizeTognr(train),
+        time: cleanTime,
+        displayTime: cleanTime,
+        sortMinutes
+      };
+    })
+    .filter(row=>row.train)
+    .sort(sortTimeAndTrainEntries);
+}
+
+function buildArrivalRowsForOppstilling(){
+  return Object.entries(getApiArrivalMap())
+    .map(([train,info])=>{
+      const cleanTime = normalizeTimeString(info?.time);
+      const [hh,mm] = cleanTime.split(":").map(Number);
+      const nextDay = Boolean(info?.nextDay);
+      const baseMinutes = Number.isNaN(hh) || Number.isNaN(mm) ? 9999 : (hh * 60 + mm);
+      const sortMinutes = baseMinutes === 9999 ? 9999 : baseMinutes + (nextDay ? 1440 : 0);
+
+      return {
+        train: normalizeTognr(train),
+        time: cleanTime,
+        displayTime: cleanTime ? `${cleanTime}${nextDay ? " +1" : ""}` : "",
+        nextDay,
+        sortMinutes
+      };
+    })
+    .filter(row=>row.train)
+    .sort(sortTimeAndTrainEntries);
+}
+
+function createOppstillingVehicleCells(train, side){
+  let vehicleString = "";
+
+  if(side === "arrival"){
+    vehicleString = getArrivalVehicleForTrain(train);
+  }else{
+    vehicleString = getDepartureVehicleForTrain(train);
+  }
+
+  const [vehicle1, vehicle2] = splitVehicleNumbers(vehicleString);
+
+  return {
+    vehicle1: vehicle1 || "Ikke Tursatt",
+    vehicle2: vehicle2 || "",
+    missingSecond: !vehicle2
+  };
+}
+
+function appendOppstillingSideCells(tr, rowData, side){
+  const train = rowData?.train || "";
+  const time = rowData?.displayTime || rowData?.time || "";
+
+  const tdTrain = document.createElement("td");
+  tdTrain.textContent = train;
+  tr.appendChild(tdTrain);
+
+  const tdTime = document.createElement("td");
+  tdTime.textContent = time;
+  tr.appendChild(tdTime);
+
+  const vehicles = train
+    ? createOppstillingVehicleCells(train, side)
+    : {vehicle1:"", vehicle2:"", missingSecond:false};
+
+  const tdVehicle1 = document.createElement("td");
+  tdVehicle1.textContent = vehicles.vehicle1;
+  tr.appendChild(tdVehicle1);
+
+  const tdVehicle2 = document.createElement("td");
+  tdVehicle2.textContent = vehicles.vehicle2;
+  if(train && vehicles.missingSecond){
+    tdVehicle2.classList.add("opp-missing-second");
+  }
+  tr.appendChild(tdVehicle2);
+}
+
+function buildOppstilling(){
+  const table=document.getElementById("oppstillingTable");
+  table.innerHTML="";
+
+  const thead=document.createElement("thead");
+  thead.innerHTML=`
+    <tr>
+      <th class="opp-group" colspan="4">Avgang</th>
+      <th class="opp-group" colspan="4">Ankomst</th>
+    </tr>
+    <tr>
+      <th>Tognr.</th>
+      <th>Avgangstid</th>
+      <th>Kjøretøy 1 nr.</th>
+      <th>Kjøretøy 2 nr.</th>
+      <th>Tognr.</th>
+      <th>Ankomsttid</th>
+      <th>Kjøretøy 1 nr.</th>
+      <th>Kjøretøy 2 nr.</th>
+    </tr>
+  `;
+  table.appendChild(thead);
+
+  const departureRows = buildDepartureRowsForOppstilling();
+  const arrivalRows = buildArrivalRowsForOppstilling();
+  const totalRows = Math.max(departureRows.length, arrivalRows.length, 1);
+
+  const body=document.createElement("tbody");
+
+  for(let i=0;i<totalRows;i++){
+    const tr=document.createElement("tr");
+    appendOppstillingSideCells(tr, departureRows[i] || null, "departure");
+    appendOppstillingSideCells(tr, arrivalRows[i] || null, "arrival");
+    body.appendChild(tr);
+  }
+
+  table.appendChild(body);
+}
+
+function slotKind(slot){
+  if(!slot) return "";
+  if(slot.endsWith("N")||slot==="9") return "blue";
+  if(slot.endsWith("M")) return "yellow";
+  return "orange";
+}
+
+function buildSporplan(){
+  const data=Object.fromEntries(computeInndata().map(r=>[r.slot,r]));
+  const grid=document.getElementById("yardGrid");
+  grid.innerHTML="";
+
+  ["12","11","10","9","8","7","","6","5","4","3","","2","1"].forEach(txt=>{
+    const d=document.createElement("div");
+    d.className="head";
+    d.textContent=txt;
+    grid.appendChild(d);
+  });
+
+  function appendRow(row){
+    row.forEach(slot=>{
+      if(slot==="platform"){
+        const p=document.createElement("div");
+        p.className="platform";
+        p.textContent="Plattform";
+        grid.appendChild(p);
+        return;
+      }
+
+      if(!slot){
+        const e=document.createElement("div");
+        e.className="empty-space";
+        grid.appendChild(e);
+        return;
+      }
+
+      const info=data[slot]||{tog:"",mat:"",wash:false};
+      const filled=Boolean((info.tog||"").trim()||(info.mat||"").trim());
+      const fillClass=filled?(info.wash?"wash-filled":"filled"):"empty";
+
+      const div=document.createElement("div");
+      div.className=`slot ${fillClass} ${slotKind(slot)}`;
+
+      if(["7N","7S","8N","8S"].includes(slot)) div.classList.add("hall");
+
+      if(filled){
+        let html="";
+        if(info.tog){
+          html += "<span class='slot-top'>" + escapeHtml(info.tog) + "</span>";
+        }
+        if(info.mat){
+          html += "<span class='slot-bottom mat'>" + escapeHtml(info.mat) + "</span>";
+        }
+        div.innerHTML=html;
+      }else{
+        div.textContent=slot;
+      }
+
+      grid.appendChild(div);
+    });
+  }
+
+  appendRow(topRow);
+  appendRow(midRow);
+  appendRow(botRow);
+
+  const values=Object.values(data);
+  const filledCount=values.filter(v=>(v.tog||"").trim()||(v.mat||"").trim()).length;
+  const washCount=values.filter(v=>v.wash&&((v.tog||"").trim()||(v.mat||"").trim())).length;
+
+  document.getElementById("stats").innerHTML=`<div class="chip">Fylte slots: ${filledCount}</div><div class="chip">Totalt slots: ${inputSlots.length}</div><div class="chip">Vask = ja: ${washCount}</div>`;
+}
+
+function activateTab(name){
+  document.querySelectorAll(".seg").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===name));
+  document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===name));
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function escapeHtml(s){
+  return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
+}
+
+function applyView(targetId){
+  const el=document.getElementById(targetId);
+  const view=state.views[targetId];
+  if(!el||!view) return;
+
+  el.style.transform=`scale(${view.scale})`;
+  el.style.transformOrigin="top left";
+  el.style.marginBottom=`${Math.max(0,(view.scale-1)*120)}px`;
+
+  if(targetId==="yardZoom"){
+    document.documentElement.style.setProperty("--yard-col", view.compact ? "56px" : (window.innerWidth<700?"64px":"78px"));
+    document.documentElement.style.setProperty("--yard-gap", view.compact ? "3px" : (window.innerWidth<700?"4px":"6px"));
+    document.documentElement.style.setProperty("--yard-min", view.compact ? "860px" : (window.innerWidth<700?"980px":"1180px"));
+    document.documentElement.style.setProperty("--slot-min-h", view.compact ? "64px" : (window.innerWidth<700?"74px":"92px"));
+    document.documentElement.style.setProperty("--slot-font", view.compact ? "12px" : (window.innerWidth<700?"14px":"17px"));
+    document.documentElement.style.setProperty("--mat-font", view.compact ? "10px" : (window.innerWidth<700?"11px":"14px"));
+  }else{
+    document.documentElement.style.setProperty("--table-min", view.compact ? "620px" : (window.innerWidth<700?"760px":"980px"));
+    document.documentElement.style.setProperty("--cell-min", view.compact ? "46px" : (window.innerWidth<700?"58px":"72px"));
+    document.documentElement.style.setProperty("--cell-h", view.compact ? "32px" : (window.innerWidth<700?"38px":"46px"));
+    document.documentElement.style.setProperty("--input-h", view.compact ? "24px" : (window.innerWidth<700?"30px":"36px"));
+    document.documentElement.style.setProperty("--input-font", view.compact ? "12px" : (window.innerWidth<700?"14px":"16px"));
+  }
+}
+
+function initViewControls(){
+  document.querySelectorAll(".zoom-in").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const id=btn.dataset.target;
+      state.views[id].scale=Math.min(1.8,(state.views[id].scale||1)+0.1);
+      applyView(id);
+      persist(true);
+    });
+  });
+
+  document.querySelectorAll(".zoom-out").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const id=btn.dataset.target;
+      state.views[id].scale=Math.max(0.45,(state.views[id].scale||1)-0.1);
+      applyView(id);
+      persist(true);
+    });
+  });
+
+  document.querySelectorAll(".compact-toggle").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const id=btn.dataset.target;
+      state.views[id].compact=!state.views[id].compact;
+      applyView(id);
+      persist(true);
+    });
+  });
+
+  document.querySelectorAll(".reset-view").forEach(btn=>{
+    btn.addEventListener("click",()=>{
+      const id=btn.dataset.target;
+      state.views[id]={scale:1,compact:false};
+      applyView(id);
+      persist(true);
+    });
+  });
+
+  ["yardZoom","kveldZoom","nattZoom","inndataZoom","oppstillingZoom"].forEach(applyView);
+}
+
+function normalizeApiDepartureMap(raw){
+  const map = {};
+  if(!raw || typeof raw !== "object") return map;
+
+  Object.entries(raw).forEach(([train, value])=>{
+    const tog = normalizeTognr(train);
+    const time = normalizeTimeString(typeof value === "string" ? value : value?.time);
+    if(tog && time) map[tog] = time;
+  });
+
+  return map;
+}
+
+function normalizeApiArrivalMap(raw){
+  const map = {};
+  if(!raw || typeof raw !== "object") return map;
+
+  Object.entries(raw).forEach(([train, value])=>{
+    const tog = normalizeTognr(train);
+    if(!tog || !value || typeof value !== "object") return;
+
+    const time = normalizeTimeString(value.time);
+    if(!time) return;
+
+    map[tog] = {
+      time,
+      nextDay:Boolean(value.nextDay)
+    };
+  });
+
+  return map;
+}
+
+function normalizeApiVehicleMap(raw){
+  const map = {};
+  if(!raw || typeof raw !== "object") return map;
+
+  Object.entries(raw).forEach(([train, value])=>{
+    const tog = normalizeTognr(train);
+    const vehicle = sanitizeVehicleValue(value);
+    if(tog && vehicle) map[tog] = vehicle;
+  });
+
+  return map;
+}
+
+function renderApiTables(){
+  const apiStatus = document.getElementById("apiStatus");
+  const apiMeta = document.getElementById("apiMeta");
+
+  const api = state.apiBalise || {};
+  const departures = api.departures || {};
+  const arrivals = api.arrivals || {};
+  const departureVehicles = api.departureVehicles || {};
+  const arrivalVehicles = api.arrivalVehicles || {};
+
+  if(!api.ok){
+    if(api.error){
+      apiStatus.textContent = api.error;
+      apiMeta.textContent = "Klarte ikke å hente data fra /api/balise-vehicles.";
+    }else{
+      apiStatus.textContent = "API ikke lest ennå";
+      apiMeta.textContent = "Ingen data fra /api/balise-vehicles ennå.";
+    }
+    return;
+  }
+
+  apiStatus.textContent = `API lest: ${Object.keys(departures).length} avganger, ${Object.keys(arrivals).length} ankomster`;
+
+  const prefixes = Array.isArray(api.allowedMaterialPrefixes) ? api.allowedMaterialPrefixes.join(", ") : "";
+  apiMeta.textContent = `updatedAt: ${api.updatedAt || "ukjent"} | tillatte materiellprefiks: ${prefixes || "ukjent"} | format: ${api.materialFormat || "ukjent"} | avgang-kjøretøy: ${Object.keys(departureVehicles).length} | ankomst-kjøretøy: ${Object.keys(arrivalVehicles).length}`;
+}
+
+async function fetchBaliseApi(){
+  const apiStatus = document.getElementById("apiStatus");
+  const apiMeta = document.getElementById("apiMeta");
+
+  apiStatus.textContent = "Henter data fra /api/balise-vehicles ...";
+  apiMeta.textContent = "Laster ...";
+
+  try{
+    const mode = state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag";
+    const trains = getRelevantTrainListForApi();
+    const params = new URLSearchParams();
+    params.set("mode", mode);
+    if(trains.length){
+      params.set("trains", trains.join(","));
+    }
+
+    const response = await fetch(`/api/balise-vehicles?${params.toString()}`, {cache:"no-store"});
+    if(!response.ok){
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const payload = await response.json();
+    const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
+    const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
+    const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
+    const normalizedDepartureVehicles = normalizeApiVehicleMap(payload.departureVehicles);
+    const normalizedArrivalVehicles = normalizeApiVehicleMap(payload.arrivalVehicles);
+
+    state.apiBalise = {
+      ok:Boolean(payload.ok),
+      updatedAt:String(payload.updatedAt || ""),
+      departures:normalizedDepartures,
+      arrivals:normalizedArrivals,
+      departureVehicles:normalizedDepartureVehicles,
+      arrivalVehicles:normalizedArrivalVehicles,
+      allowedMaterialPrefixes:Array.isArray(payload.allowedMaterialPrefixes) ? payload.allowedMaterialPrefixes.map(v=>String(v)) : [],
+      materialFormat:Array.isArray(payload.materialFormat) ? payload.materialFormat.join(", ") : String(payload.materialFormat || ""),
+      error:""
+    };
+
+    const meta = {
+      source: payload.source || "balise.no",
+      mode: payload.mode || mode,
+      date: String(payload.date || ""),
+      generated_at: String(payload.updatedAt || ""),
+      hasDepartures: Object.keys(normalizedDepartures).length > 0
+    };
+
+    if((payload.mode || mode) === "imorgen"){
+      state.baliseTomorrow = normalizedVehicles;
+      state.baliseTomorrowDepartures = normalizedDepartures;
+      state.baliseMetaTomorrow = meta;
+    }else{
+      state.baliseToday = normalizedVehicles;
+      state.baliseTodayDepartures = normalizedDepartures;
+      state.baliseMetaToday = meta;
+    }
+
+    persist(true);
+    renderApiTables();
+    updateBaliseStatus();
+    updateBaliseViewState();
+    buildOppstilling();
+  }catch(err){
+    state.apiBalise = {
+      ok:false,
+      updatedAt:"",
+      departures:{},
+      arrivals:{},
+      departureVehicles:{},
+      arrivalVehicles:{},
+      allowedMaterialPrefixes:[],
+      materialFormat:"",
+      error:`API-feil: ${err.message}`
+    };
+    persist(true);
+    renderApiTables();
+    updateBaliseStatus();
+    updateBaliseViewState();
+    buildOppstilling();
+  }
+}
+
+document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>activateTab(btn.dataset.tab)));
+document.getElementById("saveBtn").addEventListener("click",()=>persist(false));
+
+document.getElementById("resetBtn").addEventListener("click",()=>{
+  if(!confirm("Nullstille hele appen?")) return;
+
+  localStorage.removeItem(STORAGE_KEY);
+  state=makeDefaultState();
+
+  buildTurnering("turneringKveldTable","turneringKveld");
+  buildTurnering("turneringNattTable","turneringNatt");
+  buildInndata();
+  buildSporplan();
+  buildOppstilling();
+  initViewControls();
+  updateBaliseStatus();
+  updateBaliseViewState();
+  renderApiTables();
+  activateTab("sporplan");
+  markSaved("Nullstilt");
+  fetchBaliseApi();
+});
+
+document.getElementById("refreshApiBtn").addEventListener("click",()=>{
+  fetchBaliseApi();
+});
+
+document.getElementById("showTodayBtn").addEventListener("click", ()=>{
+  state.baliseSelectedMode = "idag";
+  persist(true);
+  buildOppstilling();
+  updateBaliseStatus();
+  updateBaliseViewState();
+  fetchBaliseApi();
+});
+
+document.getElementById("showTomorrowBtn").addEventListener("click", ()=>{
+  state.baliseSelectedMode = "imorgen";
+  persist(true);
+  buildOppstilling();
+  updateBaliseStatus();
+  updateBaliseViewState();
+  fetchBaliseApi();
+});
+
+document.getElementById("importBaliseJsonBtn").addEventListener("click",()=>{
+  const fileInput=document.getElementById("baliseJsonFile");
+  const file=fileInput.files && fileInput.files[0];
+
+  if(!file){
+    alert("Velg en JSON-fil først.");
+    return;
+  }
+
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const payload=JSON.parse(reader.result);
+      importBaliseJsonObject(payload);
+      alert(`Balise-JSON lastet inn for ${payload.mode || payload?.data?.mode || "ukjent modus"}.`);
+    }catch(err){
+      alert("Klarte ikke å lese JSON-fil: " + err.message);
+    }
+  };
+  reader.readAsText(file,"utf-8");
+});
+
+document.getElementById("clearBaliseJsonBtn").addEventListener("click",()=>{
+  if(!confirm("Tømme innlest Balise-data for valgt visning?")) return;
+
+  if(state.baliseSelectedMode === "imorgen"){
+    state.baliseTomorrow = {};
+    state.baliseTomorrowDepartures = {};
+    state.baliseMetaTomorrow = null;
+  }else{
+    state.baliseToday = {};
+    state.baliseTodayDepartures = {};
+    state.baliseMetaToday = null;
+  }
+
+  persist(true);
+  buildOppstilling();
+  updateBaliseStatus();
+  updateBaliseViewState();
+});
+
+document.getElementById("importKjoretoyBtn").addEventListener("click",()=>{
+  const raw=document.getElementById("kjoretoyImport").value;
+  importKjoretoyFromText(raw);
+});
+
+document.getElementById("clearKjoretoyBtn").addEventListener("click",()=>{
+  if(!confirm("Tømme alle manuelle kjøretøydata?")) return;
+  state.kjoretoy={};
+  persist(true);
+  buildOppstilling();
+});
+
+buildTurnering("turneringKveldTable","turneringKveld");
+buildTurnering("turneringNattTable","turneringNatt");
+buildInndata();
+buildSporplan();
+buildOppstilling();
+initViewControls();
+updateBaliseStatus();
+updateBaliseViewState();
+renderApiTables();
+activateTab("sporplan");
+markSaved("Klar");
+fetchBaliseApi();
+</script>
+</body>
+</html>
