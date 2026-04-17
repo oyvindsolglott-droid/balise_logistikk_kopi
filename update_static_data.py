@@ -78,7 +78,7 @@ HARDCODED_ARRIVALS: Dict[str, Dict[str, object]] = {
     "2483": {"time": "15:38", "nextDay": False},
     "819": {"time": "15:53", "nextDay": False},
     "2484": {"time": "16:18", "nextDay": False},
-    "821": {"time": "16:30", "nextDay": False},
+    "851": {"time": "16:30", "nextDay": False},
     "2485": {"time": "17:02", "nextDay": False},
     "853": {"time": "17:30", "nextDay": False},
     "861": {"time": "17:42", "nextDay": False},
