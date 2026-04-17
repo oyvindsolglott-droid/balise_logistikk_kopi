@@ -54,6 +54,7 @@ body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0}
 h1{font-size:22px;margin:0 0 6px}
 h3{margin:0 0 8px;font-size:16px}
 .sub{margin:0 0 12px;color:var(--muted);font-size:14px}
+.top-data-status{margin:0 0 12px;color:var(--muted);font-size:13px}
 .ios-banner{background:#eef5ff;border:1px solid #bfd4ff;color:#274472;border-radius:14px;padding:10px 12px;margin-bottom:12px;font-size:14px}
 .toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
 button{
@@ -451,6 +452,7 @@ button{padding:12px 12px}
 <div class="app">
 <h1>Skien sporplan</h1>
 <p class="sub">ver. 8.0</p>
+<p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 
 
 
@@ -919,6 +921,20 @@ function updateBaliseViewState(){
 }
 
 
+function updateTopDataStatus(){
+  const el = document.getElementById("topDataStatus");
+  if(!el) return;
+
+  const mode = state.baliseSelectedMode === "imorgen" ? "i morgen" : "i dag";
+  const meta = state.baliseSelectedMode === "imorgen"
+    ? state.baliseMetaTomorrow
+    : state.baliseMetaToday;
+
+  const date = meta && meta.date ? meta.date : "ukjent";
+  el.textContent = `Data: ${mode} | dato: ${date}`;
+}
+
+
 function updateBaliseStatus(){
   const el=document.getElementById("baliseStatus");
   if(!el) return;
@@ -1047,6 +1063,7 @@ function importBaliseJsonObject(payload){
   persist(true);
   buildOppstilling();
   updateBaliseStatus();
+  updateTopDataStatus();
   updateBaliseViewState();
 }
 
@@ -1835,6 +1852,7 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   buildOppstilling();
   initViewControls();
   updateBaliseStatus();
+  updateTopDataStatus();
   updateBaliseViewState();
   renderApiTables();
   activateTab("sporplan");
@@ -1853,6 +1871,7 @@ document.getElementById("showTodayBtn").addEventListener("click", ()=>{
   persist(true);
   buildOppstilling();
   updateBaliseStatus();
+  updateTopDataStatus();
   updateBaliseViewState();
   fetchBaliseApi();
 });
@@ -1863,6 +1882,7 @@ document.getElementById("showTomorrowBtn").addEventListener("click", ()=>{
   persist(true);
   buildOppstilling();
   updateBaliseStatus();
+  updateTopDataStatus();
   updateBaliseViewState();
   fetchBaliseApi();
 });
@@ -1911,6 +1931,7 @@ document.getElementById("clearBaliseJsonBtn").addEventListener("click",()=>{
   persist(true);
   buildOppstilling();
   updateBaliseStatus();
+  updateTopDataStatus();
   updateBaliseViewState();
 });
 
@@ -1936,6 +1957,7 @@ buildSporplan();
 buildOppstilling();
 initViewControls();
 updateBaliseStatus();
+updateTopDataStatus();
 updateBaliseViewState();
 renderApiTables();
 activateTab("sporplan");
