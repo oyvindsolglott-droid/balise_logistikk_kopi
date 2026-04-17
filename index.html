@@ -178,42 +178,37 @@ td input::placeholder{
 color:var(--muted);
 opacity:1;
 }
-#turneringKveldTable,
-#turneringNattTable{
-width:max-content;
+.turnering-kveld-table{
+table-layout:fixed;
 min-width:0;
-table-layout:auto;
+width:auto;
 }
-#turneringKveldTable th,
-#turneringKveldTable td{
+.turnering-kveld-table th,
+.turnering-kveld-table td{
 min-width:0;
-padding:2px 3px;
-font-size:12px;
+width:auto;
+padding:4px 3px;
 }
-#turneringKveldTable th{
-white-space:normal;
-line-height:1.05;
-width:48px;
-max-width:48px;
-word-break:break-word;
-}
-#turneringKveldTable td{
-white-space:nowrap;
-width:48px;
-max-width:48px;
-}
-#turneringKveldTable td input{
-padding:0 1px;
-font-size:13px;
-}
-#turneringNattTable th,
-#turneringNattTable td{
-min-width:0;
-padding:4px 5px;
-white-space:nowrap;
-}
-#turneringNattTable td input{
+.turnering-kveld-table .kveld-col-a{width:62px}
+.turnering-kveld-table .kveld-col-b{width:72px}
+.turnering-kveld-table .kveld-col-c,
+.turnering-kveld-table .kveld-col-g{width:64px}
+.turnering-kveld-table .kveld-col-d,
+.turnering-kveld-table .kveld-col-h{width:64px}
+.turnering-kveld-table .kveld-col-e,
+.turnering-kveld-table .kveld-col-i{width:64px}
+.turnering-kveld-table .kveld-col-f,
+.turnering-kveld-table .kveld-col-j{width:82px}
+.turnering-kveld-table td input{
 padding:0 2px;
+}
+.turnering-kveld-table td.duplicate-vehicle-cell{
+background:var(--soft-red) !important;
+}
+.turnering-kveld-table td.duplicate-vehicle-cell input{
+background:var(--soft-red);
+color:var(--soft-red-text);
+font-weight:700;
 }
 td.wash-col,th.wash-col{background:var(--wash)}
 .slotcol{font-weight:700}
@@ -471,13 +466,6 @@ min-width:700px;
 font-size:12px;
 padding:4px 5px;
 }
-#turneringKveldTable th,
-#turneringKveldTable td,
-#turneringNattTable th,
-#turneringNattTable td{
-font-size:12px;
-padding:4px 4px;
-}
 .file-input{max-width:none}
 textarea#kjoretoyImport{font-size:16px}
 }
@@ -701,28 +689,28 @@ i:"2 til tognr."
 
 const initialKveldRows=[
 headerKveld,
-{a:"14:49",b:"2482",c:"",d:"Notodden",e:"",f:"",g:"",h:"",i:""},
-{a:"14:53",b:"817",c:"",d:"",e:"",f:"T",g:"",h:"",i:""},
-{a:"15:38",b:"2483",c:"",d:"Porsgrunn",e:"",f:"",g:"",h:"",i:""},
-{a:"15:53",b:"819",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"16:18",b:"2484",c:"",d:"Notodden",e:"",f:"",g:"",h:"",i:""},
-{a:"16:26",b:"851",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"16:53",b:"821",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"17:02",b:"2485",c:"",d:"Porsgrunn",e:"",f:"",g:"",h:"",i:""},
-{a:"17:30",b:"853",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"17:42",b:"861",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"17:53",b:"823",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"17:59",b:"2486",c:"",d:"Notodden",e:"",f:"",g:"",h:"",i:""},
-{a:"18:30",b:"855",c:"",d:"",e:"",f:"1",g:"",h:"",i:""},
-{a:"18:42",b:"863",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"18:53",b:"825",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"19:01",b:"2487",c:"",d:"Porsgrunn",e:"",f:"",g:"",h:"",i:""},
-{a:"19:31",b:"12487",c:"",d:"Skien",e:"",f:"10 s",g:"",h:"",i:""},
-{a:"19:53",b:"827",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"20:53",b:"829",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"20:59",b:"2489",c:"",d:"Skien",e:"",f:"10 N",g:"",h:"",i:""},
-{a:"21:53",b:"831",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"14:49",b:"2482",c:"",d:"",e:"",f:"",g:"Notodden",h:"",i:"",j:""},
+{a:"14:53",b:"817",c:"",d:"",e:"T",f:"",g:"",h:"",i:"",j:""},
+{a:"15:38",b:"2483",c:"",d:"",e:"",f:"",g:"Porsgrunn",h:"",i:"",j:""},
+{a:"15:53",b:"819",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"16:18",b:"2484",c:"",d:"",e:"",f:"",g:"Notodden",h:"",i:"",j:""},
+{a:"16:26",b:"851",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"16:53",b:"821",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"17:02",b:"2485",c:"",d:"",e:"",f:"",g:"Porsgrunn",h:"",i:"",j:""},
+{a:"17:30",b:"853",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"17:42",b:"861",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"17:53",b:"823",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"17:59",b:"2486",c:"",d:"",e:"",f:"",g:"Notodden",h:"",i:"",j:""},
+{a:"18:30",b:"855",c:"",d:"",e:"1",f:"",g:"",h:"",i:"",j:""},
+{a:"18:42",b:"863",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"18:53",b:"825",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"19:01",b:"2487",c:"",d:"",e:"",f:"",g:"Porsgrunn",h:"",i:"",j:""},
+{a:"19:31",b:"12487",c:"",d:"",e:"10 s",f:"",g:"Skien",h:"",i:"",j:""},
+{a:"19:53",b:"827",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"20:53",b:"829",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"20:59",b:"2489",c:"",d:"",e:"10 N",f:"",g:"Skien",h:"",i:"",j:""},
+{a:"21:53",b:"831",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {type:"section",b:"ukjente tognr."},
 ...Array.from({length:11},()=>({a:"",b:"ikke tursatt",c:"",d:"",e:"",f:"",g:"",h:"",i:""}))
 ];
@@ -762,10 +750,44 @@ const topRow=["12N","11N","10N","9","8N","7N","platformA","6N","5N","4N","3N","p
 const midRow=["12S","11S","10S",null,"8S","7S","platformA-skip","6S","5M","4M","3M","platformB-skip","2S","1S"];
 const botRow=[null,null,null,null,"8SS","7SS",null,"6SS","5S","4S","3S",null,null,null];
 
+function convertLegacyKveldRow(row){
+  if(!row || typeof row !== "object") return row;
+  if(row.type === "section") return row;
+  if(row.type === "header") return {...headerKveld};
+  if("j" in row) return row;
+
+  const wash = String(row.e || "").trim().toLowerCase();
+  return {
+    a:String(row.a || ""),
+    b:String(row.b || ""),
+    c:String(row.c || ""),
+    d:(wash === "ja" || wash === "ja1") ? "ja" : "",
+    e:String(row.f || ""),
+    f:String(row.g || ""),
+    g:String(row.d || ""),
+    h:(wash === "ja" || wash === "ja2") ? "ja" : "",
+    i:String(row.h || ""),
+    j:String(row.i || "")
+  };
+}
+
+function migrateKveldRows(rows){
+  if(!Array.isArray(rows) || rows.length === 0) return JSON.parse(JSON.stringify(initialKveldRows));
+  return rows.map(convertLegacyKveldRow);
+}
+
+function normalizeVehicleToken(v){
+  return String(v || "").trim().toUpperCase().replace(/\s+/g,"");
+}
+
+function parseSingleWashValue(v){
+  return String(v || "").trim().toLowerCase() === "ja";
+}
+
 
 function makeDefaultState(){
   return {
-    turneringKveld:JSON.parse(JSON.stringify(initialKveldRows)),
+    turneringKveld:migrateKveldRows(JSON.parse(JSON.stringify(initialKveldRows))),
     turneringNatt:JSON.parse(JSON.stringify(initialNattRows)),
     oppstillingModes:Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode])),
     kjoretoy:{},
@@ -800,7 +822,8 @@ let state=JSON.parse(localStorage.getItem(STORAGE_KEY)||"null");
 if(!state) state=makeDefaultState();
 
 
-if(!state.turneringKveld) state.turneringKveld=JSON.parse(JSON.stringify(initialKveldRows));
+if(!state.turneringKveld) state.turneringKveld=migrateKveldRows(JSON.parse(JSON.stringify(initialKveldRows)));
+state.turneringKveld = migrateKveldRows(state.turneringKveld);
 if(!state.turneringNatt) state.turneringNatt=JSON.parse(JSON.stringify(initialNattRows));
 if(!state.oppstillingModes) state.oppstillingModes=Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode]));
 if(!state.kjoretoy) state.kjoretoy={};
@@ -833,46 +856,6 @@ if(!state.views){
 }
 
 setResponsiveDefaultViews();
-
-function migrateKveldRow(row){
-  if(!row || typeof row !== "object") return row;
-  if(row.type === "header") return {...headerKveld};
-  if(row.type === "section") return row;
-  if(Object.prototype.hasOwnProperty.call(row,"j")) return row;
-  return {
-    a:row.a||"",
-    b:row.b||"",
-    c:row.c||"",
-    d:"",
-    e:row.f||"",
-    f:row.g||"",
-    g:row.d||"",
-    h:"",
-    i:row.h||"",
-    j:row.i||""
-  };
-}
-
-function normalizeStateSchemas(){
-  state.turneringKveld = (state.turneringKveld || JSON.parse(JSON.stringify(initialKveldRows))).map(migrateKveldRow);
-  if(!state.turneringKveld.length || state.turneringKveld[0]?.type !== "header"){
-    state.turneringKveld.unshift({...headerKveld});
-  }else{
-    state.turneringKveld[0] = {...headerKveld};
-  }
-
-  state.turneringNatt = (state.turneringNatt || JSON.parse(JSON.stringify(initialNattRows))).map(row=>{
-    if(row?.type === "header") return {...headerNatt};
-    return row;
-  });
-  if(!state.turneringNatt.length || state.turneringNatt[0]?.type !== "header"){
-    state.turneringNatt.unshift({...headerNatt});
-  }else{
-    state.turneringNatt[0] = {...headerNatt};
-  }
-}
-
-normalizeStateSchemas();
 
 
 function markSaved(t){
@@ -1017,6 +1000,7 @@ function getTurneringSuggestionForTrain(tog,key){
   const parts = splitVehicleNumbers(getVehicleForTrain(train));
   if(key === "c") return parts[0] || "";
   if(key === "d") return parts[1] || "";
+  if(key === "g") return parts[1] || "";
   return "";
 }
 
@@ -1184,61 +1168,29 @@ function importBaliseJsonObject(payload){
 }
 
 
-function parseWashCommand(v){
-  const s=String(v||"").trim().toLowerCase();
-  return {
-    set1: s==="ja" || s==="ja1",
-    set2: s==="ja" || s==="ja2"
-  };
-}
-
-
-function isActiveWashValue(v){
-  const s = String(v || "").trim().toLowerCase();
-  return s === "ja" || s === "ja1" || s === "ja2";
-}
-
-function mergeRowsIntoResult(rows,result,map,source){
+function mergeRowsIntoResult(rows,result,map){
   rows.forEach(row=>{
     if(row.type) return;
 
     const tog=String(row.b||"").trim();
-
-    if(source === "kveld"){
-      const mat1=String(row.c||"").trim();
-      const spor1=normalizeSlot(row.e);
-      if(mat1&&spor1&&map[spor1]!==undefined){
-        result[map[spor1]].tog=tog;
-        result[map[spor1]].mat=mat1;
-        result[map[spor1]].wash=isActiveWashValue(row.d);
-      }
-
-      const mat2=String(row.g||"").trim();
-      const spor2=normalizeSlot(row.i);
-      if(mat2&&spor2&&map[spor2]!==undefined){
-        result[map[spor2]].tog=tog;
-        result[map[spor2]].mat=mat2;
-        result[map[spor2]].wash=isActiveWashValue(row.h);
-      }
-      return;
-    }
-
-    const wash=parseWashCommand(row.e);
+    const isKveldRow = "j" in row;
 
     const mat1=String(row.c||"").trim();
-    const spor1=normalizeSlot(row.f);
+    const wash1=isKveldRow ? parseSingleWashValue(row.d) : (String(row.e||"").trim().toLowerCase()==="ja" || String(row.e||"").trim().toLowerCase()==="ja1");
+    const spor1=normalizeSlot(isKveldRow ? row.e : row.f);
     if(mat1&&spor1&&map[spor1]!==undefined){
       result[map[spor1]].tog=tog;
       result[map[spor1]].mat=mat1;
-      result[map[spor1]].wash=wash.set1;
+      result[map[spor1]].wash=wash1;
     }
 
-    const mat2=String(row.d||"").trim();
-    const spor2=normalizeSlot(row.h);
+    const mat2=String(isKveldRow ? row.g : row.d || "").trim();
+    const wash2=isKveldRow ? parseSingleWashValue(row.h) : (String(row.e||"").trim().toLowerCase()==="ja" || String(row.e||"").trim().toLowerCase()==="ja2");
+    const spor2=normalizeSlot(isKveldRow ? row.i : row.h);
     if(mat2&&spor2&&map[spor2]!==undefined){
       result[map[spor2]].tog=tog;
       result[map[spor2]].mat=mat2;
-      result[map[spor2]].wash=wash.set2;
+      result[map[spor2]].wash=wash2;
     }
   });
 }
@@ -1247,21 +1199,42 @@ function mergeRowsIntoResult(rows,result,map,source){
 function computeInndata(){
   const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
   const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
-  mergeRowsIntoResult(state.turneringKveld,result,map,"kveld");
-  mergeRowsIntoResult(state.turneringNatt,result,map,"natt");
+  mergeRowsIntoResult(state.turneringKveld,result,map);
+  mergeRowsIntoResult(state.turneringNatt,result,map);
   return result;
 }
 
 
+function getKveldDuplicateVehiclePositions(){
+  const positions = {};
+  (state.turneringKveld || []).forEach((row,ri)=>{
+    if(!row || row.type) return;
+    ["c","g"].forEach(k=>{
+      const token = normalizeVehicleToken(row[k]);
+      if(!token) return;
+      if(!positions[token]) positions[token] = [];
+      positions[token].push(`${ri}:${k}`);
+    });
+  });
+
+  const duplicates = new Set();
+  Object.values(positions).forEach(items=>{
+    if(items.length > 1){
+      items.forEach(item=>duplicates.add(item));
+    }
+  });
+  return duplicates;
+}
+
 function buildTurnering(tableId,key){
+  const isKveld = key==="turneringKveld";
+  const cols=isKveld?["a","b","c","d","e","f","g","h","i","j"]:["a","b","c","d","e","f","g","h","i"];
+  const washIndexes = isKveld ? new Set([3,7]) : new Set([4]);
+  const duplicatePositions = isKveld ? getKveldDuplicateVehiclePositions() : new Set();
   const table=document.getElementById(tableId);
   table.innerHTML="";
+  table.classList.toggle("turnering-kveld-table", isKveld);
   const body=document.createElement("tbody");
-  const isKveld = key==="turneringKveld";
-  const cols = isKveld
-    ? ["a","b","c","d","e","f","g","h","i","j"]
-    : ["a","b","c","d","e","f","g","h","i"];
-  const washCols = isKveld ? new Set([3,7]) : new Set([4]);
 
   state[key].forEach((row,ri)=>{
     const tr=document.createElement("tr");
@@ -1270,12 +1243,14 @@ function buildTurnering(tableId,key){
       cols.forEach((k,idx)=>{
         const th=document.createElement("th");
         th.textContent=row[k]||"";
-        if(washCols.has(idx)) th.classList.add("wash-col");
+        if(washIndexes.has(idx)) th.classList.add("wash-col");
+        if(isKveld) th.classList.add(`kveld-col-${k}`);
         tr.appendChild(th);
       });
     }else if(row.type==="section"){
       cols.forEach((k,i)=>{
         const td=document.createElement("td");
+        if(isKveld) td.classList.add(`kveld-col-${k}`);
         if(i===1){
           td.textContent=row.b||"";
           td.style.fontWeight="700";
@@ -1285,7 +1260,9 @@ function buildTurnering(tableId,key){
     }else{
       cols.forEach((k,idx)=>{
         const td=document.createElement("td");
-        if(washCols.has(idx)) td.classList.add("wash-col");
+        if(washIndexes.has(idx)) td.classList.add("wash-col");
+        if(isKveld) td.classList.add(`kveld-col-${k}`);
+
         const inp=document.createElement("input");
         inp.type="text";
         inp.inputMode="text";
@@ -1293,6 +1270,7 @@ function buildTurnering(tableId,key){
         inp.autocorrect="off";
         inp.spellcheck=false;
         inp.value=row[k]||"";
+
         const isLocked = (k==="a" || k==="b");
         if(isLocked){
           inp.readOnly = true;
@@ -1301,6 +1279,8 @@ function buildTurnering(tableId,key){
         }else{
           inp.addEventListener("input",e=>{
             state[key][ri][k]=e.target.value;
+            buildTurnering("turneringKveldTable","turneringKveld");
+            if(!isKveld) buildTurnering("turneringNattTable","turneringNatt");
             buildInndata();
             buildSporplan();
             buildOppstilling();
@@ -1310,9 +1290,14 @@ function buildTurnering(tableId,key){
 
         const showSuggestion = isKveld && (k==="c" || k==="g");
         if(showSuggestion){
-          const suggestedValue = getTurneringSuggestionForTrain(row.b, k === "c" ? "c" : "d");
+          const suggestedValue = getTurneringSuggestionForTrain(row.b, k);
           inp.placeholder = suggestedValue || "";
         }
+
+        if(isKveld && (k==="c" || k==="g") && duplicatePositions.has(`${ri}:${k}`)){
+          td.classList.add("duplicate-vehicle-cell");
+        }
+
         td.appendChild(inp);
         tr.appendChild(td);
       });
