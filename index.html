@@ -804,11 +804,11 @@ function convertLegacyKveldRow(row){
     a:String(row.a || ""),
     b:String(row.b || ""),
     c:String(row.c || ""),
-    d:(wash === "ja" || wash === "ja1") ? "ja" : "",
+    d:(wash === "j" || wash === "ja" || wash === "j1" || wash === "ja1") ? "ja" : "",
     e:String(row.f || ""),
     f:String(row.g || ""),
     g:String(row.d || ""),
-    h:(wash === "ja" || wash === "ja2") ? "ja" : "",
+    h:(wash === "j" || wash === "ja" || wash === "j2" || wash === "ja2") ? "ja" : "",
     i:String(row.h || ""),
     j:String(row.i || "")
   };
@@ -824,7 +824,8 @@ function normalizeVehicleToken(v){
 }
 
 function parseSingleWashValue(v){
-  return String(v || "").trim().toLowerCase() === "ja";
+  const s = String(v || "").trim().toLowerCase();
+  return s === "j" || s === "ja";
 }
 
 
@@ -1226,7 +1227,7 @@ function mergeRowsIntoResult(rows,result,map){
     const isKveldRow = "j" in row;
 
     const mat1=isKveldRow ? getEffectiveKveldVehicleValue(row,"c") : String(row.c||"").trim();
-    const wash1=isKveldRow ? parseSingleWashValue(row.d) : (String(row.e||"").trim().toLowerCase()==="ja" || String(row.e||"").trim().toLowerCase()==="ja1");
+    const wash1=isKveldRow ? parseSingleWashValue(row.d) : (["j","ja","j1","ja1"].includes(String(row.e||"").trim().toLowerCase()));
     const spor1=normalizeSlot(isKveldRow ? row.e : row.f);
     if(mat1&&spor1&&map[spor1]!==undefined){
       result[map[spor1]].tog=tog;
@@ -1235,7 +1236,7 @@ function mergeRowsIntoResult(rows,result,map){
     }
 
     const mat2=isKveldRow ? getEffectiveKveldVehicleValue(row,"g") : String(row.d || "").trim();
-    const wash2=isKveldRow ? parseSingleWashValue(row.h) : (String(row.e||"").trim().toLowerCase()==="ja" || String(row.e||"").trim().toLowerCase()==="ja2");
+    const wash2=isKveldRow ? parseSingleWashValue(row.h) : (["j","ja","j2","ja2"].includes(String(row.e||"").trim().toLowerCase()));
     const spor2=normalizeSlot(isKveldRow ? row.i : row.h);
     if(mat2&&spor2&&map[spor2]!==undefined){
       result[map[spor2]].tog=tog;
