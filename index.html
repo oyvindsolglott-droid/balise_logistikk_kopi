@@ -181,7 +181,7 @@ align-items:stretch;
 gap:2px;
 }
 .turnering-suggestion{
-font-size:11px;
+font-size:var(--input-font);
 line-height:1.1;
 color:var(--muted);
 white-space:nowrap;
@@ -1205,7 +1205,7 @@ function buildTurnering(tableId,key){
           const suggestion=document.createElement("div");
           suggestion.className="turnering-suggestion";
           const suggestedValue = getTurneringSuggestionForTrain(row.b, k);
-          suggestion.textContent = suggestedValue ? `Forslag: ${suggestedValue}` : "Forslag: –";
+          suggestion.textContent = suggestedValue || "";
           wrap.appendChild(suggestion);
 
           td.appendChild(wrap);
