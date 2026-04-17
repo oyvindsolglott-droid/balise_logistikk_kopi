@@ -174,7 +174,7 @@ font-weight:600;
 color:var(--text);
 cursor:default;
 }
-td.locked-cell, th.locked-col{
+td.locked-cell,th.locked-col{
 width:1%;
 white-space:nowrap;
 }
@@ -913,13 +913,12 @@ function splitVehicleNumbers(value){
   return [parts[0] || "", parts[1] || ""];
 }
 
-
 function getAutoVehiclePairForTrain(tog){
   const vehicleString = getVehicleForTrain(tog);
   return splitVehicleNumbers(vehicleString);
 }
 
-function getEffectiveTurneringValue(row, key){
+function getEffectiveTurneringValue(row,key){
   if(!row || row.type) return "";
   const manual = String(row[key] || "").trim();
   if(manual) return manual;
@@ -927,12 +926,8 @@ function getEffectiveTurneringValue(row, key){
   const tog = normalizeTognr(row.b);
   if(!tog) return "";
 
-  if(key === "c"){
-    return getAutoVehiclePairForTrain(tog)[0] || "";
-  }
-  if(key === "d"){
-    return getAutoVehiclePairForTrain(tog)[1] || "";
-  }
+  if(key === "c") return getAutoVehiclePairForTrain(tog)[0] || "";
+  if(key === "d") return getAutoVehiclePairForTrain(tog)[1] || "";
   return manual;
 }
 
@@ -1191,7 +1186,7 @@ function buildTurnering(tableId,key){
           ? getEffectiveTurneringValue(row,k)
           : (row[k]||"");
 
-        inp.value=displayValue;
+        inp.value = displayValue;
 
         if(isLocked){
           inp.readOnly = true;
@@ -1200,11 +1195,11 @@ function buildTurnering(tableId,key){
         }else{
           inp.addEventListener("input",e=>{
             state[key][ri][k]=e.target.value;
+            buildTurnering("turneringKveldTable","turneringKveld");
+            buildTurnering("turneringNattTable","turneringNatt");
             buildInndata();
             buildSporplan();
             buildOppstilling();
-            buildTurnering("turneringKveldTable","turneringKveld");
-            buildTurnering("turneringNattTable","turneringNatt");
             persist(true);
           });
         }
@@ -1220,7 +1215,7 @@ function buildTurnering(tableId,key){
 }
 
 
-function buildInndatafunction buildInndata(){
+function buildInndata(){
   const data=computeInndata();
   const table=document.getElementById("inndataTable");
   table.innerHTML="<thead><tr><th>Slot</th><th>Tognummer</th><th>Materiellnr</th><th class='wash-col'>Vask</th></tr></thead>";
