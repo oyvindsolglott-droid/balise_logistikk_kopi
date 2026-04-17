@@ -210,6 +210,10 @@ background:var(--soft-red);
 color:var(--soft-red-text);
 font-weight:700;
 }
+.turnering-kveld-table td.effective-suggestion-cell input{
+color:var(--muted);
+font-weight:600;
+}
 
 .turnering-kveld-table .kveld-col-c,
 .turnering-kveld-table .kveld-col-e,
@@ -1044,6 +1048,13 @@ function getTurneringSuggestionForTrain(tog,key){
 }
 
 
+function getEffectiveKveldVehicleValue(row,key){
+  const manualValue = String(row?.[key] || "").trim();
+  if(manualValue) return manualValue;
+  return getTurneringSuggestionForTrain(row?.b, key);
+}
+
+
 function updateBaliseViewButtons(){
   const todayBtn = document.getElementById("showTodayBtn");
   const tomorrowBtn = document.getElementById("showTomorrowBtn");
@@ -1214,7 +1225,7 @@ function mergeRowsIntoResult(rows,result,map){
     const tog=String(row.b||"").trim();
     const isKveldRow = "j" in row;
 
-    const mat1=String(row.c||"").trim();
+    const mat1=isKveldRow ? getEffectiveKveldVehicleValue(row,"c") : String(row.c||"").trim();
     const wash1=isKveldRow ? parseSingleWashValue(row.d) : (String(row.e||"").trim().toLowerCase()==="ja" || String(row.e||"").trim().toLowerCase()==="ja1");
     const spor1=normalizeSlot(isKveldRow ? row.e : row.f);
     if(mat1&&spor1&&map[spor1]!==undefined){
@@ -1223,7 +1234,7 @@ function mergeRowsIntoResult(rows,result,map){
       result[map[spor1]].wash=wash1;
     }
 
-    const mat2=String(isKveldRow ? row.g : row.d || "").trim();
+    const mat2=isKveldRow ? getEffectiveKveldVehicleValue(row,"g") : String(row.d || "").trim();
     const wash2=isKveldRow ? parseSingleWashValue(row.h) : (String(row.e||"").trim().toLowerCase()==="ja" || String(row.e||"").trim().toLowerCase()==="ja2");
     const spor2=normalizeSlot(isKveldRow ? row.i : row.h);
     if(mat2&&spor2&&map[spor2]!==undefined){
@@ -1249,7 +1260,7 @@ function getKveldDuplicateVehiclePositions(){
   (state.turneringKveld || []).forEach((row,ri)=>{
     if(!row || row.type) return;
     ["c","g"].forEach(k=>{
-      const token = normalizeVehicleToken(row[k]);
+      const token = normalizeVehicleToken(getEffectiveKveldVehicleValue(row, k));
       if(!token) return;
       if(!positions[token]) positions[token] = [];
       positions[token].push(`${ri}:${k}`);
@@ -1331,6 +1342,11 @@ function buildTurnering(tableId,key){
         if(showSuggestion){
           const suggestedValue = getTurneringSuggestionForTrain(row.b, k);
           inp.placeholder = suggestedValue || "";
+          const usesSuggestedValue = !String(row[k] || "").trim() && !!suggestedValue;
+          if(usesSuggestedValue){
+            td.classList.add("effective-suggestion-cell");
+            inp.classList.add("effective-suggestion-input");
+          }
         }
 
         if(isKveld && (k==="c" || k==="g") && duplicatePositions.has(`${ri}:${k}`)){
