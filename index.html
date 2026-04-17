@@ -542,20 +542,20 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="oppstilling">
-<div class="note">Tursatte tog vises samlet her. Ved <strong>Nullstill</strong> slettes kjøretøydata, men tognumrene blir stående. Flask-API brukes nå for hardkodede ankomster og avganger. Kjøretøy skal ikke være hardkodet i frontend.</div>
+<div class="note">Tursatte tog vises samlet her. Ved <strong>Nullstill</strong> slettes kjøretøydata, men tognumrene blir stående. Statiske JSON-filer brukes nå for hardkodede ankomster og avganger. Kjøretøy skal ikke være hardkodet i frontend.</div>
 
 
 <div class="api-box">
   <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-    <button type="button" id="refreshApiBtn">Hent fra app.py</button>
-    <span id="apiStatus" class="save-indicator">API ikke lest ennå</span>
+    <button type="button" id="refreshApiBtn">Hent statiske data</button>
+    <span id="apiStatus" class="save-indicator">Data ikke lest ennå</span>
   </div>
-  <div id="apiMeta" class="api-muted">Ingen data fra /api/balise-vehicles ennå.</div>
+  <div id="apiMeta" class="api-muted">Ingen statiske data lest ennå.</div>
 </div>
 
 
 <div class="api-box">
-  <h3>Avganger og ankomster fra app.py med kjøretøy fra Balise</h3>
+  <h3>Avganger og ankomster fra statiske data med kjøretøy fra Balise</h3>
   <div class="view-tools">
     <span class="label">Tabellvisning</span>
     <button class="compact zoom-out" data-target="apiCombinedZoom">Zoom ut</button>
@@ -1727,10 +1727,10 @@ function renderApiTables(){
   if(!api.ok){
     if(api.error){
       apiStatus.innerHTML = `<span class="api-error">${escapeHtml(api.error)}</span>`;
-      apiMeta.textContent = "Klarte ikke å hente data fra /api/balise-vehicles.";
+      apiMeta.textContent = "Klarte ikke å hente statiske data.";
     }else{
-      apiStatus.textContent = "API ikke lest ennå";
-      apiMeta.textContent = "Ingen data fra /api/balise-vehicles ennå.";
+      apiStatus.textContent = "Data ikke lest ennå";
+      apiMeta.textContent = "Ingen statiske data lest ennå.";
     }
     return;
   }
@@ -1744,54 +1744,30 @@ function renderApiTables(){
 }
 
 
-async function fetchBaliseApi(extraTrains = [], secondPass = false){
+async function fetchBaliseApi(){
   const apiStatus = document.getElementById("apiStatus");
   const apiMeta = document.getElementById("apiMeta");
 
-
-  apiStatus.textContent = "Henter data fra /api/balise-vehicles ...";
+  apiStatus.textContent = "Henter statiske data ...";
   apiMeta.textContent = "Laster ...";
-
 
   try{
     const mode = state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag";
-    const trains = Array.from(new Set([
-      ...getRelevantTrainListForApi(),
-      ...extraTrains.map(normalizeTognr).filter(Boolean)
-    ])).sort((a,b)=>{
-      const na = Number(a);
-      const nb = Number(b);
-      if(!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-      return String(a).localeCompare(String(b), "no");
-    });
+    const filePath = mode === "imorgen" ? "./data/api_imorgen.json" : "./data/api_idag.json";
 
-    const params = new URLSearchParams();
-    params.set("mode", mode);
-    if(trains.length){
-      params.set("trains", trains.join(","));
-    }
-
-
-    const response = await fetch(`/api/balise-vehicles?${params.toString()}`, {cache:"no-store"});
+    const response = await fetch(`${filePath}?v=${Date.now()}`, {cache:"no-store"});
     if(!response.ok){
       throw new Error(`HTTP ${response.status}`);
     }
-
 
     const payload = await response.json();
     const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
     const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
     const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
 
-    const missingArrivalTrains = Object.keys(normalizedArrivals).filter(train => !trains.includes(train));
-    if(!secondPass && missingArrivalTrains.length){
-      return fetchBaliseApi(missingArrivalTrains, true);
-    }
-
-
     state.apiBalise = {
-      ok:Boolean(payload.ok),
-      updatedAt:String(payload.updatedAt || ""),
+      ok:Boolean(payload.ok !== false),
+      updatedAt:String(payload.updatedAt || payload.generated_at || ""),
       departures:normalizedDepartures,
       arrivals:normalizedArrivals,
       allowedMaterialPrefixes:Array.isArray(payload.allowedMaterialPrefixes) ? payload.allowedMaterialPrefixes.map(v=>String(v)) : [],
@@ -1799,15 +1775,13 @@ async function fetchBaliseApi(extraTrains = [], secondPass = false){
       error:""
     };
 
-
     const meta = {
-      source: payload.source || "balise.no",
+      source: payload.source || "statisk data",
       mode: payload.mode || mode,
       date: String(payload.date || ""),
-      generated_at: String(payload.updatedAt || ""),
+      generated_at: String(payload.updatedAt || payload.generated_at || ""),
       hasDepartures: Object.keys(normalizedDepartures).length > 0
     };
-
 
     if((payload.mode || mode) === "imorgen"){
       state.baliseTomorrow = normalizedVehicles;
@@ -1818,7 +1792,6 @@ async function fetchBaliseApi(extraTrains = [], secondPass = false){
       state.baliseTodayDepartures = normalizedDepartures;
       state.baliseMetaToday = meta;
     }
-
 
     persist(true);
     renderApiTables();
@@ -1842,7 +1815,6 @@ async function fetchBaliseApi(extraTrains = [], secondPass = false){
     buildOppstilling();
   }
 }
-
 
 document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>activateTab(btn.dataset.tab)));
 document.getElementById("saveBtn").addEventListener("click",()=>persist(false));
