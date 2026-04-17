@@ -174,19 +174,9 @@ font-weight:600;
 color:var(--text);
 cursor:default;
 }
-.turnering-cell-wrap{
-display:flex;
-flex-direction:column;
-align-items:stretch;
-gap:2px;
-}
-.turnering-suggestion{
-font-size:var(--input-font);
-line-height:1.1;
+td input::placeholder{
 color:var(--muted);
-white-space:nowrap;
-overflow:hidden;
-text-overflow:ellipsis;
+opacity:1;
 }
 td.wash-col,th.wash-col{background:var(--wash)}
 .slotcol{font-weight:700}
@@ -1198,20 +1188,10 @@ function buildTurnering(tableId,key){
 
         const showSuggestion = key==="turneringKveld" && (k==="c" || k==="d");
         if(showSuggestion){
-          const wrap=document.createElement("div");
-          wrap.className="turnering-cell-wrap";
-          wrap.appendChild(inp);
-
-          const suggestion=document.createElement("div");
-          suggestion.className="turnering-suggestion";
           const suggestedValue = getTurneringSuggestionForTrain(row.b, k);
-          suggestion.textContent = suggestedValue || "";
-          wrap.appendChild(suggestion);
-
-          td.appendChild(wrap);
-        }else{
-          td.appendChild(inp);
+          inp.placeholder = suggestedValue || "";
         }
+        td.appendChild(inp);
         tr.appendChild(td);
       });
     }
