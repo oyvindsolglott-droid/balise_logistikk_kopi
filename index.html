@@ -214,6 +214,10 @@ font-weight:700;
 color:var(--muted);
 font-weight:600;
 }
+.turnering-kveld-table td.tomorrow-train-suggestion-cell input{
+color:#1f4e79;
+font-weight:700;
+}
 
 .turnering-kveld-table .kveld-col-c,
 .turnering-kveld-table .kveld-col-e,
@@ -1048,6 +1052,30 @@ function getTurneringSuggestionForTrain(tog,key){
   return "";
 }
 
+function getTomorrowDepartureTrainSuggestionForVehicle(vehicleNo){
+  const token = normalizeVehicleToken(vehicleNo);
+  if(!token) return "";
+
+  return Object.entries(state.baliseTomorrowDepartures || {})
+    .map(([train,time])=>({
+      train: normalizeTognr(train),
+      time: normalizeTimeString(time)
+    }))
+    .filter(item=>item.train && item.time)
+    .sort(sortTimeAndTrainEntries)
+    .find(item=>{
+      const parts = splitVehicleNumbers(sanitizeVehicleValue((state.baliseTomorrow || {})[item.train]))
+        .map(normalizeVehicleToken)
+        .filter(Boolean);
+      return parts.includes(token);
+    })?.train || "";
+}
+
+function getKveldOutputTrainSuggestion(row,key){
+  if(key !== "f") return "";
+  return getTomorrowDepartureTrainSuggestionForVehicle(row?.c);
+}
+
 
 function getEffectiveKveldVehicleValue(row,key){
   const manualValue = String(row?.[key] || "").trim();
@@ -1347,6 +1375,17 @@ function buildTurnering(tableId,key){
           if(usesSuggestedValue){
             td.classList.add("effective-suggestion-cell");
             inp.classList.add("effective-suggestion-input");
+          }
+        }
+
+        const showTomorrowTrainSuggestion = isKveld && k==="f";
+        if(showTomorrowTrainSuggestion){
+          const suggestedTrain = getKveldOutputTrainSuggestion(row, k);
+          const usesSuggestedTrain = !String(row[k] || "").trim() && !!suggestedTrain;
+          if(usesSuggestedTrain){
+            inp.value = suggestedTrain;
+            td.classList.add("tomorrow-train-suggestion-cell");
+            inp.classList.add("tomorrow-train-suggestion-input");
           }
         }
 
@@ -1939,6 +1978,37 @@ function normalizeApiArrivalMap(raw){
 }
 
 
+async function ensureTomorrowStaticDataLoaded(){
+  if(Object.keys(state.baliseTomorrowDepartures || {}).length > 0) return;
+
+  try{
+    const response = await fetch(`./data/api_imorgen.json?v=${Date.now()}`, {cache:"no-store"});
+    if(!response.ok) return;
+
+    const payload = await response.json();
+    const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
+    const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
+
+    state.baliseTomorrow = normalizedVehicles;
+    state.baliseTomorrowDepartures = normalizedDepartures;
+    state.baliseMetaTomorrow = {
+      source: payload.source || "statisk data",
+      mode: payload.mode || "imorgen",
+      date: String(payload.date || ""),
+      generated_at: String(payload.updatedAt || payload.generated_at || ""),
+      hasDepartures: Object.keys(normalizedDepartures).length > 0
+    };
+
+    persist(true);
+    buildTurnering("turneringKveldTable","turneringKveld");
+    buildOppstilling();
+    updateBaliseStatus();
+    updateTopDataStatus();
+    updateBaliseViewState();
+  }catch(err){
+  }
+}
+
 function renderApiTables(){
   const apiStatus = document.getElementById("apiStatus");
   const apiMeta = document.getElementById("apiMeta");
@@ -2066,6 +2136,7 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   activateTab("sporplan");
   markSaved("Nullstilt");
   fetchBaliseApi();
+  ensureTomorrowStaticDataLoaded();
 });
 
 
@@ -2171,6 +2242,7 @@ renderApiTables();
 activateTab("sporplan");
 markSaved("Klar");
 fetchBaliseApi();
+ensureTomorrowStaticDataLoaded();
 </script>
 </body>
 </html>
