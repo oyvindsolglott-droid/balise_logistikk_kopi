@@ -285,11 +285,10 @@ border-radius:7px;
 min-height:var(--slot-min-h);
 display:flex;
 flex-direction:column;
-justify-content:space-between;
 align-items:center;
 padding:8px;
 text-align:center;
-white-space:pre-line;
+white-space:normal;
 font-weight:700;
 font-size:var(--slot-font);
 line-height:1.15;
@@ -303,6 +302,33 @@ overflow:hidden
 .slot.wash-filled{background:var(--green);color:#000;border-color:var(--green-border)}
 .slot-top{display:block;width:100%}
 .slot-bottom{display:block;width:100%}
+.slot-address{
+width:100%;
+margin-top:1.1em;
+text-align:center;
+}
+.slot-train-current{
+position:absolute;
+top:50%;
+left:50%;
+transform:translate(-50%,-50%);
+writing-mode:vertical-rl;
+text-orientation:mixed;
+white-space:nowrap;
+font-weight:700;
+font-size:calc(var(--slot-font) * 0.95);
+line-height:1;
+}
+.slot-train-next{
+width:100%;
+margin-top:auto;
+text-align:center;
+color:#c00000;
+font-weight:700;
+font-size:calc(var(--slot-font) * 0.92);
+line-height:1.05;
+padding-bottom:2px;
+}
 .mat{color:#c00000;font-style:italic;font-size:var(--mat-font)}
 .platform{
 background:var(--platform);
@@ -1690,6 +1716,44 @@ function slotKind(slot){
 }
 
 
+function getSlotAddressColorClass(slot){
+  const kind = slotKind(slot);
+  if(kind === "yellow") return "var(--yellow-text)";
+  if(kind === "orange") return "var(--orange-text)";
+  return "var(--blue-text)";
+}
+
+
+function findKveldRowByTrain(trainNo){
+  const train = normalizeTognr(trainNo);
+  if(!train) return null;
+  return (state.turneringKveld || []).find(row => !row.type && normalizeTognr(row.b) === train) || null;
+}
+
+
+function getSporplanTextsForSlot(slot, info){
+  const result = { currentTrain:"", nextTrain:"" };
+  if(!slot || !info) return result;
+
+  const row = findKveldRowByTrain(info.tog);
+  if(!row) return result;
+
+  if(normalizeSlot(row.e) === normalizeSlot(slot)){
+    result.currentTrain = normalizeTognr(row.b);
+    result.nextTrain = normalizeTognr(row.f);
+    return result;
+  }
+
+  if(normalizeSlot(row.i) === normalizeSlot(slot)){
+    result.currentTrain = normalizeTognr(row.b);
+    result.nextTrain = normalizeTognr(row.j);
+    return result;
+  }
+
+  return result;
+}
+
+
 function buildSporplan(){
   const data=Object.fromEntries(computeInndata().map(r=>[r.slot,r]));
   const grid=document.getElementById("yardGrid");
@@ -1742,18 +1806,24 @@ function buildSporplan(){
       }
 
 
-      if(filled){
-        let html="";
-        if(info.tog){
-          html += "<span class='slot-top'>" + escapeHtml(info.tog) + "</span>";
-        }
-        if(info.mat){
-          html += "<span class='slot-bottom mat'>" + escapeHtml(info.mat) + "</span>";
-        }
-        div.innerHTML=html;
-      }else{
-        div.textContent=slot;
+      const addressColor = getSlotAddressColorClass(slot);
+      const sporplanTexts = getSporplanTextsForSlot(slot, info);
+
+      let html = `<span class="slot-address" style="color:${addressColor}">${escapeHtml(slot)}</span>`;
+
+      if(sporplanTexts.currentTrain){
+        html += `<span class="slot-train-current" style="color:${addressColor}">${escapeHtml(sporplanTexts.currentTrain)}</span>`;
       }
+
+      if(sporplanTexts.nextTrain){
+        html += `<span class="slot-train-next">${escapeHtml(sporplanTexts.nextTrain)}</span>`;
+      }
+
+      if(info.mat){
+        html += `<span class="slot-bottom mat">${escapeHtml(info.mat)}</span>`;
+      }
+
+      div.innerHTML=html;
 
 
       grid.appendChild(div);
@@ -1791,7 +1861,7 @@ function buildSporplan(){
 
     const hallLabel=document.createElement("div");
     hallLabel.className="hall-label";
-    hallLabel.textContent = "VERKSTED";
+    hallLabel.textContent = "Verksted";
     hallLabel.style.left = `${(left + right) / 2}px`;
     hallLabel.style.top = `${Math.max(0, top - 28)}px`;
     grid.appendChild(hallLabel);
