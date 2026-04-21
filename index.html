@@ -39,7 +39,7 @@
 --cell-min:72px;
 --cell-h:46px;
 --input-h:36px;
---input-font:14px;
+--input-font:16px;
 
 
 --seg-height:56px;
@@ -135,19 +135,6 @@ touch-action:pan-x pan-y pinch-zoom;
 overscroll-behavior:contain;
 position:relative
 }
-#oppstilling .zoom-wrap,
-#oppstilling .api-box .zoom-wrap{
-overflow-x:auto;
-overflow-y:hidden;
-touch-action:pan-x pinch-zoom;
-overscroll-behavior-x:contain;
-overscroll-behavior-y:auto;
-max-width:100%;
-}
-#oppstilling .zoom-inner,
-#oppstilling .api-box .zoom-inner{
-max-width:max-content;
-}
 .zoom-inner{
 transform-origin:top left;
 width:max-content;
@@ -202,12 +189,6 @@ min-width:0;
 width:auto;
 padding:4px 3px;
 }
-.turnering-kveld-table th{
-vertical-align:top;
-padding-top:4px;
-padding-bottom:2px;
-line-height:1.05;
-}
 .turnering-kveld-table .kveld-col-a{width:62px}
 .turnering-kveld-table .kveld-col-b{width:72px}
 .turnering-kveld-table .kveld-col-c,
@@ -220,13 +201,6 @@ line-height:1.05;
 .turnering-kveld-table .kveld-col-j{width:82px}
 .turnering-kveld-table td input{
 padding:0 2px;
-}
-.turnering-kveld-table th,
-.turnering-kveld-table td{
-font-size:14px;
-}
-.turnering-kveld-table td input{
-font-size:14px;
 }
 .turnering-kveld-table td.duplicate-vehicle-cell{
 background:var(--soft-red) !important;
@@ -283,6 +257,34 @@ background:#eadfbe;
 .turnering-kveld-table td.duplicate-vehicle-cell input{
 background:var(--soft-red) !important;
 }
+
+.turnering-kveld-table td.rep-cell{
+background:#ffe3e3 !important;
+box-shadow:inset 0 0 0 2px #c00000;
+}
+.turnering-kveld-table td.rep-cell input{
+color:#c00000;
+font-weight:800;
+}
+.slot.rep-slot{
+background:#ffb3b3 !important;
+border-color:#c00000 !important;
+color:#000;
+}
+.slot-rep-badge{
+position:absolute;
+top:6px;
+right:6px;
+background:#c00000;
+color:#fff;
+font-size:11px;
+font-weight:800;
+line-height:1;
+padding:4px 6px;
+border-radius:999px;
+box-shadow:0 1px 3px rgba(0,0,0,.2);
+}
+
 td.wash-col,th.wash-col{background:var(--wash)}
 .slotcol{font-weight:700}
 .yard-wrap{
@@ -568,7 +570,7 @@ line-height:1;
 --cell-min:58px;
 --cell-h:38px;
 --input-h:34px;
---input-font:14px;
+--input-font:16px;
 --seg-height:54px;
 }
 html{font-size:16px}
@@ -592,13 +594,6 @@ min-width:700px;
 #oppstillingTable td{
 font-size:12px;
 padding:4px 5px;
-}
-.turnering-kveld-table th,
-.turnering-kveld-table td{
-font-size:12px;
-}
-.turnering-kveld-table td input{
-font-size:12px;
 }
 .file-input{max-width:none}
 textarea#kjoretoyImport{font-size:16px}
@@ -626,7 +621,7 @@ button{padding:12px 12px}
 <body>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">ver. 11</p>
+<p class="sub">ver. 8.0</p>
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 
 
@@ -795,21 +790,21 @@ const STORAGE_KEY="skien_sporplan_iphone_v13";
 
 const headerKveld={
 type:"header",
-a:"ankomst kl.",
+a:"ank. kl.",
 b:"fra tognr.",
-c:"sett nr. 1",
-d:"vask sett nr. 1",
-e:"til spor; sett nr. 1",
-f:"sett nr. 1 blir tog nr.",
-g:"sett nr. 2",
-h:"vask sett nr. 2",
-i:"til spor; sett nr. 2",
-j:"sett nr. 2 blir tog nr."
+c:"s.nr.1",
+d:"vask s.nr.1",
+e:"til spor; s.nr.1",
+f:"s.nr.1 blir tognr.",
+g:"s.nr.2",
+h:"vask s.nr.2",
+i:"til spor; s.nr.2",
+j:"s.nr.2 blir tognr."
 };
 
 const headerNatt={
 type:"header",
-a:"ankomst kl.",
+a:"ank. kl.",
 b:"tognr.",
 c:"sett nr.1",
 d:"sett nr.2",
@@ -824,7 +819,7 @@ i:"2 til tognr."
 const initialKveldRows=[
 headerKveld,
 {a:"14:49",b:"2482",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
-{a:"14:53",b:"817",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"14:53",b:"817",c:"",d:"",e:"T",f:"",g:"",h:"",i:"",j:""},
 {a:"15:38",b:"2483",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"15:53",b:"819",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"16:18",b:"2484",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
@@ -835,14 +830,14 @@ headerKveld,
 {a:"17:42",b:"861",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"17:53",b:"823",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"17:59",b:"2486",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
-{a:"18:30",b:"855",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"18:30",b:"855",c:"",d:"",e:"1",f:"",g:"",h:"",i:"",j:""},
 {a:"18:42",b:"863",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"18:53",b:"825",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"19:01",b:"2487",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
-{a:"19:31",b:"12487",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"19:31",b:"12487",c:"",d:"",e:"10 s",f:"",g:"",h:"",i:"",j:""},
 {a:"19:53",b:"827",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"20:53",b:"829",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
-{a:"20:59",b:"2489",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"20:59",b:"2489",c:"",d:"",e:"10 N",f:"",g:"",h:"",i:"",j:""},
 {a:"21:53",b:"831",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {type:"section",b:"ukjente tognr."},
@@ -920,17 +915,9 @@ function parseSingleWashValue(v){
 }
 
 
-function blankInitialKveldTrackColumns(rows){
-  return (rows || []).map(row=>{
-    if(!row || row.type) return row;
-    return {...row, e:""};
-  });
-}
-
-
 function makeDefaultState(){
   return {
-    turneringKveld:blankInitialKveldTrackColumns(migrateKveldRows(JSON.parse(JSON.stringify(initialKveldRows)))),
+    turneringKveld:migrateKveldRows(JSON.parse(JSON.stringify(initialKveldRows))),
     turneringNatt:JSON.parse(JSON.stringify(initialNattRows)),
     oppstillingModes:Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode])),
     oppstillingOverrides:{},
@@ -1438,6 +1425,28 @@ function computeInndata(){
 }
 
 
+
+function isRepMarker(value){
+  const s = String(value || "").trim().toLowerCase();
+  return s === "r";
+}
+
+function getKveldRepSlots(){
+  const slots = new Set();
+  (state.turneringKveld || []).forEach(row=>{
+    if(!row || row.type) return;
+    if(isRepMarker(row.f)){
+      const slot1 = normalizeSlot(row.e);
+      if(slot1) slots.add(slot1);
+    }
+    if(isRepMarker(row.j)){
+      const slot2 = normalizeSlot(row.i);
+      if(slot2) slots.add(slot2);
+    }
+  });
+  return slots;
+}
+
 function getKveldDuplicateVehiclePositions(){
   const positions = {};
   (state.turneringKveld || []).forEach((row,ri)=>{
@@ -1545,6 +1554,10 @@ function buildTurnering(tableId,key){
 
         if(isKveld && (k==="c" || k==="g") && duplicatePositions.has(`${ri}:${k}`)){
           td.classList.add("duplicate-vehicle-cell");
+        }
+
+        if(isKveld && ((k==="f" && isRepMarker(row.f)) || (k==="j" && isRepMarker(row.j)))){
+          td.classList.add("rep-cell");
         }
 
         td.appendChild(inp);
@@ -1922,6 +1935,7 @@ function getSporplanTextsForSlot(slot, info){
 
 function buildSporplan(){
   const data=Object.fromEntries(computeInndata().map(r=>[r.slot,r]));
+  const repSlots = getKveldRepSlots();
   const grid=document.getElementById("yardGrid");
   grid.innerHTML="";
 
@@ -1964,6 +1978,7 @@ function buildSporplan(){
 
       const div=document.createElement("div");
       div.className=`slot ${fillClass} ${slotKind(slot)}`;
+      if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
       div.dataset.slot = slot;
 
 
@@ -1987,6 +2002,10 @@ function buildSporplan(){
 
       if(info.mat){
         html += `<span class="slot-bottom mat">${escapeHtml(info.mat)}</span>`;
+      }
+
+      if(repSlots.has(normalizeSlot(slot))){
+        html += `<span class="slot-rep-badge">Rep</span>`;
       }
 
       div.innerHTML=html;
@@ -2170,6 +2189,8 @@ window.addEventListener("resize",()=>{
   ["yardZoom","kveldZoom","nattZoom","inndataZoom","apiCombinedZoom"].forEach(applyView);
   scheduleSporplanRefresh();
 });
+
+
 
 function normalizeApiDepartureMap(raw){
   const map = {};
