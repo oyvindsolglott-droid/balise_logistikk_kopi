@@ -963,6 +963,7 @@ if(!state.views){
     apiCombinedZoom:{scale:1,compact:false}
   };
 }
+if(!state.vehicleOrderOverridesGlobal) state.vehicleOrderOverridesGlobal={};
 
 setResponsiveDefaultViews();
 
@@ -1103,10 +1104,42 @@ function splitVehicleNumbers(value){
   return [parts[0] || "", parts[1] || ""];
 }
 
+function isTurneringVehicleOrderSwapped(train){
+  const tog = normalizeTognr(train);
+  return Boolean(state.vehicleOrderOverridesGlobal?.[tog]);
+}
+
+function getTurneringVehicleString(train){
+  const tog = normalizeTognr(train);
+  const vehicleString = getVehicleForTrain(tog);
+  let [vehicle1, vehicle2] = splitVehicleNumbers(vehicleString);
+
+  if(vehicle1 && vehicle2 && isTurneringVehicleOrderSwapped(tog)){
+    [vehicle1, vehicle2] = [vehicle2, vehicle1];
+  }
+
+  return [vehicle1, vehicle2].filter(Boolean).join(", ");
+}
+
+function syncTurneringKveldVehicleOrder(train){
+  const tog = normalizeTognr(train);
+  if(!tog) return;
+
+  const row = findKveldRowByTrain(tog);
+  if(!row || row.type) return;
+
+  const currentC = String(row.c || "").trim();
+  const currentG = String(row.g || "").trim();
+  if(!currentC && !currentG) return;
+
+  row.c = currentG;
+  row.g = currentC;
+}
+
 function getTurneringSuggestionForTrain(tog,key){
   const train = normalizeTognr(tog);
   if(!train) return "";
-  const parts = splitVehicleNumbers(getVehicleForTrain(train));
+  const parts = splitVehicleNumbers(getTurneringVehicleString(train));
   if(key === "c") return parts[0] || "";
   if(key === "d") return parts[1] || "";
   if(key === "g") return parts[1] || "";
@@ -1666,14 +1699,21 @@ function toggleVehicleOrder(side, train){
 
   if(!state.vehicleOrderOverrides) state.vehicleOrderOverrides = {departure:{}, arrival:{}};
   if(!state.vehicleOrderOverrides[sideKey]) state.vehicleOrderOverrides[sideKey] = {};
+  if(!state.vehicleOrderOverridesGlobal) state.vehicleOrderOverridesGlobal = {};
 
   if(state.vehicleOrderOverrides[sideKey][tog]){
     delete state.vehicleOrderOverrides[sideKey][tog];
+    delete state.vehicleOrderOverridesGlobal[tog];
   }else{
     state.vehicleOrderOverrides[sideKey][tog] = true;
+    state.vehicleOrderOverridesGlobal[tog] = true;
   }
 
+  syncTurneringKveldVehicleOrder(tog);
   persist(true);
+  buildTurnering("turneringKveldTable","turneringKveld");
+  buildInndata();
+  buildSporplan();
   buildOppstilling();
 }
 
