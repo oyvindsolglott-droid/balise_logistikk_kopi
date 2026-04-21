@@ -681,7 +681,7 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="oppstilling">
-<div class="note">Tursatte tog vises samlet her. Ved <strong>Nullstill</strong> slettes kjøretøydata, men tognumrene blir stående. Statiske JSON-filer brukes nå for hardkodede ankomster og avganger. Kjøretøy skal ikke være hardkodet i frontend.</div>
+<div class="note">Tursatte tog vises samlet her. Ved <strong>Nullstill</strong> slettes kjøretøydata, men tognumrene blir stående. Statiske JSON-filer brukes nå for hardkodede ankomster og avganger. Kjøretøy skal ikke være hardkodet i frontend. Kjøretøyfeltene i tabellen kan nå også overstyres manuelt hvis kildegrunnlaget er feil.</div>
 
 
 <div class="api-box">
@@ -888,6 +888,10 @@ function makeDefaultState(){
     turneringNatt:JSON.parse(JSON.stringify(initialNattRows)),
     oppstillingModes:Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode])),
     kjoretoy:{},
+    oppstillingManualVehicles:{
+      departure:{},
+      arrival:{}
+    },
     vehicleOrderOverrides:{
       departure:{},
       arrival:{}
@@ -928,6 +932,11 @@ state.turneringKveld = migrateKveldRows(state.turneringKveld);
 if(!state.turneringNatt) state.turneringNatt=JSON.parse(JSON.stringify(initialNattRows));
 if(!state.oppstillingModes) state.oppstillingModes=Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode]));
 if(!state.kjoretoy) state.kjoretoy={};
+if(!state.oppstillingManualVehicles){
+  state.oppstillingManualVehicles = {departure:{}, arrival:{}};
+}
+if(!state.oppstillingManualVehicles.departure) state.oppstillingManualVehicles.departure = {};
+if(!state.oppstillingManualVehicles.arrival) state.oppstillingManualVehicles.arrival = {};
 if(!state.vehicleOrderOverrides){
   state.vehicleOrderOverrides = {
     departure:{},
@@ -1087,6 +1096,76 @@ function getVehicleForTrain(tog){
 
 
   return "";
+}
+
+
+function getSourceOppstillingVehiclePair(train, side){
+  const vehicleString = getVehicleForTrain(train);
+  let [vehicle1, vehicle2] = splitVehicleNumbers(vehicleString);
+
+  if(vehicle1 && vehicle2 && isVehicleOrderSwapped(side, train)){
+    [vehicle1, vehicle2] = [vehicle2, vehicle1];
+  }
+
+  return {
+    vehicle1: vehicle1 || "",
+    vehicle2: vehicle2 || ""
+  };
+}
+
+function getManualOppstillingVehiclePair(train, side){
+  const sideKey = side === "arrival" ? "arrival" : "departure";
+  const tog = normalizeTognr(train);
+  if(!tog) return null;
+
+  const raw = state.oppstillingManualVehicles?.[sideKey]?.[tog];
+  if(!raw || typeof raw !== "object") return null;
+
+  return {
+    vehicle1: sanitizeVehicleValue(raw.vehicle1),
+    vehicle2: sanitizeVehicleValue(raw.vehicle2)
+  };
+}
+
+function getEffectiveOppstillingVehiclePair(train, side){
+  const manualPair = getManualOppstillingVehiclePair(train, side);
+  if(manualPair) return manualPair;
+  return getSourceOppstillingVehiclePair(train, side);
+}
+
+function setManualOppstillingVehiclePair(train, side, vehicle1, vehicle2){
+  const sideKey = side === "arrival" ? "arrival" : "departure";
+  const tog = normalizeTognr(train);
+  if(!tog) return;
+
+  if(!state.oppstillingManualVehicles) state.oppstillingManualVehicles = {departure:{}, arrival:{}};
+  if(!state.oppstillingManualVehicles[sideKey]) state.oppstillingManualVehicles[sideKey] = {};
+
+  const cleaned = {
+    vehicle1: sanitizeVehicleValue(vehicle1),
+    vehicle2: sanitizeVehicleValue(vehicle2)
+  };
+
+  const sourcePair = getSourceOppstillingVehiclePair(tog, sideKey);
+  const matchesSource = cleaned.vehicle1 === sourcePair.vehicle1 && cleaned.vehicle2 === sourcePair.vehicle2;
+
+  if((!cleaned.vehicle1 && !cleaned.vehicle2) || matchesSource){
+    delete state.oppstillingManualVehicles[sideKey][tog];
+    return;
+  }
+
+  state.oppstillingManualVehicles[sideKey][tog] = cleaned;
+}
+
+function syncTurneringKveldVehiclesFromDeparture(train, pair){
+  const tog = normalizeTognr(train);
+  if(!tog) return;
+
+  const row = findKveldRowByTrain(tog);
+  if(!row || row.type) return;
+
+  row.c = String(pair?.vehicle1 || "").trim();
+  row.g = String(pair?.vehicle2 || "").trim();
 }
 
 
@@ -1697,19 +1776,20 @@ function toggleVehicleOrder(side, train){
   const tog = normalizeTognr(train);
   if(!tog) return;
 
-  if(!state.vehicleOrderOverrides) state.vehicleOrderOverrides = {departure:{}, arrival:{}};
-  if(!state.vehicleOrderOverrides[sideKey]) state.vehicleOrderOverrides[sideKey] = {};
-  if(!state.vehicleOrderOverridesGlobal) state.vehicleOrderOverridesGlobal = {};
+  const currentPair = getEffectiveOppstillingVehiclePair(tog, sideKey);
+  const swappedPair = {
+    vehicle1: currentPair.vehicle2,
+    vehicle2: currentPair.vehicle1
+  };
 
-  if(state.vehicleOrderOverrides[sideKey][tog]){
-    delete state.vehicleOrderOverrides[sideKey][tog];
-    delete state.vehicleOrderOverridesGlobal[tog];
+  setManualOppstillingVehiclePair(tog, sideKey, swappedPair.vehicle1, swappedPair.vehicle2);
+
+  if(sideKey === "departure"){
+    syncTurneringKveldVehiclesFromDeparture(tog, swappedPair);
   }else{
-    state.vehicleOrderOverrides[sideKey][tog] = true;
-    state.vehicleOrderOverridesGlobal[tog] = true;
+    syncTurneringKveldVehicleOrder(tog);
   }
 
-  syncTurneringKveldVehicleOrder(tog);
   persist(true);
   buildTurnering("turneringKveldTable","turneringKveld");
   buildInndata();
@@ -1718,12 +1798,9 @@ function toggleVehicleOrder(side, train){
 }
 
 function createOppstillingVehicleCells(train, side){
-  const vehicleString = getVehicleForTrain(train);
-  let [vehicle1, vehicle2] = splitVehicleNumbers(vehicleString);
-
-  if(vehicle1 && vehicle2 && isVehicleOrderSwapped(side, train)){
-    [vehicle1, vehicle2] = [vehicle2, vehicle1];
-  }
+  const pair = getEffectiveOppstillingVehiclePair(train, side);
+  const vehicle1 = pair.vehicle1 || "";
+  const vehicle2 = pair.vehicle2 || "";
 
   return {
     vehicle1: vehicle1 || "Ikke Tursatt",
@@ -1731,6 +1808,26 @@ function createOppstillingVehicleCells(train, side){
     missingSecond: !vehicle2,
     canSwap: Boolean(vehicle1 && vehicle2)
   };
+}
+
+function updateOppstillingVehicleInput(train, side, fieldKey, rawValue){
+  const sideKey = side === "arrival" ? "arrival" : "departure";
+  const tog = normalizeTognr(train);
+  if(!tog) return;
+
+  const pair = getEffectiveOppstillingVehiclePair(tog, sideKey);
+  pair[fieldKey] = sanitizeVehicleValue(rawValue);
+  setManualOppstillingVehiclePair(tog, sideKey, pair.vehicle1, pair.vehicle2);
+
+  if(sideKey === "departure"){
+    syncTurneringKveldVehiclesFromDeparture(tog, getEffectiveOppstillingVehiclePair(tog, sideKey));
+    buildTurnering("turneringKveldTable","turneringKveld");
+    buildInndata();
+    buildSporplan();
+  }
+
+  persist(true);
+  buildOppstilling();
 }
 
 
@@ -1755,7 +1852,15 @@ function appendOppstillingSideCells(tr, rowData, side){
 
 
   const tdVehicle1 = document.createElement("td");
-  tdVehicle1.textContent = vehicles.vehicle1;
+  tdVehicle1.className = "opp-vehicle-cell";
+  const inputVehicle1 = document.createElement("input");
+  inputVehicle1.type = "text";
+  inputVehicle1.className = "opp-vehicle-input";
+  inputVehicle1.value = vehicles.vehicle1 === "Ikke Tursatt" ? "" : vehicles.vehicle1;
+  inputVehicle1.placeholder = vehicles.vehicle1 || "";
+  inputVehicle1.addEventListener("blur", ()=>updateOppstillingVehicleInput(train, side, "vehicle1", inputVehicle1.value));
+  inputVehicle1.addEventListener("keydown", e=>{ if(e.key === "Enter") inputVehicle1.blur(); });
+  tdVehicle1.appendChild(inputVehicle1);
   tr.appendChild(tdVehicle1);
 
 
@@ -1775,7 +1880,15 @@ function appendOppstillingSideCells(tr, rowData, side){
 
 
   const tdVehicle2 = document.createElement("td");
-  tdVehicle2.textContent = vehicles.vehicle2;
+  tdVehicle2.className = "opp-vehicle-cell";
+  const inputVehicle2 = document.createElement("input");
+  inputVehicle2.type = "text";
+  inputVehicle2.className = "opp-vehicle-input";
+  inputVehicle2.value = vehicles.vehicle2 || "";
+  inputVehicle2.placeholder = vehicles.vehicle2 || "";
+  inputVehicle2.addEventListener("blur", ()=>updateOppstillingVehicleInput(train, side, "vehicle2", inputVehicle2.value));
+  inputVehicle2.addEventListener("keydown", e=>{ if(e.key === "Enter") inputVehicle2.blur(); });
+  tdVehicle2.appendChild(inputVehicle2);
   if(train && vehicles.missingSecond){
     tdVehicle2.classList.add("opp-missing-second");
   }
