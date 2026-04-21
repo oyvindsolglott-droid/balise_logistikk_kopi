@@ -138,8 +138,8 @@ position:relative
 #oppstilling .zoom-wrap,
 #oppstilling .api-box .zoom-wrap{
 overflow-x:auto;
-overflow-y:hidden;
-touch-action:pan-x pinch-zoom;
+overflow-y:visible;
+touch-action:pan-y pinch-zoom;
 overscroll-behavior-x:contain;
 overscroll-behavior-y:auto;
 max-width:100%;
@@ -1843,7 +1843,6 @@ function buildOppstilling(){
   }
 
   table.appendChild(body);
-  initOppstillingScrollAssist();
 }
 
 
@@ -2143,29 +2142,6 @@ window.addEventListener("resize",()=>{
   ["yardZoom","kveldZoom","nattZoom","inndataZoom","apiCombinedZoom"].forEach(applyView);
   scheduleSporplanRefresh();
 });
-
-function initOppstillingScrollAssist(){
-  const wrappers = document.querySelectorAll("#oppstilling .zoom-wrap");
-  wrappers.forEach(wrapper=>{
-    if(wrapper.dataset.scrollAssistBound === "true") return;
-    wrapper.dataset.scrollAssistBound = "true";
-    wrapper.addEventListener("wheel", e=>{
-      const mostlyVertical = Math.abs(e.deltaY) > Math.abs(e.deltaX);
-      const canScrollHorizontally = wrapper.scrollWidth > wrapper.clientWidth + 2;
-      if(!mostlyVertical || !canScrollHorizontally) return;
-
-      const atLeftEdge = wrapper.scrollLeft <= 0;
-      const atRightEdge = wrapper.scrollLeft + wrapper.clientWidth >= wrapper.scrollWidth - 1;
-      const movingLeft = e.deltaY < 0;
-      const movingRight = e.deltaY > 0;
-
-      if((movingLeft && atLeftEdge) || (movingRight && atRightEdge)) return;
-
-      wrapper.scrollLeft += e.deltaY;
-      e.preventDefault();
-    }, {passive:false});
-  });
-}
 
 function normalizeApiDepartureMap(raw){
   const map = {};
