@@ -467,6 +467,28 @@ font-weight:700;
 color:var(--muted);
 font-size:13px;
 }
+.swap-order-btn{
+appearance:none;
+-webkit-appearance:none;
+border:1px solid var(--line);
+background:#fff;
+border-radius:8px;
+padding:2px 6px;
+min-height:26px;
+min-width:30px;
+font-size:15px;
+line-height:1;
+cursor:pointer;
+}
+.swap-order-btn:hover{
+background:#f3f4f6;
+}
+.swap-order-cell,
+.swap-order-head{
+width:42px;
+min-width:42px !important;
+padding:2px 4px !important;
+}
 #oppstillingTable{
 min-width:760px;
 width:100%;
@@ -866,6 +888,10 @@ function makeDefaultState(){
     turneringNatt:JSON.parse(JSON.stringify(initialNattRows)),
     oppstillingModes:Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode])),
     kjoretoy:{},
+    vehicleOrderOverrides:{
+      departure:{},
+      arrival:{}
+    },
     baliseToday:{},
     baliseTomorrow:{},
     baliseTodayDepartures:{},
@@ -902,6 +928,14 @@ state.turneringKveld = migrateKveldRows(state.turneringKveld);
 if(!state.turneringNatt) state.turneringNatt=JSON.parse(JSON.stringify(initialNattRows));
 if(!state.oppstillingModes) state.oppstillingModes=Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode]));
 if(!state.kjoretoy) state.kjoretoy={};
+if(!state.vehicleOrderOverrides){
+  state.vehicleOrderOverrides = {
+    departure:{},
+    arrival:{}
+  };
+}
+if(!state.vehicleOrderOverrides.departure) state.vehicleOrderOverrides.departure = {};
+if(!state.vehicleOrderOverrides.arrival) state.vehicleOrderOverrides.arrival = {};
 if(!state.baliseToday) state.baliseToday={};
 if(!state.baliseTomorrow) state.baliseTomorrow={};
 if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
@@ -1618,15 +1652,44 @@ function buildArrivalRowsForOppstilling(){
 }
 
 
-function createOppstillingVehicleCells(train){
-  const vehicleString = getVehicleForTrain(train);
-  const [vehicle1, vehicle2] = splitVehicleNumbers(vehicleString);
+function isVehicleOrderSwapped(side, train){
+  const sideKey = side === "arrival" ? "arrival" : "departure";
+  const tog = normalizeTognr(train);
+  if(!tog) return false;
+  return Boolean(state.vehicleOrderOverrides?.[sideKey]?.[tog]);
+}
 
+function toggleVehicleOrder(side, train){
+  const sideKey = side === "arrival" ? "arrival" : "departure";
+  const tog = normalizeTognr(train);
+  if(!tog) return;
+
+  if(!state.vehicleOrderOverrides) state.vehicleOrderOverrides = {departure:{}, arrival:{}};
+  if(!state.vehicleOrderOverrides[sideKey]) state.vehicleOrderOverrides[sideKey] = {};
+
+  if(state.vehicleOrderOverrides[sideKey][tog]){
+    delete state.vehicleOrderOverrides[sideKey][tog];
+  }else{
+    state.vehicleOrderOverrides[sideKey][tog] = true;
+  }
+
+  persist(true);
+  buildOppstilling();
+}
+
+function createOppstillingVehicleCells(train, side){
+  const vehicleString = getVehicleForTrain(train);
+  let [vehicle1, vehicle2] = splitVehicleNumbers(vehicleString);
+
+  if(vehicle1 && vehicle2 && isVehicleOrderSwapped(side, train)){
+    [vehicle1, vehicle2] = [vehicle2, vehicle1];
+  }
 
   return {
     vehicle1: vehicle1 || "Ikke Tursatt",
     vehicle2: vehicle2 || "",
-    missingSecond: !vehicle2
+    missingSecond: !vehicle2,
+    canSwap: Boolean(vehicle1 && vehicle2)
   };
 }
 
@@ -1647,13 +1710,28 @@ function appendOppstillingSideCells(tr, rowData, side){
 
 
   const vehicles = train
-    ? createOppstillingVehicleCells(train)
-    : {vehicle1:"", vehicle2:"", missingSecond:false};
+    ? createOppstillingVehicleCells(train, side)
+    : {vehicle1:"", vehicle2:"", missingSecond:false, canSwap:false};
 
 
   const tdVehicle1 = document.createElement("td");
   tdVehicle1.textContent = vehicles.vehicle1;
   tr.appendChild(tdVehicle1);
+
+
+  const tdSwap = document.createElement("td");
+  tdSwap.className = "swap-order-cell";
+  if(train && vehicles.canSwap){
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "swap-order-btn";
+    btn.title = "Bytt rekkefølge på kjøretøy";
+    btn.setAttribute("aria-label", "Bytt rekkefølge på kjøretøy");
+    btn.textContent = "⇄";
+    btn.addEventListener("click", ()=>toggleVehicleOrder(side, train));
+    tdSwap.appendChild(btn);
+  }
+  tr.appendChild(tdSwap);
 
 
   const tdVehicle2 = document.createElement("td");
@@ -1673,20 +1751,23 @@ function buildOppstilling(){
   const trGroup=document.createElement("tr");
   const thDep=document.createElement("th");
   thDep.className="opp-group";
-  thDep.colSpan=4;
+  thDep.colSpan=5;
   thDep.textContent="Avgang";
   trGroup.appendChild(thDep);
   const thArr=document.createElement("th");
   thArr.className="opp-group";
-  thArr.colSpan=4;
+  thArr.colSpan=5;
   thArr.textContent="Ankomst";
   trGroup.appendChild(thArr);
   thead.appendChild(trGroup);
 
   const trHead=document.createElement("tr");
-  ["Tognr.","Avgangstid","Kjøretøy 1 nr.","Kjøretøy 2 nr.","Tognr.","Ankomsttid","Kjøretøy 1 nr.","Kjøretøy 2 nr."].forEach(text=>{
+  ["Tognr.","Avgangstid","Kjøretøy 1 nr.","","Kjøretøy 2 nr.","Tognr.","Ankomsttid","Kjøretøy 1 nr.","","Kjøretøy 2 nr."].forEach(text=>{
     const th=document.createElement("th");
     th.textContent=text;
+    if(text === ""){
+      th.classList.add("swap-order-head");
+    }
     trHead.appendChild(th);
   });
   thead.appendChild(trHead);
