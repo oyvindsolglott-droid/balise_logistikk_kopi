@@ -1776,6 +1776,10 @@ function toggleVehicleOrder(side, train){
   const tog = normalizeTognr(train);
   if(!tog) return;
 
+  if(!state.vehicleOrderOverrides) state.vehicleOrderOverrides = {departure:{}, arrival:{}};
+  if(!state.vehicleOrderOverrides[sideKey]) state.vehicleOrderOverrides[sideKey] = {};
+  if(!state.vehicleOrderOverridesGlobal) state.vehicleOrderOverridesGlobal = {};
+
   const currentPair = getEffectiveOppstillingVehiclePair(tog, sideKey);
   const swappedPair = {
     vehicle1: currentPair.vehicle2,
@@ -1783,6 +1787,14 @@ function toggleVehicleOrder(side, train){
   };
 
   setManualOppstillingVehiclePair(tog, sideKey, swappedPair.vehicle1, swappedPair.vehicle2);
+
+  if(state.vehicleOrderOverrides[sideKey][tog]){
+    delete state.vehicleOrderOverrides[sideKey][tog];
+    delete state.vehicleOrderOverridesGlobal[tog];
+  }else{
+    state.vehicleOrderOverrides[sideKey][tog] = true;
+    state.vehicleOrderOverridesGlobal[tog] = true;
+  }
 
   if(sideKey === "departure"){
     syncTurneringKveldVehiclesFromDeparture(tog, swappedPair);
