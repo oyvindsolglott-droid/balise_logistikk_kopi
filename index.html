@@ -39,7 +39,7 @@
 --cell-min:72px;
 --cell-h:46px;
 --input-h:36px;
---input-font:16px;
+--input-font:14px;
 
 
 --seg-height:56px;
@@ -214,6 +214,13 @@ padding:4px 3px;
 .turnering-kveld-table .kveld-col-j{width:82px}
 .turnering-kveld-table td input{
 padding:0 2px;
+}
+.turnering-kveld-table th,
+.turnering-kveld-table td{
+font-size:14px;
+}
+.turnering-kveld-table td input{
+font-size:14px;
 }
 .turnering-kveld-table td.duplicate-vehicle-cell{
 background:var(--soft-red) !important;
@@ -555,7 +562,7 @@ line-height:1;
 --cell-min:58px;
 --cell-h:38px;
 --input-h:34px;
---input-font:16px;
+--input-font:14px;
 --seg-height:54px;
 }
 html{font-size:16px}
@@ -579,6 +586,13 @@ min-width:700px;
 #oppstillingTable td{
 font-size:12px;
 padding:4px 5px;
+}
+.turnering-kveld-table th,
+.turnering-kveld-table td{
+font-size:12px;
+}
+.turnering-kveld-table td input{
+font-size:12px;
 }
 .file-input{max-width:none}
 textarea#kjoretoyImport{font-size:16px}
@@ -775,21 +789,21 @@ const STORAGE_KEY="skien_sporplan_iphone_v13";
 
 const headerKveld={
 type:"header",
-a:"ank. kl.",
+a:"ankomst kl.",
 b:"fra tognr.",
-c:"s.nr.1",
-d:"vask s.nr.1",
-e:"til spor; s.nr.1",
-f:"s.nr.1 blir tognr.",
-g:"s.nr.2",
-h:"vask s.nr.2",
-i:"til spor; s.nr.2",
-j:"s.nr.2 blir tognr."
+c:"sett nr. 1",
+d:"vask sett nr. 1",
+e:"til spor; sett nr. 1",
+f:"sett nr. 1 blir tog nr.",
+g:"sett nr. 2",
+h:"vask sett nr. 2",
+i:"til spor; sett nr. 2",
+j:"sett nr. 2 blir tog nr."
 };
 
 const headerNatt={
 type:"header",
-a:"ank. kl.",
+a:"ankomst kl.",
 b:"tognr.",
 c:"sett nr.1",
 d:"sett nr.2",
