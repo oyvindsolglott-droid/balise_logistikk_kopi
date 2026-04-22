@@ -1072,17 +1072,27 @@ function persist(auto=false){
 }
 
 
-function getSelectedBaliseMap(){
-  return state.baliseSelectedMode === "imorgen"
+function getBaliseMapByMode(mode){
+  return mode === "imorgen"
     ? (state.baliseTomorrow || {})
     : (state.baliseToday || {});
 }
 
 
-function getSelectedDepartureMap(){
-  return state.baliseSelectedMode === "imorgen"
+function getDepartureMapByMode(mode){
+  return mode === "imorgen"
     ? (state.baliseTomorrowDepartures || {})
     : (state.baliseTodayDepartures || {});
+}
+
+
+function getSelectedBaliseMap(){
+  return getBaliseMapByMode(state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag");
+}
+
+
+function getSelectedDepartureMap(){
+  return getDepartureMapByMode(state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag");
 }
 
 
@@ -1096,14 +1106,18 @@ function getApiArrivalMap(){
 }
 
 
-function getBaseVehicleForTrain(tog){
+function getBaseVehicleForTrain(tog, mode="selected"){
   const train = normalizeTognr(tog);
   if(!train) return "";
 
   const manualValue = sanitizeVehicleValue(state.kjoretoy[train]);
   if(manualValue) return manualValue;
 
-  const baliseValue = sanitizeVehicleValue(getSelectedBaliseMap()[train]);
+  const effectiveMode = mode === "selected"
+    ? (state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag")
+    : (mode === "imorgen" ? "imorgen" : "idag");
+
+  const baliseValue = sanitizeVehicleValue(getBaliseMapByMode(effectiveMode)[train]);
   if(baliseValue) return baliseValue;
 
   return "";
@@ -1135,18 +1149,18 @@ function getOppstillingOverrideParts(train){
   return [sanitizeVehicleValue(override.vehicle1), sanitizeVehicleValue(override.vehicle2)];
 }
 
-function getVehiclePartsForTrain(train){
+function getVehiclePartsForTrain(train, mode="selected"){
   const key = normalizeTognr(train);
   if(!key) return ["",""];
 
   const [ov1, ov2] = getOppstillingOverrideParts(key);
   if(ov1 || ov2) return [ov1, ov2];
 
-  return splitVehicleNumbers(getBaseVehicleForTrain(key));
+  return splitVehicleNumbers(getBaseVehicleForTrain(key, mode));
 }
 
-function getVehicleForTrain(tog){
-  const [vehicle1, vehicle2] = getVehiclePartsForTrain(tog);
+function getVehicleForTrain(tog, mode="selected"){
+  const [vehicle1, vehicle2] = getVehiclePartsForTrain(tog, mode);
   return joinVehicleNumbers(vehicle1, vehicle2);
 }
 
@@ -1186,40 +1200,72 @@ function setOppstillingOverride(train, vehicle1, vehicle2, syncKveld=true){
 function getTurneringSuggestionForTrain(tog,key){
   const train = normalizeTognr(tog);
   if(!train) return "";
-  const parts = splitVehicleNumbers(getVehicleForTrain(train));
+  const parts = splitVehicleNumbers(getVehicleForTrain(train, "idag"));
   if(key === "c") return parts[0] || "";
   if(key === "d") return parts[1] || "";
   if(key === "g") return parts[1] || "";
   return "";
 }
 
-function getTomorrowDepartureTrainSuggestionForVehicle(vehicleNo){
+function getTomorrowDepartureRows(){
+  const departures = getDepartureMapByMode("imorgen");
+  const vehicleMap = getBaliseMapByMode("imorgen");
+
+  return Object.entries(departures)
+    .map(([train, time])=>{
+      const cleanTrain = normalizeTognr(train);
+      const cleanTime = normalizeTimeString(time) || normalizeTimeString((state.apiBalise?.departures || {})[train]);
+      const parts = splitVehicleNumbers(sanitizeVehicleValue(vehicleMap[cleanTrain]))
+        .map(normalizeVehicleToken)
+        .filter(Boolean);
+      const [hh, mm] = cleanTime.split(":").map(Number);
+      const sortMinutes = Number.isNaN(hh) || Number.isNaN(mm) ? 9999 : (hh * 60 + mm);
+      return { train: cleanTrain, time: cleanTime, parts, sortMinutes };
+    })
+    .filter(item => item.train);
+}
+
+function pickEarliestTrain(rows){
+  return rows
+    .slice()
+    .sort(sortTimeAndTrainEntries)[0]?.train || "";
+}
+
+function getTomorrowDepartureTrainSuggestionForVehicle(vehicleNo, positionHint="any"){
   const token = normalizeVehicleToken(vehicleNo);
   if(!token) return "";
 
-  const matches = Object.entries(state.baliseTomorrow || {})
-    .map(([train,vehicleValue])=>({
-      train: normalizeTognr(train),
-      time: normalizeTimeString((state.baliseTomorrowDepartures || {})[train])
-        || normalizeTimeString((state.apiBalise?.departures || {})[train])
-    }))
-    .filter(item=>item.train)
-    .sort(sortTimeAndTrainEntries)
-    .filter(item=>{
-      const parts = splitVehicleNumbers(sanitizeVehicleValue((state.baliseTomorrow || {})[item.train]))
-        .map(normalizeVehicleToken)
-        .filter(Boolean);
-      return parts.includes(token);
-    });
+  const rows = getTomorrowDepartureRows();
+  if(!rows.length) return "";
 
-  if(matches.length !== 1) return "";
-  return matches[0].train || "";
+  const exactSingleMatches = rows.filter(item => item.parts.length === 1 && item.parts[0] === token);
+  if(exactSingleMatches.length){
+    return pickEarliestTrain(exactSingleMatches);
+  }
+
+  const hintedMatches = rows.filter(item => {
+    if(positionHint === "first") return item.parts[0] === token;
+    if(positionHint === "second") return item.parts[1] === token;
+    return item.parts.includes(token);
+  });
+  if(hintedMatches.length){
+    return pickEarliestTrain(hintedMatches);
+  }
+
+  const fallbackMatches = rows.filter(item => item.parts.includes(token));
+  if(fallbackMatches.length){
+    return pickEarliestTrain(fallbackMatches);
+  }
+
+  return "";
 }
 
 function getKveldOutputTrainSuggestion(row,key){
   if(key !== "f" && key !== "j") return "";
-  const vehicleValue = getEffectiveKveldVehicleValue(row, key === "f" ? "c" : "g");
-  return getTomorrowDepartureTrainSuggestionForVehicle(vehicleValue);
+  const sourceKey = key === "f" ? "c" : "g";
+  const positionHint = key === "f" ? "first" : "second";
+  const vehicleValue = getEffectiveKveldVehicleValue(row, sourceKey);
+  return getTomorrowDepartureTrainSuggestionForVehicle(vehicleValue, positionHint);
 }
 
 
@@ -1526,6 +1572,12 @@ function buildTurnering(tableId,key){
         }else{
           inp.addEventListener("input",e=>{
             state[key][ri][k]=e.target.value;
+            buildInndata();
+            buildSporplan();
+            buildOppstilling();
+            persist(true);
+          });
+          inp.addEventListener("change",()=>{
             buildTurnering("turneringKveldTable","turneringKveld");
             if(!isKveld) buildTurnering("turneringNattTable","turneringNatt");
             buildInndata();
