@@ -1521,8 +1521,28 @@ function buildTurnering(tableId,key){
         }else{
           inp.addEventListener("input",e=>{
             state[key][ri][k]=e.target.value;
-            buildTurnering("turneringKveldTable","turneringKveld");
-            if(!isKveld) buildTurnering("turneringNattTable","turneringNatt");
+
+            if(isKveld){
+              if(k==="c" || k==="g"){
+                buildTurnering("turneringKveldTable","turneringKveld");
+              }
+            }
+
+            buildInndata();
+            buildSporplan();
+            buildOppstilling();
+            persist(true);
+          });
+
+          inp.addEventListener("change",e=>{
+            state[key][ri][k]=e.target.value;
+
+            if(isKveld){
+              buildTurnering("turneringKveldTable","turneringKveld");
+            }else{
+              buildTurnering("turneringNattTable","turneringNatt");
+            }
+
             buildInndata();
             buildSporplan();
             buildOppstilling();
