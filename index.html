@@ -639,7 +639,7 @@ button{padding:12px 12px}
 <button class="seg active" type="button" data-tab="sporplan">Sporplan</button>
 <button class="seg" type="button" data-tab="turneringKveld">Turnering Kveld</button>
 <button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
-<button class="seg" type="button" data-tab="inndata">Planlagte skiftebevegelser</button>
+<button class="seg" type="button" data-tab="inndata">Inndata</button>
 <button class="seg" type="button" data-tab="oppstilling">Tursatt</button>
 </div>
 
@@ -697,9 +697,9 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="inndata">
-<div class="note">Planlagte skiftebevegelser leses automatisk fra Turnering Kveld og Turnering Natt.</div>
+<div class="note">Leses automatisk fra Turnering Kveld og Turnering Natt.</div>
 <div class="view-tools">
-<span class="label">Planlagte skiftebevegelser</span>
+<span class="label">Inndata visning</span>
 <button class="compact zoom-out" data-target="inndataZoom">Zoom ut</button>
 <button class="compact zoom-in" data-target="inndataZoom">Zoom inn</button>
 <button class="compact compact-toggle" data-target="inndataZoom">Kompakt visning</button>
@@ -1197,24 +1197,28 @@ function getTomorrowDepartureTrainSuggestionForVehicle(vehicleNo){
   const token = normalizeVehicleToken(vehicleNo);
   if(!token) return "";
 
-  return Object.entries(state.baliseTomorrowDepartures || {})
+  const matches = Object.entries(state.baliseTomorrowDepartures || {})
     .map(([train,time])=>({
       train: normalizeTognr(train),
       time: normalizeTimeString(time)
     }))
     .filter(item=>item.train && item.time)
     .sort(sortTimeAndTrainEntries)
-    .find(item=>{
+    .filter(item=>{
       const parts = splitVehicleNumbers(sanitizeVehicleValue((state.baliseTomorrow || {})[item.train]))
         .map(normalizeVehicleToken)
         .filter(Boolean);
       return parts.includes(token);
-    })?.train || "";
+    });
+
+  if(matches.length !== 1) return "";
+  return matches[0].train;
 }
 
 function getKveldOutputTrainSuggestion(row,key){
-  if(key !== "f") return "";
-  return getTomorrowDepartureTrainSuggestionForVehicle(row?.c);
+  if(key === "f") return getTomorrowDepartureTrainSuggestionForVehicle(row?.c);
+  if(key === "j") return getTomorrowDepartureTrainSuggestionForVehicle(row?.g);
+  return "";
 }
 
 
@@ -1541,7 +1545,7 @@ function buildTurnering(tableId,key){
           }
         }
 
-        const showTomorrowTrainSuggestion = isKveld && k==="f";
+        const showTomorrowTrainSuggestion = isKveld && (k==="f" || k==="j");
         if(showTomorrowTrainSuggestion){
           const suggestedTrain = getKveldOutputTrainSuggestion(row, k);
           const usesSuggestedTrain = !String(row[k] || "").trim() && !!suggestedTrain;
@@ -1571,64 +1575,19 @@ function buildTurnering(tableId,key){
 }
 
 
-function buildPlannedShuntingRows(){
-  const rows = [];
-
-  function pushRow(time, vehicle, train, fromTrack, toTrack){
-    const cleanTime = normalizeTimeString(time);
-    const cleanVehicle = sanitizeVehicleValue(vehicle);
-    const cleanTrain = normalizeTognr(train);
-    const cleanFrom = normalizeSlot(fromTrack);
-    const cleanTo = normalizeSlot(toTrack);
-
-    if(!cleanTime && !cleanVehicle && !cleanTrain && !cleanFrom && !cleanTo) return;
-    if(!cleanTo) return;
-
-    rows.push({
-      time: cleanTime,
-      vehicle: cleanVehicle,
-      train: cleanTrain,
-      fromTrack: cleanFrom,
-      toTrack: cleanTo
-    });
-  }
-
-  (state.turneringKveld || []).forEach(row=>{
-    if(!row || row.type) return;
-    pushRow(row.a, getEffectiveKveldVehicleValue(row, "c"), row.b, "", row.e);
-    pushRow(row.a, getEffectiveKveldVehicleValue(row, "g"), row.b, "", row.i);
-  });
-
-  (state.turneringNatt || []).forEach(row=>{
-    if(!row || row.type) return;
-    pushRow(row.a, row.c, row.b, "", row.f);
-    pushRow(row.a, row.d, row.b, "", row.h);
-  });
-
-  return rows.sort((a,b)=>{
-    const ta = a.time || "99:99";
-    const tb = b.time || "99:99";
-    if(ta !== tb) return ta.localeCompare(tb, "no");
-
-    const na = Number(a.train);
-    const nb = Number(b.train);
-    if(!Number.isNaN(na) && !Number.isNaN(nb) && na !== nb) return na - nb;
-
-    return String(a.toTrack).localeCompare(String(b.toTrack), "no");
-  });
-}
-
 function buildInndata(){
-  const data=buildPlannedShuntingRows();
+  const data=computeInndata();
   const table=document.getElementById("inndataTable");
-  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy</th><th>Tognr.</th><th>Fra spor</th><th>Til spor</th></tr></thead>";
+  table.innerHTML="<thead><tr><th>Slot</th><th>Tognummer</th><th>Materiellnr</th><th class='wash-col'>Vask</th></tr></thead>";
   const body=document.createElement("tbody");
+
 
   data.forEach(r=>{
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${escapeHtml(r.time)}</td><td>${escapeHtml(r.vehicle)}</td><td>${escapeHtml(r.train)}</td><td>${escapeHtml(r.fromTrack)}</td><td class="slotcol">${escapeHtml(r.toTrack)}</td>`;
+    tr.innerHTML=`<td class="slotcol">${r.slot}</td><td>${escapeHtml(r.tog)}</td><td>${escapeHtml(r.mat)}</td><td class="wash-col">${r.wash?"ja":""}</td>`;
     body.appendChild(tr);
   });
+
 
   table.appendChild(body);
 }
