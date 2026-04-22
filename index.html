@@ -2158,6 +2158,65 @@ function scheduleSporplanRefresh(){
   });
 }
 
+function initDragScroll(){
+  const wrappers = document.querySelectorAll(".zoom-wrap, .yard-wrap");
+  wrappers.forEach(wrapper=>{
+    if(wrapper.dataset.dragScrollInit === "1") return;
+    wrapper.dataset.dragScrollInit = "1";
+
+    let startX = 0;
+    let startY = 0;
+    let startScrollLeft = 0;
+    let startScrollTop = 0;
+    let dragging = false;
+    let suppressClickUntil = 0;
+
+    wrapper.addEventListener("touchstart", e=>{
+      if(!e.touches || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+      startScrollLeft = wrapper.scrollLeft;
+      startScrollTop = wrapper.scrollTop;
+      dragging = false;
+    }, {passive:true});
+
+    wrapper.addEventListener("touchmove", e=>{
+      if(!e.touches || e.touches.length !== 1) return;
+      const touch = e.touches[0];
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+
+      if(!dragging && Math.max(Math.abs(dx), Math.abs(dy)) < 8) return;
+      dragging = true;
+
+      const active = document.activeElement;
+      if(active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")){
+        active.blur();
+      }
+
+      wrapper.scrollLeft = startScrollLeft - dx;
+      wrapper.scrollTop = startScrollTop - dy;
+      suppressClickUntil = Date.now() + 250;
+      e.preventDefault();
+    }, {passive:false});
+
+    wrapper.addEventListener("touchend", ()=>{
+      if(dragging){
+        suppressClickUntil = Date.now() + 250;
+      }
+      dragging = false;
+    });
+
+    wrapper.addEventListener("click", e=>{
+      if(Date.now() < suppressClickUntil){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+  });
+}
+
 
 function initViewControls(){
   document.querySelectorAll(".zoom-in").forEach(btn=>{
@@ -2201,6 +2260,7 @@ function initViewControls(){
 
 
   ["yardZoom","kveldZoom","nattZoom","inndataZoom","apiCombinedZoom"].forEach(applyView);
+  initDragScroll();
 }
 
 
