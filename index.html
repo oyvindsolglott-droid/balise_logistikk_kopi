@@ -1198,37 +1198,31 @@ function getTomorrowDepartureTrainSuggestionForVehicle(vehicleNo){
   if(!token) return "";
 
   const matches = Object.entries(state.baliseTomorrowDepartures || {})
-    .map(([train,time])=>{
-      const normalizedTrain = normalizeTognr(train);
-      const normalizedTime = normalizeTimeString(time);
-      const [vehicle1, vehicle2] = splitVehicleNumbers(sanitizeVehicleValue((state.baliseTomorrow || {})[normalizedTrain]))
-        .map(normalizeVehicleToken);
+    .map(([train,time])=>({
+      train: normalizeTognr(train),
+      time: normalizeTimeString(time)
+    }))
+    .filter(item=>item.train && item.time)
+    .sort(sortTimeAndTrainEntries)
+    .filter(item=>{
+      const parts = splitVehicleNumbers(sanitizeVehicleValue((state.baliseTomorrow || {})[item.train]))
+        .map(normalizeVehicleToken)
+        .filter(Boolean);
+      return parts.includes(token);
+    });
 
-      let position = "";
-      if(vehicle1 === token) position = "1";
-      if(vehicle2 === token){
-        if(position) position = "";
-        else position = "2";
-      }
-
-      return {
-        train: normalizedTrain,
-        time: normalizedTime,
-        sortMinutes: normalizedTime ? ((Number(normalizedTime.split(":")[0]) * 60) + Number(normalizedTime.split(":")[1])) : 9999,
-        position
-      };
-    })
-    .filter(item=>item.train && item.position)
-    .sort(sortTimeAndTrainEntries);
-
-  if(matches.length !== 1) return "";
-  return `${matches[0].train}-${matches[0].position}`;
+  const uniqueTrains = Array.from(new Set(matches.map(item=>item.train).filter(Boolean)));
+  return uniqueTrains.length === 1 ? uniqueTrains[0] : "";
 }
 
 function getKveldOutputTrainSuggestion(row,key){
-  if(key !== "f" && key !== "j") return "";
-  const sourceKey = key === "f" ? "c" : "g";
-  return getTomorrowDepartureTrainSuggestionForVehicle(getEffectiveKveldVehicleValue(row, sourceKey));
+  if(key === "f"){
+    return getTomorrowDepartureTrainSuggestionForVehicle(getEffectiveKveldVehicleValue(row,"c"));
+  }
+  if(key === "j"){
+    return getTomorrowDepartureTrainSuggestionForVehicle(getEffectiveKveldVehicleValue(row,"g"));
+  }
+  return "";
 }
 
 
