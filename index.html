@@ -109,6 +109,14 @@ overflow:auto;
 scroll-margin-top:calc(var(--seg-height) + 28px)
 }
 .panel.active{display:block}
+
+@media (hover:hover) and (pointer:fine){
+#sporplan,
+#turneringNatt,
+#oppstilling{
+overflow:visible;
+}
+}
 .note{
 background:#fafafa;
 border:1px dashed var(--line);
@@ -2249,6 +2257,50 @@ function scheduleSporplanRefresh(){
 }
 
 
+
+function initDesktopWheelPassThrough(){
+  const isDesktopPointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  if(!isDesktopPointer) return;
+
+  const selectors = [
+    "#sporplan .yard-wrap",
+    "#turneringNatt .zoom-wrap",
+    "#oppstilling .zoom-wrap"
+  ];
+
+  selectors.forEach(selector=>{
+    document.querySelectorAll(selector).forEach(el=>{
+      if(el.dataset.wheelPassthroughBound === "1") return;
+      el.dataset.wheelPassthroughBound = "1";
+
+      el.addEventListener("wheel", e=>{
+        if(e.ctrlKey || e.metaKey) return;
+
+        const absY = Math.abs(e.deltaY || 0);
+        const absX = Math.abs(e.deltaX || 0);
+
+        if(absY <= absX) return;
+
+        const canScrollY = (el.scrollHeight - el.clientHeight) > 2;
+
+        if(!canScrollY){
+          e.preventDefault();
+          window.scrollBy(0, e.deltaY);
+          return;
+        }
+
+        const atTop = el.scrollTop <= 0;
+        const atBottom = (el.scrollTop + el.clientHeight) >= (el.scrollHeight - 1);
+
+        if((e.deltaY < 0 && atTop) || (e.deltaY > 0 && atBottom)){
+          e.preventDefault();
+          window.scrollBy(0, e.deltaY);
+        }
+      }, {passive:false});
+    });
+  });
+}
+
 function initViewControls(){
   document.querySelectorAll(".zoom-in").forEach(btn=>{
     btn.addEventListener("click",()=>{
@@ -2604,6 +2656,7 @@ updateBaliseStatus();
 updateTopDataStatus();
 updateBaliseViewState();
 renderApiTables();
+initDesktopWheelPassThrough();
 activateTab("sporplan");
 markSaved("Klar");
 fetchBaliseApi();
