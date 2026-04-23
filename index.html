@@ -697,9 +697,9 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="inndata">
-<div class="note">Planlagte skiftebevegelser leses automatisk fra Turnering Kveld og Turnering Natt.</div>
+<div class="note">Skiftebevegelser leses automatisk fra Turnering Kveld og Turnering Natt.</div>
 <div class="view-tools">
-<span class="label">Planlegge skiftebevegelser visning</span>
+<span class="label">Planlegge skiftebevegelser</span>
 <button class="compact zoom-out" data-target="inndataZoom">Zoom ut</button>
 <button class="compact zoom-in" data-target="inndataZoom">Zoom inn</button>
 <button class="compact compact-toggle" data-target="inndataZoom">Kompakt visning</button>
@@ -1468,36 +1468,13 @@ function mergeRowsIntoResult(rows,result,map){
 
 
 function computeInndata(){
-  const moves = [];
-
-  function addMove(time, vehicle, fromSlot, toSlot){
-    const cleanVehicle = sanitizeVehicleValue(vehicle);
-    const cleanFrom = normalizeSlot(fromSlot);
-    const cleanTo = normalizeSlot(toSlot);
-    const cleanTime = normalizeTimeString(time);
-    if(!cleanVehicle && !cleanFrom && !cleanTo) return;
-    moves.push({
-      time: cleanTime,
-      vehicle: cleanVehicle,
-      fromSlot: cleanFrom,
-      toSlot: cleanTo
-    });
-  }
-
-  (state.turneringKveld || []).forEach(row=>{
-    if(!row || row.type) return;
-    addMove(row.a, getEffectiveKveldVehicleValue(row, "c"), "", row.e);
-    addMove(row.a, getEffectiveKveldVehicleValue(row, "g"), "", row.i);
-  });
-
-  (state.turneringNatt || []).forEach(row=>{
-    if(!row || row.type) return;
-    addMove(row.a, row.c, "", row.f);
-    addMove(row.a, row.d, "", row.h);
-  });
-
-  return moves.filter(r=>r.time || r.vehicle || r.fromSlot || r.toSlot);
+  const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
+  const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
+  mergeRowsIntoResult(state.turneringKveld,result,map);
+  mergeRowsIntoResult(state.turneringNatt,result,map);
+  return result;
 }
+
 
 
 function isRepMarker(value){
@@ -1652,14 +1629,69 @@ function buildTurnering(tableId,key){
 
 
 function buildInndata(){
-  const data=computeInndata();
   const table=document.getElementById("inndataTable");
   table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th></tr></thead>";
   const body=document.createElement("tbody");
 
-  data.forEach(r=>{
+  const rows=[];
+
+  (state.turneringKveld || []).forEach(row=>{
+    if(!row || row.type) return;
+
+    const time = normalizeTimeString(row.a);
+    const frontVehicle = sanitizeVehicleValue(getEffectiveKveldVehicleValue(row,"c"));
+    const frontTo = normalizeSlot(row.e);
+    if(time || frontVehicle || frontTo){
+      rows.push({
+        time,
+        vehicle: frontVehicle,
+        fromSpor: "",
+        toSpor: frontTo
+      });
+    }
+
+    const rearVehicle = sanitizeVehicleValue(getEffectiveKveldVehicleValue(row,"g"));
+    const rearTo = normalizeSlot(row.i);
+    if(time || rearVehicle || rearTo){
+      rows.push({
+        time,
+        vehicle: rearVehicle,
+        fromSpor: "",
+        toSpor: rearTo
+      });
+    }
+  });
+
+  (state.turneringNatt || []).forEach(row=>{
+    if(!row || row.type) return;
+
+    const time = normalizeTimeString(row.a);
+    const vehicle1 = sanitizeVehicleValue(row.c);
+    const to1 = normalizeSlot(row.f);
+    if(time || vehicle1 || to1){
+      rows.push({
+        time,
+        vehicle: vehicle1,
+        fromSpor: "",
+        toSpor: to1
+      });
+    }
+
+    const vehicle2 = sanitizeVehicleValue(row.d);
+    const to2 = normalizeSlot(row.h);
+    if(time || vehicle2 || to2){
+      rows.push({
+        time,
+        vehicle: vehicle2,
+        fromSpor: "",
+        toSpor: to2
+      });
+    }
+  });
+
+  rows.forEach(r=>{
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${escapeHtml(r.time)}</td><td>${escapeHtml(r.vehicle)}</td><td>${escapeHtml(r.fromSlot)}</td><td class="slotcol">${escapeHtml(r.toSlot)}</td>`;
+    tr.innerHTML=`<td>${escapeHtml(r.time)}</td><td>${escapeHtml(r.vehicle)}</td><td>${escapeHtml(r.fromSpor)}</td><td>${escapeHtml(r.toSpor)}</td>`;
     body.appendChild(tr);
   });
 
@@ -2010,17 +2042,9 @@ function getSporplanTextsForSlot(slot, info){
   return result;
 }
 
-function computeSporplanData(){
-  const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
-  const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
-  mergeRowsIntoResult(state.turneringKveld,result,map);
-  mergeRowsIntoResult(state.turneringNatt,result,map);
-  return result;
-}
-
 
 function buildSporplan(){
-  const data=Object.fromEntries(computeSporplanData().map(r=>[r.slot,r]));
+  const data=Object.fromEntries(computeInndata().map(r=>[r.slot,r]));
   const repSlots = getKveldRepSlots();
   const grid=document.getElementById("yardGrid");
   grid.innerHTML="";
