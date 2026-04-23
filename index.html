@@ -573,6 +573,32 @@ border-radius:999px;
 font-size:16px;
 line-height:1;
 }
+
+#inndataTable{
+min-width:0;
+width:auto;
+table-layout:auto;
+}
+#inndataTable th,
+#inndataTable td{
+min-width:0;
+width:auto;
+white-space:nowrap;
+}
+#inndataTable th{
+vertical-align:top;
+padding-top:6px;
+padding-bottom:4px;
+}
+#inndataTable th:nth-child(1),
+#inndataTable td:nth-child(1){width:110px;}
+#inndataTable th:nth-child(2),
+#inndataTable td:nth-child(2){width:120px;}
+#inndataTable th:nth-child(3),
+#inndataTable td:nth-child(3){width:95px;}
+#inndataTable th:nth-child(4),
+#inndataTable td:nth-child(4){width:80px;}
+
 @media (max-width:1100px){
 .segmented{grid-template-columns:repeat(5,minmax(120px,1fr))}
 }
@@ -715,7 +741,7 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="inndata">
-<div class="note">Skiftebevegelser leses automatisk fra Turnering Kveld og Turnering Natt.</div>
+<div class="note">Planlegg skiftebevegelser manuelt her. Alle felter starter tomme, og klokkeslett kan overskrives fritt.</div>
 <div class="view-tools">
 <span class="label">Planlegge skiftebevegelser</span>
 <button class="compact zoom-out" data-target="inndataZoom">Zoom ut</button>
@@ -875,6 +901,16 @@ headerNatt,
 ];
 
 
+
+function makeEmptyPlanSkifteRows(count=20){
+  return Array.from({length:count},()=>({
+    time:"",
+    vehicle:"",
+    fromSpor:"",
+    toSpor:""
+  }));
+}
+
 const fixedOppstillingRows=[
 {time:"04:10",train:"802",mode:"dobb",highlight:false,togClass:"",modeClass:"opp-greytext"},
 {time:"04:29",train:"852",mode:"enk",highlight:false,togClass:"",modeClass:"opp-greytext"},
@@ -958,6 +994,7 @@ function makeDefaultState(){
     baliseMetaToday:null,
     baliseMetaTomorrow:null,
     baliseSelectedMode:"idag",
+    planSkifteRows:makeEmptyPlanSkifteRows(),
     apiBalise:{
       ok:false,
       updatedAt:"",
@@ -994,6 +1031,7 @@ if(!state.baliseTomorrow) state.baliseTomorrow={};
 if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
 if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;
+if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkifteRows();
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
@@ -1665,71 +1703,31 @@ function buildInndata(){
   table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th></tr></thead>";
   const body=document.createElement("tbody");
 
-  const rows=[];
+  const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : makeEmptyPlanSkifteRows();
 
-  (state.turneringKveld || []).forEach(row=>{
-    if(!row || row.type) return;
-
-    const time = normalizeTimeString(row.a);
-    const frontVehicle = sanitizeVehicleValue(getEffectiveKveldVehicleValue(row,"c"));
-    const frontTo = normalizeSlot(row.e);
-    if(time || frontVehicle || frontTo){
-      rows.push({
-        time,
-        vehicle: frontVehicle,
-        fromSpor: "",
-        toSpor: frontTo
-      });
-    }
-
-    const rearVehicle = sanitizeVehicleValue(getEffectiveKveldVehicleValue(row,"g"));
-    const rearTo = normalizeSlot(row.i);
-    if(time || rearVehicle || rearTo){
-      rows.push({
-        time,
-        vehicle: rearVehicle,
-        fromSpor: "",
-        toSpor: rearTo
-      });
-    }
-  });
-
-  (state.turneringNatt || []).forEach(row=>{
-    if(!row || row.type) return;
-
-    const time = normalizeTimeString(row.a);
-    const vehicle1 = sanitizeVehicleValue(row.c);
-    const to1 = normalizeSlot(row.f);
-    if(time || vehicle1 || to1){
-      rows.push({
-        time,
-        vehicle: vehicle1,
-        fromSpor: "",
-        toSpor: to1
-      });
-    }
-
-    const vehicle2 = sanitizeVehicleValue(row.d);
-    const to2 = normalizeSlot(row.h);
-    if(time || vehicle2 || to2){
-      rows.push({
-        time,
-        vehicle: vehicle2,
-        fromSpor: "",
-        toSpor: to2
-      });
-    }
-  });
-
-  rows.forEach(r=>{
+  rows.forEach((row,ri)=>{
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td>${escapeHtml(r.time)}</td><td>${escapeHtml(r.vehicle)}</td><td>${escapeHtml(r.fromSpor)}</td><td>${escapeHtml(r.toSpor)}</td>`;
+    ["time","vehicle","fromSpor","toSpor"].forEach(key=>{
+      const td=document.createElement("td");
+      const inp=document.createElement("input");
+      inp.type="text";
+      inp.inputMode="text";
+      inp.autocapitalize="off";
+      inp.autocorrect="off";
+      inp.spellcheck=false;
+      inp.value=String(row?.[key] || "");
+      inp.addEventListener("input",e=>{
+        state.planSkifteRows[ri][key]=e.target.value;
+        persist(true);
+      });
+      td.appendChild(inp);
+      tr.appendChild(td);
+    });
     body.appendChild(tr);
   });
 
   table.appendChild(body);
 }
-
 
 function computeOppstillingLookup(){
   const lookup={};
