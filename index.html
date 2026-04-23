@@ -109,7 +109,6 @@ overflow:auto;
 scroll-margin-top:calc(var(--seg-height) + 28px)
 }
 .panel.active{display:block}
-.panel-scroll-fix{overflow:visible}
 .note{
 background:#fafafa;
 border:1px dashed var(--line);
@@ -556,18 +555,6 @@ border-radius:999px;
 font-size:16px;
 line-height:1;
 }
-
-@media (min-width:701px){
-.panel-scroll-fix .zoom-wrap{
-max-height:70vh;
-overflow:auto;
-overscroll-behavior:contain;
-}
-.panel-scroll-fix .zoom-inner{
-min-width:100%;
-}
-}
-
 @media (max-width:1100px){
 .segmented{grid-template-columns:repeat(5,minmax(120px,1fr))}
 }
@@ -652,7 +639,7 @@ button{padding:12px 12px}
 <button class="seg active" type="button" data-tab="sporplan">Sporplan</button>
 <button class="seg" type="button" data-tab="turneringKveld">Turnering Kveld</button>
 <button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
-<button class="seg" type="button" data-tab="inndata">Inndata</button>
+<button class="seg" type="button" data-tab="inndata">Planlegge skiftebevegelser</button>
 <button class="seg" type="button" data-tab="oppstilling">Tursatt</button>
 </div>
 
@@ -692,7 +679,7 @@ button{padding:12px 12px}
 </section>
 
 
-<section class="panel panel-scroll-fix" id="turneringNatt">
+<section class="panel" id="turneringNatt">
 <div class="note">Fyll inn natt her. Ved konflikt vinner natt fordi den leses sist.</div>
 <div class="view-tools">
 <span class="label">Turnering Natt visning</span>
@@ -710,9 +697,9 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="inndata">
-<div class="note">Leses automatisk fra Turnering Kveld og Turnering Natt.</div>
+<div class="note">Planlagte skiftebevegelser leses automatisk fra Turnering Kveld og Turnering Natt.</div>
 <div class="view-tools">
-<span class="label">Inndata visning</span>
+<span class="label">Planlegge skiftebevegelser visning</span>
 <button class="compact zoom-out" data-target="inndataZoom">Zoom ut</button>
 <button class="compact zoom-in" data-target="inndataZoom">Zoom inn</button>
 <button class="compact compact-toggle" data-target="inndataZoom">Kompakt visning</button>
@@ -726,7 +713,7 @@ button{padding:12px 12px}
 </section>
 
 
-<section class="panel panel-scroll-fix" id="oppstilling">
+<section class="panel" id="oppstilling">
 <div class="note">Tursatte tog vises samlet her. Ved <strong>Nullstill</strong> slettes kjøretøydata, men tognumrene blir stående. Statiske JSON-filer brukes nå for hardkodede ankomster og avganger. Kjøretøy skal ikke være hardkodet i frontend.</div>
 
 
@@ -1481,13 +1468,36 @@ function mergeRowsIntoResult(rows,result,map){
 
 
 function computeInndata(){
-  const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
-  const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
-  mergeRowsIntoResult(state.turneringKveld,result,map);
-  mergeRowsIntoResult(state.turneringNatt,result,map);
-  return result;
-}
+  const moves = [];
 
+  function addMove(time, vehicle, fromSlot, toSlot){
+    const cleanVehicle = sanitizeVehicleValue(vehicle);
+    const cleanFrom = normalizeSlot(fromSlot);
+    const cleanTo = normalizeSlot(toSlot);
+    const cleanTime = normalizeTimeString(time);
+    if(!cleanVehicle && !cleanFrom && !cleanTo) return;
+    moves.push({
+      time: cleanTime,
+      vehicle: cleanVehicle,
+      fromSlot: cleanFrom,
+      toSlot: cleanTo
+    });
+  }
+
+  (state.turneringKveld || []).forEach(row=>{
+    if(!row || row.type) return;
+    addMove(row.a, getEffectiveKveldVehicleValue(row, "c"), "", row.e);
+    addMove(row.a, getEffectiveKveldVehicleValue(row, "g"), "", row.i);
+  });
+
+  (state.turneringNatt || []).forEach(row=>{
+    if(!row || row.type) return;
+    addMove(row.a, row.c, "", row.f);
+    addMove(row.a, row.d, "", row.h);
+  });
+
+  return moves.filter(r=>r.time || r.vehicle || r.fromSlot || r.toSlot);
+}
 
 
 function isRepMarker(value){
@@ -1644,16 +1654,14 @@ function buildTurnering(tableId,key){
 function buildInndata(){
   const data=computeInndata();
   const table=document.getElementById("inndataTable");
-  table.innerHTML="<thead><tr><th>Slot</th><th>Tognummer</th><th>Materiellnr</th><th class='wash-col'>Vask</th></tr></thead>";
+  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th></tr></thead>";
   const body=document.createElement("tbody");
-
 
   data.forEach(r=>{
     const tr=document.createElement("tr");
-    tr.innerHTML=`<td class="slotcol">${r.slot}</td><td>${escapeHtml(r.tog)}</td><td>${escapeHtml(r.mat)}</td><td class="wash-col">${r.wash?"ja":""}</td>`;
+    tr.innerHTML=`<td>${escapeHtml(r.time)}</td><td>${escapeHtml(r.vehicle)}</td><td>${escapeHtml(r.fromSlot)}</td><td class="slotcol">${escapeHtml(r.toSlot)}</td>`;
     body.appendChild(tr);
   });
-
 
   table.appendChild(body);
 }
@@ -2002,9 +2010,17 @@ function getSporplanTextsForSlot(slot, info){
   return result;
 }
 
+function computeSporplanData(){
+  const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
+  const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
+  mergeRowsIntoResult(state.turneringKveld,result,map);
+  mergeRowsIntoResult(state.turneringNatt,result,map);
+  return result;
+}
+
 
 function buildSporplan(){
-  const data=Object.fromEntries(computeInndata().map(r=>[r.slot,r]));
+  const data=Object.fromEntries(computeSporplanData().map(r=>[r.slot,r]));
   const repSlots = getKveldRepSlots();
   const grid=document.getElementById("yardGrid");
   grid.innerHTML="";
