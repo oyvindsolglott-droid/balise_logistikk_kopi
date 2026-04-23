@@ -598,6 +598,17 @@ padding-bottom:4px;
 #inndataTable td:nth-child(3){width:95px;}
 #inndataTable th:nth-child(4),
 #inndataTable td:nth-child(4){width:80px;}
+#inndataTable th:nth-child(5),
+#inndataTable td:nth-child(5){width:80px;}
+#inndataTable tr.utfort-row td{
+background:#d9d9d9 !important;
+color:#111827;
+border-color:#8b949e !important;
+}
+#inndataTable tr.utfort-row td input{
+background:transparent !important;
+color:#111827;
+}
 
 @media (max-width:1100px){
 .segmented{grid-template-columns:repeat(5,minmax(120px,1fr))}
@@ -907,7 +918,8 @@ function makeEmptyPlanSkifteRows(count=20){
     time:"",
     vehicle:"",
     fromSpor:"",
-    toSpor:""
+    toSpor:"",
+    utfort:""
   }));
 }
 
@@ -1032,6 +1044,7 @@ if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
 if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;
 if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkifteRows();
+else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",utfort:"",...(row||{})}));
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
@@ -1698,16 +1711,24 @@ function buildTurnering(tableId,key){
 }
 
 
+function isPlanSkifteUtfort(value){
+  const s = String(value || "").trim().toLowerCase();
+  return s === "j" || s === "ja";
+}
+
 function buildInndata(){
   const table=document.getElementById("inndataTable");
-  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th></tr></thead>";
+  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>Utført</th></tr></thead>";
   const body=document.createElement("tbody");
 
   const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : makeEmptyPlanSkifteRows();
 
   rows.forEach((row,ri)=>{
     const tr=document.createElement("tr");
-    ["time","vehicle","fromSpor","toSpor"].forEach(key=>{
+    if(isPlanSkifteUtfort(row?.utfort)){
+      tr.classList.add("utfort-row");
+    }
+    ["time","vehicle","fromSpor","toSpor","utfort"].forEach(key=>{
       const td=document.createElement("td");
       const inp=document.createElement("input");
       inp.type="text";
