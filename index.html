@@ -109,6 +109,7 @@ overflow:auto;
 scroll-margin-top:calc(var(--seg-height) + 28px)
 }
 .panel.active{display:block}
+.panel-scroll-fix{overflow:visible}
 .note{
 background:#fafafa;
 border:1px dashed var(--line);
@@ -188,15 +189,6 @@ width:auto;
 min-width:0;
 width:auto;
 padding:4px 3px;
-}
-.turnering-kveld-table th{
-vertical-align:top;
-padding-top:6px;
-padding-bottom:3px;
-font-size:13px;
-line-height:1.15;
-white-space:normal;
-height:auto;
 }
 .turnering-kveld-table .kveld-col-a{width:62px}
 .turnering-kveld-table .kveld-col-b{width:72px}
@@ -564,6 +556,18 @@ border-radius:999px;
 font-size:16px;
 line-height:1;
 }
+
+@media (min-width:701px){
+.panel-scroll-fix .zoom-wrap{
+max-height:70vh;
+overflow:auto;
+overscroll-behavior:contain;
+}
+.panel-scroll-fix .zoom-inner{
+min-width:100%;
+}
+}
+
 @media (max-width:1100px){
 .segmented{grid-template-columns:repeat(5,minmax(120px,1fr))}
 }
@@ -688,7 +692,7 @@ button{padding:12px 12px}
 </section>
 
 
-<section class="panel" id="turneringNatt">
+<section class="panel panel-scroll-fix" id="turneringNatt">
 <div class="note">Fyll inn natt her. Ved konflikt vinner natt fordi den leses sist.</div>
 <div class="view-tools">
 <span class="label">Turnering Natt visning</span>
@@ -722,7 +726,7 @@ button{padding:12px 12px}
 </section>
 
 
-<section class="panel" id="oppstilling">
+<section class="panel panel-scroll-fix" id="oppstilling">
 <div class="note">Tursatte tog vises samlet her. Ved <strong>Nullstill</strong> slettes kjøretøydata, men tognumrene blir stående. Statiske JSON-filer brukes nå for hardkodede ankomster og avganger. Kjøretøy skal ikke være hardkodet i frontend.</div>
 
 
@@ -799,16 +803,16 @@ const STORAGE_KEY="skien_sporplan_iphone_v13";
 
 const headerKveld={
 type:"header",
-a:"Ankomst kl.",
-b:"Fra tognr.",
-c:"fremre sett",
-d:"Vask fremre sett",
-e:"fremre til spor:",
-f:"turneres til:",
-g:"bakre sett",
-h:"Vask bakre sett",
-i:"bakre til spor:",
-j:"turneres til:"
+a:"ank. kl.",
+b:"fra tognr.",
+c:"s.nr.1",
+d:"vask s.nr.1",
+e:"til spor; s.nr.1",
+f:"s.nr.1 blir tognr.",
+g:"s.nr.2",
+h:"vask s.nr.2",
+i:"til spor; s.nr.2",
+j:"s.nr.2 blir tognr."
 };
 
 const headerNatt={
@@ -828,7 +832,7 @@ i:"2 til tognr."
 const initialKveldRows=[
 headerKveld,
 {a:"14:49",b:"2482",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
-{a:"14:53",b:"817",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"14:53",b:"817",c:"",d:"",e:"T",f:"",g:"",h:"",i:"",j:""},
 {a:"15:38",b:"2483",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"15:53",b:"819",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"16:18",b:"2484",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
@@ -839,17 +843,17 @@ headerKveld,
 {a:"17:42",b:"861",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"17:53",b:"823",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"17:59",b:"2486",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
-{a:"18:30",b:"855",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"18:30",b:"855",c:"",d:"",e:"1",f:"",g:"",h:"",i:"",j:""},
 {a:"18:42",b:"863",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"18:53",b:"825",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"19:01",b:"2487",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
-{a:"19:31",b:"12487",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"19:31",b:"12487",c:"",d:"",e:"10 s",f:"",g:"",h:"",i:"",j:""},
 {a:"19:53",b:"827",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"20:53",b:"829",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
-{a:"20:59",b:"2489",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"20:59",b:"2489",c:"",d:"",e:"10 N",f:"",g:"",h:"",i:"",j:""},
 {a:"21:53",b:"831",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
-{type:"",b:"ukjente tognr."},
+{type:"section",b:"ukjente tognr."},
 ...Array.from({length:11},()=>({a:"",b:"ikke tursatt",c:"",d:"",e:"",f:"",g:"",h:"",i:""}))
 ];
 
@@ -953,8 +957,7 @@ function makeDefaultState(){
       nattZoom:{scale:1,compact:false},
       inndataZoom:{scale:1,compact:false},
       apiCombinedZoom:{scale:1,compact:false}
-    },
-    kveldCol5ResetDone:true
+    }
   };
 }
 
@@ -995,14 +998,6 @@ if(!state.views){
     inndataZoom:{scale:1,compact:false},
     apiCombinedZoom:{scale:1,compact:false}
   };
-}
-if(!state.kveldCol5ResetDone){
-  (state.turneringKveld || []).forEach(row=>{
-    if(!row || row.type) return;
-    row.e = "";
-  });
-  state.kveldCol5ResetDone = true;
-  persist(true);
 }
 
 setResponsiveDefaultViews();
