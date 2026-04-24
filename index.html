@@ -1407,7 +1407,11 @@ function updateBaliseStatus(){
 
   if(meta && meta.date){
     const src = meta.source ? ` (${meta.source})` : "";
-    el.textContent = `Balise ${meta.mode}: ${meta.date}${src}, ${count} kjøretøy, ${depCount} avganger`;
+    if(state.baliseSelectedMode === "imorgen" && count === 0){
+      el.textContent = `Balise i morgen: ${meta.date}${src}, ingen kjøretøy publisert ennå, ${depCount} avganger`;
+    }else{
+      el.textContent = `Balise ${meta.mode}: ${meta.date}${src}, ${count} kjøretøy, ${depCount} avganger`;
+    }
   }else{
     el.textContent = `Ingen Balise-fil lastet inn for ${state.baliseSelectedMode}`;
   }
@@ -2456,7 +2460,9 @@ async function ensureTomorrowStaticDataLoaded(){
       mode: payload.mode || "imorgen",
       date: String(payload.date || ""),
       generated_at: String(payload.updatedAt || payload.generated_at || ""),
-      hasDepartures: Object.keys(normalizedDepartures).length > 0
+      hasDepartures: Object.keys(normalizedDepartures).length > 0,
+      vehicleCount: Object.values(normalizedVehicles).filter(v => sanitizeVehicleValue(v)).length,
+      vehicleErrors: payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0
     };
 
     persist(true);
@@ -2491,11 +2497,20 @@ function renderApiTables(){
   }
 
 
-  apiStatus.textContent = `API lest: ${Object.keys(departures).length} avganger, ${Object.keys(arrivals).length} ankomster`;
+  const vehicleCount = Object.values(api.vehicles || {}).filter(v => sanitizeVehicleValue(v)).length;
+  const depVehicleCount = Object.keys(api.departureVehicles || {}).length;
+  const arrVehicleCount = Object.keys(api.arrivalVehicles || {}).length;
+  const errorCount = Object.keys(api.vehicleErrors || {}).length;
+
+  if((api.mode || state.baliseSelectedMode) === "imorgen" && vehicleCount === 0){
+    apiStatus.textContent = `Balise i morgen lest: 0 kjøretøy publisert ennå`;
+  }else{
+    apiStatus.textContent = `API lest: ${Object.keys(departures).length} avganger, ${Object.keys(arrivals).length} ankomster, ${vehicleCount} kjøretøy`;
+  }
 
 
   const prefixes = Array.isArray(api.allowedMaterialPrefixes) ? api.allowedMaterialPrefixes.join(", ") : "";
-  apiMeta.textContent = `updatedAt: ${api.updatedAt || "ukjent"} | tillatte materiellprefiks: ${prefixes || "ukjent"} | format: ${api.materialFormat || "ukjent"}`;
+  apiMeta.textContent = `dato: ${api.date || "ukjent"} | updatedAt: ${api.updatedAt || "ukjent"} | avgangskjøretøy: ${depVehicleCount} | ankomstkjøretøy: ${arrVehicleCount} | feil uten kjøretøy: ${errorCount} | tillatte materiellprefiks: ${prefixes || "ukjent"} | format: ${api.materialFormat || "ukjent"}`;
 }
 
 
@@ -2519,12 +2534,21 @@ async function fetchBaliseApi(){
     const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
     const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
     const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
+    const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
+    const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
+    const vehicleErrorCount = payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0;
 
     state.apiBalise = {
       ok:Boolean(payload.ok !== false),
       updatedAt:String(payload.updatedAt || payload.generated_at || ""),
+      mode:payload.mode || mode,
+      date:String(payload.date || ""),
+      vehicles:normalizedVehicles,
       departures:normalizedDepartures,
       arrivals:normalizedArrivals,
+      departureVehicles:normalizedDepartureVehicles,
+      arrivalVehicles:normalizedArrivalVehicles,
+      vehicleErrors:payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? payload.vehicleErrors : {},
       allowedMaterialPrefixes:Array.isArray(payload.allowedMaterialPrefixes) ? payload.allowedMaterialPrefixes.map(v=>String(v)) : [],
       materialFormat:Array.isArray(payload.materialFormat) ? payload.materialFormat.join(", ") : String(payload.materialFormat || ""),
       error:""
@@ -2535,7 +2559,11 @@ async function fetchBaliseApi(){
       mode: payload.mode || mode,
       date: String(payload.date || ""),
       generated_at: String(payload.updatedAt || payload.generated_at || ""),
-      hasDepartures: Object.keys(normalizedDepartures).length > 0
+      hasDepartures: Object.keys(normalizedDepartures).length > 0,
+      vehicleCount: Object.values(normalizedVehicles).filter(v => sanitizeVehicleValue(v)).length,
+      departureVehicleCount: Object.keys(normalizedDepartureVehicles).length,
+      arrivalVehicleCount: Object.keys(normalizedArrivalVehicles).length,
+      vehicleErrors: vehicleErrorCount
     };
 
     if((payload.mode || mode) === "imorgen"){
@@ -2557,8 +2585,14 @@ async function fetchBaliseApi(){
     state.apiBalise = {
       ok:false,
       updatedAt:"",
+      mode:state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag",
+      date:"",
+      vehicles:{},
       departures:{},
       arrivals:{},
+      departureVehicles:{},
+      arrivalVehicles:{},
+      vehicleErrors:{},
       allowedMaterialPrefixes:[],
       materialFormat:"",
       error:`API-feil: ${err.message}`
