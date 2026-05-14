@@ -326,6 +326,12 @@ color:#9a3412;
 .slot-plan-badge.plan-til{
 color:#4c1d95;
 }
+.slot.plan-ferdig{
+box-shadow:0 0 0 4px #16a34a inset,0 0 0 2px #14532d;
+}
+.slot-plan-badge.plan-ferdig{
+color:#14532d;
+}
 
 td.wash-col,th.wash-col{background:var(--wash)}
 .slotcol{font-weight:700}
@@ -1753,13 +1759,18 @@ function isPlanSkifteUtfort(value){
   return s === "j" || s === "ja";
 }
 
+function isPlanSkifteFerdig(value){
+  const s = String(value || "").trim().toLowerCase();
+  return s === "f" || s === "ferdig";
+}
+
 function isPlanSkifteRowFilled(row){
   return ["time","vehicle","fromSpor","toSpor"].some(key => String(row?.[key] || "").trim() !== "");
 }
 
 function updatePlanSkifteRowClass(tr,row){
   tr.classList.remove("utfort-row","ikke-utfort-row");
-  if(isPlanSkifteUtfort(row?.utfort)){
+  if(isPlanSkifteUtfort(row?.utfort) || isPlanSkifteFerdig(row?.utfort)){
     tr.classList.add("utfort-row");
   } else if(isPlanSkifteRowFilled(row)){
     tr.classList.add("ikke-utfort-row");
@@ -2126,19 +2137,29 @@ function getPlanSkifteMarkersBySlot(){
 
   rows.forEach(row=>{
     if(!isPlanSkifteRowFilled(row)) return;
-    if(isPlanSkifteUtfort(row?.utfort)) return;
 
     const vehicle = String(row?.vehicle || "").trim();
     const fromSlot = normalizeSlot(row?.fromSpor);
     const toSlot = normalizeSlot(row?.toSpor);
 
+    if(isPlanSkifteFerdig(row?.utfort)){
+      if(toSlot){
+        if(!markers[toSlot]) markers[toSlot] = {from:[],to:[],ferdig:[]};
+        if(!markers[toSlot].ferdig) markers[toSlot].ferdig = [];
+        markers[toSlot].ferdig.push(vehicle || "ferdig");
+      }
+      return;
+    }
+
+    if(isPlanSkifteUtfort(row?.utfort)) return;
+
     if(fromSlot){
-      if(!markers[fromSlot]) markers[fromSlot] = {from:[],to:[]};
+      if(!markers[fromSlot]) markers[fromSlot] = {from:[],to:[],ferdig:[]};
       markers[fromSlot].from.push(vehicle || "plan");
     }
 
     if(toSlot){
-      if(!markers[toSlot]) markers[toSlot] = {from:[],to:[]};
+      if(!markers[toSlot]) markers[toSlot] = {from:[],to:[],ferdig:[]};
       markers[toSlot].to.push(vehicle || "plan");
     }
   });
@@ -2221,6 +2242,7 @@ function buildSporplan(){
       const planMarker = planSkifteMarkers[normalizeSlot(slot)] || null;
       if(planMarker?.from?.length) div.classList.add("plan-fra");
       if(planMarker?.to?.length) div.classList.add("plan-til");
+      if(planMarker?.ferdig?.length) div.classList.add("plan-ferdig");
 
       div.dataset.slot = slot;
 
@@ -2253,6 +2275,10 @@ function buildSporplan(){
 
       if(planMarker?.to?.length){
         html += `<span class="slot-plan-badge plan-til">PLAN TIL: ${escapeHtml(planMarker.to.join(", "))}</span>`;
+      }
+
+      if(planMarker?.ferdig?.length){
+        html += `<span class="slot-plan-badge plan-ferdig">FERDIG: ${escapeHtml(planMarker.ferdig.join(", "))}</span>`;
       }
 
       if(repSlots.has(normalizeSlot(slot))){
