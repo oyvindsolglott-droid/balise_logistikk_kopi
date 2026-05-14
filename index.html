@@ -302,6 +302,30 @@ padding:4px 6px;
 border-radius:999px;
 box-shadow:0 1px 3px rgba(0,0,0,.2);
 }
+.slot.plan-fra{
+box-shadow:0 0 0 4px #f97316 inset,0 0 0 2px #7c2d12;
+}
+.slot.plan-til{
+box-shadow:0 0 0 4px #7c3aed inset,0 0 0 2px #3b0764;
+}
+.slot.plan-fra.plan-til{
+box-shadow:0 0 0 4px #f97316 inset,0 0 0 8px #7c3aed inset,0 0 0 2px #3b0764;
+}
+.slot-plan-badge{
+display:block;
+width:100%;
+margin-top:4px;
+font-size:11px;
+line-height:1.15;
+font-weight:900;
+letter-spacing:.02em;
+}
+.slot-plan-badge.plan-fra{
+color:#9a3412;
+}
+.slot-plan-badge.plan-til{
+color:#4c1d95;
+}
 
 td.wash-col,th.wash-col{background:var(--wash)}
 .slotcol{font-weight:700}
@@ -2096,6 +2120,33 @@ function findKveldRowByTrain(trainNo){
 }
 
 
+function getPlanSkifteMarkersBySlot(){
+  const markers = {};
+  const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+
+  rows.forEach(row=>{
+    if(!isPlanSkifteRowFilled(row)) return;
+    if(isPlanSkifteUtfort(row?.utfort)) return;
+
+    const vehicle = String(row?.vehicle || "").trim();
+    const fromSlot = normalizeSlot(row?.fromSpor);
+    const toSlot = normalizeSlot(row?.toSpor);
+
+    if(fromSlot){
+      if(!markers[fromSlot]) markers[fromSlot] = {from:[],to:[]};
+      markers[fromSlot].from.push(vehicle || "plan");
+    }
+
+    if(toSlot){
+      if(!markers[toSlot]) markers[toSlot] = {from:[],to:[]};
+      markers[toSlot].to.push(vehicle || "plan");
+    }
+  });
+
+  return markers;
+}
+
+
 function getSporplanTextsForSlot(slot, info){
   const result = { currentTrain:"", nextTrain:"" };
   if(!slot || !info) return result;
@@ -2122,6 +2173,7 @@ function getSporplanTextsForSlot(slot, info){
 function buildSporplan(){
   const data=Object.fromEntries(computeInndata().map(r=>[r.slot,r]));
   const repSlots = getKveldRepSlots();
+  const planSkifteMarkers = getPlanSkifteMarkersBySlot();
   const grid=document.getElementById("yardGrid");
   grid.innerHTML="";
 
@@ -2165,6 +2217,11 @@ function buildSporplan(){
       const div=document.createElement("div");
       div.className=`slot ${fillClass} ${slotKind(slot)}`;
       if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
+
+      const planMarker = planSkifteMarkers[normalizeSlot(slot)] || null;
+      if(planMarker?.from?.length) div.classList.add("plan-fra");
+      if(planMarker?.to?.length) div.classList.add("plan-til");
+
       div.dataset.slot = slot;
 
 
@@ -2188,6 +2245,14 @@ function buildSporplan(){
 
       if(info.mat){
         html += `<span class="slot-bottom mat">${escapeHtml(info.mat)}</span>`;
+      }
+
+      if(planMarker?.from?.length){
+        html += `<span class="slot-plan-badge plan-fra">PLAN FRA: ${escapeHtml(planMarker.from.join(", "))}</span>`;
+      }
+
+      if(planMarker?.to?.length){
+        html += `<span class="slot-plan-badge plan-til">PLAN TIL: ${escapeHtml(planMarker.to.join(", "))}</span>`;
       }
 
       if(repSlots.has(normalizeSlot(slot))){
