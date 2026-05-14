@@ -609,6 +609,15 @@ border-color:#8b949e !important;
 background:transparent !important;
 color:#111827;
 }
+#inndataTable tr.ikke-utfort-row td{
+background:#ffcccc !important;
+color:#111827;
+border-color:#dc2626 !important;
+}
+#inndataTable tr.ikke-utfort-row td input{
+background:transparent !important;
+color:#111827;
+}
 
 @media (max-width:1100px){
 .segmented{grid-template-columns:repeat(5,minmax(120px,1fr))}
@@ -1720,6 +1729,19 @@ function isPlanSkifteUtfort(value){
   return s === "j" || s === "ja";
 }
 
+function isPlanSkifteRowFilled(row){
+  return ["time","vehicle","fromSpor","toSpor"].some(key => String(row?.[key] || "").trim() !== "");
+}
+
+function updatePlanSkifteRowClass(tr,row){
+  tr.classList.remove("utfort-row","ikke-utfort-row");
+  if(isPlanSkifteUtfort(row?.utfort)){
+    tr.classList.add("utfort-row");
+  } else if(isPlanSkifteRowFilled(row)){
+    tr.classList.add("ikke-utfort-row");
+  }
+}
+
 function buildInndata(){
   const table=document.getElementById("inndataTable");
   table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>Utført</th></tr></thead>";
@@ -1729,9 +1751,7 @@ function buildInndata(){
 
   rows.forEach((row,ri)=>{
     const tr=document.createElement("tr");
-    if(isPlanSkifteUtfort(row?.utfort)){
-      tr.classList.add("utfort-row");
-    }
+    updatePlanSkifteRowClass(tr,row);
     ["time","vehicle","fromSpor","toSpor","utfort"].forEach(key=>{
       const td=document.createElement("td");
       const inp=document.createElement("input");
@@ -1743,6 +1763,7 @@ function buildInndata(){
       inp.value=String(row?.[key] || "");
       inp.addEventListener("input",e=>{
         state.planSkifteRows[ri][key]=e.target.value;
+        updatePlanSkifteRowClass(tr,state.planSkifteRows[ri]);
         persist(true);
       });
       td.appendChild(inp);
