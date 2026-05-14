@@ -135,6 +135,52 @@ def find_first_material_line(text: str, keywords: Iterable[str]) -> List[str]:
     return []
 
 
+def get_balise_train_lookup_candidates(train_no: str) -> List[str]:
+    """Returner tognummer som skal prøves mot Balise for samme planlagte tog."""
+    train = normalize_train_no(train_no)
+    if not train:
+        return []
+
+    candidates = [train]
+
+    if train.isdigit():
+        number = int(train)
+        if 800 <= number <= 899:
+            candidates.append(f"90{train}")
+
+    return candidates
+
+
+def extract_vehicle_hits_from_balise_text(text: str) -> Tuple[List[str], List[str], List[str]]:
+    general_route_hits = (
+        find_first_material_line(text, ["Skien - Eidsvoll:"])
+        or find_first_material_line(text, ["Skien - Notodden:"])
+        or find_first_material_line(text, ["Porsgrunn - Eidsvoll:"])
+        or find_first_material_line(text, ["Porsgrunn - Notodden:"])
+        or find_first_material_line(text, ["Eidsvoll - Skien:"])
+        or find_first_material_line(text, ["Notodden - Skien:"])
+        or find_first_material_line(text, ["Eidsvoll - Porsgrunn:"])
+        or find_first_material_line(text, ["Notodden - Porsgrunn:"])
+    )
+    general_hits = general_route_hits or unique_material_hits(text)
+
+    departure_hits = (
+        find_first_material_line(text, ["Porsgrunn - Eidsvoll:"])
+        or find_first_material_line(text, ["Porsgrunn - Notodden:"])
+        or find_first_material_line(text, ["Porsgrunn:"])
+        or general_hits
+    )
+
+    arrival_hits = (
+        find_first_material_line(text, ["Eidsvoll - Porsgrunn:"])
+        or find_first_material_line(text, ["Notodden - Porsgrunn:"])
+        or find_first_material_line(text, ["Porsgrunn:"])
+        or general_hits
+    )
+
+    return general_hits, departure_hits, arrival_hits
+
+
 def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) -> Tuple[Dict[str, str], Dict[str, str], Dict[str, str], Dict[str, str]]:
     vehicles: Dict[str, str] = {}
     departure_vehicles: Dict[str, str] = {}
@@ -152,51 +198,38 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
         page = browser.new_page()
 
         for train_no in train_list:
-            url = f"https://balise.no/tog/{train_no}/{run_date.isoformat()}"
+            last_error = ""
 
-            try:
-                page.goto(url, wait_until="networkidle", timeout=30000)
-                text = page.locator("body").inner_text()
+            for lookup_train_no in get_balise_train_lookup_candidates(train_no):
+                url = f"https://balise.no/tog/{lookup_train_no}/{run_date.isoformat()}"
 
-                general_route_hits = (
-                    find_first_material_line(text, ["Skien - Eidsvoll:"])
-                    or find_first_material_line(text, ["Skien - Notodden:"])
-                    or find_first_material_line(text, ["Porsgrunn - Eidsvoll:"])
-                    or find_first_material_line(text, ["Porsgrunn - Notodden:"])
-                    or find_first_material_line(text, ["Eidsvoll - Skien:"])
-                    or find_first_material_line(text, ["Notodden - Skien:"])
-                    or find_first_material_line(text, ["Eidsvoll - Porsgrunn:"])
-                    or find_first_material_line(text, ["Notodden - Porsgrunn:"])
-                )
-                general_hits = general_route_hits or unique_material_hits(text)
+                try:
+                    page.goto(url, wait_until="networkidle", timeout=30000)
+                    text = page.locator("body").inner_text()
 
-                departure_hits = (
-                    find_first_material_line(text, ["Porsgrunn - Eidsvoll:"])
-                    or find_first_material_line(text, ["Porsgrunn - Notodden:"])
-                    or find_first_material_line(text, ["Porsgrunn:"])
-                    or general_hits
-                )
+                    general_hits, departure_hits, arrival_hits = extract_vehicle_hits_from_balise_text(text)
 
-                arrival_hits = (
-                    find_first_material_line(text, ["Eidsvoll - Porsgrunn:"])
-                    or find_first_material_line(text, ["Notodden - Porsgrunn:"])
-                    or find_first_material_line(text, ["Porsgrunn:"])
-                    or general_hits
-                )
+                    if general_hits:
+                        vehicles[train_no] = ", ".join(general_hits)
 
-                if general_hits:
-                    vehicles[train_no] = ", ".join(general_hits)
-                else:
-                    errors[train_no] = "Fant ingen kjøretøy i siden"
+                    if departure_hits:
+                        departure_vehicles[train_no] = ", ".join(departure_hits)
 
-                if departure_hits:
-                    departure_vehicles[train_no] = ", ".join(departure_hits)
+                    if arrival_hits:
+                        arrival_vehicles[train_no] = ", ".join(arrival_hits)
 
-                if arrival_hits:
-                    arrival_vehicles[train_no] = ", ".join(arrival_hits)
+                    if general_hits or departure_hits or arrival_hits:
+                        if lookup_train_no != train_no:
+                            errors[train_no] = f"Brukte avvikstognummer {lookup_train_no}"
+                        break
 
-            except Exception as exc:  # noqa: BLE001
-                errors[train_no] = str(exc)
+                    last_error = f"Fant ingen kjøretøy i siden {lookup_train_no}"
+
+                except Exception as exc:  # noqa: BLE001
+                    last_error = f"{lookup_train_no}: {exc}"
+
+            if train_no not in vehicles and train_no not in departure_vehicles and train_no not in arrival_vehicles:
+                errors[train_no] = "Fant ingen kjøretøy i siden"
 
         browser.close()
 
