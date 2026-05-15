@@ -787,14 +787,9 @@ box-shadow:none;
 }
 
 /* Tursatt mobil: behold samme tabelloppsett som desktop, men uten zoom-transform */
-#oppstilling .mobile-table-label{
-display:none;
-}
-
 #oppstilling .zoom-wrap{
-max-height:none;
-overflow-x:auto;
-overflow-y:visible;
+max-height:calc(100vh - var(--sticky-top) - var(--seg-height) - 150px);
+overflow:auto;
 -webkit-overflow-scrolling:touch;
 }
 
@@ -810,11 +805,10 @@ box-shadow:none;
 
 #oppstillingTable thead tr:nth-child(2) th{
 position:sticky;
-top:calc(var(--sticky-top) + var(--seg-height) + 62px);
-z-index:46;
+top:0;
+z-index:16;
 background:#f3f4f6;
-background-clip:padding-box;
-box-shadow:0 2px 3px rgba(0,0,0,.10);
+box-shadow:0 2px 3px rgba(0,0,0,.08);
 }
 
 .file-input{max-width:none}
