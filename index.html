@@ -546,69 +546,6 @@ grid-template-columns:1fr 1fr;
 gap:12px;
 margin-bottom:12px;
 }
-.opp-mobile-cards{
-display:none;
-}
-
-.opp-mobile-section{
-border:1px solid var(--line);
-border-radius:14px;
-background:#fff;
-margin:0 0 12px 0;
-overflow:hidden;
-}
-
-.opp-mobile-section-title{
-background:#eef5ff;
-font-weight:800;
-padding:10px 12px;
-border-bottom:1px solid var(--line);
-}
-
-.opp-mobile-card{
-padding:10px 12px;
-border-bottom:1px solid var(--line);
-}
-
-.opp-mobile-card:last-child{
-border-bottom:none;
-}
-
-.opp-mobile-grid{
-display:grid;
-grid-template-columns:96px minmax(0,1fr);
-gap:6px 10px;
-align-items:center;
-}
-
-.opp-mobile-label{
-font-size:12px;
-font-weight:800;
-color:var(--muted);
-text-align:left;
-}
-
-.opp-mobile-value{
-min-width:0;
-text-align:left;
-font-weight:700;
-}
-
-.opp-mobile-value input{
-width:100%;
-height:32px;
-border:1px solid var(--line);
-border-radius:8px;
-padding:4px 8px;
-font:inherit;
-background:#fff;
-}
-
-.opp-mobile-swap{
-margin-top:8px;
-text-align:right;
-}
-
 .api-mini-table{
 width:100%;
 min-width:0;
@@ -835,14 +772,6 @@ font-size:12px;
 padding:4px 5px;
 }
 
-#oppstilling .zoom-wrap{
-display:none;
-}
-
-#oppstillingMobileCards{
-display:block;
-}
-
 #oppstilling .zoom-wrap,
 #turneringKveld .zoom-wrap,
 #turneringNatt .zoom-wrap,
@@ -1006,7 +935,6 @@ button{padding:12px 12px}
       <table id="oppstillingTable"></table>
     </div>
   </div>
-  <div id="oppstillingMobileCards" class="opp-mobile-cards"></div>
 </div>
 
 
@@ -2251,110 +2179,6 @@ function appendOppstillingSideCells(tr, rowData, side){
   tr.appendChild(tdVehicle2);
 }
 
-function createOppstillingMobileField(label, content){
-  const labelDiv = document.createElement("div");
-  labelDiv.className = "opp-mobile-label";
-  labelDiv.textContent = label;
-
-  const valueDiv = document.createElement("div");
-  valueDiv.className = "opp-mobile-value";
-
-  if(content instanceof Node){
-    valueDiv.appendChild(content);
-  } else {
-    valueDiv.textContent = String(content || "");
-  }
-
-  return [labelDiv, valueDiv];
-}
-
-function createOppstillingMobileVehicleInput(train, fieldKey, value, isSecondMissing){
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "opp-vehicle-input";
-  input.value = value || "";
-  input.placeholder = fieldKey === "vehicle1" ? "Ikke Tursatt" : "";
-  input.addEventListener("change", e=>handleOppstillingVehicleChange(train, fieldKey, e.target.value));
-
-  if(isSecondMissing){
-    input.classList.add("opp-missing-second");
-  }
-
-  return input;
-}
-
-function appendOppstillingMobileCard(section, rowData, sideLabel){
-  const train = rowData?.train || "";
-  const time = rowData?.displayTime || rowData?.time || "";
-  const vehicles = train
-    ? createOppstillingVehicleCells(train)
-    : {vehicle1:"", vehicle2:"", missingSecond:false};
-
-  const card = document.createElement("div");
-  card.className = "opp-mobile-card";
-
-  const grid = document.createElement("div");
-  grid.className = "opp-mobile-grid";
-
-  [
-    ...createOppstillingMobileField("Tognr.", train),
-    ...createOppstillingMobileField("Tid", time),
-    ...createOppstillingMobileField("Kjøretøy 1", createOppstillingMobileVehicleInput(train, "vehicle1", vehicles.vehicle1, false)),
-    ...createOppstillingMobileField("Kjøretøy 2", createOppstillingMobileVehicleInput(train, "vehicle2", vehicles.vehicle2, vehicles.missingSecond)),
-  ].forEach(el=>grid.appendChild(el));
-
-  card.appendChild(grid);
-
-  if(train && vehicles.vehicle1 && vehicles.vehicle2){
-    const swapWrap = document.createElement("div");
-    swapWrap.className = "opp-mobile-swap";
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "compact opp-swap-btn";
-    btn.title = `Bytt rekkefølge for ${train}`;
-    btn.textContent = "Bytt kjøretøy 1 ⇄ 2";
-    btn.addEventListener("click", ()=>handleOppstillingSwap(train));
-
-    swapWrap.appendChild(btn);
-    card.appendChild(swapWrap);
-  }
-
-  section.appendChild(card);
-}
-
-function buildOppstillingMobileCards(departureRows, arrivalRows){
-  const container = document.getElementById("oppstillingMobileCards");
-  if(!container) return;
-
-  container.innerHTML = "";
-
-  [
-    {title:"Avganger", rows:departureRows || []},
-    {title:"Ankomster", rows:arrivalRows || []},
-  ].forEach(group=>{
-    const section = document.createElement("div");
-    section.className = "opp-mobile-section";
-
-    const title = document.createElement("div");
-    title.className = "opp-mobile-section-title";
-    title.textContent = group.title;
-    section.appendChild(title);
-
-    if(group.rows.length){
-      group.rows.forEach(row=>appendOppstillingMobileCard(section, row, group.title));
-    } else {
-      const empty = document.createElement("div");
-      empty.className = "opp-mobile-card";
-      empty.textContent = "Ingen rader.";
-      section.appendChild(empty);
-    }
-
-    container.appendChild(section);
-  });
-}
-
-
 function buildOppstilling(){
   const table=document.getElementById("oppstillingTable");
   table.innerHTML="";
@@ -2384,7 +2208,6 @@ function buildOppstilling(){
 
   const departureRows = buildDepartureRowsForOppstilling();
   const arrivalRows = buildArrivalRowsForOppstilling();
-  buildOppstillingMobileCards(departureRows, arrivalRows);
   const totalRows = Math.max(departureRows.length, arrivalRows.length, 1);
 
   const body=document.createElement("tbody");
