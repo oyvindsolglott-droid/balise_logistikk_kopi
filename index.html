@@ -787,45 +787,9 @@ box-shadow:none;
 }
 
 /* Tursatt mobil: behold samme tabelloppsett som desktop, men uten zoom-transform */
-#oppstilling .mobile-table-label{
-display:none;
-}
-
-#oppstilling .oppstilling-mobile-real-header{
-display:block;
-position:fixed;
-top:calc(var(--sticky-top) + var(--seg-height) + 62px);
-left:0;
-right:0;
-z-index:46;
-overflow:hidden;
-background:#fff;
-border-top:1px solid var(--line);
-border-bottom:1px solid var(--line);
-box-shadow:0 2px 3px rgba(0,0,0,.10);
-}
-
-#oppstilling .oppstilling-mobile-real-header table{
-border-collapse:collapse;
-min-width:700px;
-width:700px;
-background:#fff;
-}
-
-#oppstilling .oppstilling-mobile-real-header th{
-position:static !important;
-box-shadow:none !important;
-background:#f3f4f6;
-font-size:12px;
-padding:4px 5px;
-height:var(--cell-h);
-min-width:var(--cell-min);
-}
-
 #oppstilling .zoom-wrap{
-max-height:none;
-overflow-x:auto;
-overflow-y:visible;
+max-height:calc(100vh - var(--sticky-top) - var(--seg-height) - 150px);
+overflow:auto;
 -webkit-overflow-scrolling:touch;
 }
 
@@ -834,14 +798,17 @@ transform:none !important;
 width:max-content;
 }
 
-#oppstilling .api-box:has(#apiCombinedZoom){
-padding-top:42px;
-}
-
-#oppstillingTable thead tr:first-child th,
-#oppstillingTable thead tr:nth-child(2) th{
+#oppstillingTable thead tr:first-child th{
 position:static;
 box-shadow:none;
+}
+
+#oppstillingTable thead tr:nth-child(2) th{
+position:sticky;
+top:0;
+z-index:16;
+background:#f3f4f6;
+box-shadow:0 2px 3px rgba(0,0,0,.08);
 }
 
 .file-input{max-width:none}
@@ -988,9 +955,6 @@ button{padding:12px 12px}
     <button class="compact reset-view" data-target="apiCombinedZoom">Standard</button>
   </div>
   <div class="mobile-table-label">Tursatt – Tognr. | Tid | Kjøretøy 1 | ⇄ | Kjøretøy 2</div>
-  <div class="oppstilling-mobile-real-header" id="oppstillingMobileHeader" aria-hidden="true">
-    <table id="oppstillingMobileHeaderTable"></table>
-  </div>
   <div class="zoom-wrap">
     <div class="zoom-inner" id="apiCombinedZoom">
       <table id="oppstillingTable"></table>
@@ -2240,29 +2204,6 @@ function appendOppstillingSideCells(tr, rowData, side){
   tr.appendChild(tdVehicle2);
 }
 
-function buildOppstillingMobileHeader(sourceThead){
-  const headerTable = document.getElementById("oppstillingMobileHeaderTable");
-  const headerWrap = document.getElementById("oppstillingMobileHeader");
-  const scrollWrap = document.querySelector("#oppstilling .zoom-wrap");
-
-  if(!headerTable || !sourceThead) return;
-
-  headerTable.innerHTML = "";
-  const clonedHead = sourceThead.cloneNode(true);
-  headerTable.appendChild(clonedHead);
-
-  if(scrollWrap && headerWrap && !scrollWrap.dataset.oppstillingMobileHeaderSync){
-    scrollWrap.addEventListener("scroll", ()=>{
-      headerWrap.scrollLeft = scrollWrap.scrollLeft;
-    }, {passive:true});
-    scrollWrap.dataset.oppstillingMobileHeaderSync = "1";
-  }
-
-  if(scrollWrap && headerWrap){
-    headerWrap.scrollLeft = scrollWrap.scrollLeft;
-  }
-}
-
 function buildOppstilling(){
   const table=document.getElementById("oppstillingTable");
   table.innerHTML="";
@@ -2289,7 +2230,6 @@ function buildOppstilling(){
   });
   thead.appendChild(trHead);
   table.appendChild(thead);
-  buildOppstillingMobileHeader(thead);
 
   const departureRows = buildDepartureRowsForOppstilling();
   const arrivalRows = buildArrivalRowsForOppstilling();
