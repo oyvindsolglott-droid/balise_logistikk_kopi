@@ -629,7 +629,43 @@ padding-bottom:4px;
 #inndataTable th:nth-child(4),
 #inndataTable td:nth-child(4){width:80px;}
 #inndataTable th:nth-child(5),
-#inndataTable td:nth-child(5){width:80px;}
+#inndataTable td:nth-child(5){width:72px;}
+#inndataTable th:nth-child(6),
+#inndataTable td:nth-child(6){width:80px;}
+#inndataTable td.skifter-cell input{
+text-align:center;
+font-weight:800;
+}
+#inndataTable tr.skifter-1-row td:first-child{
+border-left:8px solid #2563eb !important;
+}
+#inndataTable tr.skifter-2-row td:first-child{
+border-left:8px solid #16a34a !important;
+}
+#inndataTable tr.skifter-12-row td:first-child{
+border-left:8px solid #7c3aed !important;
+}
+#inndataTable tr.skifter-1-row td.skifter-cell{
+background:#bfdbfe !important;
+border-color:#2563eb !important;
+}
+#inndataTable tr.skifter-2-row td.skifter-cell{
+background:#bbf7d0 !important;
+border-color:#16a34a !important;
+}
+#inndataTable tr.skifter-12-row td.skifter-cell{
+background:#ddd6fe !important;
+border-color:#7c3aed !important;
+}
+#inndataTable tr.skifter-1-row td.skifter-cell input{
+color:#1d4ed8 !important;
+}
+#inndataTable tr.skifter-2-row td.skifter-cell input{
+color:#15803d !important;
+}
+#inndataTable tr.skifter-12-row td.skifter-cell input{
+color:#6d28d9 !important;
+}
 #inndataTable tr.utfort-row td{
 background:#d9d9d9 !important;
 color:#111827;
@@ -958,6 +994,7 @@ function makeEmptyPlanSkifteRows(count=20){
     vehicle:"",
     fromSpor:"",
     toSpor:"",
+    crew:"",
     utfort:""
   }));
 }
@@ -1083,7 +1120,7 @@ if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
 if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;
 if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkifteRows();
-else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",utfort:"",...(row||{})}));
+else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",utfort:"",...(row||{})}));
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
@@ -1764,12 +1801,24 @@ function isPlanSkifteFerdig(value){
   return s === "f" || s === "ferdig";
 }
 
+function normalizePlanSkifteCrew(value){
+  const s = String(value || "").trim().replace(/\s+/g,"");
+  if(s === "1" || s === "2" || s === "12") return s;
+  return "";
+}
+
 function isPlanSkifteRowFilled(row){
   return ["time","vehicle","fromSpor","toSpor"].some(key => String(row?.[key] || "").trim() !== "");
 }
 
 function updatePlanSkifteRowClass(tr,row){
-  tr.classList.remove("utfort-row","ikke-utfort-row");
+  tr.classList.remove("utfort-row","ikke-utfort-row","skifter-1-row","skifter-2-row","skifter-12-row");
+
+  const crew = normalizePlanSkifteCrew(row?.crew);
+  if(crew === "1") tr.classList.add("skifter-1-row");
+  if(crew === "2") tr.classList.add("skifter-2-row");
+  if(crew === "12") tr.classList.add("skifter-12-row");
+
   if(isPlanSkifteUtfort(row?.utfort) || isPlanSkifteFerdig(row?.utfort)){
     tr.classList.add("utfort-row");
   } else if(isPlanSkifteRowFilled(row)){
@@ -1779,7 +1828,7 @@ function updatePlanSkifteRowClass(tr,row){
 
 function buildInndata(){
   const table=document.getElementById("inndataTable");
-  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>Utført</th></tr></thead>";
+  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>1,2,12</th><th>Utført</th></tr></thead>";
   const body=document.createElement("tbody");
 
   const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : makeEmptyPlanSkifteRows();
@@ -1787,8 +1836,9 @@ function buildInndata(){
   rows.forEach((row,ri)=>{
     const tr=document.createElement("tr");
     updatePlanSkifteRowClass(tr,row);
-    ["time","vehicle","fromSpor","toSpor","utfort"].forEach(key=>{
+    ["time","vehicle","fromSpor","toSpor","crew","utfort"].forEach(key=>{
       const td=document.createElement("td");
+      if(key === "crew") td.classList.add("skifter-cell");
       const inp=document.createElement("input");
       inp.type="text";
       inp.inputMode="text";
