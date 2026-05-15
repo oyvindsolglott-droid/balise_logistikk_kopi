@@ -786,6 +786,31 @@ position:static;
 box-shadow:none;
 }
 
+/* Tursatt mobil: behold samme tabelloppsett som desktop, men uten zoom-transform */
+#oppstilling .zoom-wrap{
+max-height:calc(100vh - var(--sticky-top) - var(--seg-height) - 150px);
+overflow:auto;
+-webkit-overflow-scrolling:touch;
+}
+
+#oppstilling #apiCombinedZoom{
+transform:none !important;
+width:max-content;
+}
+
+#oppstillingTable thead tr:first-child th{
+position:static;
+box-shadow:none;
+}
+
+#oppstillingTable thead tr:nth-child(2) th{
+position:sticky;
+top:0;
+z-index:16;
+background:#f3f4f6;
+box-shadow:0 2px 3px rgba(0,0,0,.08);
+}
+
 .file-input{max-width:none}
 textarea#kjoretoyImport{font-size:16px}
 }
