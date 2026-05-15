@@ -713,6 +713,10 @@ background:transparent !important;
 color:#111827;
 }
 
+.mobile-table-label{
+display:none;
+}
+
 @media (max-width:1100px){
 .segmented{grid-template-columns:repeat(5,minmax(120px,1fr))}
 }
@@ -744,6 +748,20 @@ h1{font-size:20px;line-height:1.15}
 .view-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .view-tools .label{grid-column:1/-1}
 .view-tools button{width:100%}
+.mobile-table-label{
+display:block;
+position:sticky;
+top:calc(var(--seg-height) + 8px);
+z-index:18;
+background:#fff;
+border:1px solid var(--line);
+border-radius:10px;
+box-shadow:0 2px 4px rgba(0,0,0,.08);
+padding:8px 10px;
+margin:0 0 8px 0;
+font-weight:800;
+font-size:13px;
+}
 .api-grid{grid-template-columns:1fr}
 #oppstillingTable{
 min-width:700px;
@@ -844,6 +862,7 @@ button{padding:12px 12px}
 <button class="compact compact-toggle" data-target="kveldZoom">Kompakt visning</button>
 <button class="compact reset-view" data-target="kveldZoom">Standard</button>
 </div>
+<div class="mobile-table-label">Turnering Kveld</div>
 <div class="zoom-wrap">
 <div class="zoom-inner" id="kveldZoom">
 <table id="turneringKveldTable"></table>
@@ -861,6 +880,7 @@ button{padding:12px 12px}
 <button class="compact compact-toggle" data-target="nattZoom">Kompakt visning</button>
 <button class="compact reset-view" data-target="nattZoom">Standard</button>
 </div>
+<div class="mobile-table-label">Turnering Natt</div>
 <div class="zoom-wrap">
 <div class="zoom-inner" id="nattZoom">
 <table id="turneringNattTable"></table>
@@ -878,6 +898,7 @@ button{padding:12px 12px}
 <button class="compact compact-toggle" data-target="inndataZoom">Kompakt visning</button>
 <button class="compact reset-view" data-target="inndataZoom">Standard</button>
 </div>
+<div class="mobile-table-label">Planlegge Skiftebevegelser</div>
 <div class="zoom-wrap">
 <div class="zoom-inner" id="inndataZoom">
 <table id="inndataTable"></table>
@@ -908,6 +929,7 @@ button{padding:12px 12px}
     <button class="compact compact-toggle" data-target="apiCombinedZoom">Kompakt visning</button>
     <button class="compact reset-view" data-target="apiCombinedZoom">Standard</button>
   </div>
+  <div class="mobile-table-label">Tursatt</div>
   <div class="zoom-wrap">
     <div class="zoom-inner" id="apiCombinedZoom">
       <table id="oppstillingTable"></table>
