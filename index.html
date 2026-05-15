@@ -749,7 +749,18 @@ h1{font-size:20px;line-height:1.15}
 .view-tools .label{grid-column:1/-1}
 .view-tools button{width:100%}
 .mobile-table-label{
-display:none;
+display:block;
+position:sticky;
+top:calc(var(--seg-height) + 68px);
+z-index:18;
+background:#fff;
+border:1px solid var(--line);
+border-radius:10px;
+box-shadow:0 2px 4px rgba(0,0,0,.08);
+padding:8px 10px;
+margin:0 0 8px 0;
+font-weight:800;
+font-size:13px;
 }
 .api-grid{grid-template-columns:1fr}
 #oppstillingTable{
@@ -766,28 +777,13 @@ padding:4px 5px;
 #turneringNatt .zoom-wrap,
 #inndata .zoom-wrap{
 max-height:none;
-overflow:visible;
 }
 
-.zoom-wrap table thead th{
-position:sticky;
-top:calc(var(--seg-height) + 68px);
-z-index:30;
-background:#f3f4f6;
-box-shadow:0 2px 3px rgba(0,0,0,.12);
-}
-
-#oppstillingTable thead tr:first-child th{
+.zoom-wrap table thead th,
+#oppstillingTable thead tr:first-child th,
+#oppstillingTable thead tr:nth-child(2) th{
 position:static;
 box-shadow:none;
-}
-
-#oppstillingTable thead tr:nth-child(2) th{
-position:sticky;
-top:calc(var(--seg-height) + 68px);
-z-index:31;
-background:#f3f4f6;
-box-shadow:0 2px 3px rgba(0,0,0,.12);
 }
 
 .file-input{max-width:none}
