@@ -787,9 +787,45 @@ box-shadow:none;
 }
 
 /* Tursatt mobil: behold samme tabelloppsett som desktop, men uten zoom-transform */
+#oppstilling .mobile-table-label{
+display:none;
+}
+
+#oppstilling .oppstilling-mobile-real-header{
+display:block;
+position:fixed;
+top:calc(var(--sticky-top) + var(--seg-height) + 62px);
+left:0;
+right:0;
+z-index:46;
+overflow:hidden;
+background:#fff;
+border-top:1px solid var(--line);
+border-bottom:1px solid var(--line);
+box-shadow:0 2px 3px rgba(0,0,0,.10);
+}
+
+#oppstilling .oppstilling-mobile-real-header table{
+border-collapse:collapse;
+background:#fff;
+table-layout:fixed;
+}
+
+#oppstilling .oppstilling-mobile-real-header th{
+position:static !important;
+box-shadow:none !important;
+background:#f3f4f6;
+font-size:12px;
+padding:4px 5px;
+height:var(--cell-h);
+min-width:0;
+white-space:nowrap;
+}
+
 #oppstilling .zoom-wrap{
-max-height:calc(100vh - var(--sticky-top) - var(--seg-height) - 150px);
-overflow:auto;
+max-height:none;
+overflow-x:auto;
+overflow-y:visible;
 -webkit-overflow-scrolling:touch;
 }
 
@@ -798,17 +834,14 @@ transform:none !important;
 width:max-content;
 }
 
-#oppstillingTable thead tr:first-child th{
-position:static;
-box-shadow:none;
+#oppstilling .api-box:has(#apiCombinedZoom){
+padding-top:42px;
 }
 
+#oppstillingTable thead tr:first-child th,
 #oppstillingTable thead tr:nth-child(2) th{
-position:sticky;
-top:0;
-z-index:16;
-background:#f3f4f6;
-box-shadow:0 2px 3px rgba(0,0,0,.08);
+position:static;
+box-shadow:none;
 }
 
 .file-input{max-width:none}
@@ -955,6 +988,9 @@ button{padding:12px 12px}
     <button class="compact reset-view" data-target="apiCombinedZoom">Standard</button>
   </div>
   <div class="mobile-table-label">Tursatt – Tognr. | Tid | Kjøretøy 1 | ⇄ | Kjøretøy 2</div>
+  <div class="oppstilling-mobile-real-header" id="oppstillingMobileHeader" aria-hidden="true">
+    <table id="oppstillingMobileHeaderTable"></table>
+  </div>
   <div class="zoom-wrap">
     <div class="zoom-inner" id="apiCombinedZoom">
       <table id="oppstillingTable"></table>
@@ -2204,6 +2240,61 @@ function appendOppstillingSideCells(tr, rowData, side){
   tr.appendChild(tdVehicle2);
 }
 
+function buildOppstillingMobileHeader(){
+  const sourceTable = document.getElementById("oppstillingTable");
+  const headerTable = document.getElementById("oppstillingMobileHeaderTable");
+  const headerWrap = document.getElementById("oppstillingMobileHeader");
+  const scrollWrap = document.querySelector("#oppstilling .zoom-wrap");
+
+  if(!sourceTable || !headerTable || !headerWrap || !scrollWrap) return;
+
+  const sourceThead = sourceTable.querySelector("thead");
+  const measureRow =
+    sourceTable.querySelector("tbody tr") ||
+    sourceTable.querySelector("thead tr:nth-child(2)");
+
+  if(!sourceThead || !measureRow) return;
+
+  const syncHeader = ()=>{
+    const cells = Array.from(measureRow.children);
+    if(!cells.length) return;
+
+    const widths = cells.map(cell => Math.ceil(cell.getBoundingClientRect().width));
+    const totalWidth = widths.reduce((sum, width)=>sum + width, 0);
+
+    headerTable.innerHTML = "";
+
+    const colgroup = document.createElement("colgroup");
+    widths.forEach(width=>{
+      const col = document.createElement("col");
+      col.style.width = `${width}px`;
+      colgroup.appendChild(col);
+    });
+
+    const clonedHead = sourceThead.cloneNode(true);
+    headerTable.appendChild(colgroup);
+    headerTable.appendChild(clonedHead);
+    headerTable.style.width = `${totalWidth}px`;
+    headerTable.style.minWidth = `${totalWidth}px`;
+
+    headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
+  };
+
+  if(!scrollWrap.dataset.oppstillingMobileHeaderSync){
+    scrollWrap.addEventListener("scroll", ()=>{
+      headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
+    }, {passive:true});
+
+    window.addEventListener("resize", ()=>{
+      requestAnimationFrame(syncHeader);
+    }, {passive:true});
+
+    scrollWrap.dataset.oppstillingMobileHeaderSync = "1";
+  }
+
+  requestAnimationFrame(syncHeader);
+}
+
 function buildOppstilling(){
   const table=document.getElementById("oppstillingTable");
   table.innerHTML="";
@@ -2245,6 +2336,7 @@ function buildOppstilling(){
   }
 
   table.appendChild(body);
+  buildOppstillingMobileHeader();
 }
 
 
