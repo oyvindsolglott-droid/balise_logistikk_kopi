@@ -759,13 +759,26 @@ padding:4px 5px;
 #turneringNatt .zoom-wrap,
 #inndata .zoom-wrap{
 max-height:none;
+overflow:visible;
 }
 
-.zoom-wrap table thead th,
-#oppstillingTable thead tr:first-child th,
-#oppstillingTable thead tr:nth-child(2) th{
+.zoom-wrap table thead th{
+position:sticky;
+top:var(--seg-height);
+z-index:18;
+box-shadow:0 2px 3px rgba(0,0,0,.08);
+}
+
+#oppstillingTable thead tr:first-child th{
 position:static;
 box-shadow:none;
+}
+
+#oppstillingTable thead tr:nth-child(2) th{
+position:sticky;
+top:var(--seg-height);
+z-index:19;
+box-shadow:0 2px 3px rgba(0,0,0,.08);
 }
 
 .file-input{max-width:none}
