@@ -151,6 +151,22 @@ def get_balise_train_lookup_candidates(train_no: str) -> List[str]:
     return candidates
 
 
+def has_arrival_route_to_skien_or_porsgrunn(text: str) -> bool:
+    """Sjekk om Balise-teksten tydelig viser en ankomst mot Skien/Porsgrunn."""
+    if not text:
+        return False
+
+    for raw_line in text.splitlines():
+        line = str(raw_line or "").strip().lower()
+        if not line:
+            continue
+
+        if re.search(r"-\s*(skien|porsgrunn)\s*:", line):
+            return True
+
+    return False
+
+
 def extract_vehicle_hits_from_balise_text(text: str) -> Tuple[List[str], List[str], List[str]]:
     general_route_hits = (
         find_first_material_line(text, ["Skien - Eidsvoll:"])
@@ -199,6 +215,7 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
 
         for train_no in train_list:
             last_error = ""
+            candidate_results = []
 
             for lookup_train_no in get_balise_train_lookup_candidates(train_no):
                 url = f"https://balise.no/tog/{lookup_train_no}/{run_date.isoformat()}"
@@ -209,27 +226,60 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
 
                     general_hits, departure_hits, arrival_hits = extract_vehicle_hits_from_balise_text(text)
 
-                    if general_hits:
-                        vehicles[train_no] = ", ".join(general_hits)
-
-                    if departure_hits:
-                        departure_vehicles[train_no] = ", ".join(departure_hits)
-
-                    if arrival_hits:
-                        arrival_vehicles[train_no] = ", ".join(arrival_hits)
-
                     if general_hits or departure_hits or arrival_hits:
-                        if lookup_train_no != train_no:
-                            errors[train_no] = f"Brukte avvikstognummer {lookup_train_no}"
-                        break
+                        candidate_results.append(
+                            {
+                                "lookup_train_no": lookup_train_no,
+                                "general_hits": general_hits,
+                                "departure_hits": departure_hits,
+                                "arrival_hits": arrival_hits,
+                                "is_arrival_route_to_base": has_arrival_route_to_skien_or_porsgrunn(text),
+                            }
+                        )
 
                     last_error = f"Fant ingen kjøretøy i siden {lookup_train_no}"
 
                 except Exception as exc:  # noqa: BLE001
                     last_error = f"{lookup_train_no}: {exc}"
 
+            selected = None
+
+            train_number = int(train_no) if train_no.isdigit() else None
+            should_prefer_90_arrival = (
+                train_number is not None
+                and 800 <= train_number <= 899
+                and train_no in HARDCODED_ARRIVALS
+            )
+
+            if should_prefer_90_arrival:
+                selected = next(
+                    (
+                        result
+                        for result in candidate_results
+                        if result["lookup_train_no"] != train_no
+                        and result["is_arrival_route_to_base"]
+                    ),
+                    None,
+                )
+
+            if selected is None and candidate_results:
+                selected = candidate_results[0]
+
+            if selected is not None:
+                if selected["general_hits"]:
+                    vehicles[train_no] = ", ".join(selected["general_hits"])
+
+                if selected["departure_hits"]:
+                    departure_vehicles[train_no] = ", ".join(selected["departure_hits"])
+
+                if selected["arrival_hits"]:
+                    arrival_vehicles[train_no] = ", ".join(selected["arrival_hits"])
+
+                if selected["lookup_train_no"] != train_no:
+                    errors[train_no] = f"Brukte avvikstognummer {selected['lookup_train_no']}"
+
             if train_no not in vehicles and train_no not in departure_vehicles and train_no not in arrival_vehicles:
-                errors[train_no] = "Fant ingen kjøretøy i siden"
+                errors[train_no] = last_error or "Fant ingen kjøretøy i siden"
 
         browser.close()
 
