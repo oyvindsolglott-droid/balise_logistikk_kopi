@@ -143,6 +143,13 @@ touch-action:pan-x pan-y pinch-zoom;
 overscroll-behavior:contain;
 position:relative
 }
+
+#oppstilling .zoom-wrap,
+#turneringKveld .zoom-wrap,
+#turneringNatt .zoom-wrap,
+#inndata .zoom-wrap{
+max-height:calc(100vh - var(--sticky-top) - var(--seg-height) - 150px);
+}
 .zoom-inner{
 transform-origin:top left;
 width:max-content;
@@ -165,7 +172,28 @@ th{
 background:#f3f4f6;
 position:sticky;
 top:0;
-z-index:2
+z-index:12;
+box-shadow:0 2px 3px rgba(0,0,0,.08);
+}
+
+.zoom-wrap table thead th{
+position:sticky;
+top:0;
+z-index:14;
+background:#f3f4f6;
+background-clip:padding-box;
+}
+
+#oppstillingTable thead tr:first-child th{
+position:static;
+box-shadow:none;
+}
+
+#oppstillingTable thead tr:nth-child(2) th{
+position:sticky;
+top:0;
+z-index:16;
+box-shadow:0 2px 3px rgba(0,0,0,.08);
 }
 td input{
 width:100%;
