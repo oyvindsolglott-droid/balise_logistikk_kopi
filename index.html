@@ -807,6 +807,14 @@ background:#fff;
 border-top:1px solid var(--line);
 border-bottom:1px solid var(--line);
 box-shadow:0 2px 3px rgba(0,0,0,.10);
+opacity:0;
+visibility:hidden;
+pointer-events:none;
+}
+
+#oppstilling .oppstilling-mobile-real-header.is-active{
+opacity:1;
+visibility:visible;
 }
 
 #oppstilling .oppstilling-mobile-real-header table{
@@ -2285,22 +2293,53 @@ function buildOppstillingMobileHeader(){
     headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
   };
 
+  const updateHeaderVisibility = ()=>{
+    const oppstillingPanel = document.getElementById("oppstilling");
+    const isOppstillingActive = oppstillingPanel?.classList.contains("active");
+    const tableTop = scrollWrap.getBoundingClientRect().top;
+    const headerTop = headerWrap.getBoundingClientRect().top;
+    const shouldShow = Boolean(isOppstillingActive && tableTop <= headerTop);
+
+    headerWrap.classList.toggle("is-active", shouldShow);
+
+    if(shouldShow){
+      headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
+    }
+  };
+
   if(!scrollWrap.dataset.oppstillingMobileHeaderSync){
     scrollWrap.addEventListener("scroll", ()=>{
       headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
+      updateHeaderVisibility();
+    }, {passive:true});
+
+    window.addEventListener("scroll", ()=>{
+      updateHeaderVisibility();
     }, {passive:true});
 
     window.addEventListener("resize", ()=>{
-      requestAnimationFrame(syncHeader);
+      requestAnimationFrame(()=>{
+        syncHeader();
+        updateHeaderVisibility();
+      });
     }, {passive:true});
+
+    document.querySelectorAll(".seg").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        setTimeout(updateHeaderVisibility, 80);
+      });
+    });
 
     scrollWrap.dataset.oppstillingMobileHeaderSync = "1";
   }
 
-  requestAnimationFrame(syncHeader);
-  setTimeout(syncHeader, 120);
-  setTimeout(syncHeader, 400);
-  setTimeout(syncHeader, 900);
+  requestAnimationFrame(()=>{
+    syncHeader();
+    updateHeaderVisibility();
+  });
+  setTimeout(()=>{ syncHeader(); updateHeaderVisibility(); }, 120);
+  setTimeout(()=>{ syncHeader(); updateHeaderVisibility(); }, 400);
+  setTimeout(()=>{ syncHeader(); updateHeaderVisibility(); }, 900);
 }
 
 function buildOppstilling(){
