@@ -876,9 +876,34 @@ background:#f3f4f6;
 box-shadow:0 2px 3px rgba(0,0,0,.10);
 }
 
+#turneringNatt .zoom-wrap{
+max-height:calc(100vh - var(--sticky-top) - var(--seg-height) - 120px);
+overflow:auto;
+-webkit-overflow-scrolling:touch;
+}
+
+#turneringNatt #nattZoom{
+transform:none !important;
+width:max-content;
+}
+
+#turneringNattTable thead{
+display:table-header-group;
+position:sticky;
+top:0;
+z-index:15;
+}
+
+#turneringNattTable thead th{
+background:#f3f4f6;
+box-shadow:0 2px 3px rgba(0,0,0,.10);
+}
+
 #oppstilling .view-tools,
 #turneringKveld .view-tools,
-#turneringKveld .mobile-table-label{
+#turneringKveld .mobile-table-label,
+#turneringNatt .view-tools,
+#turneringNatt .mobile-table-label{
 display:none;
 }
 
@@ -975,7 +1000,6 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="turneringNatt">
-<div class="note">Fyll inn natt her. Ved konflikt vinner natt fordi den leses sist.</div>
 <div class="view-tools">
 <span class="label">Turnering Natt visning</span>
 <button class="compact zoom-out" data-target="nattZoom">Zoom ut</button>
@@ -1106,15 +1130,16 @@ j:"turneres til:"
 
 const headerNatt={
 type:"header",
-a:"ank. kl.",
-b:"tognr.",
-c:"sett nr.1",
-d:"sett nr.2",
-e:"vask",
-f:"Sett 1->spor",
-g:"1 til tognr.",
-h:"Sett 2->spor",
-i:"2 til tognr."
+a:"Ankomst kl.",
+b:"Fra tognr.",
+c:"fremre sett",
+d:"Tømming fremre sett",
+e:"fremre til spor:",
+f:"turneres til:",
+g:"bakre sett",
+h:"Tømming bakre sett",
+i:"bakre til spor:",
+j:"turneres til:"
 };
 
 
@@ -1149,13 +1174,13 @@ headerKveld,
 
 const initialNattRows=[
 headerNatt,
-{a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"23:53",b:"835",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"00:50",b:"837",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"01:45",b:"839",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
-{a:"07:42",b:"873",c:"",d:"",e:"",f:"",g:"",h:"",i:""},
+{a:"22:53",b:"833",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"23:53",b:"835",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"00:50",b:"837",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"01:45",b:"839",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
+{a:"07:42",b:"873",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""},
 {type:"section",b:"ukjente tognr."},
-...Array.from({length:11},()=>({a:"",b:"ikke tursatt",c:"",d:"",e:"",f:"",g:"",h:"",i:""}))
+...Array.from({length:11},()=>({a:"",b:"ikke tursatt",c:"",d:"",e:"",f:"",g:"",h:"",i:"",j:""}))
 ];
 
 
@@ -1219,6 +1244,32 @@ function migrateKveldRows(rows){
   return rows.map(convertLegacyKveldRow);
 }
 
+function convertLegacyNattRow(row){
+  if(!row || typeof row !== "object") return row;
+  if(row.type === "section") return row;
+  if(row.type === "header") return {...headerNatt};
+  if("j" in row) return row;
+
+  const wash = String(row.e || "").trim().toLowerCase();
+  return {
+    a:String(row.a || ""),
+    b:String(row.b || ""),
+    c:String(row.c || ""),
+    d:(wash === "ja" || wash === "ja1") ? "ja" : "",
+    e:String(row.f || ""),
+    f:String(row.g || ""),
+    g:String(row.d || ""),
+    h:(wash === "ja" || wash === "ja2") ? "ja" : "",
+    i:String(row.h || ""),
+    j:String(row.i || "")
+  };
+}
+
+function migrateNattRows(rows){
+  if(!Array.isArray(rows) || rows.length === 0) return JSON.parse(JSON.stringify(initialNattRows));
+  return rows.map(convertLegacyNattRow);
+}
+
 function normalizeVehicleToken(v){
   return String(v || "").trim().toUpperCase().replace(/\s+/g,"");
 }
@@ -1243,7 +1294,7 @@ function applyKveldColumnEMigration(){
 function makeDefaultState(){
   return {
     turneringKveld:migrateKveldRows(JSON.parse(JSON.stringify(initialKveldRows))),
-    turneringNatt:JSON.parse(JSON.stringify(initialNattRows)),
+    turneringNatt:migrateNattRows(JSON.parse(JSON.stringify(initialNattRows))),
     oppstillingModes:Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode])),
     oppstillingOverrides:{},
     kjoretoy:{},
@@ -1282,7 +1333,8 @@ if(!state) state=makeDefaultState();
 
 if(!state.turneringKveld) state.turneringKveld=migrateKveldRows(JSON.parse(JSON.stringify(initialKveldRows)));
 state.turneringKveld = migrateKveldRows(state.turneringKveld);
-if(!state.turneringNatt) state.turneringNatt=JSON.parse(JSON.stringify(initialNattRows));
+if(!state.turneringNatt) state.turneringNatt=migrateNattRows(JSON.parse(JSON.stringify(initialNattRows)));
+state.turneringNatt = migrateNattRows(state.turneringNatt);
 if(!state.oppstillingModes) state.oppstillingModes=Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode]));
 if(!state.oppstillingOverrides) state.oppstillingOverrides={};
 if(!state.kjoretoy) state.kjoretoy={};
@@ -1856,8 +1908,8 @@ function getKveldDuplicateVehiclePositions(){
 
 function buildTurnering(tableId,key){
   const isKveld = key==="turneringKveld";
-  const cols=isKveld?["a","b","c","d","e","f","g","h","i","j"]:["a","b","c","d","e","f","g","h","i"];
-  const washIndexes = isKveld ? new Set([3,7]) : new Set([4]);
+  const cols=["a","b","c","d","e","f","g","h","i","j"];
+  const washIndexes = new Set([3,7]);
   const duplicatePositions = isKveld ? getKveldDuplicateVehiclePositions() : new Set();
   const table=document.getElementById(tableId);
   table.innerHTML="";
@@ -1898,7 +1950,7 @@ function buildTurnering(tableId,key){
         inp.autocapitalize="off";
         inp.autocorrect="off";
         inp.spellcheck=false;
-        inp.value=(isKveld && k==="b") ? getDisplayTrainNumber(row[k]) : (row[k]||"");
+        inp.value=(k==="b") ? getDisplayTrainNumber(row[k]) : (row[k]||"");
 
         const isLocked = (k==="a" || k==="b");
         if(isLocked){
