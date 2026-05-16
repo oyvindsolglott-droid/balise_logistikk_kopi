@@ -789,6 +789,9 @@ box-shadow:none;
 
 #oppstillingTable thead{
 display:table-header-group;
+position:sticky;
+top:0;
+z-index:15;
 }
 
 /* Tursatt mobil: behold samme tabelloppsett som desktop, men uten zoom-transform */
@@ -836,9 +839,8 @@ white-space:nowrap;
 }
 
 #oppstilling .zoom-wrap{
-max-height:none;
-overflow-x:auto;
-overflow-y:visible;
+max-height:calc(100vh - var(--sticky-top) - var(--seg-height) - 120px);
+overflow:auto;
 -webkit-overflow-scrolling:touch;
 }
 
