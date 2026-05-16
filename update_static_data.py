@@ -245,13 +245,30 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
             selected = None
 
             train_number = int(train_no) if train_no.isdigit() else None
+            should_prefer_90_departure = (
+                train_number is not None
+                and 800 <= train_number <= 899
+                and train_no in HARDCODED_DEPARTURES
+            )
+
             should_prefer_90_arrival = (
                 train_number is not None
                 and 800 <= train_number <= 899
                 and train_no in HARDCODED_ARRIVALS
             )
 
-            if should_prefer_90_arrival:
+            if should_prefer_90_departure:
+                selected = next(
+                    (
+                        result
+                        for result in candidate_results
+                        if result["lookup_train_no"] != train_no
+                        and result["departure_hits"]
+                    ),
+                    None,
+                )
+
+            if selected is None and should_prefer_90_arrival:
                 selected = next(
                     (
                         result

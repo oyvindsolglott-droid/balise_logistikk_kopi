@@ -2217,12 +2217,20 @@ function appendOppstillingVehicleInput(td, train, fieldKey, value, isSecondMissi
   }
 }
 
+function getDisplayTrainNumberForOppstilling(train){
+  const key = normalizeTognr(train);
+  if(!key) return "";
+  const vehicleError = state.apiBalise?.vehicleErrors?.[key] || "";
+  const match = String(vehicleError).match(/Brukte avvikstognummer\s+(\d+)/);
+  return match ? match[1] : key;
+}
+
 function appendOppstillingSideCells(tr, rowData, side){
   const train = rowData?.train || "";
   const time = rowData?.displayTime || rowData?.time || "";
 
   const tdTrain = document.createElement("td");
-  tdTrain.textContent = train;
+  tdTrain.textContent = getDisplayTrainNumberForOppstilling(train);
   tr.appendChild(tdTrain);
 
   const tdTime = document.createElement("td");
