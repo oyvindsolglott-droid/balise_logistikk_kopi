@@ -853,7 +853,32 @@ width:max-content;
 padding-top:42px;
 }
 
-#oppstilling .view-tools{
+#turneringKveld .zoom-wrap{
+max-height:calc(100vh - var(--sticky-top) - var(--seg-height) - 120px);
+overflow:auto;
+-webkit-overflow-scrolling:touch;
+}
+
+#turneringKveld #kveldZoom{
+transform:none !important;
+width:max-content;
+}
+
+#turneringKveldTable thead{
+display:table-header-group;
+position:sticky;
+top:0;
+z-index:15;
+}
+
+#turneringKveldTable thead th{
+background:#f3f4f6;
+box-shadow:0 2px 3px rgba(0,0,0,.10);
+}
+
+#oppstilling .view-tools,
+#turneringKveld .view-tools,
+#turneringKveld .mobile-table-label{
 display:none;
 }
 
@@ -933,7 +958,6 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="turneringKveld">
-<div class="note">Fyll inn kveld her. Natt kan overskrive ved konflikt.</div>
 <div class="view-tools">
 <span class="label">Turnering Kveld visning</span>
 <button class="compact zoom-out" data-target="kveldZoom">Zoom ut</button>
@@ -1838,6 +1862,7 @@ function buildTurnering(tableId,key){
   const table=document.getElementById(tableId);
   table.innerHTML="";
   table.classList.toggle("turnering-kveld-table", isKveld);
+  const thead=document.createElement("thead");
   const body=document.createElement("tbody");
 
   state[key].forEach((row,ri)=>{
@@ -1932,9 +1957,14 @@ function buildTurnering(tableId,key){
         tr.appendChild(td);
       });
     }
-    body.appendChild(tr);
+    if(row.type==="header"){
+      thead.appendChild(tr);
+    }else{
+      body.appendChild(tr);
+    }
   });
 
+  if(thead.children.length) table.appendChild(thead);
   table.appendChild(body);
 }
 
