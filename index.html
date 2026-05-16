@@ -1590,9 +1590,10 @@ function getTurneringSuggestionForTrain(tog,key){
   return "";
 }
 
-function getTomorrowDepartureRows(){
-  const departures = getDepartureMapByMode("imorgen");
-  const vehicleMap = getBaliseMapByMode("imorgen");
+function getDepartureRowsForMode(mode="imorgen"){
+  const cleanMode = mode === "idag" ? "idag" : "imorgen";
+  const departures = getDepartureMapByMode(cleanMode);
+  const vehicleMap = getBaliseMapByMode(cleanMode);
 
   return Object.entries(departures)
     .map(([train, time])=>{
@@ -1608,17 +1609,21 @@ function getTomorrowDepartureRows(){
     .filter(item => item.train);
 }
 
+function getTomorrowDepartureRows(){
+  return getDepartureRowsForMode("imorgen");
+}
+
 function pickEarliestTrain(rows){
   return rows
     .slice()
     .sort(sortTimeAndTrainEntries)[0]?.train || "";
 }
 
-function getTomorrowDepartureTrainSuggestionForVehicle(vehicleNo, positionHint="any"){
+function getDepartureTrainSuggestionForVehicle(vehicleNo, positionHint="any", mode="imorgen"){
   const token = normalizeVehicleToken(vehicleNo);
   if(!token) return "";
 
-  const rows = getTomorrowDepartureRows();
+  const rows = getDepartureRowsForMode(mode);
   if(!rows.length) return "";
 
   const exactSingleMatches = rows.filter(item => item.parts.length === 1 && item.parts[0] === token);
@@ -1643,12 +1648,20 @@ function getTomorrowDepartureTrainSuggestionForVehicle(vehicleNo, positionHint="
   return "";
 }
 
-function getKveldOutputTrainSuggestion(row,key){
+function getTomorrowDepartureTrainSuggestionForVehicle(vehicleNo, positionHint="any"){
+  return getDepartureTrainSuggestionForVehicle(vehicleNo, positionHint, "imorgen");
+}
+
+function getTurneringOutputTrainSuggestion(row,key,mode="imorgen"){
   if(key !== "f" && key !== "j") return "";
   const sourceKey = key === "f" ? "c" : "g";
   const positionHint = key === "f" ? "first" : "second";
   const vehicleValue = getEffectiveKveldVehicleValue(row, sourceKey);
-  return getTomorrowDepartureTrainSuggestionForVehicle(vehicleValue, positionHint);
+  return getDepartureTrainSuggestionForVehicle(vehicleValue, positionHint, mode);
+}
+
+function getKveldOutputTrainSuggestion(row,key){
+  return getTurneringOutputTrainSuggestion(row, key, "imorgen");
 }
 
 
@@ -1975,7 +1988,7 @@ function buildTurnering(tableId,key){
           });
         }
 
-        const showSuggestion = isKveld && (k==="c" || k==="g");
+        const showSuggestion = (k==="c" || k==="g");
         if(showSuggestion){
           const suggestedValue = getTurneringSuggestionForTrain(row.b, k);
           inp.placeholder = suggestedValue || "";
@@ -1986,9 +1999,9 @@ function buildTurnering(tableId,key){
           }
         }
 
-        const showTomorrowTrainSuggestion = isKveld && (k==="f" || k==="j");
-        if(showTomorrowTrainSuggestion){
-          const suggestedTrain = getKveldOutputTrainSuggestion(row, k);
+        const showOutputTrainSuggestion = (k==="f" || k==="j");
+        if(showOutputTrainSuggestion){
+          const suggestedTrain = getTurneringOutputTrainSuggestion(row, k, "imorgen");
           const usesSuggestedTrain = !String(row[k] || "").trim() && !!suggestedTrain;
           if(usesSuggestedTrain){
             inp.value = suggestedTrain;
