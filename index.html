@@ -974,11 +974,15 @@ button{padding:12px 12px}
 
 
 <div class="api-box">
-  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-    <button type="button" id="refreshApiBtn">Hent statiske data</button>
-    <span id="apiStatus" class="save-indicator">Data ikke lest ennå</span>
+  <div class="mobile-table-label">Tursatt – Tognr. | Tid | Kjøretøy 1 | ⇄ | Kjøretøy 2</div>
+  <div class="oppstilling-mobile-real-header" id="oppstillingMobileHeader" aria-hidden="true">
+    <table id="oppstillingMobileHeaderTable"></table>
   </div>
-  <div id="apiMeta" class="api-muted">Ingen statiske data lest ennå.</div>
+  <div class="zoom-wrap">
+    <div class="zoom-inner" id="apiCombinedZoom">
+      <table id="oppstillingTable"></table>
+    </div>
+  </div>
 </div>
 
 
@@ -991,15 +995,15 @@ button{padding:12px 12px}
     <button class="compact compact-toggle" data-target="apiCombinedZoom">Kompakt visning</button>
     <button class="compact reset-view" data-target="apiCombinedZoom">Standard</button>
   </div>
-  <div class="mobile-table-label">Tursatt – Tognr. | Tid | Kjøretøy 1 | ⇄ | Kjøretøy 2</div>
-  <div class="oppstilling-mobile-real-header" id="oppstillingMobileHeader" aria-hidden="true">
-    <table id="oppstillingMobileHeaderTable"></table>
+</div>
+
+
+<div class="api-box">
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+    <button type="button" id="refreshApiBtn">Hent statiske data</button>
+    <span id="apiStatus" class="save-indicator">Data ikke lest ennå</span>
   </div>
-  <div class="zoom-wrap">
-    <div class="zoom-inner" id="apiCombinedZoom">
-      <table id="oppstillingTable"></table>
-    </div>
-  </div>
+  <div id="apiMeta" class="api-muted">Ingen statiske data lest ennå.</div>
 </div>
 
 
