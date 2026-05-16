@@ -251,3 +251,50 @@ const TEST_MOVES = [
 for (const move of TEST_MOVES) {
   console.log(evaluateMove(move));
 }
+
+
+function findBestMove(moves) {
+  const evaluated = moves.map(evaluateMove);
+
+  evaluated.sort((a, b) => b.score - a.score);
+
+  return {
+    best: evaluated[0],
+    all: evaluated
+  };
+}
+
+const COMPARE_TEST_MOVES = [
+  {
+    vehicle: "74-31",
+    fromSlot: "4S",
+    toSlot: "5SS",
+    mustUseSouthEnd: true,
+    needsWorkshop: false,
+    needsService: false
+  },
+
+  {
+    vehicle: "74-31",
+    fromSlot: "4S",
+    toSlot: "6N",
+    mustUseSouthEnd: false,
+    needsWorkshop: false,
+    needsService: true
+  },
+
+  {
+    vehicle: "74-31",
+    fromSlot: "4S",
+    toSlot: "10",
+    mustUseSouthEnd: false,
+    needsWorkshop: false,
+    needsService: false,
+    isDoubleSet: true,
+    route: "Porsgrunn-Notodden"
+  }
+];
+
+console.log("BESTE TREKK:");
+console.log(findBestMove(COMPARE_TEST_MOVES));
+
