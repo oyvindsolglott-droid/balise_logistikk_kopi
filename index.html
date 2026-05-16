@@ -1873,7 +1873,7 @@ function buildTurnering(tableId,key){
         inp.autocapitalize="off";
         inp.autocorrect="off";
         inp.spellcheck=false;
-        inp.value=row[k]||"";
+        inp.value=(isKveld && k==="b") ? getDisplayTrainNumber(row[k]) : (row[k]||"");
 
         const isLocked = (k==="a" || k==="b");
         if(isLocked){
@@ -2224,12 +2224,16 @@ function appendOppstillingVehicleInput(td, train, fieldKey, value, isSecondMissi
   }
 }
 
-function getDisplayTrainNumberForOppstilling(train){
+function getDisplayTrainNumber(train){
   const key = normalizeTognr(train);
   if(!key) return "";
   const vehicleError = state.apiBalise?.vehicleErrors?.[key] || "";
   const match = String(vehicleError).match(/Brukte avvikstognummer\s+(\d+)/);
   return match ? match[1] : key;
+}
+
+function getDisplayTrainNumberForOppstilling(train){
+  return getDisplayTrainNumber(train);
 }
 
 function appendOppstillingSideCells(tr, rowData, side){
