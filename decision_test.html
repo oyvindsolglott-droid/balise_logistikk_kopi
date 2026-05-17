@@ -136,8 +136,11 @@
     };
 
     function renderCurrentStatus(status) {
-      const lines = Object.entries(status)
-        .map(([slot, vehicles]) => {
+      const slotOrder = ["12", "11", "10", "6N", "5SS", "4S"];
+
+      const lines = slotOrder
+        .map(slot => {
+          const vehicles = status[slot] || [];
           const content = vehicles.length ? vehicles.join(", ") : "ledig";
           return `${slot}: ${content}`;
         })
@@ -149,8 +152,26 @@
       `;
     }
 
+    function findVehicleSlot(status, vehicle) {
+      for (const [slot, vehicles] of Object.entries(status)) {
+        if (vehicles.includes(vehicle)) {
+          return slot;
+        }
+      }
+      return "";
+    }
+
+    function filterMovesByCurrentStatus(moves, status) {
+      return moves.filter(move => {
+        const actualSlot = findVehicleSlot(status, move.vehicle);
+        return actualSlot && move.fromSlot === actualSlot;
+      });
+    }
+
+    const VALID_MOVES_FROM_STATUS = filterMovesByCurrentStatus(COMPARE_TEST_MOVES, CURRENT_STATUS);
+
     renderCurrentStatus(CURRENT_STATUS);
-    renderMoveRanking(COMPARE_TEST_MOVES);
+    renderMoveRanking(VALID_MOVES_FROM_STATUS);
   </script>
 </body>
 </html>
