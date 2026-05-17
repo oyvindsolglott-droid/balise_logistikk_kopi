@@ -75,6 +75,8 @@
     Testen under vurderer derfor forslag fra oppgitt startspor, ikke fra en låst idealplan.
   </section>
 
+  <section class="note" id="currentStatus"></section>
+
   <div id="result"></div>
 
   <script src="decision_rules.js"></script>
@@ -124,6 +126,30 @@
       `;
     }
 
+    const CURRENT_STATUS = {
+      "4S": ["74-31"],
+      "5SS": [],
+      "6N": [],
+      "10": [],
+      "11": [],
+      "12": []
+    };
+
+    function renderCurrentStatus(status) {
+      const lines = Object.entries(status)
+        .map(([slot, vehicles]) => {
+          const content = vehicles.length ? vehicles.join(", ") : "ledig";
+          return `${slot}: ${content}`;
+        })
+        .join("<br>");
+
+      document.getElementById("currentStatus").innerHTML = `
+        <strong>Teststatus:</strong><br>
+        ${lines}
+      `;
+    }
+
+    renderCurrentStatus(CURRENT_STATUS);
     renderMoveRanking(COMPARE_TEST_MOVES);
   </script>
 </body>
