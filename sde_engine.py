@@ -118,8 +118,8 @@ def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], v
 
     if to_slot == "6SS":
         score -= 500
-        warnings.append("Kjøretøy i 6SS blokkerer forbindelsen fra 7SS/8SS mot spor 1–3.")
-        reason_parts.append("straff: blokkerer 6SS")
+        warnings.append("Kjøretøy i 6SS begrenser rutevalg fra 7SS/8SS, men blokkerer ikke vei via sydenden mot spor 1–3.")
+        reason_parts.append("straff: 6SS begrenser rutevalg, særlig mot spor 4/5 fra sydenden")
 
     simulated = deepcopy(status)
     simulated[from_slot] = None
@@ -292,10 +292,12 @@ def print_plan(plan: Scenario) -> None:
     print(f"- Bruk av spor 3 før 21:10: {'ja' if uses_track_3 else 'nei'}")
     print(f"- Blokkering av 6SS: {'ja' if blocks_6ss_connection(plan.status) else 'nei'}")
     workshop_occupied = workshop_positions_occupied(plan.status)
-    workshop_route_problem = blocks_6ss_connection(plan.status) and workshop_route_limited(plan.status)
+    south_route_available_from_7ss_8ss = True
+    limited_access_to_track_4_5_from_south = blocks_6ss_connection(plan.status)
     print(f"- Verkstedplass 7N/8N opptatt: {'ja' if workshop_occupied else 'nei'}")
-    print(f"- Begge verkstedveier 7N/8N blokkert: {'ja' if workshop_route_limited(plan.status) else 'nei'}")
-    print(f"- Ruteproblem via verksted: {'ja' if workshop_route_problem else 'nei'}")
+    print(f"- Begge verkstedveier 7N/8N opptatt: {'ja' if workshop_route_limited(plan.status) else 'nei'}")
+    print(f"- Alternativvei fra 7SS/8SS via sydenden mot spor 1–3: {'ja' if south_route_available_from_7ss_8ss else 'nei'}")
+    print(f"- Begrenset tilgang fra sydenden til spor 4/5: {'ja' if limited_access_to_track_4_5_from_south else 'nei'}")
     print(f"- Score: {plan.score}")
 
     if plan.warnings:
