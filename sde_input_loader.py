@@ -1,0 +1,124 @@
+import json
+from pathlib import Path
+
+from sde_models import SLOTS
+
+
+SNAPSHOT_PATH = Path("sde_input_snapshot.json")
+
+
+def load_snapshot(path=SNAPSHOT_PATH):
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def validate_sporplan_status(snapshot):
+    errors = []
+    warnings = []
+
+    sporplan_status = snapshot.get("sporplan_status", {})
+
+    missing_slots = [slot for slot in SLOTS if slot not in sporplan_status]
+    unknown_slots = [slot for slot in sporplan_status if slot not in SLOTS]
+
+    if missing_slots:
+        errors.append(f"Mangler spor/sloter i sporplan_status: {', '.join(missing_slots)}")
+
+    if unknown_slots:
+        errors.append(f"Ukjente spor/sloter i sporplan_status: {', '.join(unknown_slots)}")
+
+    occupied = {
+        slot: vehicle
+        for slot, vehicle in sporplan_status.items()
+        if vehicle
+    }
+
+    vehicles_seen = {}
+    for slot, vehicle in occupied.items():
+        vehicles_seen.setdefault(vehicle, []).append(slot)
+
+    duplicates = {
+        vehicle: slots
+        for vehicle, slots in vehicles_seen.items()
+        if len(slots) > 1
+    }
+
+    if duplicates:
+        for vehicle, slots in duplicates.items():
+            errors.append(f"Kjøretøy {vehicle} står i flere spor/sloter: {', '.join(slots)}")
+
+    if sporplan_status.get("6SS"):
+        warnings.append("6SS er belagt. Dette begrenser rutevalg og bør vurderes særskilt.")
+
+    if sporplan_status.get("2S") or sporplan_status.get("2N"):
+        warnings.append("Spor 2 er belagt. Plattformspor bør ikke brukes til vanlig parkering.")
+
+    if sporplan_status.get("3S") or sporplan_status.get("3M") or sporplan_status.get("3N"):
+        warnings.append("Spor 3 er belagt. Dette kan være riktig ved ankomst/produksjon, men må begrunnes.")
+
+    return errors, warnings, occupied
+
+
+def print_snapshot_report(snapshot):
+    print("SDE input snapshot")
+    print("==================")
+    print(f"Navn: {snapshot.get('snapshot_name', '-')}")
+    print(f"Dato: {snapshot.get('date', '-')}")
+    print()
+
+    errors, warnings, occupied = validate_sporplan_status(snapshot)
+
+    print("Belagte spor/sloter:")
+    if occupied:
+        for slot in SLOTS:
+            if slot in occupied:
+                print(f"  {slot}: {occupied[slot]}")
+    else:
+        print("  Ingen belagte spor/sloter registrert.")
+    print()
+
+    print("Produksjonsmål:")
+    for goal in snapshot.get("production_goals", []):
+        print(
+            f"  Tog {goal.get('display_train', goal.get('train'))}: "
+            f"{', '.join(goal.get('preferred_slots', []))} "
+            f"({goal.get('position', '-')})"
+        )
+    print()
+
+    print("Turnering kveld:")
+    for row in snapshot.get("turnering_kveld", []):
+        print(
+            f"  {row.get('time', '-')}: tog {row.get('from_train', '-')} "
+            f"kjøretøy {', '.join(row.get('vehicles', []))}"
+        )
+    print()
+
+    print("Manuelle input:")
+    for item in snapshot.get("manual_inputs", []):
+        print(
+            f"  {item.get('vehicle', '-')}: "
+            f"{item.get('need', '-')} "
+            f"nå={item.get('current_slot', '-')} "
+            f"ønsket={item.get('preferred_slot', '-')}"
+        )
+    print()
+
+    if warnings:
+        print("Advarsler:")
+        for warning in warnings:
+            print(f"  - {warning}")
+        print()
+
+    if errors:
+        print("Feil:")
+        for error in errors:
+            print(f"  - {error}")
+        raise SystemExit(1)
+
+    print("Status: Snapshot er gyldig nok for videre SDE-testing.")
+
+
+if __name__ == "__main__":
+    snapshot = load_snapshot()
+    print_snapshot_report(snapshot)

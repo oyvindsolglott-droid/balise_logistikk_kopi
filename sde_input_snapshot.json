@@ -1,0 +1,122 @@
+{
+  "snapshot_name": "skien_kveld_natt_test_1",
+  "date": "2026-05-17",
+  "description": "Første manuelle SDE-inputsnapshot for kveld/natt-produksjon ved Skien. Brukes som trygg bro mellom faktisk Sporplan/Tursatt/Turnering-data og Python-motoren.",
+
+  "sporplan_status": {
+    "1S": null,
+    "1N": null,
+    "2S": null,
+    "2N": null,
+    "3S": "74-20",
+    "3M": "74-04",
+    "3N": null,
+    "4S": null,
+    "4M": null,
+    "4N": null,
+    "5S": null,
+    "5M": null,
+    "5N": null,
+    "6SS": null,
+    "6S": null,
+    "6N": null,
+    "7SS": null,
+    "7S": null,
+    "7N": "74-77",
+    "8SS": null,
+    "8S": null,
+    "8N": "74-88",
+    "9": "74-32",
+    "10S": null,
+    "10N": null,
+    "11S": null,
+    "11N": null,
+    "12S": null,
+    "12N": null
+  },
+
+  "tursatt_idag": {
+    "source": "manual_placeholder",
+    "trains": []
+  },
+
+  "tursatt_imorgen": {
+    "source": "manual_placeholder",
+    "trains": [
+      {
+        "train": 90862,
+        "display_train": 862,
+        "vehicle": "74-71",
+        "role": "morgenproduksjon"
+      },
+      {
+        "train": 90864,
+        "display_train": 864,
+        "vehicle": "74-72",
+        "role": "morgenproduksjon"
+      }
+    ]
+  },
+
+  "turnering_kveld": [
+    {
+      "time": "21:10",
+      "from_train": 802,
+      "vehicles": ["74-20", "74-04"],
+      "notes": "Eksempelankomst fra eksisterende testscenario"
+    }
+  ],
+
+  "turnering_natt": [],
+
+  "manual_inputs": [
+    {
+      "type": "vehicle",
+      "vehicle": "74-31",
+      "current_slot": null,
+      "need": "tømming_fylling",
+      "preferred_slot": "6N"
+    },
+    {
+      "type": "vehicle",
+      "vehicle": "74-40",
+      "current_slot": "6S",
+      "need": "parkering",
+      "preferred_slot": "10N"
+    }
+  ],
+
+  "production_goals": [
+    {
+      "train": 90862,
+      "display_train": 862,
+      "preferred_slots": ["11N", "12N"],
+      "position": "front"
+    },
+    {
+      "train": 90864,
+      "display_train": 864,
+      "preferred_slots": ["11S", "12S"],
+      "position": "behind_862"
+    }
+  ],
+
+  "constraints": [
+    {
+      "rule": "do_not_use_html_yet",
+      "description": "Denne inputfilen er manuell og skal ikke hentes direkte fra HTML i første versjon."
+    },
+    {
+      "rule": "track_2_3_platform_caution",
+      "description": "Spor 2 og 3 skal ikke brukes som vanlig parkering uten operativ begrunnelse."
+    },
+    {
+      "rule": "avoid_6SS_as_parking",
+      "description": "6SS skal normalt unngås som vanlig hensetting."
+    },
+    {
+      "rule": "862_864_pairing",
+      "description": "Kjøretøy til 90862/862 skal stå foran kjøretøy til 90864/864 i 11/12-par."
+    }
+  ]
+}
