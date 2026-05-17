@@ -91,13 +91,6 @@ def find_vehicle_slot(status: Dict[str, Optional[str]], vehicle: str) -> Optiona
     return None
 
 
-def scenario_vehicles_hint(status: Dict[str, Optional[str]]) -> List[Vehicle]:
-    # Midlertidig hjelpeløsning for testmotoren.
-    # Senere skal dette erstattes av scenario.vehicles direkte i en renere scoremodell.
-    vehicles = initial_test_vehicles()
-    return list(vehicles.values())
-
-
 def blocks_6ss_connection(status: Dict[str, Optional[str]]) -> bool:
     return status.get("6SS") is not None
 
@@ -115,7 +108,7 @@ def workshop_route_limited(status: Dict[str, Optional[str]]) -> bool:
     return status.get("7N") is not None and status.get("8N") is not None
 
 
-def score_move(status: Dict[str, Optional[str]], vehicle: Vehicle, from_slot: str, to_slot: str, step: int) -> Tuple[int, str, List[str]]:
+def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], vehicle: Vehicle, from_slot: str, to_slot: str, step: int) -> Tuple[int, str, List[str]]:
     # Produksjonsregel:
     # 862 settes normalt i 11N eller 12N.
     # 864 settes normalt bak 862 i samme spor, slik at 862 + 864 fyller ett spor.
@@ -170,7 +163,7 @@ def score_move(status: Dict[str, Optional[str]], vehicle: Vehicle, from_slot: st
     production_slots = ["11S", "11N", "12S", "12N"]
     has_862_864_need = any(
         v.target_train in ["862", "864"]
-        for v in scenario_vehicles_hint(status)
+        for v in vehicles.values()
     )
 
     if "park" in vehicle.needs and to_slot in ["10S", "10N", "11S", "11N", "12S", "12N"]:
@@ -259,6 +252,7 @@ def generate_candidate_moves(scenario: Scenario, step: int) -> List[Move]:
 
             score, reason, warnings = score_move(
                 scenario.status,
+                scenario.vehicles,
                 vehicle,
                 from_slot,
                 to_slot,
