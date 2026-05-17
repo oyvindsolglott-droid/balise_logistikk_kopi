@@ -81,6 +81,8 @@
 
   <section class="note" id="eveningArrivals"></section>
 
+  <section class="note" id="handlingVehicles"></section>
+
   <div id="result"></div>
 
   <script src="decision_rules.js"></script>
@@ -163,6 +165,19 @@
       }
     ];
 
+    const HANDLING_VEHICLE_SOURCES = {
+      turneringKveld: [
+        { train: "851", vehicles: ["74-31"], source: "Turnering Kveld" },
+        { train: "853", vehicles: ["74-32"], source: "Turnering Kveld" }
+      ],
+      turneringNatt: [
+        { train: "855", vehicles: ["74-40"], source: "Turnering Natt" }
+      ],
+      manualEmptyStock: [
+        { train: "Tomtog", vehicles: ["74-99"], source: "Manuelt registrert tomtog" }
+      ]
+    };
+
     function renderCurrentStatus(status) {
       const slotOrder = ["12", "11", "10", "6N", "5SS", "4S"];
 
@@ -214,6 +229,29 @@
       `;
     }
 
+    function renderHandlingVehicles(sources) {
+      const sections = [
+        ["Fra Turnering Kveld", sources.turneringKveld],
+        ["Fra Turnering Natt", sources.turneringNatt],
+        ["Manuelt registrerte tomtog/kjøretøy", sources.manualEmptyStock]
+      ];
+
+      const lines = sections
+        .map(([title, rows]) => {
+          const rowLines = rows
+            .map(row => `${row.source}: ${row.train} — ${row.vehicles.join(", ")}`)
+            .join("<br>");
+
+          return `<strong>${title}:</strong><br>${rowLines}`;
+        })
+        .join("<br><br>");
+
+      document.getElementById("handlingVehicles").innerHTML = `
+        <strong>Kjøretøy til håndtering:</strong><br>
+        ${lines}
+      `;
+    }
+
     function findVehicleSlot(status, vehicle) {
       for (const [slot, vehicles] of Object.entries(status)) {
         if (vehicles.includes(vehicle)) {
@@ -235,6 +273,7 @@
     renderCurrentStatus(CURRENT_STATUS);
     renderMorningProductionGoal(MORNING_PRODUCTION_GOAL);
     renderEveningArrivals(EVENING_ARRIVALS);
+    renderHandlingVehicles(HANDLING_VEHICLE_SOURCES);
     renderMoveRanking(VALID_MOVES_FROM_STATUS);
   </script>
 </body>
