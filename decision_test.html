@@ -130,8 +130,19 @@
         `
         : "";
 
+      const simpleActionPlanHtml = bestMove
+        ? `
+          <section class="note">
+            <strong>Foreløpig handlingsplan:</strong><br>
+            1. Flytt ${bestMove.vehicle || ""} fra ${bestMove.fromSlot || ""} til ${bestMove.toSlot || ""}<br>
+            2. Vurder neste kjøretøy etter oppdatert status
+          </section>
+        `
+        : "";
+
       document.getElementById("result").innerHTML = `
         ${firstMoveHtml}
+        ${simpleActionPlanHtml}
         <table>
           <thead>
             <tr>
