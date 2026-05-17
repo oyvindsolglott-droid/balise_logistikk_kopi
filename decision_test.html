@@ -140,9 +140,23 @@
         `
         : "";
 
+      const simulatedStatusAfterFirstMove = bestMove
+        ? simulateMove(CURRENT_STATUS, bestMove)
+        : null;
+
+      const simulatedStatusHtml = simulatedStatusAfterFirstMove
+        ? `
+          <section class="note">
+            <strong>Status etter trinn 1:</strong><br>
+            ${renderStatusLines(simulatedStatusAfterFirstMove)}
+          </section>
+        `
+        : "";
+
       document.getElementById("result").innerHTML = `
         ${firstMoveHtml}
         ${simpleActionPlanHtml}
+        ${simulatedStatusHtml}
         <table>
           <thead>
             <tr>
@@ -170,6 +184,31 @@
       "11": [],
       "12": []
     };
+
+    function simulateMove(status, move) {
+      const nextStatus = Object.fromEntries(
+        Object.entries(status).map(([slot, vehicles]) => [slot, [...vehicles]])
+      );
+
+      if (move.fromSlot && nextStatus[move.fromSlot]) {
+        nextStatus[move.fromSlot] = nextStatus[move.fromSlot].filter(vehicle => vehicle !== move.vehicle);
+      }
+
+      if (move.toSlot) {
+        if (!nextStatus[move.toSlot]) {
+          nextStatus[move.toSlot] = [];
+        }
+        nextStatus[move.toSlot].push(move.vehicle);
+      }
+
+      return nextStatus;
+    }
+
+    function renderStatusLines(status) {
+      return Object.entries(status)
+        .map(([slot, vehicles]) => `${slot}: ${vehicles.length ? vehicles.join(", ") : "ledig"}`)
+        .join("<br>");
+    }
 
     const MORNING_PRODUCTION_GOAL = {
       "3": [
