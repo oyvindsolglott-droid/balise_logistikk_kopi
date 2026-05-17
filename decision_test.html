@@ -83,6 +83,8 @@
 
   <section class="note" id="handlingVehicles"></section>
 
+  <section class="note" id="combinedHandlingVehicles"></section>
+
   <div id="result"></div>
 
   <script src="decision_rules.js"></script>
@@ -252,6 +254,33 @@
       `;
     }
 
+    function getCombinedHandlingVehicles(sources) {
+      return [
+        ...sources.turneringKveld,
+        ...sources.turneringNatt,
+        ...sources.manualEmptyStock
+      ].flatMap(row =>
+        row.vehicles.map(vehicle => ({
+          vehicle,
+          train: row.train,
+          source: row.source
+        }))
+      );
+    }
+
+    function renderCombinedHandlingVehicles(sources) {
+      const vehicles = getCombinedHandlingVehicles(sources);
+
+      const lines = vehicles
+        .map(item => `${item.vehicle} — ${item.source}, ${item.train}`)
+        .join("<br>");
+
+      document.getElementById("combinedHandlingVehicles").innerHTML = `
+        <strong>Samlet liste for SDE-håndtering:</strong><br>
+        ${lines}
+      `;
+    }
+
     function findVehicleSlot(status, vehicle) {
       for (const [slot, vehicles] of Object.entries(status)) {
         if (vehicles.includes(vehicle)) {
@@ -274,6 +303,7 @@
     renderMorningProductionGoal(MORNING_PRODUCTION_GOAL);
     renderEveningArrivals(EVENING_ARRIVALS);
     renderHandlingVehicles(HANDLING_VEHICLE_SOURCES);
+    renderCombinedHandlingVehicles(HANDLING_VEHICLE_SOURCES);
     renderMoveRanking(VALID_MOVES_FROM_STATUS);
   </script>
 </body>
