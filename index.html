@@ -1875,6 +1875,37 @@ function computeInndata(){
   return result;
 }
 
+function getSdeSporplanStatus(){
+  const status = Object.fromEntries(inputSlots.map(slot=>[slot, null]));
+  const slotElements = Array.from(document.querySelectorAll("#yardGrid .slot"));
+
+  slotElements.forEach(el=>{
+    const slot = normalizeSlot(el.dataset.slot);
+    if(!slot) return;
+    if(!(slot in status)) status[slot] = null;
+
+    const text = String(el.innerText || "");
+    const lines = text
+      .split(/\n+/)
+      .map(v=>String(v || "").trim())
+      .filter(Boolean);
+
+    const vehicleLine = lines.find(v => /^\d{2}-\d{2}$/.test(v));
+    status[slot] = vehicleLine || null;
+  });
+
+  return status;
+}
+
+function getSdeSporplanSnapshot(){
+  return {
+    snapshot_name: "sporplan_live_export",
+    exported_at: new Date().toISOString(),
+    source: "index.html computeInndata",
+    sporplan_status: getSdeSporplanStatus()
+  };
+}
+
 
 
 function isRepMarker(value){
