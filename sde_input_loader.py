@@ -227,6 +227,25 @@ def print_snapshot_report(snapshot):
             )
         print()
 
+    reverse_ops = snapshot.get("reverse_coupling_splitting", {})
+    if reverse_ops:
+        print("Omvendt skjøting/deling:")
+        print(f"  Aktivert: {'ja' if reverse_ops.get('enabled') else 'nei'}")
+        print(f"  Delingsspor: {', '.join(reverse_ops.get('split_tracks', [])) or '-'}")
+        print(f"  Midlertidige fradelingsspor: {', '.join(reverse_ops.get('temporary_split_slots', [])) or '-'}")
+        print(f"  Nordlige skjøtespor: {', '.join(reverse_ops.get('north_coupling_slots', [])) or '-'}")
+        print(f"  Ankomst fra sørenden tillatt: {'ja' if reverse_ops.get('south_arrival_allowed') else 'nei'}")
+
+        rules = reverse_ops.get("rules", [])
+        if rules:
+            print("  Regler:")
+            for rule in rules:
+                print(f"    - {rule}")
+
+        active_operations = reverse_ops.get("active_operations", [])
+        print(f"  Aktive operasjoner: {len(active_operations)}")
+        print()
+
     print("Manuelle input:")
     for item in snapshot.get("manual_inputs", []):
         needs = list(item.get("needs", []))

@@ -159,5 +159,28 @@
         "reason": "Skal til tømming/fylling når faktisk plassering er kjent."
       }
     ]
+  },
+  "reverse_coupling_splitting": {
+    "enabled": true,
+    "split_tracks": [
+      "2",
+      "3"
+    ],
+    "temporary_split_slots": [
+      "2S",
+      "3S"
+    ],
+    "north_coupling_slots": [
+      "2N",
+      "3N"
+    ],
+    "south_arrival_allowed": true,
+    "rules": [
+      "Sammenkoblede kjøretøy kan deles i spor 2 eller 3.",
+      "Kjøretøy som blir fradelt i 2S eller 3S skal kjøres vekk etter deling.",
+      "Enkelt kjøretøy som står i 2N eller 3N kan skjøtes med kjøretøy som kommer fra stasjonens sør-ende.",
+      "Spor 2 og 3 kan brukes midlertidig til skjøting/deling, men ikke som vanlig parkering."
+    ],
+    "active_operations": []
   }
 }
