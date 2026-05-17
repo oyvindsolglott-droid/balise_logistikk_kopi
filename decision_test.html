@@ -3,11 +3,117 @@
 <head>
   <meta charset="utf-8">
   <title>Decision test</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 24px;
+      background: #f7f7f7;
+      color: #222;
+    }
+
+    h1 {
+      margin-bottom: 6px;
+    }
+
+    .note {
+      margin-bottom: 18px;
+      color: #555;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: white;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eee;
+    }
+
+    .best {
+      background: #e8f5e9;
+      font-weight: 700;
+    }
+
+    .bad-score {
+      color: #9b1c1c;
+      font-weight: 700;
+    }
+
+    .good-score {
+      color: #116329;
+      font-weight: 700;
+    }
+
+    .reason {
+      margin: 0 0 4px 0;
+    }
+  </style>
 </head>
 <body>
   <h1>Regelmotor-test</h1>
-  <p>Åpne utviklerkonsollen for å se resultatet.</p>
+  <p class="note">
+    Viser rangering av mulige skiftebevegelser. Dette er kun testvisning og flytter ingenting automatisk.
+  </p>
+
+  <div id="result"></div>
 
   <script src="decision_rules.js"></script>
+
+  <script>
+    function renderMoveRanking(moves) {
+      const result = findBestMove(moves);
+      const rows = result.all.map((item, index) => {
+        const move = item.move;
+        const reasons = item.reasons.length
+          ? item.reasons.map(reason => `<p class="reason">• ${reason}</p>`).join("")
+          : "<p class=\"reason\">Ingen særskilt regel traff.</p>";
+
+        const scoreClass = item.score >= 0 ? "good-score" : "bad-score";
+        const bestClass = index === 0 ? "best" : "";
+
+        return `
+          <tr class="${bestClass}">
+            <td>${index + 1}</td>
+            <td>${index === 0 ? "Beste forslag nå" : "Alternativ"}</td>
+            <td>${move.vehicle || ""}</td>
+            <td>${move.fromSlot || ""}</td>
+            <td>${move.toSlot || ""}</td>
+            <td class="${scoreClass}">${item.score}</td>
+            <td>${reasons}</td>
+          </tr>
+        `;
+      }).join("");
+
+      document.getElementById("result").innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Rang</th>
+              <th>Status</th>
+              <th>Kjøretøy</th>
+              <th>Fra spor</th>
+              <th>Til spor</th>
+              <th>Score</th>
+              <th>Begrunnelse</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      `;
+    }
+
+    renderMoveRanking(COMPARE_TEST_MOVES);
+  </script>
 </body>
 </html>
