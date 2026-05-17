@@ -289,9 +289,7 @@ const COMPARE_TEST_MOVES = [
     toSlot: "10",
     mustUseSouthEnd: false,
     needsWorkshop: false,
-    needsService: false,
-    isDoubleSet: true,
-    route: "Porsgrunn-Notodden"
+    needsService: false
   }
 ];
 

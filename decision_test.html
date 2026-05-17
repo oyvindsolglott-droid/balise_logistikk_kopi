@@ -114,7 +114,24 @@
         `;
       }).join("");
 
+      const best = result.best;
+      const bestMove = best ? best.move : null;
+      const bestReasons = best && best.reasons.length
+        ? best.reasons.map(reason => `<p class="reason">• ${reason}</p>`).join("")
+        : "<p class=\"reason\">Ingen særskilt regel traff.</p>";
+
+      const firstMoveHtml = bestMove
+        ? `
+          <section class="note">
+            <strong>Første foreslåtte trekk:</strong><br>
+            Flytt ${bestMove.vehicle || ""} fra ${bestMove.fromSlot || ""} til ${bestMove.toSlot || ""}<br>
+            ${bestReasons}
+          </section>
+        `
+        : "";
+
       document.getElementById("result").innerHTML = `
+        ${firstMoveHtml}
         <table>
           <thead>
             <tr>
