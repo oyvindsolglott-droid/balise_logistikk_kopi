@@ -1,83 +1,9 @@
-from dataclasses import dataclass, field
 from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 
+from sde_models import SLOTS, Move, Scenario, Vehicle
+from sde_scenarios import initial_test_status, initial_test_vehicles
 
-SLOTS = [
-    "1S", "1N",
-    "2S", "2N",
-    "3S", "3M", "3N",
-    "4S", "4M", "4N",
-    "5S", "5M", "5N",
-    "6SS", "6S", "6N",
-    "7SS", "7S", "7N",
-    "8SS", "8S", "8N",
-    "9",
-    "10S", "10N",
-    "11S", "11N",
-    "12S", "12N",
-]
-
-
-@dataclass
-class Vehicle:
-    number: str
-    role: str
-    needs: List[str] = field(default_factory=list)
-    target_train: Optional[str] = None
-
-
-@dataclass
-class Move:
-    vehicle: str
-    from_slot: str
-    to_slot: str
-    time: str
-    reason: str
-    score: int
-    warnings: List[str] = field(default_factory=list)
-
-
-@dataclass
-class Scenario:
-    status: Dict[str, Optional[str]]
-    vehicles: Dict[str, Vehicle]
-    moves: List[Move] = field(default_factory=list)
-    score: int = 0
-    warnings: List[str] = field(default_factory=list)
-
-
-def initial_test_status() -> Dict[str, Optional[str]]:
-    status = {slot: None for slot in SLOTS}
-
-    status["4S"] = "74-31"
-    status["6S"] = "74-40"
-    status["9"] = "74-32"
-    status["3S"] = "74-20"
-    status["3M"] = "74-04"
-
-    # Test for produksjonsrekkefølge 862/864
-    status["5N"] = "74-62"
-    status["5M"] = "74-64"
-
-    # Verkstedplasser. Disse skal normalt være besatt og styres ikke direkte av SDE.
-    status["7N"] = "74-77"
-    status["8N"] = "74-88"
-
-    return status
-
-
-def initial_test_vehicles() -> Dict[str, Vehicle]:
-    return {
-        "74-31": Vehicle("74-31", role="arrival", needs=["empty_fill"]),
-        "74-40": Vehicle("74-40", role="blocks_flow", needs=["park"]),
-        "74-32": Vehicle("74-32", role="arrival", needs=["park"]),
-        "74-62": Vehicle("74-62", role="morning_production", needs=["production_pair"], target_train="862"),
-        "74-64": Vehicle("74-64", role="morning_production", needs=["production_pair"], target_train="864"),
-        # 74-77 og 74-88 står i verksted og skal ikke inngå som flyttbare SDE-kandidater her.
-        "74-20": Vehicle("74-20", role="morning_production", target_train="802"),
-        "74-04": Vehicle("74-04", role="morning_production", target_train="852"),
-    }
 
 
 def slot_is_free(status: Dict[str, Optional[str]], slot: str) -> bool:
@@ -162,7 +88,7 @@ def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], v
 
     production_slots = ["11S", "11N", "12S", "12N"]
     has_862_864_need = any(
-        v.target_train in ["862", "864"]
+        v.target_train in ["862", "90862", "864", "90864"]
         for v in vehicles.values()
     )
 
@@ -175,11 +101,11 @@ def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], v
         warnings.append("Vanlig parkering bør ikke ta 11/12 når 862/864-produksjon må settes opp.")
         reason_parts.append("straff: tar produksjonsspor for 862/864")
 
-    if vehicle.target_train == "862" and to_slot in ["11N", "12N"]:
+    if vehicle.target_train in ["862", "90862"] and to_slot in ["11N", "12N"]:
         score += 420
-        reason_parts.append("862 prioritert fremst i 11N/12N")
+        reason_parts.append("862/90862 prioritert fremst i 11N/12N")
 
-    if vehicle.target_train == "864":
+    if vehicle.target_train in ["864", "90864"]:
         if to_slot == "11S" and status.get("11N") is not None:
             score += 520
             reason_parts.append("864 plasseres bak kjøretøy i 11N")
