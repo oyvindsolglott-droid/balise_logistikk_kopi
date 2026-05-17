@@ -147,8 +147,20 @@
     };
 
     const EVENING_ARRIVALS = [
-      { time: "18:10", train: "851", arrivalTrack: "2", vehicles: ["74-31"] },
-      { time: "18:22", train: "853", arrivalTrack: "3", vehicles: ["74-32"] }
+      {
+        time: "18:10",
+        train: "851",
+        arrivalTrack: "2",
+        vehicles: ["74-31"],
+        outOfServiceCandidate: true
+      },
+      {
+        time: "18:22",
+        train: "853",
+        arrivalTrack: "3",
+        vehicles: ["74-32"],
+        outOfServiceCandidate: true
+      }
     ];
 
     function renderCurrentStatus(status) {
@@ -188,7 +200,11 @@
     function renderEveningArrivals(arrivals) {
       const lines = arrivals
         .map(arrival => {
-          return `${arrival.time}: Tog ${arrival.train} ankommer spor ${arrival.arrivalTrack} med ${arrival.vehicles.join(", ")}`;
+          const status = arrival.outOfServiceCandidate
+            ? "potensielt uttak av drift"
+            : "ordinær ankomst";
+
+          return `${arrival.time}: Tog ${arrival.train} ankommer spor ${arrival.arrivalTrack} med ${arrival.vehicles.join(", ")} — ${status}`;
         })
         .join("<br>");
 
