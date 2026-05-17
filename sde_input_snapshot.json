@@ -75,7 +75,9 @@
       "needs": [
         "tømming_fylling"
       ],
-      "handling_required": true
+      "handling_required": true,
+      "priority": "normal",
+      "reason": "Skal til tømming/fylling når faktisk plassering er kjent."
     },
     {
       "type": "vehicle",
@@ -85,7 +87,9 @@
       "needs": [
         "parkering"
       ],
-      "handling_required": true
+      "handling_required": true,
+      "priority": "normal",
+      "reason": "Skal parkeres i 10N uten å blokkere produksjon."
     }
   ],
   "production_goals": [

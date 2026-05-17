@@ -210,7 +210,9 @@ def print_snapshot_report(snapshot):
             f"  {item.get('vehicle', '-')}: "
             f"{needs_text} "
             f"nå={item.get('current_slot', '-')} "
-            f"ønsket={item.get('preferred_slot', '-')}"
+            f"ønsket={item.get('preferred_slot', '-')} "
+            f"prioritet={item.get('priority', '-')} "
+            f"grunn={item.get('reason', '-')}"
         )
     print()
 
