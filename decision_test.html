@@ -77,6 +77,8 @@
 
   <section class="note" id="currentStatus"></section>
 
+  <section class="note" id="morningProductionGoal"></section>
+
   <div id="result"></div>
 
   <script src="decision_rules.js"></script>
@@ -135,6 +137,13 @@
       "12": []
     };
 
+    const MORNING_PRODUCTION_GOAL = {
+      "3": [
+        { train: "802", position: "fremst" },
+        { train: "852", position: "bak" }
+      ]
+    };
+
     function renderCurrentStatus(status) {
       const slotOrder = ["12", "11", "10", "6N", "5SS", "4S"];
 
@@ -148,6 +157,23 @@
 
       document.getElementById("currentStatus").innerHTML = `
         <strong>Teststatus:</strong><br>
+        ${lines}
+      `;
+    }
+
+    function renderMorningProductionGoal(goal) {
+      const lines = Object.entries(goal)
+        .map(([track, trains]) => {
+          const trainLines = trains
+            .map((item, index) => `${index + 1}. Tog ${item.train} ${item.position}`)
+            .join("<br>");
+
+          return `Spor ${track}:<br>${trainLines}`;
+        })
+        .join("<br><br>");
+
+      document.getElementById("morningProductionGoal").innerHTML = `
+        <strong>Målbilde for morgenproduksjon:</strong><br>
         ${lines}
       `;
     }
@@ -171,6 +197,7 @@
     const VALID_MOVES_FROM_STATUS = filterMovesByCurrentStatus(COMPARE_TEST_MOVES, CURRENT_STATUS);
 
     renderCurrentStatus(CURRENT_STATUS);
+    renderMorningProductionGoal(MORNING_PRODUCTION_GOAL);
     renderMoveRanking(VALID_MOVES_FROM_STATUS);
   </script>
 </body>
