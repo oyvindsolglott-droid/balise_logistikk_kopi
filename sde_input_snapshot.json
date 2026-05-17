@@ -129,5 +129,23 @@
       "rule": "862_864_pairing",
       "description": "Kjøretøy til 90862/862 skal stå foran kjøretøy til 90864/864 i 11/12-par."
     }
-  ]
+  ],
+  "workshop": {
+    "positions": {
+      "7N": {
+        "vehicle": "74-77",
+        "status": "under_repair",
+        "controllable_by_sde": false,
+        "note": "Verkstedplass. Skal ikke brukes som vanlig skiftemål."
+      },
+      "8N": {
+        "vehicle": "74-88",
+        "status": "under_repair",
+        "controllable_by_sde": false,
+        "note": "Verkstedplass. Skal ikke brukes som vanlig skiftemål."
+      }
+    },
+    "ready_to_leave": [],
+    "needs_repair": []
+  }
 }

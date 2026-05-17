@@ -196,6 +196,23 @@ def print_snapshot_report(snapshot):
         )
     print()
 
+    workshop = snapshot.get("workshop", {})
+    if workshop:
+        print("Verksted:")
+        for slot, info in workshop.get("positions", {}).items():
+            print(
+                f"  {slot}: "
+                f"{info.get('vehicle') or '-'} "
+                f"status={info.get('status', '-')} "
+                f"SDE-styrbar={'ja' if info.get('controllable_by_sde') else 'nei'}"
+            )
+
+        ready_to_leave = workshop.get("ready_to_leave", [])
+        needs_repair = workshop.get("needs_repair", [])
+        print(f"  Ferdig fra verksted: {', '.join(ready_to_leave) if ready_to_leave else '-'}")
+        print(f"  Skal inn til verksted: {', '.join(needs_repair) if needs_repair else '-'}")
+        print()
+
     print("Manuelle input:")
     for item in snapshot.get("manual_inputs", []):
         needs = list(item.get("needs", []))
