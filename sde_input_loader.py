@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from sde_models import SLOTS
+from sde_models import SLOTS, Vehicle, Scenario
 
 
 SNAPSHOT_PATH = Path("sde_input_snapshot.json")
@@ -10,6 +10,79 @@ SNAPSHOT_PATH = Path("sde_input_snapshot.json")
 def load_snapshot(path=SNAPSHOT_PATH):
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def snapshot_to_scenario(snapshot):
+    """
+    Gjør manuell SDE snapshot-data om til et Scenario-objekt.
+
+    Denne versjonen følger dagens faktiske sde_models.py:
+    - Vehicle(number, role, needs, target_train)
+    - Scenario(status, vehicles)
+    - Nåværende plassering ligger i scenario.status, ikke i Vehicle.
+    """
+
+    status = dict(snapshot.get("sporplan_status", {}))
+    vehicles_by_number = {}
+
+    def ensure_vehicle(number, role="ukjent", needs=None, target_train=None):
+        if not number:
+            return
+
+        existing = vehicles_by_number.get(number)
+
+        merged_needs = []
+        if existing:
+            merged_needs.extend(existing.needs)
+
+        if needs:
+            for need in needs:
+                if need and need not in merged_needs:
+                    merged_needs.append(need)
+
+        vehicles_by_number[number] = Vehicle(
+            number=number,
+            role=role if role != "ukjent" or not existing else existing.role,
+            needs=merged_needs,
+            target_train=target_train if target_train is not None else (existing.target_train if existing else None)
+        )
+
+    for slot, number in status.items():
+        if number:
+            ensure_vehicle(number, role="står_i_sporplan")
+
+    for row in snapshot.get("tursatt_imorgen", {}).get("trains", []):
+        ensure_vehicle(
+            row.get("vehicle"),
+            role=row.get("role", "tursatt_imorgen"),
+            target_train=str(row.get("train")) if row.get("train") is not None else None
+        )
+
+    for row in snapshot.get("turnering_kveld", []):
+        for number in row.get("vehicles", []):
+            ensure_vehicle(number, role="turnering_kveld")
+
+    for row in snapshot.get("turnering_natt", []):
+        for number in row.get("vehicles", []):
+            ensure_vehicle(number, role="turnering_natt")
+
+    for item in snapshot.get("manual_inputs", []):
+        needs = []
+        if item.get("need"):
+            needs.append(item.get("need"))
+        if item.get("preferred_slot"):
+            needs.append(f"preferred_slot:{item.get('preferred_slot')}")
+
+        ensure_vehicle(
+            item.get("vehicle"),
+            role="manual_input",
+            needs=needs
+        )
+
+    return Scenario(
+        status=status,
+        vehicles=vehicles_by_number
+    )
 
 
 def validate_sporplan_status(snapshot):
