@@ -174,10 +174,11 @@ def generate_candidate_moves(scenario: Scenario, step: int) -> List[Move]:
         if vehicle_number in already_moved:
             continue
 
-        # Ikke flytt kjøretøy bare fordi de finnes i Sporplan.
-        # SDE skal bare vurdere kjøretøy som faktisk er del av håndtering,
-        # produksjonsmål eller manuelle operative behov.
-        if vehicle.role == "står_i_sporplan" and not vehicle.needs and vehicle.target_train is None:
+        # Ikke flytt kjøretøy bare fordi de finnes i Sporplan eller Turnering Kveld/Natt.
+        # SDE skal bare vurdere kjøretøy som faktisk har et operativt behov,
+        # produksjonsmål eller eksplisitt manuell håndtering.
+        passive_roles = {"står_i_sporplan", "turnering_kveld", "turnering_natt"}
+        if vehicle.role in passive_roles and not vehicle.needs and vehicle.target_train is None:
             continue
 
         from_slot = find_vehicle_slot(scenario.status, vehicle_number)
