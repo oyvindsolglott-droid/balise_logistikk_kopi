@@ -213,6 +213,20 @@ def print_snapshot_report(snapshot):
         print(f"  Skal inn til verksted: {', '.join(needs_repair) if needs_repair else '-'}")
         print()
 
+    empty_fill = snapshot.get("empty_fill", {})
+    if empty_fill:
+        print("Tømming/fylling:")
+        print(f"  Målspor: {empty_fill.get('target_slot', '-')}")
+        for item in empty_fill.get("vehicles", []):
+            print(
+                f"  {item.get('vehicle', '-')}: "
+                f"nå={item.get('current_slot', '-')} "
+                f"status={item.get('status', '-')} "
+                f"prioritet={item.get('priority', '-')} "
+                f"grunn={item.get('reason', '-')}"
+            )
+        print()
+
     print("Manuelle input:")
     for item in snapshot.get("manual_inputs", []):
         needs = list(item.get("needs", []))
