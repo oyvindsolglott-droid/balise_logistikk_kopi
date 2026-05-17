@@ -272,7 +272,7 @@
       const vehicles = getCombinedHandlingVehicles(sources);
 
       const lines = vehicles
-        .map(item => `${item.vehicle} — ${item.source}, ${item.train}`)
+        .map(item => `${item.vehicle} — ${item.source}, ${item.train} — må vurderes`)
         .join("<br>");
 
       document.getElementById("combinedHandlingVehicles").innerHTML = `
