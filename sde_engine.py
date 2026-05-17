@@ -78,7 +78,15 @@ def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], v
             warnings.append("Spor 3 er plattformspor og skal ikke brukes til vanlig parkering på dagtid.")
             reason_parts.append("straff: vanlig parkering i spor 3")
 
-    if "empty_fill" in vehicle.needs and to_slot == "6N":
+    preferred_slot_need = f"preferred_slot:{to_slot}"
+    is_parking_need = "park" in vehicle.needs or "parkering" in vehicle.needs
+    is_empty_fill_need = "empty_fill" in vehicle.needs or "tømming_fylling" in vehicle.needs
+
+    if preferred_slot_need in vehicle.needs:
+        score += 360
+        reason_parts.append(f"manuelt ønsket målspor {to_slot}")
+
+    if is_empty_fill_need and to_slot == "6N":
         score += 300
         reason_parts.append("tømming/fylling via nord")
 
@@ -92,11 +100,11 @@ def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], v
         for v in vehicles.values()
     )
 
-    if "park" in vehicle.needs and to_slot in ["10S", "10N", "11S", "11N", "12S", "12N"]:
+    if is_parking_need and to_slot in ["10S", "10N", "11S", "11N", "12S", "12N"]:
         score += 160
         reason_parts.append("parkering uten å blokkere produksjon")
 
-    if "park" in vehicle.needs and has_862_864_need and to_slot in production_slots:
+    if is_parking_need and has_862_864_need and to_slot in production_slots:
         score -= 260
         warnings.append("Vanlig parkering bør ikke ta 11/12 når 862/864-produksjon må settes opp.")
         reason_parts.append("straff: tar produksjonsspor for 862/864")
@@ -166,6 +174,12 @@ def generate_candidate_moves(scenario: Scenario, step: int) -> List[Move]:
         if vehicle_number in already_moved:
             continue
 
+        # Ikke flytt kjøretøy bare fordi de finnes i Sporplan.
+        # SDE skal bare vurdere kjøretøy som faktisk er del av håndtering,
+        # produksjonsmål eller manuelle operative behov.
+        if vehicle.role == "står_i_sporplan" and not vehicle.needs and vehicle.target_train is None:
+            continue
+
         from_slot = find_vehicle_slot(scenario.status, vehicle_number)
         if not from_slot:
             continue
@@ -218,12 +232,7 @@ def apply_move(scenario: Scenario, move: Move) -> Scenario:
     return new_scenario
 
 
-def search_best_plan(max_depth: int = 3) -> Scenario:
-    start = Scenario(
-        status=initial_test_status(),
-        vehicles=initial_test_vehicles(),
-    )
-
+def search_best_plan_for_scenario(start: Scenario, max_depth: int = 3) -> Scenario:
     scenarios = [start]
 
     for step in range(max_depth):
@@ -252,6 +261,15 @@ def search_best_plan(max_depth: int = 3) -> Scenario:
 
     scenarios.sort(key=lambda s: (s.score, -len(s.moves)), reverse=True)
     return scenarios[0]
+
+
+def search_best_plan(max_depth: int = 3) -> Scenario:
+    start = Scenario(
+        status=initial_test_status(),
+        vehicles=initial_test_vehicles(),
+    )
+
+    return search_best_plan_for_scenario(start, max_depth=max_depth)
 
 
 def minute_to_time(minutes: int) -> str:
@@ -311,12 +329,7 @@ def print_plan(plan: Scenario) -> None:
     print_status(plan.status)
 
 
-def print_first_step_candidates(limit: int = 12) -> None:
-    scenario = Scenario(
-        status=initial_test_status(),
-        vehicles=initial_test_vehicles(),
-    )
-
+def print_first_step_candidates_for_scenario(scenario: Scenario, limit: int = 12) -> None:
     candidates = generate_candidate_moves(scenario, step=0)
 
     print("=== Første vurderte trekk ===")
@@ -326,6 +339,15 @@ def print_first_step_candidates(limit: int = 12) -> None:
             for warning in move.warnings:
                 print(f"   Advarsel: {warning}")
     print()
+
+
+def print_first_step_candidates(limit: int = 12) -> None:
+    scenario = Scenario(
+        status=initial_test_status(),
+        vehicles=initial_test_vehicles(),
+    )
+
+    print_first_step_candidates_for_scenario(scenario, limit=limit)
 
 
 if __name__ == "__main__":

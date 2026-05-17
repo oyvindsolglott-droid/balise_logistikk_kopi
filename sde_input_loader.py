@@ -23,6 +23,24 @@ def snapshot_to_scenario(snapshot):
     """
 
     status = dict(snapshot.get("sporplan_status", {}))
+
+    # Manuelle input kan oppgi faktisk nåværende spor for kjøretøy som
+    # ikke ligger i sporplan_status ennå. Da skal snapshot-status oppdateres,
+    # slik at motoren faktisk kan beregne trekk fra riktig sted.
+    for item in snapshot.get("manual_inputs", []):
+        number = item.get("vehicle")
+        current_slot = item.get("current_slot")
+
+        if not number or not current_slot:
+            continue
+
+        already_placed = any(placed == number for placed in status.values())
+        if already_placed:
+            continue
+
+        if current_slot in status and status.get(current_slot) is None:
+            status[current_slot] = number
+
     vehicles_by_number = {}
 
     def ensure_vehicle(number, role="ukjent", needs=None, target_train=None):
