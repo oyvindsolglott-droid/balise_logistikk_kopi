@@ -268,11 +268,23 @@
       );
     }
 
+    function getHandlingStatus(item) {
+      const arrival = EVENING_ARRIVALS.find(row =>
+        row.train === item.train && row.vehicles.includes(item.vehicle)
+      );
+
+      if (arrival && ["2", "3"].includes(arrival.arrivalTrack)) {
+        return "må vurderes for uttak fra plattformspor";
+      }
+
+      return "må vurderes";
+    }
+
     function renderCombinedHandlingVehicles(sources) {
       const vehicles = getCombinedHandlingVehicles(sources);
 
       const lines = vehicles
-        .map(item => `${item.vehicle} — ${item.source}, ${item.train} — må vurderes`)
+        .map(item => `${item.vehicle} — ${item.source}, ${item.train} — ${getHandlingStatus(item)}`)
         .join("<br>");
 
       document.getElementById("combinedHandlingVehicles").innerHTML = `
