@@ -86,10 +86,21 @@ def snapshot_to_scenario(snapshot):
 
     for item in snapshot.get("manual_inputs", []):
         needs = []
+
+        # Ny struktur: needs er en liste.
+        for need in item.get("needs", []):
+            if need:
+                needs.append(need)
+
+        # Bakoverkompatibilitet med første snapshot-versjon.
         if item.get("need"):
             needs.append(item.get("need"))
+
         if item.get("preferred_slot"):
             needs.append(f"preferred_slot:{item.get('preferred_slot')}")
+
+        if item.get("handling_required"):
+            needs.append("handling_required")
 
         ensure_vehicle(
             item.get("vehicle"),
@@ -187,9 +198,17 @@ def print_snapshot_report(snapshot):
 
     print("Manuelle input:")
     for item in snapshot.get("manual_inputs", []):
+        needs = list(item.get("needs", []))
+
+        # Bakoverkompatibilitet med første snapshot-versjon.
+        if item.get("need"):
+            needs.append(item.get("need"))
+
+        needs_text = ", ".join(needs) if needs else "-"
+
         print(
             f"  {item.get('vehicle', '-')}: "
-            f"{item.get('need', '-')} "
+            f"{needs_text} "
             f"nå={item.get('current_slot', '-')} "
             f"ønsket={item.get('preferred_slot', '-')}"
         )

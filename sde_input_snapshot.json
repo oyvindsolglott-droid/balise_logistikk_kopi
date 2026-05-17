@@ -2,7 +2,6 @@
   "snapshot_name": "skien_kveld_natt_test_1",
   "date": "2026-05-17",
   "description": "Første manuelle SDE-inputsnapshot for kveld/natt-produksjon ved Skien. Brukes som trygg bro mellom faktisk Sporplan/Tursatt/Turnering-data og Python-motoren.",
-
   "sporplan_status": {
     "1S": null,
     "1N": null,
@@ -34,12 +33,10 @@
     "12S": null,
     "12N": null
   },
-
   "tursatt_idag": {
     "source": "manual_placeholder",
     "trains": []
   },
-
   "tursatt_imorgen": {
     "source": "manual_placeholder",
     "trains": [
@@ -57,50 +54,60 @@
       }
     ]
   },
-
   "turnering_kveld": [
     {
       "time": "21:10",
       "from_train": 802,
-      "vehicles": ["74-20", "74-04"],
+      "vehicles": [
+        "74-20",
+        "74-04"
+      ],
       "notes": "Eksempelankomst fra eksisterende testscenario"
     }
   ],
-
   "turnering_natt": [],
-
   "manual_inputs": [
     {
       "type": "vehicle",
       "vehicle": "74-31",
       "current_slot": null,
-      "need": "tømming_fylling",
-      "preferred_slot": "6N"
+      "preferred_slot": "6N",
+      "needs": [
+        "tømming_fylling"
+      ],
+      "handling_required": true
     },
     {
       "type": "vehicle",
       "vehicle": "74-40",
       "current_slot": "6S",
-      "need": "parkering",
-      "preferred_slot": "10N"
+      "preferred_slot": "10N",
+      "needs": [
+        "parkering"
+      ],
+      "handling_required": true
     }
   ],
-
   "production_goals": [
     {
       "train": 90862,
       "display_train": 862,
-      "preferred_slots": ["11N", "12N"],
+      "preferred_slots": [
+        "11N",
+        "12N"
+      ],
       "position": "front"
     },
     {
       "train": 90864,
       "display_train": 864,
-      "preferred_slots": ["11S", "12S"],
+      "preferred_slots": [
+        "11S",
+        "12S"
+      ],
       "position": "behind_862"
     }
   ],
-
   "constraints": [
     {
       "rule": "do_not_use_html_yet",
