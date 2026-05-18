@@ -1,4 +1,19 @@
+# Python / macOS
 .venv/
 __pycache__/
 *.pyc
 .DS_Store
+
+# Lokale backupfiler
+*_backup_*
+index_backup_*
+sde_engine_backup_*
+sde_input_loader_backup_*
+sde_input_snapshot_backup_*
+sde_scenarios_backup_*
+decision_rules_backup_*
+decision_test_backup_*
+update_static_data_backup_*
+
+# Lokal live-status fra Sporplan/SDE
+sde_live_sporplan_snapshot.json
