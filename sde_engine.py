@@ -277,10 +277,11 @@ def workshop_route_limited(status: Dict[str, Optional[str]]) -> bool:
 
 
 def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], vehicle: Vehicle, from_slot: str, to_slot: str, step: int) -> Tuple[int, str, List[str]]:
-    # Produksjonsregel:
-    # 862 settes normalt i 11N eller 12N.
-    # 864 settes normalt bak 862 i samme spor, slik at 862 + 864 fyller ett spor.
-    # Eksempel: 862 -> 11N og 864 -> 11S, alternativt 862 -> 12N og 864 -> 12S.
+    # Produksjons-/flytregel:
+    # 862 settes ofte i 11N eller 12N, men må ikke bli sperret inne.
+    # 864 bak 862 i samme spor er en myk preferanse, ikke et absolutt krav.
+    # Viktigste regel: 862 må kunne skiftes til vaskemaskin og tilbake til spor 2 eller 3
+    # uten å bli blokkert av 864, 806, 856 eller 808.
     score = 100
     warnings = []
     reason_parts = []
@@ -362,14 +363,14 @@ def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], v
 
     if vehicle.target_train in ["864", "90864"]:
         if to_slot == "11S" and status.get("11N") is not None:
-            score += 520
-            reason_parts.append("864 plasseres bak kjøretøy i 11N")
+            score += 140
+            reason_parts.append("864 står praktisk bak annet kjøretøy i 11N, men dette er kun myk preferanse")
         elif to_slot == "12S" and status.get("12N") is not None:
-            score += 520
-            reason_parts.append("864 plasseres bak kjøretøy i 12N")
+            score += 140
+            reason_parts.append("864 står praktisk bak annet kjøretøy i 12N, men dette er kun myk preferanse")
         elif to_slot in ["11S", "12S"]:
             score += 120
-            reason_parts.append("864 kan bruke 11S/12S, men bør helst følge 862 i samme spor")
+            reason_parts.append("864 kan bruke 11S/12S; plassering bak 862 er ønskelig, men ikke et krav")
 
     if to_slot in SS_ROUTE_BLOCKERS:
         score -= 500

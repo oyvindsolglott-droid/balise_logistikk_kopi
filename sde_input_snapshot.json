@@ -109,7 +109,7 @@
         "11S",
         "12S"
       ],
-      "position": "behind_862"
+      "position": "soft_preference_near_862"
     }
   ],
   "constraints": [
@@ -126,8 +126,8 @@
       "description": "6SS skal normalt unngås som vanlig hensetting."
     },
     {
-      "rule": "862_864_pairing",
-      "description": "Kjøretøy til 90862/862 skal stå foran kjøretøy til 90864/864 i 11/12-par."
+      "rule": "862_wash_flow_not_blocked",
+      "description": "864 bak 862 er bare en myk preferanse. Viktigste regel er at 862 ikke må bli innestengt eller blokkert av 864, 806, 856 eller 808 fra å kunne skiftes til vaskemaskin og tilbake til spor 2 eller 3."
     }
   ],
   "workshop": {
