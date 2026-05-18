@@ -108,6 +108,39 @@ def snapshot_to_scenario(snapshot):
         for number in row.get("vehicles", []):
             ensure_vehicle(number, role="turnering_natt")
 
+    for row in snapshot.get("togplassering", []):
+        number = row.get("vehicle")
+        if not number:
+            continue
+
+        needs = []
+
+        target_slot = row.get("target_slot")
+        note = str(row.get("note") or "").lower()
+        service_before_target = (
+            bool(row.get("wc_water"))
+            or "tømm" in note
+            or "fyll" in note
+            or "wc" in note
+            or "vann" in note
+        )
+
+        if service_before_target:
+            needs.append("tømming_fylling")
+            needs.append("preferred_slot:6N")
+            if target_slot:
+                needs.append(f"final_slot_after_service:{target_slot}")
+        elif target_slot:
+            needs.append(f"preferred_slot:{target_slot}")
+
+        to_train = row.get("to_train")
+        ensure_vehicle(
+            number,
+            role="togplassering",
+            needs=needs,
+            target_train=str(to_train) if to_train and not service_before_target else None
+        )
+
     for item in snapshot.get("manual_inputs", []):
         needs = []
 
