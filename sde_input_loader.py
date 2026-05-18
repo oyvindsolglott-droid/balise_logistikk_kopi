@@ -276,6 +276,26 @@ def print_snapshot_report(snapshot):
             )
         print()
 
+    track_availability = snapshot.get("track_availability", {})
+    out_of_service_slots = track_availability.get("out_of_service_slots", [])
+    if out_of_service_slots:
+        print("Uvirksomme spor/sloter:")
+        print(f"  Sloter: {', '.join(out_of_service_slots)}")
+        print(f"  Grunn: {track_availability.get('reason', '-') or '-'}")
+        print(
+            "  Eksisterende kjøretøy kan vises i Sporplan: "
+            f"{'ja' if track_availability.get('allow_existing_vehicles_to_remain') else 'nei'}"
+        )
+        print(
+            "  Nye bevegelser inn tillatt: "
+            f"{'ja' if track_availability.get('allow_new_moves_into_out_of_service') else 'nei'}"
+        )
+        print(
+            "  Vanlig flytting ut uten eksplisitt oppgave tillatt: "
+            f"{'ja' if track_availability.get('allow_moves_out_without_explicit_task') else 'nei'}"
+        )
+        print()
+
     workshop = snapshot.get("workshop", {})
     if workshop:
         print("Verksted:")
