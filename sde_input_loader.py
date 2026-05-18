@@ -225,6 +225,24 @@ def print_snapshot_report(snapshot):
         )
     print()
 
+    togplassering = snapshot.get("togplassering", [])
+    if togplassering:
+        print("Togplassering:")
+        for row in togplassering:
+            vehicle = row.get("vehicle") or "-"
+            if vehicle == "-":
+                continue
+
+            wc_water = "ja" if row.get("wc_water") else "nei"
+            print(
+                f"  Fra {row.get('from_train', '-') or '-'} "
+                f"til {row.get('to_train', '-') or '-'} | "
+                f"{vehicle} -> {row.get('target_slot', '-') or '-'} | "
+                f"WC/vann={wc_water} | "
+                f"{row.get('note', '') or ''}"
+            )
+        print()
+
     workshop = snapshot.get("workshop", {})
     if workshop:
         print("Verksted:")
