@@ -17,8 +17,69 @@ def find_vehicle_slot(status: Dict[str, Optional[str]], vehicle: str) -> Optiona
     return None
 
 
+SS_ROUTE_BLOCKERS = {"6SS", "7SS", "8SS"}
+SS_ROUTE_AFFECTED_FROM_SOUTH = {"4S", "5S", "6SS", "7SS", "8SS"}
+
+NORTH_ROUTE_PATHS = {
+    "4S": {
+        "4M": ["4M"],
+        "4N": ["4M", "4N"],
+    },
+    "5S": {
+        "5M": ["5M"],
+        "5N": ["5M", "5N"],
+    },
+    "6SS": {
+        "6S": ["6S"],
+        "6N": ["6S", "6N"],
+    },
+    "7SS": {
+        "7S": ["7S"],
+        "7N": ["7S", "7N"],
+    },
+    "8SS": {
+        "8S": ["8S"],
+        "8N": ["8S", "8N"],
+    },
+}
+
+
+def occupied_ss_route_blockers(status: Dict[str, Optional[str]]) -> set:
+    return {slot for slot in SS_ROUTE_BLOCKERS if status.get(slot) is not None}
+
+
 def blocks_6ss_connection(status: Dict[str, Optional[str]]) -> bool:
-    return status.get("6SS") is not None
+    # Bakoverkompatibelt navn: betyr nå blokkering fra 6SS/7SS/8SS.
+    return bool(occupied_ss_route_blockers(status))
+
+
+def south_bridge_route_blocked_from(status: Dict[str, Optional[str]], from_slot: str) -> bool:
+    blockers = occupied_ss_route_blockers(status)
+    if not blockers:
+        return False
+
+    if from_slot in {"4S", "5S"}:
+        return True
+
+    # Hvis ett SS-spor er belagt, blokkeres syd-/bro-ruten fra de andre SS-sporene.
+    if from_slot in SS_ROUTE_BLOCKERS and from_slot not in blockers:
+        return True
+
+    # Kjøretøyet som faktisk står i SS-sporet kan ikke regnes som fri syd-/bro-rute.
+    if from_slot in blockers:
+        return True
+
+    return False
+
+
+def north_route_available(status: Dict[str, Optional[str]], from_slot: str, to_slot: str) -> bool:
+    paths_from_slot = NORTH_ROUTE_PATHS.get(from_slot, {})
+    path = paths_from_slot.get(to_slot)
+
+    if not path:
+        return False
+
+    return all(status.get(slot) is None for slot in path)
 
 
 def workshop_positions_occupied(status: Dict[str, Optional[str]]) -> bool:
@@ -124,10 +185,10 @@ def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], v
             score += 120
             reason_parts.append("864 kan bruke 11S/12S, men bør helst følge 862 i samme spor")
 
-    if to_slot == "6SS":
+    if to_slot in SS_ROUTE_BLOCKERS:
         score -= 500
-        warnings.append("Kjøretøy i 6SS begrenser rutevalg fra 7SS/8SS, men blokkerer ikke vei via sydenden mot spor 1–3.")
-        reason_parts.append("straff: 6SS begrenser rutevalg, særlig mot spor 4/5 fra sydenden")
+        warnings.append("Kjøretøy i 6SS/7SS/8SS blokkerer syd-/bro-rute fra 4S, 5S og berørte SS-spor.")
+        reason_parts.append("straff: SS-spor blokkerer syd-/bro-rute")
 
     simulated = deepcopy(status)
     simulated[from_slot] = None
@@ -190,6 +251,10 @@ def generate_candidate_moves(scenario: Scenario, step: int) -> List[Move]:
                 continue
             if not slot_is_free(scenario.status, to_slot):
                 continue
+
+            if south_bridge_route_blocked_from(scenario.status, from_slot):
+                if not north_route_available(scenario.status, from_slot, to_slot):
+                    continue
 
             score, reason, warnings = score_move(
                 scenario.status,
@@ -309,14 +374,15 @@ def print_plan(plan: Scenario) -> None:
     print(f"- Antall trekk: {len(plan.moves)}")
     print(f"- Bruk av spor 2: {'ja' if uses_track_2 else 'nei'}")
     print(f"- Bruk av spor 3 før 21:10: {'ja' if uses_track_3 else 'nei'}")
-    print(f"- Blokkering av 6SS: {'ja' if blocks_6ss_connection(plan.status) else 'nei'}")
+    print(f"- Blokkering av SS-rute 6SS/7SS/8SS: {'ja' if blocks_6ss_connection(plan.status) else 'nei'}")
     workshop_occupied = workshop_positions_occupied(plan.status)
-    south_route_available_from_7ss_8ss = True
-    limited_access_to_track_4_5_from_south = blocks_6ss_connection(plan.status)
+    ss_blockers = sorted(occupied_ss_route_blockers(plan.status))
+    south_bridge_limited = bool(ss_blockers)
     print(f"- Verkstedplass 7N/8N opptatt: {'ja' if workshop_occupied else 'nei'}")
     print(f"- Begge verkstedveier 7N/8N opptatt: {'ja' if workshop_route_limited(plan.status) else 'nei'}")
-    print(f"- Alternativvei fra 7SS/8SS via sydenden mot spor 1–3: {'ja' if south_route_available_from_7ss_8ss else 'nei'}")
-    print(f"- Begrenset tilgang fra sydenden til spor 4/5: {'ja' if limited_access_to_track_4_5_from_south else 'nei'}")
+    print(f"- SS-spor som blokkerer syd-/bro-rute: {', '.join(ss_blockers) if ss_blockers else '-'}")
+    print(f"- Syd-/bro-rute fra 4S/5S og berørte SS-spor blokkert: {'ja' if south_bridge_limited else 'nei'}")
+    print("- Nordlig skifting fra berørte spor vurderes separat mot frie nordlige slotter")
     print(f"- Score: {plan.score}")
 
     if plan.warnings:
