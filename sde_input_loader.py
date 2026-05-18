@@ -5,11 +5,34 @@ from sde_models import SLOTS, Vehicle, Scenario
 
 
 SNAPSHOT_PATH = Path("sde_input_snapshot.json")
+LIVE_SPORPLAN_PATH = Path("sde_live_sporplan_snapshot.json")
 
 
 def load_snapshot(path=SNAPSHOT_PATH):
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
+
+
+def load_live_sporplan_status(path=LIVE_SPORPLAN_PATH):
+    if not path.exists():
+        return None
+
+    with path.open("r", encoding="utf-8") as f:
+        payload = json.load(f)
+
+    return payload.get("sporplan_status")
+
+
+def apply_live_sporplan_status(snapshot):
+    live_status = load_live_sporplan_status()
+    if live_status is None:
+        return snapshot
+
+    merged = dict(snapshot)
+    merged["manual_sporplan_status"] = snapshot.get("sporplan_status", {})
+    merged["sporplan_status"] = live_status
+    merged["live_sporplan_source"] = str(LIVE_SPORPLAN_PATH)
+    return merged
 
 
 def snapshot_to_scenario(snapshot):
@@ -22,6 +45,7 @@ def snapshot_to_scenario(snapshot):
     - Nåværende plassering ligger i scenario.status, ikke i Vehicle.
     """
 
+    snapshot = apply_live_sporplan_status(snapshot)
     status = dict(snapshot.get("sporplan_status", {}))
 
     # Manuelle input kan oppgi faktisk nåværende spor for kjøretøy som
@@ -168,7 +192,12 @@ def print_snapshot_report(snapshot):
     print(f"Dato: {snapshot.get('date', '-')}")
     print()
 
+    snapshot = apply_live_sporplan_status(snapshot)
     errors, warnings, occupied = validate_sporplan_status(snapshot)
+
+    if snapshot.get("live_sporplan_source"):
+        print(f"Live Sporplan-status: {snapshot.get('live_sporplan_source')}")
+        print()
 
     print("Belagte spor/sloter:")
     if occupied:
