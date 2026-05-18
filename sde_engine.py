@@ -82,6 +82,30 @@ def north_route_available(status: Dict[str, Optional[str]], from_slot: str, to_s
     return all(status.get(slot) is None for slot in path)
 
 
+def final_slot_after_service(vehicle: Vehicle) -> Optional[str]:
+    prefix = "final_slot_after_service:"
+    for need in vehicle.needs:
+        if need.startswith(prefix):
+            return need.split(":", 1)[1]
+    return None
+
+
+def should_allow_second_move_after_service(scenario: Scenario, vehicle_number: str) -> bool:
+    vehicle = scenario.vehicles.get(vehicle_number)
+    if not vehicle:
+        return False
+
+    final_slot = final_slot_after_service(vehicle)
+    if not final_slot:
+        return False
+
+    current_slot = find_vehicle_slot(scenario.status, vehicle_number)
+    if current_slot != "6N":
+        return False
+
+    return slot_is_free(scenario.status, final_slot)
+
+
 def workshop_positions_occupied(status: Dict[str, Optional[str]]) -> bool:
     # 7N og 8N er verkstedplasser, ikke vanlige spor SDE skal styre.
     # De bør normalt være besatt av kjøretøy som skal repareres.
@@ -150,6 +174,11 @@ def score_move(status: Dict[str, Optional[str]], vehicles: Dict[str, Vehicle], v
     if is_empty_fill_need and to_slot == "6N":
         score += 300
         reason_parts.append("tømming/fylling via nord")
+
+    final_service_slot = final_slot_after_service(vehicle)
+    if from_slot == "6N" and final_service_slot and to_slot == final_service_slot:
+        score += 720
+        reason_parts.append(f"videre fra tømming/fylling til sluttmål {to_slot}")
 
     if from_slot == "6S" and to_slot.startswith("11"):
         score += 220
@@ -232,7 +261,7 @@ def generate_candidate_moves(scenario: Scenario, step: int) -> List[Move]:
     ]
 
     for vehicle_number, vehicle in scenario.vehicles.items():
-        if vehicle_number in already_moved:
+        if vehicle_number in already_moved and not should_allow_second_move_after_service(scenario, vehicle_number):
             continue
 
         # Ikke flytt kjøretøy bare fordi de finnes i Sporplan eller Turnering Kveld/Natt.
@@ -246,7 +275,12 @@ def generate_candidate_moves(scenario: Scenario, step: int) -> List[Move]:
         if not from_slot:
             continue
 
-        for to_slot in preferred_targets:
+        dynamic_targets = list(preferred_targets)
+        final_service_slot = final_slot_after_service(vehicle)
+        if from_slot == "6N" and final_service_slot:
+            dynamic_targets = [final_service_slot] + [slot for slot in dynamic_targets if slot != final_service_slot]
+
+        for to_slot in dynamic_targets:
             if to_slot == from_slot:
                 continue
             if not slot_is_free(scenario.status, to_slot):
