@@ -297,6 +297,25 @@ def print_snapshot_report(snapshot):
                 print(f"    Merknad: {note}")
         print()
 
+    fixed_night_tasks = snapshot.get("fixed_night_tasks_skifter_2", [])
+    if fixed_night_tasks:
+        print("Faste nattoppgaver skifter 2:")
+        for task in fixed_night_tasks:
+            target = task.get("target_slot") or task.get("target_track") or "-"
+            normal_from = task.get("normal_from_slot") or task.get("normal_slot") or "-"
+            status = task.get("status")
+            print(
+                f"  {task.get('time', '-')}: "
+                f"{task.get('task', '-')}, tog {task.get('train', '-')}, "
+                f"normal/fra {normal_from}, mål {target}"
+            )
+            if status:
+                print(f"    Status: {status}")
+            note = task.get("note")
+            if note:
+                print(f"    Merknad: {note}")
+        print()
+
     track_availability = snapshot.get("track_availability", {})
     out_of_service_slots = track_availability.get("out_of_service_slots", [])
     if out_of_service_slots:

@@ -229,5 +229,51 @@
       "operator": "skifter_2",
       "note": "Kjøretøy tilhørende tog 2489 skiftes bort fra spor 3. Normalt inn i spor 10. Hvis spor 10 er uvirksomt, skal SDE ikke automatisk bruke spor 10."
     }
+  ],
+  "fixed_night_tasks_skifter_2": [
+    {
+      "time": "00:01",
+      "task": "uttak_kan_begynne",
+      "train": "2470",
+      "normal_slot": "10N",
+      "operator": "skifter_2",
+      "note": "Skifter 2 kan begynne uttak av tog 2470. Normalplassering er 10N, men faktisk Sporplan/avvik overstyrer."
+    },
+    {
+      "time": "00:25",
+      "task": "uttak_kan_begynne",
+      "train": "12271",
+      "normal_slot": "10S",
+      "operator": "skifter_2",
+      "status": "sannsynligvis_innstilt_til_høsten",
+      "note": "Skifter 2 kan normalt begynne uttak av tog 12271. Normalplassering er 10S, men toget er sannsynligvis innstilt frem til høsten pga. kjøretøymangel."
+    },
+    {
+      "time": "05:00",
+      "task": "skift_til_togspor",
+      "train": "2470",
+      "normal_from_slot": "10N",
+      "target_track": "2",
+      "operator": "skifter_2",
+      "note": "Skifter 2 skifter tog 2470 fra sitt spor over til spor 2. Faktisk Sporplan/avvik overstyrer normalplassering."
+    },
+    {
+      "time": "05:20",
+      "task": "skift_til_togspor",
+      "train": "12271",
+      "normal_from_slot": "10S",
+      "target_slot": "1S",
+      "operator": "skifter_2",
+      "status": "utføres_bare_hvis_toget_er_aktivt",
+      "note": "Skifter 2 skifter tog 12271 mot togspor, normalt 1S. Skal ikke planlegges hvis toget er innstilt."
+    },
+    {
+      "time": "06:00",
+      "task": "skift_til_togspor",
+      "train": "808",
+      "target_track": "3",
+      "operator": "skifter_2",
+      "note": "Skifter 2 begynner å skifte tog 808 mot spor 3."
+    }
   ]
 }
