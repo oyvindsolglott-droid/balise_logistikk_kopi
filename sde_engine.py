@@ -106,9 +106,17 @@ def should_allow_second_move_after_service(scenario: Scenario, vehicle_number: s
     return slot_is_free(scenario.status, final_slot)
 
 
-# Spor 10, 11 og 12 har egen rekkefølgeregel:
+# Spor 9, 10, 11 og 12 er buttspor.
+# Det finnes ingen utkjøring mot sør; eneste vei ut er mot vaskemaskinen.
+#
+# Spor 10, 11 og 12 har S/N-posisjoner og derfor egen rekkefølgeregel:
+# - S er innerst i buttsporet.
+# - N er utkjøringsside mot vaskemaskinen.
 # - Ved innkjøring skal S fylles før N hvis begge posisjoner skal brukes.
-# - Ved utkjøring blir det motsatt: N må normalt ut før S.
+# - Ved utkjøring må N normalt ut før S.
+#
+# Spor 9 er også buttspor, men modelleres foreløpig som én slot ("9"),
+# og skal derfor ikke inn i S-før-N-regelen.
 # Foreløpig håndheves innkjøringsregelen i move-generering.
 S_BEFORE_N_TRACKS = {"10", "11", "12"}
 
