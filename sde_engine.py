@@ -178,6 +178,63 @@ def vehicle_has_explicit_out_of_service_task(vehicle: Vehicle) -> bool:
     return any(need in explicit_needs for need in vehicle.needs)
 
 
+def explicit_final_target_slot(vehicle: Vehicle) -> Optional[str]:
+    # Sluttmål etter service teller som endelig mål.
+    final_after_service = final_slot_after_service(vehicle)
+    if final_after_service:
+        return final_after_service
+
+    # Preferred slot kan være sluttmål, men 6N ved tømming/fylling er et mellomsteg.
+    for need in vehicle.needs:
+        if not need.startswith("preferred_slot:"):
+            continue
+
+        slot = need.split(":", 1)[1]
+
+        if slot == "6N" and "tømming_fylling" in vehicle.needs:
+            continue
+
+        return slot
+
+    return None
+
+
+def blocks_other_vehicle_final_target(
+    scenario: Scenario,
+    vehicle_number: str,
+    to_slot: str
+) -> bool:
+    # Et sluttmål fra Togplassering skal ikke brukes av andre kjøretøy.
+    for other_number, other_vehicle in scenario.vehicles.items():
+        if other_number == vehicle_number:
+            continue
+
+        if explicit_final_target_slot(other_vehicle) == to_slot:
+            return True
+
+    return False
+
+
+def blocks_wrong_final_target_for_vehicle(
+    vehicle: Vehicle,
+    to_slot: str
+) -> bool:
+    # Hvis kjøretøyet har et eksplisitt sluttmål, skal det ikke velge et annet
+    # slutt-/hensettingsspor bare fordi scoringen liker det bedre.
+    target = explicit_final_target_slot(vehicle)
+    if not target:
+        return False
+
+    if to_slot == target:
+        return False
+
+    # Service først er fortsatt lov.
+    if to_slot == "6N" and "tømming_fylling" in vehicle.needs:
+        return False
+
+    return True
+
+
 def blocks_out_of_service_move(
     scenario: Scenario,
     vehicle: Vehicle,
@@ -387,6 +444,12 @@ def generate_candidate_moves(scenario: Scenario, step: int) -> List[Move]:
                 continue
 
             if blocks_out_of_service_move(scenario, vehicle, from_slot, to_slot):
+                continue
+
+            if blocks_other_vehicle_final_target(scenario, vehicle_number, to_slot):
+                continue
+
+            if blocks_wrong_final_target_for_vehicle(vehicle, to_slot):
                 continue
 
             if blocks_inbound_n_before_planned_s_in_track_10_12(scenario, vehicle_number, to_slot):
