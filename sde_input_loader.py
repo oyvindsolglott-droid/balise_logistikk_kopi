@@ -165,10 +165,16 @@ def snapshot_to_scenario(snapshot):
             needs=needs
         )
 
-    return Scenario(
+    scenario = Scenario(
         status=status,
         vehicles=vehicles_by_number
     )
+
+    # Dynamisk SDE-konfigurasjon fra snapshot.
+    # Brukes foreløpig for uvirksomme spor/sloter.
+    scenario.track_availability = snapshot.get("track_availability", {})
+
+    return scenario
 
 
 def validate_sporplan_status(snapshot):

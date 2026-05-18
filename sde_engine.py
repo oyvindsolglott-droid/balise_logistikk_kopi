@@ -160,6 +160,52 @@ def blocks_inbound_n_before_planned_s_in_track_10_12(
     return False
 
 
+def track_availability_for_scenario(scenario: Scenario) -> dict:
+    return getattr(scenario, "track_availability", {}) or {}
+
+
+def out_of_service_slots_for_scenario(scenario: Scenario) -> set:
+    availability = track_availability_for_scenario(scenario)
+    return set(availability.get("out_of_service_slots", []) or [])
+
+
+def vehicle_has_explicit_out_of_service_task(vehicle: Vehicle) -> bool:
+    explicit_needs = {
+        "explicit_out_of_service_task",
+        "avvik_uvirksomt_spor",
+        "allow_out_of_service_move",
+    }
+    return any(need in explicit_needs for need in vehicle.needs)
+
+
+def blocks_out_of_service_move(
+    scenario: Scenario,
+    vehicle: Vehicle,
+    from_slot: str,
+    to_slot: str
+) -> bool:
+    availability = track_availability_for_scenario(scenario)
+    out_of_service_slots = out_of_service_slots_for_scenario(scenario)
+
+    if not out_of_service_slots:
+        return False
+
+    allow_new_moves_in = availability.get("allow_new_moves_into_out_of_service", False)
+    allow_moves_out = availability.get("allow_moves_out_without_explicit_task", False)
+
+    # Uvirksomme spor kan vises i Sporplan som nåstatus,
+    # men skal ikke brukes som nye målspor.
+    if to_slot in out_of_service_slots and not allow_new_moves_in:
+        return True
+
+    # Vanlig flytting ut fra uvirksomt spor er ikke tillatt.
+    # Det krever eksplisitt avvik/egen oppgave.
+    if from_slot in out_of_service_slots and not allow_moves_out:
+        return not vehicle_has_explicit_out_of_service_task(vehicle)
+
+    return False
+
+
 def workshop_positions_occupied(status: Dict[str, Optional[str]]) -> bool:
     # 7N og 8N er verkstedplasser, ikke vanlige spor SDE skal styre.
     # De bør normalt være besatt av kjøretøy som skal repareres.
@@ -338,6 +384,9 @@ def generate_candidate_moves(scenario: Scenario, step: int) -> List[Move]:
             if to_slot == from_slot:
                 continue
             if not slot_is_free(scenario.status, to_slot):
+                continue
+
+            if blocks_out_of_service_move(scenario, vehicle, from_slot, to_slot):
                 continue
 
             if blocks_inbound_n_before_planned_s_in_track_10_12(scenario, vehicle_number, to_slot):
