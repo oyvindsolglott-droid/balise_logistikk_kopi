@@ -106,6 +106,60 @@ def should_allow_second_move_after_service(scenario: Scenario, vehicle_number: s
     return slot_is_free(scenario.status, final_slot)
 
 
+# Spor 10, 11 og 12 har egen rekkefølgeregel:
+# - Ved innkjøring skal S fylles før N hvis begge posisjoner skal brukes.
+# - Ved utkjøring blir det motsatt: N må normalt ut før S.
+# Foreløpig håndheves innkjøringsregelen i move-generering.
+S_BEFORE_N_TRACKS = {"10", "11", "12"}
+
+
+def planned_target_slots_for_vehicle(vehicle: Vehicle) -> set:
+    targets = set()
+    for need in vehicle.needs:
+        if need.startswith("preferred_slot:"):
+            targets.add(need.split(":", 1)[1])
+        if need.startswith("final_slot_after_service:"):
+            targets.add(need.split(":", 1)[1])
+    return targets
+
+
+def blocks_inbound_n_before_planned_s_in_track_10_12(
+    scenario: Scenario,
+    vehicle_number: str,
+    to_slot: str
+) -> bool:
+    if to_slot not in {"10N", "11N", "12N"}:
+        return False
+
+    track = to_slot[:-1]
+    if track not in S_BEFORE_N_TRACKS:
+        return False
+
+    s_slot = f"{track}S"
+
+    # Hvis S allerede er fylt, kan N fylles.
+    if scenario.status.get(s_slot):
+        return False
+
+    # Innkjøring: Hvis et annet kjent kjøretøy er planlagt til S,
+    # må S-kjøretøyet inn før N-kjøretøyet sperrer adkomsten.
+    for other_number, other_vehicle in scenario.vehicles.items():
+        if other_number == vehicle_number:
+            continue
+
+        if s_slot not in planned_target_slots_for_vehicle(other_vehicle):
+            continue
+
+        other_current_slot = find_vehicle_slot(scenario.status, other_number)
+
+        # Bare blokkér hvis kjøretøyet faktisk finnes i nåstatus.
+        # Hvis kjøretøyet ikke er kjent ennå, skal ikke planen låses.
+        if other_current_slot and other_current_slot != s_slot:
+            return True
+
+    return False
+
+
 def workshop_positions_occupied(status: Dict[str, Optional[str]]) -> bool:
     # 7N og 8N er verkstedplasser, ikke vanlige spor SDE skal styre.
     # De bør normalt være besatt av kjøretøy som skal repareres.
@@ -284,6 +338,9 @@ def generate_candidate_moves(scenario: Scenario, step: int) -> List[Move]:
             if to_slot == from_slot:
                 continue
             if not slot_is_free(scenario.status, to_slot):
+                continue
+
+            if blocks_inbound_n_before_planned_s_in_track_10_12(scenario, vehicle_number, to_slot):
                 continue
 
             if south_bridge_route_blocked_from(scenario.status, from_slot):
