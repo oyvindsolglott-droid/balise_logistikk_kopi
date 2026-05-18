@@ -282,6 +282,21 @@ def print_snapshot_report(snapshot):
             )
         print()
 
+    fixed_evening_tasks = snapshot.get("fixed_evening_tasks_skifter_2", [])
+    if fixed_evening_tasks:
+        print("Faste kveldsoppgaver skifter 2:")
+        for task in fixed_evening_tasks:
+            print(
+                f"  {task.get('time', '-')}: "
+                f"{task.get('task', '-')}, tog {task.get('train', '-')}, "
+                f"fra spor {task.get('from_track', '-')}, "
+                f"normalt til spor {task.get('normal_target_track', '-')}"
+            )
+            note = task.get("note")
+            if note:
+                print(f"    Merknad: {note}")
+        print()
+
     track_availability = snapshot.get("track_availability", {})
     out_of_service_slots = track_availability.get("out_of_service_slots", [])
     if out_of_service_slots:

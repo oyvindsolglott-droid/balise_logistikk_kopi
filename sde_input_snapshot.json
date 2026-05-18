@@ -218,5 +218,16 @@
     "allow_existing_vehicles_to_remain": true,
     "allow_new_moves_into_out_of_service": false,
     "allow_moves_out_without_explicit_task": false
-  }
+  },
+  "fixed_evening_tasks_skifter_2": [
+    {
+      "time": "21:00",
+      "task": "skift_bort_fra_spor",
+      "train": "2489",
+      "from_track": "3",
+      "normal_target_track": "10",
+      "operator": "skifter_2",
+      "note": "Kjøretøy tilhørende tog 2489 skiftes bort fra spor 3. Normalt inn i spor 10. Hvis spor 10 er uvirksomt, skal SDE ikke automatisk bruke spor 10."
+    }
+  ]
 }
