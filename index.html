@@ -2802,22 +2802,22 @@ function buildSdeVaktplan(){
   if(!table) return;
 
   const rows = [
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:00", operator:"Skifter 2", vehicle:"Tog 2489", from:"Spor 3", to:"Avklares", operation:"Fast kveldsoppgave", reason:"Skiftes bort fra spor 3. Spor 10 kan ikke brukes når det er uvirksomt.", status:"Planlagt"},
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:12", operator:"Skifter 1", vehicle:"74-41", from:"9", to:"6N", operation:"Tømming/fylling", reason:"Forbereder kjøretøy til tog 862.", status:"Forslag"},
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:25", operator:"Skifter 2", vehicle:"74-29", from:"3S", to:"11S", operation:"Produksjonsplassering", reason:"S må inn før N i buttspor når begge posisjoner skal brukes.", status:"Forslag"},
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:38", operator:"Skifter 1", vehicle:"74-41", from:"6N", to:"11N", operation:"Videre til sluttmål", reason:"862 plasseres på utkjøringsside mot vaskemaskinen.", status:"Forslag"},
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:51", operator:"Skifter 2", vehicle:"74-51", from:"6S", to:"12N", operation:"Produksjonsplassering", reason:"Målspor fra Togplassering Skien.", status:"Forslag"},
-    {shift:"Nattevakt 23:00–07:00", time:"00:01", operator:"Skifter 2", vehicle:"Tog 2470", from:"Faktisk spor", to:"-", operation:"Fast nattoppgave", reason:"Uttak kan begynne. Faktisk Sporplan overstyrer normalplassering.", status:"Planlagt"},
-    {shift:"Nattevakt 23:00–07:00", time:"05:00", operator:"Skifter 2", vehicle:"Tog 2470", from:"Faktisk spor", to:"Spor 2", operation:"Fast nattoppgave", reason:"Skiftes til togspor.", status:"Planlagt"},
-    {shift:"Nattevakt 23:00–07:00", time:"06:00", operator:"Skifter 2", vehicle:"Tog 808", from:"Faktisk spor", to:"Spor 3", operation:"Fast nattoppgave", reason:"Skiftes mot spor 3. Klargjøring av 22xx-tog utgår natt til lørdag og natt til søndag.", status:"Planlagt"}
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:00", operator:"Skifter 2", fromTrain:"2489", vehicle:"-", from:"Spor 3", to:"Avklares", operation:"Fast kveldsoppgave", reason:"Skiftes bort fra spor 3. Spor 10 kan ikke brukes når det er uvirksomt.", status:"Planlagt"},
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:12", operator:"Skifter 1", fromTrain:"819", vehicle:"74-41", from:"9", to:"6N", operation:"Tømming/fylling", reason:"Forbereder kjøretøy til tog 862.", status:"Forslag"},
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:25", operator:"Skifter 2", fromTrain:"835", vehicle:"74-29", from:"3S", to:"11S", operation:"Produksjonsplassering", reason:"S må inn før N i buttspor når begge posisjoner skal brukes.", status:"Forslag"},
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:38", operator:"Skifter 1", fromTrain:"819", vehicle:"74-41", from:"6N", to:"11N", operation:"Videre til sluttmål", reason:"862 plasseres på utkjøringsside mot vaskemaskinen.", status:"Forslag"},
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:51", operator:"Skifter 2", fromTrain:"833", vehicle:"74-51", from:"6S", to:"12N", operation:"Produksjonsplassering", reason:"Målspor fra Togplassering Skien.", status:"Forslag"},
+    {shift:"Nattevakt 23:00–07:00", time:"00:01", operator:"Skifter 2", fromTrain:"2470", vehicle:"-", from:"Faktisk spor", to:"-", operation:"Fast nattoppgave", reason:"Uttak kan begynne. Faktisk Sporplan overstyrer normalplassering.", status:"Planlagt"},
+    {shift:"Nattevakt 23:00–07:00", time:"05:00", operator:"Skifter 2", fromTrain:"2470", vehicle:"-", from:"Faktisk spor", to:"Spor 2", operation:"Fast nattoppgave", reason:"Skiftes til togspor.", status:"Planlagt"},
+    {shift:"Nattevakt 23:00–07:00", time:"06:00", operator:"Skifter 2", fromTrain:"808", vehicle:"-", from:"Faktisk spor", to:"Spor 3", operation:"Fast nattoppgave", reason:"Skiftes mot spor 3. Klargjøring av 22xx-tog utgår natt til lørdag og natt til søndag.", status:"Planlagt"}
   ];
 
-  table.innerHTML = "<thead><tr><th>Tid</th><th>Skifter</th><th>Kjøretøy/tog</th><th>Fra spor</th><th>Til spor</th><th>Operasjon</th><th>Begrunnelse</th><th>Status</th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>Tid</th><th>Skifter</th><th>Fra tog</th><th>Kjøretøy</th><th>Fra spor</th><th>Til spor</th><th>Operasjon</th><th>Begrunnelse</th><th>Status</th></tr></thead>";
 
   const body = document.createElement("tbody");
   rows.forEach(row=>{
     const tr = document.createElement("tr");
-    ["time","operator","vehicle","from","to","operation","reason","status"].forEach(key=>{
+    ["time","operator","fromTrain","vehicle","from","to","operation","reason","status"].forEach(key=>{
       const td = document.createElement("td");
       td.textContent = row[key] || "";
       if(key === "operator" && row.operator === "Skifter 1"){
