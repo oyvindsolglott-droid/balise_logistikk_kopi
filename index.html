@@ -934,6 +934,17 @@ button{padding:12px 12px}
 .hall-label{font-size:10px;padding:4px 12px 3px}
 }
 
+
+.sde-vaktplan-skifter-1{
+  color:#1d4ed8;
+  font-weight:700;
+}
+
+.sde-vaktplan-skifter-2{
+  color:#15803d;
+  font-weight:700;
+}
+
 </style>
 </head>
 <body>
@@ -956,6 +967,7 @@ button{padding:12px 12px}
 <button class="seg active" type="button" data-tab="oppstilling">Tursatt</button>
 <button class="seg" type="button" data-tab="turneringKveld">Turnering Kveld</button>
 <button class="seg" type="button" data-tab="inndata">Planlegge Skiftebevegelser</button>
+<button class="seg" type="button" data-tab="sdeVaktplan">SDE vaktplan</button>
 <button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
 <button class="seg" type="button" data-tab="sporplan">Sporplan</button>
 </div>
@@ -1029,6 +1041,26 @@ button{padding:12px 12px}
 <div class="zoom-wrap">
 <div class="zoom-inner" id="inndataZoom">
 <table id="inndataTable"></table>
+</div>
+</div>
+</section>
+
+
+<section class="panel" id="sdeVaktplan">
+<div class="note">SDE vaktplan skal etter hvert foreslå én samlet operativ skifteplan for kveldsvakt 15:00–23:00 og én samlet operativ skifteplan for nattevakt 23:00–07:00. Første versjon viser en enkel planflate som senere kan kobles til SDE-motoren.</div>
+
+<div class="view-tools">
+<span class="label">SDE vaktplan</span>
+<button class="compact zoom-out" data-target="sdeVaktplanZoom">Zoom ut</button>
+<button class="compact zoom-in" data-target="sdeVaktplanZoom">Zoom inn</button>
+<button class="compact compact-toggle" data-target="sdeVaktplanZoom">Kompakt visning</button>
+<button class="compact reset-view" data-target="sdeVaktplanZoom">Standard</button>
+</div>
+
+<div class="mobile-table-label">SDE vaktplan</div>
+<div class="zoom-wrap">
+<div class="zoom-inner" id="sdeVaktplanZoom">
+<table id="sdeVaktplanTable"></table>
 </div>
 </div>
 </section>
@@ -2765,6 +2797,43 @@ function buildSporplan(){
 }
 
 
+function buildSdeVaktplan(){
+  const table = document.getElementById("sdeVaktplanTable");
+  if(!table) return;
+
+  const rows = [
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:00", operator:"Skifter 2", vehicle:"Tog 2489", from:"Spor 3", to:"Avklares", operation:"Fast kveldsoppgave", reason:"Skiftes bort fra spor 3. Spor 10 kan ikke brukes når det er uvirksomt.", status:"Planlagt"},
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:12", operator:"Skifter 1", vehicle:"74-41", from:"9", to:"6N", operation:"Tømming/fylling", reason:"Forbereder kjøretøy til tog 862.", status:"Forslag"},
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:25", operator:"Skifter 2", vehicle:"74-29", from:"3S", to:"11S", operation:"Produksjonsplassering", reason:"S må inn før N i buttspor når begge posisjoner skal brukes.", status:"Forslag"},
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:38", operator:"Skifter 1", vehicle:"74-41", from:"6N", to:"11N", operation:"Videre til sluttmål", reason:"862 plasseres på utkjøringsside mot vaskemaskinen.", status:"Forslag"},
+    {shift:"Kveldsvakt 15:00–23:00", time:"21:51", operator:"Skifter 2", vehicle:"74-51", from:"6S", to:"12N", operation:"Produksjonsplassering", reason:"Målspor fra Togplassering Skien.", status:"Forslag"},
+    {shift:"Nattevakt 23:00–07:00", time:"00:01", operator:"Skifter 2", vehicle:"Tog 2470", from:"Faktisk spor", to:"-", operation:"Fast nattoppgave", reason:"Uttak kan begynne. Faktisk Sporplan overstyrer normalplassering.", status:"Planlagt"},
+    {shift:"Nattevakt 23:00–07:00", time:"05:00", operator:"Skifter 2", vehicle:"Tog 2470", from:"Faktisk spor", to:"Spor 2", operation:"Fast nattoppgave", reason:"Skiftes til togspor.", status:"Planlagt"},
+    {shift:"Nattevakt 23:00–07:00", time:"06:00", operator:"Skifter 2", vehicle:"Tog 808", from:"Faktisk spor", to:"Spor 3", operation:"Fast nattoppgave", reason:"Skiftes mot spor 3. Klargjøring av 22xx-tog utgår natt til lørdag og natt til søndag.", status:"Planlagt"}
+  ];
+
+  table.innerHTML = "<thead><tr><th>Tid</th><th>Skifter</th><th>Kjøretøy/tog</th><th>Fra spor</th><th>Til spor</th><th>Operasjon</th><th>Begrunnelse</th><th>Status</th></tr></thead>";
+
+  const body = document.createElement("tbody");
+  rows.forEach(row=>{
+    const tr = document.createElement("tr");
+    ["time","operator","vehicle","from","to","operation","reason","status"].forEach(key=>{
+      const td = document.createElement("td");
+      td.textContent = row[key] || "";
+      if(key === "operator" && row.operator === "Skifter 1"){
+        td.classList.add("sde-vaktplan-skifter-1");
+      }
+      if(key === "operator" && row.operator === "Skifter 2"){
+        td.classList.add("sde-vaktplan-skifter-2");
+      }
+      tr.appendChild(td);
+    });
+    body.appendChild(tr);
+  });
+  table.appendChild(body);
+}
+
+
 function activateTab(name){
   document.querySelectorAll(".seg").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===name));
@@ -2772,6 +2841,10 @@ function activateTab(name){
 
   if(name === "sporplan"){
     scheduleSporplanRefresh();
+  }
+
+  if(name === "sdeVaktplan"){
+    buildSdeVaktplan();
   }
 }
 
@@ -3268,6 +3341,7 @@ document.getElementById("clearKjoretoyBtn").addEventListener("click",()=>{
 buildTurnering("turneringKveldTable","turneringKveld");
 buildTurnering("turneringNattTable","turneringNatt");
 buildInndata();
+buildSdeVaktplan();
 buildSporplan();
 buildOppstilling();
 initViewControls();
