@@ -2700,7 +2700,7 @@ function isPlanSkifteUtfort(value){
 
 function isPlanSkifteFerdig(value){
   const s = String(value || "").trim().toLowerCase();
-  return s === "f" || s === "ferdig";
+  return s === "f" || s === "ferdig" || s === "j" || s === "ja";
 }
 
 function normalizePlanSkifteCrew(value){
