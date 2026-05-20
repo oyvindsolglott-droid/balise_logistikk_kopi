@@ -4,6 +4,22 @@ from pathlib import Path
 INPUT_FILE = Path("sde_togplassering_test_2026_05_18.json")
 
 
+def suggest_target_type_for_row(row):
+    to_train = str(row.get("to_train", "")).lower()
+    note = str(row.get("note") or "").lower()
+
+    if "dele motsatt" in note:
+        return "deling/skjøting"
+
+    if to_train == "rep":
+        return "verksted-/repflyt"
+
+    if row.get("wc_water"):
+        return "service via spor 6 før videre plassering"
+
+    return "produksjonsplassering"
+
+
 def suggest_flow_for_row(row):
     flow = []
 
@@ -70,9 +86,15 @@ def main():
 
         print(f'{row["time"]} | {row["vehicle"]}: ' + "; ".join(needs))
 
+    print("\n=== Foreslått måltype uten Til spor ===")
+    for row in data.get("rows", []):
+        target_type = suggest_target_type_for_row(row)
+        print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {target_type}')
+
     print("\n=== Foreslått operativ flyt uten Til spor ===")
     for row in data.get("rows", []):
         print(f'\n{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}')
+        print(f'  Måltype: {suggest_target_type_for_row(row)}')
         for step_no, step in enumerate(suggest_flow_for_row(row), start=1):
             print(f"  {step_no}. {step}")
 
