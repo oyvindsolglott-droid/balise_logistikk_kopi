@@ -8,6 +8,7 @@ from typing import Any
 
 INPUT_PATH = Path("data/sde_togplassering_import_test.txt")
 OUTPUT_PATH = Path("data/sde_togplassering_import_resultat.json")
+REPORT_PATH = Path("data/sde_togplassering_rapport.txt")
 
 
 VALID_SINGLE_SLOTS = {
@@ -487,6 +488,75 @@ def parse_line(line: str, line_no: int) -> dict[str, Any]:
     }
 
 
+def build_human_report(result: dict[str, Any]) -> str:
+    recommendation = result["sde_import_anbefaling"]
+    summary = result["oppsummering"]
+    checklist = result["prioritert_kontrolliste"]
+
+    lines: list[str] = []
+
+    lines.append("SDE rapport – Togplassering-import")
+    lines.append("=" * 38)
+    lines.append("")
+    lines.append(f"Kilde: {result['kilde']}")
+    lines.append(f"Antall rader: {result['antall_rader']}")
+    lines.append(f"OK: {result['antall_ok']}")
+    lines.append(f"Må kontrolleres: {result['antall_må_kontrolleres']}")
+    lines.append("")
+
+    lines.append("SDE import-anbefaling")
+    lines.append("-" * 24)
+    lines.append(f"Kan brukes direkte: {recommendation['kan_brukes_direkte']}")
+    lines.append(f"Må avklares før SDE: {recommendation['må_avklares_før_sde']}")
+    lines.append(f"Konklusjon: {recommendation['konklusjon']}")
+    lines.append(f"Kontrollpunkter: {recommendation['antall_kontrollpunkter']}")
+    lines.append(f"Høy risiko: {recommendation['antall_høy']}")
+    lines.append(f"Middels risiko: {recommendation['antall_middels']}")
+    lines.append("")
+
+    lines.append("Importanalyse")
+    lines.append("-" * 14)
+    lines.append(f"Lav risiko: {summary['risiko']['lav']}")
+    lines.append(f"Middels risiko: {summary['risiko']['middels']}")
+    lines.append(f"Høy risiko: {summary['risiko']['høy']}")
+    lines.append("")
+
+    lines.append("Handlingstyper")
+    lines.append("-" * 14)
+    for tag, count in summary["handlingstyper"].items():
+        lines.append(f"{tag}: {count}")
+    lines.append("")
+
+    lines.append("Viktigste avklaringer")
+    lines.append("-" * 22)
+    for item in recommendation["viktigste_avklaringer"]:
+        lines.append(
+            f"{item['prioritet']}. linje {item['linje']} | "
+            f"{item['klokkeslett']} | {item['settnr']} | {item['kategori']}"
+        )
+        lines.append(f"   {item['beskrivelse']}")
+    lines.append("")
+
+    lines.append("Full prioritert kontrolliste")
+    lines.append("-" * 29)
+    if not checklist:
+        lines.append("Ingen kontrollpunkter.")
+    for item in checklist:
+        lines.append(
+            f"{item['prioritet']}. linje {item['linje']} | "
+            f"{item['klokkeslett']} | {item['settnr']} | "
+            f"{item['fra_tog']} -> {item['til_tog']} | "
+            f"{item['kategori']} | {item['alvorlighet']}"
+        )
+        lines.append(f"   Problem: {item['beskrivelse']}")
+        lines.append("   Avklar:")
+        for suggestion in item["avklaringsforslag"]:
+            lines.append(f"   - {suggestion}")
+        lines.append("")
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
 def main() -> None:
     lines = [
         line.strip()
@@ -516,7 +586,13 @@ def main() -> None:
         encoding="utf-8",
     )
 
+    REPORT_PATH.write_text(
+        build_human_report(result),
+        encoding="utf-8",
+    )
+
     print(f"Skrev {OUTPUT_PATH}")
+    print(f"Skrev {REPORT_PATH}")
     print(f"Antall rader: {result['antall_rader']}")
     print(f"OK: {result['antall_ok']}")
     print(f"Må kontrolleres: {result['antall_må_kontrolleres']}")
