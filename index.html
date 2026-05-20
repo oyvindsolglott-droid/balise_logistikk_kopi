@@ -1377,6 +1377,7 @@ Til spor = 6ss</pre>
 
 <section class="panel" id="oppstilling">
 <div class="api-box">
+  <div class="note" id="oppstillingDateStatus">Tursatt viser: dato ikke lest ennå</div>
   <div class="mobile-table-label">Tursatt – Tognr. | Tid | Kjøretøy 1 | ⇄ | Kjøretøy 2</div>
   <div class="oppstilling-mobile-real-header" id="oppstillingMobileHeader" aria-hidden="true">
     <table id="oppstillingMobileHeaderTable"></table>
@@ -2029,9 +2030,29 @@ function updateBaliseViewState(){
 }
 
 
+function formatDisplayDate(value){
+  const raw = String(value || "").trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(m) return `${m[3]}.${m[2]}.${m[1]}`;
+  return raw || "ukjent";
+}
+
+
+function updateOppstillingDateStatus(){
+  const el = document.getElementById("oppstillingDateStatus");
+  if(!el) return;
+
+  const isTomorrow = state.baliseSelectedMode === "imorgen";
+  const modeText = isTomorrow ? "I morgen" : "I dag";
+  const meta = isTomorrow ? state.baliseMetaTomorrow : state.baliseMetaToday;
+  const date = formatDisplayDate(meta?.date);
+
+  el.textContent = `Tursatt viser: ${modeText} – ${date}`;
+}
+
+
 function updateTopDataStatus(){
   const el = document.getElementById("topDataStatus");
-  if(!el) return;
 
   const mode = state.baliseSelectedMode === "imorgen" ? "i morgen" : "i dag";
   const meta = state.baliseSelectedMode === "imorgen"
@@ -2039,7 +2060,12 @@ function updateTopDataStatus(){
     : state.baliseMetaToday;
 
   const date = meta && meta.date ? meta.date : "ukjent";
-  el.textContent = `Data: ${mode} | dato: ${date}`;
+
+  if(el){
+    el.textContent = `Data: ${mode} | dato: ${date}`;
+  }
+
+  updateOppstillingDateStatus();
 }
 
 
