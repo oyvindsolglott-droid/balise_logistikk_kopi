@@ -191,6 +191,104 @@ def evaluate_operational_risk(
     }
 
 
+def build_prioritized_checklist(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    checklist: list[dict[str, Any]] = []
+
+    def add_item(
+        row: dict[str, Any],
+        priority_group: int,
+        category: str,
+        severity: str,
+        description: str,
+    ) -> None:
+        checklist.append({
+            "prioritet_gruppe": priority_group,
+            "linje": row["linje"],
+            "klokkeslett": row["klokkeslett"],
+            "fra_tog": row["fra_tog"],
+            "til_tog": row["til_tog"],
+            "settnr": row["settnr"],
+            "spor_raw": row["spor_raw"],
+            "kategori": category,
+            "alvorlighet": severity,
+            "beskrivelse": description,
+        })
+
+    for row in rows:
+        warnings = row.get("advarsler", [])
+        spor_flyt = row.get("spor_flyt", [])
+        vurdering = row.get("operativ_vurdering", {})
+        risk = vurdering.get("risikonivå", "lav")
+        merknad = row.get("merknad", "").lower()
+        til_tog = row.get("til_tog", "").lower()
+
+        if not spor_flyt:
+            add_item(
+                row,
+                1,
+                "mangler_spor_flyt",
+                "høy",
+                "Mangler planlagt spor/flyt. Må avklares før SDE kan planlegge sikkert.",
+            )
+
+        if risk == "høy" and spor_flyt:
+            add_item(
+                row,
+                2,
+                "høy_risiko",
+                "høy",
+                "Rad er vurdert med høy operativ risiko og bør kontrolleres før bruk.",
+            )
+
+        if any("Spor '6' mangler posisjon" in warning for warning in warnings):
+            add_item(
+                row,
+                3,
+                "tvetydig_spor_6",
+                "middels",
+                "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging.",
+            )
+
+        if any(slot in {"6SS", "7SS", "8SS"} for slot in spor_flyt):
+            add_item(
+                row,
+                4,
+                "ss_risiko",
+                "middels",
+                "SS-spor inngår i flyten. Kontroller risiko for blokkering av sør/bru-rute.",
+            )
+
+        if "dele" in merknad:
+            add_item(
+                row,
+                5,
+                "deling",
+                "middels",
+                "Deling/omvendt skjøting må kontrolleres særskilt mot spor, retning og uttak.",
+            )
+
+        if til_tog == "rep":
+            add_item(
+                row,
+                6,
+                "reparasjon",
+                "middels",
+                "Reparasjonsflyt må vurderes mot faktisk Sporplan og ledig verkstedkapasitet.",
+            )
+
+    checklist.sort(key=lambda item: (
+        item["prioritet_gruppe"],
+        item["klokkeslett"],
+        item["linje"],
+        item["kategori"],
+    ))
+
+    for idx, item in enumerate(checklist, start=1):
+        item["prioritet"] = idx
+
+    return checklist
+
+
 def build_import_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     risk_counts = {"lav": 0, "middels": 0, "høy": 0}
     action_counts: dict[str, int] = {}
@@ -302,6 +400,7 @@ def main() -> None:
     rows = [parse_line(line, idx + 1) for idx, line in enumerate(lines)]
 
     summary = build_import_summary(rows)
+    checklist = build_prioritized_checklist(rows)
 
     result = {
         "kilde": str(INPUT_PATH),
@@ -309,6 +408,7 @@ def main() -> None:
         "antall_ok": summary["tolkning"]["ok"],
         "antall_må_kontrolleres": summary["tolkning"]["må_kontrolleres"],
         "oppsummering": summary,
+        "prioritert_kontrolliste": checklist,
         "rader": rows,
     }
 
@@ -329,6 +429,16 @@ def main() -> None:
     print("  Handlingstyper:")
     for tag, count in summary["handlingstyper"].items():
         print(f"    {tag}: {count}")
+    print()
+    print("Prioritert kontrolliste:")
+    if not checklist:
+        print("  Ingen kontrollpunkter.")
+    for item in checklist:
+        print(
+            f"  {item['prioritet']}. linje {item['linje']} "
+            f"{item['klokkeslett']} {item['settnr']} "
+            f"{item['kategori']} ({item['alvorlighet']})"
+        )
 
     for row in rows:
         if row["advarsler"]:

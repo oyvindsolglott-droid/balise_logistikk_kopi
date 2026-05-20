@@ -28,6 +28,138 @@
       "Spor '6' mangler posisjon, for eksempel S/M/N/SS.": 4
     }
   },
+  "prioritert_kontrolliste": [
+    {
+      "prioritet_gruppe": 1,
+      "linje": 2,
+      "klokkeslett": "16:53",
+      "fra_tog": "821",
+      "til_tog": "828",
+      "settnr": "74-44",
+      "spor_raw": "",
+      "kategori": "mangler_spor_flyt",
+      "alvorlighet": "høy",
+      "beskrivelse": "Mangler planlagt spor/flyt. Må avklares før SDE kan planlegge sikkert.",
+      "prioritet": 1
+    },
+    {
+      "prioritet_gruppe": 1,
+      "linje": 11,
+      "klokkeslett": "21:53",
+      "fra_tog": "831",
+      "til_tog": "838",
+      "settnr": "74-07",
+      "spor_raw": "",
+      "kategori": "mangler_spor_flyt",
+      "alvorlighet": "høy",
+      "beskrivelse": "Mangler planlagt spor/flyt. Må avklares før SDE kan planlegge sikkert.",
+      "prioritet": 2
+    },
+    {
+      "prioritet_gruppe": 3,
+      "linje": 7,
+      "klokkeslett": "18:42",
+      "fra_tog": "863",
+      "til_tog": "864",
+      "settnr": "70-06",
+      "spor_raw": "6-11s",
+      "kategori": "tvetydig_spor_6",
+      "alvorlighet": "middels",
+      "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging.",
+      "prioritet": 3
+    },
+    {
+      "prioritet_gruppe": 3,
+      "linje": 9,
+      "klokkeslett": "20:53",
+      "fra_tog": "829",
+      "til_tog": "rep",
+      "settnr": "74-49",
+      "spor_raw": "6-5s",
+      "kategori": "tvetydig_spor_6",
+      "alvorlighet": "middels",
+      "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging.",
+      "prioritet": 4
+    },
+    {
+      "prioritet_gruppe": 3,
+      "linje": 12,
+      "klokkeslett": "22:53",
+      "fra_tog": "833",
+      "til_tog": "rep",
+      "settnr": "74-48",
+      "spor_raw": "6-5m",
+      "kategori": "tvetydig_spor_6",
+      "alvorlighet": "middels",
+      "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging.",
+      "prioritet": 5
+    },
+    {
+      "prioritet_gruppe": 3,
+      "linje": 13,
+      "klokkeslett": "22:53",
+      "fra_tog": "835",
+      "til_tog": "802",
+      "settnr": "74-44",
+      "spor_raw": "6-3n",
+      "kategori": "tvetydig_spor_6",
+      "alvorlighet": "middels",
+      "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging.",
+      "prioritet": 6
+    },
+    {
+      "prioritet_gruppe": 4,
+      "linje": 5,
+      "klokkeslett": "17:53",
+      "fra_tog": "823/1",
+      "til_tog": "852",
+      "settnr": "74-42",
+      "spor_raw": "6ss-3n",
+      "kategori": "ss_risiko",
+      "alvorlighet": "middels",
+      "beskrivelse": "SS-spor inngår i flyten. Kontroller risiko for blokkering av sør/bru-rute.",
+      "prioritet": 7
+    },
+    {
+      "prioritet_gruppe": 5,
+      "linje": 8,
+      "klokkeslett": "18:53",
+      "fra_tog": "825/2",
+      "til_tog": "806/1",
+      "settnr": "74-04",
+      "spor_raw": "12s",
+      "kategori": "deling",
+      "alvorlighet": "middels",
+      "beskrivelse": "Deling/omvendt skjøting må kontrolleres særskilt mot spor, retning og uttak.",
+      "prioritet": 8
+    },
+    {
+      "prioritet_gruppe": 6,
+      "linje": 9,
+      "klokkeslett": "20:53",
+      "fra_tog": "829",
+      "til_tog": "rep",
+      "settnr": "74-49",
+      "spor_raw": "6-5s",
+      "kategori": "reparasjon",
+      "alvorlighet": "middels",
+      "beskrivelse": "Reparasjonsflyt må vurderes mot faktisk Sporplan og ledig verkstedkapasitet.",
+      "prioritet": 9
+    },
+    {
+      "prioritet_gruppe": 6,
+      "linje": 12,
+      "klokkeslett": "22:53",
+      "fra_tog": "833",
+      "til_tog": "rep",
+      "settnr": "74-48",
+      "spor_raw": "6-5m",
+      "kategori": "reparasjon",
+      "alvorlighet": "middels",
+      "beskrivelse": "Reparasjonsflyt må vurderes mot faktisk Sporplan og ledig verkstedkapasitet.",
+      "prioritet": 10
+    }
+  ],
   "rader": [
     {
       "linje": 1,
