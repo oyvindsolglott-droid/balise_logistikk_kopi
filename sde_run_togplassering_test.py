@@ -407,14 +407,32 @@ def main():
 
     print("\n=== Evaluering mot fasit etter SDE-forslag ===")
     production_assignment_map = build_production_assignment_map(reservations)
+    evaluation_counts = {
+        "treffer godt": 0,
+        "delvis riktig": 0,
+        "operativt tvilsom": 0,
+        "feil": 0,
+        "ingen fasit": 0,
+    }
+
     for row in data.get("rows", []):
         fasit_target = row.get("fasit_target_for_evaluation_only", "")
         sde_target = get_sde_target_for_evaluation(row, status, production_assignment_map)
         vurdering = evaluate_against_fasit(sde_target, fasit_target)
+        evaluation_counts[vurdering] = evaluation_counts.get(vurdering, 0) + 1
         print(
             f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: '
             f'SDE={sde_target or "-"} | fasit={fasit_target or "-"} | {vurdering}'
         )
+
+    print("\n=== Evalueringsoppsummering ===")
+    total = sum(evaluation_counts.values())
+    print(f"Totalt vurdert: {total}")
+    print(f"Treffer godt: {evaluation_counts.get('treffer godt', 0)}")
+    print(f"Delvis riktig: {evaluation_counts.get('delvis riktig', 0)}")
+    print(f"Operativt tvilsom: {evaluation_counts.get('operativt tvilsom', 0)}")
+    print(f"Feil: {evaluation_counts.get('feil', 0)}")
+    print(f"Ingen fasit: {evaluation_counts.get('ingen fasit', 0)}")
 
     print("\n=== Foreslått første handling uten Til spor ===")
     for row in data.get("rows", []):
