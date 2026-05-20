@@ -966,6 +966,29 @@ button{padding:12px 12px}
   font-weight:700;
 }
 
+.sde-import-report{
+  margin:0 0 14px;
+  border:1px solid #d1d5db;
+  background:#f8fafc;
+  border-radius:12px;
+  padding:12px;
+}
+
+.sde-import-report-title{
+  font-weight:800;
+  margin:0 0 8px;
+  color:#111827;
+}
+
+.sde-import-report pre{
+  margin:0;
+  white-space:pre-wrap;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  font-size:12px;
+  line-height:1.45;
+  color:#111827;
+}
+
 </style>
 </head>
 <body>
@@ -1084,6 +1107,10 @@ button{padding:12px 12px}
 <div class="mobile-table-label">SDE vaktplan</div>
 <div class="zoom-wrap">
 <div class="zoom-inner" id="sdeVaktplanZoom">
+<div class="sde-import-report" id="sdeImportReport">
+<div class="sde-import-report-title">Togplassering-import</div>
+<pre id="sdeImportReportText">Rapport ikke lest ennå.</pre>
+</div>
 <table id="sdeVaktplanTable"></table>
 </div>
 </div>
@@ -3169,6 +3196,23 @@ function getSdeVehicleForFromTrain(train){
 }
 
 
+async function loadSdeImportReport(){
+  const el = document.getElementById("sdeImportReportText");
+  if(!el) return;
+
+  try{
+    const response = await fetch("data/sde_togplassering_rapport.txt", {cache:"no-store"});
+    if(!response.ok){
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const text = await response.text();
+    el.textContent = text.trim() || "Rapporten er tom.";
+  }catch(err){
+    el.textContent = "Kunne ikke lese data/sde_togplassering_rapport.txt. Kjør sde_togplassering_import.py og kontroller at rapportfilen finnes.";
+  }
+}
+
+
 function buildSdeVaktplan(){
   const table = document.getElementById("sdeVaktplanTable");
   if(!table) return;
@@ -3220,6 +3264,7 @@ function activateTab(name){
 
   if(name === "sdeVaktplan"){
     buildSdeVaktplan();
+    loadSdeImportReport();
   }
 }
 
@@ -3719,6 +3764,7 @@ buildTurnering("turneringKveldTable","turneringKveld");
 buildTurnering("turneringNattTable","turneringNatt");
 buildInndata();
 buildSdeVaktplan();
+loadSdeImportReport();
 buildSporplan();
 buildOppstilling();
 initViewControls();
