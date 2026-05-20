@@ -361,6 +361,33 @@ box-shadow:0 0 0 4px #7c3aed inset,0 0 0 2px #3b0764;
 .slot.plan-fra.plan-til{
 box-shadow:0 0 0 4px #f97316 inset,0 0 0 8px #7c3aed inset,0 0 0 2px #3b0764;
 }
+.slot.rep-slot{
+  position:relative;
+  border:3px solid #f59e0b;
+  box-shadow:0 0 0 3px rgba(245,158,11,.28), 0 0 18px rgba(245,158,11,.35);
+}
+
+.slot.rep-slot::before{
+  content:"⚠";
+  position:absolute;
+  top:4px;
+  right:6px;
+  z-index:5;
+  font-size:34px;
+  line-height:1;
+  color:#f59e0b;
+  text-shadow:
+    0 1px 0 #111827,
+    1px 0 0 #111827,
+    0 -1px 0 #111827,
+    -1px 0 0 #111827,
+    0 0 8px rgba(0,0,0,.35);
+}
+
+.slot.rep-slot .slot-bottom.mat{
+  font-weight:900;
+}
+
 .slot-plan-badge{
 display:block;
 width:100%;
@@ -1709,7 +1736,7 @@ function makeEmptyPlanSkifteRows(count=20){
     fromSpor:"",
     toSpor:"",
     crew:"",
-    utfort:""
+    tilRep:"",utfort:""
   }));
 }
 
@@ -1864,7 +1891,7 @@ if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
 if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;
 if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkifteRows();
-else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",utfort:"",...(row||{})}));
+else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",tilRep:"",utfort:"",...(row||{})}));
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
@@ -2502,11 +2529,12 @@ function getSdeSporplanSnapshot(){
 
 function isRepMarker(value){
   const s = String(value || "").trim().toLowerCase();
-  return s === "r";
+  return s === "r" || s === "rep" || s === "j" || s === "ja";
 }
 
 function getKveldRepSlots(){
   const slots = new Set();
+
   (state.turneringKveld || []).forEach(row=>{
     if(!row || row.type) return;
     if(isRepMarker(row.f)){
@@ -2518,6 +2546,14 @@ function getKveldRepSlots(){
       if(slot2) slots.add(slot2);
     }
   });
+
+  (state.planSkifteRows || []).forEach(row=>{
+    if(!row) return;
+    if(!isRepMarker(row.tilRep)) return;
+    const slot = normalizeSlot(row.toSpor);
+    if(slot) slots.add(slot);
+  });
+
   return slots;
 }
 
@@ -2741,7 +2777,7 @@ function buildGrunnoppstilling(){
 
 function buildInndata(){
   const table=document.getElementById("inndataTable");
-  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>1,2,12</th><th>Utført</th></tr></thead>";
+  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>1,2,12</th><th>Til rep</th><th>Utført</th></tr></thead>";
   const body=document.createElement("tbody");
 
   const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : makeEmptyPlanSkifteRows();
@@ -2749,9 +2785,10 @@ function buildInndata(){
   rows.forEach((row,ri)=>{
     const tr=document.createElement("tr");
     updatePlanSkifteRowClass(tr,row);
-    ["time","vehicle","fromSpor","toSpor","crew","utfort"].forEach(key=>{
+    ["time","vehicle","fromSpor","toSpor","crew","tilRep","utfort"].forEach(key=>{
       const td=document.createElement("td");
       if(key === "crew") td.classList.add("skifter-cell");
+      if(key === "tilRep") td.classList.add("rep-cell");
       const inp=document.createElement("input");
       inp.type="text";
       inp.inputMode="text";
