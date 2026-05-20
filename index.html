@@ -983,13 +983,91 @@ button{padding:12px 12px}
   color:#111827;
 }
 
-.sde-import-report pre{
-  margin:0;
-  white-space:pre-wrap;
-  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-  font-size:12px;
+.sde-import-report-content{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  font-size:13px;
   line-height:1.45;
   color:#111827;
+}
+
+.sde-report-status-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+  gap:8px;
+}
+
+.sde-report-chip{
+  border:1px solid #d1d5db;
+  background:#fff;
+  border-radius:10px;
+  padding:8px 10px;
+  font-weight:700;
+}
+
+.sde-report-chip.bad{
+  border-color:#fecaca;
+  background:#fef2f2;
+  color:#991b1b;
+}
+
+.sde-report-chip.warn{
+  border-color:#fde68a;
+  background:#fffbeb;
+  color:#92400e;
+}
+
+.sde-report-conclusion{
+  border-left:4px solid #dc2626;
+  background:#fff;
+  padding:9px 10px;
+  border-radius:8px;
+  font-weight:700;
+}
+
+.sde-report-section-title{
+  font-weight:800;
+  margin-top:4px;
+}
+
+.sde-check-card{
+  border:1px solid #e5e7eb;
+  background:#fff;
+  border-radius:10px;
+  padding:10px;
+}
+
+.sde-check-card.high{
+  border-color:#fecaca;
+  background:#fff7f7;
+}
+
+.sde-check-card.medium{
+  border-color:#fde68a;
+  background:#fffdf2;
+}
+
+.sde-check-head{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-weight:800;
+  margin-bottom:5px;
+}
+
+.sde-check-meta{
+  color:#374151;
+  margin-bottom:6px;
+}
+
+.sde-check-card ul{
+  margin:6px 0 0 18px;
+  padding:0;
+}
+
+.sde-check-card li{
+  margin:3px 0;
 }
 
 </style>
@@ -1111,11 +1189,11 @@ button{padding:12px 12px}
 <div class="zoom-wrap">
 <div class="zoom-inner" id="sdeVaktplanZoom">
 <div class="sde-import-report" id="sdeImportReport">
-<div class="sde-import-report-title">Togplassering-import</div>
-<pre id="sdeImportReportText">Rapport ikke lest ennå.</pre>
+<div class="sde-import-report-title">Togplassering-import – testgrunnlag</div>
+<div class="sde-import-report-content" id="sdeImportReportText">Rapport ikke lest ennå.</div>
 </div>
 <div class="note">
-Foreløpig vises bare Togplassering-importen. Den gamle eksempelplanen er skjult fordi den ikke er koblet til samme datagrunnlag som rapporten.
+Foreløpig vises Togplassering-import fra testgrunnlag. Denne visningen er ikke koblet mot dagens Tursatt/Balise-data ennå, og skal derfor ikke brukes som operativ fasit. Neste steg er å sammenligne importen mot Tursatt og markere avvik.
 </div>
 <table id="sdeVaktplanTable" style="display:none"></table>
 </div>
@@ -3202,19 +3280,133 @@ function getSdeVehicleForFromTrain(train){
 }
 
 
+function boolText(value){
+  return value ? "Ja" : "Nei";
+}
+
+
+function addSdeText(parent, className, text){
+  const div = document.createElement("div");
+  if(className) div.className = className;
+  div.textContent = text;
+  parent.appendChild(div);
+  return div;
+}
+
+
+function renderSdeImportReport(data){
+  const el = document.getElementById("sdeImportReportText");
+  if(!el) return;
+
+  const recommendation = data.sde_import_anbefaling || {};
+  const summary = data.oppsummering || {};
+  const risk = summary.risiko || {};
+  const checklist = Array.isArray(data.prioritert_kontrolliste)
+    ? data.prioritert_kontrolliste
+    : [];
+  const important = Array.isArray(recommendation.viktigste_avklaringer)
+    ? recommendation.viktigste_avklaringer
+    : [];
+
+  el.innerHTML = "";
+
+  const statusGrid = document.createElement("div");
+  statusGrid.className = "sde-report-status-grid";
+  el.appendChild(statusGrid);
+
+  const direct = document.createElement("div");
+  direct.className = recommendation.kan_brukes_direkte ? "sde-report-chip" : "sde-report-chip bad";
+  direct.textContent = `Kan brukes direkte: ${boolText(recommendation.kan_brukes_direkte)}`;
+  statusGrid.appendChild(direct);
+
+  const clarify = document.createElement("div");
+  clarify.className = recommendation.må_avklares_før_sde ? "sde-report-chip bad" : "sde-report-chip";
+  clarify.textContent = `Må avklares før SDE: ${boolText(recommendation.må_avklares_før_sde)}`;
+  statusGrid.appendChild(clarify);
+
+  const high = document.createElement("div");
+  high.className = (recommendation.antall_høy || 0) > 0 ? "sde-report-chip bad" : "sde-report-chip";
+  high.textContent = `Høy risiko: ${recommendation.antall_høy ?? risk.høy ?? 0}`;
+  statusGrid.appendChild(high);
+
+  const medium = document.createElement("div");
+  medium.className = (recommendation.antall_middels || 0) > 0 ? "sde-report-chip warn" : "sde-report-chip";
+  medium.textContent = `Middels risiko: ${recommendation.antall_middels ?? risk.middels ?? 0}`;
+  statusGrid.appendChild(medium);
+
+  addSdeText(
+    el,
+    "sde-report-conclusion",
+    recommendation.konklusjon || "Ingen SDE-anbefaling funnet."
+  );
+
+  addSdeText(el, "sde-report-section-title", "Viktigste avklaringer");
+  if(!important.length){
+    addSdeText(el, "", "Ingen viktige avklaringer registrert.");
+  }else{
+    important.forEach(item=>{
+      const card = document.createElement("div");
+      card.className = "sde-check-card";
+      card.textContent = `${item.prioritet}. ${item.klokkeslett} | ${item.settnr} | ${item.kategori} – ${item.beskrivelse}`;
+      el.appendChild(card);
+    });
+  }
+
+  addSdeText(el, "sde-report-section-title", "Full prioritert kontrolliste");
+  if(!checklist.length){
+    addSdeText(el, "", "Ingen kontrollpunkter.");
+    return;
+  }
+
+  checklist.forEach(item=>{
+    const card = document.createElement("div");
+    card.className = item.alvorlighet === "høy" ? "sde-check-card high" : "sde-check-card medium";
+
+    const head = document.createElement("div");
+    head.className = "sde-check-head";
+
+    const left = document.createElement("span");
+    left.textContent = `${item.prioritet}. ${item.klokkeslett} | ${item.settnr}`;
+
+    const right = document.createElement("span");
+    right.textContent = `${item.kategori} | ${item.alvorlighet}`;
+
+    head.appendChild(left);
+    head.appendChild(right);
+    card.appendChild(head);
+
+    addSdeText(card, "sde-check-meta", `${item.fra_tog} → ${item.til_tog} | spor: ${item.spor_raw || "mangler"}`);
+    addSdeText(card, "", item.beskrivelse || "");
+
+    const suggestions = Array.isArray(item.avklaringsforslag) ? item.avklaringsforslag : [];
+    if(suggestions.length){
+      const ul = document.createElement("ul");
+      suggestions.forEach(text=>{
+        const li = document.createElement("li");
+        li.textContent = text;
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+    }
+
+    el.appendChild(card);
+  });
+}
+
+
 async function loadSdeImportReport(){
   const el = document.getElementById("sdeImportReportText");
   if(!el) return;
 
   try{
-    const response = await fetch("data/sde_togplassering_rapport.txt", {cache:"no-store"});
+    const response = await fetch("data/sde_togplassering_import_resultat.json", {cache:"no-store"});
     if(!response.ok){
       throw new Error(`HTTP ${response.status}`);
     }
-    const text = await response.text();
-    el.textContent = text.trim() || "Rapporten er tom.";
+    const data = await response.json();
+    renderSdeImportReport(data);
   }catch(err){
-    el.textContent = "Kunne ikke lese data/sde_togplassering_rapport.txt. Kjør sde_togplassering_import.py og kontroller at rapportfilen finnes.";
+    el.textContent = "Kunne ikke lese data/sde_togplassering_import_resultat.json. Dette er foreløpig testgrunnlag og er ikke koblet mot dagens Tursatt/Balise-data.";
   }
 }
 
