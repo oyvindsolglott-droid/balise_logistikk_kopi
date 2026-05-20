@@ -2391,6 +2391,40 @@ function mergeRowsIntoResult(rows,result,map){
 }
 
 
+function removeVehicleFromComputedResult(result, vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token) return;
+
+  result.forEach(row=>{
+    if(normalizeVehicleToken(row.mat) === token){
+      row.tog = "";
+      row.mat = "";
+      row.wash = false;
+    }
+  });
+}
+
+
+function applyFinishedPlanSkifteRows(result,map){
+  const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+
+  rows.forEach(row=>{
+    if(!row) return;
+    if(!isPlanSkifteFerdig(row.utfort)) return;
+
+    const vehicle = String(row.vehicle || "").trim();
+    const toSlot = normalizeSlot(row.toSpor);
+    if(!vehicle || !toSlot || map[toSlot] === undefined) return;
+
+    removeVehicleFromComputedResult(result, vehicle);
+
+    result[map[toSlot]].tog = "";
+    result[map[toSlot]].mat = vehicle;
+    result[map[toSlot]].wash = false;
+  });
+}
+
+
 function computeInndata(){
   const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
   const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
@@ -2407,6 +2441,7 @@ function computeInndata(){
 
   mergeRowsIntoResult(state.turneringKveld,result,map);
   mergeRowsIntoResult(state.turneringNatt,result,map);
+  applyFinishedPlanSkifteRows(result,map);
   return result;
 }
 
