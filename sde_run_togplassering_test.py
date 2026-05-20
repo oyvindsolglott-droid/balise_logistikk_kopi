@@ -178,6 +178,81 @@ def simulate_production_reservations(rows, base_status):
     return assignments
 
 
+
+def row_key(row):
+    return (
+        row.get("time", ""),
+        row.get("vehicle", ""),
+        row.get("from_train", ""),
+        row.get("to_train", ""),
+    )
+
+
+def build_production_assignment_map(reservations):
+    assignment_map = {}
+
+    for item in reservations:
+        if len(item) == 4:
+            row, slot, reservation_status, reason = item
+        else:
+            row, slot, reservation_status = item
+
+        assignment_map[row_key(row)] = slot
+
+    return assignment_map
+
+
+def get_sde_target_for_evaluation(row, status, production_assignment_map):
+    target_type = suggest_target_type_for_row(row)
+
+    if target_type == "produksjonsplassering":
+        return production_assignment_map.get(row_key(row), "")
+
+    if target_type == "service via spor 6 før videre plassering":
+        service_slot = suggest_service_slot(status)
+        if service_slot.startswith("spor 6 opptatt"):
+            return "spor 6 opptatt"
+        return service_slot
+
+    if target_type == "verksted-/repflyt":
+        if row.get("wc_water"):
+            service_slot = suggest_service_slot(status)
+            if service_slot.startswith("spor 6 opptatt"):
+                return "spor 6 opptatt/rep"
+            return f"{service_slot}/rep"
+        return "rep"
+
+    if target_type == "deling/skjøting":
+        return "deling/skjøting"
+
+    return ""
+
+
+def evaluate_against_fasit(sde_target, fasit_target):
+    if not fasit_target:
+        return "ingen fasit"
+
+    if sde_target == fasit_target:
+        return "treffer godt"
+
+    if fasit_target in sde_target or sde_target in fasit_target:
+        return "treffer godt"
+
+    if fasit_target.startswith("6") and sde_target.startswith("6"):
+        return "treffer godt"
+
+    if "rep" in fasit_target and "rep" in sde_target:
+        return "delvis riktig"
+
+    if "deling" in fasit_target and "deling" in sde_target:
+        return "treffer godt"
+
+    if sde_target:
+        return "operativt tvilsom"
+
+    return "feil"
+
+
 def suggest_production_area_for_row(row):
     to_train = str(row.get("to_train", "")).strip()
 
@@ -329,6 +404,17 @@ def main():
             reason = ""
         suffix = f" | {reason}" if reason else ""
         print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {slot} ({reservation_status}){suffix}')
+
+    print("\n=== Evaluering mot fasit etter SDE-forslag ===")
+    production_assignment_map = build_production_assignment_map(reservations)
+    for row in data.get("rows", []):
+        fasit_target = row.get("fasit_target_for_evaluation_only", "")
+        sde_target = get_sde_target_for_evaluation(row, status, production_assignment_map)
+        vurdering = evaluate_against_fasit(sde_target, fasit_target)
+        print(
+            f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: '
+            f'SDE={sde_target or "-"} | fasit={fasit_target or "-"} | {vurdering}'
+        )
 
     print("\n=== Foreslått første handling uten Til spor ===")
     for row in data.get("rows", []):
