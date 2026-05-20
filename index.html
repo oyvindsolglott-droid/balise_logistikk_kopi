@@ -1292,6 +1292,26 @@ Tømme: j</pre>
 <p>Programmet bør da tolke dette som at 74-44 skal via spor 6 for WC/vann før videre plassering.</p>
 <p>Bruk derfor <strong>j</strong> bare når kjøretøyet faktisk skal tømmes eller fylles.</p>
 
+<h3>Grunnoppstilling</h3>
+<p><strong>Grunnoppstilling må fylles ut ved fysisk kontroll av tomta før SDE brukes operativt.</strong></p>
+<p>Programmet kan ikke vite sikkert hva som faktisk står på stasjonen uten at dette registreres manuelt. Tursatt og Balise kan vise togdata, men de erstatter ikke fysisk kontroll av sporene.</p>
+<p>Gå rundt på tomta og registrer hvilket kjøretøy som står i hver slot:</p>
+<pre>5s = 74-50
+3m = 74-42
+6n = 75-17</pre>
+<p>Grunnoppstilling brukes som startstatus i Sporplan. Det betyr at kjøretøyene du legger inn her vises som fysisk plassert i Sporplan.</p>
+<p>Grunnoppstilling er likevel <strong>flyktig</strong>. Når du senere registrerer en ferdig skiftebevegelse i Planlegge Skiftebevegelser, overstyrer den grunnoppstillingen.</p>
+<pre>Grunnoppstilling:
+5s = 74-50
+
+Planlegge Skiftebevegelser:
+Kjøretøy_nr = 74-50
+Fra spor = 5s
+Til spor = 2s
+Utført = f</pre>
+<p>Da regner programmet 74-50 som flyttet til 2s. Den gamle plasseringen i 5s frigjøres automatisk i Sporplan.</p>
+<p>Hvis Grunnoppstilling er feil eller ufullstendig, vil Sporplan og senere SDE-vurderinger få et dårligere utgangspunkt. Derfor bør dette alltid være første kontrollpunkt før videre planlegging.</p>
+
 <h3>Planlegge Skiftebevegelser</h3>
 <p>Dette arket brukes til å planlegge konkrete skiftebevegelser.</p>
 <p>Her kan du føre inn:</p>
@@ -1315,6 +1335,7 @@ hvilke kjøretøy som må stå riktig før morgenproduksjonen starter</pre>
 <h3>Sporplan</h3>
 <p>Sporplan viser hvor kjøretøyene står fysisk i sporene på Skien.</p>
 <p>Dette er programmets viktigste nåbilde.</p>
+<p>Sporplan bygger først på Grunnoppstilling, altså det som er registrert ved fysisk kontroll av tomta. Deretter kan ferdige skiftebevegelser og andre registrerte endringer oppdatere plasseringen.</p>
 <p>Når programmet skal vurdere skifting, skal faktisk Sporplan være utgangspunktet. Programmet skal ikke planlegge fra en tenkt situasjon, men fra det som faktisk står i sporene.</p>
 <p>Sporplan kan også vise planlagte skiftebevegelser. Da blir det lettere å se:</p>
 <pre>hva som står hvor
@@ -1328,6 +1349,7 @@ hvilke oppdrag som fortsatt ikke er utført</pre>
 <p>Målet er at SDE etter hvert skal foreslå en samlet operativ plan for kveldsvakt og nattevakt.</p>
 <p>SDE skal bruke:</p>
 <pre>faktisk Sporplan
+Grunnoppstilling fra fysisk tomtekontroll
 Tursatt
 Turnering Kveld
 Turnering Natt
