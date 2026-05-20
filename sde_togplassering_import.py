@@ -191,6 +191,58 @@ def evaluate_operational_risk(
     }
 
 
+def build_clarification_suggestions(category: str, row: dict[str, Any]) -> list[str]:
+    spor_raw = row.get("spor_raw", "")
+    til_tog = row.get("til_tog", "")
+    merknad = row.get("merknad", "")
+
+    if category == "mangler_spor_flyt":
+        return [
+            "Avklar hvilket spor eller hvilken spor-flyt kjøretøyet faktisk skal følge.",
+            "Kontroller om tomt felt betyr at kjøretøyet skal stå igjen, gå direkte videre, eller avklares senere.",
+            "Sjekk mot faktisk Sporplan før raden brukes i SDE-plan.",
+        ]
+
+    if category == "høy_risiko":
+        return [
+            "Kontroller om raden er riktig tolket fra arket.",
+            "Sammenlign med faktisk Sporplan og kjente begrensninger før planlegging.",
+            "Vurder om SDE bør foreslå alternativ rekkefølge eller alternativt spor.",
+        ]
+
+    if category == "tvetydig_spor_6":
+        return [
+            f"Avklar om '{spor_raw}' betyr 6S, 6N eller 6SS.",
+            "Avklar om spor 6 er et mellomstopp for WC/vann eller endelig plassering.",
+            "Kontroller at valgt 6-posisjon ikke sperrer nødvendig videre flyt.",
+        ]
+
+    if category == "ss_risiko":
+        return [
+            "Kontroller hvor lenge kjøretøyet eventuelt blir stående i SS-spor.",
+            "Vurder om 6S eller 6N kan brukes i stedet dersom hensikten er WC/vann.",
+            "Sjekk om SS-plasseringen kan blokkere sør/bru-rute for andre bevegelser.",
+        ]
+
+    if category == "deling":
+        return [
+            "Avklar hvor delingen faktisk skal utføres.",
+            "Kontroller hvilken del som skal videre til hvilket tog.",
+            "Sjekk retning, uttak og om plattformspor brukes kortvarig og operativt begrunnet.",
+        ]
+
+    if category == "reparasjon":
+        return [
+            "Avklar om kjøretøyet faktisk skal til verksted eller bare settes av for senere vurdering.",
+            "Sjekk ledig verkstedkapasitet og om 7N/8N er tilgjengelige eller opptatt.",
+            f"Kontroller om til_tog='{til_tog}' og merknad='{merknad}' gir nok informasjon for SDE.",
+        ]
+
+    return [
+        "Kontroller raden manuelt før den brukes i SDE.",
+    ]
+
+
 def build_prioritized_checklist(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     checklist: list[dict[str, Any]] = []
 
@@ -201,6 +253,11 @@ def build_prioritized_checklist(rows: list[dict[str, Any]]) -> list[dict[str, An
         severity: str,
         description: str,
     ) -> None:
+        clarification_suggestions = build_clarification_suggestions(
+            category=category,
+            row=row,
+        )
+
         checklist.append({
             "prioritet_gruppe": priority_group,
             "linje": row["linje"],
@@ -212,6 +269,7 @@ def build_prioritized_checklist(rows: list[dict[str, Any]]) -> list[dict[str, An
             "kategori": category,
             "alvorlighet": severity,
             "beskrivelse": description,
+            "avklaringsforslag": clarification_suggestions,
         })
 
     for row in rows:

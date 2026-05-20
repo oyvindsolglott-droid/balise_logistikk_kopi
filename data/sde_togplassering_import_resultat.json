@@ -40,6 +40,11 @@
       "kategori": "mangler_spor_flyt",
       "alvorlighet": "høy",
       "beskrivelse": "Mangler planlagt spor/flyt. Må avklares før SDE kan planlegge sikkert.",
+      "avklaringsforslag": [
+        "Avklar hvilket spor eller hvilken spor-flyt kjøretøyet faktisk skal følge.",
+        "Kontroller om tomt felt betyr at kjøretøyet skal stå igjen, gå direkte videre, eller avklares senere.",
+        "Sjekk mot faktisk Sporplan før raden brukes i SDE-plan."
+      ],
       "prioritet": 1
     },
     {
@@ -53,6 +58,11 @@
       "kategori": "mangler_spor_flyt",
       "alvorlighet": "høy",
       "beskrivelse": "Mangler planlagt spor/flyt. Må avklares før SDE kan planlegge sikkert.",
+      "avklaringsforslag": [
+        "Avklar hvilket spor eller hvilken spor-flyt kjøretøyet faktisk skal følge.",
+        "Kontroller om tomt felt betyr at kjøretøyet skal stå igjen, gå direkte videre, eller avklares senere.",
+        "Sjekk mot faktisk Sporplan før raden brukes i SDE-plan."
+      ],
       "prioritet": 2
     },
     {
@@ -66,6 +76,11 @@
       "kategori": "tvetydig_spor_6",
       "alvorlighet": "middels",
       "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging.",
+      "avklaringsforslag": [
+        "Avklar om '6-11s' betyr 6S, 6N eller 6SS.",
+        "Avklar om spor 6 er et mellomstopp for WC/vann eller endelig plassering.",
+        "Kontroller at valgt 6-posisjon ikke sperrer nødvendig videre flyt."
+      ],
       "prioritet": 3
     },
     {
@@ -79,6 +94,11 @@
       "kategori": "tvetydig_spor_6",
       "alvorlighet": "middels",
       "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging.",
+      "avklaringsforslag": [
+        "Avklar om '6-5s' betyr 6S, 6N eller 6SS.",
+        "Avklar om spor 6 er et mellomstopp for WC/vann eller endelig plassering.",
+        "Kontroller at valgt 6-posisjon ikke sperrer nødvendig videre flyt."
+      ],
       "prioritet": 4
     },
     {
@@ -92,6 +112,11 @@
       "kategori": "tvetydig_spor_6",
       "alvorlighet": "middels",
       "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging.",
+      "avklaringsforslag": [
+        "Avklar om '6-5m' betyr 6S, 6N eller 6SS.",
+        "Avklar om spor 6 er et mellomstopp for WC/vann eller endelig plassering.",
+        "Kontroller at valgt 6-posisjon ikke sperrer nødvendig videre flyt."
+      ],
       "prioritet": 5
     },
     {
@@ -105,6 +130,11 @@
       "kategori": "tvetydig_spor_6",
       "alvorlighet": "middels",
       "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging.",
+      "avklaringsforslag": [
+        "Avklar om '6-3n' betyr 6S, 6N eller 6SS.",
+        "Avklar om spor 6 er et mellomstopp for WC/vann eller endelig plassering.",
+        "Kontroller at valgt 6-posisjon ikke sperrer nødvendig videre flyt."
+      ],
       "prioritet": 6
     },
     {
@@ -118,6 +148,11 @@
       "kategori": "ss_risiko",
       "alvorlighet": "middels",
       "beskrivelse": "SS-spor inngår i flyten. Kontroller risiko for blokkering av sør/bru-rute.",
+      "avklaringsforslag": [
+        "Kontroller hvor lenge kjøretøyet eventuelt blir stående i SS-spor.",
+        "Vurder om 6S eller 6N kan brukes i stedet dersom hensikten er WC/vann.",
+        "Sjekk om SS-plasseringen kan blokkere sør/bru-rute for andre bevegelser."
+      ],
       "prioritet": 7
     },
     {
@@ -131,6 +166,11 @@
       "kategori": "deling",
       "alvorlighet": "middels",
       "beskrivelse": "Deling/omvendt skjøting må kontrolleres særskilt mot spor, retning og uttak.",
+      "avklaringsforslag": [
+        "Avklar hvor delingen faktisk skal utføres.",
+        "Kontroller hvilken del som skal videre til hvilket tog.",
+        "Sjekk retning, uttak og om plattformspor brukes kortvarig og operativt begrunnet."
+      ],
       "prioritet": 8
     },
     {
@@ -144,6 +184,11 @@
       "kategori": "reparasjon",
       "alvorlighet": "middels",
       "beskrivelse": "Reparasjonsflyt må vurderes mot faktisk Sporplan og ledig verkstedkapasitet.",
+      "avklaringsforslag": [
+        "Avklar om kjøretøyet faktisk skal til verksted eller bare settes av for senere vurdering.",
+        "Sjekk ledig verkstedkapasitet og om 7N/8N er tilgjengelige eller opptatt.",
+        "Kontroller om til_tog='rep' og merknad='Enkelt!' gir nok informasjon for SDE."
+      ],
       "prioritet": 9
     },
     {
@@ -157,6 +202,11 @@
       "kategori": "reparasjon",
       "alvorlighet": "middels",
       "beskrivelse": "Reparasjonsflyt må vurderes mot faktisk Sporplan og ledig verkstedkapasitet.",
+      "avklaringsforslag": [
+        "Avklar om kjøretøyet faktisk skal til verksted eller bare settes av for senere vurdering.",
+        "Sjekk ledig verkstedkapasitet og om 7N/8N er tilgjengelige eller opptatt.",
+        "Kontroller om til_tog='rep' og merknad='Enkelt!' gir nok informasjon for SDE."
+      ],
       "prioritet": 10
     }
   ],
