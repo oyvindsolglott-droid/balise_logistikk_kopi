@@ -4,6 +4,33 @@ from pathlib import Path
 INPUT_FILE = Path("sde_togplassering_test_2026_05_18.json")
 
 
+def suggest_flow_for_row(row):
+    flow = []
+
+    vehicle = row.get("vehicle")
+    from_train = row.get("from_train")
+    to_train = str(row.get("to_train", "")).lower()
+    wc_water = bool(row.get("wc_water"))
+    note = str(row.get("note") or "").lower()
+
+    flow.append(f"Ankommer med tog {from_train}")
+
+    if "dele motsatt" in note:
+        flow.append("må håndteres som deling/skjøting før videre plassering")
+
+    if wc_water:
+        flow.append("må via spor 6 for WC/vann")
+
+    if to_train == "rep":
+        flow.append("skal videre i verksted-/repflyt")
+    else:
+        flow.append(f"skal inngå i videre produksjon mot tog {row.get('to_train')}")
+
+    flow.append("SDE skal selv beregne egnet spor ut fra faktisk Sporplan")
+
+    return flow
+
+
 def main():
     data = json.loads(INPUT_FILE.read_text())
 
@@ -42,6 +69,12 @@ def main():
             needs.append("produksjonsplassering")
 
         print(f'{row["time"]} | {row["vehicle"]}: ' + "; ".join(needs))
+
+    print("\n=== Foreslått operativ flyt uten Til spor ===")
+    for row in data.get("rows", []):
+        print(f'\n{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}')
+        for step_no, step in enumerate(suggest_flow_for_row(row), start=1):
+            print(f"  {step_no}. {step}")
 
 
 if __name__ == "__main__":
