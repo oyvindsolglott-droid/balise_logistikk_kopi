@@ -54,7 +54,28 @@ body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0}
 h1{font-size:22px;margin:0 0 6px}
 h3{margin:0 0 8px;font-size:16px}
 .sub{margin:0 0 12px;color:var(--muted);font-size:14px}
-.top-data-status{margin:0 0 12px;color:var(--muted);font-size:13px}
+.top-status-row{
+display:flex;
+align-items:center;
+justify-content:flex-start;
+gap:28px;
+margin:0 0 12px;
+}
+.top-data-status{margin:0;color:var(--muted);font-size:13px}
+.guide-top-btn{
+background:#dc2626;
+color:#fff;
+border:1px solid #991b1b;
+border-radius:0;
+padding:9px 14px;
+font-size:13px;
+font-weight:800;
+letter-spacing:.01em;
+box-shadow:0 2px 8px rgba(220,38,38,.22);
+}
+.guide-top-btn:hover{
+background:#b91c1c;
+}
 .ios-banner{background:#eef5ff;border:1px solid #bfd4ff;color:#274472;border-radius:14px;padding:10px 12px;margin-bottom:12px;font-size:14px}
 .toolbar{display:none}
 #saveBtn{display:none}
@@ -951,7 +972,10 @@ button{padding:12px 12px}
 <div class="app">
 <h1>Skien sporplan</h1>
 <p class="sub">16. mai 2026</p>
+<div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
+<button class="guide-top-btn" id="guideTopBtn" type="button">Brukerveiledning</button>
+</div>
 
 
 
@@ -970,7 +994,6 @@ button{padding:12px 12px}
 <button class="seg" type="button" data-tab="sdeVaktplan">SDE vaktplan</button>
 <button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
 <button class="seg" type="button" data-tab="sporplan">Sporplan</button>
-<button class="seg" type="button" data-tab="hjelp">Introduksjon</button>
 </div>
 
 
@@ -3574,6 +3597,7 @@ async function fetchBaliseApi(){
 }
 
 document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>activateTab(btn.dataset.tab)));
+document.getElementById("guideTopBtn").addEventListener("click",()=>activateTab("hjelp"));
 document.getElementById("saveBtn").addEventListener("click",()=>persist(false));
 
 
