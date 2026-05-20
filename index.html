@@ -3407,19 +3407,29 @@ function renderSdeTursattComparison(data){
   statusGrid.className = "sde-report-status-grid";
   el.appendChild(statusGrid);
 
-  const match = document.createElement("div");
-  match.className = "sde-report-chip";
-  match.textContent = `Samsvar i dag: ${summary.samsvar_idag || 0}`;
-  statusGrid.appendChild(match);
+  const bothMatch = document.createElement("div");
+  bothMatch.className = "sde-report-chip";
+  bothMatch.textContent = `Samsvar begge: ${summary.samsvar_begge_idag || 0}`;
+  statusGrid.appendChild(bothMatch);
+
+  const toMatch = document.createElement("div");
+  toMatch.className = (summary.samsvar_til_tog || 0) > 0 ? "sde-report-chip warn" : "sde-report-chip";
+  toMatch.textContent = `Samsvar til tog: ${summary.samsvar_til_tog || 0}`;
+  statusGrid.appendChild(toMatch);
 
   const mismatch = document.createElement("div");
-  mismatch.className = (summary.avvik_idag || 0) > 0 ? "sde-report-chip bad" : "sde-report-chip";
-  mismatch.textContent = `Avvik i dag: ${summary.avvik_idag || 0}`;
+  mismatch.className = (summary.avvik_begge_idag || 0) > 0 ? "sde-report-chip bad" : "sde-report-chip";
+  mismatch.textContent = `Avvik begge: ${summary.avvik_begge_idag || 0}`;
   statusGrid.appendChild(mismatch);
+
+  const repMismatch = document.createElement("div");
+  repMismatch.className = (summary.rep_avvik_fra_tog || 0) > 0 ? "sde-report-chip bad" : "sde-report-chip";
+  repMismatch.textContent = `Rep-avvik: ${summary.rep_avvik_fra_tog || 0}`;
+  statusGrid.appendChild(repMismatch);
 
   const missing = document.createElement("div");
   missing.className = (summary.mangler_tursatt_idag || 0) > 0 ? "sde-report-chip warn" : "sde-report-chip";
-  missing.textContent = `Mangler Tursatt i dag: ${summary.mangler_tursatt_idag || 0}`;
+  missing.textContent = `Mangler Tursatt: ${summary.mangler_tursatt_idag || 0}`;
   statusGrid.appendChild(missing);
 
   const rowsChip = document.createElement("div");
@@ -3441,9 +3451,15 @@ function renderSdeTursattComparison(data){
   }
 
   rows.forEach(row=>{
-    const isMatch = row.status === "samsvar_idag";
+    const status = row.status || "ukjent";
+    const isFullMatch = status === "samsvar_begge_idag";
+    const isPartialMatch = status === "samsvar_til_tog" || status === "samsvar_fra_tog";
     const card = document.createElement("div");
-    card.className = isMatch ? "sde-check-card" : "sde-check-card high";
+    card.className = isFullMatch
+      ? "sde-check-card"
+      : isPartialMatch
+        ? "sde-check-card medium"
+        : "sde-check-card high";
 
     const head = document.createElement("div");
     head.className = "sde-check-head";
@@ -3452,17 +3468,27 @@ function renderSdeTursattComparison(data){
     left.textContent = `Linje ${row.linje} | ${row.klokkeslett} | ${row.settnr_import || "-"}`;
 
     const right = document.createElement("span");
-    right.textContent = row.status || "ukjent";
+    right.textContent = status;
 
     head.appendChild(left);
     head.appendChild(right);
     card.appendChild(head);
+
+    const match = row.match || {};
+    const matchText = [
+      `fra_tog=${match.fra_tog_samsvar ? "ja" : "nei"}`,
+      `til_tog=${match.til_tog_samsvar ? "ja" : "nei"}`,
+      match.til_tog_er_rep ? "rep=ja" : "rep=nei",
+      row.rad_etter_midnatt ? "etter midnatt=ja" : "etter midnatt=nei"
+    ].join(" | ");
 
     addSdeText(
       card,
       "sde-check-meta",
       `${row.fra_tog} → ${row.til_tog} | importert kjøretøy: ${row.settnr_import || "-"} | spor: ${row.spor_raw || "mangler"}`
     );
+
+    addSdeText(card, "sde-check-meta", `Samsvar: ${matchText}`);
 
     const idagFra = row.idag?.fra_tog?.vehicles?.length
       ? row.idag.fra_tog.vehicles.join(", ")
