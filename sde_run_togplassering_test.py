@@ -61,6 +61,45 @@ def suggest_action_type_for_row(row):
 
 
 
+
+def get_free_candidate_slots(status):
+    candidate_slots = [
+        "1S", "1N",
+        "4S", "4M", "4N",
+        "5S", "5M", "5N",
+        "10S", "10N",
+        "11S", "11N",
+        "12S", "12N",
+    ]
+
+    return [slot for slot in candidate_slots if not status.get(slot)]
+
+
+def suggest_candidate_slots_for_production(row, status):
+    free = get_free_candidate_slots(status)
+    to_train = str(row.get("to_train", "")).strip()
+
+    # Første forsiktige kandidatlogikk.
+    # Dette er ikke endelig sporvalg.
+    if to_train == "802":
+        preferred = ["1S", "1N", "11S", "11N", "12S", "12N"]
+    elif to_train == "852":
+        preferred = ["11S", "11N", "12S", "12N", "1S", "1N"]
+    elif to_train in {"806", "856", "808"}:
+        preferred = ["11S", "11N", "12S", "12N", "5N", "5M", "5S"]
+    elif to_train == "2470":
+        preferred = ["10S", "10N", "1S", "1N"]
+    else:
+        preferred = ["11S", "11N", "12S", "12N", "5N", "5M", "5S", "4N", "4M", "4S", "1S", "1N", "10S", "10N"]
+
+    candidates = [slot for slot in preferred if slot in free]
+
+    if not candidates:
+        return "ingen ledige kandidatspor funnet"
+
+    return ", ".join(candidates[:4])
+
+
 def suggest_production_area_for_row(row):
     to_train = str(row.get("to_train", "")).strip()
 
@@ -196,6 +235,11 @@ def main():
     for row in data.get("rows", []):
         if suggest_target_type_for_row(row) == "produksjonsplassering":
             print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {suggest_production_area_for_row(row)}')
+
+    print("\n=== Foreslåtte kandidatspor uten Til spor ===")
+    for row in data.get("rows", []):
+        if suggest_target_type_for_row(row) == "produksjonsplassering":
+            print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {suggest_candidate_slots_for_production(row, status)}')
 
     print("\n=== Foreslått første handling uten Til spor ===")
     for row in data.get("rows", []):
