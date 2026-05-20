@@ -2797,6 +2797,20 @@ function buildSporplan(){
 }
 
 
+function getSdeVehicleForFromTrain(train){
+  const key = normalizeTognr(train);
+  if(!key) return "Avklares";
+
+  const arrivalValue = sanitizeVehicleValue(state.apiBalise?.arrivalVehicles?.[key]);
+  if(arrivalValue) return arrivalValue;
+
+  const fallbackValue = sanitizeVehicleValue(getVehicleForTrain(key, "idag"));
+  if(fallbackValue) return fallbackValue;
+
+  return "Avklares";
+}
+
+
 function buildSdeVaktplan(){
   const table = document.getElementById("sdeVaktplanTable");
   if(!table) return;
@@ -2819,7 +2833,10 @@ function buildSdeVaktplan(){
     const tr = document.createElement("tr");
     ["time","operator","fromTrain","vehicle","from","to","operation","reason","status"].forEach(key=>{
       const td = document.createElement("td");
-      td.textContent = row[key] || "";
+      const value = key === "vehicle" && row.vehicle === "Avklares"
+        ? getSdeVehicleForFromTrain(row.fromTrain)
+        : row[key];
+      td.textContent = value || "";
       if(key === "operator" && row.operator === "Skifter 1"){
         td.classList.add("sde-vaktplan-skifter-1");
       }
@@ -3193,6 +3210,7 @@ async function fetchBaliseApi(){
 
     persist(true);
     renderApiTables();
+    buildSdeVaktplan();
     updateBaliseStatus();
     updateBaliseViewState();
     buildOppstilling();
