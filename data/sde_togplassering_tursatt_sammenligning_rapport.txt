@@ -7,93 +7,114 @@ Tursatt i morgen: 2026-05-21 | 20.05.2026 06:25:04
 
 Oppsummering
 ------------
-avvik_idag: 11
-samsvar_idag: 4
+avvik_begge_idag: 9
+rep_avvik_fra_tog: 2
+samsvar_begge_idag: 2
+samsvar_til_tog: 2
 
 Rader
 -----
-Linje 1 | 16:30 | 851 -> 840 | import: 74-50 | status: avvik_idag
+Linje 1 | 16:30 | 851 -> 840 | import: 74-50 | status: avvik_begge_idag
   I dag fra_tog 851: 74-42
   I dag til_tog 840: 74-47
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=False, etter_midnatt=False
+  ADVARSEL: Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 2 | 16:53 | 821 -> 828 | import: 74-44 | status: avvik_idag
+Linje 2 | 16:53 | 821 -> 828 | import: 74-44 | status: avvik_begge_idag
   I dag fra_tog 821: 74-51, 74-39
   I dag til_tog 828: 74-06
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=False, etter_midnatt=False
+  ADVARSEL: Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 3 | 17:30 | 853/1 -> 854/2 | import: 74-12 | status: avvik_idag
+Linje 3 | 17:30 | 853/1 -> 854/2 | import: 74-12 | status: avvik_begge_idag
   I dag fra_tog 853: -
   I dag til_tog 854: 74-19, 74-38
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=False, etter_midnatt=False
+  ADVARSEL: Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 4 | 17:42 | 861 -> 836 | import: 74-06 | status: avvik_idag
+Linje 4 | 17:42 | 861 -> 836 | import: 74-06 | status: avvik_begge_idag
   I dag fra_tog 861: 70-12
   I dag til_tog 836: 74-37
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=False, etter_midnatt=False
+  ADVARSEL: Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 5 | 17:53 | 823/1 -> 852 | import: 74-42 | status: samsvar_idag
+Linje 5 | 17:53 | 823/1 -> 852 | import: 74-42 | status: samsvar_til_tog
   I dag fra_tog 823: 74-20, 75-17
   I dag til_tog 852: 74-42
+  Samsvar: fra_tog=False, til_tog=True, rep=False, etter_midnatt=False
+  ADVARSEL: Importert kjøretøy samsvarer med til_tog, men ikke med fra_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 6 | 18:30 | 855/1 -> 856 | import: 74-11 | status: samsvar_idag
+Linje 6 | 18:30 | 855/1 -> 856 | import: 74-11 | status: samsvar_til_tog
   I dag fra_tog 855: -
   I dag til_tog 856: 74-11
+  Samsvar: fra_tog=False, til_tog=True, rep=False, etter_midnatt=False
+  ADVARSEL: Importert kjøretøy samsvarer med til_tog, men ikke med fra_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 7 | 18:42 | 863 -> 864 | import: 70-06 | status: samsvar_idag
+Linje 7 | 18:42 | 863 -> 864 | import: 70-06 | status: samsvar_begge_idag
   I dag fra_tog 863: 70-06
   I dag til_tog 864: 70-06
+  Samsvar: fra_tog=True, til_tog=True, rep=False, etter_midnatt=False
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 8 | 18:53 | 825/2 -> 806/1 | import: 74-04 | status: avvik_idag
+Linje 8 | 18:53 | 825/2 -> 806/1 | import: 74-04 | status: avvik_begge_idag
   I dag fra_tog 825: 74-44, 74-12
   I dag til_tog 806: 74-07, 74-39
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=False, etter_midnatt=False
+  ADVARSEL: Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 9 | 20:53 | 829 -> rep | import: 74-49 | status: avvik_idag
+Linje 9 | 20:53 | 829 -> rep | import: 74-49 | status: rep_avvik_fra_tog
   I dag fra_tog 829: 74-51, 74-37
   I dag til_tog rep: -
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=True, etter_midnatt=False
+  ADVARSEL: Reparasjonsrad: importert kjøretøy samsvarer ikke med dagens fra_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 10 | 20:59 | 2489 -> 2470 | import: 70-14 | status: samsvar_idag
+Linje 10 | 20:59 | 2489 -> 2470 | import: 70-14 | status: samsvar_begge_idag
   I dag fra_tog 2489: 70-14
   I dag til_tog 2470: 70-14
+  Samsvar: fra_tog=True, til_tog=True, rep=False, etter_midnatt=False
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 11 | 21:53 | 831 -> 838 | import: 74-07 | status: avvik_idag
+Linje 11 | 21:53 | 831 -> 838 | import: 74-07 | status: avvik_begge_idag
   I dag fra_tog 831: 74-39, 74-22
   I dag til_tog 838: 74-22
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=False, etter_midnatt=False
+  ADVARSEL: Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 12 | 22:53 | 833 -> rep | import: 74-48 | status: avvik_idag
+Linje 12 | 22:53 | 833 -> rep | import: 74-48 | status: rep_avvik_fra_tog
   I dag fra_tog 833: 74-47, 74-20
   I dag til_tog rep: -
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=True, etter_midnatt=False
+  ADVARSEL: Reparasjonsrad: importert kjøretøy samsvarer ikke med dagens fra_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 13 | 22:53 | 835 -> 802 | import: 74-44 | status: avvik_idag
+Linje 13 | 22:53 | 835 -> 802 | import: 74-44 | status: avvik_begge_idag
   I dag fra_tog 835: 74-06
   I dag til_tog 802: 75-17
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=False, etter_midnatt=False
+  ADVARSEL: Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 14 | 00:50 | 837 -> 808/2 | import: 74-47 | status: avvik_idag
+Linje 14 | 00:50 | 837 -> 808/2 | import: 74-47 | status: avvik_begge_idag
   I dag fra_tog 837: 75-17
   I dag til_tog 808: 74-37, 74-51
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=False, etter_midnatt=True
+  ADVARSEL: Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.
+  ADVARSEL: Rad etter midnatt: bør vurderes mot morgendagens kjøretøydata når de finnes.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.
 
-Linje 15 | 01:45 | 839 -> 808/1 | import: 75-17 | status: avvik_idag
+Linje 15 | 01:45 | 839 -> 808/1 | import: 75-17 | status: avvik_begge_idag
   I dag fra_tog 839: 74-12
   I dag til_tog 808: 74-37, 74-51
-  ADVARSEL: Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.
+  Samsvar: fra_tog=False, til_tog=False, rep=False, etter_midnatt=True
+  ADVARSEL: Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.
+  ADVARSEL: Rad etter midnatt: bør vurderes mot morgendagens kjøretøydata når de finnes.
   ADVARSEL: Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.

@@ -67,10 +67,73 @@ def lookup_train(api: dict[str, Any], train: str) -> dict[str, Any]:
     }
 
 
+def is_after_midnight_time(value: str) -> bool:
+    try:
+        hour = int(str(value or "").split(":", 1)[0])
+    except (ValueError, IndexError):
+        return False
+    return 0 <= hour < 6
+
+
+def classify_match(
+    settnr: str,
+    today_from: dict[str, Any],
+    today_to: dict[str, Any],
+    til_tog: str,
+) -> tuple[str, dict[str, bool], list[str]]:
+    warnings: list[str] = []
+    til_is_rep = normalize_train(til_tog).lower() == "rep"
+
+    from_match = bool(settnr and settnr in set(today_from["vehicles"]))
+    to_match = bool(settnr and settnr in set(today_to["vehicles"]))
+    from_has_data = bool(today_from["vehicles"])
+    to_has_data = bool(today_to["vehicles"])
+
+    details = {
+        "fra_tog_samsvar": from_match,
+        "til_tog_samsvar": to_match,
+        "fra_tog_har_data": from_has_data,
+        "til_tog_har_data": to_has_data,
+        "til_tog_er_rep": til_is_rep,
+    }
+
+    if not settnr:
+        warnings.append("Import-raden mangler settnr/kjøretøy.")
+        return "mangler_import_kjøretøy", details, warnings
+
+    if til_is_rep:
+        if from_match:
+            return "rep_samsvar_fra_tog", details, warnings
+        if from_has_data:
+            warnings.append("Reparasjonsrad: importert kjøretøy samsvarer ikke med dagens fra_tog.")
+            return "rep_avvik_fra_tog", details, warnings
+        warnings.append("Reparasjonsrad: mangler Tursatt/Balise-kjøretøy for fra_tog.")
+        return "rep_mangler_fra_tog", details, warnings
+
+    if from_match and to_match:
+        return "samsvar_begge_idag", details, warnings
+
+    if from_match:
+        warnings.append("Importert kjøretøy samsvarer med fra_tog, men ikke med til_tog.")
+        return "samsvar_fra_tog", details, warnings
+
+    if to_match:
+        warnings.append("Importert kjøretøy samsvarer med til_tog, men ikke med fra_tog.")
+        return "samsvar_til_tog", details, warnings
+
+    if from_has_data or to_has_data:
+        warnings.append("Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.")
+        return "avvik_begge_idag", details, warnings
+
+    warnings.append("Fant ingen kjøretøy i dagens Tursatt/Balise for fra_tog eller til_tog.")
+    return "mangler_tursatt_idag", details, warnings
+
+
 def compare_row(row: dict[str, Any], api_today: dict[str, Any], api_tomorrow: dict[str, Any]) -> dict[str, Any]:
     settnr = normalize_vehicle(row.get("settnr", ""))
     fra_tog = row.get("fra_tog", "")
     til_tog = row.get("til_tog", "")
+    klokkeslett = row.get("klokkeslett", "")
 
     today_from = lookup_train(api_today, fra_tog)
     today_to = lookup_train(api_today, til_tog)
@@ -78,38 +141,43 @@ def compare_row(row: dict[str, Any], api_today: dict[str, Any], api_tomorrow: di
     tomorrow_from = lookup_train(api_tomorrow, fra_tog)
     tomorrow_to = lookup_train(api_tomorrow, til_tog)
 
-    today_candidates = set(today_from["vehicles"] + today_to["vehicles"])
-    tomorrow_candidates = set(tomorrow_from["vehicles"] + tomorrow_to["vehicles"])
+    status, match_details, warnings = classify_match(
+        settnr=settnr,
+        today_from=today_from,
+        today_to=today_to,
+        til_tog=til_tog,
+    )
 
-    warnings: list[str] = []
+    tomorrow_available = bool(
+        api_tomorrow.get("vehicles")
+        or api_tomorrow.get("departureVehicles")
+        or api_tomorrow.get("arrivalVehicles")
+    )
 
-    if not settnr:
-        status = "mangler_import_kjøretøy"
-        warnings.append("Import-raden mangler settnr/kjøretøy.")
-    elif settnr in today_candidates:
-        status = "samsvar_idag"
-    elif today_candidates:
-        status = "avvik_idag"
-        warnings.append("Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.")
-    else:
-        status = "mangler_tursatt_idag"
-        warnings.append("Fant ingen kjøretøy i dagens Tursatt/Balise for fra_tog eller til_tog.")
+    after_midnight = is_after_midnight_time(klokkeslett)
 
-    if not api_tomorrow.get("vehicles") and not api_tomorrow.get("departureVehicles") and not api_tomorrow.get("arrivalVehicles"):
+    if after_midnight:
+        warnings.append("Rad etter midnatt: bør vurderes mot morgendagens kjøretøydata når de finnes.")
+
+    if not tomorrow_available:
         warnings.append("Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig.")
-    elif settnr and settnr in tomorrow_candidates:
-        warnings.append("Importert kjøretøy finnes i morgendagens Tursatt/Balise.")
-    elif tomorrow_candidates:
-        warnings.append("Importert kjøretøy samsvarer ikke med morgendagens Tursatt/Balise for fra_tog eller til_tog.")
+    else:
+        tomorrow_candidates = set(tomorrow_from["vehicles"] + tomorrow_to["vehicles"])
+        if settnr and settnr in tomorrow_candidates:
+            warnings.append("Importert kjøretøy finnes i morgendagens Tursatt/Balise.")
+        elif tomorrow_candidates:
+            warnings.append("Importert kjøretøy samsvarer ikke med morgendagens Tursatt/Balise for fra_tog eller til_tog.")
 
     return {
         "linje": row.get("linje"),
-        "klokkeslett": row.get("klokkeslett"),
+        "klokkeslett": klokkeslett,
         "fra_tog": fra_tog,
         "til_tog": til_tog,
         "settnr_import": row.get("settnr"),
         "spor_raw": row.get("spor_raw"),
         "status": status,
+        "match": match_details,
+        "rad_etter_midnatt": after_midnight,
         "idag": {
             "fra_tog": today_from,
             "til_tog": today_to,
@@ -117,6 +185,7 @@ def compare_row(row: dict[str, Any], api_today: dict[str, Any], api_tomorrow: di
         "imorgen": {
             "fra_tog": tomorrow_from,
             "til_tog": tomorrow_to,
+            "kjoretoydata_tilgjengelig": tomorrow_available,
         },
         "advarsler": warnings,
     }
@@ -149,6 +218,13 @@ def build_report(result: dict[str, Any]) -> str:
         today_to = ", ".join(row["idag"]["til_tog"]["vehicles"]) or "-"
         lines.append(f"  I dag fra_tog {row['idag']['fra_tog']['tog']}: {today_from}")
         lines.append(f"  I dag til_tog {row['idag']['til_tog']['tog']}: {today_to}")
+        lines.append(
+            "  Samsvar: "
+            f"fra_tog={row.get('match', {}).get('fra_tog_samsvar', False)}, "
+            f"til_tog={row.get('match', {}).get('til_tog_samsvar', False)}, "
+            f"rep={row.get('match', {}).get('til_tog_er_rep', False)}, "
+            f"etter_midnatt={row.get('rad_etter_midnatt', False)}"
+        )
 
         for warning in row["advarsler"]:
             lines.append(f"  ADVARSEL: {warning}")
