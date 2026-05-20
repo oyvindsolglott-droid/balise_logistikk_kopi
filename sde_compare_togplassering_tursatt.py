@@ -105,7 +105,7 @@ def classify_match(
         if from_match:
             return "rep_samsvar_fra_tog", details, warnings
         if from_has_data:
-            warnings.append("Reparasjonsrad: importert kjøretøy samsvarer ikke med dagens fra_tog.")
+            warnings.append("Reparasjonsrad: importert settnr/kjøretøy finnes ikke på dagens fra_tog.")
             return "rep_avvik_fra_tog", details, warnings
         warnings.append("Reparasjonsrad: mangler Tursatt/Balise-kjøretøy for fra_tog.")
         return "rep_mangler_fra_tog", details, warnings
@@ -114,15 +114,15 @@ def classify_match(
         return "samsvar_begge_idag", details, warnings
 
     if from_match:
-        warnings.append("Importert kjøretøy samsvarer med fra_tog, men ikke med til_tog.")
+        warnings.append("Importert settnr/kjøretøy finnes på dagens fra_tog, men ikke på dagens til_tog.")
         return "samsvar_fra_tog", details, warnings
 
     if to_match:
-        warnings.append("Importert kjøretøy samsvarer med til_tog, men ikke med fra_tog.")
+        warnings.append("Importert settnr/kjøretøy finnes på dagens til_tog, men ikke på dagens fra_tog.")
         return "samsvar_til_tog", details, warnings
 
     if from_has_data or to_has_data:
-        warnings.append("Importert kjøretøy samsvarer verken med dagens fra_tog eller til_tog.")
+        warnings.append("Importert settnr/kjøretøy finnes ikke blant dagens Tursatt-kjøretøy for fra_tog eller til_tog. Tursatt-oppslaget er likevel funnet og vises under.")
         return "avvik_begge_idag", details, warnings
 
     warnings.append("Fant ingen kjøretøy i dagens Tursatt/Balise for fra_tog eller til_tog.")
@@ -164,9 +164,9 @@ def compare_row(row: dict[str, Any], api_today: dict[str, Any], api_tomorrow: di
     else:
         tomorrow_candidates = set(tomorrow_from["vehicles"] + tomorrow_to["vehicles"])
         if settnr and settnr in tomorrow_candidates:
-            warnings.append("Importert kjøretøy finnes i morgendagens Tursatt/Balise.")
+            warnings.append("Importert settnr/kjøretøy finnes i morgendagens Tursatt/Balise.")
         elif tomorrow_candidates:
-            warnings.append("Importert kjøretøy samsvarer ikke med morgendagens Tursatt/Balise for fra_tog eller til_tog.")
+            warnings.append("Importert settnr/kjøretøy finnes ikke blant morgendagens Tursatt/Balise-kjøretøy for fra_tog eller til_tog.")
 
     return {
         "linje": row.get("linje"),
@@ -219,7 +219,7 @@ def build_report(result: dict[str, Any]) -> str:
         lines.append(f"  I dag fra_tog {row['idag']['fra_tog']['tog']}: {today_from}")
         lines.append(f"  I dag til_tog {row['idag']['til_tog']['tog']}: {today_to}")
         lines.append(
-            "  Samsvar: "
+            "  Importfelt mot Tursatt: "
             f"fra_tog={row.get('match', {}).get('fra_tog_samsvar', False)}, "
             f"til_tog={row.get('match', {}).get('til_tog_samsvar', False)}, "
             f"rep={row.get('match', {}).get('til_tog_er_rep', False)}, "

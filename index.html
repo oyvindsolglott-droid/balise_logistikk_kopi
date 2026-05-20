@@ -3394,6 +3394,22 @@ function renderSdeImportReport(data){
 }
 
 
+function sdeTursattStatusLabel(status){
+  const labels = {
+    samsvar_begge_idag: "Import samsvarer med både fra-tog og til-tog",
+    samsvar_til_tog: "Import samsvarer med til-tog",
+    samsvar_fra_tog: "Import samsvarer med fra-tog",
+    avvik_begge_idag: "Importavvik mot fra- og til-tog",
+    rep_avvik_fra_tog: "Rep-rad: importavvik mot fra-tog",
+    rep_samsvar_fra_tog: "Rep-rad: import samsvarer med fra-tog",
+    rep_mangler_fra_tog: "Rep-rad: mangler Tursatt for fra-tog",
+    mangler_tursatt_idag: "Mangler Tursatt-data i dag",
+    mangler_import_kjøretøy: "Mangler importert kjøretøy"
+  };
+  return labels[status] || status || "ukjent";
+}
+
+
 function renderSdeTursattComparison(data){
   const el = document.getElementById("sdeImportReportText");
   if(!el) return;
@@ -3468,7 +3484,7 @@ function renderSdeTursattComparison(data){
     left.textContent = `Linje ${row.linje} | ${row.klokkeslett} | ${row.settnr_import || "-"}`;
 
     const right = document.createElement("span");
-    right.textContent = status;
+    right.textContent = sdeTursattStatusLabel(status);
 
     head.appendChild(left);
     head.appendChild(right);
@@ -3488,7 +3504,7 @@ function renderSdeTursattComparison(data){
       `${row.fra_tog} → ${row.til_tog} | importert kjøretøy: ${row.settnr_import || "-"} | spor: ${row.spor_raw || "mangler"}`
     );
 
-    addSdeText(card, "sde-check-meta", `Samsvar: ${matchText}`);
+    addSdeText(card, "sde-check-meta", `Importfelt mot Tursatt: ${matchText}`);
 
     const idagFra = row.idag?.fra_tog?.vehicles?.length
       ? row.idag.fra_tog.vehicles.join(", ")
