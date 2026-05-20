@@ -1189,11 +1189,11 @@ button{padding:12px 12px}
 <div class="zoom-wrap">
 <div class="zoom-inner" id="sdeVaktplanZoom">
 <div class="sde-import-report" id="sdeImportReport">
-<div class="sde-import-report-title">Togplassering-import – testgrunnlag</div>
+<div class="sde-import-report-title">Togplassering mot Tursatt/Balise – testgrunnlag</div>
 <div class="sde-import-report-content" id="sdeImportReportText">Rapport ikke lest ennå.</div>
 </div>
 <div class="note">
-Foreløpig vises Togplassering-import fra testgrunnlag. Denne visningen er ikke koblet mot dagens Tursatt/Balise-data ennå, og skal derfor ikke brukes som operativ fasit. Neste steg er å sammenligne importen mot Tursatt og markere avvik.
+Foreløpig vises testimport sammenlignet mot dagens Tursatt/Balise-data. Dette er fortsatt ikke operativ fasit, men en avvikskontroll som forklarer hvor importen ikke samsvarer med Tursatt. Morgendagens kjøretøydata kan fortsatt mangle.
 </div>
 <table id="sdeVaktplanTable" style="display:none"></table>
 </div>
@@ -3394,19 +3394,115 @@ function renderSdeImportReport(data){
 }
 
 
+function renderSdeTursattComparison(data){
+  const el = document.getElementById("sdeImportReportText");
+  if(!el) return;
+
+  const summary = data.oppsummering || {};
+  const rows = Array.isArray(data.rader) ? data.rader : [];
+
+  el.innerHTML = "";
+
+  const statusGrid = document.createElement("div");
+  statusGrid.className = "sde-report-status-grid";
+  el.appendChild(statusGrid);
+
+  const match = document.createElement("div");
+  match.className = "sde-report-chip";
+  match.textContent = `Samsvar i dag: ${summary.samsvar_idag || 0}`;
+  statusGrid.appendChild(match);
+
+  const mismatch = document.createElement("div");
+  mismatch.className = (summary.avvik_idag || 0) > 0 ? "sde-report-chip bad" : "sde-report-chip";
+  mismatch.textContent = `Avvik i dag: ${summary.avvik_idag || 0}`;
+  statusGrid.appendChild(mismatch);
+
+  const missing = document.createElement("div");
+  missing.className = (summary.mangler_tursatt_idag || 0) > 0 ? "sde-report-chip warn" : "sde-report-chip";
+  missing.textContent = `Mangler Tursatt i dag: ${summary.mangler_tursatt_idag || 0}`;
+  statusGrid.appendChild(missing);
+
+  const rowsChip = document.createElement("div");
+  rowsChip.className = "sde-report-chip";
+  rowsChip.textContent = `Rader kontrollert: ${rows.length}`;
+  statusGrid.appendChild(rowsChip);
+
+  addSdeText(
+    el,
+    "sde-report-conclusion",
+    `Sammenligner testimport mot Tursatt/Balise. I dag: ${data.api_idag_date || "ukjent"} | ${data.api_idag_updatedAt || "ukjent"}. I morgen: ${data.api_imorgen_date || "ukjent"} | ${data.api_imorgen_updatedAt || "ukjent"}.`
+  );
+
+  addSdeText(el, "sde-report-section-title", "Avvik og samsvar per rad");
+
+  if(!rows.length){
+    addSdeText(el, "", "Ingen sammenligningsrader funnet.");
+    return;
+  }
+
+  rows.forEach(row=>{
+    const isMatch = row.status === "samsvar_idag";
+    const card = document.createElement("div");
+    card.className = isMatch ? "sde-check-card" : "sde-check-card high";
+
+    const head = document.createElement("div");
+    head.className = "sde-check-head";
+
+    const left = document.createElement("span");
+    left.textContent = `Linje ${row.linje} | ${row.klokkeslett} | ${row.settnr_import || "-"}`;
+
+    const right = document.createElement("span");
+    right.textContent = row.status || "ukjent";
+
+    head.appendChild(left);
+    head.appendChild(right);
+    card.appendChild(head);
+
+    addSdeText(
+      card,
+      "sde-check-meta",
+      `${row.fra_tog} → ${row.til_tog} | importert kjøretøy: ${row.settnr_import || "-"} | spor: ${row.spor_raw || "mangler"}`
+    );
+
+    const idagFra = row.idag?.fra_tog?.vehicles?.length
+      ? row.idag.fra_tog.vehicles.join(", ")
+      : "-";
+    const idagTil = row.idag?.til_tog?.vehicles?.length
+      ? row.idag.til_tog.vehicles.join(", ")
+      : "-";
+
+    addSdeText(card, "", `Tursatt i dag fra_tog ${row.idag?.fra_tog?.tog || row.fra_tog}: ${idagFra}`);
+    addSdeText(card, "", `Tursatt i dag til_tog ${row.idag?.til_tog?.tog || row.til_tog}: ${idagTil}`);
+
+    const warnings = Array.isArray(row.advarsler) ? row.advarsler : [];
+    if(warnings.length){
+      const ul = document.createElement("ul");
+      warnings.forEach(text=>{
+        const li = document.createElement("li");
+        li.textContent = text;
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+    }
+
+    el.appendChild(card);
+  });
+}
+
+
 async function loadSdeImportReport(){
   const el = document.getElementById("sdeImportReportText");
   if(!el) return;
 
   try{
-    const response = await fetch("data/sde_togplassering_import_resultat.json", {cache:"no-store"});
+    const response = await fetch("data/sde_togplassering_tursatt_sammenligning.json", {cache:"no-store"});
     if(!response.ok){
       throw new Error(`HTTP ${response.status}`);
     }
     const data = await response.json();
-    renderSdeImportReport(data);
+    renderSdeTursattComparison(data);
   }catch(err){
-    el.textContent = "Kunne ikke lese data/sde_togplassering_import_resultat.json. Dette er foreløpig testgrunnlag og er ikke koblet mot dagens Tursatt/Balise-data.";
+    el.textContent = "Kunne ikke lese data/sde_togplassering_tursatt_sammenligning.json. Kjør sde_compare_togplassering_tursatt.py og kontroller at sammenligningsfilen finnes.";
   }
 }
 
