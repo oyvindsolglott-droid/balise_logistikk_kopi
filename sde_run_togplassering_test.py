@@ -253,6 +253,63 @@ def evaluate_against_fasit(sde_target, fasit_target):
     return "feil"
 
 
+
+def build_evaluation_result(data, status, reservations):
+    production_assignment_map = build_production_assignment_map(reservations)
+    rows = []
+    counts = {
+        "treffer godt": 0,
+        "delvis riktig": 0,
+        "operativt tvilsom": 0,
+        "feil": 0,
+        "ingen fasit": 0,
+    }
+
+    for row in data.get("rows", []):
+        fasit_target = row.get("fasit_target_for_evaluation_only", "")
+        sde_target = get_sde_target_for_evaluation(row, status, production_assignment_map)
+        vurdering = evaluate_against_fasit(sde_target, fasit_target)
+        counts[vurdering] = counts.get(vurdering, 0) + 1
+
+        rows.append({
+            "time": row.get("time", ""),
+            "from_train": row.get("from_train", ""),
+            "to_train": row.get("to_train", ""),
+            "vehicle": row.get("vehicle", ""),
+            "target_type": suggest_target_type_for_row(row),
+            "action_type": suggest_action_type_for_row(row),
+            "sde_target": sde_target,
+            "fasit_target_for_evaluation_only": fasit_target,
+            "evaluation": vurdering,
+            "first_action": suggest_first_action_for_row(row, status),
+        })
+
+    return {
+        "name": data.get("name", ""),
+        "source": "sde_run_togplassering_test.py",
+        "note": "Fasit brukes kun til evaluering etter at SDE har laget forslag.",
+        "summary": {
+            "total": sum(counts.values()),
+            "treffer_godt": counts.get("treffer godt", 0),
+            "delvis_riktig": counts.get("delvis riktig", 0),
+            "operativt_tvilsom": counts.get("operativt tvilsom", 0),
+            "feil": counts.get("feil", 0),
+            "ingen_fasit": counts.get("ingen fasit", 0),
+        },
+        "rows": rows,
+    }
+
+
+def write_evaluation_result_json(data, status, reservations):
+    output_dir = Path("data")
+    output_dir.mkdir(exist_ok=True)
+    output_path = output_dir / "sde_togplassering_resultat.json"
+
+    result = build_evaluation_result(data, status, reservations)
+    output_path.write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
+    return output_path
+
+
 def suggest_production_area_for_row(row):
     to_train = str(row.get("to_train", "")).strip()
 
@@ -433,6 +490,10 @@ def main():
     print(f"Operativt tvilsom: {evaluation_counts.get('operativt tvilsom', 0)}")
     print(f"Feil: {evaluation_counts.get('feil', 0)}")
     print(f"Ingen fasit: {evaluation_counts.get('ingen fasit', 0)}")
+
+    output_path = write_evaluation_result_json(data, status, reservations)
+    print("\n=== Eksportert SDE-resultat ===")
+    print(output_path)
 
     print("\n=== Foreslått første handling uten Til spor ===")
     for row in data.get("rows", []):
