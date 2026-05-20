@@ -125,6 +125,72 @@ def classify_action(til_tog: str, spor_flyt: list[str], wc_vann: bool, merknad: 
     return tags
 
 
+def evaluate_operational_risk(
+    spor_flyt: list[str],
+    wc_vann: bool,
+    til_tog: str,
+    merknad: str,
+    warnings: list[str],
+) -> dict[str, Any]:
+    """
+    Første enkle SDE-vurdering av importert togplassering.
+
+    Dette er ikke en endelig fasit. Den skal bare peke ut rader som
+    bør kontrolleres før de brukes i en operativ plan.
+    """
+    notes: list[str] = []
+    risk_points = 0
+
+    if warnings:
+        risk_points += 2
+        notes.append("Rad har tolkningsadvarsler og må kontrolleres manuelt.")
+
+    if not spor_flyt:
+        risk_points += 3
+        notes.append("Mangler planlagt spor/flyt. SDE kan ikke planlegge sikkert.")
+
+    if "6SS" in spor_flyt or "7SS" in spor_flyt or "8SS" in spor_flyt:
+        risk_points += 3
+        notes.append("SS-spor kan blokkere sør/bru-rute hvis kjøretøy blir stående.")
+
+    if "6" in spor_flyt:
+        risk_points += 2
+        notes.append("Spor 6 uten S/N/SS er tvetydig og må presiseres.")
+
+    if any(slot in {"10S", "11S", "12S"} for slot in spor_flyt):
+        notes.append("Buttspor S-posisjon: kontroller at innsetting følger S før N-regelen.")
+
+    if any(slot in {"10N", "11N", "12N"} for slot in spor_flyt):
+        notes.append("Buttspor N-posisjon: kontroller at S-posisjon ikke blir sperret inne feil.")
+
+    if wc_vann and not any(slot.startswith("6") for slot in spor_flyt):
+        risk_points += 2
+        notes.append("WC/vann er markert, men spor 6 inngår ikke i planlagt flyt.")
+
+    if til_tog.lower() == "rep":
+        notes.append("Reparasjon/verkstedflyt: bør vurderes mot ledig verkstedkapasitet og faktisk Sporplan.")
+
+    if "dele" in merknad.lower():
+        risk_points += 2
+        notes.append("Deling/omvendt skjøting krever særskilt kontroll av spor, retning og uttak.")
+
+    if any(slot in {"2S", "2N", "3S", "3M", "3N"} for slot in spor_flyt):
+        notes.append("Plattformspor inngår i flyten. Kontroller at dette er kortvarig/operativt begrunnet.")
+
+    if risk_points >= 5:
+        level = "høy"
+    elif risk_points >= 2:
+        level = "middels"
+    else:
+        level = "lav"
+
+    return {
+        "risikonivå": level,
+        "risikopoeng": risk_points,
+        "sde_merknader": notes,
+    }
+
+
 def parse_line(line: str, line_no: int) -> dict[str, Any]:
     warnings: list[str] = []
 
@@ -170,6 +236,13 @@ def parse_line(line: str, line_no: int) -> dict[str, Any]:
         warnings.append("Mangler planlagt spor/flyt.")
 
     action_tags = classify_action(til_tog, spor_flyt, wc_vann, merknad)
+    operational_risk = evaluate_operational_risk(
+        spor_flyt=spor_flyt,
+        wc_vann=wc_vann,
+        til_tog=til_tog,
+        merknad=merknad,
+        warnings=warnings,
+    )
 
     return {
         "linje": line_no,
@@ -186,6 +259,7 @@ def parse_line(line: str, line_no: int) -> dict[str, Any]:
         "handlingstyper": action_tags,
         "tolkningsstatus": "må_kontrolleres" if warnings else "ok",
         "advarsler": warnings,
+        "operativ_vurdering": operational_risk,
     }
 
 
