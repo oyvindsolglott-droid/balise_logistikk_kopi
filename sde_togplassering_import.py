@@ -347,6 +347,45 @@ def build_prioritized_checklist(rows: list[dict[str, Any]]) -> list[dict[str, An
     return checklist
 
 
+def build_sde_import_recommendation(
+    summary: dict[str, Any],
+    checklist: list[dict[str, Any]],
+) -> dict[str, Any]:
+    high_items = [item for item in checklist if item["alvorlighet"] == "høy"]
+    medium_items = [item for item in checklist if item["alvorlighet"] == "middels"]
+
+    important = []
+    for item in checklist[:5]:
+        important.append({
+            "prioritet": item["prioritet"],
+            "linje": item["linje"],
+            "klokkeslett": item["klokkeslett"],
+            "settnr": item["settnr"],
+            "kategori": item["kategori"],
+            "beskrivelse": item["beskrivelse"],
+        })
+
+    can_use_directly = len(checklist) == 0
+    must_clarify = len(high_items) > 0 or summary["tolkning"]["må_kontrolleres"] > 0
+
+    if can_use_directly:
+        conclusion = "Importen ser klar ut for SDE-vurdering."
+    elif high_items:
+        conclusion = "Importen bør ikke brukes direkte i SDE før høyt prioriterte avklaringer er gjort."
+    else:
+        conclusion = "Importen kan brukes som grunnlag, men bør kontrolleres før operativ planlegging."
+
+    return {
+        "kan_brukes_direkte": can_use_directly,
+        "må_avklares_før_sde": must_clarify,
+        "konklusjon": conclusion,
+        "antall_kontrollpunkter": len(checklist),
+        "antall_høy": len(high_items),
+        "antall_middels": len(medium_items),
+        "viktigste_avklaringer": important,
+    }
+
+
 def build_import_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     risk_counts = {"lav": 0, "middels": 0, "høy": 0}
     action_counts: dict[str, int] = {}
@@ -459,6 +498,7 @@ def main() -> None:
 
     summary = build_import_summary(rows)
     checklist = build_prioritized_checklist(rows)
+    recommendation = build_sde_import_recommendation(summary, checklist)
 
     result = {
         "kilde": str(INPUT_PATH),
@@ -466,6 +506,7 @@ def main() -> None:
         "antall_ok": summary["tolkning"]["ok"],
         "antall_må_kontrolleres": summary["tolkning"]["må_kontrolleres"],
         "oppsummering": summary,
+        "sde_import_anbefaling": recommendation,
         "prioritert_kontrolliste": checklist,
         "rader": rows,
     }
@@ -487,6 +528,13 @@ def main() -> None:
     print("  Handlingstyper:")
     for tag, count in summary["handlingstyper"].items():
         print(f"    {tag}: {count}")
+    print()
+    print()
+    print("SDE import-anbefaling:")
+    print(f"  Kan brukes direkte: {recommendation['kan_brukes_direkte']}")
+    print(f"  Må avklares før SDE: {recommendation['må_avklares_før_sde']}")
+    print(f"  Konklusjon: {recommendation['konklusjon']}")
+
     print()
     print("Prioritert kontrolliste:")
     if not checklist:

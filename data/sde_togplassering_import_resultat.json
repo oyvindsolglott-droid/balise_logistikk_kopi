@@ -28,6 +28,56 @@
       "Spor '6' mangler posisjon, for eksempel S/M/N/SS.": 4
     }
   },
+  "sde_import_anbefaling": {
+    "kan_brukes_direkte": false,
+    "må_avklares_før_sde": true,
+    "konklusjon": "Importen bør ikke brukes direkte i SDE før høyt prioriterte avklaringer er gjort.",
+    "antall_kontrollpunkter": 10,
+    "antall_høy": 2,
+    "antall_middels": 8,
+    "viktigste_avklaringer": [
+      {
+        "prioritet": 1,
+        "linje": 2,
+        "klokkeslett": "16:53",
+        "settnr": "74-44",
+        "kategori": "mangler_spor_flyt",
+        "beskrivelse": "Mangler planlagt spor/flyt. Må avklares før SDE kan planlegge sikkert."
+      },
+      {
+        "prioritet": 2,
+        "linje": 11,
+        "klokkeslett": "21:53",
+        "settnr": "74-07",
+        "kategori": "mangler_spor_flyt",
+        "beskrivelse": "Mangler planlagt spor/flyt. Må avklares før SDE kan planlegge sikkert."
+      },
+      {
+        "prioritet": 3,
+        "linje": 7,
+        "klokkeslett": "18:42",
+        "settnr": "70-06",
+        "kategori": "tvetydig_spor_6",
+        "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging."
+      },
+      {
+        "prioritet": 4,
+        "linje": 9,
+        "klokkeslett": "20:53",
+        "settnr": "74-49",
+        "kategori": "tvetydig_spor_6",
+        "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging."
+      },
+      {
+        "prioritet": 5,
+        "linje": 12,
+        "klokkeslett": "22:53",
+        "settnr": "74-48",
+        "kategori": "tvetydig_spor_6",
+        "beskrivelse": "Spor 6 er oppgitt uten S/N/SS. Må presiseres før trygg planlegging."
+      }
+    ]
+  },
   "prioritert_kontrolliste": [
     {
       "prioritet_gruppe": 1,
