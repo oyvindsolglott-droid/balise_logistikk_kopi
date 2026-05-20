@@ -60,6 +60,33 @@ def suggest_action_type_for_row(row):
 
 
 
+
+def suggest_production_area_for_row(row):
+    to_train = str(row.get("to_train", "")).strip()
+
+    # Første grove produksjonsregel.
+    # Dette er ikke fasitspor, bare et første produksjonsområde SDE kan jobbe videre fra.
+    if to_train == "802":
+        return "morgenproduksjon 802: bør prioriteres lett tilgjengelig mot spor 2/3 etter eventuell service"
+
+    if to_train == "852":
+        return "morgenproduksjon 852: bør settes opp i sammenheng med 802 uten å blokkere 802"
+
+    if to_train in {"806", "856", "808"}:
+        return f"morgenproduksjon {to_train}: må plasseres slik at uttak mot togspor ikke blokkeres"
+
+    if to_train in {"862", "864"}:
+        return f"produksjon {to_train}: må ikke sperre vask-/returvei for 862"
+
+    if to_train == "2470":
+        return "fast natt-/morgenoppgave 2470: må plasseres etter faktisk Sporplan og kjente nattoppgaver"
+
+    if to_train.isdigit():
+        return f"produksjon mot tog {to_train}: finn egnet parkerings-/produksjonsspor ut fra faktisk Sporplan"
+
+    return "produksjonsområde må avklares"
+
+
 def suggest_first_action_for_row(row, status=None):
     status = status or {}
     target_type = suggest_target_type_for_row(row)
@@ -81,7 +108,7 @@ def suggest_first_action_for_row(row, status=None):
     if target_type == "deling/skjøting":
         return "planlegg deling/skjøting før videre plassering"
 
-    return "finn beste produksjonsplassering ut fra faktisk Sporplan"
+    return suggest_production_area_for_row(row)
 
 
 def suggest_flow_for_row(row):
@@ -164,6 +191,11 @@ def main():
     print(f"Snapshot: {snapshot_name}")
     print(f"6N: {status.get('6N') or '-'}")
     print(f"6S: {status.get('6S') or '-'}")
+
+    print("\n=== Foreslått produksjonsområde uten Til spor ===")
+    for row in data.get("rows", []):
+        if suggest_target_type_for_row(row) == "produksjonsplassering":
+            print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {suggest_production_area_for_row(row)}')
 
     print("\n=== Foreslått første handling uten Til spor ===")
     for row in data.get("rows", []):
