@@ -90,7 +90,8 @@ def suggest_candidate_slots_for_production(row, status):
     elif to_train == "2470":
         preferred = ["10S", "10N", "1S", "1N"]
     else:
-        preferred = ["11S", "11N", "12S", "12N", "5N", "5M", "5S", "4N", "4M", "4S", "1S", "1N", "10S", "10N"]
+        # Buttspor 10/11/12: S må vurderes før N hvis begge skal kunne brukes.
+        preferred = ["11S", "11N", "12S", "12N", "10S", "10N", "5N", "5M", "5S", "4N", "4M", "4S", "1S", "1N"]
 
     candidates = [slot for slot in preferred if slot in free]
 
