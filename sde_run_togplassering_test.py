@@ -4,6 +4,26 @@ from pathlib import Path
 INPUT_FILE = Path("sde_togplassering_test_2026_05_18.json")
 
 
+
+def load_sporplan_status():
+    path = Path("sde_live_sporplan_snapshot.json")
+    if not path.exists():
+        return {}, "mangler sde_live_sporplan_snapshot.json"
+
+    data = json.loads(path.read_text())
+    return data.get("sporplan_status", {}), data.get("snapshot_name", "ukjent snapshot")
+
+
+def suggest_service_slot(status):
+    if not status.get("6N"):
+        return "6N"
+
+    if not status.get("6S"):
+        return "6S"
+
+    return "spor 6 opptatt - må frigjøres før WC/vann"
+
+
 def suggest_target_type_for_row(row):
     to_train = str(row.get("to_train", "")).lower()
     note = str(row.get("note") or "").lower()
@@ -40,15 +60,22 @@ def suggest_action_type_for_row(row):
 
 
 
-def suggest_first_action_for_row(row):
+def suggest_first_action_for_row(row, status=None):
+    status = status or {}
     target_type = suggest_target_type_for_row(row)
 
     if target_type == "service via spor 6 før videre plassering":
-        return "skift kjøretøyet til spor 6 for WC/vann"
+        service_slot = suggest_service_slot(status)
+        if service_slot.startswith("spor 6 opptatt"):
+            return service_slot
+        return f"skift kjøretøyet til {service_slot} for WC/vann"
 
     if target_type == "verksted-/repflyt":
         if row.get("wc_water"):
-            return "skift kjøretøyet til spor 6 for WC/vann før verksted-/repflyt"
+            service_slot = suggest_service_slot(status)
+            if service_slot.startswith("spor 6 opptatt"):
+                return f"{service_slot}; deretter verksted-/repflyt"
+            return f"skift kjøretøyet til {service_slot} for WC/vann før verksted-/repflyt"
         return "vurder ledig/egnet verkstedvei og flytt mot rep"
 
     if target_type == "deling/skjøting":
@@ -132,16 +159,22 @@ def main():
     for row in data.get("rows", []):
         print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {suggest_action_type_for_row(row)}')
 
+    status, snapshot_name = load_sporplan_status()
+    print("\n=== Sporplan brukt for første handling ===")
+    print(f"Snapshot: {snapshot_name}")
+    print(f"6N: {status.get('6N') or '-'}")
+    print(f"6S: {status.get('6S') or '-'}")
+
     print("\n=== Foreslått første handling uten Til spor ===")
     for row in data.get("rows", []):
-        print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {suggest_first_action_for_row(row)}')
+        print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {suggest_first_action_for_row(row, status)}')
 
     print("\n=== Foreslått operativ flyt uten Til spor ===")
     for row in data.get("rows", []):
         print(f'\n{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}')
         print(f'  Måltype: {suggest_target_type_for_row(row)}')
         print(f'  Handlingstype: {suggest_action_type_for_row(row)}')
-        print(f'  Første handling: {suggest_first_action_for_row(row)}')
+        print(f'  Første handling: {suggest_first_action_for_row(row, status)}')
         for step_no, step in enumerate(suggest_flow_for_row(row), start=1):
             print(f"  {step_no}. {step}")
 
