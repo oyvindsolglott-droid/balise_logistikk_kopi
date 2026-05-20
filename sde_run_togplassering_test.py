@@ -125,6 +125,36 @@ def suggest_candidate_slots_for_production(row, status):
     return ", ".join(candidates[:4])
 
 
+
+def choose_first_candidate_slot(row, status):
+    candidates_text = suggest_candidate_slots_for_production(row, status)
+
+    if candidates_text == "ingen ledige kandidatspor funnet":
+        return ""
+
+    return candidates_text.split(",", 1)[0].strip()
+
+
+def simulate_production_reservations(rows, base_status):
+    simulated_status = dict(base_status)
+    assignments = []
+
+    for row in rows:
+        if suggest_target_type_for_row(row) != "produksjonsplassering":
+            continue
+
+        slot = choose_first_candidate_slot(row, simulated_status)
+
+        if not slot:
+            assignments.append((row, "ingen kandidat", "ikke reservert"))
+            continue
+
+        simulated_status[slot] = row.get("vehicle")
+        assignments.append((row, slot, "reservert"))
+
+    return assignments
+
+
 def suggest_production_area_for_row(row):
     to_train = str(row.get("to_train", "")).strip()
 
@@ -265,6 +295,11 @@ def main():
     for row in data.get("rows", []):
         if suggest_target_type_for_row(row) == "produksjonsplassering":
             print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {suggest_candidate_slots_for_production(row, status)}')
+
+    print("\n=== Simulert første reservasjon av produksjonsspor ===")
+    reservations = simulate_production_reservations(data.get("rows", []), status)
+    for row, slot, reservation_status in reservations:
+        print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {slot} ({reservation_status})')
 
     print("\n=== Foreslått første handling uten Til spor ===")
     for row in data.get("rows", []):
