@@ -1,0 +1,339 @@
+{
+  "kilde": "data/sde_togplassering_import_test.txt",
+  "antall_rader": 15,
+  "antall_ok": 8,
+  "antall_må_kontrolleres": 7,
+  "rader": [
+    {
+      "linje": 1,
+      "råtekst": "16:30 | 851 | 840 | 74-50 | 5s-3m",
+      "klokkeslett": "16:30",
+      "fra_tog": "851",
+      "til_tog": "840",
+      "settnr": "74-50",
+      "spor_raw": "5s-3m",
+      "spor_flyt": [
+        "5S",
+        "3M"
+      ],
+      "wc_vann": false,
+      "info": "",
+      "merknad": "",
+      "handlingstyper": [
+        "spor_flyt"
+      ],
+      "tolkningsstatus": "ok",
+      "advarsler": []
+    },
+    {
+      "linje": 2,
+      "råtekst": "16:53 | 821 | 828 | 74-44 |          | Merknad: Enkelt!",
+      "klokkeslett": "16:53",
+      "fra_tog": "821",
+      "til_tog": "828",
+      "settnr": "74-44",
+      "spor_raw": "",
+      "spor_flyt": [],
+      "wc_vann": false,
+      "info": "",
+      "merknad": "Enkelt!",
+      "handlingstyper": [
+        "enkeltsett"
+      ],
+      "tolkningsstatus": "må_kontrolleres",
+      "advarsler": [
+        "Mangler planlagt spor/flyt."
+      ]
+    },
+    {
+      "linje": 3,
+      "råtekst": "17:30 | 853/1 | 854/2 | 74-12 | 1n",
+      "klokkeslett": "17:30",
+      "fra_tog": "853/1",
+      "til_tog": "854/2",
+      "settnr": "74-12",
+      "spor_raw": "1n",
+      "spor_flyt": [
+        "1N"
+      ],
+      "wc_vann": false,
+      "info": "",
+      "merknad": "",
+      "handlingstyper": [],
+      "tolkningsstatus": "ok",
+      "advarsler": []
+    },
+    {
+      "linje": 4,
+      "råtekst": "17:42 | 861 | 836 | 74-06 | 5m-3s",
+      "klokkeslett": "17:42",
+      "fra_tog": "861",
+      "til_tog": "836",
+      "settnr": "74-06",
+      "spor_raw": "5m-3s",
+      "spor_flyt": [
+        "5M",
+        "3S"
+      ],
+      "wc_vann": false,
+      "info": "",
+      "merknad": "",
+      "handlingstyper": [
+        "spor_flyt"
+      ],
+      "tolkningsstatus": "ok",
+      "advarsler": []
+    },
+    {
+      "linje": 5,
+      "råtekst": "17:53 | 823/1 | 852 | 74-42 | 6ss-3n | WC/vann: x",
+      "klokkeslett": "17:53",
+      "fra_tog": "823/1",
+      "til_tog": "852",
+      "settnr": "74-42",
+      "spor_raw": "6ss-3n",
+      "spor_flyt": [
+        "6SS",
+        "3N"
+      ],
+      "wc_vann": true,
+      "info": "",
+      "merknad": "",
+      "handlingstyper": [
+        "wc_vann",
+        "via_spor_6",
+        "spor_flyt"
+      ],
+      "tolkningsstatus": "ok",
+      "advarsler": []
+    },
+    {
+      "linje": 6,
+      "råtekst": "18:30 | 855/1 | 856 | 74-11 | 1s-bos",
+      "klokkeslett": "18:30",
+      "fra_tog": "855/1",
+      "til_tog": "856",
+      "settnr": "74-11",
+      "spor_raw": "1s-bos",
+      "spor_flyt": [
+        "1S",
+        "BOS"
+      ],
+      "wc_vann": false,
+      "info": "",
+      "merknad": "",
+      "handlingstyper": [
+        "spor_flyt"
+      ],
+      "tolkningsstatus": "må_kontrolleres",
+      "advarsler": [
+        "BOS er tolket som merknad/område, ikke som presist spor."
+      ]
+    },
+    {
+      "linje": 7,
+      "råtekst": "18:42 | 863 | 864 | 70-06 | 6-11s | WC/vann: x",
+      "klokkeslett": "18:42",
+      "fra_tog": "863",
+      "til_tog": "864",
+      "settnr": "70-06",
+      "spor_raw": "6-11s",
+      "spor_flyt": [
+        "6",
+        "11S"
+      ],
+      "wc_vann": true,
+      "info": "",
+      "merknad": "",
+      "handlingstyper": [
+        "wc_vann",
+        "via_spor_6",
+        "spor_flyt"
+      ],
+      "tolkningsstatus": "må_kontrolleres",
+      "advarsler": [
+        "Spor '6' mangler posisjon, for eksempel S/M/N/SS."
+      ]
+    },
+    {
+      "linje": 8,
+      "råtekst": "18:53 | 825/2 | 806/1 | 74-04 | 12s | Merknad: Dele motsatt!",
+      "klokkeslett": "18:53",
+      "fra_tog": "825/2",
+      "til_tog": "806/1",
+      "settnr": "74-04",
+      "spor_raw": "12s",
+      "spor_flyt": [
+        "12S"
+      ],
+      "wc_vann": false,
+      "info": "",
+      "merknad": "Dele motsatt!",
+      "handlingstyper": [
+        "deling"
+      ],
+      "tolkningsstatus": "ok",
+      "advarsler": []
+    },
+    {
+      "linje": 9,
+      "råtekst": "20:53 | 829 | rep | 74-49 | 6-5s | WC/vann: x | Merknad: Enkelt!",
+      "klokkeslett": "20:53",
+      "fra_tog": "829",
+      "til_tog": "rep",
+      "settnr": "74-49",
+      "spor_raw": "6-5s",
+      "spor_flyt": [
+        "6",
+        "5S"
+      ],
+      "wc_vann": true,
+      "info": "",
+      "merknad": "Enkelt!",
+      "handlingstyper": [
+        "reparasjon",
+        "wc_vann",
+        "via_spor_6",
+        "spor_flyt",
+        "enkeltsett"
+      ],
+      "tolkningsstatus": "må_kontrolleres",
+      "advarsler": [
+        "Spor '6' mangler posisjon, for eksempel S/M/N/SS."
+      ]
+    },
+    {
+      "linje": 10,
+      "råtekst": "20:59 | 2489 | 2470 | 70-14 | 1s",
+      "klokkeslett": "20:59",
+      "fra_tog": "2489",
+      "til_tog": "2470",
+      "settnr": "70-14",
+      "spor_raw": "1s",
+      "spor_flyt": [
+        "1S"
+      ],
+      "wc_vann": false,
+      "info": "",
+      "merknad": "",
+      "handlingstyper": [],
+      "tolkningsstatus": "ok",
+      "advarsler": []
+    },
+    {
+      "linje": 11,
+      "råtekst": "21:53 | 831 | 838 | 74-07 |          | Merknad: Enkelt!",
+      "klokkeslett": "21:53",
+      "fra_tog": "831",
+      "til_tog": "838",
+      "settnr": "74-07",
+      "spor_raw": "",
+      "spor_flyt": [],
+      "wc_vann": false,
+      "info": "",
+      "merknad": "Enkelt!",
+      "handlingstyper": [
+        "enkeltsett"
+      ],
+      "tolkningsstatus": "må_kontrolleres",
+      "advarsler": [
+        "Mangler planlagt spor/flyt."
+      ]
+    },
+    {
+      "linje": 12,
+      "råtekst": "22:53 | 833 | rep | 74-48 | 6-5m | Info: 804 vis klar | Merknad: Enkelt!",
+      "klokkeslett": "22:53",
+      "fra_tog": "833",
+      "til_tog": "rep",
+      "settnr": "74-48",
+      "spor_raw": "6-5m",
+      "spor_flyt": [
+        "6",
+        "5M"
+      ],
+      "wc_vann": false,
+      "info": "804 vis klar",
+      "merknad": "Enkelt!",
+      "handlingstyper": [
+        "reparasjon",
+        "via_spor_6",
+        "spor_flyt",
+        "enkeltsett"
+      ],
+      "tolkningsstatus": "må_kontrolleres",
+      "advarsler": [
+        "Spor '6' mangler posisjon, for eksempel S/M/N/SS."
+      ]
+    },
+    {
+      "linje": 13,
+      "råtekst": "22:53 | 835 | 802 | 74-44 | 6-3n | WC/vann: x",
+      "klokkeslett": "22:53",
+      "fra_tog": "835",
+      "til_tog": "802",
+      "settnr": "74-44",
+      "spor_raw": "6-3n",
+      "spor_flyt": [
+        "6",
+        "3N"
+      ],
+      "wc_vann": true,
+      "info": "",
+      "merknad": "",
+      "handlingstyper": [
+        "wc_vann",
+        "via_spor_6",
+        "spor_flyt"
+      ],
+      "tolkningsstatus": "må_kontrolleres",
+      "advarsler": [
+        "Spor '6' mangler posisjon, for eksempel S/M/N/SS."
+      ]
+    },
+    {
+      "linje": 14,
+      "råtekst": "00:50 | 837 | 808/2 | 74-47 | 6s-6n | WC/vann: x | Info: 804",
+      "klokkeslett": "00:50",
+      "fra_tog": "837",
+      "til_tog": "808/2",
+      "settnr": "74-47",
+      "spor_raw": "6s-6n",
+      "spor_flyt": [
+        "6S",
+        "6N"
+      ],
+      "wc_vann": true,
+      "info": "804",
+      "merknad": "",
+      "handlingstyper": [
+        "wc_vann",
+        "via_spor_6",
+        "spor_flyt"
+      ],
+      "tolkningsstatus": "ok",
+      "advarsler": []
+    },
+    {
+      "linje": 15,
+      "råtekst": "01:45 | 839 | 808/1 | 75-17 | 6s | WC/vann: x | Info: 808 | Merknad: skifte ut i syd!",
+      "klokkeslett": "01:45",
+      "fra_tog": "839",
+      "til_tog": "808/1",
+      "settnr": "75-17",
+      "spor_raw": "6s",
+      "spor_flyt": [
+        "6S"
+      ],
+      "wc_vann": true,
+      "info": "808",
+      "merknad": "skifte ut i syd!",
+      "handlingstyper": [
+        "wc_vann",
+        "via_spor_6"
+      ],
+      "tolkningsstatus": "ok",
+      "advarsler": []
+    }
+  ]
+}

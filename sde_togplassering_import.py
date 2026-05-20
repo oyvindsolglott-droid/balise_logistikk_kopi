@@ -1,0 +1,228 @@
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any
+
+
+INPUT_PATH = Path("data/sde_togplassering_import_test.txt")
+OUTPUT_PATH = Path("data/sde_togplassering_import_resultat.json")
+
+
+VALID_SINGLE_SLOTS = {
+    "9",
+    "1S", "1N",
+    "2S", "2N",
+    "3S", "3M", "3N",
+    "4S", "4M", "4N",
+    "5S", "5M", "5N",
+    "6SS", "6S", "6N",
+    "7SS", "7S", "7N",
+    "8SS", "8S", "8N",
+    "10S", "10N",
+    "11S", "11N",
+    "12S", "12N",
+}
+
+
+def normalize_token(value: str) -> str:
+    return value.strip()
+
+
+def normalize_slot_token(token: str) -> tuple[str, list[str]]:
+    """
+    Normaliserer én spor-token.
+
+    Eksempler:
+    3n   -> 3N
+    6ss  -> 6SS
+    6    -> 6 + advarsel fordi spor 6 alene er tvetydig
+    bos  -> BOS + advarsel fordi dette ikke er et fysisk spor
+    """
+    warnings: list[str] = []
+    raw = token.strip()
+    upper = raw.upper()
+
+    if not upper:
+        return "", warnings
+
+    if upper == "BOS":
+        warnings.append("BOS er tolket som merknad/område, ikke som presist spor.")
+        return upper, warnings
+
+    if upper in {"1", "2", "3", "4", "5", "6", "7", "8", "10", "11", "12"}:
+        warnings.append(f"Spor '{upper}' mangler posisjon, for eksempel S/M/N/SS.")
+        return upper, warnings
+
+    if upper not in VALID_SINGLE_SLOTS:
+        warnings.append(f"Ukjent eller ikke-standard sporverdi: '{raw}'.")
+
+    return upper, warnings
+
+
+def parse_spor_flyt(value: str) -> tuple[list[str], list[str]]:
+    """
+    Tolker felt som:
+    5s-3m
+    6ss-3n
+    6-11s
+    1s-bos
+    """
+    warnings: list[str] = []
+    value = value.strip()
+
+    if not value:
+        return [], warnings
+
+    parts = [p.strip() for p in value.split("-") if p.strip()]
+    normalized: list[str] = []
+
+    for part in parts:
+        slot, slot_warnings = normalize_slot_token(part)
+        if slot:
+            normalized.append(slot)
+        warnings.extend(slot_warnings)
+
+    return normalized, warnings
+
+
+def parse_extra_field(field: str) -> tuple[str | None, str]:
+    """
+    Tolker valgfrie felt som:
+    WC/vann: x
+    Info: 804 vis klar
+    Merknad: Enkelt!
+    """
+    if ":" not in field:
+        return None, field.strip()
+
+    key, value = field.split(":", 1)
+    return key.strip().lower(), value.strip()
+
+
+def classify_action(til_tog: str, spor_flyt: list[str], wc_vann: bool, merknad: str) -> list[str]:
+    tags: list[str] = []
+
+    if til_tog.lower() == "rep":
+        tags.append("reparasjon")
+
+    if wc_vann:
+        tags.append("wc_vann")
+
+    if any(slot.startswith("6") for slot in spor_flyt):
+        tags.append("via_spor_6")
+
+    if len(spor_flyt) > 1:
+        tags.append("spor_flyt")
+
+    if "dele" in merknad.lower():
+        tags.append("deling")
+
+    if "enkelt" in merknad.lower():
+        tags.append("enkeltsett")
+
+    return tags
+
+
+def parse_line(line: str, line_no: int) -> dict[str, Any]:
+    warnings: list[str] = []
+
+    raw_parts = [p.strip() for p in line.split("|")]
+    while len(raw_parts) < 5:
+        raw_parts.append("")
+
+    klokkeslett = normalize_token(raw_parts[0])
+    fra_tog = normalize_token(raw_parts[1])
+    til_tog = normalize_token(raw_parts[2])
+    settnr = normalize_token(raw_parts[3])
+    spor_raw = normalize_token(raw_parts[4])
+
+    spor_flyt, spor_warnings = parse_spor_flyt(spor_raw)
+    warnings.extend(spor_warnings)
+
+    wc_vann = False
+    info = ""
+    merknad = ""
+
+    for extra in raw_parts[5:]:
+        if not extra:
+            continue
+
+        key, value = parse_extra_field(extra)
+
+        if key in {"wc/vann", "wc", "vann"}:
+            wc_vann = value.lower() in {"x", "j", "ja", "true", "1"}
+        elif key == "info":
+            info = value
+        elif key == "merknad":
+            merknad = value
+        else:
+            warnings.append(f"Ukjent tilleggsfelt: '{extra}'.")
+
+    if not re.fullmatch(r"\d{2}:\d{2}", klokkeslett):
+        warnings.append(f"Klokkeslett har uventet format: '{klokkeslett}'.")
+
+    if not settnr:
+        warnings.append("Mangler settnr/kjøretøy.")
+
+    if not spor_flyt:
+        warnings.append("Mangler planlagt spor/flyt.")
+
+    action_tags = classify_action(til_tog, spor_flyt, wc_vann, merknad)
+
+    return {
+        "linje": line_no,
+        "råtekst": line,
+        "klokkeslett": klokkeslett,
+        "fra_tog": fra_tog,
+        "til_tog": til_tog,
+        "settnr": settnr,
+        "spor_raw": spor_raw,
+        "spor_flyt": spor_flyt,
+        "wc_vann": wc_vann,
+        "info": info,
+        "merknad": merknad,
+        "handlingstyper": action_tags,
+        "tolkningsstatus": "må_kontrolleres" if warnings else "ok",
+        "advarsler": warnings,
+    }
+
+
+def main() -> None:
+    lines = [
+        line.strip()
+        for line in INPUT_PATH.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+    rows = [parse_line(line, idx + 1) for idx, line in enumerate(lines)]
+
+    result = {
+        "kilde": str(INPUT_PATH),
+        "antall_rader": len(rows),
+        "antall_ok": sum(1 for row in rows if row["tolkningsstatus"] == "ok"),
+        "antall_må_kontrolleres": sum(1 for row in rows if row["tolkningsstatus"] != "ok"),
+        "rader": rows,
+    }
+
+    OUTPUT_PATH.write_text(
+        json.dumps(result, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    print(f"Skrev {OUTPUT_PATH}")
+    print(f"Antall rader: {result['antall_rader']}")
+    print(f"OK: {result['antall_ok']}")
+    print(f"Må kontrolleres: {result['antall_må_kontrolleres']}")
+
+    for row in rows:
+        if row["advarsler"]:
+            print()
+            print(f"Linje {row['linje']}: {row['råtekst']}")
+            for warning in row["advarsler"]:
+                print(f"  - {warning}")
+
+
+if __name__ == "__main__":
+    main()
