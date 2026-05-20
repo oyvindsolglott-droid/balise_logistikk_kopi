@@ -2527,20 +2527,20 @@ function buildOppstilling(){
 
   const thead=document.createElement("thead");
   const trGroup=document.createElement("tr");
-  const thDep=document.createElement("th");
-  thDep.className="opp-group";
-  thDep.colSpan=5;
-  thDep.textContent="Avgang";
-  trGroup.appendChild(thDep);
   const thArr=document.createElement("th");
   thArr.className="opp-group";
   thArr.colSpan=5;
   thArr.textContent="Ankomst";
   trGroup.appendChild(thArr);
+  const thDep=document.createElement("th");
+  thDep.className="opp-group";
+  thDep.colSpan=5;
+  thDep.textContent="Avgang";
+  trGroup.appendChild(thDep);
   thead.appendChild(trGroup);
 
   const trHead=document.createElement("tr");
-  ["Tognr.","Avgangstid","Kjøretøy 1 nr.","","Kjøretøy 2 nr.","Tognr.","Ankomsttid","Kjøretøy 1 nr.","","Kjøretøy 2 nr."].forEach(text=>{
+  ["Tognr.","Ankomsttid","Kjøretøy 1 nr.","","Kjøretøy 2 nr.","Tognr.","Avgangstid","Kjøretøy 1 nr.","","Kjøretøy 2 nr."].forEach(text=>{
     const th=document.createElement("th");
     th.textContent=text;
     trHead.appendChild(th);
@@ -2556,8 +2556,8 @@ function buildOppstilling(){
 
   for(let i=0;i<totalRows;i++){
     const tr=document.createElement("tr");
-    appendOppstillingSideCells(tr, departureRows[i] || null, "departure");
     appendOppstillingSideCells(tr, arrivalRows[i] || null, "arrival");
+    appendOppstillingSideCells(tr, departureRows[i] || null, "departure");
     body.appendChild(tr);
   }
 
