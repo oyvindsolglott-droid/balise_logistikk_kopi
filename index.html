@@ -3512,9 +3512,39 @@ function renderSdeTursattComparison(data){
     const idagTil = row.idag?.til_tog?.vehicles?.length
       ? row.idag.til_tog.vehicles.join(", ")
       : "-";
+    const importVehicle = row.settnr_import || "-";
 
-    addSdeText(card, "", `Tursatt i dag fra_tog ${row.idag?.fra_tog?.tog || row.fra_tog}: ${idagFra}`);
-    addSdeText(card, "", `Tursatt i dag til_tog ${row.idag?.til_tog?.tog || row.til_tog}: ${idagTil}`);
+    const fraStatus = match.fra_tog_samsvar
+      ? "samme kjøretøy"
+      : row.idag?.fra_tog?.vehicles?.length
+        ? "ikke samme kjøretøy"
+        : "mangler Tursatt-kjøretøy";
+
+    const tilStatus = match.til_tog_samsvar
+      ? "samme kjøretøy"
+      : row.idag?.til_tog?.vehicles?.length
+        ? "ikke samme kjøretøy"
+        : "mangler Tursatt-kjøretøy";
+
+    const fraBox = document.createElement("div");
+    fraBox.className = match.fra_tog_samsvar ? "sde-check-card" : "sde-check-card high";
+    addSdeText(fraBox, "sde-report-section-title", `Fra tog ${row.idag?.fra_tog?.tog || row.fra_tog}`);
+    addSdeText(fraBox, "", `Tursatt viser: ${idagFra}`);
+    addSdeText(fraBox, "", `Importfeltet viser: ${importVehicle}`);
+    addSdeText(fraBox, "sde-check-meta", `Status: ${fraStatus}`);
+    card.appendChild(fraBox);
+
+    if(!match.til_tog_er_rep){
+      const tilBox = document.createElement("div");
+      tilBox.className = match.til_tog_samsvar ? "sde-check-card" : "sde-check-card high";
+      addSdeText(tilBox, "sde-report-section-title", `Til tog ${row.idag?.til_tog?.tog || row.til_tog}`);
+      addSdeText(tilBox, "", `Tursatt viser: ${idagTil}`);
+      addSdeText(tilBox, "", `Importfeltet viser: ${importVehicle}`);
+      addSdeText(tilBox, "sde-check-meta", `Status: ${tilStatus}`);
+      card.appendChild(tilBox);
+    }else{
+      addSdeText(card, "sde-check-meta", "Til tog er rep: sammenlignes derfor ikke som vanlig tognummer.");
+    }
 
     const warnings = Array.isArray(row.advarsler) ? row.advarsler : [];
     if(warnings.length){
