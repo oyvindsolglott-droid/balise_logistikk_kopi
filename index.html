@@ -1093,12 +1093,31 @@ button{padding:12px 12px}
 
 <div class="segmented">
 <button class="seg active" type="button" data-tab="oppstilling">Tursatt</button>
+<button class="seg" type="button" data-tab="grunnoppstilling">Grunnoppstilling</button>
 <button class="seg" type="button" data-tab="turneringKveld">Turnering Kveld</button>
 <button class="seg" type="button" data-tab="inndata">Planlegge Skiftebevegelser</button>
 <button class="seg" type="button" data-tab="sdeVaktplan">SDE vaktplan</button>
 <button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
 <button class="seg" type="button" data-tab="sporplan">Sporplan</button>
 </div>
+
+
+<section class="panel" id="grunnoppstilling">
+<div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for videre SDE-arbeid, men påvirker foreløpig ikke Sporplan før overstyringslogikken er koblet inn.</div>
+<div class="view-tools">
+<span class="label">Grunnoppstilling</span>
+<button class="compact zoom-out" data-target="grunnoppstillingZoom">Zoom ut</button>
+<button class="compact zoom-in" data-target="grunnoppstillingZoom">Zoom inn</button>
+<button class="compact compact-toggle" data-target="grunnoppstillingZoom">Kompakt visning</button>
+<button class="compact reset-view" data-target="grunnoppstillingZoom">Standard</button>
+</div>
+<div class="mobile-table-label">Grunnoppstilling</div>
+<div class="zoom-wrap">
+<div class="zoom-inner" id="grunnoppstillingZoom">
+<table id="grunnoppstillingTable"></table>
+</div>
+</div>
+</section>
 
 
 <section class="panel active" id="sporplan">
@@ -1773,6 +1792,7 @@ function makeDefaultState(){
     turneringNatt:migrateNattRows(JSON.parse(JSON.stringify(initialNattRows))),
     oppstillingModes:Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode])),
     oppstillingOverrides:{},
+    grunnoppstilling:{},
     kjoretoy:{},
     baliseToday:{},
     baliseTomorrow:{},
@@ -1796,6 +1816,7 @@ function makeDefaultState(){
       kveldZoom:{scale:1,compact:false},
       nattZoom:{scale:1,compact:false},
       inndataZoom:{scale:1,compact:false},
+      grunnoppstillingZoom:{scale:1,compact:false},
       apiCombinedZoom:{scale:1,compact:false}
     },
     migrationClearKveldColE_v1:false
@@ -1813,6 +1834,7 @@ if(!state.turneringNatt) state.turneringNatt=migrateNattRows(JSON.parse(JSON.str
 state.turneringNatt = migrateNattRows(state.turneringNatt);
 if(!state.oppstillingModes) state.oppstillingModes=Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode]));
 if(!state.oppstillingOverrides) state.oppstillingOverrides={};
+if(!state.grunnoppstilling) state.grunnoppstilling={};
 if(!state.kjoretoy) state.kjoretoy={};
 if(!state.baliseToday) state.baliseToday={};
 if(!state.baliseTomorrow) state.baliseTomorrow={};
@@ -1840,6 +1862,7 @@ if(!state.views){
     kveldZoom:{scale:1,compact:false},
     nattZoom:{scale:1,compact:false},
     inndataZoom:{scale:1,compact:false},
+    grunnoppstillingZoom:{scale:1,compact:false},
     apiCombinedZoom:{scale:1,compact:false}
   };
 }
@@ -2371,6 +2394,17 @@ function mergeRowsIntoResult(rows,result,map){
 function computeInndata(){
   const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
   const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
+
+  Object.entries(state.grunnoppstilling || {}).forEach(([slot,value])=>{
+    const normalizedSlot = normalizeSlot(slot);
+    const mat = String(value || "").trim();
+    if(mat && map[normalizedSlot] !== undefined){
+      result[map[normalizedSlot]].tog = "";
+      result[map[normalizedSlot]].mat = mat;
+      result[map[normalizedSlot]].wash = false;
+    }
+  });
+
   mergeRowsIntoResult(state.turneringKveld,result,map);
   mergeRowsIntoResult(state.turneringNatt,result,map);
   return result;
@@ -2600,6 +2634,53 @@ function updatePlanSkifteRowClass(tr,row){
     tr.classList.add("ikke-utfort-row");
   }
 }
+
+function buildGrunnoppstilling(){
+  const table=document.getElementById("grunnoppstillingTable");
+  if(!table) return;
+
+  if(!state.grunnoppstilling) state.grunnoppstilling={};
+
+  table.innerHTML="<thead><tr><th>Slot</th><th>Kjøretøy parkert fysisk på tomta</th></tr></thead>";
+
+  const body=document.createElement("tbody");
+
+  inputSlots.forEach(slot=>{
+    const tr=document.createElement("tr");
+
+    const slotTd=document.createElement("td");
+    slotTd.textContent=slot;
+    slotTd.style.fontWeight="800";
+    tr.appendChild(slotTd);
+
+    const vehicleTd=document.createElement("td");
+    const inp=document.createElement("input");
+    inp.type="text";
+    inp.inputMode="text";
+    inp.autocapitalize="characters";
+    inp.autocorrect="off";
+    inp.spellcheck=false;
+    inp.placeholder="f.eks. 74-50";
+    inp.value=String(state.grunnoppstilling?.[slot] || "");
+    inp.addEventListener("input",e=>{
+      const value=String(e.target.value || "").trim();
+      if(value){
+        state.grunnoppstilling[slot]=value;
+      }else{
+        delete state.grunnoppstilling[slot];
+      }
+      buildSporplan();
+      persist(true);
+    });
+    vehicleTd.appendChild(inp);
+    tr.appendChild(vehicleTd);
+
+    body.appendChild(tr);
+  });
+
+  table.appendChild(body);
+}
+
 
 function buildInndata(){
   const table=document.getElementById("inndataTable");
@@ -3628,6 +3709,10 @@ function activateTab(name){
     scheduleSporplanRefresh();
   }
 
+  if(name === "grunnoppstilling"){
+    buildGrunnoppstilling();
+  }
+
   if(name === "sdeVaktplan"){
     buildSdeVaktplan();
     loadSdeImportReport();
@@ -3679,7 +3764,7 @@ function applyView(targetId){
 
 
 function setResponsiveDefaultViews(force=false){
-  const ids = ["yardZoom","kveldZoom","nattZoom","inndataZoom","apiCombinedZoom"];
+  const ids = ["yardZoom","kveldZoom","nattZoom","inndataZoom","grunnoppstillingZoom","apiCombinedZoom"];
   ids.forEach(id=>{
     if(!state.views[id]) state.views[id] = {scale:1,compact:false};
     const current = Number(state.views[id].scale || 1);
@@ -3790,13 +3875,13 @@ function initViewControls(){
   });
 
 
-  ["yardZoom","kveldZoom","nattZoom","inndataZoom","apiCombinedZoom"].forEach(applyView);
+  ["yardZoom","kveldZoom","nattZoom","inndataZoom","grunnoppstillingZoom","apiCombinedZoom"].forEach(applyView);
 }
 
 
 window.addEventListener("resize",()=>{
   setResponsiveDefaultViews();
-  ["yardZoom","kveldZoom","nattZoom","inndataZoom","apiCombinedZoom"].forEach(applyView);
+  ["yardZoom","kveldZoom","nattZoom","inndataZoom","grunnoppstillingZoom","apiCombinedZoom"].forEach(applyView);
   scheduleSporplanRefresh();
 });
 
@@ -4022,6 +4107,7 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
 
   buildTurnering("turneringKveldTable","turneringKveld");
   buildTurnering("turneringNattTable","turneringNatt");
+  buildGrunnoppstilling();
   buildInndata();
   buildSporplan();
   buildOppstilling();
@@ -4128,6 +4214,7 @@ document.getElementById("clearKjoretoyBtn").addEventListener("click",()=>{
 
 buildTurnering("turneringKveldTable","turneringKveld");
 buildTurnering("turneringNattTable","turneringNatt");
+buildGrunnoppstilling();
 buildInndata();
 buildSdeVaktplan();
 loadSdeImportReport();
