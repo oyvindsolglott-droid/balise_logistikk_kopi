@@ -75,6 +75,29 @@ def get_free_candidate_slots(status):
     return [slot for slot in candidate_slots if not status.get(slot)]
 
 
+
+def filter_n_before_s_candidates(candidates, status):
+    filtered = []
+
+    for slot in candidates:
+        if slot not in {"10N", "11N", "12N"}:
+            filtered.append(slot)
+            continue
+
+        track = slot[:-1]
+        s_slot = f"{track}S"
+
+        # Buttsporregel:
+        # Hvis S er ledig og N er ledig, skal S vurderes før N.
+        # N fjernes derfor som første kandidat inntil S er brukt eller ikke lenger er aktuell.
+        if not status.get(s_slot):
+            continue
+
+        filtered.append(slot)
+
+    return filtered
+
+
 def suggest_candidate_slots_for_production(row, status):
     free = get_free_candidate_slots(status)
     to_train = str(row.get("to_train", "")).strip()
@@ -94,6 +117,7 @@ def suggest_candidate_slots_for_production(row, status):
         preferred = ["11S", "11N", "12S", "12N", "10S", "10N", "5N", "5M", "5S", "4N", "4M", "4S", "1S", "1N"]
 
     candidates = [slot for slot in preferred if slot in free]
+    candidates = filter_n_before_s_candidates(candidates, status)
 
     if not candidates:
         return "ingen ledige kandidatspor funnet"
