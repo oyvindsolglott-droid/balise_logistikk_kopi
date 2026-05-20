@@ -191,6 +191,35 @@ def evaluate_operational_risk(
     }
 
 
+def build_import_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    risk_counts = {"lav": 0, "middels": 0, "høy": 0}
+    action_counts: dict[str, int] = {}
+    warning_counts: dict[str, int] = {}
+
+    for row in rows:
+        vurdering = row.get("operativ_vurdering", {})
+        risk = vurdering.get("risikonivå", "ukjent")
+        if risk in risk_counts:
+            risk_counts[risk] += 1
+
+        for tag in row.get("handlingstyper", []):
+            action_counts[tag] = action_counts.get(tag, 0) + 1
+
+        for warning in row.get("advarsler", []):
+            warning_counts[warning] = warning_counts.get(warning, 0) + 1
+
+    return {
+        "antall_rader": len(rows),
+        "tolkning": {
+            "ok": sum(1 for row in rows if row["tolkningsstatus"] == "ok"),
+            "må_kontrolleres": sum(1 for row in rows if row["tolkningsstatus"] != "ok"),
+        },
+        "risiko": risk_counts,
+        "handlingstyper": dict(sorted(action_counts.items())),
+        "advarsler": dict(sorted(warning_counts.items())),
+    }
+
+
 def parse_line(line: str, line_no: int) -> dict[str, Any]:
     warnings: list[str] = []
 
@@ -272,11 +301,14 @@ def main() -> None:
 
     rows = [parse_line(line, idx + 1) for idx, line in enumerate(lines)]
 
+    summary = build_import_summary(rows)
+
     result = {
         "kilde": str(INPUT_PATH),
         "antall_rader": len(rows),
-        "antall_ok": sum(1 for row in rows if row["tolkningsstatus"] == "ok"),
-        "antall_må_kontrolleres": sum(1 for row in rows if row["tolkningsstatus"] != "ok"),
+        "antall_ok": summary["tolkning"]["ok"],
+        "antall_må_kontrolleres": summary["tolkning"]["må_kontrolleres"],
+        "oppsummering": summary,
         "rader": rows,
     }
 
@@ -289,6 +321,14 @@ def main() -> None:
     print(f"Antall rader: {result['antall_rader']}")
     print(f"OK: {result['antall_ok']}")
     print(f"Må kontrolleres: {result['antall_må_kontrolleres']}")
+    print()
+    print("Importanalyse:")
+    print(f"  Lav risiko: {summary['risiko']['lav']}")
+    print(f"  Middels risiko: {summary['risiko']['middels']}")
+    print(f"  Høy risiko: {summary['risiko']['høy']}")
+    print("  Handlingstyper:")
+    for tag, count in summary["handlingstyper"].items():
+        print(f"    {tag}: {count}")
 
     for row in rows:
         if row["advarsler"]:
