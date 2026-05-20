@@ -20,6 +20,24 @@ def suggest_target_type_for_row(row):
     return "produksjonsplassering"
 
 
+
+def suggest_action_type_for_row(row):
+    target_type = suggest_target_type_for_row(row)
+
+    if target_type == "service via spor 6 før videre plassering":
+        return "først servicebevegelse til spor 6, deretter ny vurdering for sluttplassering"
+
+    if target_type == "verksted-/repflyt":
+        if row.get("wc_water"):
+            return "først WC/vann via spor 6, deretter verksted-/repflyt"
+        return "verksted-/repflyt må planlegges mot ledig/egnet verkstedtilgang"
+
+    if target_type == "deling/skjøting":
+        return "deling/skjøting må planlegges før kjøretøy settes videre mot produksjon"
+
+    return "direkte produksjonsplassering må beregnes ut fra faktisk Sporplan"
+
+
 def suggest_flow_for_row(row):
     flow = []
 
@@ -91,10 +109,15 @@ def main():
         target_type = suggest_target_type_for_row(row)
         print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {target_type}')
 
+    print("\n=== Foreslått handlingstype uten Til spor ===")
+    for row in data.get("rows", []):
+        print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {suggest_action_type_for_row(row)}')
+
     print("\n=== Foreslått operativ flyt uten Til spor ===")
     for row in data.get("rows", []):
         print(f'\n{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}')
         print(f'  Måltype: {suggest_target_type_for_row(row)}')
+        print(f'  Handlingstype: {suggest_action_type_for_row(row)}')
         for step_no, step in enumerate(suggest_flow_for_row(row), start=1):
             print(f"  {step_no}. {step}")
 
