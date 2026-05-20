@@ -1,0 +1,34 @@
+{
+  "name": "togplassering_skien_test_2026_05_18",
+  "description": "Testinput fra Togplassering Skien. Til spor er bevisst utelatt fordi SDE skal beregne spor selv.",
+  "source": "manuelt registrert fra bilde/papirark",
+  "target_slot_is_intentionally_omitted": true,
+  "columns_used": [
+    "time",
+    "from_train",
+    "from_set",
+    "to_train",
+    "to_set",
+    "vehicle",
+    "wc_water",
+    "info",
+    "note"
+  ],
+  "rows": [
+    {"time":"16:30","from_train":"851","from_set":"","to_train":"840","to_set":"","vehicle":"74-50","wc_water":false,"info":"","note":""},
+    {"time":"16:53","from_train":"821","from_set":"","to_train":"828","to_set":"","vehicle":"74-44","wc_water":false,"info":"","note":""},
+    {"time":"17:30","from_train":"853","from_set":"1","to_train":"854","to_set":"2","vehicle":"74-12","wc_water":false,"info":"","note":""},
+    {"time":"17:42","from_train":"861","from_set":"","to_train":"836","to_set":"","vehicle":"74-06","wc_water":false,"info":"","note":""},
+    {"time":"17:53","from_train":"823","from_set":"1","to_train":"852","to_set":"","vehicle":"74-42","wc_water":true,"info":"WC/vann","note":""},
+    {"time":"18:30","from_train":"855","from_set":"1","to_train":"856","to_set":"","vehicle":"74-11","wc_water":false,"info":"","note":""},
+    {"time":"18:42","from_train":"863","from_set":"","to_train":"864","to_set":"","vehicle":"70-06","wc_water":true,"info":"WC/vann","note":""},
+    {"time":"18:53","from_train":"825","from_set":"2","to_train":"806","to_set":"1","vehicle":"74-04","wc_water":false,"info":"","note":"dele motsatt"},
+    {"time":"20:53","from_train":"829","from_set":"","to_train":"rep","to_set":"","vehicle":"74-49","wc_water":true,"info":"WC/vann","note":""},
+    {"time":"20:59","from_train":"2489","from_set":"","to_train":"2470","to_set":"","vehicle":"70-14","wc_water":false,"info":"","note":""},
+    {"time":"21:53","from_train":"831","from_set":"","to_train":"838","to_set":"","vehicle":"74-07","wc_water":false,"info":"","note":""},
+    {"time":"22:53","from_train":"833","from_set":"","to_train":"rep","to_set":"","vehicle":"74-48","wc_water":false,"info":"","note":""},
+    {"time":"22:53","from_train":"835","from_set":"","to_train":"802","to_set":"","vehicle":"74-44","wc_water":true,"info":"WC/vann","note":""},
+    {"time":"00:50","from_train":"837","from_set":"","to_train":"808","to_set":"2","vehicle":"74-47","wc_water":true,"info":"WC/vann","note":""},
+    {"time":"01:45","from_train":"839","from_set":"","to_train":"808","to_set":"1","vehicle":"75-17","wc_water":true,"info":"WC/vann","note":""}
+  ]
+}
