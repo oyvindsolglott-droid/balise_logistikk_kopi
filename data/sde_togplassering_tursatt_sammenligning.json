@@ -1,0 +1,686 @@
+{
+  "importkilde": "data/sde_togplassering_import_test.txt",
+  "api_idag_date": "2026-05-20",
+  "api_idag_updatedAt": "20.05.2026 06:22:37",
+  "api_imorgen_date": "2026-05-21",
+  "api_imorgen_updatedAt": "20.05.2026 06:25:04",
+  "oppsummering": {
+    "avvik_idag": 11,
+    "samsvar_idag": 4
+  },
+  "rader": [
+    {
+      "linje": 1,
+      "klokkeslett": "16:30",
+      "fra_tog": "851",
+      "til_tog": "840",
+      "settnr_import": "74-50",
+      "spor_raw": "5s-3m",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "851",
+          "funnet": true,
+          "vehicles": [
+            "74-42"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "840",
+          "funnet": true,
+          "vehicles": [
+            "74-47"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "851",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "840",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 2,
+      "klokkeslett": "16:53",
+      "fra_tog": "821",
+      "til_tog": "828",
+      "settnr_import": "74-44",
+      "spor_raw": "",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "821",
+          "funnet": true,
+          "vehicles": [
+            "74-51",
+            "74-39"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "828",
+          "funnet": true,
+          "vehicles": [
+            "74-06"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "821",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "828",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 3,
+      "klokkeslett": "17:30",
+      "fra_tog": "853/1",
+      "til_tog": "854/2",
+      "settnr_import": "74-12",
+      "spor_raw": "1n",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "853",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "854",
+          "funnet": true,
+          "vehicles": [
+            "74-19",
+            "74-38"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "853",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "854",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 4,
+      "klokkeslett": "17:42",
+      "fra_tog": "861",
+      "til_tog": "836",
+      "settnr_import": "74-06",
+      "spor_raw": "5m-3s",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "861",
+          "funnet": true,
+          "vehicles": [
+            "70-12"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "836",
+          "funnet": true,
+          "vehicles": [
+            "74-37"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "861",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "836",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 5,
+      "klokkeslett": "17:53",
+      "fra_tog": "823/1",
+      "til_tog": "852",
+      "settnr_import": "74-42",
+      "spor_raw": "6ss-3n",
+      "status": "samsvar_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "823",
+          "funnet": true,
+          "vehicles": [
+            "74-20",
+            "75-17"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "852",
+          "funnet": true,
+          "vehicles": [
+            "74-42"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "823",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "852",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 6,
+      "klokkeslett": "18:30",
+      "fra_tog": "855/1",
+      "til_tog": "856",
+      "settnr_import": "74-11",
+      "spor_raw": "1s-bos",
+      "status": "samsvar_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "855",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "856",
+          "funnet": true,
+          "vehicles": [
+            "74-11"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "855",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "856",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 7,
+      "klokkeslett": "18:42",
+      "fra_tog": "863",
+      "til_tog": "864",
+      "settnr_import": "70-06",
+      "spor_raw": "6-11s",
+      "status": "samsvar_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "863",
+          "funnet": true,
+          "vehicles": [
+            "70-06"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "864",
+          "funnet": true,
+          "vehicles": [
+            "70-06"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "863",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "864",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 8,
+      "klokkeslett": "18:53",
+      "fra_tog": "825/2",
+      "til_tog": "806/1",
+      "settnr_import": "74-04",
+      "spor_raw": "12s",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "825",
+          "funnet": true,
+          "vehicles": [
+            "74-44",
+            "74-12"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "806",
+          "funnet": true,
+          "vehicles": [
+            "74-07",
+            "74-39"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "825",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "806",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 9,
+      "klokkeslett": "20:53",
+      "fra_tog": "829",
+      "til_tog": "rep",
+      "settnr_import": "74-49",
+      "spor_raw": "6-5s",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "829",
+          "funnet": true,
+          "vehicles": [
+            "74-51",
+            "74-37"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "rep",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "ikke_relevant"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "829",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "rep",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "ikke_relevant"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 10,
+      "klokkeslett": "20:59",
+      "fra_tog": "2489",
+      "til_tog": "2470",
+      "settnr_import": "70-14",
+      "spor_raw": "1s",
+      "status": "samsvar_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "2489",
+          "funnet": true,
+          "vehicles": [
+            "70-14"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "2470",
+          "funnet": true,
+          "vehicles": [
+            "70-14"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "2489",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "2470",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 11,
+      "klokkeslett": "21:53",
+      "fra_tog": "831",
+      "til_tog": "838",
+      "settnr_import": "74-07",
+      "spor_raw": "",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "831",
+          "funnet": true,
+          "vehicles": [
+            "74-39",
+            "74-22"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "838",
+          "funnet": true,
+          "vehicles": [
+            "74-22"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "831",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "838",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 12,
+      "klokkeslett": "22:53",
+      "fra_tog": "833",
+      "til_tog": "rep",
+      "settnr_import": "74-48",
+      "spor_raw": "6-5m",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "833",
+          "funnet": true,
+          "vehicles": [
+            "74-47",
+            "74-20"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "rep",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "ikke_relevant"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "833",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "rep",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "ikke_relevant"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 13,
+      "klokkeslett": "22:53",
+      "fra_tog": "835",
+      "til_tog": "802",
+      "settnr_import": "74-44",
+      "spor_raw": "6-3n",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "835",
+          "funnet": true,
+          "vehicles": [
+            "74-06"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "802",
+          "funnet": true,
+          "vehicles": [
+            "75-17"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "835",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "802",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 14,
+      "klokkeslett": "00:50",
+      "fra_tog": "837",
+      "til_tog": "808/2",
+      "settnr_import": "74-47",
+      "spor_raw": "6s-6n",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "837",
+          "funnet": true,
+          "vehicles": [
+            "75-17"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "808",
+          "funnet": true,
+          "vehicles": [
+            "74-37",
+            "74-51"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "837",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "808",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    },
+    {
+      "linje": 15,
+      "klokkeslett": "01:45",
+      "fra_tog": "839",
+      "til_tog": "808/1",
+      "settnr_import": "75-17",
+      "spor_raw": "6s",
+      "status": "avvik_idag",
+      "idag": {
+        "fra_tog": {
+          "tog": "839",
+          "funnet": true,
+          "vehicles": [
+            "74-12"
+          ],
+          "kilde": "departureVehicles"
+        },
+        "til_tog": {
+          "tog": "808",
+          "funnet": true,
+          "vehicles": [
+            "74-37",
+            "74-51"
+          ],
+          "kilde": "departureVehicles"
+        }
+      },
+      "imorgen": {
+        "fra_tog": {
+          "tog": "839",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        },
+        "til_tog": {
+          "tog": "808",
+          "funnet": false,
+          "vehicles": [],
+          "kilde": "mangler"
+        }
+      },
+      "advarsler": [
+        "Importert kjøretøy samsvarer ikke med dagens Tursatt/Balise for fra_tog eller til_tog.",
+        "Morgendagens kjøretøydata mangler foreløpig, derfor er imorgen-sammenligning ikke mulig."
+      ]
+    }
+  ]
+}
