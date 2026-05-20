@@ -126,6 +126,28 @@ def suggest_candidate_slots_for_production(row, status):
 
 
 
+
+def explain_reserved_slot(row, slot):
+    to_train = str(row.get("to_train", "")).strip()
+
+    if slot in {"10S", "11S", "12S"}:
+        return f"{slot} valgt fordi S må fylles før N i buttspor"
+
+    if slot in {"10N", "11N", "12N"}:
+        return f"{slot} valgt fordi S i samme buttspor allerede er opptatt/reservert"
+
+    if slot.startswith("5"):
+        return f"{slot} valgt som fleksibelt kandidatspor når buttspor prioriteres bort eller er brukt"
+
+    if slot.startswith("1"):
+        return f"{slot} valgt som tilgjengelig alternativ for tog {to_train}, men må vurderes mot trafikkbildet"
+
+    if slot.startswith("4"):
+        return f"{slot} valgt som reserve-/parkeringskandidat"
+
+    return "valgt som første ledige kandidat etter gjeldende prioritering"
+
+
 def choose_first_candidate_slot(row, status):
     candidates_text = suggest_candidate_slots_for_production(row, status)
 
@@ -150,7 +172,8 @@ def simulate_production_reservations(rows, base_status):
             continue
 
         simulated_status[slot] = row.get("vehicle")
-        assignments.append((row, slot, "reservert"))
+        reason = explain_reserved_slot(row, slot)
+        assignments.append((row, slot, "reservert", reason))
 
     return assignments
 
@@ -298,8 +321,14 @@ def main():
 
     print("\n=== Simulert første reservasjon av produksjonsspor ===")
     reservations = simulate_production_reservations(data.get("rows", []), status)
-    for row, slot, reservation_status in reservations:
-        print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {slot} ({reservation_status})')
+    for item in reservations:
+        if len(item) == 4:
+            row, slot, reservation_status, reason = item
+        else:
+            row, slot, reservation_status = item
+            reason = ""
+        suffix = f" | {reason}" if reason else ""
+        print(f'{row["time"]} | {row["vehicle"]} | {row["from_train"]} -> {row["to_train"]}: {slot} ({reservation_status}){suffix}')
 
     print("\n=== Foreslått første handling uten Til spor ===")
     for row in data.get("rows", []):
