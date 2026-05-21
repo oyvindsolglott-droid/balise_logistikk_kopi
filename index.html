@@ -1243,11 +1243,11 @@ button{padding:12px 12px}
 <div class="zoom-wrap">
 <div class="zoom-inner" id="sdeVaktplanZoom">
 <div class="sde-import-report" id="sdeImportReport">
-<div class="sde-import-report-title">Togplassering mot Tursatt/Balise – testgrunnlag</div>
-<div class="sde-import-report-content" id="sdeImportReportText">Rapport ikke lest ennå.</div>
+<div class="sde-import-report-title">SDE vaktplan</div>
+<div class="sde-import-report-content" id="sdeImportReportText">Testgrunnlaget er deaktivert. Videre SDE skal bygge på faktisk Sporplan, Grunnoppstilling, Tursatt, Turnering Kveld/Natt og Planlegge Skiftebevegelser.</div>
 </div>
 <div class="note">
-Foreløpig vises testimport sammenlignet mot dagens Tursatt/Balise-data. Dette er fortsatt ikke operativ fasit, men en avvikskontroll som forklarer hvor importen ikke samsvarer med Tursatt. Morgendagens kjøretøydata kan fortsatt mangle.
+Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at tidligere testgrunnlag forveksles med operativ status.
 </div>
 <table id="sdeVaktplanTable" style="display:none"></table>
 </div>
@@ -3798,17 +3798,8 @@ function renderSdeTursattComparison(data){
 
 async function loadSdeImportReport(){
   const el = document.getElementById("sdeImportReportText");
-  if(!el) return;
-
-  try{
-    const response = await fetch("data/sde_togplassering_tursatt_sammenligning.json", {cache:"no-store"});
-    if(!response.ok){
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const data = await response.json();
-    renderSdeTursattComparison(data);
-  }catch(err){
-    el.textContent = "Kunne ikke lese data/sde_togplassering_tursatt_sammenligning.json. Kjør sde_compare_togplassering_tursatt.py og kontroller at sammenligningsfilen finnes.";
+  if(el){
+    el.textContent = "Testgrunnlaget er deaktivert. Videre SDE skal bygge på faktisk Sporplan, Grunnoppstilling, Tursatt, Turnering Kveld/Natt og Planlegge Skiftebevegelser.";
   }
 }
 
@@ -3868,7 +3859,6 @@ function activateTab(name){
 
   if(name === "sdeVaktplan"){
     buildSdeVaktplan();
-    loadSdeImportReport();
   }
 }
 
@@ -4370,7 +4360,6 @@ buildTurnering("turneringNattTable","turneringNatt");
 buildGrunnoppstilling();
 buildInndata();
 buildSdeVaktplan();
-loadSdeImportReport();
 buildSporplan();
 buildOppstilling();
 initViewControls();
