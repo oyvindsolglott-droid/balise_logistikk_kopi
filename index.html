@@ -381,9 +381,9 @@ box-shadow:0 0 0 4px #f97316 inset,0 0 0 8px #7c3aed inset,0 0 0 2px #3b0764;
   bottom:4px;
   right:6px;
   z-index:5;
-  font-size:34px;
+  font-size:44px;
   line-height:1;
-  color:#f59e0b;
+  color:#dc2626;
   text-shadow:
     0 1px 0 #111827,
     1px 0 0 #111827,
@@ -495,8 +495,43 @@ overflow:hidden
 .slot.empty.orange{background-color:var(--orange);color:var(--orange-text)}
 .slot.filled{background-color:rgba(229,231,235,.70);color:#000}
 .slot.wash-filled{background-color:rgba(187,247,208,.72);color:#000;border-color:var(--green-border)}
+
+.slot.filled:not(.rep-slot){
+  background-color:#000;
+  color:#fff;
+}
+
+.slot.wash-filled:not(.rep-slot){
+  background-color:#000;
+  color:#fff;
+}
 .slot-top{display:block;width:100%}
 .slot-bottom{display:block;width:100%}
+
+.slot-bottom.mat{
+  display:inline-block;
+  width:auto;
+  max-width:96%;
+  margin-top:2px;
+  padding:2px 6px;
+  border-radius:7px;
+  background:rgba(0,0,0,.86);
+  color:#fff;
+  border:1px solid rgba(255,255,255,.82);
+  font-size:16px;
+  font-weight:950;
+  line-height:1.15;
+  letter-spacing:.02em;
+  text-shadow:0 1px 2px rgba(0,0,0,.9);
+}
+
+.slot.rep-slot .slot-bottom.mat{
+  background:#dc2626;
+  color:#fff;
+  border:2px solid #fecaca;
+  box-shadow:0 0 0 2px rgba(220,38,38,.35);
+}
+
 .slot-address{
 width:100%;
 margin-top:1.1em;
@@ -1360,6 +1395,17 @@ Kjøretøy: 74-44
 Tømme: j</pre>
 <p>Programmet bør da tolke dette som at 74-44 skal via spor 6 for WC/vann før videre plassering.</p>
 <p>Bruk derfor <strong>j</strong> bare når kjøretøyet faktisk skal tømmes eller fylles.</p>
+
+<h3>Anbefalt fremgangsmåte før planlegging</h3>
+<p><strong>Start alltid med å skaffe riktig nåbilde.</strong> Programmet blir ikke bedre enn grunnlaget som legges inn.</p>
+<ol>
+<li><strong>Oppdater Grunnoppstilling.</strong> Gå fysisk gjennom tomta og registrer hva som faktisk står i hver slot.</li>
+<li><strong>Sjekk Tursatt mot Topas Toginfo.</strong> Kontroller at ankommende tog og kjøretøy stemmer med Topas Toginfo / kjøretøy før du bruker dem videre som grunnlag.</li>
+<li><strong>Merk kjøretøy som skal ut av drift.</strong> Dersom et kjøretøy skal til reparasjon eller verkstedflyt, marker dette med <strong>Til rep = j</strong> i Grunnoppstilling eller Planlegge Skiftebevegelser.</li>
+<li><strong>Planlegg skiftebevegelser.</strong> Bruk Planlegge Skiftebevegelser til å registrere fra spor, til spor, skifter og eventuell rep-status.</li>
+<li><strong>Marker utført når bevegelsen er gjort.</strong> Skriv <strong>f</strong> eller <strong>j</strong> i Utført-kolonnen. Da regner programmet kjøretøyet som flyttet til ny faktisk plassering.</li>
+</ol>
+<p>Hvis Grunnoppstilling eller Tursatt-kontrollen er feil, vil Sporplan og senere SDE-vurderinger få feil utgangspunkt.</p>
 
 <h3>Grunnoppstilling</h3>
 <p><strong>Grunnoppstilling må fylles ut ved fysisk kontroll av tomta før SDE brukes operativt.</strong></p>
