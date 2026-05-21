@@ -4029,42 +4029,89 @@ async function loadSdeImportReport(){
 }
 
 
+function getApiTimeValue(map, train){
+  const key = normalizeTognr(train);
+  if(!key || !map) return "";
+  const value = map[key];
+  if(!value) return "";
+  if(typeof value === "string") return value;
+  if(typeof value === "object" && value.time) return value.time;
+  return "";
+}
+
+
+function getNormalParkingVehicle(fromTrain, toTrain){
+  const api = state.apiBalise || {};
+  const fromKey = normalizeTognr(fromTrain);
+  const toKey = normalizeTognr(toTrain);
+
+  return sanitizeVehicleValue(
+    api.arrivalVehicles?.[fromKey] ||
+    api.departureVehicles?.[toKey] ||
+    api.vehicles?.[fromKey] ||
+    api.vehicles?.[toKey] ||
+    state.baliseToday?.[fromKey] ||
+    state.baliseToday?.[toKey] ||
+    state.baliseTomorrow?.[fromKey] ||
+    state.baliseTomorrow?.[toKey] ||
+    ""
+  );
+}
+
+
 function buildSdeVaktplan(){
   const table = document.getElementById("sdeVaktplanTable");
   if(!table) return;
 
-  const rows = [
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:00", operator:"Skifter 2", fromTrain:"2489", vehicle:"-", from:"Spor 3", to:"Avklares", operation:"Fast kveldsoppgave", reason:"Skiftes bort fra spor 3. Spor 10 kan ikke brukes når det er uvirksomt.", status:"Planlagt"},
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:12", operator:"Skifter 1", fromTrain:"819", vehicle:"Avklares", from:"9", to:"6N", operation:"Tømming/fylling", reason:"Forbereder kjøretøy til tog 862.", status:"Forslag"},
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:25", operator:"Skifter 2", fromTrain:"835", vehicle:"Avklares", from:"3S", to:"11S", operation:"Produksjonsplassering", reason:"S må inn før N i buttspor når begge posisjoner skal brukes.", status:"Forslag"},
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:38", operator:"Skifter 1", fromTrain:"819", vehicle:"Avklares", from:"6N", to:"11N", operation:"Videre til sluttmål", reason:"862 plasseres på utkjøringsside mot vaskemaskinen.", status:"Forslag"},
-    {shift:"Kveldsvakt 15:00–23:00", time:"21:51", operator:"Skifter 2", fromTrain:"833", vehicle:"Avklares", from:"6S", to:"12N", operation:"Produksjonsplassering", reason:"Målspor fra Togplassering Skien. Kjøretøy må hentes dynamisk fra Tursatt/Sporplan.", status:"Avklares"},
-    {shift:"Nattevakt 23:00–07:00", time:"00:01", operator:"Skifter 2", fromTrain:"2470", vehicle:"-", from:"Faktisk spor", to:"-", operation:"Fast nattoppgave", reason:"Uttak kan begynne. Faktisk Sporplan overstyrer normalplassering.", status:"Planlagt"},
-    {shift:"Nattevakt 23:00–07:00", time:"05:00", operator:"Skifter 2", fromTrain:"2470", vehicle:"-", from:"Faktisk spor", to:"Spor 2", operation:"Fast nattoppgave", reason:"Skiftes til togspor.", status:"Planlagt"},
-    {shift:"Nattevakt 23:00–07:00", time:"06:00", operator:"Skifter 2", fromTrain:"808", vehicle:"-", from:"Faktisk spor", to:"Spor 3", operation:"Fast nattoppgave", reason:"Skiftes mot spor 3. Klargjøring av 22xx-tog utgår natt til lørdag og natt til søndag.", status:"Planlagt"}
+  const api = state.apiBalise || {};
+
+  const pairs = [
+    {fromTrain:"851", toTrain:"852"},
+    {fromTrain:"855", toTrain:"856"},
+    {fromTrain:"861", toTrain:"862"},
+    {fromTrain:"863", toTrain:"864"}
   ];
 
-  table.innerHTML = "<thead><tr><th>Tid</th><th>Skifter</th><th>Fra tog</th><th>Kjøretøy</th><th>Fra spor</th><th>Til spor</th><th>Operasjon</th><th>Begrunnelse</th><th>Status</th></tr></thead>";
+  const rows = pairs.map(pair=>{
+    const vehicle = getNormalParkingVehicle(pair.fromTrain, pair.toTrain);
+    return {
+      fromTrain: pair.fromTrain,
+      arrival: getApiTimeValue(api.arrivals, pair.fromTrain),
+      vehicle: vehicle || "Avklares",
+      toTrain: pair.toTrain,
+      departure: getApiTimeValue(api.departures, pair.toTrain) || state.baliseTodayDepartures?.[pair.toTrain] || state.baliseTomorrowDepartures?.[pair.toTrain] || "",
+      operation: "Normal parkering Skien",
+      status: vehicle ? "Må håndteres" : "Avklares",
+      reason: "85x/86x normal drift. Kjøretøy må plasseres ut fra faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor."
+    };
+  });
+
+  const report = document.getElementById("sdeImportReportText");
+  if(report){
+    report.textContent = "Normal parkering Skien 85x/86x: første oversikt viser togpar og kjøretøy som normalt må håndteres. Dette er ikke en automatisk sporplassering ennå.";
+  }
+
+  table.style.display = "table";
+  table.innerHTML = "<thead><tr><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Til tog</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
 
   const body = document.createElement("tbody");
+
   rows.forEach(row=>{
     const tr = document.createElement("tr");
-    ["time","operator","fromTrain","vehicle","from","to","operation","reason","status"].forEach(key=>{
+    ["fromTrain","arrival","vehicle","toTrain","departure","operation","status","reason"].forEach(key=>{
       const td = document.createElement("td");
-      const value = key === "vehicle" && row.vehicle === "Avklares"
-        ? getSdeVehicleForFromTrain(row.fromTrain)
-        : row[key];
-      td.textContent = value || "";
-      if(key === "operator" && row.operator === "Skifter 1"){
-        td.classList.add("sde-vaktplan-skifter-1");
+      td.textContent = row[key] || "";
+      if(key === "status" && row.status === "Må håndteres"){
+        td.style.fontWeight = "800";
       }
-      if(key === "operator" && row.operator === "Skifter 2"){
-        td.classList.add("sde-vaktplan-skifter-2");
+      if(key === "vehicle"){
+        td.style.fontWeight = "800";
       }
       tr.appendChild(td);
     });
     body.appendChild(tr);
   });
+
   table.appendChild(body);
 }
 
