@@ -1452,7 +1452,7 @@ Tømme: j</pre>
 <ol>
 <li><strong>Oppdater Grunnoppstilling.</strong> Gå fysisk gjennom tomta og registrer hva som faktisk står i hver slot.</li>
 <li><strong>Sjekk Tursatt mot Topas Toginfo.</strong> Kontroller at ankommende tog og kjøretøy stemmer med Topas Toginfo / kjøretøy før du bruker dem videre som grunnlag.</li>
-<li><strong>Merk kjøretøy som skal ut av drift.</strong> Dersom et kjøretøy skal til reparasjon eller verkstedflyt, marker dette med <strong>Til rep = j</strong> i Grunnoppstilling eller Planlegge Skiftebevegelser.</li>
+<li><strong>Merk kjøretøy som skal ut av drift.</strong> Bruk <strong>rep/drei</strong>-feltet der dette finnes. Skriv <strong>r</strong> for reparasjon/verkstedflyt, eller <strong>d</strong> for hjuldreiing. Begge deler behandles som kjøretøy som skal ut av normal drift.</li>
 <li><strong>Planlegg skiftebevegelser.</strong> Bruk Planlegge Skiftebevegelser til å registrere fra spor, til spor, skifter og eventuell rep-status.</li>
 <li><strong>Marker utført når bevegelsen er gjort.</strong> Skriv <strong>f</strong> eller <strong>j</strong> i Utført-kolonnen. Da regner programmet kjøretøyet som flyttet til ny faktisk plassering.</li>
 </ol>
@@ -1461,11 +1461,12 @@ Tømme: j</pre>
 <h3>Grunnoppstilling</h3>
 <p><strong>Grunnoppstilling må fylles ut ved fysisk kontroll av tomta før SDE brukes operativt.</strong></p>
 <p>Programmet kan ikke vite sikkert hva som faktisk står på stasjonen uten at dette registreres manuelt. Tursatt og Balise kan vise togdata, men de erstatter ikke fysisk kontroll av sporene.</p>
-<p>Gå rundt på tomta og registrer hvilket kjøretøy som står i hver slot. Hvis kjøretøyet skal til reparasjon eller verkstedflyt, skriv <strong>j</strong> i kolonnen <strong>Til rep</strong>.</p>
-<pre>5s = 74-50 | Til rep = j
-3m = 74-42
+<p>Gå rundt på tomta og registrer hvilket kjøretøy som står i hver slot. Hvis kjøretøyet skal ut av normal drift, bruk kolonnen <strong>rep/drei</strong>.</p>
+<pre>5s = 74-50 | rep/drei = r
+3m = 74-42 | rep/drei = d
 6n = 75-17</pre>
-<p>Grunnoppstilling brukes som startstatus i Sporplan. Det betyr at kjøretøyene du legger inn her vises som fysisk plassert i Sporplan. Hvis Til rep er satt til j, får samme slot rep-varseltrekant.</p>
+<p><strong>r</strong> betyr reparasjon/verkstedflyt. <strong>d</strong> betyr dreiing/hjuldreiing. Begge gir rød varsling i Sporplan. Ved dreiing vises <strong>DREI</strong> foran kjøretøynummeret.</p>
+<p>Grunnoppstilling brukes som startstatus i Sporplan. Det betyr at kjøretøyene du legger inn her vises som fysisk plassert i Sporplan. Hvis rep/drei er satt til r eller d, får samme slot rød varsling.</p>
 <p>Grunnoppstilling er likevel <strong>flyktig</strong>. Når du senere registrerer en ferdig skiftebevegelse i Planlegge Skiftebevegelser, overstyrer den grunnoppstillingen.</p>
 <pre>Grunnoppstilling:
 5s = 74-50
@@ -1485,8 +1486,10 @@ Utført = f</pre>
 fra spor
 til spor
 om oppdraget er utført
+rep/drei
 eventuelle merknader</pre>
 <p>Planlagte bevegelser som ikke er utført, kan vises tydelig i Sporplan. Når en bevegelse merkes som utført, oppdateres logikken slik at kjøretøyet regnes som plassert på nytt sted.</p>
+<p>I kolonnen <strong>Til rep</strong> i Planlegge Skiftebevegelser kan du skrive <strong>r</strong> for reparasjon/verkstedflyt eller <strong>d</strong> for dreiing/hjuldreiing. <strong>d</strong> gir samme røde varsel som rep, men Sporplan viser <strong>DREI</strong> foran kjøretøynummeret.</p>
 
 <h3>Turnering Natt</h3>
 <p>Turnering Natt brukes til å se nattens kjøretøyflyt og produksjon.</p>
