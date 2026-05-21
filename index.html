@@ -4122,6 +4122,25 @@ function shouldCancelPartParking(row){
 }
 
 
+function getSdeCurrentSlotForVehicle(vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token || token === "annullert" || token === "avklares") return "";
+
+  const rows = computeInndata();
+  const found = rows.find(row=>normalizeVehicleToken(row.mat) === token);
+  return found ? normalizeSlot(found.slot) : "";
+}
+
+
+function getSdeInitialSuggestedSlot(row){
+  if(!row) return "";
+  if(row.status === "Annullert") return "Ingen";
+  if(!row.vehicle || row.vehicle === "Avklares") return "Avvent ankomst";
+  if(!row.currentSlot) return "Avvent ankomst";
+  return "Bli stående / vurderes";
+}
+
+
 function getCurrentSdeDayType(){
   try{
     const weekday = new Intl.DateTimeFormat("en-US", {
@@ -4197,20 +4216,29 @@ function buildSdeVaktplan(){
         : "";
       const cancelled = shouldCancelPartParking(row);
 
-      return {
+      const displayVehicle = cancelled ? "Annullert" : (vehicle || "Avklares");
+      const status = cancelled ? "Annullert" : (vehicle ? "Må håndteres" : "Avklares");
+      const currentSlot = getSdeCurrentSlotForVehicle(displayVehicle);
+
+      const result = {
         dayType: row.dayType,
         fromTrain: row.fromTrain,
         arrival,
-        vehicle: cancelled ? "Annullert" : (vehicle || "Avklares"),
+        vehicle: displayVehicle,
+        currentSlot: currentSlot || (displayVehicle === "Avklares" ? "Avvent ankomst" : ""),
+        suggestedSlot: "",
         toTrain: row.toTrain,
         part: row.part,
         departure,
         operation: "Normal parkering Skien",
-        status: cancelled ? "Annullert" : (vehicle ? "Må håndteres" : "Avklares"),
+        status,
         reason: cancelled
           ? `Annullert: ${row.toTrain}/${row.part} forventer del av to kjøretøy, men Tursatt/Balise viser bare ett kjøretøy på tog ${row.toTrain}.`
           : "Normal drift. Toget/settdelen skal vurderes ut fra faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor. Oppgitt spor fra papirgrunnlaget brukes ikke her."
       };
+
+      result.suggestedSlot = getSdeInitialSuggestedSlot(result);
+      return result;
     });
 
   const report = document.getElementById("sdeImportReportText");
@@ -4219,13 +4247,13 @@ function buildSdeVaktplan(){
   }
 
   table.style.display = "table";
-  table.innerHTML = "<thead><tr><th>Dag</th><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Til tog</th><th>Del</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>Dag</th><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Nåværende spor</th><th>Foreslått spor</th><th>Til tog</th><th>Del</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
 
   const body = document.createElement("tbody");
 
   rows.forEach(row=>{
     const tr = document.createElement("tr");
-    ["dayType","fromTrain","arrival","vehicle","toTrain","part","departure","operation","status","reason"].forEach(key=>{
+    ["dayType","fromTrain","arrival","vehicle","currentSlot","suggestedSlot","toTrain","part","departure","operation","status","reason"].forEach(key=>{
       const td = document.createElement("td");
       td.textContent = row[key] || "";
       if(key === "status" && row.status === "Må håndteres"){
