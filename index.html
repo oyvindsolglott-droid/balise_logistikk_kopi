@@ -1364,11 +1364,11 @@ Tømme: j</pre>
 <h3>Grunnoppstilling</h3>
 <p><strong>Grunnoppstilling må fylles ut ved fysisk kontroll av tomta før SDE brukes operativt.</strong></p>
 <p>Programmet kan ikke vite sikkert hva som faktisk står på stasjonen uten at dette registreres manuelt. Tursatt og Balise kan vise togdata, men de erstatter ikke fysisk kontroll av sporene.</p>
-<p>Gå rundt på tomta og registrer hvilket kjøretøy som står i hver slot:</p>
-<pre>5s = 74-50
+<p>Gå rundt på tomta og registrer hvilket kjøretøy som står i hver slot. Hvis kjøretøyet skal til reparasjon eller verkstedflyt, skriv <strong>j</strong> i kolonnen <strong>Til rep</strong>.</p>
+<pre>5s = 74-50 | Til rep = j
 3m = 74-42
 6n = 75-17</pre>
-<p>Grunnoppstilling brukes som startstatus i Sporplan. Det betyr at kjøretøyene du legger inn her vises som fysisk plassert i Sporplan.</p>
+<p>Grunnoppstilling brukes som startstatus i Sporplan. Det betyr at kjøretøyene du legger inn her vises som fysisk plassert i Sporplan. Hvis Til rep er satt til j, får samme slot rep-varseltrekant.</p>
 <p>Grunnoppstilling er likevel <strong>flyktig</strong>. Når du senere registrerer en ferdig skiftebevegelse i Planlegge Skiftebevegelser, overstyrer den grunnoppstillingen.</p>
 <pre>Grunnoppstilling:
 5s = 74-50
@@ -1884,6 +1884,7 @@ function makeDefaultState(){
     oppstillingModes:Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode])),
     oppstillingOverrides:{},
     grunnoppstilling:{},
+    grunnoppstillingRep:{},
     kjoretoy:{},
     baliseToday:{},
     baliseTomorrow:{},
@@ -1926,6 +1927,7 @@ state.turneringNatt = migrateNattRows(state.turneringNatt);
 if(!state.oppstillingModes) state.oppstillingModes=Object.fromEntries(fixedOppstillingRows.map(r=>[r.train,r.mode]));
 if(!state.oppstillingOverrides) state.oppstillingOverrides={};
 if(!state.grunnoppstilling) state.grunnoppstilling={};
+if(!state.grunnoppstillingRep) state.grunnoppstillingRep={};
 if(!state.kjoretoy) state.kjoretoy={};
 if(!state.baliseToday) state.baliseToday={};
 if(!state.baliseTomorrow) state.baliseTomorrow={};
@@ -2628,6 +2630,12 @@ function isRepMarker(value){
 function getKveldRepSlots(){
   const slots = new Set();
 
+  Object.entries(state.grunnoppstillingRep || {}).forEach(([slot,value])=>{
+    if(!isRepMarker(value)) return;
+    const normalizedSlot = normalizeSlot(slot);
+    if(normalizedSlot) slots.add(normalizedSlot);
+  });
+
   (state.turneringKveld || []).forEach(row=>{
     if(!row || row.type) return;
     if(isRepMarker(row.f)){
@@ -2826,8 +2834,9 @@ function buildGrunnoppstilling(){
   if(!table) return;
 
   if(!state.grunnoppstilling) state.grunnoppstilling={};
+  if(!state.grunnoppstillingRep) state.grunnoppstillingRep={};
 
-  table.innerHTML="<thead><tr><th>Slot</th><th>Kjøretøy parkert fysisk på tomta</th></tr></thead>";
+  table.innerHTML="<thead><tr><th>Slot</th><th>Kjøretøy parkert fysisk på tomta</th><th>Til rep</th></tr></thead>";
 
   const body=document.createElement("tbody");
 
@@ -2860,6 +2869,29 @@ function buildGrunnoppstilling(){
     });
     vehicleTd.appendChild(inp);
     tr.appendChild(vehicleTd);
+
+    const repTd=document.createElement("td");
+    repTd.classList.add("rep-cell");
+    const repInp=document.createElement("input");
+    repInp.type="text";
+    repInp.inputMode="text";
+    repInp.autocapitalize="off";
+    repInp.autocorrect="off";
+    repInp.spellcheck=false;
+    repInp.placeholder="";
+    repInp.value=String(state.grunnoppstillingRep?.[slot] || "");
+    repInp.addEventListener("input",e=>{
+      const value=String(e.target.value || "").trim();
+      if(value){
+        state.grunnoppstillingRep[slot]=value;
+      }else{
+        delete state.grunnoppstillingRep[slot];
+      }
+      buildSporplan();
+      persist(true);
+    });
+    repTd.appendChild(repInp);
+    tr.appendChild(repTd);
 
     body.appendChild(tr);
   });
