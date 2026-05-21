@@ -1241,6 +1241,32 @@ button{padding:12px 12px}
   white-space:nowrap;
 }
 
+
+#sdeVaktplan .zoom-wrap{
+  overflow:auto !important;
+  max-width:100%;
+  max-height:calc(100vh - 230px);
+  -webkit-overflow-scrolling:touch;
+}
+
+#sdeVaktplanTable{
+  width:max-content;
+  min-width:1080px;
+  table-layout:auto;
+}
+
+#sdeVaktplanTable th,
+#sdeVaktplanTable td{
+  white-space:nowrap;
+}
+
+#sdeVaktplanTable th:last-child,
+#sdeVaktplanTable td:last-child{
+  white-space:normal;
+  min-width:340px;
+  max-width:520px;
+}
+
 </style>
 </head>
 <body>
@@ -4065,40 +4091,78 @@ function buildSdeVaktplan(){
 
   const api = state.apiBalise || {};
 
-  const pairs = [
-    {fromTrain:"851", toTrain:"852"},
-    {fromTrain:"855", toTrain:"856"},
-    {fromTrain:"861", toTrain:"862"},
-    {fromTrain:"863", toTrain:"864"}
+  const normalRows = [
+    {dayType:"Hverdag", fromTrain:"851", arrival:"16:26", toTrain:"852", part:""},
+    {dayType:"Hverdag", fromTrain:"821", arrival:"16:53", toTrain:"802", part:"1"},
+    {dayType:"Hverdag", fromTrain:"853", arrival:"17:26", toTrain:"854", part:""},
+    {dayType:"Hverdag", fromTrain:"861", arrival:"17:39", toTrain:"864", part:""},
+    {dayType:"Hverdag", fromTrain:"823", arrival:"17:53", toTrain:"802", part:"2"},
+    {dayType:"Hverdag", fromTrain:"855", arrival:"18:26", toTrain:"856", part:""},
+    {dayType:"Hverdag", fromTrain:"863", arrival:"18:39", toTrain:"862", part:""},
+    {dayType:"Hverdag", fromTrain:"825", arrival:"18:53", toTrain:"804", part:"1"},
+    {dayType:"Hverdag", fromTrain:"12487", arrival:"19:28", toTrain:"", part:""},
+    {dayType:"Hverdag", fromTrain:"829", arrival:"20:53", toTrain:"804", part:"2"},
+    {dayType:"Hverdag", fromTrain:"2489", arrival:"20:59", toTrain:"", part:""},
+    {dayType:"Hverdag", fromTrain:"831", arrival:"21:53", toTrain:"806", part:"1"},
+    {dayType:"Hverdag", fromTrain:"833", arrival:"22:53", toTrain:"806", part:"2"},
+    {dayType:"Hverdag", fromTrain:"835", arrival:"23:53", toTrain:"808", part:"1"},
+    {dayType:"Hverdag", fromTrain:"837", arrival:"00:50", toTrain:"808", part:"2"},
+    {dayType:"Hverdag", fromTrain:"839", arrival:"01:45", toTrain:"810", part:"2"},
+
+    {dayType:"Lørdag", fromTrain:"819", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Lørdag", fromTrain:"819", arrival:"", toTrain:"", part:"2"},
+    {dayType:"Lørdag", fromTrain:"823", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Lørdag", fromTrain:"825", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Lørdag", fromTrain:"827", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Lørdag", fromTrain:"831", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Lørdag", fromTrain:"835", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Lørdag", fromTrain:"839", arrival:"", toTrain:"", part:"1"},
+
+    {dayType:"Søndag", fromTrain:"825", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Søndag", fromTrain:"827", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Søndag", fromTrain:"829", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Søndag", fromTrain:"831", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Søndag", fromTrain:"833", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Søndag", fromTrain:"833", arrival:"", toTrain:"", part:"2"},
+    {dayType:"Søndag", fromTrain:"835", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Søndag", fromTrain:"837", arrival:"", toTrain:"", part:"1"},
+    {dayType:"Søndag", fromTrain:"839", arrival:"", toTrain:"", part:"1"}
   ];
 
-  const rows = pairs.map(pair=>{
-    const vehicle = getNormalParkingVehicle(pair.fromTrain, pair.toTrain);
+  const rows = normalRows.map(row=>{
+    const vehicle = getNormalParkingVehicle(row.fromTrain, row.toTrain);
+    const arrival = row.arrival || getApiTimeValue(api.arrivals, row.fromTrain);
+    const departure = row.toTrain
+      ? (getApiTimeValue(api.departures, row.toTrain) || state.baliseTodayDepartures?.[row.toTrain] || state.baliseTomorrowDepartures?.[row.toTrain] || "")
+      : "";
+
     return {
-      fromTrain: pair.fromTrain,
-      arrival: getApiTimeValue(api.arrivals, pair.fromTrain),
+      dayType: row.dayType,
+      fromTrain: row.fromTrain,
+      arrival,
       vehicle: vehicle || "Avklares",
-      toTrain: pair.toTrain,
-      departure: getApiTimeValue(api.departures, pair.toTrain) || state.baliseTodayDepartures?.[pair.toTrain] || state.baliseTomorrowDepartures?.[pair.toTrain] || "",
+      toTrain: row.toTrain,
+      part: row.part,
+      departure,
       operation: "Normal parkering Skien",
       status: vehicle ? "Må håndteres" : "Avklares",
-      reason: "85x/86x normal drift. Kjøretøy må plasseres ut fra faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor."
+      reason: "Normal drift. Toget/settdelen skal vurderes ut fra faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor. Oppgitt spor fra papirgrunnlaget brukes ikke her."
     };
   });
 
   const report = document.getElementById("sdeImportReportText");
   if(report){
-    report.textContent = "Normal parkering Skien 85x/86x: første oversikt viser togpar og kjøretøy som normalt må håndteres. Dette er ikke en automatisk sporplassering ennå.";
+    report.textContent = "Normal parkering Skien: oversikt over tognummer/settdeler som normalt skal tas ut eller håndteres i Skien. Sporplassering fra papirgrunnlaget er bevisst ignorert.";
   }
 
   table.style.display = "table";
-  table.innerHTML = "<thead><tr><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Til tog</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>Dag</th><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Til tog</th><th>Del</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
 
   const body = document.createElement("tbody");
 
   rows.forEach(row=>{
     const tr = document.createElement("tr");
-    ["fromTrain","arrival","vehicle","toTrain","departure","operation","status","reason"].forEach(key=>{
+    ["dayType","fromTrain","arrival","vehicle","toTrain","part","departure","operation","status","reason"].forEach(key=>{
       const td = document.createElement("td");
       td.textContent = row[key] || "";
       if(key === "status" && row.status === "Må håndteres"){
