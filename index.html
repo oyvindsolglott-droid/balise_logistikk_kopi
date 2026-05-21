@@ -4085,6 +4085,25 @@ function getNormalParkingVehicle(fromTrain, toTrain){
 }
 
 
+function getCurrentSdeDayType(){
+  try{
+    const weekday = new Intl.DateTimeFormat("en-US", {
+      timeZone:"Europe/Oslo",
+      weekday:"short"
+    }).format(new Date());
+
+    if(weekday === "Sat") return "Lørdag";
+    if(weekday === "Sun") return "Søndag";
+    return "Hverdag";
+  }catch(err){
+    const day = new Date().getDay();
+    if(day === 6) return "Lørdag";
+    if(day === 0) return "Søndag";
+    return "Hverdag";
+  }
+}
+
+
 function buildSdeVaktplan(){
   const table = document.getElementById("sdeVaktplanTable");
   if(!table) return;
@@ -4129,30 +4148,34 @@ function buildSdeVaktplan(){
     {dayType:"Søndag", fromTrain:"839", arrival:"", toTrain:"", part:"1"}
   ];
 
-  const rows = normalRows.map(row=>{
-    const vehicle = getNormalParkingVehicle(row.fromTrain, row.toTrain);
-    const arrival = row.arrival || getApiTimeValue(api.arrivals, row.fromTrain);
-    const departure = row.toTrain
-      ? (getApiTimeValue(api.departures, row.toTrain) || state.baliseTodayDepartures?.[row.toTrain] || state.baliseTomorrowDepartures?.[row.toTrain] || "")
-      : "";
+  const currentDayType = getCurrentSdeDayType();
 
-    return {
-      dayType: row.dayType,
-      fromTrain: row.fromTrain,
-      arrival,
-      vehicle: vehicle || "Avklares",
-      toTrain: row.toTrain,
-      part: row.part,
-      departure,
-      operation: "Normal parkering Skien",
-      status: vehicle ? "Må håndteres" : "Avklares",
-      reason: "Normal drift. Toget/settdelen skal vurderes ut fra faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor. Oppgitt spor fra papirgrunnlaget brukes ikke her."
-    };
-  });
+  const rows = normalRows
+    .filter(row=>row.dayType === currentDayType)
+    .map(row=>{
+      const vehicle = getNormalParkingVehicle(row.fromTrain, row.toTrain);
+      const arrival = row.arrival || getApiTimeValue(api.arrivals, row.fromTrain);
+      const departure = row.toTrain
+        ? (getApiTimeValue(api.departures, row.toTrain) || state.baliseTodayDepartures?.[row.toTrain] || state.baliseTomorrowDepartures?.[row.toTrain] || "")
+        : "";
+
+      return {
+        dayType: row.dayType,
+        fromTrain: row.fromTrain,
+        arrival,
+        vehicle: vehicle || "Avklares",
+        toTrain: row.toTrain,
+        part: row.part,
+        departure,
+        operation: "Normal parkering Skien",
+        status: vehicle ? "Må håndteres" : "Avklares",
+        reason: "Normal drift. Toget/settdelen skal vurderes ut fra faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor. Oppgitt spor fra papirgrunnlaget brukes ikke her."
+      };
+    });
 
   const report = document.getElementById("sdeImportReportText");
   if(report){
-    report.textContent = "Normal parkering Skien: oversikt over tognummer/settdeler som normalt skal tas ut eller håndteres i Skien. Sporplassering fra papirgrunnlaget er bevisst ignorert.";
+    report.textContent = `Normal parkering Skien: viser aktuell dagstype (${currentDayType}). Tognummer/settdeler som normalt skal tas ut eller håndteres i Skien. Sporplassering fra papirgrunnlaget er bevisst ignorert.`;
   }
 
   table.style.display = "table";
