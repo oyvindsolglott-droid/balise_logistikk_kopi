@@ -396,6 +396,40 @@ box-shadow:0 0 0 4px #f97316 inset,0 0 0 8px #7c3aed inset,0 0 0 2px #3b0764;
   font-weight:900;
 }
 
+.slot{
+  background-image:url("assets/slot_track_empty.png");
+  background-repeat:no-repeat;
+  background-position:center;
+  background-size:contain;
+}
+
+.slot.filled,
+.slot.wash-filled{
+  background-color:#f8fafc;
+}
+
+.slot-train-image{
+  position:absolute;
+  inset:5px 8px;
+  background-image:url("assets/motorvognsett_top.png");
+  background-repeat:no-repeat;
+  background-position:center;
+  background-size:contain;
+  pointer-events:none;
+  z-index:1;
+  opacity:.92;
+}
+
+.slot-address,
+.slot-train-current,
+.slot-train-next,
+.slot-bottom,
+.slot-plan-badge,
+.slot-rep-badge{
+  position:relative;
+  z-index:3;
+}
+
 .slot-plan-badge{
 display:block;
 width:100%;
@@ -456,11 +490,11 @@ line-height:1.15;
 position:relative;
 overflow:hidden
 }
-.slot.empty.blue{background:var(--blue);color:var(--blue-text)}
-.slot.empty.yellow{background:var(--yellow);color:var(--yellow-text)}
-.slot.empty.orange{background:var(--orange);color:var(--orange-text)}
-.slot.filled{background:var(--grey);color:#000}
-.slot.wash-filled{background:var(--green);color:#000;border-color:var(--green-border)}
+.slot.empty.blue{background-color:var(--blue);color:var(--blue-text)}
+.slot.empty.yellow{background-color:var(--yellow);color:var(--yellow-text)}
+.slot.empty.orange{background-color:var(--orange);color:var(--orange-text)}
+.slot.filled{background-color:rgba(229,231,235,.70);color:#000}
+.slot.wash-filled{background-color:rgba(187,247,208,.72);color:#000;border-color:var(--green-border)}
 .slot-top{display:block;width:100%}
 .slot-bottom{display:block;width:100%}
 .slot-address{
@@ -3416,7 +3450,11 @@ function buildSporplan(){
       const addressColor = getSlotAddressColorClass(slot);
       const sporplanTexts = getSporplanTextsForSlot(slot, info);
 
-      let html = `<span class="slot-address" style="color:${addressColor}">${escapeHtml(slot)}</span>`;
+      let html = "";
+      if(filled){
+        html += `<span class="slot-train-image" aria-hidden="true"></span>`;
+      }
+      html += `<span class="slot-address" style="color:${addressColor}">${escapeHtml(slot)}</span>`;
 
       if(sporplanTexts.currentTrain){
         html += `<span class="slot-train-current" style="color:${addressColor}">${escapeHtml(sporplanTexts.currentTrain)}</span>`;
