@@ -3635,8 +3635,7 @@ function buildSporplan(){
       }
 
       if(info.mat){
-        const matText = dreiSlots.has(normalizeSlot(slot)) ? `DREI ${info.mat}` : info.mat;
-        html += `<span class="slot-bottom mat">${escapeHtml(matText)}</span>`;
+        html += `<span class="slot-bottom mat">${escapeHtml(info.mat)}</span>`;
       }
 
       if(planMarker?.from?.length){
