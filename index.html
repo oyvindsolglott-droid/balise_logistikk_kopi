@@ -4085,6 +4085,43 @@ function getNormalParkingVehicle(fromTrain, toTrain){
 }
 
 
+function splitVehicleList(value){
+  return String(value || "")
+    .split(/[,;+\/]|\s+og\s+/i)
+    .map(v=>sanitizeVehicleValue(v))
+    .filter(Boolean);
+}
+
+
+function getTursattVehicleValueForTrain(train){
+  const api = state.apiBalise || {};
+  const key = normalizeTognr(train);
+  if(!key) return "";
+
+  return sanitizeVehicleValue(
+    api.departureVehicles?.[key] ||
+    api.vehicles?.[key] ||
+    state.baliseToday?.[key] ||
+    state.baliseTomorrow?.[key] ||
+    ""
+  );
+}
+
+
+function getTursattVehicleCountForTrain(train){
+  const value = getTursattVehicleValueForTrain(train);
+  if(!value) return 0;
+  return splitVehicleList(value).length || 1;
+}
+
+
+function shouldCancelPartParking(row){
+  if(!row || !row.part || !row.toTrain) return false;
+  const count = getTursattVehicleCountForTrain(row.toTrain);
+  return count === 1;
+}
+
+
 function getCurrentSdeDayType(){
   try{
     const weekday = new Intl.DateTimeFormat("en-US", {
@@ -4158,18 +4195,21 @@ function buildSdeVaktplan(){
       const departure = row.toTrain
         ? (getApiTimeValue(api.departures, row.toTrain) || state.baliseTodayDepartures?.[row.toTrain] || state.baliseTomorrowDepartures?.[row.toTrain] || "")
         : "";
+      const cancelled = shouldCancelPartParking(row);
 
       return {
         dayType: row.dayType,
         fromTrain: row.fromTrain,
         arrival,
-        vehicle: vehicle || "Avklares",
+        vehicle: cancelled ? "Annullert" : (vehicle || "Avklares"),
         toTrain: row.toTrain,
         part: row.part,
         departure,
         operation: "Normal parkering Skien",
-        status: vehicle ? "Må håndteres" : "Avklares",
-        reason: "Normal drift. Toget/settdelen skal vurderes ut fra faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor. Oppgitt spor fra papirgrunnlaget brukes ikke her."
+        status: cancelled ? "Annullert" : (vehicle ? "Må håndteres" : "Avklares"),
+        reason: cancelled
+          ? `Annullert: ${row.toTrain}/${row.part} forventer del av to kjøretøy, men Tursatt/Balise viser bare ett kjøretøy på tog ${row.toTrain}.`
+          : "Normal drift. Toget/settdelen skal vurderes ut fra faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor. Oppgitt spor fra papirgrunnlaget brukes ikke her."
       };
     });
 
