@@ -1174,6 +1174,52 @@ button{padding:12px 12px}
   margin:3px 0;
 }
 
+
+#grunnoppstillingTable{
+  width:auto;
+  min-width:0;
+  table-layout:auto;
+}
+
+#grunnoppstillingTable th,
+#grunnoppstillingTable td{
+  white-space:nowrap;
+}
+
+#grunnoppstillingTable th:nth-child(1),
+#grunnoppstillingTable td:nth-child(1){
+  width:54px;
+  min-width:54px;
+}
+
+#grunnoppstillingTable th:nth-child(2),
+#grunnoppstillingTable td:nth-child(2){
+  width:118px;
+  min-width:118px;
+  max-width:118px;
+}
+
+#grunnoppstillingTable th:nth-child(3),
+#grunnoppstillingTable td:nth-child(3){
+  width:48px;
+  min-width:48px;
+  max-width:48px;
+  text-align:center;
+}
+
+#grunnoppstillingTable input{
+  box-sizing:border-box;
+}
+
+#grunnoppstillingTable td:nth-child(2) input{
+  width:96px;
+}
+
+#grunnoppstillingTable td:nth-child(3) input{
+  width:34px;
+  text-align:center;
+}
+
 </style>
 </head>
 <body>
@@ -2882,7 +2928,7 @@ function buildGrunnoppstilling(){
   if(!state.grunnoppstilling) state.grunnoppstilling={};
   if(!state.grunnoppstillingRep) state.grunnoppstillingRep={};
 
-  table.innerHTML="<thead><tr><th>Slot</th><th>Kjøretøy parkert fysisk på tomta</th><th>Til rep</th></tr></thead>";
+  table.innerHTML="<thead><tr><th>Slot</th><th>Kjøretøy</th><th>Rep</th></tr></thead>";
 
   const body=document.createElement("tbody");
 
