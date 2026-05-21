@@ -2901,7 +2901,7 @@ function buildGrunnoppstilling(){
     inp.autocapitalize="characters";
     inp.autocorrect="off";
     inp.spellcheck=false;
-    inp.placeholder="f.eks. 74-50";
+    inp.placeholder="";
     inp.value=String(state.grunnoppstilling?.[slot] || "");
     inp.addEventListener("input",e=>{
       const value=String(e.target.value || "").trim();
