@@ -4203,6 +4203,59 @@ function getSdeVehicleDeviationReason(row, actualVehicle, expectedVehicle){
 }
 
 
+function getOpenPlanSkifteRowForVehicle(vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token || token === "annullert" || token === "avklares") return null;
+
+  const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+
+  return rows.find(row=>{
+    if(!row || !isPlanSkifteRowFilled(row)) return false;
+    if(isPlanSkifteFerdig(row?.utfort)) return false;
+
+    const rowToken = normalizeVehicleToken(row.vehicle);
+    return rowToken && rowToken === token;
+  }) || null;
+}
+
+
+function getSdePlanSkifteSuggestedSlot(planRow){
+  if(!planRow) return "";
+
+  const fromSlot = normalizeSlot(planRow.fromSpor);
+  const toSlot = normalizeSlot(planRow.toSpor);
+
+  if(fromSlot && toSlot) return `Planlagt: ${fromSlot} → ${toSlot}`;
+  if(toSlot) return `Planlagt til ${toSlot}`;
+  if(fromSlot) return `Planlagt fra ${fromSlot}`;
+
+  return "Planlagt skiftebevegelse";
+}
+
+
+function getSdePlanSkifteReason(planRow){
+  if(!planRow) return "";
+
+  const parts = [];
+  const time = String(planRow.time || "").trim();
+  const crew = normalizePlanSkifteCrew(planRow.crew);
+  const fromSlot = normalizeSlot(planRow.fromSpor);
+  const toSlot = normalizeSlot(planRow.toSpor);
+  const tilRep = String(planRow.tilRep || "").trim();
+
+  parts.push("Åpen planlagt skiftebevegelse fra Planlegge Skiftebevegelser.");
+
+  if(time) parts.push(`Tid: ${time}.`);
+  if(fromSlot || toSlot) parts.push(`Plan: ${fromSlot || "?"} → ${toSlot || "?"}.`);
+  if(crew) parts.push(`Skifter: ${crew}.`);
+  if(tilRep) parts.push(`Til rep/drei: ${tilRep}.`);
+
+  parts.push("Dette er planlagt handling, ikke automatisk flytting i Sporplan før Utført settes.");
+
+  return parts.join(" ");
+}
+
+
 function getSdeProductionTarget(row){
   if(!row || row.status === "Annullert") return "Ingen";
 
@@ -4315,7 +4368,10 @@ function buildSdeVaktplan(){
       const deviationReason = cancelled ? "" : getSdeVehicleDeviationReason(row, vehicle, expectedVehicle);
 
       const displayVehicle = cancelled ? "Annullert" : (vehicle || "Avklares");
-      const status = cancelled ? "Annullert" : (deviationReason ? "Avvik" : (vehicle ? "Må håndteres" : "Avklares"));
+      const planSkifteRow = cancelled ? null : getOpenPlanSkifteRowForVehicle(displayVehicle);
+      const planSkifteSuggestedSlot = getSdePlanSkifteSuggestedSlot(planSkifteRow);
+      const planSkifteReason = getSdePlanSkifteReason(planSkifteRow);
+      const status = cancelled ? "Annullert" : (deviationReason ? "Avvik" : (planSkifteRow ? "Planlagt" : (vehicle ? "Må håndteres" : "Avklares")));
       const currentSlot = getSdeCurrentSlotForVehicle(displayVehicle);
 
       const result = {
@@ -4332,10 +4388,10 @@ function buildSdeVaktplan(){
         status,
         reason: cancelled
           ? `Annullert: ${row.toTrain}/${row.part} forventer del av to kjøretøy, men Tursatt/Balise viser bare ett kjøretøy på tog ${row.toTrain}.`
-          : (deviationReason || "Normal drift. Første målregel brukes bare som produksjonsmål. Endelig sporvalg må senere vurderes mot faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor.")
+          : ([planSkifteReason, deviationReason].filter(Boolean).join(" ") || "Normal drift. Første målregel brukes bare som produksjonsmål. Endelig sporvalg må senere vurderes mot faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor.")
       };
 
-      result.suggestedSlot = getSdeInitialSuggestedSlot(result);
+      result.suggestedSlot = planSkifteSuggestedSlot || getSdeInitialSuggestedSlot(result);
       return result;
     });
 
@@ -4354,7 +4410,7 @@ function buildSdeVaktplan(){
     ["dayType","fromTrain","arrival","vehicle","currentSlot","suggestedSlot","toTrain","part","departure","operation","status","reason"].forEach(key=>{
       const td = document.createElement("td");
       td.textContent = row[key] || "";
-      if(key === "status" && (row.status === "Må håndteres" || row.status === "Avvik")){
+      if(key === "status" && (row.status === "Må håndteres" || row.status === "Avvik" || row.status === "Planlagt")){
         td.style.fontWeight = "800";
       }
       if(key === "vehicle"){
