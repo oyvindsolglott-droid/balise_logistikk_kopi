@@ -4126,19 +4126,20 @@ function getSdeCurrentSlotForVehicle(vehicle){
   const token = normalizeVehicleToken(vehicle);
   if(!token || token === "annullert" || token === "avklares") return "";
 
-  const vehicleText = String(vehicle || "").trim();
   const rows = computeInndata();
 
   const found = rows.find(row=>{
     const matText = String(row.mat || "").trim();
     if(!matText) return false;
 
-    if(normalizeVehicleToken(matText) === token) return true;
+    const directToken = normalizeVehicleToken(matText);
+    if(directToken === token) return true;
 
-    const tokens = splitVehicleList(matText).map(v=>normalizeVehicleToken(v));
-    if(tokens.includes(token)) return true;
+    const tokens = splitVehicleList(matText)
+      .map(v=>normalizeVehicleToken(v))
+      .filter(Boolean);
 
-    return matText.includes(vehicleText);
+    return tokens.includes(token);
   });
 
   return found ? normalizeSlot(found.slot) : "";
