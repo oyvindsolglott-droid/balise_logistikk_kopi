@@ -4126,18 +4126,66 @@ function getSdeCurrentSlotForVehicle(vehicle){
   const token = normalizeVehicleToken(vehicle);
   if(!token || token === "annullert" || token === "avklares") return "";
 
+  const vehicleText = String(vehicle || "").trim();
   const rows = computeInndata();
-  const found = rows.find(row=>normalizeVehicleToken(row.mat) === token);
+
+  const found = rows.find(row=>{
+    const matText = String(row.mat || "").trim();
+    if(!matText) return false;
+
+    if(normalizeVehicleToken(matText) === token) return true;
+
+    const tokens = splitVehicleList(matText).map(v=>normalizeVehicleToken(v));
+    if(tokens.includes(token)) return true;
+
+    return matText.includes(vehicleText);
+  });
+
   return found ? normalizeSlot(found.slot) : "";
+}
+
+
+function getSdeVehicleForNormalRow(row){
+  if(!row) return "";
+
+  const baseVehicle = getNormalParkingVehicle(row.fromTrain, row.toTrain);
+
+  if(row.part && row.toTrain){
+    const toTrainVehicles = splitVehicleList(getTursattVehicleValueForTrain(row.toTrain));
+    const index = Number(row.part) - 1;
+    if(index >= 0 && toTrainVehicles[index]){
+      return sanitizeVehicleValue(toTrainVehicles[index]);
+    }
+  }
+
+  return baseVehicle;
+}
+
+
+function getSdeProductionTarget(row){
+  if(!row || row.status === "Annullert") return "Ingen";
+
+  const toTrain = normalizeTognr(row.toTrain);
+  const part = String(row.part || "").trim();
+
+  if(toTrain === "802" && part === "1") return "Spor 3 fremre";
+  if(toTrain === "802" && part === "2") return "Spor 3 bakre";
+  if(toTrain === "852") return "Bak 802 / vurder spor 3";
+
+  return "";
 }
 
 
 function getSdeInitialSuggestedSlot(row){
   if(!row) return "";
   if(row.status === "Annullert") return "Ingen";
-  if(!row.vehicle || row.vehicle === "Avklares") return "Avvent ankomst";
-  if(!row.currentSlot) return "Avvent ankomst";
-  return "Bli stående / vurderes";
+
+  const target = getSdeProductionTarget(row);
+
+  if(!row.vehicle || row.vehicle === "Avklares") return target || "Avvent ankomst";
+  if(!row.currentSlot) return target || "Avvent ankomst";
+
+  return target || "Bli stående / vurderes";
 }
 
 
@@ -4209,7 +4257,7 @@ function buildSdeVaktplan(){
   const rows = normalRows
     .filter(row=>row.dayType === currentDayType)
     .map(row=>{
-      const vehicle = getNormalParkingVehicle(row.fromTrain, row.toTrain);
+      const vehicle = getSdeVehicleForNormalRow(row);
       const arrival = row.arrival || getApiTimeValue(api.arrivals, row.fromTrain);
       const departure = row.toTrain
         ? (getApiTimeValue(api.departures, row.toTrain) || state.baliseTodayDepartures?.[row.toTrain] || state.baliseTomorrowDepartures?.[row.toTrain] || "")
@@ -4234,7 +4282,7 @@ function buildSdeVaktplan(){
         status,
         reason: cancelled
           ? `Annullert: ${row.toTrain}/${row.part} forventer del av to kjøretøy, men Tursatt/Balise viser bare ett kjøretøy på tog ${row.toTrain}.`
-          : "Normal drift. Toget/settdelen skal vurderes ut fra faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor. Oppgitt spor fra papirgrunnlaget brukes ikke her."
+          : "Normal drift. Første målregel brukes bare som produksjonsmål. Endelig sporvalg må senere vurderes mot faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor."
       };
 
       result.suggestedSlot = getSdeInitialSuggestedSlot(result);
