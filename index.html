@@ -4163,6 +4163,46 @@ function getSdeVehicleForNormalRow(row){
 }
 
 
+function getSdeExpectedVehicleForNormalRow(row){
+  if(!row) return "";
+
+  const api = state.apiBalise || {};
+  const fromKey = normalizeTognr(row.fromTrain);
+  if(!fromKey) return "";
+
+  return sanitizeVehicleValue(
+    api.arrivalVehicles?.[fromKey] ||
+    api.vehicles?.[fromKey] ||
+    state.baliseToday?.[fromKey] ||
+    state.baliseTomorrow?.[fromKey] ||
+    ""
+  );
+}
+
+
+function haveSameSdeVehicleTokens(a,b){
+  const aTokens = splitVehicleList(a).map(v=>normalizeVehicleToken(v)).filter(Boolean);
+  const bTokens = splitVehicleList(b).map(v=>normalizeVehicleToken(v)).filter(Boolean);
+
+  if(!aTokens.length || !bTokens.length) return true;
+  if(aTokens.length !== bTokens.length) return false;
+
+  return aTokens.every(token=>bTokens.includes(token));
+}
+
+
+function getSdeVehicleDeviationReason(row, actualVehicle, expectedVehicle){
+  if(!row || !row.toTrain || !actualVehicle || !expectedVehicle) return "";
+  if(!row.part) return "";
+  if(haveSameSdeVehicleTokens(actualVehicle, expectedVehicle)) return "";
+
+  const toTrain = normalizeTognr(row.toTrain);
+  const fromTrain = normalizeTognr(row.fromTrain);
+
+  return `Avvik: Tursatt/Balise for tog ${toTrain} viser ${actualVehicle}, mens ankomst-/normalforventning fra tog ${fromTrain} viser ${expectedVehicle}. Bruker Tursatt/Balise som produksjonsgrunnlag.`;
+}
+
+
 function getSdeProductionTarget(row){
   if(!row || row.status === "Annullert") return "Ingen";
 
@@ -4266,14 +4306,16 @@ function buildSdeVaktplan(){
     .filter(row=>row.dayType === currentDayType)
     .map(row=>{
       const vehicle = getSdeVehicleForNormalRow(row);
+      const expectedVehicle = getSdeExpectedVehicleForNormalRow(row);
       const arrival = row.arrival || getApiTimeValue(api.arrivals, row.fromTrain);
       const departure = row.toTrain
         ? (getApiTimeValue(api.departures, row.toTrain) || state.baliseTodayDepartures?.[row.toTrain] || state.baliseTomorrowDepartures?.[row.toTrain] || "")
         : "";
       const cancelled = shouldCancelPartParking(row);
+      const deviationReason = cancelled ? "" : getSdeVehicleDeviationReason(row, vehicle, expectedVehicle);
 
       const displayVehicle = cancelled ? "Annullert" : (vehicle || "Avklares");
-      const status = cancelled ? "Annullert" : (vehicle ? "Må håndteres" : "Avklares");
+      const status = cancelled ? "Annullert" : (deviationReason ? "Avvik" : (vehicle ? "Må håndteres" : "Avklares"));
       const currentSlot = getSdeCurrentSlotForVehicle(displayVehicle);
 
       const result = {
@@ -4290,7 +4332,7 @@ function buildSdeVaktplan(){
         status,
         reason: cancelled
           ? `Annullert: ${row.toTrain}/${row.part} forventer del av to kjøretøy, men Tursatt/Balise viser bare ett kjøretøy på tog ${row.toTrain}.`
-          : "Normal drift. Første målregel brukes bare som produksjonsmål. Endelig sporvalg må senere vurderes mot faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor."
+          : (deviationReason || "Normal drift. Første målregel brukes bare som produksjonsmål. Endelig sporvalg må senere vurderes mot faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor.")
       };
 
       result.suggestedSlot = getSdeInitialSuggestedSlot(result);
@@ -4312,7 +4354,7 @@ function buildSdeVaktplan(){
     ["dayType","fromTrain","arrival","vehicle","currentSlot","suggestedSlot","toTrain","part","departure","operation","status","reason"].forEach(key=>{
       const td = document.createElement("td");
       td.textContent = row[key] || "";
-      if(key === "status" && row.status === "Må håndteres"){
+      if(key === "status" && (row.status === "Må håndteres" || row.status === "Avvik")){
         td.style.fontWeight = "800";
       }
       if(key === "vehicle"){
