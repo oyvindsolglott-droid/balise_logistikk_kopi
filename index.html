@@ -4380,6 +4380,13 @@ function buildSdeVaktplan(){
       const planSkifteSuggestedSlot = getSdePlanSkifteSuggestedSlot(planSkifteRow);
       const planSkifteReason = getSdePlanSkifteReason(planSkifteRow);
       const status = cancelled ? "Annullert" : (deviationReason ? "Avvik" : (planSkifteRow ? "Planlagt" : (vehicle ? "Må håndteres" : "Avklares")));
+      const source = cancelled
+        ? "Annullert"
+        : (planSkifteRow
+          ? "Planlegge Skiftebevegelser"
+          : (deviationReason
+            ? "Tursatt/Balise avvik"
+            : (vehicle ? "Tursatt/Balise / normalplan" : "Mangler datagrunnlag")));
       const currentSlot = getSdeCurrentSlotForVehicle(displayVehicle);
 
       const result = {
@@ -4389,6 +4396,7 @@ function buildSdeVaktplan(){
         vehicle: displayVehicle,
         currentSlot: currentSlot || (displayVehicle === "Avklares" ? "Avvent ankomst" : ""),
         suggestedSlot: "",
+        source,
         toTrain: row.toTrain,
         part: row.part,
         departure,
@@ -4409,13 +4417,13 @@ function buildSdeVaktplan(){
   }
 
   table.style.display = "table";
-  table.innerHTML = "<thead><tr><th>Dag</th><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Nåværende spor</th><th>Foreslått spor</th><th>Til tog</th><th>Del</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>Dag</th><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Nåværende spor</th><th>Foreslått spor</th><th>Kilde</th><th>Til tog</th><th>Del</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
 
   const body = document.createElement("tbody");
 
   rows.forEach(row=>{
     const tr = document.createElement("tr");
-    ["dayType","fromTrain","arrival","vehicle","currentSlot","suggestedSlot","toTrain","part","departure","operation","status","reason"].forEach(key=>{
+    ["dayType","fromTrain","arrival","vehicle","currentSlot","suggestedSlot","source","toTrain","part","departure","operation","status","reason"].forEach(key=>{
       const td = document.createElement("td");
       td.textContent = row[key] || "";
       if(key === "status" && (row.status === "Må håndteres" || row.status === "Avvik" || row.status === "Planlagt")){
