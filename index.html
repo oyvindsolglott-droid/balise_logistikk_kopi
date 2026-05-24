@@ -3080,7 +3080,7 @@ function buildGrunnoppstilling(){
 
 function buildInndata(){
   const table=document.getElementById("inndataTable");
-  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>1,2,12</th><th>Til rep</th><th>Operasjonstype</th><th>Utført</th></tr></thead>";
+  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>Skifter</th><th>Til rep</th><th>Operasjonstype</th><th>Utført</th></tr></thead>";
   const body=document.createElement("tbody");
 
   const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : makeEmptyPlanSkifteRows();
