@@ -4253,21 +4253,32 @@ function getSdeVehicleInSlot(slot){
 function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
   if(!planRow) return "";
 
+  const messages = [];
+
   if(!toSlot) return "Kontroller: til-spor mangler.";
   if(!inputSlots.includes(toSlot)) return `Kontroller: til-spor ${toSlot} er ikke gyldig.`;
-  if(fromSlot && fromSlot === toSlot) return "Kontroller: fra-spor og til-spor er samme spor.";
+  if(fromSlot && fromSlot === toSlot) messages.push("Kontroller: fra-spor og til-spor er samme spor.");
 
   const targetVehicle = getSdeVehicleInSlot(toSlot);
 
   if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle, vehicle)){
-    return `Kontroller: til-spor ${toSlot} er opptatt av ${targetVehicle}.`;
+    messages.push(`Kontroller: til-spor ${toSlot} er opptatt av ${targetVehicle}.`);
+  }else if(targetVehicle){
+    messages.push(`Kontroller: til-spor ${toSlot} viser allerede ${targetVehicle}.`);
+  }else{
+    messages.push(`Til-spor ${toSlot} ser ledig ut.`);
   }
 
-  if(targetVehicle){
-    return `Kontroller: til-spor ${toSlot} viser allerede ${targetVehicle}.`;
+  const buttsporMatch = toSlot.match(/^(10|11|12)N$/);
+  if(buttsporMatch){
+    const southSlot = `${buttsporMatch[1]}S`;
+    const southVehicle = getSdeVehicleInSlot(southSlot);
+    if(!southVehicle){
+      messages.push(`Buttspor-regel: ${buttsporMatch[1]} er buttspor. ${southSlot} bør fylles før ${toSlot} dersom begge posisjoner skal brukes.`);
+    }
   }
 
-  return `Til-spor ${toSlot} ser ledig ut.`;
+  return messages.join(" ");
 }
 
 
