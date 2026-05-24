@@ -4411,6 +4411,24 @@ function getSdePriority(row){
 }
 
 
+function getSdeShiftPhase(timeValue){
+  const raw = String(timeValue || "").trim();
+  const match = raw.match(/^(\d{1,2})[:.](\d{2})$/);
+  if(!match) return "Ikke tidsatt";
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+
+  if(!Number.isFinite(hour) || !Number.isFinite(minute)) return "Ikke tidsatt";
+  if(hour < 0 || hour > 23 || minute < 0 || minute > 59) return "Ikke tidsatt";
+
+  if(hour >= 15 && hour < 23) return "Kveld";
+  if(hour >= 23 || hour < 7) return "Natt";
+
+  return "Dag / utenfor SDE-vakt";
+}
+
+
 function getSdeRecommendedAction(row){
   if(!row) return "";
 
@@ -4463,9 +4481,11 @@ function getSdeNextActionsText(rows,currentDayType){
     const suggestion = String(row.suggestedSlot || "").trim();
     const priority = String(row.priority || "").trim();
     const source = String(row.source || "").trim();
+    const shiftPhase = String(row.shiftPhase || "").trim();
 
     const parts = [`${index + 1}. ${action}`];
 
+    if(shiftPhase) parts.push(shiftPhase);
     if(vehicle) parts.push(vehicle);
     if(suggestion) parts.push(suggestion);
     if(priority) parts.push(`Prioritet: ${priority}`);
@@ -4557,6 +4577,7 @@ function buildSdeVaktplan(){
         dayType: row.dayType,
         fromTrain: row.fromTrain,
         arrival,
+        shiftPhase: getSdeShiftPhase(arrival),
         vehicle: displayVehicle,
         currentSlot: currentSlot || (displayVehicle === "Avklares" ? "Avvent ankomst" : ""),
         suggestedSlot: "",
@@ -4591,6 +4612,7 @@ function buildSdeVaktplan(){
         dayType: currentDayType,
         fromTrain: "",
         arrival: String(planRow.time || "").trim(),
+        shiftPhase: getSdeShiftPhase(planRow.time),
         vehicle: vehicle || "Avklares",
         currentSlot: currentSlot || normalizeSlot(planRow.fromSpor) || "",
         suggestedSlot: getSdePlanSkifteSuggestedSlot(planRow),
@@ -4631,13 +4653,13 @@ function buildSdeVaktplan(){
   }
 
   table.style.display = "table";
-  table.innerHTML = "<thead><tr><th>Dag</th><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Nåværende spor</th><th>Foreslått spor</th><th>Kilde</th><th>Prioritet</th><th>Anbefalt handling</th><th>Til tog</th><th>Del</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
+  table.innerHTML = "<thead><tr><th>Dag</th><th>Vaktfase</th><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Nåværende spor</th><th>Foreslått spor</th><th>Kilde</th><th>Prioritet</th><th>Anbefalt handling</th><th>Til tog</th><th>Del</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
 
   const body = document.createElement("tbody");
 
   rows.forEach(row=>{
     const tr = document.createElement("tr");
-    ["dayType","fromTrain","arrival","vehicle","currentSlot","suggestedSlot","source","priority","recommendedAction","toTrain","part","departure","operation","status","reason"].forEach(key=>{
+    ["dayType","shiftPhase","fromTrain","arrival","vehicle","currentSlot","suggestedSlot","source","priority","recommendedAction","toTrain","part","departure","operation","status","reason"].forEach(key=>{
       const td = document.createElement("td");
       td.textContent = row[key] || "";
       if(key === "status" && (row.status === "Må håndteres" || row.status === "Avvik" || row.status === "Planlagt")){
