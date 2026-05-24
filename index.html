@@ -4560,22 +4560,35 @@ function getSdeNextActionsText(rows,currentDayType){
     return 9;
   };
 
+  const isSdeTopPlanSkifteRow = (row,category)=>{
+    const source = String(row?.source || "");
+    const status = String(row?.status || "");
+    return category === "Skifte" || (status === "Planlagt" && source === "Planlegge Skiftebevegelser");
+  };
+
+  const parseSdeTopPlanText = row=>{
+    return String(row?.suggestedSlot || "").trim().replace(/^Planlagt:\s*/,"").trim();
+  };
+
+  const getSdeTopPlanVehicle = row=>{
+    const text = parseSdeTopPlanText(row);
+    const match = text.match(/^(\d{2}-\d{2})\s+/);
+    return match ? match[1] : "";
+  };
+
   const formatSdeTopSuggestion = (row,category)=>{
     const raw = String(row?.suggestedSlot || "").trim();
     if(!raw) return "";
 
-    const source = String(row?.source || "");
-    const status = String(row?.status || "");
-
-    if(category !== "Skifte" && !(status === "Planlagt" && source === "Planlegge Skiftebevegelser")){
+    if(!isSdeTopPlanSkifteRow(row,category)){
       return raw;
     }
 
-    let text = raw.replace(/^Planlagt:\s*/,"").trim();
-    const vehicle = String(row?.vehicle || "").trim();
+    let text = parseSdeTopPlanText(row);
+    const planVehicle = getSdeTopPlanVehicle(row);
 
-    if(vehicle && text.startsWith(vehicle)){
-      text = text.slice(vehicle.length).trim();
+    if(planVehicle && text.startsWith(planVehicle)){
+      text = text.slice(planVehicle.length).trim();
     }
 
     return text || raw;
@@ -4592,6 +4605,23 @@ function getSdeNextActionsText(rows,currentDayType){
     if(category === "Vurdering") return "Vurder";
     if(category === "Avklaring") return "Avklar";
     return category || "Vurder";
+  };
+
+  const getSdeTopControlReason = row=>{
+    const reason = String(row?.reason || "");
+
+    if(reason.includes("planlagt fra") && reason.includes("Sporplan viser")) return "Fra-spor avviker";
+    if(reason.includes("kjøretøy mangler")) return "Kjøretøy mangler";
+    if(reason.includes("finnes ikke i Sporplan")) return "Ikke i Sporplan";
+    if(reason.includes("fra-spor mangler")) return "Fra-spor mangler";
+    if(reason.includes("til-spor mangler")) return "Til-spor mangler";
+    if(reason.includes("til-spor") && reason.includes("ikke gyldig")) return "Til-spor ugyldig";
+    if(reason.includes("fra-spor og til-spor er samme spor")) return "Samme fra/til-spor";
+    if(reason.includes("til-spor") && reason.includes("opptatt av")) return "Til-spor opptatt";
+    if(reason.includes("viser allerede")) return "Til-spor viser samme kjøretøy";
+    if(reason.includes("verkstedposisjon")) return "Verkstedspor må bekreftes";
+
+    return "";
   };
 
   const lines = [`Neste anbefalte handlinger (${currentDayType}):`];
@@ -4618,7 +4648,10 @@ function getSdeNextActionsText(rows,currentDayType){
       const action = String(row.recommendedAction || "Vurder").trim();
       const category = getSdeActionCategory(row);
       const time = String(row.arrival || "").trim();
-      const vehicle = String(row.vehicle || "").trim();
+      const planVehicle = getSdeTopPlanVehicle(row);
+      const vehicle = isSdeTopPlanSkifteRow(row, category) && planVehicle
+        ? planVehicle
+        : String(row.vehicle || "").trim();
       const suggestion = formatSdeTopSuggestion(row, category);
       const priority = String(row.priority || "").trim();
 
@@ -4626,7 +4659,9 @@ function getSdeNextActionsText(rows,currentDayType){
       const timeAndAction = time ? `${time} – ${actionLabel}` : actionLabel;
       const vehicleText = vehicle ? `: ${vehicle}` : "";
       const suggestionText = suggestion ? `. ${suggestion}` : "";
-      const main = `${index + 1}. ${timeAndAction}${vehicleText}${suggestionText}`;
+      const controlReason = actionLabel === "Kontroller først" ? getSdeTopControlReason(row) : "";
+      const controlReasonText = controlReason ? `. ${controlReason}` : "";
+      const main = `${index + 1}. ${timeAndAction}${vehicleText}${suggestionText}${controlReasonText}`;
 
       lines.push(priority ? `${main} (${priority})` : main);
     });
