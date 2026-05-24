@@ -4487,7 +4487,14 @@ function getSdeShiftSummaryText(rows){
 
 
 function getSdeNextActionsText(rows,currentDayType){
-  const candidates = (Array.isArray(rows) ? rows : [])
+  const phaseOrder = ["Kveld","Natt","Dag / utenfor SDE-vakt","Ikke tidsatt"];
+  const grouped = {};
+
+  phaseOrder.forEach(phase=>{
+    grouped[phase] = [];
+  });
+
+  (Array.isArray(rows) ? rows : [])
     .filter(row=>{
       if(!row) return false;
       const priority = String(row.priority || "");
@@ -4500,30 +4507,43 @@ function getSdeNextActionsText(rows,currentDayType){
 
       return false;
     })
-    .slice(0,3);
+    .forEach(row=>{
+      const phase = String(row.shiftPhase || "Ikke tidsatt").trim() || "Ikke tidsatt";
+      if(!grouped[phase]) grouped[phase] = [];
+      if(grouped[phase].length < 3){
+        grouped[phase].push(row);
+      }
+    });
 
-  if(!candidates.length){
-    return `Neste anbefalte handlinger (${currentDayType}): Ingen høy/middels prioriterte SDE-handlinger akkurat nå.`;
-  }
+  const lines = [`Neste anbefalte handlinger (${currentDayType}):`];
 
-  const items = candidates.map((row,index)=>{
-    const action = String(row.recommendedAction || "Vurder").trim();
-    const vehicle = String(row.vehicle || "").trim();
-    const suggestion = String(row.suggestedSlot || "").trim();
-    const priority = String(row.priority || "").trim();
-    const shiftPhase = String(row.shiftPhase || "").trim();
+  phaseOrder.forEach(phase=>{
+    const phaseRows = grouped[phase] || [];
+    if(!phaseRows.length) return;
 
-    const main = [
-      `${index + 1}. ${action}`,
-      shiftPhase,
-      vehicle,
-      suggestion
-    ].filter(Boolean).join(" – ");
+    lines.push(`${phase}:`);
 
-    return priority ? `${main} (${priority})` : main;
+    phaseRows.forEach((row,index)=>{
+      const action = String(row.recommendedAction || "Vurder").trim();
+      const vehicle = String(row.vehicle || "").trim();
+      const suggestion = String(row.suggestedSlot || "").trim();
+      const priority = String(row.priority || "").trim();
+
+      const main = [
+        `${index + 1}. ${action}`,
+        vehicle,
+        suggestion
+      ].filter(Boolean).join(" – ");
+
+      lines.push(priority ? `${main} (${priority})` : main);
+    });
   });
 
-  return `Neste anbefalte handlinger (${currentDayType}): ${items.join(" | ")}`;
+  if(lines.length === 1){
+    lines.push("Ingen høy/middels prioriterte SDE-handlinger akkurat nå.");
+  }
+
+  return lines.join("\n");
 }
 
 
