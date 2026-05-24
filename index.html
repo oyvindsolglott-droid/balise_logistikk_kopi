@@ -4627,6 +4627,16 @@ function getSdeNextActionsText(rows,currentDayType){
     return "";
   };
 
+  const getSdeTopOperationText = row=>{
+    const operation = String(row?.operation || "").trim();
+
+    if(!operation) return "";
+    if(operation === "Planlagt skiftebevegelse") return "";
+    if(operation === "Normal parkering Skien") return "";
+
+    return operation;
+  };
+
   const lines = [`Neste anbefalte handlinger (${currentDayType}):`];
 
   phaseOrder.forEach(phase=>{
@@ -4662,9 +4672,11 @@ function getSdeNextActionsText(rows,currentDayType){
       const timeAndAction = time ? `${time} – ${actionLabel}` : actionLabel;
       const vehicleText = vehicle ? `: ${vehicle}` : "";
       const suggestionText = suggestion ? `. ${suggestion}` : "";
+      const operationText = getSdeTopOperationText(row);
+      const operationSuffix = operationText ? `. ${operationText}` : "";
       const controlReason = actionLabel === "Kontroller først" ? getSdeTopControlReason(row) : "";
       const controlReasonText = controlReason ? `. ${controlReason}` : "";
-      const main = `${index + 1}. ${timeAndAction}${vehicleText}${suggestionText}${controlReasonText}`;
+      const main = `${index + 1}. ${timeAndAction}${vehicleText}${suggestionText}${operationSuffix}${controlReasonText}`;
 
       lines.push(priority ? `${main} (${priority})` : main);
     });
