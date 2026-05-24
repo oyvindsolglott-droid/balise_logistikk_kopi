@@ -4543,6 +4543,17 @@ function buildSdeVaktplan(){
 
   rows.push(...extraPlanRows);
 
+  const priorityOrder = {"Høy": 0, "Middels": 1, "Lav": 2};
+  rows.forEach((row,index)=>{
+    row._sdeOriginalIndex = index;
+  });
+  rows.sort((a,b)=>{
+    const aPriority = priorityOrder[a.priority] ?? 9;
+    const bPriority = priorityOrder[b.priority] ?? 9;
+    if(aPriority !== bPriority) return aPriority - bPriority;
+    return (a._sdeOriginalIndex || 0) - (b._sdeOriginalIndex || 0);
+  });
+
   const report = document.getElementById("sdeImportReportText");
   if(report){
     report.textContent = `Normal parkering Skien: viser aktuell dagstype (${currentDayType}). Tognummer/settdeler som normalt skal tas ut eller håndteres i Skien. Sporplassering fra papirgrunnlaget er bevisst ignorert.`;
