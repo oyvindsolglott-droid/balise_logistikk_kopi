@@ -1494,8 +1494,8 @@ Tømme: j</pre>
 <ol>
 <li><strong>Oppdater Grunnoppstilling.</strong> Gå fysisk gjennom tomta og registrer hva som faktisk står i hver slot.</li>
 <li><strong>Sjekk Tursatt mot Topas Toginfo.</strong> Kontroller at ankommende tog og kjøretøy stemmer med Topas Toginfo / kjøretøy før du bruker dem videre som grunnlag.</li>
-<li><strong>Merk kjøretøy som skal ut av drift.</strong> Bruk <strong>rep/drei</strong>-feltet der dette finnes. Skriv <strong>r</strong> for reparasjon/verkstedflyt, eller <strong>d</strong> for hjuldreiing. Begge deler behandles som kjøretøy som skal ut av normal drift.</li>
-<li><strong>Planlegg skiftebevegelser.</strong> Bruk Planlegge Skiftebevegelser til å registrere fra spor, til spor, skifter og eventuell rep-status.</li>
+<li><strong>Merk kjøretøy som skal ut av drift.</strong> Bruk rep-/verkstedfeltet der dette finnes. Skriv <strong>r</strong> for reparasjon/verkstedflyt. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</li>
+<li><strong>Planlegg skiftebevegelser.</strong> Bruk Planlegge Skiftebevegelser til å registrere klokkeslett, kjøretøy, fra spor, til spor, skifter, eventuell rep-status og operasjonstype.</li>
 <li><strong>Marker utført når bevegelsen er gjort.</strong> Skriv <strong>f</strong> eller <strong>j</strong> i Utført-kolonnen. Da regner programmet kjøretøyet som flyttet til ny faktisk plassering.</li>
 </ol>
 <p>Hvis Grunnoppstilling eller Tursatt-kontrollen er feil, vil Sporplan og senere SDE-vurderinger få feil utgangspunkt.</p>
@@ -1503,12 +1503,11 @@ Tømme: j</pre>
 <h3>Grunnoppstilling</h3>
 <p><strong>Grunnoppstilling må fylles ut ved fysisk kontroll av tomta før SDE brukes operativt.</strong></p>
 <p>Programmet kan ikke vite sikkert hva som faktisk står på stasjonen uten at dette registreres manuelt. Tursatt og Balise kan vise togdata, men de erstatter ikke fysisk kontroll av sporene.</p>
-<p>Gå rundt på tomta og registrer hvilket kjøretøy som står i hver slot. Hvis kjøretøyet skal ut av normal drift, bruk kolonnen <strong>rep/drei</strong>.</p>
-<pre>5s = 74-50 | rep/drei = r
-3m = 74-42 | rep/drei = d
+<p>Gå rundt på tomta og registrer hvilket kjøretøy som står i hver slot. Hvis kjøretøyet skal ut av normal drift til reparasjon eller verkstedflyt, bruk rep-/verkstedfeltet.</p>
+<pre>5s = 74-50 | rep = r
 6n = 75-17</pre>
-<p><strong>r</strong> betyr reparasjon/verkstedflyt. <strong>d</strong> betyr dreiing/hjuldreiing. Begge gir rød varsling i Sporplan. Ved dreiing vises <strong>DREI</strong> foran kjøretøynummeret.</p>
-<p>Grunnoppstilling brukes som startstatus i Sporplan. Det betyr at kjøretøyene du legger inn her vises som fysisk plassert i Sporplan. Hvis rep/drei er satt til r eller d, får samme slot rød varsling.</p>
+<p><strong>r</strong> betyr reparasjon/verkstedflyt og gir rød varsling i Sporplan. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</p>
+<p>Grunnoppstilling brukes som startstatus i Sporplan. Det betyr at kjøretøyene du legger inn her vises som fysisk plassert i Sporplan. Hvis rep er satt til r, får samme slot rød varsling.</p>
 <p>Grunnoppstilling er likevel <strong>flyktig</strong>. Når du senere registrerer en ferdig skiftebevegelse i Planlegge Skiftebevegelser, overstyrer den grunnoppstillingen.</p>
 <pre>Grunnoppstilling:
 5s = 74-50
@@ -1524,14 +1523,16 @@ Utført = f</pre>
 <h3>Planlegge Skiftebevegelser</h3>
 <p>Dette arket brukes til å planlegge konkrete skiftebevegelser.</p>
 <p>Her kan du føre inn:</p>
-<pre>kjøretøy
+<pre>klokkeslett
+kjøretøy
 fra spor
 til spor
-om oppdraget er utført
-rep/drei
-eventuelle merknader</pre>
+skifter
+til rep
+operasjonstype
+om oppdraget er utført</pre>
 <p>Planlagte bevegelser som ikke er utført, kan vises tydelig i Sporplan. Når en bevegelse merkes som utført, oppdateres logikken slik at kjøretøyet regnes som plassert på nytt sted.</p>
-<p>I kolonnen <strong>Til rep</strong> i Planlegge Skiftebevegelser kan du skrive <strong>r</strong> for reparasjon/verkstedflyt eller <strong>d</strong> for dreiing/hjuldreiing. <strong>d</strong> gir samme røde varsel som rep, men Sporplan viser <strong>DREI</strong> foran kjøretøynummeret.</p>
+<p>I kolonnen <strong>Til rep</strong> i Planlegge Skiftebevegelser kan du skrive <strong>r</strong> for reparasjon/verkstedflyt. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</p>
 
 <h3>Turnering Natt</h3>
 <p>Turnering Natt brukes til å se nattens kjøretøyflyt og produksjon.</p>
@@ -1627,16 +1628,15 @@ WC/vann: j</pre>
 <p>Programmet tolker dette som at kjøretøyet først skal til spor 6 for tømming/fylling, og deretter vurderes videre mot tog 802.</p>
 <p>Anbefalt standard er <strong>j</strong>. Unngå å bruke flere varianter som x, ja, wc, vann eller WC/vann.</p>
 
-<h3>Merknad</h3>
-<p>Merknad brukes til ekstra informasjon som påvirker hvordan kjøretøyet skal håndteres.</p>
-<pre>dele motsatt
-skjøtes
-deling
-rep
-må ikke sperres
-avventer</pre>
-<p>Viktig eksempel: <strong>dele motsatt</strong>.</p>
-<p>Dette betyr at kjøretøyet må håndteres som deling eller skjøting før videre plassering.</p>
+<h3>Operasjonstype</h3>
+<p>Operasjonstype brukes i Planlegge Skiftebevegelser når en planlagt bevegelse har en særskilt operativ betydning.</p>
+<pre>Motsatt deling
+Fra spor 6 etter service
+Fast skifter 2-oppgave
+Avklares</pre>
+<p>Viktig eksempel: <strong>Motsatt deling</strong>.</p>
+<p>Dette betyr at et tog med to kjøretøy deles motsatt: søndre kjøretøy skal parkeres, mens nordre kjøretøy skal returnere eller kjøres videre mot Oslo som nytt tognummer.</p>
+<p>SDE skal vise operasjonstypen, men ikke automatisk tildele ansvar eller flytte kjøretøy basert på den alene.</p>
 
 <h3>Utført</h3>
 <p>Utført-kolonnen brukes i Planlegge Skiftebevegelser.</p>
@@ -1691,12 +1691,12 @@ Til spor fylt ut = kan brukes som fasit/evaluering etterpå.</pre>
 <hr>
 
 <h2>Viktige korte koder</h2>
-<pre>Utført:       f
-WC/vann:      j
-Tømme:        j
-Reparasjon:   rep
-Deling:       dele motsatt
-Settnr:       1 eller 2</pre>
+<pre>Utført:        f
+WC/vann:       j
+Tømme:         j
+Reparasjon:    rep
+Operasjonstype: Motsatt deling
+Settnr:        1 eller 2</pre>
 
 <h2>Eksempler på tolkning</h2>
 <pre>Til tog = 802</pre>
@@ -1707,8 +1707,8 @@ Settnr:       1 eller 2</pre>
 <p>Programmet foreslår først spor 6.</p>
 <pre>Tømme = j</pre>
 <p>Programmet tolker at kjøretøyet skal via spor 6 for tømming/fylling.</p>
-<pre>Merknad = dele motsatt</pre>
-<p>Programmet markerer at deling eller skjøting må planlegges før videre plassering.</p>
+<pre>Operasjonstype = Motsatt deling</pre>
+<p>Programmet viser at bevegelsen er en motsatt deling og at dette må tas hensyn til i videre planlegging.</p>
 <pre>Utført = f</pre>
 <p>Programmet regner skiftebevegelsen som ferdig. Kjøretøyet får sin nye plassering, og tidligere plass frigjøres.</p>
 <pre>Fra spor = 3n
@@ -4783,7 +4783,7 @@ function buildSdeVaktplan(){
         status,
         reason: cancelled
           ? `Annullert: ${row.toTrain}/${row.part} forventer del av to kjøretøy, men Tursatt/Balise viser bare ett kjøretøy på tog ${row.toTrain}.`
-          : ([planSkifteReason, deviationReason].filter(Boolean).join(" ") || "Normal drift. Første målregel brukes bare som produksjonsmål. Endelig sporvalg må senere vurderes mot faktisk Sporplan, Grunnoppstilling, rep/drei og tilgjengelige spor.")
+          : ([planSkifteReason, deviationReason].filter(Boolean).join(" ") || "Normal drift. Første målregel brukes bare som produksjonsmål. Endelig sporvalg må senere vurderes mot faktisk Sporplan, Grunnoppstilling, rep/verkstedflyt og tilgjengelige spor.")
       };
 
       result.suggestedSlot = planSkifteSuggestedSlot || getSdeInitialSuggestedSlot(result);
