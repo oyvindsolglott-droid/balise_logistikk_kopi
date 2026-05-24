@@ -4363,6 +4363,8 @@ function buildSdeVaktplan(){
 
   const currentDayType = getCurrentSdeDayType();
 
+  const usedPlanSkifteRows = new Set();
+
   const rows = normalRows
     .filter(row=>row.dayType === currentDayType)
     .map(row=>{
@@ -4377,6 +4379,7 @@ function buildSdeVaktplan(){
 
       const displayVehicle = cancelled ? "Annullert" : (vehicle || "Avklares");
       const planSkifteRow = cancelled ? null : getOpenPlanSkifteRowForVehicle(displayVehicle);
+      if(planSkifteRow) usedPlanSkifteRows.add(planSkifteRow);
       const planSkifteSuggestedSlot = getSdePlanSkifteSuggestedSlot(planSkifteRow);
       const planSkifteReason = getSdePlanSkifteReason(planSkifteRow);
       const status = cancelled ? "Annullert" : (deviationReason ? "Avvik" : (planSkifteRow ? "Planlagt" : (vehicle ? "Må håndteres" : "Avklares")));
@@ -4410,6 +4413,35 @@ function buildSdeVaktplan(){
       result.suggestedSlot = planSkifteSuggestedSlot || getSdeInitialSuggestedSlot(result);
       return result;
     });
+
+  const extraPlanRows = (Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [])
+    .filter(planRow=>{
+      if(!planRow || !isPlanSkifteRowFilled(planRow)) return false;
+      if(isPlanSkifteFerdig(planRow?.utfort)) return false;
+      if(usedPlanSkifteRows.has(planRow)) return false;
+      return normalizeVehicleToken(planRow.vehicle);
+    })
+    .map(planRow=>{
+      const vehicle = sanitizeVehicleValue(planRow.vehicle);
+      const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
+      return {
+        dayType: currentDayType,
+        fromTrain: "",
+        arrival: String(planRow.time || "").trim(),
+        vehicle: vehicle || "Avklares",
+        currentSlot: currentSlot || normalizeSlot(planRow.fromSpor) || "",
+        suggestedSlot: getSdePlanSkifteSuggestedSlot(planRow),
+        source: "Planlegge Skiftebevegelser",
+        toTrain: "",
+        part: "",
+        departure: "",
+        operation: "Planlagt skiftebevegelse",
+        status: "Planlagt",
+        reason: getSdePlanSkifteReason(planRow)
+      };
+    });
+
+  rows.push(...extraPlanRows);
 
   const report = document.getElementById("sdeImportReportText");
   if(report){
