@@ -4278,6 +4278,14 @@ function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
     }
   }
 
+  if(toSlot === "7N" || toSlot === "8N"){
+    if(isRepMarker(planRow.tilRep)){
+      messages.push(`Verkstedflyt: ${toSlot} er verkstedposisjon og samsvarer med rep-markering.`);
+    }else{
+      messages.push(`Kontroller: ${toSlot} er verkstedposisjon. Bruk normalt bare ved rep/verkstedflyt.`);
+    }
+  }
+
   return messages.join(" ");
 }
 
@@ -4299,7 +4307,7 @@ function getSdePlanSkifteReason(planRow){
   if(time) parts.push(`Tid: ${time}.`);
   if(fromSlot || toSlot) parts.push(`Plan: ${fromSlot || "?"} → ${toSlot || "?"}.`);
   if(crew) parts.push(`Skifter: ${crew}.`);
-  if(tilRep) parts.push(`Til rep/drei: ${tilRep}.`);
+  if(tilRep) parts.push(`Til rep: ${tilRep}.`);
 
   if(!vehicle){
     parts.push("Kontroller: kjøretøy mangler i planlagt skiftebevegelse.");
