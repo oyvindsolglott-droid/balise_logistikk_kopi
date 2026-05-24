@@ -4455,6 +4455,37 @@ function getSdeRecommendedAction(row){
 }
 
 
+function getSdeShiftSummaryText(rows){
+  const phaseOrder = ["Kveld","Natt","Dag / utenfor SDE-vakt","Ikke tidsatt"];
+  const counts = {};
+
+  phaseOrder.forEach(phase=>{
+    counts[phase] = {total:0, high:0};
+  });
+
+  (Array.isArray(rows) ? rows : []).forEach(row=>{
+    if(!row) return;
+    if(String(row.status || "") === "Annullert") return;
+
+    const phase = String(row.shiftPhase || "Ikke tidsatt").trim() || "Ikke tidsatt";
+    if(!counts[phase]) counts[phase] = {total:0, high:0};
+
+    counts[phase].total += 1;
+    if(String(row.priority || "") === "Høy"){
+      counts[phase].high += 1;
+    }
+  });
+
+  const parts = phaseOrder
+    .filter(phase=>counts[phase] && counts[phase].total > 0)
+    .map(phase=>`${phase}: ${counts[phase].total} handlinger / ${counts[phase].high} høy`);
+
+  if(!parts.length) return "Vaktoversikt: ingen aktive SDE-handlinger.";
+
+  return `Vaktoversikt: ${parts.join(". ")}.`;
+}
+
+
 function getSdeNextActionsText(rows,currentDayType){
   const candidates = (Array.isArray(rows) ? rows : [])
     .filter(row=>{
@@ -4469,7 +4500,7 @@ function getSdeNextActionsText(rows,currentDayType){
 
       return false;
     })
-    .slice(0,5);
+    .slice(0,3);
 
   if(!candidates.length){
     return `Neste anbefalte handlinger (${currentDayType}): Ingen høy/middels prioriterte SDE-handlinger akkurat nå.`;
@@ -4480,18 +4511,16 @@ function getSdeNextActionsText(rows,currentDayType){
     const vehicle = String(row.vehicle || "").trim();
     const suggestion = String(row.suggestedSlot || "").trim();
     const priority = String(row.priority || "").trim();
-    const source = String(row.source || "").trim();
     const shiftPhase = String(row.shiftPhase || "").trim();
 
-    const parts = [`${index + 1}. ${action}`];
+    const main = [
+      `${index + 1}. ${action}`,
+      shiftPhase,
+      vehicle,
+      suggestion
+    ].filter(Boolean).join(" – ");
 
-    if(shiftPhase) parts.push(shiftPhase);
-    if(vehicle) parts.push(vehicle);
-    if(suggestion) parts.push(suggestion);
-    if(priority) parts.push(`Prioritet: ${priority}`);
-    if(source) parts.push(`Kilde: ${source}`);
-
-    return parts.join(" – ");
+    return priority ? `${main} (${priority})` : main;
   });
 
   return `Neste anbefalte handlinger (${currentDayType}): ${items.join(" | ")}`;
@@ -4649,7 +4678,10 @@ function buildSdeVaktplan(){
   const report = document.getElementById("sdeImportReportText");
   if(report){
     const nextActionsText = getSdeNextActionsText(rows,currentDayType);
-    report.textContent = `${nextActionsText} Normal parkering Skien: viser aktuell dagstype (${currentDayType}). Tognummer/settdeler som normalt skal tas ut eller håndteres i Skien. Sporplassering fra papirgrunnlaget er bevisst ignorert.`;
+    const shiftSummaryText = getSdeShiftSummaryText(rows);
+    report.style.whiteSpace = "pre-line";
+    report.style.lineHeight = "1.45";
+    report.textContent = `${nextActionsText}\n${shiftSummaryText}`;
   }
 
   table.style.display = "table";
