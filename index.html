@@ -4286,6 +4286,10 @@ function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
     }
   }
 
+  if(["2N","2S","3N","3M","3S"].includes(toSlot)){
+    messages.push(`Vurder: ${toSlot} er plattformspor. Bruk bør være knyttet til togproduksjon, skjøting/deling eller kortvarig operativ flyt.`);
+  }
+
   return messages.join(" ");
 }
 
