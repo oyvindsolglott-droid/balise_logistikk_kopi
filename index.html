@@ -4458,10 +4458,12 @@ function getSdeRecommendedAction(row){
 function getSdeActionCategory(row){
   const action = String(row?.recommendedAction || "");
   const status = String(row?.status || "");
+  const source = String(row?.source || "");
 
   if(status === "Annullert" || action === "Ikke utfør / annullert") return "Annullert";
   if(action === "Avklar datagrunnlag") return "Avklaring";
   if(action === "Kontroller før skifting") return "Kontroll";
+  if(status === "Planlagt" && source === "Planlegge Skiftebevegelser") return "Skifte";
   if(action === "Utfør planlagt skifte") return "Skifte";
   if(action === "Vurder planlagt skifte") return "Vurdering";
   if(action === "Vurder plassering") return "Vurdering";
