@@ -4602,6 +4602,7 @@ function getSdeNextActionsText(rows,currentDayType){
     }
 
     if(category === "Kontroll") return "Kontroller først";
+    if(category === "Skifte") return "Klar til å skifte";
     if(category === "Vurdering") return "Vurder";
     if(category === "Avklaring") return "Avklar";
     return category || "Vurder";
