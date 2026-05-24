@@ -4575,7 +4575,13 @@ function getSdeNextActionsText(rows,currentDayType){
     return text || raw;
   };
 
-  const getSdeTopActionLabel = category=>{
+  const getSdeTopActionLabel = (category,row)=>{
+    const reason = String(row?.reason || "");
+
+    if(category === "Skifte" && (reason.includes("Kontroller:") || reason.includes("Avvik:"))){
+      return "Kontroller først";
+    }
+
     if(category === "Kontroll") return "Kontroller først";
     if(category === "Vurdering") return "Vurder";
     if(category === "Avklaring") return "Avklar";
@@ -4610,7 +4616,7 @@ function getSdeNextActionsText(rows,currentDayType){
       const suggestion = formatSdeTopSuggestion(row, category);
       const priority = String(row.priority || "").trim();
 
-      const actionLabel = getSdeTopActionLabel(category);
+      const actionLabel = getSdeTopActionLabel(category, row);
       const timeAndAction = time ? `${time} – ${actionLabel}` : actionLabel;
       const vehicleText = vehicle ? `: ${vehicle}` : "";
       const suggestionText = suggestion ? `. ${suggestion}` : "";
