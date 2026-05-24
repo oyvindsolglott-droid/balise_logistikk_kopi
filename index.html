@@ -4570,11 +4570,10 @@ function getSdeNextActionsText(rows,currentDayType){
       const suggestion = String(row.suggestedSlot || "").trim();
       const priority = String(row.priority || "").trim();
 
-      const main = [
-        `${index + 1}. ${time ? `${time} – ${action}` : action}`,
-        vehicle,
-        suggestion
-      ].filter(Boolean).join(" – ");
+      const timeAndAction = time ? `${time} – ${action}` : action;
+      const vehicleText = vehicle ? `: ${vehicle}` : "";
+      const suggestionText = suggestion ? `. ${suggestion}` : "";
+      const main = `${index + 1}. ${timeAndAction}${vehicleText}${suggestionText}`;
 
       lines.push(priority ? `${main} (${priority})` : main);
     });
