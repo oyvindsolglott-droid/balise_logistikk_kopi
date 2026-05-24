@@ -4204,8 +4204,11 @@ function getSdeVehicleDeviationReason(row, actualVehicle, expectedVehicle){
 
 
 function getOpenPlanSkifteRowForVehicle(vehicle){
-  const token = normalizeVehicleToken(vehicle);
-  if(!token || token === "annullert" || token === "avklares") return null;
+  const vehicleTokens = splitVehicleList(vehicle)
+    .map(v=>normalizeVehicleToken(v))
+    .filter(token=>token && token !== "annullert" && token !== "avklares");
+
+  if(!vehicleTokens.length) return null;
 
   const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
 
@@ -4213,8 +4216,11 @@ function getOpenPlanSkifteRowForVehicle(vehicle){
     if(!row || !isPlanSkifteRowFilled(row)) return false;
     if(isPlanSkifteFerdig(row?.utfort)) return false;
 
-    const rowToken = normalizeVehicleToken(row.vehicle);
-    return rowToken && rowToken === token;
+    const rowTokens = splitVehicleList(row.vehicle)
+      .map(v=>normalizeVehicleToken(v))
+      .filter(Boolean);
+
+    return rowTokens.some(token=>vehicleTokens.includes(token));
   }) || null;
 }
 
@@ -4222,14 +4228,16 @@ function getOpenPlanSkifteRowForVehicle(vehicle){
 function getSdePlanSkifteSuggestedSlot(planRow){
   if(!planRow) return "";
 
+  const vehicle = sanitizeVehicleValue(planRow.vehicle);
+  const vehicleText = vehicle ? `${vehicle} ` : "";
   const fromSlot = normalizeSlot(planRow.fromSpor);
   const toSlot = normalizeSlot(planRow.toSpor);
 
-  if(fromSlot && toSlot) return `Planlagt: ${fromSlot} → ${toSlot}`;
-  if(toSlot) return `Planlagt til ${toSlot}`;
-  if(fromSlot) return `Planlagt fra ${fromSlot}`;
+  if(fromSlot && toSlot) return `Planlagt: ${vehicleText}${fromSlot} → ${toSlot}`;
+  if(toSlot) return `Planlagt: ${vehicleText}til ${toSlot}`;
+  if(fromSlot) return `Planlagt: ${vehicleText}fra ${fromSlot}`;
 
-  return "Planlagt skiftebevegelse";
+  return vehicle ? `Planlagt skiftebevegelse: ${vehicle}` : "Planlagt skiftebevegelse";
 }
 
 
