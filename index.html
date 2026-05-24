@@ -4525,12 +4525,13 @@ function getSdeNextActionsText(rows,currentDayType){
 
     phaseRows.forEach((row,index)=>{
       const action = String(row.recommendedAction || "Vurder").trim();
+      const time = String(row.arrival || "").trim();
       const vehicle = String(row.vehicle || "").trim();
       const suggestion = String(row.suggestedSlot || "").trim();
       const priority = String(row.priority || "").trim();
 
       const main = [
-        `${index + 1}. ${action}`,
+        `${index + 1}. ${time ? `${time} – ${action}` : action}`,
         vehicle,
         suggestion
       ].filter(Boolean).join(" – ");
