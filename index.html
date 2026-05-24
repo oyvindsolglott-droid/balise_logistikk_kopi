@@ -4529,7 +4529,7 @@ function getSdeNextActionsText(rows,currentDayType){
     .forEach(row=>{
       const phase = String(row.shiftPhase || "Ikke tidsatt").trim() || "Ikke tidsatt";
       if(!grouped[phase]) grouped[phase] = [];
-      if(grouped[phase].length < 3){
+      if(grouped[phase].length < 6){
         grouped[phase].push(row);
       }
     });
@@ -4637,7 +4637,7 @@ function getSdeNextActionsText(rows,currentDayType){
     return operation;
   };
 
-  const lines = [`Neste anbefalte handlinger (${currentDayType}):`];
+  const lines = [`SDE arbeidsliste (${currentDayType}):`];
 
   phaseOrder.forEach(phase=>{
     const phaseRows = (grouped[phase] || []).slice().sort((a,b)=>{
@@ -4683,7 +4683,7 @@ function getSdeNextActionsText(rows,currentDayType){
   });
 
   if(lines.length === 1){
-    lines.push("Ingen høy/middels prioriterte SDE-handlinger akkurat nå.");
+    lines.push("Ingen høy/middels prioriterte SDE-handlinger i arbeidslisten akkurat nå.");
   }
 
   return lines.join("\n");
