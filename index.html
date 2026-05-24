@@ -4455,6 +4455,21 @@ function getSdeRecommendedAction(row){
 }
 
 
+function getSdeActionCategory(row){
+  const action = String(row?.recommendedAction || "");
+  const status = String(row?.status || "");
+
+  if(status === "Annullert" || action === "Ikke utfør / annullert") return "Annullert";
+  if(action === "Avklar datagrunnlag") return "Avklaring";
+  if(action === "Kontroller før skifting") return "Kontroll";
+  if(action === "Utfør planlagt skifte") return "Skifte";
+  if(action === "Vurder planlagt skifte") return "Vurdering";
+  if(action === "Vurder plassering") return "Vurdering";
+
+  return "Vurdering";
+}
+
+
 function getSdeShiftSummaryText(rows){
   const phaseOrder = ["Kveld","Natt","Dag / utenfor SDE-vakt","Ikke tidsatt"];
   const counts = {};
@@ -4565,12 +4580,14 @@ function getSdeNextActionsText(rows,currentDayType){
 
     phaseRows.forEach((row,index)=>{
       const action = String(row.recommendedAction || "Vurder").trim();
+      const category = getSdeActionCategory(row);
       const time = String(row.arrival || "").trim();
       const vehicle = String(row.vehicle || "").trim();
       const suggestion = String(row.suggestedSlot || "").trim();
       const priority = String(row.priority || "").trim();
 
-      const timeAndAction = time ? `${time} – ${action}` : action;
+      const actionLabel = category || action;
+      const timeAndAction = time ? `${time} – ${actionLabel}` : actionLabel;
       const vehicleText = vehicle ? `: ${vehicle}` : "";
       const suggestionText = suggestion ? `. ${suggestion}` : "";
       const main = `${index + 1}. ${timeAndAction}${vehicleText}${suggestionText}`;
