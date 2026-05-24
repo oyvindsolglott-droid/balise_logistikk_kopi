@@ -2077,7 +2077,7 @@ if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
 if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;
 if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkifteRows();
-else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",tilRep:"",utfort:"",...(row||{})}));
+else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",tilRep:"",operationType:"",utfort:"",...(row||{})}));
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
@@ -3080,7 +3080,7 @@ function buildGrunnoppstilling(){
 
 function buildInndata(){
   const table=document.getElementById("inndataTable");
-  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>1,2,12</th><th>Til rep</th><th>Utført</th></tr></thead>";
+  table.innerHTML="<thead><tr><th>Klokkeslett</th><th>Kjøretøy_nr</th><th>Fra spor</th><th>Til spor</th><th>1,2,12</th><th>Til rep</th><th>Operasjonstype</th><th>Utført</th></tr></thead>";
   const body=document.createElement("tbody");
 
   const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : makeEmptyPlanSkifteRows();
@@ -3088,7 +3088,7 @@ function buildInndata(){
   rows.forEach((row,ri)=>{
     const tr=document.createElement("tr");
     updatePlanSkifteRowClass(tr,row);
-    ["time","vehicle","fromSpor","toSpor","crew","tilRep","utfort"].forEach(key=>{
+    ["time","vehicle","fromSpor","toSpor","crew","tilRep","operationType","utfort"].forEach(key=>{
       const td=document.createElement("td");
       if(key === "crew") td.classList.add("skifter-cell");
       if(key === "tilRep") td.classList.add("rep-cell");
@@ -4304,6 +4304,7 @@ function getSdePlanSkifteReason(planRow){
   const fromSlot = normalizeSlot(planRow.fromSpor);
   const toSlot = normalizeSlot(planRow.toSpor);
   const tilRep = String(planRow.tilRep || "").trim();
+  const operationType = String(planRow.operationType || "").trim();
   const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
 
   parts.push("Åpen planlagt skiftebevegelse fra Planlegge Skiftebevegelser.");
@@ -4312,6 +4313,7 @@ function getSdePlanSkifteReason(planRow){
   if(fromSlot || toSlot) parts.push(`Plan: ${fromSlot || "?"} → ${toSlot || "?"}.`);
   if(crew) parts.push(`Skifter: ${crew}.`);
   if(tilRep) parts.push(`Til rep: ${tilRep}.`);
+  if(operationType) parts.push(`Operasjonstype: ${operationType}.`);
 
   if(!vehicle){
     parts.push("Kontroller: kjøretøy mangler i planlagt skiftebevegelse.");
@@ -4763,7 +4765,9 @@ function buildSdeVaktplan(){
         toTrain: row.toTrain,
         part: row.part,
         departure,
-        operation: "Normal parkering Skien",
+        operation: planSkifteRow
+          ? (String(planSkifteRow.operationType || "").trim() || "Planlagt skiftebevegelse")
+          : "Normal parkering Skien",
         status,
         reason: cancelled
           ? `Annullert: ${row.toTrain}/${row.part} forventer del av to kjøretøy, men Tursatt/Balise viser bare ett kjøretøy på tog ${row.toTrain}.`
@@ -4798,7 +4802,7 @@ function buildSdeVaktplan(){
         toTrain: "",
         part: "",
         departure: "",
-        operation: "Planlagt skiftebevegelse",
+        operation: String(planRow.operationType || "").trim() || "Planlagt skiftebevegelse",
         status: "Planlagt",
         reason: getSdePlanSkifteReason(planRow),
         priority: "",
