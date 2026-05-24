@@ -4437,6 +4437,47 @@ function getSdeRecommendedAction(row){
 }
 
 
+function getSdeNextActionsText(rows,currentDayType){
+  const candidates = (Array.isArray(rows) ? rows : [])
+    .filter(row=>{
+      if(!row) return false;
+      const priority = String(row.priority || "");
+      const action = String(row.recommendedAction || "");
+      const status = String(row.status || "");
+
+      if(status === "Annullert") return false;
+      if(priority === "Høy" || priority === "Middels") return true;
+      if(action === "Avklar datagrunnlag") return true;
+
+      return false;
+    })
+    .slice(0,5);
+
+  if(!candidates.length){
+    return `Neste anbefalte handlinger (${currentDayType}): Ingen høy/middels prioriterte SDE-handlinger akkurat nå.`;
+  }
+
+  const items = candidates.map((row,index)=>{
+    const action = String(row.recommendedAction || "Vurder").trim();
+    const vehicle = String(row.vehicle || "").trim();
+    const suggestion = String(row.suggestedSlot || "").trim();
+    const priority = String(row.priority || "").trim();
+    const source = String(row.source || "").trim();
+
+    const parts = [`${index + 1}. ${action}`];
+
+    if(vehicle) parts.push(vehicle);
+    if(suggestion) parts.push(suggestion);
+    if(priority) parts.push(`Prioritet: ${priority}`);
+    if(source) parts.push(`Kilde: ${source}`);
+
+    return parts.join(" – ");
+  });
+
+  return `Neste anbefalte handlinger (${currentDayType}): ${items.join(" | ")}`;
+}
+
+
 function buildSdeVaktplan(){
   const table = document.getElementById("sdeVaktplanTable");
   if(!table) return;
@@ -4585,7 +4626,8 @@ function buildSdeVaktplan(){
 
   const report = document.getElementById("sdeImportReportText");
   if(report){
-    report.textContent = `Normal parkering Skien: viser aktuell dagstype (${currentDayType}). Tognummer/settdeler som normalt skal tas ut eller håndteres i Skien. Sporplassering fra papirgrunnlaget er bevisst ignorert.`;
+    const nextActionsText = getSdeNextActionsText(rows,currentDayType);
+    report.textContent = `${nextActionsText} Normal parkering Skien: viser aktuell dagstype (${currentDayType}). Tognummer/settdeler som normalt skal tas ut eller håndteres i Skien. Sporplassering fra papirgrunnlaget er bevisst ignorert.`;
   }
 
   table.style.display = "table";
