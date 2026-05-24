@@ -4560,6 +4560,21 @@ function getSdeNextActionsText(rows,currentDayType){
     return 9;
   };
 
+  const formatSdeTopSuggestion = (row,category)=>{
+    const raw = String(row?.suggestedSlot || "").trim();
+    if(!raw) return "";
+    if(category !== "Skifte") return raw;
+
+    let text = raw.replace(/^Planlagt:\s*/,"").trim();
+    const vehicle = String(row?.vehicle || "").trim();
+
+    if(vehicle && text.startsWith(vehicle)){
+      text = text.slice(vehicle.length).trim();
+    }
+
+    return text || raw;
+  };
+
   const lines = [`Neste anbefalte handlinger (${currentDayType}):`];
 
   phaseOrder.forEach(phase=>{
@@ -4585,7 +4600,7 @@ function getSdeNextActionsText(rows,currentDayType){
       const category = getSdeActionCategory(row);
       const time = String(row.arrival || "").trim();
       const vehicle = String(row.vehicle || "").trim();
-      const suggestion = String(row.suggestedSlot || "").trim();
+      const suggestion = formatSdeTopSuggestion(row, category);
       const priority = String(row.priority || "").trim();
 
       const actionLabel = category || action;
