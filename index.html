@@ -4563,7 +4563,13 @@ function getSdeNextActionsText(rows,currentDayType){
   const formatSdeTopSuggestion = (row,category)=>{
     const raw = String(row?.suggestedSlot || "").trim();
     if(!raw) return "";
-    if(category !== "Skifte") return raw;
+
+    const source = String(row?.source || "");
+    const status = String(row?.status || "");
+
+    if(category !== "Skifte" && !(status === "Planlagt" && source === "Planlegge Skiftebevegelser")){
+      return raw;
+    }
 
     let text = raw.replace(/^Planlagt:\s*/,"").trim();
     const vehicle = String(row?.vehicle || "").trim();
