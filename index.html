@@ -4247,9 +4247,11 @@ function getSdePlanSkifteReason(planRow){
   const parts = [];
   const time = String(planRow.time || "").trim();
   const crew = normalizePlanSkifteCrew(planRow.crew);
+  const vehicle = sanitizeVehicleValue(planRow.vehicle);
   const fromSlot = normalizeSlot(planRow.fromSpor);
   const toSlot = normalizeSlot(planRow.toSpor);
   const tilRep = String(planRow.tilRep || "").trim();
+  const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
 
   parts.push("Åpen planlagt skiftebevegelse fra Planlegge Skiftebevegelser.");
 
@@ -4257,6 +4259,18 @@ function getSdePlanSkifteReason(planRow){
   if(fromSlot || toSlot) parts.push(`Plan: ${fromSlot || "?"} → ${toSlot || "?"}.`);
   if(crew) parts.push(`Skifter: ${crew}.`);
   if(tilRep) parts.push(`Til rep/drei: ${tilRep}.`);
+
+  if(!vehicle){
+    parts.push("Kontroller: kjøretøy mangler i planlagt skiftebevegelse.");
+  }else if(!fromSlot){
+    parts.push("Kontroller: fra-spor mangler.");
+  }else if(!currentSlot){
+    parts.push(`Kontroller: ${vehicle} finnes ikke i Sporplan.`);
+  }else if(currentSlot !== fromSlot){
+    parts.push(`Avvik: planlagt fra ${fromSlot}, men Sporplan viser ${vehicle} i ${currentSlot}.`);
+  }else{
+    parts.push("Plan kontrollert mot Sporplan.");
+  }
 
   parts.push("Dette er planlagt handling, ikke automatisk flytting i Sporplan før Utført settes.");
 
