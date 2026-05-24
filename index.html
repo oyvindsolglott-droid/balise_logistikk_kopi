@@ -4241,6 +4241,36 @@ function getSdePlanSkifteSuggestedSlot(planRow){
 }
 
 
+function getSdeVehicleInSlot(slot){
+  const normalizedSlot = normalizeSlot(slot);
+  if(!normalizedSlot || !inputSlots.includes(normalizedSlot)) return "";
+
+  const row = computeInndata().find(r=>normalizeSlot(r.slot) === normalizedSlot);
+  return row ? sanitizeVehicleValue(row.mat) : "";
+}
+
+
+function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
+  if(!planRow) return "";
+
+  if(!toSlot) return "Kontroller: til-spor mangler.";
+  if(!inputSlots.includes(toSlot)) return `Kontroller: til-spor ${toSlot} er ikke gyldig.`;
+  if(fromSlot && fromSlot === toSlot) return "Kontroller: fra-spor og til-spor er samme spor.";
+
+  const targetVehicle = getSdeVehicleInSlot(toSlot);
+
+  if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle, vehicle)){
+    return `Kontroller: til-spor ${toSlot} er opptatt av ${targetVehicle}.`;
+  }
+
+  if(targetVehicle){
+    return `Kontroller: til-spor ${toSlot} viser allerede ${targetVehicle}.`;
+  }
+
+  return `Til-spor ${toSlot} ser ledig ut.`;
+}
+
+
 function getSdePlanSkifteReason(planRow){
   if(!planRow) return "";
 
@@ -4271,6 +4301,9 @@ function getSdePlanSkifteReason(planRow){
   }else{
     parts.push("Plan kontrollert mot Sporplan.");
   }
+
+  const targetValidation = getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot);
+  if(targetValidation) parts.push(targetValidation);
 
   parts.push("Dette er planlagt handling, ikke automatisk flytting i Sporplan før Utført settes.");
 
