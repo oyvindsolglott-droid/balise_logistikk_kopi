@@ -4515,10 +4515,50 @@ function getSdeNextActionsText(rows,currentDayType){
       }
     });
 
+  const parseSdeActionMinutes = row=>{
+    const raw = String(row?.arrival || "").trim();
+    const match = raw.match(/^(\d{1,2})[:.](\d{2})$/);
+    if(!match) return 99999;
+
+    const hour = Number(match[1]);
+    const minute = Number(match[2]);
+
+    if(!Number.isFinite(hour) || !Number.isFinite(minute)) return 99999;
+    if(hour < 0 || hour > 23 || minute < 0 || minute > 59) return 99999;
+
+    const minutes = hour * 60 + minute;
+
+    if(String(row?.shiftPhase || "") === "Natt" && hour < 7){
+      return minutes + 1440;
+    }
+
+    return minutes;
+  };
+
+  const prioritySortValue = row=>{
+    const priority = String(row?.priority || "");
+    if(priority === "Høy") return 0;
+    if(priority === "Middels") return 1;
+    if(priority === "Lav") return 2;
+    return 9;
+  };
+
   const lines = [`Neste anbefalte handlinger (${currentDayType}):`];
 
   phaseOrder.forEach(phase=>{
-    const phaseRows = grouped[phase] || [];
+    const phaseRows = (grouped[phase] || []).slice().sort((a,b)=>{
+      const aMinutes = parseSdeActionMinutes(a);
+      const bMinutes = parseSdeActionMinutes(b);
+
+      if(aMinutes !== bMinutes) return aMinutes - bMinutes;
+
+      const aPriority = prioritySortValue(a);
+      const bPriority = prioritySortValue(b);
+
+      if(aPriority !== bPriority) return aPriority - bPriority;
+
+      return 0;
+    });
     if(!phaseRows.length) return;
 
     lines.push(`${phase}:`);
