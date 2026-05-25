@@ -262,6 +262,48 @@ min-width:0;
 width:auto;
 padding:4px 3px;
 }
+
+.turnering-natt-table{
+table-layout:auto;
+min-width:0;
+width:auto;
+}
+
+.turnering-natt-table th,
+.turnering-natt-table td{
+min-width:0;
+width:auto;
+white-space:nowrap;
+padding:4px 6px;
+}
+
+.turnering-natt-table td input{
+width:8ch;
+min-width:0;
+box-sizing:border-box;
+}
+
+.turnering-natt-table td:nth-child(1) input,
+.turnering-natt-table td:nth-child(2) input{
+width:6ch;
+}
+
+.turnering-natt-table td:nth-child(3) input,
+.turnering-natt-table td:nth-child(7) input{
+width:7ch;
+}
+
+.turnering-natt-table td:nth-child(4) input,
+.turnering-natt-table td:nth-child(8) input{
+width:9ch;
+}
+
+.turnering-natt-table td:nth-child(5) input,
+.turnering-natt-table td:nth-child(6) input,
+.turnering-natt-table td:nth-child(9) input,
+.turnering-natt-table td:nth-child(10) input{
+width:8ch;
+}
 .turnering-kveld-table th{
 vertical-align:top;
 padding-top:8px;
@@ -3515,6 +3557,7 @@ function buildTurnering(tableId,key){
   const table=document.getElementById(tableId);
   table.innerHTML="";
   table.classList.toggle("turnering-kveld-table", isKveld);
+  table.classList.toggle("turnering-natt-table", !isKveld);
   const thead=document.createElement("thead");
   const body=document.createElement("tbody");
 
