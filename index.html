@@ -1432,7 +1432,7 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="grunnoppstilling">
-<div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for videre SDE-arbeid, men påvirker foreløpig ikke Sporplan før overstyringslogikken er koblet inn.</div>
+<div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for Sporplan og videre SDE-arbeid.</div>
 <div class="view-tools">
 <span class="label">Grunnoppstilling</span>
 <button class="compact zoom-out" data-target="grunnoppstillingZoom">Zoom ut</button>
@@ -1523,7 +1523,7 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="sdeVaktplan">
-<div class="note">SDE vaktplan skal etter hvert foreslå én samlet operativ skifteplan for kveldsvakt 15:00–23:00 og én samlet operativ skifteplan for nattevakt 23:00–07:00. Første versjon viser en enkel planflate som senere kan kobles til SDE-motoren.</div>
+<div class="note">SDE vaktplan viser beslutningsstøtte for kveldsvakt og nattevakt. Den bygger på faktisk Sporplan, Grunnoppstilling, Tursatt/Balise, Turnering Kveld/Natt og planlagte skiftebevegelser. Forslagene må alltid kontrolleres mot faktisk drift og lokale regler.</div>
 
 <div class="view-tools">
 <span class="label">SDE vaktplan</span>
@@ -1556,7 +1556,32 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 <div class="api-box">
 <h2>Brukerveiledning</h2>
 
-<h3>Viktig om lagring av data og ansvar for Sporplan</h3>
+<h3>Hva SDE / Skien sporplan er</h3>
+<p><strong>SDE / Skien sporplan er et verktøy for operativ beslutningsstøtte ved skifting på Skien.</strong></p>
+<p>Programmet skal hjelpe deg å samle riktig informasjon, se faktisk oppstilling, planlegge skiftebevegelser og vurdere neste handlinger på en mer strukturert måte.</p>
+<p>Systemet kan vise sammenheng mellom Tursatt/Balise, Grunnoppstilling, Turnering Kveld, Turnering Natt, Sporplan og manuelle skiftebevegelser. Målet er å gjøre planleggingen tydeligere, redusere unødvendige bevegelser og gjøre det lettere å oppdage avvik før de skaper problemer.</p>
+
+<h3>Hva programmet ikke er</h3>
+<p><strong>Programmet er ikke en fasit og ikke et automatisk styringssystem.</strong></p>
+<p>Det flytter ikke kjøretøy, tildeler ikke ansvar automatisk og erstatter ikke instrukser, sikkerhetsregler, lokal vurdering eller operativt ansvar.</p>
+<p>Alle forslag fra SDE må vurderes opp mot faktisk situasjon på tomta, gjeldende regler, tilgjengelig personell, signal-/sporforhold og praktisk gjennomførbarhet.</p>
+
+<h3>Anbefalt arbeidsflyt</h3>
+<p>Bruk programmet i denne rekkefølgen når du starter planleggingen:</p>
+<ol>
+<li><strong>Kontroller Tursatt.</strong> Se hvilke tog og kjøretøy som kommer inn og skal ut.</li>
+<li><strong>Oppdater Grunnoppstilling.</strong> Registrer faktisk tomtestatus etter fysisk kontroll.</li>
+<li><strong>Kontroller Turnering Kveld/Natt.</strong> Se produksjonsflyt, tog som skal videre, servicebehov og eventuelle avvik.</li>
+<li><strong>Planlegg skiftebevegelser med + Skifte.</strong> Registrer tid, kjøretøy, fra spor, til spor, skifter, eventuell rep-status og operasjonstype.</li>
+<li><strong>Bruk SDE vaktplan som kontroll og arbeidsliste.</strong> Se prioritet, anbefalt handling, avvik og planlagte bevegelser.</li>
+<li><strong>Marker utført først når bevegelsen faktisk er gjort.</strong> Skriv <strong>f</strong> i Utført-feltet. Da regner programmet kjøretøyet som flyttet til ny plassering.</li>
+</ol>
+
+<h3>Det viktigste prinsippet</h3>
+<p><strong>Sporplan skal representere faktisk nåsituasjon.</strong> Dersom Grunnoppstilling eller Sporplan er feil, vil også SDE-vurderingene få feil utgangspunkt.</p>
+<p>Planlagte skiftebevegelser kan vises i Sporplan som <strong>PLAN FRA</strong> og <strong>PLAN TIL</strong>. Det betyr at bevegelsen er planlagt, men ikke utført. Først når <strong>Utført = f</strong> settes, regner programmet kjøretøyet som flyttet.</p>
+
+<h3>Viktig om lokal lagring og ansvar</h3>
 <p>All informasjon som registreres manuelt av den som bruker siden, lagres kun lokalt på den enheten og i den nettleseren der opplysningene blir skrevet inn.</p>
 <p>Det betyr at det kan finnes flere ulike oppsett samtidig. En telefon, en annen telefon og en datamaskin kan vise forskjellige manuelle registreringer, selv om de åpner samme nettside.</p>
 
@@ -1569,12 +1594,14 @@ Datamaskinen kan ha et tredje oppsett.</pre>
 <p>Dette gjelder for eksempel:</p>
 <pre>manuelle endringer i Tursatt
 manuelle endringer i Turnering Kveld
+manuelle endringer i Turnering Natt
+grunnoppstilling
 planlagte skiftebevegelser
 utførte skiftebevegelser
 manuelle kjøretøy- eller sporregistreringer</pre>
 
-<p>Det er derfor den enkelte som begynner sitt skift som må kontrollere og oppdatere Sporplan slik at den stemmer med faktisk situasjon ute på tomta.</p>
-<p>Det er ikke mulig for programmet å generere en fullstendig og sikker oversikt over alt materiell på tomta automatisk. Programmet kan bruke tilgjengelige data fra Tursatt, Turnering Kveld, Turnering Natt, Balise og manuelle registreringer, men faktisk plassering må kontrolleres og vedlikeholdes av brukeren.</p>
+<p>Den som begynner sitt skift må derfor kontrollere og oppdatere Sporplan slik at den stemmer med faktisk situasjon ute på tomta.</p>
+<p>Programmet kan bruke tilgjengelige data fra Tursatt, Turnering Kveld, Turnering Natt, Balise og manuelle registreringer, men faktisk plassering må kontrolleres og vedlikeholdes av brukeren.</p>
 <p>Hvis flere personer bruker siden samtidig på hver sin enhet, må de være klar over at de ikke nødvendigvis ser de samme manuelle endringene.</p>
 
 <hr>
