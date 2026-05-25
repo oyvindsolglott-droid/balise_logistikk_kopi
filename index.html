@@ -2026,6 +2026,23 @@ const topRow=["12N","11N","10N","9","8N","7N","platformA","6N","5N","4N","3N","p
 const midRow=["12S","11S","10S",null,"8S","7S","platformA-skip","6S","5M","4M","3M","platformB-skip","2S","1S"];
 const botRow=[null,null,null,null,"8SS","7SS",null,"6SS","5S","4S","3S",null,null,null];
 
+function makeEmptyTurneringSkifteRow(){
+  return {
+    time:"",
+    vehicle:"",
+    fromSpor:"",
+    toSpor:"",
+    crew:"",
+    tilRep:"",
+    operationType:"",
+    utfort:""
+  };
+}
+
+function normalizeTurneringSkifteRow(row){
+  return {...makeEmptyTurneringSkifteRow(), ...(row || {})};
+}
+
 function makeTurneringSkifteDefaults(){
   return {
     skifteTime:"",
@@ -2035,14 +2052,21 @@ function makeTurneringSkifteDefaults(){
     skifteCrew:"",
     skifteTilRep:"",
     skifteOperationType:"",
-    skifteUtfort:""
+    skifteUtfort:"",
+    skifteRows:[]
   };
 }
 
 function withTurneringSkifteDefaults(row){
   if(!row || typeof row !== "object") return row;
   if(row.type) return row;
-  return {...makeTurneringSkifteDefaults(), ...row};
+
+  const withDefaults = {...makeTurneringSkifteDefaults(), ...row};
+  withDefaults.skifteRows = Array.isArray(withDefaults.skifteRows)
+    ? withDefaults.skifteRows.map(normalizeTurneringSkifteRow)
+    : [];
+
+  return withDefaults;
 }
 
 function convertLegacyKveldRow(row){
@@ -2790,10 +2814,44 @@ function removeVehicleFromComputedResult(result, vehicle){
 }
 
 
-function makePlanSkifteRowFromTurneringRow(row, source){
-  if(!row || row.type) return null;
+function hasPlanSkifteContent(planRow){
+  if(!planRow) return false;
+  return [
+    "time",
+    "vehicle",
+    "fromSpor",
+    "toSpor",
+    "crew",
+    "tilRep",
+    "operationType",
+    "utfort"
+  ].some(key=>String(planRow[key] || "").trim());
+}
+
+function makePlanSkifteRowFromTurneringSkifteRow(skifteRow, source){
+  const row = normalizeTurneringSkifteRow(skifteRow);
 
   const planRow = {
+    time:String(row.time || "").trim(),
+    vehicle:String(row.vehicle || "").trim(),
+    fromSpor:String(row.fromSpor || "").trim(),
+    toSpor:String(row.toSpor || "").trim(),
+    crew:String(row.crew || "").trim(),
+    tilRep:String(row.tilRep || "").trim(),
+    operationType:String(row.operationType || "").trim(),
+    utfort:String(row.utfort || "").trim(),
+    source:String(source || "").trim()
+  };
+
+  return hasPlanSkifteContent(planRow) ? planRow : null;
+}
+
+function makePlanSkifteRowsFromTurneringRow(row, source){
+  if(!row || row.type) return [];
+
+  const rows = [];
+
+  const singlePlanRow = {
     time:String(row.skifteTime || "").trim(),
     vehicle:String(row.skifteVehicle || "").trim(),
     fromSpor:String(row.skifteFromSpor || "").trim(),
@@ -2805,25 +2863,27 @@ function makePlanSkifteRowFromTurneringRow(row, source){
     source:String(source || "").trim()
   };
 
-  const hasSkifteContent = [
-    "time",
-    "vehicle",
-    "fromSpor",
-    "toSpor",
-    "crew",
-    "tilRep",
-    "operationType",
-    "utfort"
-  ].some(key=>String(planRow[key] || "").trim());
+  if(hasPlanSkifteContent(singlePlanRow)){
+    rows.push(singlePlanRow);
+  }
 
-  return hasSkifteContent ? planRow : null;
+  (Array.isArray(row.skifteRows) ? row.skifteRows : []).forEach(skifteRow=>{
+    const planRow = makePlanSkifteRowFromTurneringSkifteRow(skifteRow, source);
+    if(planRow) rows.push(planRow);
+  });
+
+  return rows;
 }
 
 
 function getTurneringPlanSkifteRows(rows, source){
-  return (Array.isArray(rows) ? rows : [])
-    .map(row=>makePlanSkifteRowFromTurneringRow(row, source))
-    .filter(Boolean);
+  const result = [];
+
+  (Array.isArray(rows) ? rows : []).forEach(row=>{
+    result.push(...makePlanSkifteRowsFromTurneringRow(row, source));
+  });
+
+  return result;
 }
 
 
