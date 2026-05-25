@@ -1274,6 +1274,17 @@ button{padding:12px 12px}
   max-width:520px;
 }
 
+@media (max-width:700px){
+  #sdeVaktplan #sdeVaktplanZoom{
+    transform:scale(0.76);
+    transform-origin:top left;
+  }
+
+  #sdeVaktplan .zoom-wrap{
+    touch-action:pan-x pan-y pinch-zoom;
+  }
+}
+
 
 .turnering-skifte-row td{
   background:rgba(15,23,42,.035);
