@@ -4812,10 +4812,54 @@ function getTursattVehicleCountForTrain(train){
   return splitVehicleList(value).length || 1;
 }
 
+function getSdeArrivalVehicleValueForTrain(train){
+  const key = normalizeTognr(train);
+  if(!key) return "";
+
+  const api = state.apiBalise || {};
+  if((api.mode || "") === "idag"){
+    const arrivalValue = sanitizeVehicleValue(api.arrivalVehicles?.[key]);
+    if(arrivalValue) return arrivalValue;
+
+    const apiValue = sanitizeVehicleValue(api.vehicles?.[key]);
+    if(apiValue) return apiValue;
+  }
+
+  const todayValue = joinVehicleNumbers(...getVehiclePartsForTrain(key, "idag"));
+  if(todayValue) return sanitizeVehicleValue(todayValue);
+
+  return sanitizeVehicleValue(state.baliseToday?.[key] || "");
+}
+
+function getSdeDepartureVehicleValueForTrain(train){
+  const key = normalizeTognr(train);
+  if(!key) return "";
+
+  const api = state.apiBalise || {};
+  if((api.mode || "") === "imorgen"){
+    const departureValue = sanitizeVehicleValue(api.departureVehicles?.[key]);
+    if(departureValue) return departureValue;
+
+    const apiValue = sanitizeVehicleValue(api.vehicles?.[key]);
+    if(apiValue) return apiValue;
+  }
+
+  const tomorrowValue = joinVehicleNumbers(...getVehiclePartsForTrain(key, "imorgen"));
+  if(tomorrowValue) return sanitizeVehicleValue(tomorrowValue);
+
+  return sanitizeVehicleValue(state.baliseTomorrow?.[key] || "");
+}
+
+function getSdeDepartureVehicleCountForTrain(train){
+  const value = getSdeDepartureVehicleValueForTrain(train);
+  if(!value) return 0;
+  return splitVehicleList(value).length || 1;
+}
+
 
 function shouldCancelPartParking(row){
   if(!row || !row.part || !row.toTrain) return false;
-  const count = getTursattVehicleCountForTrain(row.toTrain);
+  const count = getSdeDepartureVehicleCountForTrain(row.toTrain);
   return count === 1;
 }
 
@@ -4847,7 +4891,7 @@ function getSdeCurrentSlotForVehicle(vehicle){
 function getSdeVehicleForNormalRow(row){
   if(!row) return "";
 
-  const fromTrainVehicles = splitVehicleList(getTursattVehicleValueForTrain(row.fromTrain));
+  const fromTrainVehicles = splitVehicleList(getSdeArrivalVehicleValueForTrain(row.fromTrain));
 
   if(row.part){
     const index = Number(row.part) - 1;
@@ -4871,7 +4915,7 @@ function getSdeExpectedVehicleForNormalRow(row){
   const fromKey = normalizeTognr(row.fromTrain);
 
   if(toKey){
-    const effectiveToTrainVehicles = splitVehicleList(getTursattVehicleValueForTrain(toKey));
+    const effectiveToTrainVehicles = splitVehicleList(getSdeDepartureVehicleValueForTrain(toKey));
 
     if(row.part){
       const index = Number(row.part) - 1;
@@ -4887,7 +4931,7 @@ function getSdeExpectedVehicleForNormalRow(row){
 
   if(!fromKey) return "";
 
-  const effectiveFromTrainVehicles = splitVehicleList(getTursattVehicleValueForTrain(fromKey));
+  const effectiveFromTrainVehicles = splitVehicleList(getSdeArrivalVehicleValueForTrain(fromKey));
 
   if(row.part){
     const index = Number(row.part) - 1;
@@ -4900,14 +4944,7 @@ function getSdeExpectedVehicleForNormalRow(row){
     return sanitizeVehicleValue(effectiveFromTrainVehicles.join(", "));
   }
 
-  const api = state.apiBalise || {};
-  return sanitizeVehicleValue(
-    api.arrivalVehicles?.[fromKey] ||
-    api.vehicles?.[fromKey] ||
-    state.baliseToday?.[fromKey] ||
-    state.baliseTomorrow?.[fromKey] ||
-    ""
-  );
+  return getSdeArrivalVehicleValueForTrain(fromKey);
 }
 
 
@@ -5284,10 +5321,11 @@ function getSdePlanningDayLabel(){
 
 function getSdePlanningContextText(){
   const label = getSdePlanningDayLabel();
+  const sourceText = "Ankomster: dagens driftsvakt. Avganger: morgendagens produksjon.";
   if(label){
-    return `Klargjøring for neste driftsdøgn: ${label}.`;
+    return `Klargjøring for neste driftsdøgn: ${label}. ${sourceText}`;
   }
-  return "Klargjøring for neste driftsdøgn.";
+  return `Klargjøring for neste driftsdøgn. ${sourceText}`;
 }
 
 
