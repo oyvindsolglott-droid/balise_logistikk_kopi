@@ -4658,10 +4658,13 @@ function splitVehicleList(value){
 
 
 function getTursattVehicleValueForTrain(train){
-  const api = state.apiBalise || {};
   const key = normalizeTognr(train);
   if(!key) return "";
 
+  const effectiveVehicles = joinVehicleNumbers(...getVehiclePartsForTrain(key));
+  if(effectiveVehicles) return sanitizeVehicleValue(effectiveVehicles);
+
+  const api = state.apiBalise || {};
   return sanitizeVehicleValue(
     api.departureVehicles?.[key] ||
     api.vehicles?.[key] ||
@@ -4713,27 +4716,43 @@ function getSdeCurrentSlotForVehicle(vehicle){
 function getSdeVehicleForNormalRow(row){
   if(!row) return "";
 
-  const baseVehicle = getNormalParkingVehicle(row.fromTrain, row.toTrain);
+  const fromTrainVehicles = splitVehicleList(getTursattVehicleValueForTrain(row.fromTrain));
 
-  if(row.part && row.toTrain){
-    const toTrainVehicles = splitVehicleList(getTursattVehicleValueForTrain(row.toTrain));
+  if(row.part){
     const index = Number(row.part) - 1;
-    if(index >= 0 && toTrainVehicles[index]){
-      return sanitizeVehicleValue(toTrainVehicles[index]);
+    if(index >= 0 && fromTrainVehicles[index]){
+      return sanitizeVehicleValue(fromTrainVehicles[index]);
     }
   }
 
-  return baseVehicle;
+  if(fromTrainVehicles.length){
+    return sanitizeVehicleValue(fromTrainVehicles.join(", "));
+  }
+
+  return getNormalParkingVehicle(row.fromTrain, row.toTrain);
 }
 
 
 function getSdeExpectedVehicleForNormalRow(row){
   if(!row) return "";
 
-  const api = state.apiBalise || {};
   const fromKey = normalizeTognr(row.fromTrain);
   if(!fromKey) return "";
 
+  const effectiveFromTrainVehicles = splitVehicleList(getTursattVehicleValueForTrain(fromKey));
+
+  if(row.part){
+    const index = Number(row.part) - 1;
+    if(index >= 0 && effectiveFromTrainVehicles[index]){
+      return sanitizeVehicleValue(effectiveFromTrainVehicles[index]);
+    }
+  }
+
+  if(effectiveFromTrainVehicles.length){
+    return sanitizeVehicleValue(effectiveFromTrainVehicles.join(", "));
+  }
+
+  const api = state.apiBalise || {};
   return sanitizeVehicleValue(
     api.arrivalVehicles?.[fromKey] ||
     api.vehicles?.[fromKey] ||
