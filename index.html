@@ -4824,7 +4824,24 @@ function getSdeVehicleForNormalRow(row){
 function getSdeExpectedVehicleForNormalRow(row){
   if(!row) return "";
 
+  const toKey = normalizeTognr(row.toTrain);
   const fromKey = normalizeTognr(row.fromTrain);
+
+  if(toKey){
+    const effectiveToTrainVehicles = splitVehicleList(getTursattVehicleValueForTrain(toKey));
+
+    if(row.part){
+      const index = Number(row.part) - 1;
+      if(index >= 0 && effectiveToTrainVehicles[index]){
+        return sanitizeVehicleValue(effectiveToTrainVehicles[index]);
+      }
+    }
+
+    if(effectiveToTrainVehicles.length){
+      return sanitizeVehicleValue(effectiveToTrainVehicles.join(", "));
+    }
+  }
+
   if(!fromKey) return "";
 
   const effectiveFromTrainVehicles = splitVehicleList(getTursattVehicleValueForTrain(fromKey));
@@ -4869,8 +4886,9 @@ function getSdeVehicleDeviationReason(row, actualVehicle, expectedVehicle){
 
   const toTrain = normalizeTognr(row.toTrain);
   const fromTrain = normalizeTognr(row.fromTrain);
+  const partText = row.part ? `/${row.part}` : "";
 
-  return `Avvik: Tursatt/Balise for tog ${toTrain} viser ${actualVehicle}, mens ankomst-/normalforventning fra tog ${fromTrain} viser ${expectedVehicle}. Bruker Tursatt/Balise som produksjonsgrunnlag.`;
+  return `Avvik: Ankomst-/normalgrunnlag fra tog ${fromTrain} viser ${actualVehicle}, mens Tursatt/Avgang for tog ${toTrain}${partText} viser ${expectedVehicle}. Kontroller før skiftebevegelse.`;
 }
 
 
@@ -5181,22 +5199,52 @@ function getSdeInitialSuggestedSlot(row){
 }
 
 
+function getSdePlanningDate(){
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  return date;
+}
+
 function getCurrentSdeDayType(){
+  const planningDate = getSdePlanningDate();
+
   try{
     const weekday = new Intl.DateTimeFormat("en-US", {
       timeZone:"Europe/Oslo",
       weekday:"short"
-    }).format(new Date());
+    }).format(planningDate);
 
     if(weekday === "Sat") return "Lørdag";
     if(weekday === "Sun") return "Søndag";
     return "Hverdag";
   }catch(err){
-    const day = new Date().getDay();
+    const day = planningDate.getDay();
     if(day === 6) return "Lørdag";
     if(day === 0) return "Søndag";
     return "Hverdag";
   }
+}
+
+function getSdePlanningDayLabel(){
+  try{
+    return new Intl.DateTimeFormat("nb-NO", {
+      timeZone:"Europe/Oslo",
+      weekday:"long",
+      day:"numeric",
+      month:"long",
+      year:"numeric"
+    }).format(getSdePlanningDate());
+  }catch(err){
+    return "";
+  }
+}
+
+function getSdePlanningContextText(){
+  const label = getSdePlanningDayLabel();
+  if(label){
+    return `Klargjøring for neste driftsdøgn: ${label}.`;
+  }
+  return "Klargjøring for neste driftsdøgn.";
 }
 
 
@@ -5456,7 +5504,10 @@ function getSdeNextActionsText(rows,currentDayType){
     return operation;
   };
 
-  const lines = [`SDE arbeidsliste (${currentDayType}):`];
+  const lines = [
+    `SDE arbeidsliste (${currentDayType}):`,
+    getSdePlanningContextText()
+  ];
 
   phaseOrder.forEach(phase=>{
     const phaseRows = (grouped[phase] || []).slice().sort((a,b)=>{
@@ -5484,12 +5535,18 @@ function getSdeNextActionsText(rows,currentDayType){
       const vehicle = isSdeTopPlanSkifteRow(row, category) && planVehicle
         ? planVehicle
         : String(row.vehicle || "").trim();
+      const expectedVehicle = String(row.expectedVehicle || "").trim();
+      const showVehicleDeviation = String(row.status || "") === "Avvik"
+        && vehicle
+        && expectedVehicle
+        && !haveSameSdeVehicleTokens(vehicle, expectedVehicle);
+      const displayVehicle = showVehicleDeviation ? `${vehicle} → ${expectedVehicle}` : vehicle;
       const suggestion = formatSdeTopSuggestion(row, category);
       const priority = String(row.priority || "").trim();
 
       const actionLabel = getSdeTopActionLabel(category, row);
       const timeAndAction = time ? `${time} – ${actionLabel}` : actionLabel;
-      const vehicleText = vehicle ? `: ${vehicle}` : "";
+      const vehicleText = displayVehicle ? `: ${displayVehicle}` : "";
       const suggestionText = suggestion ? `. ${suggestion}` : "";
       const operationText = getSdeTopOperationText(row);
       const operationSuffix = operationText ? `. ${operationText}` : "";
@@ -5593,6 +5650,7 @@ function buildSdeVaktplan(){
         arrival,
         shiftPhase: getSdeShiftPhase(arrival),
         vehicle: displayVehicle,
+        expectedVehicle,
         currentSlot: currentSlot || (displayVehicle === "Avklares" ? "Avvent ankomst" : ""),
         suggestedSlot: "",
         source,
