@@ -1274,6 +1274,48 @@ button{padding:12px 12px}
   max-width:520px;
 }
 
+
+.turnering-skifte-row td{
+  background:rgba(15,23,42,.035);
+  border-top:0;
+  padding:6px 8px 10px;
+}
+.turnering-skifte-row details{
+  border:1px dashed rgba(148,163,184,.45);
+  border-radius:12px;
+  padding:6px 8px;
+}
+.turnering-skifte-row summary{
+  cursor:pointer;
+  font-weight:800;
+  color:var(--muted,#64748b);
+  list-style-position:inside;
+}
+.turnering-skifte-grid{
+  display:grid;
+  grid-template-columns:repeat(8,minmax(72px,1fr));
+  gap:6px;
+  margin-top:8px;
+}
+.turnering-skifte-field{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+}
+.turnering-skifte-field label{
+  font-size:10px;
+  font-weight:800;
+  color:var(--muted,#64748b);
+}
+.turnering-skifte-field input{
+  min-width:0;
+}
+@media(max-width:900px){
+  .turnering-skifte-grid{
+    grid-template-columns:repeat(2,minmax(90px,1fr));
+  }
+}
+
 </style>
 
 <style id="rightsNoticeStyle">
@@ -2964,6 +3006,78 @@ function getKveldDuplicateVehiclePositions(){
   return duplicates;
 }
 
+function getTurneringSkifteFields(){
+  return [
+    {key:"skifteTime", label:"Tid", placeholder:"kl"},
+    {key:"skifteVehicle", label:"Kjøretøy", placeholder:"74-xx"},
+    {key:"skifteFromSpor", label:"Fra spor", placeholder:"fra"},
+    {key:"skifteToSpor", label:"Til spor", placeholder:"til"},
+    {key:"skifteCrew", label:"Skifter", placeholder:"1/2/12"},
+    {key:"skifteTilRep", label:"Til rep", placeholder:"r"},
+    {key:"skifteOperationType", label:"Operasjonstype", placeholder:"type"},
+    {key:"skifteUtfort", label:"Utført", placeholder:"f"}
+  ];
+}
+
+function hasTurneringSkifteContent(row){
+  if(!row || row.type) return false;
+  return getTurneringSkifteFields().some(field=>String(row?.[field.key] || "").trim());
+}
+
+function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
+  if(!body || !row || row.type) return;
+
+  const tr = document.createElement("tr");
+  tr.className = "turnering-skifte-row";
+  if(isKveld) tr.classList.add("turnering-skifte-kveld-row");
+
+  const td = document.createElement("td");
+  td.colSpan = 10;
+
+  const details = document.createElement("details");
+  details.open = hasTurneringSkifteContent(row);
+
+  const summary = document.createElement("summary");
+  summary.textContent = hasTurneringSkifteContent(row) ? "Skifteplan registrert" : "Skifte";
+  details.appendChild(summary);
+
+  const grid = document.createElement("div");
+  grid.className = "turnering-skifte-grid";
+
+  getTurneringSkifteFields().forEach(field=>{
+    const wrap = document.createElement("div");
+    wrap.className = "turnering-skifte-field";
+
+    const label = document.createElement("label");
+    label.textContent = field.label;
+    wrap.appendChild(label);
+
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.inputMode = "text";
+    inp.autocapitalize = "off";
+    inp.autocorrect = "off";
+    inp.spellcheck = false;
+    inp.placeholder = field.placeholder || "";
+    inp.value = String(row?.[field.key] || "");
+
+    inp.addEventListener("input", e=>{
+      state[stateKey][ri][field.key] = e.target.value;
+      buildSporplan();
+      if(typeof buildSdeVaktplan === "function") buildSdeVaktplan();
+      persist(true);
+    });
+
+    wrap.appendChild(inp);
+    grid.appendChild(wrap);
+  });
+
+  details.appendChild(grid);
+  td.appendChild(details);
+  tr.appendChild(td);
+  body.appendChild(tr);
+}
+
 function buildTurnering(tableId,key){
   const isKveld = key==="turneringKveld";
   const cols=["a","b","c","d","e","f","g","h","i","j"];
@@ -3071,6 +3185,7 @@ function buildTurnering(tableId,key){
       thead.appendChild(tr);
     }else{
       body.appendChild(tr);
+      appendTurneringSkifteRow(body, tableId, key, row, ri, isKveld);
     }
   });
 
@@ -4414,7 +4529,8 @@ function getSdePlanSkifteReason(planRow){
   const operationType = String(planRow.operationType || "").trim();
   const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
 
-  parts.push("Åpen planlagt skiftebevegelse fra Planlegge Skiftebevegelser.");
+  const source = String(planRow.source || "").trim() || "Planlegge Skiftebevegelser";
+  parts.push(`Åpen planlagt skiftebevegelse fra ${source}.`);
 
   if(time) parts.push(`Tid: ${time}.`);
   if(fromSlot || toSlot) parts.push(`Plan: ${fromSlot || "?"} → ${toSlot || "?"}.`);
@@ -4866,7 +4982,7 @@ function buildSdeVaktplan(){
       const source = cancelled
         ? "Annullert"
         : (planSkifteRow
-          ? "Planlegge Skiftebevegelser"
+          ? (String(planSkifteRow.source || "").trim() || "Planlegge Skiftebevegelser")
           : (deviationReason
             ? "Tursatt/Balise avvik"
             : (vehicle ? "Tursatt/Balise / normalplan" : "Mangler datagrunnlag")));
@@ -4917,7 +5033,7 @@ function buildSdeVaktplan(){
         vehicle: vehicle || "Avklares",
         currentSlot: currentSlot || normalizeSlot(planRow.fromSpor) || "",
         suggestedSlot: getSdePlanSkifteSuggestedSlot(planRow),
-        source: "Planlegge Skiftebevegelser",
+        source: String(planRow.source || "").trim() || "Planlegge Skiftebevegelser",
         toTrain: "",
         part: "",
         departure: "",
