@@ -2748,8 +2748,53 @@ function removeVehicleFromComputedResult(result, vehicle){
 }
 
 
+function makePlanSkifteRowFromTurneringRow(row, source){
+  if(!row || row.type) return null;
+
+  const planRow = {
+    time:String(row.skifteTime || "").trim(),
+    vehicle:String(row.skifteVehicle || "").trim(),
+    fromSpor:String(row.skifteFromSpor || "").trim(),
+    toSpor:String(row.skifteToSpor || "").trim(),
+    crew:String(row.skifteCrew || "").trim(),
+    tilRep:String(row.skifteTilRep || "").trim(),
+    operationType:String(row.skifteOperationType || "").trim(),
+    utfort:String(row.skifteUtfort || "").trim(),
+    source:String(source || "").trim()
+  };
+
+  const hasSkifteContent = [
+    "time",
+    "vehicle",
+    "fromSpor",
+    "toSpor",
+    "crew",
+    "tilRep",
+    "operationType",
+    "utfort"
+  ].some(key=>String(planRow[key] || "").trim());
+
+  return hasSkifteContent ? planRow : null;
+}
+
+
+function getTurneringPlanSkifteRows(rows, source){
+  return (Array.isArray(rows) ? rows : [])
+    .map(row=>makePlanSkifteRowFromTurneringRow(row, source))
+    .filter(Boolean);
+}
+
+
 function getEffectivePlanSkifteRows(){
-  return Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+  const planRows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+  const kveldRows = getTurneringPlanSkifteRows(state.turneringKveld, "Turnering Kveld");
+  const nattRows = getTurneringPlanSkifteRows(state.turneringNatt, "Turnering Natt");
+
+  return [
+    ...planRows,
+    ...kveldRows,
+    ...nattRows
+  ];
 }
 
 
