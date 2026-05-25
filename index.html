@@ -2729,8 +2729,13 @@ function removeVehicleFromComputedResult(result, vehicle){
 }
 
 
+function getEffectivePlanSkifteRows(){
+  return Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+}
+
+
 function applyFinishedPlanSkifteRows(result,map){
-  const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+  const rows = getEffectivePlanSkifteRows();
 
   rows.forEach(row=>{
     if(!row) return;
@@ -2833,7 +2838,7 @@ function getKveldRepSlots(){
     }
   });
 
-  (state.planSkifteRows || []).forEach(row=>{
+  getEffectivePlanSkifteRows().forEach(row=>{
     if(!row) return;
     if(!isRepMarker(row.tilRep)) return;
     const slot = normalizeSlot(row.toSpor);
@@ -2864,7 +2869,7 @@ function getDreiSlots(){
     }
   });
 
-  (state.planSkifteRows || []).forEach(row=>{
+  getEffectivePlanSkifteRows().forEach(row=>{
     if(!row) return;
     if(!isDreiMarker(row.tilRep)) return;
     const slot = normalizeSlot(row.toSpor);
@@ -3576,7 +3581,7 @@ function findKveldRowByTrain(trainNo){
 
 function getPlanSkifteMarkersBySlot(){
   const markers = {};
-  const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+  const rows = getEffectivePlanSkifteRows();
 
   rows.forEach(row=>{
     if(!isPlanSkifteRowFilled(row)) return;
@@ -4248,7 +4253,7 @@ function getOpenPlanSkifteRowForVehicle(vehicle){
 
   if(!vehicleTokens.length) return null;
 
-  const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+  const rows = getEffectivePlanSkifteRows();
 
   return rows.find(row=>{
     if(!row || !isPlanSkifteRowFilled(row)) return false;
@@ -4830,7 +4835,7 @@ function buildSdeVaktplan(){
       return result;
     });
 
-  const extraPlanRows = (Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [])
+  const extraPlanRows = getEffectivePlanSkifteRows()
     .filter(planRow=>{
       if(!planRow || !isPlanSkifteRowFilled(planRow)) return false;
       if(isPlanSkifteFerdig(planRow?.utfort)) return false;
