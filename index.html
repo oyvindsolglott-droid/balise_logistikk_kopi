@@ -1,4 +1,11 @@
 <!DOCTYPE html>
+<!--
+  © Øyvind Solgløtt. Alle rettigheter reservert.
+  SDE / Skien sporplan er en prototype for operativ beslutningsstøtte.
+  Ikke tillatt å kopiere, distribuere, videreutvikle eller bruke kommersielt uten skriftlig avtale.
+  Systemet erstatter ikke gjeldende instrukser, sikkerhetsregler, lokal vurdering eller operativt ansvar.
+-->
+
 <html lang="no">
 <head>
 <meta charset="UTF-8" />
@@ -1268,6 +1275,37 @@ button{padding:12px 12px}
 }
 
 </style>
+
+<style id="rightsNoticeStyle">
+.rights-notice{
+  margin:24px 12px 18px;
+  padding:12px 14px;
+  border:1px solid rgba(148,163,184,.35);
+  border-radius:14px;
+  background:rgba(15,23,42,.04);
+  color:var(--muted,#64748b);
+  font-size:12px;
+  line-height:1.45;
+}
+.rights-notice strong{
+  color:var(--text,#0f172a);
+}
+.rights-notice .rights-title{
+  font-weight:800;
+  margin-bottom:4px;
+}
+.rights-notice .rights-small{
+  margin-top:4px;
+}
+@media print{
+  .rights-notice{
+    break-inside:avoid;
+    border-color:#999;
+    color:#333;
+  }
+}
+</style>
+
 </head>
 <body>
 <div class="app">
@@ -5409,5 +5447,13 @@ markSaved("Klar");
 fetchBaliseApi();
 ensureTomorrowStaticDataLoaded();
 </script>
+
+<div class="rights-notice" id="rightsNotice">
+  <div class="rights-title">© Øyvind Solgløtt. Alle rettigheter reservert.</div>
+  <div>SDE / Skien sporplan er en prototype for operativ beslutningsstøtte.</div>
+  <div class="rights-small">Ikke tillatt å kopiere, distribuere, videreutvikle eller bruke kommersielt uten skriftlig avtale.</div>
+  <div class="rights-small"><strong>Beslutningsstøtte:</strong> Systemet erstatter ikke gjeldende instrukser, sikkerhetsregler, lokal vurdering eller operativt ansvar.</div>
+</div>
+
 </body>
 </html>
