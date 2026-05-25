@@ -3294,11 +3294,13 @@ function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
   const td = document.createElement("td");
   td.colSpan = 10;
 
+  const dynamicRows = Array.isArray(row.skifteRows) ? row.skifteRows : [];
+
   const details = document.createElement("details");
-  details.open = hasTurneringSkifteContent(row);
+  details.open = hasTurneringSkifteContent(row) || dynamicRows.length > 0;
 
   const summary = document.createElement("summary");
-  const dynamicCount = (Array.isArray(row.skifteRows) ? row.skifteRows : [])
+  const dynamicCount = dynamicRows
     .filter(skifteRow=>hasPlanSkifteContent(normalizeTurneringSkifteRow(skifteRow)))
     .length;
   const legacyCount = hasTurneringLegacySkifteContent(row) ? 1 : 0;
@@ -3321,13 +3323,13 @@ function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
     appendTurneringSkifteItem(details, tableId, stateKey, row, ri, getTurneringLegacySkifteRow(row), {isLegacy:true});
   }
 
-  (Array.isArray(row.skifteRows) ? row.skifteRows : []).forEach((skifteRow, index)=>{
+  dynamicRows.forEach((skifteRow, index)=>{
     appendTurneringSkifteItem(details, tableId, stateKey, row, ri, normalizeTurneringSkifteRow(skifteRow), {
       dynamicIndex:index
     });
   });
 
-  if(!count){
+  if(!count && dynamicRows.length === 0){
     const empty = document.createElement("div");
     empty.className = "turnering-skifte-empty";
     empty.textContent = "Ingen skiftebevegelser registrert for denne raden.";
