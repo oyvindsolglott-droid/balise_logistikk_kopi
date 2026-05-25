@@ -4724,6 +4724,20 @@ function getSdeSourceLabel(source){
 }
 
 
+function getHiddenOldPlanSkifteWarningText(){
+  const rows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+  const activeCount = rows.filter(row =>
+    row &&
+    isPlanSkifteRowFilled(row) &&
+    !isPlanSkifteFerdig(row?.utfort)
+  ).length;
+
+  if(!activeCount) return "";
+
+  return `Merk: ${activeCount} aktiv${activeCount === 1 ? "" : "e"} rad${activeCount === 1 ? "" : "er"} fra skjult gammel skifteplan påvirker SDE. Kontroller om ${activeCount === 1 ? "denne fortsatt skal" : "disse fortsatt skal"} gjelde.`;
+}
+
+
 function getSdePlanSkifteSuggestedSlot(planRow){
   if(!planRow) return "";
 
@@ -5353,9 +5367,10 @@ function buildSdeVaktplan(){
   if(report){
     const nextActionsText = getSdeNextActionsText(rows,currentDayType);
     const shiftSummaryText = getSdeShiftSummaryText(rows);
+    const hiddenOldPlanWarningText = getHiddenOldPlanSkifteWarningText();
     report.style.whiteSpace = "pre-line";
     report.style.lineHeight = "1.45";
-    report.textContent = `${nextActionsText}\n${shiftSummaryText}`;
+    report.textContent = [hiddenOldPlanWarningText, nextActionsText, shiftSummaryText].filter(Boolean).join("\n");
   }
 
   table.style.display = "table";
