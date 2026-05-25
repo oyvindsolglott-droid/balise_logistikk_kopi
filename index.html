@@ -1415,7 +1415,7 @@ button{padding:12px 12px}
 <button class="seg active" type="button" data-tab="oppstilling">Tursatt</button>
 <button class="seg" type="button" data-tab="grunnoppstilling">Grunnoppstilling</button>
 <button class="seg" type="button" data-tab="turneringKveld">Turnering Kveld</button>
-<button class="seg" type="button" data-tab="inndata">Planlegge Skiftebevegelser</button>
+<button class="seg" type="button" data-tab="inndata" style="display:none">Planlegge Skiftebevegelser</button>
 <button class="seg" type="button" data-tab="sdeVaktplan">SDE vaktplan</button>
 <button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
 <button class="seg" type="button" data-tab="sporplan">Sporplan</button>
@@ -1529,7 +1529,7 @@ button{padding:12px 12px}
 <div class="zoom-inner" id="sdeVaktplanZoom">
 <div class="sde-import-report" id="sdeImportReport">
 <div class="sde-import-report-title">SDE vaktplan</div>
-<div class="sde-import-report-content" id="sdeImportReportText">Testgrunnlaget er deaktivert. Videre SDE skal bygge på faktisk Sporplan, Grunnoppstilling, Tursatt, Turnering Kveld/Natt og Planlegge Skiftebevegelser.</div>
+<div class="sde-import-report-content" id="sdeImportReportText">Testgrunnlaget er deaktivert. Videre SDE bygger på faktisk Sporplan, Grunnoppstilling, Tursatt og skifteplanlegging i Turnering Kveld/Natt.</div>
 </div>
 <div class="note">
 Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at tidligere testgrunnlag forveksles med operativ status.
@@ -1618,7 +1618,7 @@ Tømme: j</pre>
 <li><strong>Oppdater Grunnoppstilling.</strong> Gå fysisk gjennom tomta og registrer hva som faktisk står i hver slot.</li>
 <li><strong>Sjekk Tursatt mot Topas Toginfo.</strong> Kontroller at ankommende tog og kjøretøy stemmer med Topas Toginfo / kjøretøy før du bruker dem videre som grunnlag.</li>
 <li><strong>Merk kjøretøy som skal ut av drift.</strong> Bruk rep-/verkstedfeltet der dette finnes. Skriv <strong>r</strong> for reparasjon/verkstedflyt. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</li>
-<li><strong>Planlegg skiftebevegelser.</strong> Bruk Planlegge Skiftebevegelser til å registrere klokkeslett, kjøretøy, fra spor, til spor, skifter, eventuell rep-status og operasjonstype.</li>
+<li><strong>Planlegg skiftebevegelser.</strong> Bruk <strong>+ Skifte</strong> i Turnering Kveld/Natt til å registrere klokkeslett, kjøretøy, fra spor, til spor, skifter, eventuell rep-status og operasjonstype.</li>
 <li><strong>Marker utført når bevegelsen er gjort.</strong> Skriv <strong>f</strong> eller <strong>j</strong> i Utført-kolonnen. Da regner programmet kjøretøyet som flyttet til ny faktisk plassering.</li>
 </ol>
 <p>Hvis Grunnoppstilling eller Tursatt-kontrollen er feil, vil Sporplan og senere SDE-vurderinger få feil utgangspunkt.</p>
@@ -1631,11 +1631,11 @@ Tømme: j</pre>
 6n = 75-17</pre>
 <p><strong>r</strong> betyr reparasjon/verkstedflyt og gir rød varsling i Sporplan. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</p>
 <p>Grunnoppstilling brukes som startstatus i Sporplan. Det betyr at kjøretøyene du legger inn her vises som fysisk plassert i Sporplan. Hvis rep er satt til r, får samme slot rød varsling.</p>
-<p>Grunnoppstilling er likevel <strong>flyktig</strong>. Når du senere registrerer en ferdig skiftebevegelse i Planlegge Skiftebevegelser, overstyrer den grunnoppstillingen.</p>
+<p>Grunnoppstilling er likevel <strong>flyktig</strong>. Når du senere registrerer en ferdig skiftebevegelse i Turnering Kveld/Natt, overstyrer den grunnoppstillingen.</p>
 <pre>Grunnoppstilling:
 5s = 74-50
 
-Planlegge Skiftebevegelser:
+Skifteplanlegging i Turnering Kveld/Natt:
 Kjøretøy_nr = 74-50
 Fra spor = 5s
 Til spor = 2s
@@ -1643,8 +1643,8 @@ Utført = f</pre>
 <p>Da regner programmet 74-50 som flyttet til 2s. Den gamle plasseringen i 5s frigjøres automatisk i Sporplan.</p>
 <p>Hvis Grunnoppstilling er feil eller ufullstendig, vil Sporplan og senere SDE-vurderinger få et dårligere utgangspunkt. Derfor bør dette alltid være første kontrollpunkt før videre planlegging.</p>
 
-<h3>Planlegge Skiftebevegelser</h3>
-<p>Dette arket brukes til å planlegge konkrete skiftebevegelser.</p>
+<h3>Skifteplanlegging i Turnering Kveld/Natt</h3>
+<p>Denne funksjonen brukes til å planlegge konkrete skiftebevegelser.</p>
 <p>Her kan du føre inn:</p>
 <pre>klokkeslett
 kjøretøy
@@ -1655,7 +1655,7 @@ til rep
 operasjonstype
 om oppdraget er utført</pre>
 <p>Planlagte bevegelser som ikke er utført, kan vises tydelig i Sporplan. Når en bevegelse merkes som utført, oppdateres logikken slik at kjøretøyet regnes som plassert på nytt sted.</p>
-<p>I kolonnen <strong>Til rep</strong> i Planlegge Skiftebevegelser kan du skrive <strong>r</strong> for reparasjon/verkstedflyt. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</p>
+<p>I feltet <strong>Til rep</strong> under <strong>+ Skifte</strong> i Turnering Kveld/Natt kan du skrive <strong>r</strong> for reparasjon/verkstedflyt. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</p>
 
 <h3>Turnering Natt</h3>
 <p>Turnering Natt brukes til å se nattens kjøretøyflyt og produksjon.</p>
@@ -1752,7 +1752,7 @@ WC/vann: j</pre>
 <p>Anbefalt standard er <strong>j</strong>. Unngå å bruke flere varianter som x, ja, wc, vann eller WC/vann.</p>
 
 <h3>Operasjonstype</h3>
-<p>Operasjonstype brukes i Planlegge Skiftebevegelser når en planlagt bevegelse har en særskilt operativ betydning.</p>
+<p>Operasjonstype brukes under <strong>+ Skifte</strong> i Turnering Kveld/Natt når en planlagt bevegelse har en særskilt operativ betydning.</p>
 <pre>Motsatt deling
 Fra spor 6 etter service
 Fast skifter 2-oppgave
@@ -1762,7 +1762,7 @@ Avklares</pre>
 <p>SDE skal vise operasjonstypen, men ikke automatisk tildele ansvar eller flytte kjøretøy basert på den alene.</p>
 
 <h3>Utført</h3>
-<p>Utført-kolonnen brukes i Planlegge Skiftebevegelser.</p>
+<p>Utført-feltet brukes under <strong>+ Skifte</strong> i Turnering Kveld/Natt.</p>
 <p>Her kan du skrive:</p>
 <pre>f
 ferdig
@@ -4533,7 +4533,7 @@ function renderSdeTursattComparison(data){
 async function loadSdeImportReport(){
   const el = document.getElementById("sdeImportReportText");
   if(el){
-    el.textContent = "Testgrunnlaget er deaktivert. Videre SDE skal bygge på faktisk Sporplan, Grunnoppstilling, Tursatt, Turnering Kveld/Natt og Planlegge Skiftebevegelser.";
+    el.textContent = "Testgrunnlaget er deaktivert. Videre SDE bygger på faktisk Sporplan, Grunnoppstilling, Tursatt og skifteplanlegging i Turnering Kveld/Natt.";
   }
 }
 
