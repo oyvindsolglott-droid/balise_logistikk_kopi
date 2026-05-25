@@ -4927,15 +4927,44 @@ function getSdePlanSkifteReason(planRow){
 }
 
 
+function getSdeTimeMinutes(timeValue){
+  const raw = String(timeValue || "").trim();
+  const match = raw.match(/^(\d{1,2})[:.](\d{2})$/);
+  if(!match) return null;
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+
+  if(!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  if(hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+  return hour * 60 + minute;
+}
+
+function isBeforeSpor3ParkingWindow(row){
+  const minutes = getSdeTimeMinutes(row?.arrival);
+  if(minutes === null) return false;
+
+  const limit = (21 * 60) + 15;
+  return minutes >= (15 * 60) && minutes < limit;
+}
+
 function getSdeProductionTarget(row){
   if(!row || row.status === "Annullert") return "Ingen";
 
   const toTrain = normalizeTognr(row.toTrain);
   const part = String(row.part || "").trim();
+  const beforeSpor3Window = isBeforeSpor3ParkingWindow(row);
 
-  if(toTrain === "802" && part === "1") return "Spor 3 fremre";
-  if(toTrain === "802" && part === "2") return "Spor 3 bakre";
-  if(toTrain === "852") return "Bak 802 / vurder spor 3";
+  if(toTrain === "802" && part === "1"){
+    return beforeSpor3Window ? "Mellomlagre før spor 3 fremre etter 21:15" : "Spor 3 fremre";
+  }
+  if(toTrain === "802" && part === "2"){
+    return beforeSpor3Window ? "Mellomlagre før spor 3 bakre etter 21:15" : "Spor 3 bakre";
+  }
+  if(toTrain === "852"){
+    return beforeSpor3Window ? "Mellomlagre / vurder bak 802 etter 21:15" : "Bak 802 / vurder spor 3";
+  }
 
   if(toTrain === "804" && part === "1") return "Morgenproduksjon 804 del 1";
   if(toTrain === "804" && part === "2") return "Morgenproduksjon 804 del 2";
