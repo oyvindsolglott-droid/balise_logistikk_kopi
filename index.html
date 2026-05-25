@@ -1310,6 +1310,12 @@ button{padding:12px 12px}
 .turnering-skifte-field input{
   min-width:0;
 }
+.turnering-skifte-field input.skifte-slot-invalid{
+  border-color:rgba(220,38,38,.85);
+  background:rgba(220,38,38,.10);
+  color:var(--red,#dc2626);
+  box-shadow:0 0 0 2px rgba(220,38,38,.12);
+}
 @media(max-width:900px){
   .turnering-skifte-grid{
     grid-template-columns:repeat(2,minmax(90px,1fr));
@@ -3158,6 +3164,41 @@ function getTurneringSkifteFields(){
   ];
 }
 
+
+function isTurneringSkifteSlotField(fieldKey){
+  return fieldKey === "fromSpor" || fieldKey === "toSpor";
+}
+
+function getTurneringSkifteSlotValidationMessage(value){
+  const raw = String(value || "").trim();
+  if(!raw) return "";
+
+  const normalized = normalizeSlot(raw);
+  if(inputSlots.includes(normalized)) return "";
+
+  const possible = inputSlots.filter(slot => slot.startsWith(normalized));
+  if(possible.length){
+    return `Ufullstendig spor: ${raw}. Bruk full sporplassering, for eksempel ${possible.slice(0,6).join(", ")}.`;
+  }
+
+  return `Ugyldig spor: ${raw}. Kontroller sporplassering.`;
+}
+
+function updateTurneringSkifteSlotInputValidation(input, fieldKey, value){
+  if(!input || !isTurneringSkifteSlotField(fieldKey)) return;
+
+  const message = getTurneringSkifteSlotValidationMessage(value);
+  input.classList.toggle("skifte-slot-invalid", !!message);
+
+  if(message){
+    input.title = message;
+    input.setAttribute("aria-invalid","true");
+  }else{
+    input.removeAttribute("title");
+    input.removeAttribute("aria-invalid");
+  }
+}
+
 function getTurneringLegacySkifteRow(row){
   return {
     time:String(row?.skifteTime || ""),
@@ -3285,8 +3326,10 @@ function appendTurneringSkifteItem(container, tableId, stateKey, row, ri, skifte
     inp.spellcheck = false;
     inp.placeholder = field.placeholder || "";
     inp.value = String(skifteRow?.[field.key] || "");
+    updateTurneringSkifteSlotInputValidation(inp, field.key, inp.value);
 
     inp.addEventListener("input", e=>{
+      updateTurneringSkifteSlotInputValidation(inp, field.key, e.target.value);
       if(isLegacy){
         const legacyKeyMap = {
           time:"skifteTime",
