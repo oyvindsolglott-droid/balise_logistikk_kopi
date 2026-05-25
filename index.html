@@ -1984,14 +1984,33 @@ const topRow=["12N","11N","10N","9","8N","7N","platformA","6N","5N","4N","3N","p
 const midRow=["12S","11S","10S",null,"8S","7S","platformA-skip","6S","5M","4M","3M","platformB-skip","2S","1S"];
 const botRow=[null,null,null,null,"8SS","7SS",null,"6SS","5S","4S","3S",null,null,null];
 
+function makeTurneringSkifteDefaults(){
+  return {
+    skifteTime:"",
+    skifteVehicle:"",
+    skifteFromSpor:"",
+    skifteToSpor:"",
+    skifteCrew:"",
+    skifteTilRep:"",
+    skifteOperationType:"",
+    skifteUtfort:""
+  };
+}
+
+function withTurneringSkifteDefaults(row){
+  if(!row || typeof row !== "object") return row;
+  if(row.type) return row;
+  return {...makeTurneringSkifteDefaults(), ...row};
+}
+
 function convertLegacyKveldRow(row){
   if(!row || typeof row !== "object") return row;
   if(row.type === "section") return row;
   if(row.type === "header") return {...headerKveld};
-  if("j" in row) return row;
+  if("j" in row) return withTurneringSkifteDefaults(row);
 
   const wash = String(row.e || "").trim().toLowerCase();
-  return {
+  return withTurneringSkifteDefaults({
     a:String(row.a || ""),
     b:String(row.b || ""),
     c:String(row.c || ""),
@@ -2002,7 +2021,7 @@ function convertLegacyKveldRow(row){
     h:(wash === "ja" || wash === "ja2") ? "ja" : "",
     i:String(row.h || ""),
     j:String(row.i || "")
-  };
+  });
 }
 
 function migrateKveldRows(rows){
@@ -2014,10 +2033,10 @@ function convertLegacyNattRow(row){
   if(!row || typeof row !== "object") return row;
   if(row.type === "section") return row;
   if(row.type === "header") return {...headerNatt};
-  if("j" in row) return row;
+  if("j" in row) return withTurneringSkifteDefaults(row);
 
   const wash = String(row.e || "").trim().toLowerCase();
-  return {
+  return withTurneringSkifteDefaults({
     a:String(row.a || ""),
     b:String(row.b || ""),
     c:String(row.c || ""),
@@ -2028,7 +2047,7 @@ function convertLegacyNattRow(row){
     h:(wash === "ja" || wash === "ja2") ? "ja" : "",
     i:String(row.h || ""),
     j:String(row.i || "")
-  };
+  });
 }
 
 function migrateNattRows(rows){
