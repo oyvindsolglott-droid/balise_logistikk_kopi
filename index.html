@@ -4844,16 +4844,16 @@ function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
 
   const messages = [];
 
-  if(!toSlot) return "Kontroller: til-spor mangler.";
-  if(!inputSlots.includes(toSlot)) return `Kontroller: til-spor ${toSlot} er ikke gyldig.`;
-  if(fromSlot && fromSlot === toSlot) messages.push("Kontroller: fra-spor og til-spor er samme spor.");
+  if(!toSlot) return "Kontroller: til-spor mangler. Fyll ut Til spor i + Skifte hvis bevegelsen har et planlagt mål.";
+  if(!inputSlots.includes(toSlot)) return `Kontroller: til-spor ${toSlot} er ikke gyldig. Rett Til spor i + Skifte til en gyldig sporplassering, for eksempel 5S, 10N, 6SS eller 9.`;
+  if(fromSlot && fromSlot === toSlot) messages.push("Kontroller: fra-spor og til-spor er samme spor. Endre Fra spor eller Til spor i + Skifte, eller fjern bevegelsen hvis den ikke skal utføres.");
 
   const targetVehicle = getSdeVehicleInSlot(toSlot);
 
   if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle, vehicle)){
-    messages.push(`Kontroller: til-spor ${toSlot} er opptatt av ${targetVehicle}.`);
+    messages.push(`Kontroller: til-spor ${toSlot} er opptatt av ${targetVehicle}. Vurder annet målspor, eller flytt/avklar kjøretøyet som allerede står der før denne bevegelsen utføres.`);
   }else if(targetVehicle){
-    messages.push(`Kontroller: til-spor ${toSlot} viser allerede ${targetVehicle}.`);
+    messages.push(`Kontroller: til-spor ${toSlot} viser allerede ${targetVehicle}. Sjekk om skiftet allerede er utført, om Utført-feltet skal settes til f, eller om planen er dobbeltført.`);
   }else{
     messages.push(`Til-spor ${toSlot} ser ledig ut.`);
   }
@@ -4907,13 +4907,13 @@ function getSdePlanSkifteReason(planRow){
   if(operationType) parts.push(`Operasjonstype: ${operationType}.`);
 
   if(!vehicle){
-    parts.push("Kontroller: kjøretøy mangler i planlagt skiftebevegelse.");
+    parts.push("Kontroller: kjøretøy mangler i planlagt skiftebevegelse. Fyll ut Kjøretøy i + Skifte, eller fjern raden hvis den ikke skal brukes.");
   }else if(!fromSlot){
-    parts.push("Kontroller: fra-spor mangler.");
+    parts.push("Kontroller: fra-spor mangler. Fyll ut Fra spor i + Skifte slik at planen kan kontrolleres mot faktisk Sporplan.");
   }else if(!currentSlot){
-    parts.push(`Kontroller: ${vehicle} finnes ikke i Sporplan.`);
+    parts.push(`Kontroller: ${vehicle} finnes ikke i Sporplan. Sjekk om kjøretøyet mangler i Grunnoppstilling/Sporplan, eller om kjøretøynummeret i + Skifte er feil.`);
   }else if(currentSlot !== fromSlot){
-    parts.push(`Avvik: planlagt fra ${fromSlot}, men Sporplan viser ${vehicle} i ${currentSlot}.`);
+    parts.push(`Avvik: planlagt fra ${fromSlot}, men Sporplan viser ${vehicle} i ${currentSlot}. Kontroller om Fra spor i + Skifte skal endres til ${currentSlot}, om kjøretøyet allerede er flyttet, eller om Sporplan/Grunnoppstilling ikke er oppdatert.`);
   }else{
     parts.push("Plan kontrollert mot Sporplan.");
   }
