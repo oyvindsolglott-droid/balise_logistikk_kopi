@@ -1316,6 +1316,49 @@ button{padding:12px 12px}
   }
 }
 
+
+.turnering-skifte-toolbar{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:8px;
+  margin-bottom:8px;
+}
+.turnering-skifte-add,
+.turnering-skifte-remove{
+  border:1px solid rgba(148,163,184,.55);
+  border-radius:10px;
+  background:rgba(255,255,255,.75);
+  padding:5px 8px;
+  font-size:11px;
+  font-weight:800;
+  cursor:pointer;
+}
+.turnering-skifte-item{
+  border-top:1px solid rgba(148,163,184,.25);
+  padding-top:8px;
+  margin-top:8px;
+}
+.turnering-skifte-item:first-of-type{
+  border-top:0;
+  padding-top:0;
+}
+.turnering-skifte-item-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  margin-bottom:6px;
+  font-size:11px;
+  font-weight:800;
+  color:var(--muted,#64748b);
+}
+.turnering-skifte-empty{
+  font-size:11px;
+  color:var(--muted,#64748b);
+  margin-top:4px;
+}
+
 </style>
 
 <style id="rightsNoticeStyle">
@@ -3068,38 +3111,124 @@ function getKveldDuplicateVehiclePositions(){
 
 function getTurneringSkifteFields(){
   return [
-    {key:"skifteTime", label:"Tid", placeholder:"kl"},
-    {key:"skifteVehicle", label:"Kjøretøy", placeholder:"74-xx"},
-    {key:"skifteFromSpor", label:"Fra spor", placeholder:"fra"},
-    {key:"skifteToSpor", label:"Til spor", placeholder:"til"},
-    {key:"skifteCrew", label:"Skifter", placeholder:"1/2/12"},
-    {key:"skifteTilRep", label:"Til rep", placeholder:"r"},
-    {key:"skifteOperationType", label:"Operasjonstype", placeholder:"type"},
-    {key:"skifteUtfort", label:"Utført", placeholder:"f"}
+    {key:"time", label:"Tid", placeholder:"kl"},
+    {key:"vehicle", label:"Kjøretøy", placeholder:"74-xx"},
+    {key:"fromSpor", label:"Fra spor", placeholder:"fra"},
+    {key:"toSpor", label:"Til spor", placeholder:"til"},
+    {key:"crew", label:"Skifter", placeholder:"1/2/12"},
+    {key:"tilRep", label:"Til rep", placeholder:"r"},
+    {key:"operationType", label:"Operasjonstype", placeholder:"type"},
+    {key:"utfort", label:"Utført", placeholder:""}
   ];
+}
+
+function getTurneringLegacySkifteRow(row){
+  return {
+    time:String(row?.skifteTime || ""),
+    vehicle:String(row?.skifteVehicle || ""),
+    fromSpor:String(row?.skifteFromSpor || ""),
+    toSpor:String(row?.skifteToSpor || ""),
+    crew:String(row?.skifteCrew || ""),
+    tilRep:String(row?.skifteTilRep || ""),
+    operationType:String(row?.skifteOperationType || ""),
+    utfort:String(row?.skifteUtfort || "")
+  };
+}
+
+function hasTurneringLegacySkifteContent(row){
+  return hasPlanSkifteContent(getTurneringLegacySkifteRow(row));
+}
+
+function hasTurneringDynamicSkifteContent(row){
+  return (Array.isArray(row?.skifteRows) ? row.skifteRows : [])
+    .some(skifteRow=>hasPlanSkifteContent(normalizeTurneringSkifteRow(skifteRow)));
 }
 
 function hasTurneringSkifteContent(row){
   if(!row || row.type) return false;
-  return getTurneringSkifteFields().some(field=>String(row?.[field.key] || "").trim());
+  return hasTurneringLegacySkifteContent(row) || hasTurneringDynamicSkifteContent(row);
 }
 
-function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
-  if(!body || !row || row.type) return;
+function updateTurneringAfterSkifteInput(){
+  buildSporplan();
+  if(typeof buildSdeVaktplan === "function") buildSdeVaktplan();
+  persist(true);
+}
 
-  const tr = document.createElement("tr");
-  tr.className = "turnering-skifte-row";
-  if(isKveld) tr.classList.add("turnering-skifte-kveld-row");
+function rebuildTurneringAfterSkifteStructureChange(tableId, stateKey){
+  buildTurnering(tableId, stateKey);
+  buildSporplan();
+  if(typeof buildSdeVaktplan === "function") buildSdeVaktplan();
+  persist(true);
+}
 
-  const td = document.createElement("td");
-  td.colSpan = 10;
+function addTurneringSkifteRow(tableId, stateKey, ri){
+  if(!state?.[stateKey]?.[ri]) return;
+  const row = state[stateKey][ri];
 
-  const details = document.createElement("details");
-  details.open = hasTurneringSkifteContent(row);
+  if(!Array.isArray(row.skifteRows)){
+    row.skifteRows = [];
+  }
 
-  const summary = document.createElement("summary");
-  summary.textContent = hasTurneringSkifteContent(row) ? "Skifteplan registrert" : "Skifte";
-  details.appendChild(summary);
+  row.skifteRows.push(makeEmptyTurneringSkifteRow());
+  rebuildTurneringAfterSkifteStructureChange(tableId, stateKey);
+}
+
+function removeTurneringDynamicSkifteRow(tableId, stateKey, ri, skifteIndex){
+  if(!state?.[stateKey]?.[ri]) return;
+  const row = state[stateKey][ri];
+
+  if(!Array.isArray(row.skifteRows)) return;
+  row.skifteRows.splice(skifteIndex, 1);
+
+  rebuildTurneringAfterSkifteStructureChange(tableId, stateKey);
+}
+
+function clearTurneringLegacySkifteRow(tableId, stateKey, ri){
+  if(!state?.[stateKey]?.[ri]) return;
+  const row = state[stateKey][ri];
+
+  row.skifteTime = "";
+  row.skifteVehicle = "";
+  row.skifteFromSpor = "";
+  row.skifteToSpor = "";
+  row.skifteCrew = "";
+  row.skifteTilRep = "";
+  row.skifteOperationType = "";
+  row.skifteUtfort = "";
+
+  rebuildTurneringAfterSkifteStructureChange(tableId, stateKey);
+}
+
+function appendTurneringSkifteItem(container, tableId, stateKey, row, ri, skifteRow, options){
+  const opts = options || {};
+  const isLegacy = Boolean(opts.isLegacy);
+  const dynamicIndex = Number.isInteger(opts.dynamicIndex) ? opts.dynamicIndex : -1;
+
+  const item = document.createElement("div");
+  item.className = "turnering-skifte-item";
+
+  const head = document.createElement("div");
+  head.className = "turnering-skifte-item-head";
+
+  const title = document.createElement("span");
+  title.textContent = isLegacy ? "Skiftebevegelse" : `Skiftebevegelse ${dynamicIndex + 1}`;
+  head.appendChild(title);
+
+  const removeBtn = document.createElement("button");
+  removeBtn.type = "button";
+  removeBtn.className = "turnering-skifte-remove";
+  removeBtn.textContent = "Fjern";
+  removeBtn.addEventListener("click", ()=>{
+    if(isLegacy){
+      clearTurneringLegacySkifteRow(tableId, stateKey, ri);
+    }else{
+      removeTurneringDynamicSkifteRow(tableId, stateKey, ri, dynamicIndex);
+    }
+  });
+  head.appendChild(removeBtn);
+
+  item.appendChild(head);
 
   const grid = document.createElement("div");
   grid.className = "turnering-skifte-grid";
@@ -3119,20 +3248,92 @@ function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
     inp.autocorrect = "off";
     inp.spellcheck = false;
     inp.placeholder = field.placeholder || "";
-    inp.value = String(row?.[field.key] || "");
+    inp.value = String(skifteRow?.[field.key] || "");
 
     inp.addEventListener("input", e=>{
-      state[stateKey][ri][field.key] = e.target.value;
-      buildSporplan();
-      if(typeof buildSdeVaktplan === "function") buildSdeVaktplan();
-      persist(true);
+      if(isLegacy){
+        const legacyKeyMap = {
+          time:"skifteTime",
+          vehicle:"skifteVehicle",
+          fromSpor:"skifteFromSpor",
+          toSpor:"skifteToSpor",
+          crew:"skifteCrew",
+          tilRep:"skifteTilRep",
+          operationType:"skifteOperationType",
+          utfort:"skifteUtfort"
+        };
+        state[stateKey][ri][legacyKeyMap[field.key]] = e.target.value;
+      }else{
+        if(!Array.isArray(state[stateKey][ri].skifteRows)){
+          state[stateKey][ri].skifteRows = [];
+        }
+        if(!state[stateKey][ri].skifteRows[dynamicIndex]){
+          state[stateKey][ri].skifteRows[dynamicIndex] = makeEmptyTurneringSkifteRow();
+        }
+        state[stateKey][ri].skifteRows[dynamicIndex][field.key] = e.target.value;
+      }
+
+      updateTurneringAfterSkifteInput();
     });
 
     wrap.appendChild(inp);
     grid.appendChild(wrap);
   });
 
-  details.appendChild(grid);
+  item.appendChild(grid);
+  container.appendChild(item);
+}
+
+function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
+  if(!body || !row || row.type) return;
+
+  const tr = document.createElement("tr");
+  tr.className = "turnering-skifte-row";
+  if(isKveld) tr.classList.add("turnering-skifte-kveld-row");
+
+  const td = document.createElement("td");
+  td.colSpan = 10;
+
+  const details = document.createElement("details");
+  details.open = hasTurneringSkifteContent(row);
+
+  const summary = document.createElement("summary");
+  const dynamicCount = (Array.isArray(row.skifteRows) ? row.skifteRows : [])
+    .filter(skifteRow=>hasPlanSkifteContent(normalizeTurneringSkifteRow(skifteRow)))
+    .length;
+  const legacyCount = hasTurneringLegacySkifteContent(row) ? 1 : 0;
+  const count = legacyCount + dynamicCount;
+  summary.textContent = count ? `Skifte (${count})` : "Skifte";
+  details.appendChild(summary);
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "turnering-skifte-toolbar";
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "turnering-skifte-add";
+  addBtn.textContent = "+ Skifte";
+  addBtn.addEventListener("click", ()=>addTurneringSkifteRow(tableId, stateKey, ri));
+  toolbar.appendChild(addBtn);
+  details.appendChild(toolbar);
+
+  if(legacyCount){
+    appendTurneringSkifteItem(details, tableId, stateKey, row, ri, getTurneringLegacySkifteRow(row), {isLegacy:true});
+  }
+
+  (Array.isArray(row.skifteRows) ? row.skifteRows : []).forEach((skifteRow, index)=>{
+    appendTurneringSkifteItem(details, tableId, stateKey, row, ri, normalizeTurneringSkifteRow(skifteRow), {
+      dynamicIndex:index
+    });
+  });
+
+  if(!count){
+    const empty = document.createElement("div");
+    empty.className = "turnering-skifte-empty";
+    empty.textContent = "Ingen skiftebevegelser registrert for denne raden.";
+    details.appendChild(empty);
+  }
+
   td.appendChild(details);
   tr.appendChild(td);
   body.appendChild(tr);
@@ -4790,6 +4991,12 @@ function getSdeShiftSummaryText(rows){
 
 function getSdeNextActionsText(rows,currentDayType){
   const phaseOrder = ["Kveld","Natt","Dag / utenfor SDE-vakt","Ikke tidsatt"];
+  const planSources = new Set([
+    "Planlegge Skiftebevegelser",
+    "Turnering Kveld",
+    "Turnering Natt"
+  ]);
+  const isSdePlanSource = source => planSources.has(String(source || ""));
   const grouped = {};
 
   phaseOrder.forEach(phase=>{
@@ -4804,6 +5011,7 @@ function getSdeNextActionsText(rows,currentDayType){
       const status = String(row.status || "");
 
       if(status === "Annullert") return false;
+      if(status === "Planlagt" && isSdePlanSource(row.source)) return true;
       if(priority === "Høy" || priority === "Middels") return true;
       if(action === "Avklar datagrunnlag") return true;
 
@@ -4848,7 +5056,8 @@ function getSdeNextActionsText(rows,currentDayType){
   const isSdeTopPlanSkifteRow = (row,category)=>{
     const source = String(row?.source || "");
     const status = String(row?.status || "");
-    return category === "Skifte" || (status === "Planlagt" && source === "Planlegge Skiftebevegelser");
+
+    return category === "Skifte" || (status === "Planlagt" && isSdePlanSource(source));
   };
 
   const parseSdeTopPlanText = row=>{
