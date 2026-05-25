@@ -4717,6 +4717,11 @@ function getOpenPlanSkifteRowForVehicle(vehicle){
     return rowTokens.some(token=>vehicleTokens.includes(token));
   }) || null;
 }
+function getSdeSourceLabel(source){
+  const value = String(source || "").trim();
+  if(value === "Planlegge Skiftebevegelser") return "Skjult gammel skifteplan";
+  return value;
+}
 
 
 function getSdePlanSkifteSuggestedSlot(planRow){
@@ -4802,7 +4807,8 @@ function getSdePlanSkifteReason(planRow){
   const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
 
   const source = String(planRow.source || "").trim() || "Planlegge Skiftebevegelser";
-  parts.push(`Åpen planlagt skiftebevegelse fra ${source}.`);
+  const sourceLabel = getSdeSourceLabel(source);
+  parts.push(`Åpen planlagt skiftebevegelse fra ${sourceLabel}.`);
 
   if(time) parts.push(`Tid: ${time}.`);
   if(fromSlot || toSlot) parts.push(`Plan: ${fromSlot || "?"} → ${toSlot || "?"}.`);
@@ -5361,7 +5367,7 @@ function buildSdeVaktplan(){
     const tr = document.createElement("tr");
     ["dayType","shiftPhase","fromTrain","arrival","vehicle","currentSlot","suggestedSlot","source","priority","recommendedAction","toTrain","part","departure","operation","status","reason"].forEach(key=>{
       const td = document.createElement("td");
-      td.textContent = row[key] || "";
+      td.textContent = key === "source" ? getSdeSourceLabel(row[key]) : (row[key] || "");
       if(key === "status" && (row.status === "Må håndteres" || row.status === "Avvik" || row.status === "Planlagt")){
         td.style.fontWeight = "800";
       }
