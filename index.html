@@ -4722,6 +4722,12 @@ function getSdeSourceLabel(source){
   if(value === "Planlegge Skiftebevegelser") return "Skjult gammel skifteplan";
   return value;
 }
+function isSdePlanSourceValue(source){
+  const value = String(source || "").trim();
+  return value === "Planlegge Skiftebevegelser" ||
+    value === "Turnering Kveld" ||
+    value === "Turnering Natt";
+}
 
 
 function getHiddenOldPlanSkifteWarningText(){
@@ -4916,7 +4922,7 @@ function getSdePriority(row){
   if(reason.includes("Kontroller:")) return "Høy";
   if(reason.includes("Verkstedflyt:")) return "Høy";
 
-  if(source === "Planlegge Skiftebevegelser") return "Middels";
+  if(isSdePlanSourceValue(source)) return "Middels";
   if(reason.includes("Buttspor-regel:")) return "Middels";
   if(reason.includes("plattformspor")) return "Middels";
   if(status === "Må håndteres") return "Middels";
