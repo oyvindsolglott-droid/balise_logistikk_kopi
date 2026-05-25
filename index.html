@@ -5050,23 +5050,72 @@ function isBeforeSpor3ParkingWindow(row){
 }
 
 
-function getSdeIntermediateStorageSlot(row){
-  const currentSlot = normalizeSlot(row?.currentSlot);
-  const reservedSlots = row?._reservedIntermediateStorageSlots instanceof Set
-    ? row._reservedIntermediateStorageSlots
-    : new Set();
+function getSdeIntermediateStorageCandidates(row){
+  const toTrain = normalizeTognr(row?.toTrain);
+  const part = String(row?.part || "").trim();
 
-  const candidates = [
+  if(toTrain === "802" && part === "1"){
+    return [
+      "4N","1N",
+      "5N",
+      "4M","4S",
+      "9",
+      "11S","12S",
+      "1S"
+    ];
+  }
+
+  return [
     "4N","4M","4S",
     "5N",
     "9",
     "11S","12S",
     "1N","1S"
   ];
+}
+
+function isSdeSlotOccupiedOrReserved(slot, reservedSlots){
+  const normalizedSlot = normalizeSlot(slot);
+  return reservedSlots.has(normalizedSlot) || !!getSdeVehicleInSlot(normalizedSlot);
+}
+
+function isSdeIntermediateStorageRouteBlocked(slot, reservedSlots){
+  const normalizedSlot = normalizeSlot(slot);
+
+  if(normalizedSlot === "4N"){
+    return isSdeSlotOccupiedOrReserved("4M", reservedSlots)
+      || isSdeSlotOccupiedOrReserved("4S", reservedSlots);
+  }
+
+  if(normalizedSlot === "4M"){
+    return isSdeSlotOccupiedOrReserved("4N", reservedSlots)
+      || isSdeSlotOccupiedOrReserved("5N", reservedSlots);
+  }
+
+  if(normalizedSlot === "4S"){
+    return isSdeSlotOccupiedOrReserved("4N", reservedSlots)
+      || isSdeSlotOccupiedOrReserved("4M", reservedSlots);
+  }
+
+  if(normalizedSlot === "5N"){
+    return isSdeSlotOccupiedOrReserved("4M", reservedSlots);
+  }
+
+  return false;
+}
+
+function getSdeIntermediateStorageSlot(row){
+  const currentSlot = normalizeSlot(row?.currentSlot);
+  const reservedSlots = row?._reservedIntermediateStorageSlots instanceof Set
+    ? row._reservedIntermediateStorageSlots
+    : new Set();
+
+  const candidates = getSdeIntermediateStorageCandidates(row);
 
   return candidates.find(slot => {
     if(slot === currentSlot) return false;
     if(reservedSlots.has(slot)) return false;
+    if(isSdeIntermediateStorageRouteBlocked(slot, reservedSlots)) return false;
     return !getSdeVehicleInSlot(slot);
   }) || "";
 }
@@ -5074,9 +5123,9 @@ function getSdeIntermediateStorageSlot(row){
 function getSdeSpor3IntermediateTarget(row, finalTarget){
   const storageSlot = getSdeIntermediateStorageSlot(row);
   if(storageSlot){
-    return `Mellomlagre i ${storageSlot} før ${finalTarget} etter 21:15`;
+    return `Mellomlagre i ${storageSlot} før ${finalTarget} via vaskesporet etter 21:15`;
   }
-  return `Mellomlagre før ${finalTarget} etter 21:15`;
+  return `Mellomlagre før ${finalTarget} via vaskesporet etter 21:15`;
 }
 
 function getSdeIntermediateStorageSlotFromText(value){
@@ -5092,7 +5141,7 @@ function getSdeProductionTarget(row){
   const beforeSpor3Window = isBeforeSpor3ParkingWindow(row);
 
   if(toTrain === "802" && part === "1"){
-    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, "spor 3 fremre") : "Spor 3 fremre";
+    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, "spor 3S") : "Spor 3S";
   }
   if(toTrain === "802" && part === "2"){
     return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, "spor 3 bakre") : "Spor 3 bakre";
