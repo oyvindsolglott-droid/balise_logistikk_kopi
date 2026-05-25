@@ -1373,6 +1373,19 @@ button{padding:12px 12px}
   color:var(--muted,#64748b);
   margin-top:4px;
 }
+.opp-turneres-til{
+  margin-top:3px;
+  font-size:10px;
+  font-weight:500;
+  color:var(--red,#dc2626);
+  line-height:1.15;
+  white-space:nowrap;
+}
+.sde-turneres-til{
+  font-weight:500;
+  color:var(--red,#dc2626);
+  white-space:nowrap;
+}
 
 </style>
 
@@ -2530,6 +2543,73 @@ function getTurneringSuggestionForTrain(tog,key){
   if(key === "d") return parts[1] || "";
   if(key === "g") return parts[1] || "";
   return "";
+}
+
+
+function getOppstillingTurneringTarget(train, fieldKey){
+  const key = normalizeTognr(train);
+  if(!key) return "";
+
+  const row = (state.turneringKveld || []).find(item =>
+    item && !item.type && normalizeTognr(item.b) === key
+  );
+  if(!row) return "";
+
+  const targetKey = fieldKey === "vehicle2" ? "j" : "f";
+  const target = normalizeTognr(row[targetKey]);
+  if(!target) return "";
+
+  const frontTarget = normalizeTognr(row.f);
+  const rearTarget = normalizeTognr(row.j);
+  const shouldShowPart = fieldKey === "vehicle2" || (frontTarget && rearTarget && frontTarget === rearTarget);
+
+  if(shouldShowPart){
+    return `${target}/${fieldKey === "vehicle2" ? "2" : "1"}`;
+  }
+
+  return target;
+}
+
+function appendOppstillingTurneringTarget(td, train, fieldKey){
+  const target = getOppstillingTurneringTarget(train, fieldKey);
+  if(!target) return;
+
+  const note = document.createElement("div");
+  note.className = "opp-turneres-til";
+  note.textContent = `turneres til ${target}`;
+  td.appendChild(note);
+}
+
+
+function getSdeTurneringTargetText(row){
+  const target = normalizeTognr(row?.toTrain);
+  if(!target) return "";
+
+  const part = String(row?.part || "").trim();
+  return part ? `${target}/${part}` : target;
+}
+
+function renderSdeReportTextWithTurneringTargets(container, text){
+  if(!container) return;
+
+  container.textContent = "";
+
+  String(text || "").split("\n").forEach(line=>{
+    const div = document.createElement("div");
+    const match = line.match(/\s*@@SDE_TURNERES_TIL:([^@]+)@@/);
+    const cleanLine = line.replace(/\s*@@SDE_TURNERES_TIL:[^@]+@@/, "");
+
+    div.appendChild(document.createTextNode(cleanLine));
+
+    if(match && match[1]){
+      const span = document.createElement("span");
+      span.className = "sde-turneres-til";
+      span.textContent = ` turneres til ${match[1]}`;
+      div.appendChild(span);
+    }
+
+    container.appendChild(div);
+  });
 }
 
 function getDepartureRowsForMode(mode="imorgen"){
@@ -3888,6 +3968,7 @@ function appendOppstillingVehicleInput(td, train, fieldKey, value, isSecondMissi
   input.placeholder = fieldKey === "vehicle1" ? "Ikke Tursatt" : "";
   input.addEventListener("change", e=>handleOppstillingVehicleChange(train, fieldKey, e.target.value));
   td.appendChild(input);
+  appendOppstillingTurneringTarget(td, train, fieldKey);
   if(train && fieldKey === "vehicle2" && isSecondMissing){
     td.classList.add("opp-missing-second");
   }
@@ -4968,6 +5049,41 @@ function isBeforeSpor3ParkingWindow(row){
   return minutes >= (15 * 60) && minutes < limit;
 }
 
+
+function getSdeIntermediateStorageSlot(row){
+  const currentSlot = normalizeSlot(row?.currentSlot);
+  const reservedSlots = row?._reservedIntermediateStorageSlots instanceof Set
+    ? row._reservedIntermediateStorageSlots
+    : new Set();
+
+  const candidates = [
+    "4N","4M","4S",
+    "5N",
+    "9",
+    "11S","12S",
+    "1N","1S"
+  ];
+
+  return candidates.find(slot => {
+    if(slot === currentSlot) return false;
+    if(reservedSlots.has(slot)) return false;
+    return !getSdeVehicleInSlot(slot);
+  }) || "";
+}
+
+function getSdeSpor3IntermediateTarget(row, finalTarget){
+  const storageSlot = getSdeIntermediateStorageSlot(row);
+  if(storageSlot){
+    return `Mellomlagre i ${storageSlot} før ${finalTarget} etter 21:15`;
+  }
+  return `Mellomlagre før ${finalTarget} etter 21:15`;
+}
+
+function getSdeIntermediateStorageSlotFromText(value){
+  const match = String(value || "").match(/^Mellomlagre i\s+([0-9A-Z]+)\s+før\s+/);
+  return match ? normalizeSlot(match[1]) : "";
+}
+
 function getSdeProductionTarget(row){
   if(!row || row.status === "Annullert") return "Ingen";
 
@@ -4976,13 +5092,13 @@ function getSdeProductionTarget(row){
   const beforeSpor3Window = isBeforeSpor3ParkingWindow(row);
 
   if(toTrain === "802" && part === "1"){
-    return beforeSpor3Window ? "Mellomlagre før spor 3 fremre etter 21:15" : "Spor 3 fremre";
+    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, "spor 3 fremre") : "Spor 3 fremre";
   }
   if(toTrain === "802" && part === "2"){
-    return beforeSpor3Window ? "Mellomlagre før spor 3 bakre etter 21:15" : "Spor 3 bakre";
+    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, "spor 3 bakre") : "Spor 3 bakre";
   }
   if(toTrain === "852"){
-    return beforeSpor3Window ? "Mellomlagre / vurder bak 802 etter 21:15" : "Bak 802 / vurder spor 3";
+    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, "bak 802 / spor 3") : "Bak 802 / vurder spor 3";
   }
 
   if(toTrain === "804" && part === "1") return "Morgenproduksjon 804 del 1";
@@ -5325,7 +5441,9 @@ function getSdeNextActionsText(rows,currentDayType){
       const controlReasonText = controlReason ? `. ${controlReason}` : "";
       const main = `${index + 1}. ${timeAndAction}${vehicleText}${suggestionText}${operationSuffix}${controlReasonText}`;
 
-      lines.push(priority ? `${main} (${priority})` : main);
+      const turneringTarget = getSdeTurneringTargetText(row);
+      const turneringMarker = turneringTarget ? ` @@SDE_TURNERES_TIL:${turneringTarget}@@` : "";
+      lines.push(priority ? `${main} (${priority})${turneringMarker}` : `${main}${turneringMarker}`);
     });
   });
 
@@ -5384,6 +5502,7 @@ function buildSdeVaktplan(){
   const currentDayType = getCurrentSdeDayType();
 
   const usedPlanSkifteRows = new Set();
+  const usedIntermediateStorageSlots = new Set();
 
   const rows = normalRows
     .filter(row=>row.dayType === currentDayType)
@@ -5433,7 +5552,15 @@ function buildSdeVaktplan(){
           : ([planSkifteReason, deviationReason].filter(Boolean).join(" ") || "Normal drift. Første målregel brukes bare som produksjonsmål. Endelig sporvalg må senere vurderes mot faktisk Sporplan, Grunnoppstilling, rep/verkstedflyt og tilgjengelige spor.")
       };
 
+      result._reservedIntermediateStorageSlots = usedIntermediateStorageSlots;
       result.suggestedSlot = planSkifteSuggestedSlot || getSdeInitialSuggestedSlot(result);
+
+      const intermediateStorageSlot = getSdeIntermediateStorageSlotFromText(result.suggestedSlot);
+      if(intermediateStorageSlot){
+        usedIntermediateStorageSlots.add(intermediateStorageSlot);
+      }
+      delete result._reservedIntermediateStorageSlots;
+
       result.priority = getSdePriority(result);
       result.recommendedAction = getSdeRecommendedAction(result);
       return result;
@@ -5494,7 +5621,8 @@ function buildSdeVaktplan(){
     const hiddenOldPlanWarningText = getHiddenOldPlanSkifteWarningText();
     report.style.whiteSpace = "pre-line";
     report.style.lineHeight = "1.45";
-    report.textContent = [hiddenOldPlanWarningText, nextActionsText, shiftSummaryText].filter(Boolean).join("\n");
+    const reportText = [hiddenOldPlanWarningText, nextActionsText, shiftSummaryText].filter(Boolean).join("\n");
+    renderSdeReportTextWithTurneringTargets(report, reportText);
   }
 
   table.style.display = "table";
