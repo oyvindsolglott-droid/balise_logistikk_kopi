@@ -1655,7 +1655,7 @@ Tømme: j</pre>
 <li><strong>Sjekk Tursatt mot Topas Toginfo.</strong> Kontroller at ankommende tog og kjøretøy stemmer med Topas Toginfo / kjøretøy før du bruker dem videre som grunnlag.</li>
 <li><strong>Merk kjøretøy som skal ut av drift.</strong> Bruk rep-/verkstedfeltet der dette finnes. Skriv <strong>r</strong> for reparasjon/verkstedflyt. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</li>
 <li><strong>Planlegg skiftebevegelser.</strong> Bruk <strong>+ Skifte</strong> i Turnering Kveld/Natt til å registrere klokkeslett, kjøretøy, fra spor, til spor, skifter, eventuell rep-status og operasjonstype.</li>
-<li><strong>Marker utført når bevegelsen er gjort.</strong> Skriv <strong>f</strong> eller <strong>j</strong> i Utført-kolonnen. Da regner programmet kjøretøyet som flyttet til ny faktisk plassering.</li>
+<li><strong>Marker utført når bevegelsen er gjort.</strong> Skriv <strong>f</strong> i Utført-kolonnen. Da regner programmet kjøretøyet som flyttet til ny faktisk plassering. Verdiene <strong>j</strong>, <strong>ja</strong> og <strong>ferdig</strong> aksepteres også, men anbefalt standard er <strong>f</strong>.</li>
 </ol>
 <p>Hvis Grunnoppstilling eller Tursatt-kontrollen er feil, vil Sporplan og senere SDE-vurderinger få feil utgangspunkt.</p>
 
@@ -1716,28 +1716,26 @@ hvilke oppdrag som fortsatt ikke er utført</pre>
 <p>Når et skifteoppdrag merkes som ferdig, blir kjøretøyet regnet som plassert på sitt nye spor. Tidligere spor frigjøres, og oppdraget vises ikke lenger som en tydelig åpen planlagt bevegelse.</p>
 
 <h3>SDE vaktplan</h3>
-<p>SDE vaktplan er starten på beslutningsmotoren for skifting.</p>
-<p>Målet er at SDE etter hvert skal foreslå en samlet operativ plan for kveldsvakt og nattevakt.</p>
-<p>SDE skal bruke:</p>
+<p>SDE vaktplan er beslutningsstøtte for kveldsvakt og nattevakt.</p>
+<p>Den viser arbeidsliste, prioritet, anbefalt handling, avvik, planlagte skiftebevegelser og kontrollpunkter basert på tilgjengelig datagrunnlag.</p>
+<p>SDE bruker blant annet:</p>
 <pre>faktisk Sporplan
 Grunnoppstilling fra fysisk tomtekontroll
-Tursatt
+Tursatt/Balise
 Turnering Kveld
 Turnering Natt
-manuelle opplysninger
-Togplassering Skien
+planlagte skiftebevegelser
 verkstedbehov
 WC/vann-behov
-driftsregler</pre>
-<p>SDE skal ikke bare foreslå neste beste skiftebevegelse. Målet er at den skal bygge en hel plan med:</p>
-<pre>rekkefølge
-tidspunkt
-skifter 1 eller skifter 2
-fra spor
-til spor
-begrunnelse
-vurdering</pre>
-<p>Forslag fra SDE skal foreløpig behandles som beslutningsstøtte, ikke fasit.</p>
+lokale sporregler</pre>
+<p>SDE skal hjelpe deg å vurdere:</p>
+<pre>hva som bør kontrolleres først
+hvilke planlagte skifter som er aktive
+hvilke kjøretøy som har avvik
+hvilket spor som foreslås
+hvilken handling som bør prioriteres</pre>
+<p>Forslag fra SDE skal behandles som beslutningsstøtte, ikke fasit. Programmet flytter ikke kjøretøy automatisk og erstatter ikke lokal vurdering.</p>
+<p>Hvis SDE viser <strong>Skjult gammel skifteplan</strong>, betyr det at det fortsatt finnes aktive rader fra den gamle skjulte skifteplanfanen. Kontroller om disse radene fortsatt skal gjelde, eller om de er gamle rester fra tidligere planlegging.</p>
 
 <hr>
 
@@ -1839,13 +1837,15 @@ Utført: f</pre>
 <pre>9</pre>
 <p>Hovedregel: Skriv alltid nøyaktig sporplassering når sporet har flere posisjoner. Bruk bare rent spornummer der sporet faktisk bare har én plass, som spor 9.</p>
 
-<h3>Til spor i SDE-planlegging</h3>
-<p>I SDE-planlegging er prinsippet annerledes:</p>
-<pre>SDE skal ikke få fasit fra Til spor.</pre>
-<p>Hvis Til spor finnes i et papirark eller fasitark, skal det bare brukes til kontroll etterpå.</p>
-<pre>Til spor tomt = SDE skal selv beregne spor.
-Til spor fylt ut = kan brukes som fasit/evaluering etterpå.</pre>
-<p>SDE skal selv forsøke å finne egnet spor ut fra faktisk Sporplan, ledige spor, WC/vann-behov, rep/verkstedbehov, buttspor-regler, S før N i 10/11/12, morgenproduksjon og togrekkefølge.</p>
+<h3>Til spor i + Skifte og SDE-planlegging</h3>
+<p>Når du registrerer en konkret skiftebevegelse med <strong>+ Skifte</strong>, er <strong>Til spor</strong> den planlagte målplassen for akkurat den bevegelsen.</p>
+<pre>+ Skifte:
+Fra spor = 10s
+Til spor = 5s</pre>
+<p>Da bruker programmet dette som en aktiv planlagt skiftebevegelse. Den kan vises i Sporplan som <strong>PLAN FRA</strong> og <strong>PLAN TIL</strong>, og SDE kan vise den som planlagt handling.</p>
+<p>I ren SDE-beregning er prinsippet annerledes: SDE skal ikke få fasit fra et eksternt fasitark. Da skal SDE selv forsøke å finne egnet spor ut fra faktisk Sporplan, ledige spor, WC/vann-behov, rep/verkstedbehov, buttspor-regler, S før N i 10/11/12, morgenproduksjon og togrekkefølge.</p>
+<pre>Manuell + Skifte = bruker Til spor som planlagt mål.
+Automatisk SDE-vurdering = SDE skal selv foreslå egnet spor.</pre>
 
 <hr>
 
