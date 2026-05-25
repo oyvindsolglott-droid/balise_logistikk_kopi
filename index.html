@@ -1320,19 +1320,28 @@ button{padding:12px 12px}
 .turnering-skifte-toolbar{
   display:flex;
   align-items:center;
+  justify-content:center;
   gap:8px;
-  margin-top:8px;
-  margin-bottom:8px;
+  margin-top:10px;
+  margin-bottom:10px;
 }
 .turnering-skifte-add,
 .turnering-skifte-remove{
   border:1px solid rgba(148,163,184,.55);
   border-radius:10px;
-  background:rgba(255,255,255,.75);
+  background:rgba(255,255,255,.9);
   padding:5px 8px;
   font-size:11px;
   font-weight:800;
   cursor:pointer;
+}
+.turnering-skifte-add{
+  min-width:120px;
+  padding:8px 12px;
+  border-color:rgba(220,38,38,.35);
+  background:rgba(220,38,38,.08);
+  color:var(--red,#dc2626);
+  box-shadow:0 1px 3px rgba(15,23,42,.12);
 }
 .turnering-skifte-item{
   border-top:1px solid rgba(148,163,184,.25);
