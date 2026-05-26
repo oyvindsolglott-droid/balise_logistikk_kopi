@@ -4317,6 +4317,41 @@ function getPlanSkifteMarkersBySlot(){
 }
 
 
+function normalizeSporplanVehicleKey(value){
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function splitSporplanVehicleList(value){
+  if(Array.isArray(value)){
+    return value.map(v => String(v || "").trim()).filter(Boolean);
+  }
+  return String(value || "")
+    .split(/[,;/]+/)
+    .map(v => v.trim())
+    .filter(Boolean);
+}
+
+function getSporplanDepartureLabelsForVehicle(vehicle){
+  const target = normalizeSporplanVehicleKey(vehicle);
+  if(!target) return "";
+
+  const departureVehicles = getDepartureVehicleMapByMode("imorgen") || {};
+
+  for(const [train, value] of Object.entries(departureVehicles)){
+    const trainNo = normalizeTognr(train);
+    if(!/^8\d\d$/.test(trainNo)) continue;
+
+    const vehicles = splitSporplanVehicleList(value);
+    for(let index = 0; index < vehicles.length; index += 1){
+      if(normalizeSporplanVehicleKey(vehicles[index]) !== target) continue;
+      return vehicles.length > 1 ? `${trainNo}/${index + 1}` : trainNo;
+    }
+  }
+
+  return "";
+}
+
+
 function getSporplanTextsForSlot(slot, info){
   const result = { currentTrain:"", nextTrain:"" };
   if(!slot || !info) return result;
@@ -4421,7 +4456,11 @@ function buildSporplan(){
       }
 
       if(info.mat){
-        html += `<span class="slot-bottom mat">${escapeHtml(info.mat)}</span>`;
+        const departureLabel = getSporplanDepartureLabelsForVehicle(info.mat);
+        const matText = departureLabel
+          ? `${escapeHtml(info.mat)}<br><span style="display:block;color:#fde68a;font-size:1.05em;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.85);">${escapeHtml(departureLabel)}</span>`
+          : escapeHtml(info.mat);
+        html += `<span class="slot-bottom mat">${matText}</span>`;
       }
 
       if(planMarker?.from?.length){
