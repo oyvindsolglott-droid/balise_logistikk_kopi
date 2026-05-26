@@ -5044,6 +5044,102 @@ function getSdeVehicleInSlot(slot){
 }
 
 
+function getSdeSlotTrack(slot){
+  const normalizedSlot = normalizeSlot(slot);
+  const match = normalizedSlot.match(/^(\d+)/);
+  return match ? match[1] : "";
+}
+
+
+function getSdeNorthernInternalBlockers(fromSlot){
+  const slot = normalizeSlot(fromSlot);
+  const blockersBySlot = {
+    "3S":["3M","3N"],
+    "3M":["3N"],
+    "4S":["4M","4N"],
+    "4M":["4N"],
+    "5S":["5M","5N"],
+    "5M":["5N"],
+    "6SS":["6S","6N"],
+    "6S":["6N"],
+    "7SS":["7S","7N"],
+    "7S":["7N"],
+    "8SS":["8S","8N"],
+    "8S":["8N"],
+    "10S":["10N"],
+    "11S":["11N"],
+    "12S":["12N"]
+  };
+
+  return (blockersBySlot[slot] || []).filter(blocker=>!!getSdeVehicleInSlot(blocker));
+}
+
+
+function getSdeSouthernInternalBlockers(fromSlot){
+  const slot = normalizeSlot(fromSlot);
+  const blockersBySlot = {
+    "3N":["3M","3S"],
+    "3M":["3S"],
+    "4N":["4M","4S"],
+    "4M":["4S"],
+    "5N":["5M","5S"],
+    "5M":["5S"],
+    "6N":["6S","6SS"],
+    "6S":["6SS"],
+    "7N":["7S","7SS"],
+    "7S":["7SS"],
+    "8N":["8S","8SS"],
+    "8S":["8SS"],
+    "10N":["10S"],
+    "11N":["11S"],
+    "12N":["12S"]
+  };
+
+  return (blockersBySlot[slot] || []).filter(blocker=>!!getSdeVehicleInSlot(blocker));
+}
+
+
+function isSdeBridgeBlockedBySs(fromSlot){
+  const track = getSdeSlotTrack(fromSlot);
+  if(!["4","5","6","7","8"].includes(track)) return false;
+
+  return ["6SS","7SS","8SS"].some(slot=>{
+    if(normalizeSlot(fromSlot) === slot) return false;
+    return !!getSdeVehicleInSlot(slot);
+  });
+}
+
+
+function getSdeRouteAssessmentForPlanSkifte(fromSlot, toSlot){
+  const from = normalizeSlot(fromSlot);
+  const to = normalizeSlot(toSlot);
+  if(!from || !to) return "";
+  if(!inputSlots.includes(from) || !inputSlots.includes(to)) return "";
+
+  const fromTrack = getSdeSlotTrack(from);
+  const toTrack = getSdeSlotTrack(to);
+  if(!fromTrack || !toTrack || fromTrack === toTrack) return "";
+
+  const northBlockers = getSdeNorthernInternalBlockers(from);
+  if(!northBlockers.length){
+    return "Rutevurdering: nordenden/vaskesporet ser internt fri ut fra planlagt fra-spor.";
+  }
+
+  const southBlockers = getSdeSouthernInternalBlockers(from);
+  const bridgeBlocked = isSdeBridgeBlockedBySs(from);
+
+  if(!southBlockers.length && !bridgeBlocked){
+    return `Rutevurdering: nordenden/vaskesporet er blokkert av ${northBlockers.join(", ")}, men sørenden/bro-ruten ser mulig ut. Kontroller lokalt før skifting.`;
+  }
+
+  const southParts = [];
+  if(southBlockers.length) southParts.push(`sørenden er blokkert av ${southBlockers.join(", ")}`);
+  if(bridgeBlocked) southParts.push("bro-ruten kan være blokkert av 6SS/7SS/8SS");
+
+  return `Kontroller: rute blokkert. Nordenden/vaskesporet er blokkert av ${northBlockers.join(", ")}, og ${southParts.join(" og ")}.`;
+}
+
+
 function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
   if(!planRow) return "";
 
@@ -5122,6 +5218,11 @@ function getSdePlanSkifteReason(planRow){
   }else{
     parts.push("Plan kontrollert mot Sporplan.");
   }
+
+  const routeAssessment = vehicle && fromSlot && toSlot && currentSlot && currentSlot === fromSlot
+    ? getSdeRouteAssessmentForPlanSkifte(fromSlot, toSlot)
+    : "";
+  if(routeAssessment) parts.push(routeAssessment);
 
   const targetValidation = getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot);
   if(targetValidation) parts.push(targetValidation);
@@ -5628,6 +5729,8 @@ function getSdeNextActionsText(rows,currentDayType){
     if(reason.includes("fra-spor og til-spor er samme spor")) return "Samme fra/til-spor";
     if(reason.includes("til-spor") && reason.includes("opptatt av")) return "Til-spor opptatt";
     if(reason.includes("viser allerede")) return "Til-spor viser samme kjøretøy";
+    if(reason.includes("rute blokkert")) return "Rute blokkert";
+    if(reason.includes("nordenden/vaskesporet er blokkert")) return "Rute må vurderes";
     if(reason.includes("verkstedposisjon")) return "Verkstedspor må bekreftes";
 
     return "";
