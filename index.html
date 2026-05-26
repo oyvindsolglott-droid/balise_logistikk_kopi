@@ -581,6 +581,43 @@ overflow:hidden
   box-shadow:0 0 0 2px rgba(220,38,38,.35);
 }
 
+.vehicle-number-invalid{
+  background:#7f1d1d !important;
+  color:#fff !important;
+  border:3px solid #ff0000 !important;
+  box-shadow:0 0 0 3px rgba(255,0,0,.38), 0 0 16px rgba(255,0,0,.55) !important;
+  font-weight:950 !important;
+}
+
+.slot.invalid-vehicle{
+  outline:4px solid #ff0000;
+  outline-offset:-3px;
+  box-shadow:0 0 0 4px rgba(255,0,0,.45), 0 0 20px rgba(255,0,0,.65);
+}
+
+.slot.invalid-vehicle .slot-bottom.mat{
+  background:#7f1d1d;
+  color:#fff;
+  border:3px solid #ff0000;
+  box-shadow:0 0 0 2px rgba(255,255,255,.75), 0 0 18px rgba(255,0,0,.7);
+}
+
+.slot-invalid-vehicle-badge{
+  display:block;
+  margin:2px auto 0;
+  padding:2px 5px;
+  border-radius:6px;
+  background:#ff0000;
+  color:#fff;
+  border:2px solid #fff;
+  font-size:9px;
+  font-weight:950;
+  line-height:1;
+  letter-spacing:.03em;
+  text-transform:uppercase;
+  text-shadow:0 1px 2px rgba(0,0,0,.8);
+}
+
 .slot-address{
 width:100%;
 margin-top:1.1em;
@@ -3345,6 +3382,54 @@ function getKveldDuplicateVehiclePositions(){
   return duplicates;
 }
 
+const VALID_70_VEHICLES = new Set([
+  "70-02",
+  "70-04",
+  "70-05",
+  "70-06",
+  "70-10",
+  "70-11",
+  "70-12",
+  "70-14"
+]);
+
+
+function getVehicleNumberValidationMessage(value){
+  const raw = String(value || "").trim().toUpperCase();
+  if(!raw) return "";
+
+  if(VALID_70_VEHICLES.has(raw)) return "";
+  if(/^70-\d{2}$/.test(raw)){
+    return "Ugyldig kjøretøynummer: 70-serien tillater kun 70-02, 70-04, 70-05, 70-06, 70-10, 70-11, 70-12 og 70-14.";
+  }
+
+  if(/^(69|72|74|75)-\d{2}$/.test(raw)) return "";
+
+  return "Ugyldig kjøretøynummer. Bruk format 69-xx, 72-xx, 74-xx eller 75-xx. For 70-serien er bare bestemte kjøretøy gyldige.";
+}
+
+
+function isValidVehicleNumber(value){
+  return !getVehicleNumberValidationMessage(value);
+}
+
+
+function updateVehicleNumberInputValidation(input, value){
+  if(!input) return;
+
+  const message = getVehicleNumberValidationMessage(value);
+  input.classList.toggle("vehicle-number-invalid", !!message);
+
+  if(message){
+    input.title = message;
+    input.setAttribute("aria-invalid","true");
+  }else{
+    input.removeAttribute("title");
+    input.removeAttribute("aria-invalid");
+  }
+}
+
+
 function getTurneringSkifteFields(){
   return [
     {key:"time", label:"Tid", placeholder:"kl"},
@@ -3521,9 +3606,11 @@ function appendTurneringSkifteItem(container, tableId, stateKey, row, ri, skifte
     inp.placeholder = field.placeholder || "";
     inp.value = String(skifteRow?.[field.key] || "");
     updateTurneringSkifteSlotInputValidation(inp, field.key, inp.value);
+    if(field.key === "vehicle") updateVehicleNumberInputValidation(inp, inp.value);
 
     inp.addEventListener("input", e=>{
       updateTurneringSkifteSlotInputValidation(inp, field.key, e.target.value);
+      if(field.key === "vehicle") updateVehicleNumberInputValidation(inp, e.target.value);
       if(isLegacy){
         const legacyKeyMap = {
           time:"skifteTime",
@@ -3794,8 +3881,10 @@ function buildGrunnoppstilling(){
     inp.spellcheck=false;
     inp.placeholder="";
     inp.value=String(state.grunnoppstilling?.[slot] || "");
+    updateVehicleNumberInputValidation(inp, inp.value);
     inp.addEventListener("input",e=>{
       const value=String(e.target.value || "").trim();
+      updateVehicleNumberInputValidation(inp, value);
       if(value){
         state.grunnoppstilling[slot]=value;
       }else{
@@ -3858,8 +3947,10 @@ function buildInndata(){
       inp.autocorrect="off";
       inp.spellcheck=false;
       inp.value=String(row?.[key] || "");
+      if(key === "vehicle") updateVehicleNumberInputValidation(inp, inp.value);
       inp.addEventListener("input",e=>{
         state.planSkifteRows[ri][key]=e.target.value;
+        if(key === "vehicle") updateVehicleNumberInputValidation(inp, e.target.value);
         updatePlanSkifteRowClass(tr,state.planSkifteRows[ri]);
         persist(true);
       });
@@ -4444,6 +4535,8 @@ function buildSporplan(){
 
       const div=document.createElement("div");
       div.className=`slot ${fillClass} ${slotKind(slot)}`;
+      const invalidVehicleMessage = info.mat ? getVehicleNumberValidationMessage(info.mat) : "";
+      if(invalidVehicleMessage) div.classList.add("invalid-vehicle");
       if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
       if(dreiSlots.has(normalizeSlot(slot))) div.classList.add("drei-slot");
 
@@ -4478,11 +4571,13 @@ function buildSporplan(){
       }
 
       if(info.mat){
-        const departureLabel = getSporplanDepartureLabelsForVehicle(info.mat);
-        const matText = departureLabel
-          ? `${escapeHtml(info.mat)}<br><span style="display:block;color:#fde68a;font-size:1.05em;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.85);">${escapeHtml(departureLabel)}</span>`
-          : escapeHtml(info.mat);
-        html += `<span class="slot-bottom mat">${matText}</span>`;
+        const departureLabel = invalidVehicleMessage ? "" : getSporplanDepartureLabelsForVehicle(info.mat);
+        const matText = invalidVehicleMessage
+          ? `${escapeHtml(info.mat)}<br><span class="slot-invalid-vehicle-badge">UGYLDIG KJØRETØYNR</span>`
+          : (departureLabel
+            ? `${escapeHtml(info.mat)}<br><span style="display:block;color:#fde68a;font-size:1.05em;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.85);">${escapeHtml(departureLabel)}</span>`
+            : escapeHtml(info.mat));
+        html += `<span class="slot-bottom mat" title="${escapeHtml(invalidVehicleMessage)}">${matText}</span>`;
       }
 
       if(planMarker?.from?.length){
