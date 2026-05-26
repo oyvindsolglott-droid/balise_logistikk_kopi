@@ -5544,6 +5544,64 @@ function getSdeNextActionsText(rows,currentDayType){
     return text || raw;
   };
 
+  const getSdeTopKnownSlot = value=>{
+    const slot = normalizeSlot(value);
+    return inputSlots.includes(slot) ? slot : "";
+  };
+
+  const getSdeTopTargetSlot = row=>{
+    const raw = String(row?.suggestedSlot || "").trim();
+    const planText = parseSdeTopPlanText(row);
+
+    const intermediateSlot = getSdeIntermediateStorageSlotFromText(raw);
+    if(intermediateSlot) return intermediateSlot;
+
+    const arrowMatch = planText.match(/(?:^|\s)([0-9A-Z]{1,4})\s*→\s*([0-9A-Z]{1,4})(?:\s|$)/i);
+    if(arrowMatch){
+      const slot = getSdeTopKnownSlot(arrowMatch[2]);
+      if(slot) return slot;
+    }
+
+    const tilMatch = planText.match(/\btil\s+([0-9A-Z]{1,4})\b/i);
+    if(tilMatch){
+      const slot = getSdeTopKnownSlot(tilMatch[1]);
+      if(slot) return slot;
+    }
+
+    const sporMatch = raw.match(/^spor\s+([0-9A-Z]{1,4})$/i);
+    if(sporMatch){
+      const slot = getSdeTopKnownSlot(sporMatch[1]);
+      if(slot) return slot;
+    }
+
+    return "";
+  };
+
+  const getSdeTopDefaultArrivalSlot = row=>{
+    const fromTrain = normalizeTognr(row?.fromTrain);
+    if(!/^8\d\d$/.test(fromTrain)) return "";
+
+    const dayType = String(row?.dayType || currentDayType || "").trim();
+    const arrival = normalizeTimeString(row?.arrival);
+
+    if(dayType === "Hverdag" && (arrival === "17:42" || arrival === "18:42")){
+      return "3";
+    }
+
+    return "2";
+  };
+
+  const getSdeTopMoveText = row=>{
+    const fromSlot = getSdeTopKnownSlot(row?.currentSlot) || getSdeTopDefaultArrivalSlot(row);
+    const toSlot = getSdeTopTargetSlot(row);
+
+    if(fromSlot && toSlot) return ` | ${fromSlot} → ${toSlot}`;
+    if(fromSlot) return ` | fra ${fromSlot}`;
+    if(toSlot) return ` | til ${toSlot}`;
+
+    return "";
+  };
+
   const getSdeTopActionLabel = (category,row)=>{
     const reason = String(row?.reason || "");
 
@@ -5628,12 +5686,13 @@ function getSdeNextActionsText(rows,currentDayType){
       const actionLabel = getSdeTopActionLabel(category, row);
       const timeAndAction = time ? `${time} – ${actionLabel}` : actionLabel;
       const vehicleText = displayVehicle ? `: ${displayVehicle}` : "";
+      const movementText = getSdeTopMoveText(row);
       const suggestionText = suggestion ? `. ${suggestion}` : "";
       const operationText = getSdeTopOperationText(row);
       const operationSuffix = operationText ? `. ${operationText}` : "";
       const controlReason = actionLabel === "Kontroller først" ? getSdeTopControlReason(row) : "";
       const controlReasonText = controlReason ? `. ${controlReason}` : "";
-      const main = `${index + 1}. ${timeAndAction}${vehicleText}${suggestionText}${operationSuffix}${controlReasonText}`;
+      const main = `${index + 1}. ${timeAndAction}${vehicleText}${movementText}${suggestionText}${operationSuffix}${controlReasonText}`;
 
       const turneringTarget = getSdeTurneringTargetText(row);
       const turneringMarker = turneringTarget ? ` @@SDE_TURNERES_TIL:${turneringTarget}@@` : "";
