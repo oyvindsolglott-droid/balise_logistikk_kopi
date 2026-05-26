@@ -5643,6 +5643,30 @@ function getSdeNextActionsText(rows,currentDayType){
     return operation;
   };
 
+  const getSdeTopReadinessText = (row, actionLabel, movementText, suggestion)=>{
+    const status = String(row?.status || "").trim();
+    const currentSlot = String(row?.currentSlot || "").trim();
+    const suggested = String(suggestion || row?.suggestedSlot || "").trim();
+
+    if(actionLabel === "Kontroller først" || status === "Avvik"){
+      return " [Kontroller]";
+    }
+
+    if(status === "Annullert"){
+      return " [Ikke utfør]";
+    }
+
+    if(status === "Avklares" || currentSlot === "Avvent ankomst" || suggested.includes("Avvent ankomst")){
+      return " [Avvent]";
+    }
+
+    if(movementText.includes("→")){
+      return " [Kan utføres]";
+    }
+
+    return "";
+  };
+
   const lines = [
     `SDE arbeidsliste (${currentDayType}):`,
     getSdePlanningContextText()
@@ -5687,12 +5711,13 @@ function getSdeNextActionsText(rows,currentDayType){
       const timeAndAction = time ? `${time} – ${actionLabel}` : actionLabel;
       const vehicleText = displayVehicle ? `: ${displayVehicle}` : "";
       const movementText = getSdeTopMoveText(row);
+      const readinessText = getSdeTopReadinessText(row, actionLabel, movementText, suggestion);
       const suggestionText = suggestion ? `. ${suggestion}` : "";
       const operationText = getSdeTopOperationText(row);
       const operationSuffix = operationText ? `. ${operationText}` : "";
       const controlReason = actionLabel === "Kontroller først" ? getSdeTopControlReason(row) : "";
       const controlReasonText = controlReason ? `. ${controlReason}` : "";
-      const main = `${index + 1}. ${timeAndAction}${vehicleText}${movementText}${suggestionText}${operationSuffix}${controlReasonText}`;
+      const main = `${index + 1}. ${timeAndAction}${vehicleText}${movementText}${readinessText}${suggestionText}${operationSuffix}${controlReasonText}`;
 
       const turneringTarget = getSdeTurneringTargetText(row);
       const turneringMarker = turneringTarget ? ` @@SDE_TURNERES_TIL:${turneringTarget}@@` : "";
