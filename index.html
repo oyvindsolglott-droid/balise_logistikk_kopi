@@ -2823,33 +2823,55 @@ function updateOppstillingDateStatus(){
 }
 
 
-function getTodayOsloIsoDate(){
+function getOsloDateParts(date){
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone:"Europe/Oslo",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit",
+    hour:"2-digit",
+    hour12:false
+  }).formatToParts(date).reduce((acc, part) => {
+    if(part.type !== "literal") acc[part.type] = part.value;
+    return acc;
+  }, {});
+}
+
+
+function makeIsoDateFromParts(parts){
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+
+function addDaysToIsoDate(isoDate, days){
+  const [year, month, day] = String(isoDate || "").split("-").map(Number);
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+  utcDate.setUTCDate(utcDate.getUTCDate() + days);
+  return utcDate.toISOString().slice(0,10);
+}
+
+
+function getOperationalTodayOsloIsoDate(now = new Date()){
   try{
-    return new Intl.DateTimeFormat("sv-SE", {
-      timeZone:"Europe/Oslo",
-      year:"numeric",
-      month:"2-digit",
-      day:"2-digit"
-    }).format(new Date());
+    const parts = getOsloDateParts(now);
+    const calendarToday = makeIsoDateFromParts(parts);
+    const hour = Number(parts.hour || 0);
+    return hour < 7 ? addDaysToIsoDate(calendarToday, -1) : calendarToday;
   }catch(err){
-    return new Date().toISOString().slice(0,10);
+    const fallbackToday = new Date();
+    if(fallbackToday.getHours() < 7) fallbackToday.setDate(fallbackToday.getDate() - 1);
+    return fallbackToday.toISOString().slice(0,10);
   }
 }
 
 
+function getTodayOsloIsoDate(){
+  return getOperationalTodayOsloIsoDate();
+}
+
+
 function getTomorrowOsloIsoDate(){
-  const now = new Date();
-  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-  try{
-    return new Intl.DateTimeFormat("sv-SE", {
-      timeZone:"Europe/Oslo",
-      year:"numeric",
-      month:"2-digit",
-      day:"2-digit"
-    }).format(tomorrow);
-  }catch(err){
-    return tomorrow.toISOString().slice(0,10);
-  }
+  return addDaysToIsoDate(getOperationalTodayOsloIsoDate(), 1);
 }
 
 

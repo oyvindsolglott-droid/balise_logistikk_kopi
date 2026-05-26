@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
@@ -12,6 +13,23 @@ from playwright.sync_api import sync_playwright
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+OSLO_TZ = ZoneInfo("Europe/Oslo")
+OPERATIONAL_DAY_CUTOFF_HOUR = 7
+
+
+def get_operational_base_date(now=None):
+    """Returnerer operativ 'i dag' for Skien-nattskiftet.
+
+    Før kl. 07:00 Oslo-tid regnes forrige kalenderdato som dagens driftsvakt.
+    Fra og med kl. 07:00 regnes dagens kalenderdato som dagens driftsvakt.
+    """
+    current = now or datetime.now(OSLO_TZ)
+    base = current.date()
+    if current.hour < OPERATIONAL_DAY_CUTOFF_HOUR:
+        base = base - timedelta(days=1)
+    return base
+
 
 HARDCODED_DEPARTURES: Dict[str, str] = {
     "802": "04:10",
@@ -311,13 +329,14 @@ def all_relevant_trains() -> List[str]:
 
 
 def build_payload(mode: str) -> Dict[str, object]:
-    run_date = date.today() + timedelta(days=1) if mode == "imorgen" else date.today()
+    operational_today = get_operational_base_date()
+    run_date = operational_today + timedelta(days=1) if mode == "imorgen" else operational_today
     trains = all_relevant_trains()
     vehicles, departure_vehicles, arrival_vehicles, vehicle_errors = fetch_vehicle_maps_for_trains(trains, run_date)
 
     return {
         "ok": True,
-        "updatedAt": datetime.now().strftime("%d.%m.%Y %H:%M:%S"),
+        "updatedAt": datetime.now(OSLO_TZ).strftime("%d.%m.%Y %H:%M:%S"),
         "mode": mode,
         "date": run_date.isoformat(),
         "source": "balise.no",
