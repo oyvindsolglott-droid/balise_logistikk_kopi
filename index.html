@@ -2353,6 +2353,12 @@ if(!state.baliseToday) state.baliseToday={};
 if(!state.baliseTomorrow) state.baliseTomorrow={};
 if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
+if(!state.baliseTodayArrivals) state.baliseTodayArrivals={};
+if(!state.baliseTomorrowArrivals) state.baliseTomorrowArrivals={};
+if(!state.baliseTodayDepartureVehicles) state.baliseTodayDepartureVehicles={};
+if(!state.baliseTomorrowDepartureVehicles) state.baliseTomorrowDepartureVehicles={};
+if(!state.baliseTodayArrivalVehicles) state.baliseTodayArrivalVehicles={};
+if(!state.baliseTomorrowArrivalVehicles) state.baliseTomorrowArrivalVehicles={};
 if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;
 if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkifteRows();
 else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",tilRep:"",operationType:"",utfort:"",...(row||{})}));
@@ -2478,6 +2484,37 @@ function getDepartureMapByMode(mode){
   return mode === "imorgen"
     ? (state.baliseTomorrowDepartures || {})
     : (state.baliseTodayDepartures || {});
+}
+
+
+function getArrivalMapByMode(mode){
+  return mode === "imorgen"
+    ? (state.baliseTomorrowArrivals || {})
+    : (state.baliseTodayArrivals || {});
+}
+
+
+function getDepartureVehicleMapByMode(mode){
+  const cleanMode = mode === "idag" ? "idag" : "imorgen";
+  const map = cleanMode === "imorgen"
+    ? (state.baliseTomorrowDepartureVehicles || {})
+    : (state.baliseTodayDepartureVehicles || {});
+
+  if(Object.keys(map).length) return map;
+
+  return getBaliseMapByMode(cleanMode);
+}
+
+
+function getArrivalVehicleMapByMode(mode){
+  const cleanMode = mode === "idag" ? "idag" : "imorgen";
+  const map = cleanMode === "imorgen"
+    ? (state.baliseTomorrowArrivalVehicles || {})
+    : (state.baliseTodayArrivalVehicles || {});
+
+  if(Object.keys(map).length) return map;
+
+  return getBaliseMapByMode(cleanMode);
 }
 
 
@@ -2672,7 +2709,7 @@ function renderSdeReportTextWithTurneringTargets(container, text){
 function getDepartureRowsForMode(mode="imorgen"){
   const cleanMode = mode === "idag" ? "idag" : "imorgen";
   const departures = getDepartureMapByMode(cleanMode);
-  const vehicleMap = getBaliseMapByMode(cleanMode);
+  const vehicleMap = getDepartureVehicleMapByMode(cleanMode);
 
   return Object.entries(departures)
     .map(([train, time])=>{
@@ -2779,12 +2816,10 @@ function updateOppstillingDateStatus(){
   const el = document.getElementById("oppstillingDateStatus");
   if(!el) return;
 
-  const isTomorrow = state.baliseSelectedMode === "imorgen";
-  const modeText = isTomorrow ? "I morgen" : "I dag";
-  const meta = isTomorrow ? state.baliseMetaTomorrow : state.baliseMetaToday;
-  const date = formatDisplayDate(meta?.date);
+  const todayDate = formatDisplayDate(state.baliseMetaToday?.date);
+  const tomorrowDate = formatDisplayDate(state.baliseMetaTomorrow?.date);
 
-  el.textContent = `Tursatt viser: ${modeText} – ${date}`;
+  el.textContent = `Tursatt viser: Ankomst i dag – ${todayDate} | Avgang neste driftsdøgn – ${tomorrowDate}`;
 }
 
 
@@ -3942,7 +3977,7 @@ function sortTimeAndTrainEntries(a,b){
 
 
 function buildDepartureRowsForOppstilling(){
-  return Object.entries(getApiDepartureMap())
+  return Object.entries(getDepartureMapByMode("imorgen"))
     .map(([train,time])=>{
       const cleanTime = normalizeTimeString(time);
       const [hh,mm] = cleanTime.split(":").map(Number);
@@ -3962,7 +3997,7 @@ function buildDepartureRowsForOppstilling(){
 
 
 function buildArrivalRowsForOppstilling(){
-  return Object.entries(getApiArrivalMap())
+  return Object.entries(getArrivalMapByMode("idag"))
     .map(([train,info])=>{
       const cleanTime = normalizeTimeString(info?.time);
       const [hh,mm] = cleanTime.split(":").map(Number);
@@ -3984,8 +4019,14 @@ function buildArrivalRowsForOppstilling(){
 }
 
 
-function createOppstillingVehicleCells(train){
-  const [vehicle1, vehicle2] = getVehiclePartsForTrain(train);
+function createOppstillingVehicleCells(train, side){
+  const key = normalizeTognr(train);
+  const mode = side === "departure" ? "imorgen" : "idag";
+  const sourceMap = side === "departure"
+    ? getDepartureVehicleMapByMode(mode)
+    : getArrivalVehicleMapByMode(mode);
+
+  const [vehicle1, vehicle2] = splitVehicleNumbers(sourceMap[key] || getVehicleForTrain(key, mode));
 
   return {
     vehicle1: vehicle1 || "",
@@ -4057,7 +4098,7 @@ function appendOppstillingSideCells(tr, rowData, side){
   tr.appendChild(tdTime);
 
   const vehicles = train
-    ? createOppstillingVehicleCells(train)
+    ? createOppstillingVehicleCells(train, side)
     : {vehicle1:"", vehicle2:"", missingSecond:false};
 
   const tdVehicle1 = document.createElement("td");
@@ -6345,26 +6386,74 @@ function normalizeApiArrivalMap(raw){
 }
 
 
-async function ensureTomorrowStaticDataLoaded(){
-  if(Object.keys(state.baliseTomorrowDepartures || {}).length > 0) return;
+async function ensureTodayStaticDataLoaded(){
+  try{
+    const response = await fetch(`./data/api_idag.json?v=${Date.now()}`, {cache:"no-store"});
+    if(!response.ok) return;
 
+    const payload = await response.json();
+    const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
+    const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
+    const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
+    const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
+    const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
+    const vehicleErrorCount = payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0;
+
+    state.baliseToday = normalizedVehicles;
+    state.baliseTodayDepartures = normalizedDepartures;
+    state.baliseTodayArrivals = normalizedArrivals;
+    state.baliseTodayDepartureVehicles = normalizedDepartureVehicles;
+    state.baliseTodayArrivalVehicles = normalizedArrivalVehicles;
+    state.baliseMetaToday = {
+      source: payload.source || "statisk data",
+      mode: payload.mode || "idag",
+      date: String(payload.date || ""),
+      generated_at: String(payload.updatedAt || payload.generated_at || ""),
+      hasDepartures: Object.keys(normalizedDepartures).length > 0,
+      hasArrivals: Object.keys(normalizedArrivals).length > 0,
+      vehicleCount: Object.values(normalizedVehicles).filter(v => sanitizeVehicleValue(v)).length,
+      departureVehicleCount: Object.keys(normalizedDepartureVehicles).length,
+      arrivalVehicleCount: Object.keys(normalizedArrivalVehicles).length,
+      vehicleErrors: vehicleErrorCount
+    };
+
+    persist(true);
+    buildTurnering("turneringKveldTable","turneringKveld");
+    buildOppstilling();
+    updateBaliseStatus();
+    updateTopDataStatus();
+    updateBaliseViewState();
+  }catch(err){
+  }
+}
+
+async function ensureTomorrowStaticDataLoaded(){
   try{
     const response = await fetch(`./data/api_imorgen.json?v=${Date.now()}`, {cache:"no-store"});
     if(!response.ok) return;
 
     const payload = await response.json();
     const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
+    const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
     const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
+    const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
+    const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
 
     state.baliseTomorrow = normalizedVehicles;
     state.baliseTomorrowDepartures = normalizedDepartures;
+    state.baliseTomorrowArrivals = normalizedArrivals;
+    state.baliseTomorrowDepartureVehicles = normalizedDepartureVehicles;
+    state.baliseTomorrowArrivalVehicles = normalizedArrivalVehicles;
     state.baliseMetaTomorrow = {
       source: payload.source || "statisk data",
       mode: payload.mode || "imorgen",
       date: String(payload.date || ""),
       generated_at: String(payload.updatedAt || payload.generated_at || ""),
       hasDepartures: Object.keys(normalizedDepartures).length > 0,
+      hasArrivals: Object.keys(normalizedArrivals).length > 0,
       vehicleCount: Object.values(normalizedVehicles).filter(v => sanitizeVehicleValue(v)).length,
+      departureVehicleCount: Object.keys(normalizedDepartureVehicles).length,
+      arrivalVehicleCount: Object.keys(normalizedArrivalVehicles).length,
       vehicleErrors: payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0
     };
 
@@ -6472,10 +6561,16 @@ async function fetchBaliseApi(){
     if((payload.mode || mode) === "imorgen"){
       state.baliseTomorrow = normalizedVehicles;
       state.baliseTomorrowDepartures = normalizedDepartures;
+      state.baliseTomorrowArrivals = normalizedArrivals;
+      state.baliseTomorrowDepartureVehicles = normalizedDepartureVehicles;
+      state.baliseTomorrowArrivalVehicles = normalizedArrivalVehicles;
       state.baliseMetaTomorrow = meta;
     }else{
       state.baliseToday = normalizedVehicles;
       state.baliseTodayDepartures = normalizedDepartures;
+      state.baliseTodayArrivals = normalizedArrivals;
+      state.baliseTodayDepartureVehicles = normalizedDepartureVehicles;
+      state.baliseTodayArrivalVehicles = normalizedArrivalVehicles;
       state.baliseMetaToday = meta;
     }
 
@@ -6536,6 +6631,7 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   activateTab("oppstilling");
   markSaved("Nullstilt");
   fetchBaliseApi();
+  ensureTodayStaticDataLoaded();
   ensureTomorrowStaticDataLoaded();
 });
 
@@ -6599,10 +6695,16 @@ document.getElementById("clearBaliseJsonBtn").addEventListener("click",()=>{
   if(state.baliseSelectedMode === "imorgen"){
     state.baliseTomorrow = {};
     state.baliseTomorrowDepartures = {};
+    state.baliseTomorrowArrivals = {};
+    state.baliseTomorrowDepartureVehicles = {};
+    state.baliseTomorrowArrivalVehicles = {};
     state.baliseMetaTomorrow = null;
   }else{
     state.baliseToday = {};
     state.baliseTodayDepartures = {};
+    state.baliseTodayArrivals = {};
+    state.baliseTodayDepartureVehicles = {};
+    state.baliseTodayArrivalVehicles = {};
     state.baliseMetaToday = null;
   }
 
@@ -6645,6 +6747,7 @@ initDesktopWheelPassThrough();
 activateTab("oppstilling");
 markSaved("Klar");
 fetchBaliseApi();
+ensureTodayStaticDataLoaded();
 ensureTomorrowStaticDataLoaded();
 </script>
 
