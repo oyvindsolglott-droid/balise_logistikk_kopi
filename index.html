@@ -5841,7 +5841,15 @@ function getSdeNextActionsText(rows,currentDayType){
       const vehicleText = displayVehicle ? `: ${displayVehicle}` : "";
       const movementText = getSdeTopMoveText(row);
       const readinessText = getSdeTopReadinessText(row, actionLabel, movementText, suggestion);
-      const suggestionText = suggestion ? `. ${suggestion}` : "";
+      let cleanSuggestion = suggestion;
+
+      if(movementText.includes("→")){
+        cleanSuggestion = cleanSuggestion
+          .replace(/^\s*[0-9A-Z]{1,4}\s*→\s*[0-9A-Z]{1,4}\.?\s*/i, "")
+          .trim();
+      }
+
+      const suggestionText = cleanSuggestion ? `. ${cleanSuggestion}` : "";
       const operationText = getSdeTopOperationText(row);
       const operationSuffix = operationText ? `. ${operationText}` : "";
       const controlReason = actionLabel === "Kontroller først" ? getSdeTopControlReason(row) : "";
