@@ -5700,6 +5700,22 @@ function getSdeNextActionsText(rows,currentDayType){
       return "Vurder";
     };
 
+    const getSdeTopTargetSlotFromMoveText = movementText=>{
+      const text = String(movementText || "");
+
+      const arrowMatch = text.match(/→\s*([0-9A-Z]{1,4})\b/i);
+      if(arrowMatch){
+        return getSdeTopKnownSlot(arrowMatch[1]);
+      }
+
+      const tilMatch = text.match(/\btil\s+([0-9A-Z]{1,4})\b/i);
+      if(tilMatch){
+        return getSdeTopKnownSlot(tilMatch[1]);
+      }
+
+      return "";
+    };
+
     const builtRows = phaseRows.map(row=>{
       const action = String(row.recommendedAction || "Vurder").trim();
       const category = getSdeActionCategory(row);
@@ -5734,8 +5750,23 @@ function getSdeNextActionsText(rows,currentDayType){
         group:getSdeTopReadinessGroup(readinessText),
         priority,
         turneringMarker,
+        targetSlot:getSdeTopTargetSlotFromMoveText(movementText),
         text:`${timeAndAction}${vehicleText}${movementText}${readinessText}${suggestionText}${operationSuffix}${controlReasonText}`
       };
+    });
+
+    const targetSlotCounts = builtRows.reduce((map,row)=>{
+      if(row.targetSlot){
+        map[row.targetSlot] = (map[row.targetSlot] || 0) + 1;
+      }
+      return map;
+    }, {});
+
+    builtRows.forEach(row=>{
+      if(row.targetSlot && targetSlotCounts[row.targetSlot] > 1){
+        row.group = "Kontroller";
+        row.text += " [Kontroller: målspor brukt flere ganger]";
+      }
     });
 
     const activeGroups = readinessOrder.filter(group=>builtRows.some(row=>row.group === group));
