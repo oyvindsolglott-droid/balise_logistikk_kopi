@@ -5690,7 +5690,17 @@ function getSdeNextActionsText(rows,currentDayType){
 
     lines.push(`${phase}:`);
 
-    phaseRows.forEach((row,index)=>{
+    const readinessOrder = ["Kan utføres","Kontroller","Avvent","Ikke utfør","Vurder"];
+
+    const getSdeTopReadinessGroup = readinessText=>{
+      if(readinessText.includes("[Kan utføres]")) return "Kan utføres";
+      if(readinessText.includes("[Kontroller]")) return "Kontroller";
+      if(readinessText.includes("[Avvent]")) return "Avvent";
+      if(readinessText.includes("[Ikke utfør]")) return "Ikke utfør";
+      return "Vurder";
+    };
+
+    const builtRows = phaseRows.map(row=>{
       const action = String(row.recommendedAction || "Vurder").trim();
       const category = getSdeActionCategory(row);
       const time = String(row.arrival || "").trim();
@@ -5717,11 +5727,34 @@ function getSdeNextActionsText(rows,currentDayType){
       const operationSuffix = operationText ? `. ${operationText}` : "";
       const controlReason = actionLabel === "Kontroller først" ? getSdeTopControlReason(row) : "";
       const controlReasonText = controlReason ? `. ${controlReason}` : "";
-      const main = `${index + 1}. ${timeAndAction}${vehicleText}${movementText}${readinessText}${suggestionText}${operationSuffix}${controlReasonText}`;
-
       const turneringTarget = getSdeTurneringTargetText(row);
       const turneringMarker = turneringTarget ? ` @@SDE_TURNERES_TIL:${turneringTarget}@@` : "";
-      lines.push(priority ? `${main} (${priority})${turneringMarker}` : `${main}${turneringMarker}`);
+
+      return {
+        group:getSdeTopReadinessGroup(readinessText),
+        priority,
+        turneringMarker,
+        text:`${timeAndAction}${vehicleText}${movementText}${readinessText}${suggestionText}${operationSuffix}${controlReasonText}`
+      };
+    });
+
+    const activeGroups = readinessOrder.filter(group=>builtRows.some(row=>row.group === group));
+    const showGroupHeadings = activeGroups.length > 1;
+    let lineNo = 1;
+
+    activeGroups.forEach(group=>{
+      const groupRows = builtRows.filter(row=>row.group === group);
+      if(!groupRows.length) return;
+
+      if(showGroupHeadings){
+        lines.push(`${group}:`);
+      }
+
+      groupRows.forEach(row=>{
+        const main = `${lineNo}. ${row.text}`;
+        lineNo += 1;
+        lines.push(row.priority ? `${main} (${row.priority})${row.turneringMarker}` : `${main}${row.turneringMarker}`);
+      });
     });
   });
 
