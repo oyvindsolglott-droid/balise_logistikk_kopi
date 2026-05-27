@@ -4505,7 +4505,7 @@ function getSporplanDepartureLabelsForVehicle(vehicle){
 
   for(const row of departureRows){
     const trainNo = normalizeTognr(row?.train);
-    if(!/^8\d\d$/.test(trainNo)) continue;
+    if(!/^(8\d\d|12\d{3}|2\d{3})$/.test(trainNo)) continue;
 
     const vehicles = Array.isArray(row?.parts)
       ? row.parts.map(v => String(v || "").trim()).filter(Boolean)
