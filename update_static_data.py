@@ -15,20 +15,51 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 OSLO_TZ = ZoneInfo("Europe/Oslo")
-OPERATIONAL_DAY_CUTOFF_HOUR = 7
+ARRIVAL_DAY_CUTOFF_HOUR = 7
+DEPARTURE_NEXT_DAY_CUTOFF_HOUR = 15
+
+
+def get_operational_tursatt_dates(now=None):
+    """Returnerer operative datoer for Tursatt-grunnlag i Skien.
+
+    00:00-06:59:
+      ankomst = forrige kalenderdato
+      avgang  = dagens kalenderdato
+
+    07:00-14:59:
+      ankomst = dagens kalenderdato
+      avgang  = dagens kalenderdato
+
+    15:00-23:59:
+      ankomst = dagens kalenderdato
+      avgang  = neste kalenderdato
+    """
+    current = now or datetime.now(OSLO_TZ)
+
+    if current.hour < ARRIVAL_DAY_CUTOFF_HOUR:
+        return {
+            "arrival_date": current.date() - timedelta(days=1),
+            "departure_date": current.date(),
+            "window": "night_before_07",
+        }
+
+    if current.hour < DEPARTURE_NEXT_DAY_CUTOFF_HOUR:
+        return {
+            "arrival_date": current.date(),
+            "departure_date": current.date(),
+            "window": "day_07_to_15",
+        }
+
+    return {
+        "arrival_date": current.date(),
+        "departure_date": current.date() + timedelta(days=1),
+        "window": "after_15",
+    }
 
 
 def get_operational_base_date(now=None):
-    """Returnerer operativ 'i dag' for Skien-nattskiftet.
-
-    Før kl. 07:00 Oslo-tid regnes forrige kalenderdato som dagens driftsvakt.
-    Fra og med kl. 07:00 regnes dagens kalenderdato som dagens driftsvakt.
-    """
-    current = now or datetime.now(OSLO_TZ)
-    base = current.date()
-    if current.hour < OPERATIONAL_DAY_CUTOFF_HOUR:
-        base = base - timedelta(days=1)
-    return base
+    """Bakoverkompatibel alias: operativ ankomstdato."""
+    return get_operational_tursatt_dates(now)["arrival_date"]
 
 
 HARDCODED_DEPARTURES: Dict[str, str] = {
@@ -329,8 +360,8 @@ def all_relevant_trains() -> List[str]:
 
 
 def build_payload(mode: str) -> Dict[str, object]:
-    operational_today = get_operational_base_date()
-    run_date = operational_today + timedelta(days=1) if mode == "imorgen" else operational_today
+    operational_dates = get_operational_tursatt_dates()
+    run_date = operational_dates["departure_date"] if mode == "imorgen" else operational_dates["arrival_date"]
     trains = all_relevant_trains()
     vehicles, departure_vehicles, arrival_vehicles, vehicle_errors = fetch_vehicle_maps_for_trains(trains, run_date)
 

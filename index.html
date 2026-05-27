@@ -2927,10 +2927,11 @@ function updateOppstillingDateStatus(){
   const el = document.getElementById("oppstillingDateStatus");
   if(!el) return;
 
-  const todayDate = formatDisplayDate(state.baliseMetaToday?.date);
-  const tomorrowDate = formatDisplayDate(state.baliseMetaTomorrow?.date);
+  const arrivalDate = formatDisplayDate(state.baliseMetaToday?.date);
+  const departureDate = formatDisplayDate(state.baliseMetaTomorrow?.date);
+  const operational = getOperationalTursattDateLabels();
 
-  el.textContent = `Tursatt viser: Ankomst i dag – ${todayDate} | Avgang neste driftsdøgn – ${tomorrowDate}`;
+  el.textContent = `Tursatt viser: ${operational.arrivalLabel} – ${arrivalDate} | ${operational.departureLabel} – ${departureDate}`;
 }
 
 
@@ -2962,27 +2963,98 @@ function addDaysToIsoDate(isoDate, days){
 }
 
 
-function getOperationalTodayOsloIsoDate(now = new Date()){
+function getOperationalTursattDatesOslo(now = new Date()){
   try{
     const parts = getOsloDateParts(now);
     const calendarToday = makeIsoDateFromParts(parts);
     const hour = Number(parts.hour || 0);
-    return hour < 7 ? addDaysToIsoDate(calendarToday, -1) : calendarToday;
+
+    if(hour < 7){
+      return {
+        arrivalDate:addDaysToIsoDate(calendarToday, -1),
+        departureDate:calendarToday,
+        window:"night_before_07"
+      };
+    }
+
+    if(hour < 15){
+      return {
+        arrivalDate:calendarToday,
+        departureDate:calendarToday,
+        window:"day_07_to_15"
+      };
+    }
+
+    return {
+      arrivalDate:calendarToday,
+      departureDate:addDaysToIsoDate(calendarToday, 1),
+      window:"after_15"
+    };
   }catch(err){
     const fallbackToday = new Date();
-    if(fallbackToday.getHours() < 7) fallbackToday.setDate(fallbackToday.getDate() - 1);
-    return fallbackToday.toISOString().slice(0,10);
+    const calendarToday = fallbackToday.toISOString().slice(0,10);
+    const hour = fallbackToday.getHours();
+
+    if(hour < 7){
+      return {
+        arrivalDate:addDaysToIsoDate(calendarToday, -1),
+        departureDate:calendarToday,
+        window:"night_before_07"
+      };
+    }
+
+    if(hour < 15){
+      return {
+        arrivalDate:calendarToday,
+        departureDate:calendarToday,
+        window:"day_07_to_15"
+      };
+    }
+
+    return {
+      arrivalDate:calendarToday,
+      departureDate:addDaysToIsoDate(calendarToday, 1),
+      window:"after_15"
+    };
   }
 }
 
 
+function getOperationalTursattDateLabels(now = new Date()){
+  const dates = getOperationalTursattDatesOslo(now);
+  if(dates.window === "night_before_07"){
+    return {
+      arrivalLabel:"Ankomst forrige driftsdøgn",
+      departureLabel:"Avgang i dag"
+    };
+  }
+
+  if(dates.window === "day_07_to_15"){
+    return {
+      arrivalLabel:"Ankomst i dag",
+      departureLabel:"Avgang i dag"
+    };
+  }
+
+  return {
+    arrivalLabel:"Ankomst i dag",
+    departureLabel:"Avgang neste driftsdøgn"
+  };
+}
+
+
+function getOperationalTodayOsloIsoDate(now = new Date()){
+  return getOperationalTursattDatesOslo(now).arrivalDate;
+}
+
+
 function getTodayOsloIsoDate(){
-  return getOperationalTodayOsloIsoDate();
+  return getOperationalTursattDatesOslo().arrivalDate;
 }
 
 
 function getTomorrowOsloIsoDate(){
-  return addDaysToIsoDate(getOperationalTodayOsloIsoDate(), 1);
+  return getOperationalTursattDatesOslo().departureDate;
 }
 
 
@@ -2995,7 +3067,7 @@ function getBaliseDateWarning(mode, meta){
 
   if(String(meta.date || "") === expected) return "";
 
-  const label = mode === "imorgen" ? "i morgen" : "i dag";
+  const label = mode === "imorgen" ? "avgangsgrunnlag" : "ankomstgrunnlag";
   return `ADVARSEL: Balise-data for ${label} er ikke oppdatert. Datafil: ${formatDisplayDate(meta.date)} | Forventet dato: ${formatDisplayDate(expected)}`;
 }
 
