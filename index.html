@@ -3549,6 +3549,20 @@ const VALID_74_VEHICLES = new Set([
   "74-50", "74-51", "74-52", "74-53", "74-54"
 ]);
 
+const VALID_75_VEHICLES = new Set([
+  "75-01", "75-02", "75-03", "75-04", "75-05", "75-06", "75-07", "75-08",
+  "75-09", "75-10", "75-11", "75-12", "75-13", "75-14", "75-15", "75-16",
+  "75-17", "75-18", "75-19", "75-20", "75-21", "75-22", "75-23", "75-24",
+  "75-25", "75-26", "75-27", "75-28", "75-29", "75-30", "75-31", "75-32",
+  "75-33", "75-34", "75-35", "75-36", "75-37", "75-38", "75-39", "75-40",
+  "75-41", "75-42", "75-43", "75-44", "75-45", "75-46", "75-47", "75-48",
+  "75-49", "75-50", "75-51", "75-52", "75-53", "75-54", "75-55", "75-56",
+  "75-57", "75-58", "75-59", "75-60", "75-61", "75-62", "75-63", "75-64",
+  "75-65", "75-66", "75-67", "75-68", "75-69", "75-70", "75-71", "75-72",
+  "75-73", "75-74", "75-75", "75-76", "75-77", "75-78", "75-79", "75-80",
+  "75-81", "75-82", "75-83"
+]);
+
 
 function getVehicleNumberValidationMessage(value){
   const raw = String(value || "").trim().toUpperCase();
@@ -3556,6 +3570,7 @@ function getVehicleNumberValidationMessage(value){
 
   if(VALID_70_VEHICLES.has(raw)) return "";
   if(VALID_74_VEHICLES.has(raw)) return "";
+  if(VALID_75_VEHICLES.has(raw)) return "";
   if(/^70-\d{2}$/.test(raw)){
     return "Ugyldig kjøretøynummer: 70-serien tillater kun 70-02, 70-04, 70-05, 70-06, 70-10, 70-11, 70-12 og 70-14.";
   }
@@ -3563,9 +3578,12 @@ function getVehicleNumberValidationMessage(value){
   if(/^74-\d{2}$/.test(raw)){
     return "Ugyldig kjøretøynummer: 74-serien tillater kun kjente kjøretøy fra 74-01 til 74-54, unntatt 74-05.";
   }
-  if(/^(69|72|75)-\d{2}$/.test(raw)) return "";
+  if(/^75-\d{2}$/.test(raw)){
+    return "Ugyldig kjøretøynummer: 75-serien tillater kun kjente kjøretøy fra 75-01 til 75-83.";
+  }
+  if(/^(69|72)-\d{2}$/.test(raw)) return "";
 
-  return "Ugyldig kjøretøynummer. Bruk format 69-xx, 72-xx, 74-xx eller 75-xx. For 70- og 74-serien er bare bestemte kjøretøy gyldige.";
+  return "Ugyldig kjøretøynummer. Bruk format 69-xx, 72-xx, 74-xx eller 75-xx. For 70-, 74- og 75-serien er bare bestemte kjøretøy gyldige.";
 }
 
 
