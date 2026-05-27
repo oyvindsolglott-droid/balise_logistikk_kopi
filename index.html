@@ -1477,6 +1477,35 @@ button{padding:12px 12px}
   white-space:nowrap;
 }
 
+
+#grunnoppstillingTable input.duplicate-vehicle{
+  border:2px solid #dc2626 !important;
+  background:#fee2e2 !important;
+  color:#7f1d1d !important;
+  font-weight:800;
+}
+.grunnoppstilling-error{
+  margin:.35rem 0 .2rem;
+  padding:.45rem .55rem;
+  border:1px solid #dc2626;
+  border-radius:.55rem;
+  background:#fee2e2;
+  color:#7f1d1d;
+  font-size:.8rem;
+  font-weight:800;
+}
+.slot-duplicate-vehicle-badge{
+  display:inline-block;
+  margin-top:.15rem;
+  padding:.08rem .3rem;
+  border-radius:.35rem;
+  background:#dc2626;
+  color:#fff;
+  font-size:.62rem;
+  font-weight:900;
+  letter-spacing:.02em;
+}
+
 </style>
 
 <style id="rightsNoticeStyle">
@@ -3865,12 +3894,49 @@ function updatePlanSkifteRowClass(tr,row){
   }
 }
 
+function getDuplicateGrunnoppstillingVehicles(){
+  const slotsByVehicle = {};
+  Object.entries(state.grunnoppstilling || {}).forEach(([slot, value]) => {
+    const vehicle = String(value || "").trim().toUpperCase();
+    if(!vehicle) return;
+    if(getVehicleNumberValidationMessage(vehicle)) return;
+    if(!slotsByVehicle[vehicle]) slotsByVehicle[vehicle] = [];
+    slotsByVehicle[vehicle].push(slot);
+  });
+  const duplicates = {};
+  Object.entries(slotsByVehicle).forEach(([vehicle, slots]) => {
+    if(slots.length > 1){
+      slots.forEach(slot => {
+        duplicates[slot] = { vehicle, slots };
+      });
+    }
+  });
+  return duplicates;
+}
+
+function refreshGrunnoppstillingDuplicateInputWarnings(){
+  const duplicateVehicles = getDuplicateGrunnoppstillingVehicles();
+  document.querySelectorAll("#grunnoppstillingTable input[data-slot]").forEach(inp => {
+    const duplicateInfo = duplicateVehicles[inp.dataset.slot];
+    if(duplicateInfo){
+      inp.classList.add("duplicate-vehicle");
+      inp.title = `${duplicateInfo.vehicle} er ført opp flere steder: ${duplicateInfo.slots.join(", ")}`;
+    }else{
+      inp.classList.remove("duplicate-vehicle");
+      if(inp.title && inp.title.includes("ført opp flere steder")){
+        inp.title = "";
+      }
+    }
+  });
+}
+
 function buildGrunnoppstilling(){
   const table=document.getElementById("grunnoppstillingTable");
   if(!table) return;
 
   if(!state.grunnoppstilling) state.grunnoppstilling={};
   if(!state.grunnoppstillingRep) state.grunnoppstillingRep={};
+  const duplicateVehicles = getDuplicateGrunnoppstillingVehicles();
 
   table.innerHTML="<thead><tr><th>Slot</th><th>Kjøretøy</th><th><span class='rep-heading-mark'>r</span>ep/<span class='rep-heading-mark'>d</span>rei</th></tr></thead>";
 
@@ -3892,8 +3958,14 @@ function buildGrunnoppstilling(){
     inp.autocorrect="off";
     inp.spellcheck=false;
     inp.placeholder="";
+    inp.dataset.slot=slot;
     inp.value=String(state.grunnoppstilling?.[slot] || "");
     updateVehicleNumberInputValidation(inp, inp.value);
+    const duplicateInfo = duplicateVehicles[slot];
+    if(duplicateInfo){
+      inp.classList.add("duplicate-vehicle");
+      inp.title = `${duplicateInfo.vehicle} er ført opp flere steder: ${duplicateInfo.slots.join(", ")}`;
+    }
     inp.addEventListener("input",e=>{
       const value=String(e.target.value || "").trim();
       updateVehicleNumberInputValidation(inp, value);
@@ -3902,6 +3974,7 @@ function buildGrunnoppstilling(){
       }else{
         delete state.grunnoppstilling[slot];
       }
+      refreshGrunnoppstillingDuplicateInputWarnings();
       buildSporplan();
       persist(true);
     });
@@ -3932,6 +4005,14 @@ function buildGrunnoppstilling(){
     tr.appendChild(repTd);
 
     body.appendChild(tr);
+    if(duplicateInfo){
+      const errTr=document.createElement("tr");
+      const errTd=document.createElement("td");
+      errTd.colSpan=3;
+      errTd.innerHTML=`<div class="grunnoppstilling-error">DUPLIKAT KJØRETØYNR: ${escapeHtml(duplicateInfo.vehicle)} er ført opp flere steder: ${escapeHtml(duplicateInfo.slots.join(", "))}</div>`;
+      errTr.appendChild(errTd);
+      body.appendChild(errTr);
+    }
   });
 
   table.appendChild(body);
@@ -4548,6 +4629,7 @@ function getSporplanTextsForSlot(slot, info){
 
 
 function buildSporplan(){
+  const duplicateVehicles = getDuplicateGrunnoppstillingVehicles();
   const data=Object.fromEntries(computeInndata().map(r=>[r.slot,r]));
   const repSlots = getKveldRepSlots();
   const dreiSlots = getDreiSlots();
@@ -4595,7 +4677,9 @@ function buildSporplan(){
       const div=document.createElement("div");
       div.className=`slot ${fillClass} ${slotKind(slot)}`;
       const invalidVehicleMessage = info.mat ? getVehicleNumberValidationMessage(info.mat) : "";
+      const duplicateVehicleInfo = duplicateVehicles[slot];
       if(invalidVehicleMessage) div.classList.add("invalid-vehicle");
+      if(duplicateVehicleInfo) div.classList.add("invalid-vehicle");
       if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
       if(dreiSlots.has(normalizeSlot(slot))) div.classList.add("drei-slot");
 
@@ -4630,13 +4714,16 @@ function buildSporplan(){
       }
 
       if(info.mat){
-        const departureLabel = invalidVehicleMessage ? "" : getSporplanDepartureLabelsForVehicle(info.mat);
+        const departureLabel = (invalidVehicleMessage || duplicateVehicleInfo) ? "" : getSporplanDepartureLabelsForVehicle(info.mat);
+        const duplicateVehicleMessage = duplicateVehicleInfo ? `${duplicateVehicleInfo.vehicle} er ført opp flere steder: ${duplicateVehicleInfo.slots.join(", ")}` : "";
         const matText = invalidVehicleMessage
           ? `${escapeHtml(info.mat)}<br><span class="slot-invalid-vehicle-badge">UGYLDIG KJØRETØYNR</span>`
-          : (departureLabel
-            ? `${escapeHtml(info.mat)}<br><span style="display:block;color:#fde68a;font-size:1.05em;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.85);">${escapeHtml(departureLabel)}</span>`
-            : escapeHtml(info.mat));
-        html += `<span class="slot-bottom mat" title="${escapeHtml(invalidVehicleMessage)}">${matText}</span>`;
+          : duplicateVehicleInfo
+            ? `${escapeHtml(info.mat)}<br><span class="slot-duplicate-vehicle-badge">DUPLIKAT KJØRETØYNR</span>`
+            : (departureLabel
+              ? `${escapeHtml(info.mat)}<br><span style="display:block;color:#fde68a;font-size:1.05em;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.85);">${escapeHtml(departureLabel)}</span>`
+              : escapeHtml(info.mat));
+        html += `<span class="slot-bottom mat" title="${escapeHtml(invalidVehicleMessage || duplicateVehicleMessage)}">${matText}</span>`;
       }
 
       if(planMarker?.from?.length){
