@@ -5715,20 +5715,28 @@ function getSdeRouteAssessmentForPlanSkifte(fromSlot, toSlot){
   if(!fromTrack || !toTrack || fromTrack === toTrack) return "";
 
   const northBlockers = getSdeNorthernInternalBlockers(from);
-  if(!northBlockers.length){
-    return "Rutevurdering: nordenden/vaskesporet ser internt fri ut fra planlagt fra-spor.";
-  }
-
   const southBlockers = getSdeSouthernInternalBlockers(from);
   const bridgeBlockReason = getSdeSsBridgeBlockReasonForMove(from, to);
 
-  if(!southBlockers.length && !bridgeBlockReason){
-    return `Rutevurdering: nordenden/vaskesporet er blokkert av ${northBlockers.join(", ")}, men sørenden/bro-ruten ser mulig ut. Kontroller lokalt før skifting.`;
+  if(!northBlockers.length && !southBlockers.length && !bridgeBlockReason){
+    return "Rutevurdering: nordenden/vaskesporet ser internt fri ut fra planlagt fra-spor.";
   }
 
   const southParts = [];
   if(southBlockers.length) southParts.push(`sørenden er blokkert av ${southBlockers.join(", ")}`);
   if(bridgeBlockReason) southParts.push(bridgeBlockReason);
+
+  if(!northBlockers.length && southParts.length){
+    return `Kontroller: rute blokkert via sørenden/bro-ruten: ${southParts.join(" og ")}. Nordenden/vaskesporet ser internt fri ut fra planlagt fra-spor.`;
+  }
+
+  if(!northBlockers.length){
+    return "Rutevurdering: nordenden/vaskesporet ser internt fri ut fra planlagt fra-spor.";
+  }
+
+  if(!southParts.length){
+    return `Rutevurdering: nordenden/vaskesporet er blokkert av ${northBlockers.join(", ")}, men sørenden/bro-ruten ser mulig ut. Kontroller lokalt før skifting.`;
+  }
 
   return `Kontroller: rute blokkert. Nordenden/vaskesporet er blokkert av ${northBlockers.join(", ")}, og ${southParts.join(" og ")}.`;
 }
