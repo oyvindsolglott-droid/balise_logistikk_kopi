@@ -4448,13 +4448,16 @@ function getSporplanDepartureLabelsForVehicle(vehicle){
   const target = normalizeSporplanVehicleKey(vehicle);
   if(!target) return "";
 
-  const departureVehicles = getDepartureVehicleMapByMode("imorgen") || {};
+  const departureRows = getDepartureRowsForMode("imorgen") || [];
 
-  for(const [train, value] of Object.entries(departureVehicles)){
-    const trainNo = normalizeTognr(train);
+  for(const row of departureRows){
+    const trainNo = normalizeTognr(row?.train);
     if(!/^8\d\d$/.test(trainNo)) continue;
 
-    const vehicles = splitSporplanVehicleList(value);
+    const vehicles = Array.isArray(row?.parts)
+      ? row.parts.map(v => String(v || "").trim()).filter(Boolean)
+      : splitSporplanVehicleList(row?.parts);
+
     for(let index = 0; index < vehicles.length; index += 1){
       if(normalizeSporplanVehicleKey(vehicles[index]) !== target) continue;
       return vehicles.length > 1 ? `${trainNo}/${index + 1}` : trainNo;
@@ -4472,15 +4475,18 @@ function getSporplanTextsForSlot(slot, info){
   const row = findKveldRowByTrain(info.tog);
   if(!row) return result;
 
+  /*
+    Sporplan skal ikke vise ankomsttog som kjøretøyets operative tognummer.
+    Avgangstog vises separat via getSporplanDepartureLabelsForVehicle()
+    basert på Tursatt Avgang / morgendagens departureVehicles.
+  */
   if(normalizeSlot(row.e) === normalizeSlot(slot)){
-    result.currentTrain = normalizeTognr(row.b);
-    result.nextTrain = normalizeTognr(row.f);
+    result.nextTrain = "";
     return result;
   }
 
   if(normalizeSlot(row.i) === normalizeSlot(slot)){
-    result.currentTrain = normalizeTognr(row.b);
-    result.nextTrain = normalizeTognr(row.j);
+    result.nextTrain = "";
     return result;
   }
 
