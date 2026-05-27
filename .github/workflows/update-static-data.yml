@@ -11,8 +11,8 @@ on:
     # 07:00 - dagvindu, ankomst og avgang samme dato
     # 15:00 - avgang skifter til neste driftsdøgn
     #
-    # Derfor kjører vi på begge mulige UTC-timer og stopper jobben
-    # hvis faktisk Oslo-time ikke er 04, 07 eller 15.
+    # Derfor kjører vi på begge mulige UTC-timer og lar jobben
+    # selv avgjøre om faktisk Oslo-time er 04, 07 eller 15.
     - cron: "0 2 * * *"
     - cron: "0 3 * * *"
     - cron: "5 5 * * *"
@@ -35,34 +35,53 @@ jobs:
       - name: Check local Oslo time
         id: oslo-time
         run: |
-          echo "hour=$(TZ=Europe/Oslo date +%H)" >> "$GITHUB_OUTPUT"
-          echo "date=$(TZ=Europe/Oslo date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
-          echo "time=$(TZ=Europe/Oslo date +%H:%M:%S)" >> "$GITHUB_OUTPUT"
+          HOUR="$(TZ=Europe/Oslo date +%H)"
+          DATE="$(TZ=Europe/Oslo date +%Y-%m-%d)"
+          TIME="$(TZ=Europe/Oslo date +%H:%M:%S)"
 
-      - name: Stop if not an operational update hour
-        if: github.event_name == 'schedule' && !contains(fromJson('["04","07","15"]'), steps.oslo-time.outputs.hour)
+          echo "hour=$HOUR" >> "$GITHUB_OUTPUT"
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "time=$TIME" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "Manuell kjøring: oppdaterer uansett lokal Oslo-tid $TIME."
+          elif [ "$HOUR" = "04" ] || [ "$HOUR" = "07" ] || [ "$HOUR" = "15" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+            echo "Planlagt kjøring: lokal Oslo-tid er $TIME. Oppdaterer."
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Planlagt kjøring hoppes over: lokal Oslo-tid er $TIME, ikke 04, 07 eller 15."
+          fi
+
+      - name: Stop summary
+        if: steps.oslo-time.outputs.should_run != 'true'
         run: |
-          echo "Stopper: lokal Oslo-tid er ${{ steps.oslo-time.outputs.time }}, ikke 04, 07 eller 15."
-          exit 0
+          echo "Ingen oppdatering nødvendig ved Oslo-tid ${{ steps.oslo-time.outputs.time }}."
 
       - name: Check out repository
+        if: steps.oslo-time.outputs.should_run == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: steps.oslo-time.outputs.should_run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
+        if: steps.oslo-time.outputs.should_run == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
       - name: Generate static JSON files
+        if: steps.oslo-time.outputs.should_run == 'true'
         run: python update_static_data.py
 
       - name: Show generated dates
+        if: steps.oslo-time.outputs.should_run == 'true'
         run: |
           python - <<'PY2'
           import json
@@ -74,6 +93,7 @@ jobs:
           PY2
 
       - name: Commit and push updated data
+        if: steps.oslo-time.outputs.should_run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
