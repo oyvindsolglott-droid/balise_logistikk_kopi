@@ -1524,6 +1524,21 @@ button{padding:12px 12px}
   font-weight:800;
 }
 
+
+.vehicle-number-error{
+  display:block;
+  margin-top:.22rem;
+  padding:.16rem .32rem;
+  border-radius:.35rem;
+  background:#dc2626;
+  color:#fff;
+  font-size:.68rem;
+  font-weight:900;
+  line-height:1.15;
+  letter-spacing:.02em;
+  text-transform:uppercase;
+}
+
 </style>
 
 <style id="rightsNoticeStyle">
@@ -3452,19 +3467,33 @@ const VALID_70_VEHICLES = new Set([
   "70-14"
 ]);
 
+const VALID_74_VEHICLES = new Set([
+  "74-01", "74-02", "74-03", "74-04", "74-06", "74-07", "74-08", "74-09",
+  "74-10", "74-11", "74-12", "74-13", "74-14", "74-15", "74-16", "74-17",
+  "74-18", "74-19", "74-20", "74-21", "74-22", "74-23", "74-24", "74-25",
+  "74-26", "74-27", "74-28", "74-29", "74-30", "74-31", "74-32", "74-33",
+  "74-34", "74-35", "74-36", "74-37", "74-38", "74-39", "74-40", "74-41",
+  "74-42", "74-43", "74-44", "74-45", "74-46", "74-47", "74-48", "74-49",
+  "74-50", "74-51", "74-52", "74-53", "74-54"
+]);
+
 
 function getVehicleNumberValidationMessage(value){
   const raw = String(value || "").trim().toUpperCase();
   if(!raw) return "";
 
   if(VALID_70_VEHICLES.has(raw)) return "";
+  if(VALID_74_VEHICLES.has(raw)) return "";
   if(/^70-\d{2}$/.test(raw)){
     return "Ugyldig kjøretøynummer: 70-serien tillater kun 70-02, 70-04, 70-05, 70-06, 70-10, 70-11, 70-12 og 70-14.";
   }
 
-  if(/^(69|72|74|75)-\d{2}$/.test(raw)) return "";
+  if(/^74-\d{2}$/.test(raw)){
+    return "Ugyldig kjøretøynummer: 74-serien tillater kun kjente kjøretøy fra 74-01 til 74-54, unntatt 74-05.";
+  }
+  if(/^(69|72|75)-\d{2}$/.test(raw)) return "";
 
-  return "Ugyldig kjøretøynummer. Bruk format 69-xx, 72-xx, 74-xx eller 75-xx. For 70-serien er bare bestemte kjøretøy gyldige.";
+  return "Ugyldig kjøretøynummer. Bruk format 69-xx, 72-xx, 74-xx eller 75-xx. For 70- og 74-serien er bare bestemte kjøretøy gyldige.";
 }
 
 
@@ -3479,12 +3508,27 @@ function updateVehicleNumberInputValidation(input, value){
   const message = getVehicleNumberValidationMessage(value);
   input.classList.toggle("vehicle-number-invalid", !!message);
 
+  let errorEl = input.nextElementSibling;
+  if(!errorEl || !errorEl.classList || !errorEl.classList.contains("vehicle-number-error")){
+    errorEl = null;
+  }
+
   if(message){
     input.title = message;
     input.setAttribute("aria-invalid","true");
+    if(!errorEl){
+      errorEl = document.createElement("span");
+      errorEl.className = "vehicle-number-error";
+      input.insertAdjacentElement("afterend", errorEl);
+    }
+    errorEl.textContent = "UGYLDIG KJØRETØYNR";
+    errorEl.title = message;
   }else{
     input.removeAttribute("title");
     input.removeAttribute("aria-invalid");
+    if(errorEl){
+      errorEl.remove();
+    }
   }
 }
 
@@ -3815,6 +3859,9 @@ function buildTurnering(tableId,key){
         }else{
           inp.addEventListener("input",e=>{
             state[key][ri][k]=e.target.value;
+            if(k==="c" || k==="g"){
+              updateVehicleNumberInputValidation(inp, e.target.value);
+            }
             buildInndata();
             buildSporplan();
             buildOppstilling();
@@ -3850,6 +3897,11 @@ function buildTurnering(tableId,key){
             td.classList.add("tomorrow-train-suggestion-cell");
             inp.classList.add("tomorrow-train-suggestion-input");
           }
+        }
+
+        const isTurneringVehicleField = k==="c" || k==="g";
+        if(isTurneringVehicleField){
+          updateVehicleNumberInputValidation(inp, inp.value);
         }
 
         if(isKveld && (k==="c" || k==="g") && duplicatePositions.has(`${ri}:${k}`)){
