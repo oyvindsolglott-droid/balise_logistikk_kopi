@@ -5,13 +5,27 @@ on:
   schedule:
     # GitHub Actions bruker UTC.
     # Norge er UTC+1 vintertid og UTC+2 sommertid.
-    # Derfor kjører vi både 02:00 og 03:00 UTC,
-    # men stopper jobben hvis lokal Oslo-tid ikke er 04.
+    #
+    # Vi ønsker oppdatering når lokal Oslo-tid er:
+    # 04:00 - natt/morgenoppdatering
+    # 07:00 - dagvindu, ankomst og avgang samme dato
+    # 15:00 - avgang skifter til neste driftsdøgn
+    #
+    # Derfor kjører vi på begge mulige UTC-timer og stopper jobben
+    # hvis faktisk Oslo-time ikke er 04, 07 eller 15.
     - cron: "0 2 * * *"
     - cron: "0 3 * * *"
+    - cron: "5 5 * * *"
+    - cron: "5 6 * * *"
+    - cron: "5 13 * * *"
+    - cron: "5 14 * * *"
 
 permissions:
   contents: write
+
+concurrency:
+  group: update-static-balise-data
+  cancel-in-progress: false
 
 jobs:
   update-data:
@@ -25,10 +39,10 @@ jobs:
           echo "date=$(TZ=Europe/Oslo date +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
           echo "time=$(TZ=Europe/Oslo date +%H:%M:%S)" >> "$GITHUB_OUTPUT"
 
-      - name: Stop if not 04 Oslo time
-        if: github.event_name == 'schedule' && steps.oslo-time.outputs.hour != '04'
+      - name: Stop if not an operational update hour
+        if: github.event_name == 'schedule' && !contains(fromJson('["04","07","15"]'), steps.oslo-time.outputs.hour)
         run: |
-          echo "Stopper: lokal Oslo-tid er ${{ steps.oslo-time.outputs.time }}, ikke 04."
+          echo "Stopper: lokal Oslo-tid er ${{ steps.oslo-time.outputs.time }}, ikke 04, 07 eller 15."
           exit 0
 
       - name: Check out repository
@@ -50,14 +64,14 @@ jobs:
 
       - name: Show generated dates
         run: |
-          python - <<'PY'
+          python - <<'PY2'
           import json
           from pathlib import Path
 
           for f in ["data/api_idag.json", "data/api_imorgen.json"]:
               data = json.loads(Path(f).read_text(encoding="utf-8"))
               print(f"{f}: date={data.get('date')} updatedAt={data.get('updatedAt')} vehicles={len(data.get('vehicles', {}) or {})}")
-          PY
+          PY2
 
       - name: Commit and push updated data
         run: |
