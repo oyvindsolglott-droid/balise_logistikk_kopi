@@ -2396,6 +2396,8 @@ if(!state.baliseTodayDepartureVehicles) state.baliseTodayDepartureVehicles={};
 if(!state.baliseTomorrowDepartureVehicles) state.baliseTomorrowDepartureVehicles={};
 if(!state.baliseTodayArrivalVehicles) state.baliseTodayArrivalVehicles={};
 if(!state.baliseTomorrowArrivalVehicles) state.baliseTomorrowArrivalVehicles={};
+if(!state.manualTursattDepartureVehicles) state.manualTursattDepartureVehicles={};
+if(!state.manualTursattArrivalVehicles) state.manualTursattArrivalVehicles={};
 if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;
 if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkifteRows();
 else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",tilRep:"",operationType:"",utfort:"",...(row||{})}));
@@ -2533,25 +2535,35 @@ function getArrivalMapByMode(mode){
 
 function getDepartureVehicleMapByMode(mode){
   const cleanMode = mode === "idag" ? "idag" : "imorgen";
-  const map = cleanMode === "imorgen"
+  const baliseMap = cleanMode === "imorgen"
     ? (state.baliseTomorrowDepartureVehicles || {})
     : (state.baliseTodayDepartureVehicles || {});
+  const fallbackMap = getBaliseMapByMode(cleanMode);
+  const manualMap = cleanMode === "imorgen"
+    ? (state.manualTursattDepartureVehicles || {})
+    : {};
 
-  if(Object.keys(map).length) return map;
-
-  return getBaliseMapByMode(cleanMode);
+  return {
+    ...(Object.keys(baliseMap).length ? baliseMap : fallbackMap),
+    ...manualMap
+  };
 }
 
 
 function getArrivalVehicleMapByMode(mode){
   const cleanMode = mode === "idag" ? "idag" : "imorgen";
-  const map = cleanMode === "imorgen"
+  const baliseMap = cleanMode === "imorgen"
     ? (state.baliseTomorrowArrivalVehicles || {})
     : (state.baliseTodayArrivalVehicles || {});
+  const fallbackMap = getBaliseMapByMode(cleanMode);
+  const manualMap = cleanMode === "idag"
+    ? (state.manualTursattArrivalVehicles || {})
+    : {};
 
-  if(Object.keys(map).length) return map;
-
-  return getBaliseMapByMode(cleanMode);
+  return {
+    ...(Object.keys(baliseMap).length ? baliseMap : fallbackMap),
+    ...manualMap
+  };
 }
 
 
@@ -4132,6 +4144,33 @@ function buildArrivalRowsForOppstilling(){
 }
 
 
+function setManualTursattVehicleOverride(train, side, vehicle1, vehicle2){
+  const key = normalizeTognr(train);
+  if(!key) return;
+
+  const clean1 = sanitizeVehicleValue(vehicle1);
+  const clean2 = sanitizeVehicleValue(vehicle2);
+  const joined = joinVehicleNumbers(clean1, clean2);
+
+  if(side === "departure"){
+    if(!state.manualTursattDepartureVehicles) state.manualTursattDepartureVehicles = {};
+    if(joined){
+      state.manualTursattDepartureVehicles[key] = joined;
+    }else{
+      delete state.manualTursattDepartureVehicles[key];
+    }
+    return;
+  }
+
+  if(!state.manualTursattArrivalVehicles) state.manualTursattArrivalVehicles = {};
+  if(joined){
+    state.manualTursattArrivalVehicles[key] = joined;
+  }else{
+    delete state.manualTursattArrivalVehicles[key];
+  }
+}
+
+
 function createOppstillingVehicleCells(train, side){
   const key = normalizeTognr(train);
   const mode = side === "departure" ? "imorgen" : "idag";
@@ -4148,22 +4187,30 @@ function createOppstillingVehicleCells(train, side){
   };
 }
 
-function handleOppstillingVehicleChange(train, fieldKey, value){
-  const [current1, current2] = getVehiclePartsForTrain(train);
-  const next1 = fieldKey === "vehicle1" ? value : current1;
-  const next2 = fieldKey === "vehicle2" ? value : current2;
-  setOppstillingOverride(train, next1, next2, true);
-  buildTurnering("turneringKveldTable","turneringKveld");
-  buildInndata();
-  buildSporplan();
-  buildOppstilling();
+function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=true){
+  const current = createOppstillingVehicleCells(train, side);
+  const next1 = fieldKey === "vehicle1" ? value : current.vehicle1;
+  const next2 = fieldKey === "vehicle2" ? value : current.vehicle2;
+
+  setManualTursattVehicleOverride(train, side, next1, next2);
+
+  if(rebuild){
+    buildTurnering("turneringKveldTable","turneringKveld");
+    buildInndata();
+    buildSporplan();
+    buildOppstilling();
+  }
+
   persist(true);
 }
 
-function handleOppstillingSwap(train){
-  const [vehicle1, vehicle2] = getVehiclePartsForTrain(train);
+function handleOppstillingSwap(train, side){
+  const current = createOppstillingVehicleCells(train, side);
+  const vehicle1 = current.vehicle1;
+  const vehicle2 = current.vehicle2;
   if(!vehicle1 || !vehicle2) return;
-  setOppstillingOverride(train, vehicle2, vehicle1, true);
+
+  setManualTursattVehicleOverride(train, side, vehicle2, vehicle1);
   buildTurnering("turneringKveldTable","turneringKveld");
   buildInndata();
   buildSporplan();
@@ -4171,14 +4218,20 @@ function handleOppstillingSwap(train){
   persist(true);
 }
 
-function appendOppstillingVehicleInput(td, train, fieldKey, value, isSecondMissing){
+function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecondMissing){
   td.classList.add("opp-vehicle-cell");
   const input = document.createElement("input");
   input.type = "text";
   input.className = "opp-vehicle-input";
   input.value = value || "";
   input.placeholder = fieldKey === "vehicle1" ? "Ikke Tursatt" : "";
-  input.addEventListener("change", e=>handleOppstillingVehicleChange(train, fieldKey, e.target.value));
+  updateVehicleNumberInputValidation(input, input.value);
+  input.addEventListener("input", e=>{
+    updateVehicleNumberInputValidation(input, e.target.value);
+    handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, false);
+    buildSporplan();
+  });
+  input.addEventListener("change", e=>handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, true));
   td.appendChild(input);
   appendOppstillingTurneringTarget(td, train, fieldKey);
   if(train && fieldKey === "vehicle2" && isSecondMissing){
@@ -4215,7 +4268,7 @@ function appendOppstillingSideCells(tr, rowData, side){
     : {vehicle1:"", vehicle2:"", missingSecond:false};
 
   const tdVehicle1 = document.createElement("td");
-  appendOppstillingVehicleInput(tdVehicle1, train, "vehicle1", vehicles.vehicle1, false);
+  appendOppstillingVehicleInput(tdVehicle1, train, side, "vehicle1", vehicles.vehicle1, false);
   tr.appendChild(tdVehicle1);
 
   const tdSwap = document.createElement("td");
@@ -4226,13 +4279,13 @@ function appendOppstillingSideCells(tr, rowData, side){
     btn.className = "compact opp-swap-btn";
     btn.title = `Bytt rekkefølge for ${train}`;
     btn.textContent = "⇄";
-    btn.addEventListener("click", ()=>handleOppstillingSwap(train));
+    btn.addEventListener("click", ()=>handleOppstillingSwap(train, side));
     tdSwap.appendChild(btn);
   }
   tr.appendChild(tdSwap);
 
   const tdVehicle2 = document.createElement("td");
-  appendOppstillingVehicleInput(tdVehicle2, train, "vehicle2", vehicles.vehicle2, vehicles.missingSecond);
+  appendOppstillingVehicleInput(tdVehicle2, train, side, "vehicle2", vehicles.vehicle2, vehicles.missingSecond);
   tr.appendChild(tdVehicle2);
 }
 
