@@ -6348,6 +6348,14 @@ function getSdeNextActionsText(rows,currentDayType){
     return operation;
   };
 
+  const getSdeTopReadinessGroup = readinessText=>{
+    if(readinessText.includes("[Kontroller]")) return "Kontroller";
+    if(readinessText.includes("[Kan utføres]")) return "Kan utføres";
+    if(readinessText.includes("[Avvent]")) return "Avvent";
+    if(readinessText.includes("[Ikke utfør]")) return "Ikke utfør";
+    return "Vurder";
+  };
+
   const getSdeTopReadinessText = (row, actionLabel, movementText, suggestion)=>{
     const status = String(row?.status || "").trim();
     const currentSlot = String(row?.currentSlot || "").trim();
@@ -6372,10 +6380,109 @@ function getSdeNextActionsText(rows,currentDayType){
     return "";
   };
 
+  const buildSdeTopActionPreview = row=>{
+    if(!row) return null;
+
+    const category = getSdeActionCategory(row);
+    const time = String(row.arrival || "").trim();
+    const planVehicle = getSdeTopPlanVehicle(row);
+    const vehicle = isSdeTopPlanSkifteRow(row, category) && planVehicle
+      ? planVehicle
+      : String(row.vehicle || "").trim();
+    const suggestion = formatSdeTopSuggestion(row, category);
+    const actionLabel = getSdeTopActionLabel(category, row);
+    const movementText = getSdeTopMoveText(row);
+    const readinessText = getSdeTopReadinessText(row, actionLabel, movementText, suggestion);
+    const controlReason = actionLabel === "Kontroller først" ? getSdeTopControlReason(row) : "";
+
+    const group = getSdeTopReadinessGroup(readinessText);
+    const movement = movementText.replace(/^\s*\|\s*/,"").trim();
+    const headingByGroup = {
+      "Kontroller":"Kontroller før skifting",
+      "Kan utføres":"Klar til å skifte",
+      "Avvent":"Avvent",
+      "Ikke utfør":"Ikke utfør",
+      "Vurder":"Vurder"
+    };
+
+    const heading = headingByGroup[group] || actionLabel || "Vurder";
+    const headingText = time ? `${heading} – ${time}` : heading;
+    const expectedVehicle = String(row?.expectedVehicle || "").trim();
+    const showVehicleDeviation = vehicle
+      && expectedVehicle
+      && !haveSameSdeVehicleTokens(vehicle, expectedVehicle);
+
+    const displayVehicle = showVehicleDeviation ? `${vehicle} → ${expectedVehicle}` : vehicle;
+
+    const detailParts = [];
+    if(displayVehicle) detailParts.push(displayVehicle);
+    if(movement) detailParts.push(movement);
+    if(!movement && suggestion) detailParts.push(suggestion);
+
+    const detailText = detailParts.join(" | ");
+
+    let reasonText = controlReason ? `Årsak: ${controlReason}.` : "";
+    if(showVehicleDeviation){
+      reasonText = "Årsak: Kjøretøyavvik mot Tursatt/avgang. Kontroller før skifting.";
+    }
+
+    return {
+      group,
+      row,
+      headingText,
+      detailText,
+      reasonText
+    };
+  };
+
+  const getSdeNextBestActionPreview = ()=>{
+    const candidates = [];
+
+    Object.values(grouped).forEach(phaseRows=>{
+      (phaseRows || []).forEach(row=>{
+        const preview = buildSdeTopActionPreview(row);
+        if(preview) candidates.push(preview);
+      });
+    });
+
+    const groupRank = {
+      "Kontroller": 0,
+      "Kan utføres": 1,
+      "Avvent": 2,
+      "Vurder": 3,
+      "Ikke utfør": 4
+    };
+
+    candidates.sort((a,b)=>{
+      const aRank = groupRank[a.group] ?? 9;
+      const bRank = groupRank[b.group] ?? 9;
+      if(aRank !== bRank) return aRank - bRank;
+
+      const aMinutes = parseSdeActionMinutes(a.row);
+      const bMinutes = parseSdeActionMinutes(b.row);
+      if(aMinutes !== bMinutes) return aMinutes - bMinutes;
+
+      return prioritySortValue(a.row) - prioritySortValue(b.row);
+    });
+
+    return candidates[0] || null;
+  };
+
+  const nextBestAction = getSdeNextBestActionPreview();
+
   const lines = [
     `SDE arbeidsliste (${currentDayType}):`,
     getSdePlanningContextText()
   ];
+
+  if(nextBestAction){
+    lines.push("");
+    lines.push("Neste beste handling:");
+    lines.push(nextBestAction.headingText);
+    if(nextBestAction.detailText) lines.push(nextBestAction.detailText);
+    if(nextBestAction.reasonText) lines.push(nextBestAction.reasonText);
+    lines.push("");
+  }
 
   phaseOrder.forEach(phase=>{
     const phaseRows = (grouped[phase] || []).slice().sort((a,b)=>{
@@ -6396,14 +6503,6 @@ function getSdeNextActionsText(rows,currentDayType){
     lines.push(`${phase}:`);
 
     const readinessOrder = ["Kan utføres","Kontroller","Avvent","Ikke utfør","Vurder"];
-
-    const getSdeTopReadinessGroup = readinessText=>{
-      if(readinessText.includes("[Kan utføres]")) return "Kan utføres";
-      if(readinessText.includes("[Kontroller]")) return "Kontroller";
-      if(readinessText.includes("[Avvent]")) return "Avvent";
-      if(readinessText.includes("[Ikke utfør]")) return "Ikke utfør";
-      return "Vurder";
-    };
 
     const getSdeTopTargetSlotFromMoveText = movementText=>{
       const text = String(movementText || "");
