@@ -5654,14 +5654,53 @@ function getSdeSouthernInternalBlockers(fromSlot){
 }
 
 
-function isSdeBridgeBlockedBySs(fromSlot){
-  const track = getSdeSlotTrack(fromSlot);
-  if(!["4","5","6","7","8"].includes(track)) return false;
+function isSdeBridgeBlockingVehicle(vehicle){
+  const tokens = splitVehicleList(vehicle)
+    .map(v=>normalizeVehicleToken(v))
+    .filter(Boolean);
 
-  return ["6SS","7SS","8SS"].some(slot=>{
-    if(normalizeSlot(fromSlot) === slot) return false;
-    return !!getSdeVehicleInSlot(slot);
-  });
+  return tokens.some(token => /^(70|74|75)-\d{2}$/.test(token));
+}
+
+
+function getSdeSsBridgeBlockReasonForMove(fromSlot, toSlot){
+  const from = normalizeSlot(fromSlot);
+  const to = normalizeSlot(toSlot);
+  if(!from || !to) return "";
+
+  const fromTrack = getSdeSlotTrack(from);
+  const toTrack = getSdeSlotTrack(to);
+
+  const vehicle6ss = getSdeVehicleInSlot("6SS");
+  const vehicle7ss = getSdeVehicleInSlot("7SS");
+  const vehicle8ss = getSdeVehicleInSlot("8SS");
+
+  const blocksFrom6ss = vehicle6ss && isSdeBridgeBlockingVehicle(vehicle6ss);
+  const blocksFrom7ss = vehicle7ss && isSdeBridgeBlockingVehicle(vehicle7ss);
+  const blocksFrom8ss = vehicle8ss && isSdeBridgeBlockingVehicle(vehicle8ss);
+
+  if(blocksFrom6ss && from !== "6SS" && ["4","5"].includes(fromTrack) && ["1","2","3","4","5"].includes(toTrack)){
+    return `bro-ruten er blokkert for ${from} av ${vehicle6ss} i 6SS`;
+  }
+
+  if(blocksFrom6ss && from !== "6SS" && ["7","8"].includes(fromTrack) && ["4","5"].includes(toTrack)){
+    return `bro-ruten til ${to} er blokkert av ${vehicle6ss} i 6SS`;
+  }
+
+  if(blocksFrom7ss && from !== "7SS" && (from === "8SS" || to === "8SS")){
+    return `bro-ruten er blokkert for 8SS av ${vehicle7ss} i 7SS`;
+  }
+
+  if(blocksFrom8ss && from !== "8SS" && (from === "7SS" || to === "7SS")){
+    return `bro-ruten er blokkert for 7SS av ${vehicle8ss} i 8SS`;
+  }
+
+  return "";
+}
+
+
+function isSdeBridgeBlockedBySs(fromSlot, toSlot=""){
+  return !!getSdeSsBridgeBlockReasonForMove(fromSlot, toSlot);
 }
 
 
@@ -5681,15 +5720,15 @@ function getSdeRouteAssessmentForPlanSkifte(fromSlot, toSlot){
   }
 
   const southBlockers = getSdeSouthernInternalBlockers(from);
-  const bridgeBlocked = isSdeBridgeBlockedBySs(from);
+  const bridgeBlockReason = getSdeSsBridgeBlockReasonForMove(from, to);
 
-  if(!southBlockers.length && !bridgeBlocked){
+  if(!southBlockers.length && !bridgeBlockReason){
     return `Rutevurdering: nordenden/vaskesporet er blokkert av ${northBlockers.join(", ")}, men sørenden/bro-ruten ser mulig ut. Kontroller lokalt før skifting.`;
   }
 
   const southParts = [];
   if(southBlockers.length) southParts.push(`sørenden er blokkert av ${southBlockers.join(", ")}`);
-  if(bridgeBlocked) southParts.push("bro-ruten kan være blokkert av 6SS/7SS/8SS");
+  if(bridgeBlockReason) southParts.push(bridgeBlockReason);
 
   return `Kontroller: rute blokkert. Nordenden/vaskesporet er blokkert av ${northBlockers.join(", ")}, og ${southParts.join(" og ")}.`;
 }
