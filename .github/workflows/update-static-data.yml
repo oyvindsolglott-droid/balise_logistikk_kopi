@@ -6,19 +6,14 @@ on:
     # GitHub Actions bruker UTC.
     # Norge er UTC+1 vintertid og UTC+2 sommertid.
     #
-    # Vi ønsker oppdatering når lokal Oslo-tid er:
-    # 04:00 - natt/morgenoppdatering
-    # 07:00 - dagvindu, ankomst og avgang samme dato
-    # 15:00 - avgang skifter til neste driftsdøgn
+    # Workflowen kjører oftere rundt operative skifter for driftssikkerhet.
+    # Den tunge Balise-oppdateringen kjøres bare hvis:
+    # - kjøringen er manuell
+    # - lokal Oslo-time er 04, 07 eller 15 og data ikke er oppdatert i samme time
+    # - datafilene har feil operativ dato
     #
-    # Derfor kjører vi på begge mulige UTC-timer og lar jobben
-    # selv avgjøre om faktisk Oslo-time er 04, 07 eller 15.
-    - cron: "0 2 * * *"
-    - cron: "0 3 * * *"
-    - cron: "5 5 * * *"
-    - cron: "5 6 * * *"
-    - cron: "5 13 * * *"
-    - cron: "5 14 * * *"
+    # Dette gjør at forsinkede/mislykkede kjøringer kan fanges opp automatisk.
+    - cron: "*/15 2,3,4,5,6,7,13,14,15 * * *"
 
 permissions:
   contents: write
@@ -43,45 +38,132 @@ jobs:
           echo "date=$DATE" >> "$GITHUB_OUTPUT"
           echo "time=$TIME" >> "$GITHUB_OUTPUT"
 
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "Manuell kjøring: oppdaterer uansett lokal Oslo-tid $TIME."
-          elif [ "$HOUR" = "04" ] || [ "$HOUR" = "07" ] || [ "$HOUR" = "15" ]; then
-            echo "should_run=true" >> "$GITHUB_OUTPUT"
-            echo "Planlagt kjøring: lokal Oslo-tid er $TIME. Oppdaterer."
-          else
-            echo "should_run=false" >> "$GITHUB_OUTPUT"
-            echo "Planlagt kjøring hoppes over: lokal Oslo-tid er $TIME, ikke 04, 07 eller 15."
-          fi
-
-      - name: Stop summary
-        if: steps.oslo-time.outputs.should_run != 'true'
-        run: |
-          echo "Ingen oppdatering nødvendig ved Oslo-tid ${{ steps.oslo-time.outputs.time }}."
-
       - name: Check out repository
-        if: steps.oslo-time.outputs.should_run == 'true'
         uses: actions/checkout@v4
 
+      - name: Determine whether update is needed
+        id: update-check
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timedelta
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          event_name = os.environ.get("GITHUB_EVENT_NAME", "")
+          now = datetime.now(ZoneInfo("Europe/Oslo"))
+          today = now.date()
+
+          if now.hour < 7:
+              expected_today = today - timedelta(days=1)
+              expected_tomorrow = today
+              window = "night_before_07"
+          elif now.hour < 15:
+              expected_today = today
+              expected_tomorrow = today
+              window = "day_07_to_15"
+          else:
+              expected_today = today
+              expected_tomorrow = today + timedelta(days=1)
+              window = "after_15"
+
+          def read_json(path):
+              try:
+                  return json.loads(Path(path).read_text(encoding="utf-8"))
+              except Exception:
+                  return {}
+
+          idag = read_json("data/api_idag.json")
+          imorgen = read_json("data/api_imorgen.json")
+
+          idag_date = str(idag.get("date") or "")
+          imorgen_date = str(imorgen.get("date") or "")
+          expected_idag = expected_today.isoformat()
+          expected_imorgen = expected_tomorrow.isoformat()
+
+          dates_are_stale = idag_date != expected_idag or imorgen_date != expected_imorgen
+
+          operational_hour = f"{now.hour:02d}" in {"04", "07", "15"}
+
+          updated_values = [
+              str(idag.get("updatedAt") or ""),
+              str(imorgen.get("updatedAt") or ""),
+          ]
+          current_date_prefix = now.strftime("%d.%m.%Y")
+          current_hour_prefix = now.strftime("%H:")
+
+          already_updated_this_hour = all(
+              value.startswith(current_date_prefix) and current_hour_prefix in value
+              for value in updated_values
+          )
+
+          should_run = (
+              event_name == "workflow_dispatch"
+              or dates_are_stale
+              or (operational_hour and not already_updated_this_hour)
+          )
+
+          reason_parts = []
+          if event_name == "workflow_dispatch":
+              reason_parts.append("manual")
+          if dates_are_stale:
+              reason_parts.append(
+                  f"stale_dates api_idag={idag_date}/expected={expected_idag} "
+                  f"api_imorgen={imorgen_date}/expected={expected_imorgen}"
+              )
+          if operational_hour and not already_updated_this_hour:
+              reason_parts.append(f"operational_hour_{now.hour:02d}_not_updated_this_hour")
+          if not reason_parts:
+              reason_parts.append("up_to_date")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"should_run={'true' if should_run else 'false'}\n")
+              out.write(f"window={window}\n")
+              out.write(f"expected_idag={expected_idag}\n")
+              out.write(f"expected_imorgen={expected_imorgen}\n")
+              out.write(f"actual_idag={idag_date}\n")
+              out.write(f"actual_imorgen={imorgen_date}\n")
+              out.write(f"reason={' | '.join(reason_parts)}\n")
+
+          print("Oslo time:", now.strftime("%Y-%m-%d %H:%M:%S"))
+          print("Window:", window)
+          print("Expected:", expected_idag, expected_imorgen)
+          print("Actual:", idag_date, imorgen_date)
+          print("Already updated this hour:", already_updated_this_hour)
+          print("Should run:", should_run)
+          print("Reason:", " | ".join(reason_parts))
+          PY
+
+      - name: Stop summary
+        if: steps.update-check.outputs.should_run != 'true'
+        run: |
+          echo "Ingen Balise-oppdatering nødvendig."
+          echo "Oslo-tid: ${{ steps.oslo-time.outputs.time }}"
+          echo "Vindu: ${{ steps.update-check.outputs.window }}"
+          echo "Årsak: ${{ steps.update-check.outputs.reason }}"
+          echo "api_idag: ${{ steps.update-check.outputs.actual_idag }} / forventet ${{ steps.update-check.outputs.expected_idag }}"
+          echo "api_imorgen: ${{ steps.update-check.outputs.actual_imorgen }} / forventet ${{ steps.update-check.outputs.expected_imorgen }}"
+
       - name: Set up Python
-        if: steps.oslo-time.outputs.should_run == 'true'
+        if: steps.update-check.outputs.should_run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Install dependencies
-        if: steps.oslo-time.outputs.should_run == 'true'
+        if: steps.update-check.outputs.should_run == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           python -m playwright install --with-deps chromium
 
       - name: Generate static JSON files
-        if: steps.oslo-time.outputs.should_run == 'true'
+        if: steps.update-check.outputs.should_run == 'true'
         run: python update_static_data.py
 
       - name: Show generated dates
-        if: steps.oslo-time.outputs.should_run == 'true'
+        if: steps.update-check.outputs.should_run == 'true'
         run: |
           python - <<'PY2'
           import json
@@ -93,7 +175,7 @@ jobs:
           PY2
 
       - name: Commit and push updated data
-        if: steps.oslo-time.outputs.should_run == 'true'
+        if: steps.update-check.outputs.should_run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
