@@ -1506,6 +1506,24 @@ button{padding:12px 12px}
   letter-spacing:.02em;
 }
 
+
+#grunnoppstillingTable input.invalid-rep-drei{
+  border:2px solid #dc2626 !important;
+  background:#fee2e2 !important;
+  color:#7f1d1d !important;
+  font-weight:800;
+}
+.grunnoppstilling-rep-error{
+  margin:.35rem 0 .2rem;
+  padding:.45rem .55rem;
+  border:1px solid #dc2626;
+  border-radius:.55rem;
+  background:#fee2e2;
+  color:#7f1d1d;
+  font-size:.8rem;
+  font-weight:800;
+}
+
 </style>
 
 <style id="rightsNoticeStyle">
@@ -3930,6 +3948,27 @@ function refreshGrunnoppstillingDuplicateInputWarnings(){
   });
 }
 
+function getGrunnoppstillingRepDreiValidationMessage(value){
+  const normalized = String(value || "").trim().toLowerCase();
+  if(!normalized) return "";
+  if(normalized === "r" || normalized === "d") return "";
+  return "Rep/drei kan bare være tomt, r eller d.";
+}
+
+function updateGrunnoppstillingRepDreiInputValidation(input, value){
+  const message = getGrunnoppstillingRepDreiValidationMessage(value);
+  if(message){
+    input.classList.add("invalid-rep-drei");
+    input.title = message;
+  }else{
+    input.classList.remove("invalid-rep-drei");
+    if(input.title === "Rep/drei kan bare være tomt, r eller d."){
+      input.title = "";
+    }
+  }
+  return message;
+}
+
 function buildGrunnoppstilling(){
   const table=document.getElementById("grunnoppstillingTable");
   if(!table) return;
@@ -3991,8 +4030,11 @@ function buildGrunnoppstilling(){
     repInp.spellcheck=false;
     repInp.placeholder="";
     repInp.value=String(state.grunnoppstillingRep?.[slot] || "");
+    const repDreiValidationMessage = updateGrunnoppstillingRepDreiInputValidation(repInp, repInp.value);
     repInp.addEventListener("input",e=>{
-      const value=String(e.target.value || "").trim();
+      const value=String(e.target.value || "").trim().toLowerCase();
+      e.target.value=value;
+      updateGrunnoppstillingRepDreiInputValidation(repInp, value);
       if(value){
         state.grunnoppstillingRep[slot]=value;
       }else{
@@ -4012,6 +4054,14 @@ function buildGrunnoppstilling(){
       errTd.innerHTML=`<div class="grunnoppstilling-error">DUPLIKAT KJØRETØYNR: ${escapeHtml(duplicateInfo.vehicle)} er ført opp flere steder: ${escapeHtml(duplicateInfo.slots.join(", "))}</div>`;
       errTr.appendChild(errTd);
       body.appendChild(errTr);
+    }
+    if(repDreiValidationMessage){
+      const repErrTr=document.createElement("tr");
+      const repErrTd=document.createElement("td");
+      repErrTd.colSpan=3;
+      repErrTd.innerHTML=`<div class="grunnoppstilling-rep-error">UGYLDIG REP/DREI: ${escapeHtml(repDreiValidationMessage)}</div>`;
+      repErrTr.appendChild(repErrTd);
+      body.appendChild(repErrTr);
     }
   });
 
