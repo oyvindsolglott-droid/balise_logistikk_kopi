@@ -1182,6 +1182,47 @@ button{padding:12px 12px}
   color:#111827;
 }
 
+.sde-next-action-card{
+  border:1px solid #f59e0b;
+  background:linear-gradient(135deg,#fffbeb,#fff7ed);
+  border-radius:14px;
+  padding:12px;
+  box-shadow:0 10px 22px rgba(15,23,42,.10);
+}
+
+.sde-next-action-title{
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:#92400e;
+  margin-bottom:7px;
+}
+
+.sde-next-action-heading{
+  font-size:15px;
+  font-weight:900;
+  color:#111827;
+  margin-bottom:5px;
+}
+
+.sde-next-action-detail{
+  font-size:18px;
+  font-weight:900;
+  color:#0f172a;
+  margin-bottom:5px;
+}
+
+.sde-next-action-reason{
+  font-size:13px;
+  font-weight:700;
+  color:#7c2d12;
+  background:rgba(255,255,255,.72);
+  border-radius:10px;
+  padding:7px 9px;
+  margin-top:7px;
+}
+
 .sde-report-status-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
@@ -2794,26 +2835,78 @@ function getSdeTurneringTargetText(row){
   return part ? `${target}/${part}` : target;
 }
 
+function appendSdeReportLineWithTurneringTarget(parent, line, className=""){
+  const div = document.createElement("div");
+  if(className) div.className = className;
+
+  const match = String(line || "").match(/\s*@@SDE_TURNERES_TIL:([^@]+)@@/);
+  const cleanLine = String(line || "").replace(/\s*@@SDE_TURNERES_TIL:[^@]+@@/, "");
+
+  div.appendChild(document.createTextNode(cleanLine));
+
+  if(match && match[1]){
+    const span = document.createElement("span");
+    span.className = "sde-turneres-til";
+    span.textContent = ` turneres til ${match[1]}`;
+    div.appendChild(span);
+  }
+
+  parent.appendChild(div);
+  return div;
+}
+
+
 function renderSdeReportTextWithTurneringTargets(container, text){
   if(!container) return;
 
   container.textContent = "";
 
-  String(text || "").split("\n").forEach(line=>{
-    const div = document.createElement("div");
-    const match = line.match(/\s*@@SDE_TURNERES_TIL:([^@]+)@@/);
-    const cleanLine = line.replace(/\s*@@SDE_TURNERES_TIL:[^@]+@@/, "");
+  const lines = String(text || "").split("\n");
+  let nextActionCard = null;
+  let nextActionLineIndex = 0;
 
-    div.appendChild(document.createTextNode(cleanLine));
+  lines.forEach(line=>{
+    const rawLine = String(line || "");
+    const cleanLine = rawLine.replace(/\s*@@SDE_TURNERES_TIL:[^@]+@@/, "").trim();
 
-    if(match && match[1]){
-      const span = document.createElement("span");
-      span.className = "sde-turneres-til";
-      span.textContent = ` turneres til ${match[1]}`;
-      div.appendChild(span);
+    if(cleanLine === "Neste beste handling:"){
+      nextActionCard = document.createElement("div");
+      nextActionCard.className = "sde-next-action-card";
+
+      const title = document.createElement("div");
+      title.className = "sde-next-action-title";
+      title.textContent = "Neste beste handling";
+      nextActionCard.appendChild(title);
+
+      container.appendChild(nextActionCard);
+      nextActionLineIndex = 0;
+      return;
     }
 
-    container.appendChild(div);
+    if(nextActionCard){
+      if(!cleanLine){
+        nextActionCard = null;
+        nextActionLineIndex = 0;
+        return;
+      }
+
+      nextActionLineIndex += 1;
+
+      if(nextActionLineIndex === 1){
+        appendSdeReportLineWithTurneringTarget(nextActionCard, rawLine, "sde-next-action-heading");
+        return;
+      }
+
+      if(nextActionLineIndex === 2){
+        appendSdeReportLineWithTurneringTarget(nextActionCard, rawLine, "sde-next-action-detail");
+        return;
+      }
+
+      appendSdeReportLineWithTurneringTarget(nextActionCard, rawLine, "sde-next-action-reason");
+      return;
+    }
+
+    appendSdeReportLineWithTurneringTarget(container, rawLine);
   });
 }
 
