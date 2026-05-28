@@ -6112,6 +6112,49 @@ function getSdeResolutionCandidateSlots(fromSlot, avoidSlot=""){
 }
 
 
+function getSdeSameTrackSlotOrder(track){
+  const key = String(track || "").trim();
+
+  const orders = {
+    "3":["3S","3M","3N"],
+    "4":["4S","4M","4N"],
+    "5":["5S","5M","5N"],
+    "6":["6SS","6S","6N"],
+    "7":["7SS","7S","7N"],
+    "8":["8SS","8S","8N"],
+    "10":["10S","10N"],
+    "11":["11S","11N"],
+    "12":["12S","12N"]
+  };
+
+  return orders[key] || [];
+}
+
+
+function getSdeInternalBlockersBetweenSlots(fromSlot, toSlot){
+  const from = normalizeSlot(fromSlot);
+  const to = normalizeSlot(toSlot);
+  if(!from || !to) return [];
+
+  const fromTrack = getSdeSlotTrack(from);
+  const toTrack = getSdeSlotTrack(to);
+  if(!fromTrack || fromTrack !== toTrack) return [];
+
+  const order = getSdeSameTrackSlotOrder(fromTrack);
+  const fromIndex = order.indexOf(from);
+  const toIndex = order.indexOf(to);
+
+  if(fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return [];
+
+  const start = Math.min(fromIndex, toIndex) + 1;
+  const end = Math.max(fromIndex, toIndex);
+
+  return order
+    .slice(start, end)
+    .filter(slot=>!!getSdeVehicleInSlot(slot));
+}
+
+
 function isSdeSafeResolutionMove(vehicle, fromSlot, toSlot){
   const vehicleText = sanitizeVehicleValue(vehicle);
   const from = normalizeSlot(fromSlot);
@@ -6122,6 +6165,9 @@ function isSdeSafeResolutionMove(vehicle, fromSlot, toSlot){
   if(from === to) return false;
   if(getSdeVehicleInSlot(to)) return false;
   if(isSdeDiscouragedPlatformToPlatformMove(from, to)) return false;
+
+  const internalBlockers = getSdeInternalBlockersBetweenSlots(from, to);
+  if(internalBlockers.length) return false;
 
   const routeAssessment = getSdeRouteAssessmentForPlanSkifte(from, to);
   if(/kontroller|rute blokkert/i.test(routeAssessment)) return false;
