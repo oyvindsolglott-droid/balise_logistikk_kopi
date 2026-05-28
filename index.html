@@ -6083,6 +6083,121 @@ function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
 }
 
 
+function getSdeResolutionCandidateSlots(fromSlot, avoidSlot=""){
+  const from = normalizeSlot(fromSlot);
+  const avoid = normalizeSlot(avoidSlot);
+
+  const preferred = [
+    "4N","4M",
+    "5N","5M","5S",
+    "6N","6S",
+    "1N","1S",
+    "10S","11S","12S",
+    "10N","11N","12N",
+    "7N","8N"
+  ];
+
+  const seen = new Set();
+  return preferred
+    .map(normalizeSlot)
+    .filter(slot=>{
+      if(!slot || seen.has(slot)) return false;
+      seen.add(slot);
+      if(slot === from || slot === avoid) return false;
+      if(!inputSlots.includes(slot)) return false;
+      if(["2N","2S","3N","3M","3S"].includes(slot)) return false;
+      if(["6SS","7SS","8SS"].includes(slot)) return false;
+      return true;
+    });
+}
+
+
+function isSdeSafeResolutionMove(vehicle, fromSlot, toSlot){
+  const vehicleText = sanitizeVehicleValue(vehicle);
+  const from = normalizeSlot(fromSlot);
+  const to = normalizeSlot(toSlot);
+
+  if(!vehicleText || !from || !to) return false;
+  if(!inputSlots.includes(from) || !inputSlots.includes(to)) return false;
+  if(from === to) return false;
+  if(getSdeVehicleInSlot(to)) return false;
+  if(isSdeDiscouragedPlatformToPlatformMove(from, to)) return false;
+
+  const routeAssessment = getSdeRouteAssessmentForPlanSkifte(from, to);
+  if(/kontroller|rute blokkert/i.test(routeAssessment)) return false;
+
+  return true;
+}
+
+
+function scoreSdeResolutionTarget(slot){
+  const normalized = normalizeSlot(slot);
+  if(/^4[MN]$/.test(normalized)) return 35;
+  if(/^5[SMN]$/.test(normalized)) return 30;
+  if(/^6[NS]$/.test(normalized)) return 24;
+  if(/^1[NS]$/.test(normalized)) return 18;
+  if(/^(10|11|12)[SN]$/.test(normalized)) return 10;
+  if(/^7[NS]$/.test(normalized) || /^8[NS]$/.test(normalized)) return 4;
+  return 0;
+}
+
+
+function getSdeBestResolutionTarget(vehicle, fromSlot, avoidSlot=""){
+  return getSdeResolutionCandidateSlots(fromSlot, avoidSlot)
+    .filter(slot=>isSdeSafeResolutionMove(vehicle, fromSlot, slot))
+    .map(slot=>({slot, score:scoreSdeResolutionTarget(slot)}))
+    .sort((a,b)=>b.score - a.score)[0]?.slot || "";
+}
+
+
+function getSdeBlockedTargetResolution(planRow, vehicle, fromSlot, toSlot){
+  if(!planRow) return null;
+
+  const planVehicle = sanitizeVehicleValue(vehicle || planRow.vehicle);
+  const from = normalizeSlot(fromSlot || planRow.fromSpor);
+  const to = normalizeSlot(toSlot || planRow.toSpor);
+
+  if(!planVehicle || !from || !to) return null;
+  if(!inputSlots.includes(from) || !inputSlots.includes(to)) return null;
+
+  const blockingVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(to));
+  if(!blockingVehicle) return null;
+  if(haveSameSdeVehicleTokens(blockingVehicle, planVehicle)) return null;
+
+  const candidates = [];
+
+  const blockerTarget = getSdeBestResolutionTarget(blockingVehicle, to, from);
+  if(blockerTarget){
+    candidates.push({
+      score: 100 + scoreSdeResolutionTarget(blockerTarget),
+      vehicle: blockingVehicle,
+      fromSlot: to,
+      toSlot: blockerTarget,
+      reason: `Løsningsforslag: Flytt ${blockingVehicle} ut av ${to} først. Dette frigjør planlagt målspor for ${planVehicle} ${from} → ${to}.`
+    });
+  }
+
+  const alternativeTarget = getSdeBestResolutionTarget(planVehicle, from, to);
+  if(alternativeTarget){
+    candidates.push({
+      score: 85 + scoreSdeResolutionTarget(alternativeTarget),
+      vehicle: planVehicle,
+      fromSlot: from,
+      toSlot: alternativeTarget,
+      reason: `Løsningsforslag: Planlagt målspor ${to} er opptatt av ${blockingVehicle}. Flytt ${planVehicle} til ${alternativeTarget} som tryggere alternativ.`
+    });
+  }
+
+  return candidates.sort((a,b)=>b.score - a.score)[0] || null;
+}
+
+
+function formatSdeResolutionSuggestedSlot(resolution){
+  if(!resolution) return "";
+  return `${resolution.vehicle} ${resolution.fromSlot} → ${resolution.toSlot}`;
+}
+
+
 function getSdePlanSkifteReason(planRow){
   if(!planRow) return "";
 
@@ -6402,6 +6517,7 @@ function getSdePriority(row){
   const reason = String(row.reason || "");
   const source = String(row.source || "");
 
+  if(reason.includes("Løsningsforslag:")) return "Høy";
   if(status === "Avvik") return "Høy";
   if(reason.includes("Avvik:")) return "Høy";
   if(reason.includes("Kontroller:")) return "Høy";
@@ -6445,6 +6561,7 @@ function getSdeRecommendedAction(row){
   const reason = String(row.reason || "");
   const source = String(row.source || "");
 
+  if(reason.includes("Løsningsforslag:")) return "Utfør løsningsforslag";
   if(status === "Annullert") return "Ikke utfør / annullert";
   if(status === "Avklares") return "Avklar datagrunnlag";
   if(source === "Mangler datagrunnlag") return "Avklar datagrunnlag";
@@ -6474,6 +6591,7 @@ function getSdeActionCategory(row){
   if(status === "Annullert" || action === "Ikke utfør / annullert") return "Annullert";
   if(action === "Avklar datagrunnlag") return "Avklaring";
   if(action === "Kontroller før skifting") return "Kontroll";
+  if(String(row.reason || "").includes("Løsningsforslag:")) return "Skifte";
   if(status === "Planlagt" && source === "Planlegge Skiftebevegelser") return "Skifte";
   if(action === "Utfør planlagt skifte") return "Skifte";
   if(action === "Vurder planlagt skifte") return "Vurdering";
@@ -7223,7 +7341,12 @@ function buildSdeVaktplan(){
       const planSkifteRow = cancelled ? null : getOpenPlanSkifteRowForVehicle(displayVehicle);
       if(planSkifteRow) usedPlanSkifteRows.add(planSkifteRow);
       const planSkifteSuggestedSlot = getSdePlanSkifteSuggestedSlot(planSkifteRow);
-      const planSkifteReason = getSdePlanSkifteReason(planSkifteRow);
+      const planSkifteResolution = planSkifteRow
+        ? getSdeBlockedTargetResolution(planSkifteRow, displayVehicle, planSkifteRow.fromSpor, planSkifteRow.toSpor)
+        : null;
+      const planSkifteReason = planSkifteResolution
+        ? planSkifteResolution.reason
+        : getSdePlanSkifteReason(planSkifteRow);
       const status = cancelled ? "Annullert" : (deviationReason ? "Avvik" : (planSkifteRow ? "Planlagt" : (vehicle ? "Må håndteres" : "Avklares")));
       const source = cancelled
         ? "Annullert"
@@ -7257,7 +7380,9 @@ function buildSdeVaktplan(){
       };
 
       result._reservedIntermediateStorageSlots = usedIntermediateStorageSlots;
-      result.suggestedSlot = planSkifteSuggestedSlot || getSdeInitialSuggestedSlot(result);
+      result.suggestedSlot = planSkifteResolution
+        ? formatSdeResolutionSuggestedSlot(planSkifteResolution)
+        : (planSkifteSuggestedSlot || getSdeInitialSuggestedSlot(result));
 
       const intermediateStorageSlot = getSdeIntermediateStorageSlotFromText(result.suggestedSlot);
       if(intermediateStorageSlot){
@@ -7285,21 +7410,23 @@ function buildSdeVaktplan(){
     .map(planRow=>{
       const vehicle = sanitizeVehicleValue(planRow.vehicle);
       const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
+      const resolution = getSdeBlockedTargetResolution(planRow, vehicle, planRow.fromSpor, planRow.toSpor);
+
       return {
         dayType: currentDayType,
         fromTrain: "",
         arrival: String(planRow.time || "").trim(),
         shiftPhase: getSdeShiftPhase(planRow.time),
-        vehicle: vehicle || "Avklares",
-        currentSlot: currentSlot || normalizeSlot(planRow.fromSpor) || "",
-        suggestedSlot: getSdePlanSkifteSuggestedSlot(planRow),
+        vehicle: resolution ? resolution.vehicle : (vehicle || "Avklares"),
+        currentSlot: resolution ? resolution.fromSlot : (currentSlot || normalizeSlot(planRow.fromSpor) || ""),
+        suggestedSlot: resolution ? formatSdeResolutionSuggestedSlot(resolution) : getSdePlanSkifteSuggestedSlot(planRow),
         source: String(planRow.source || "").trim() || "Planlegge Skiftebevegelser",
         toTrain: "",
         part: "",
         departure: "",
         operation: String(planRow.operationType || "").trim() || "Planlagt skiftebevegelse",
         status: "Planlagt",
-        reason: getSdePlanSkifteReason(planRow),
+        reason: resolution ? resolution.reason : getSdePlanSkifteReason(planRow),
         priority: "",
         recommendedAction: ""
       };
