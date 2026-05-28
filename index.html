@@ -7133,20 +7133,40 @@ function getSdeNextActionsText(rows,currentDayType){
   let topActionPreviews = getSdeTopActionPreviews();
 
   if(state.demoMode === "vy"){
-    const serviceSequenceDetails = [
-      "74-24 | 823/2 → brua",
-      "74-24 | brua → spor 4",
-      "74-24 | spor 4 → vaskemaskin",
-      "74-24 | vaskemaskin → 6N"
+    topActionPreviews = [
+      {
+        group:"Kan utføres",
+        row:{arrival:"16:45", priority:"Høy", status:"Planlagt", source:"SDE behandlingssekvens"},
+        headingText:"Nå: Neste utførbare handling – 16:45",
+        detailText:"74-24 | 823/2 → brua",
+        reasonText:"Årsak: 74-24 er 823/2 og skal tas ut av trafikk grunnet toalettfeil. Første nødvendige handling er å frigjøre plattformspor for blokkeringer og transportere kjøretøyet til fylle-/tømmespor 6.",
+        timingRank:0
+      },
+      {
+        group:"Kan utføres",
+        row:{arrival:"16:47", priority:"Høy", status:"Planlagt", source:"SDE behandlingssekvens"},
+        headingText:"Nå: Neste utførbare handling – 16:47",
+        detailText:"74-24 | brua → spor 4",
+        reasonText:"Årsak: 74-24 føres tilbake gjennom spor 4 for å komme inn i riktig behandlingsløp mot vaskemaskinen.",
+        timingRank:1
+      },
+      {
+        group:"Kan utføres",
+        row:{arrival:"16:50", priority:"Høy", status:"Planlagt", source:"SDE behandlingssekvens"},
+        headingText:"Nå: Neste utførbare handling – 16:50",
+        detailText:"74-24 | spor 4 → vaskemaskin",
+        reasonText:"Årsak: 74-24 må vaskes og klargjøres før sluttplassering i 6N.",
+        timingRank:1
+      },
+      {
+        group:"Kan utføres",
+        row:{arrival:"16:55", priority:"Høy", status:"Planlagt", source:"SDE behandlingssekvens"},
+        headingText:"Nå: Neste utførbare handling – 16:55",
+        detailText:"74-24 | vaskemaskin → 6N",
+        reasonText:"Årsak: Servicebehov. 74-24 må stå ca. 30 minutter i 6N for tømming/fylling før flytting til endelig plassering.",
+        timingRank:1
+      }
     ];
-
-    const servicePreviews = serviceSequenceDetails
-      .map(detail=>topActionPreviews.find(preview=>String(preview?.detailText || "").trim() === detail))
-      .filter(Boolean);
-
-    if(servicePreviews.length){
-      topActionPreviews = servicePreviews;
-    }
   }
 
   const nextBestAction = topActionPreviews[0] || null;
@@ -7335,51 +7355,39 @@ function applyVyDemoScenario(){
 
   state.grunnoppstilling = {
     ...state.grunnoppstilling,
-    "1S":"",
+    "1S":"75-21",
     "1N":"",
-    "2S":"",
-    "2N":"",
-    "3S":"",
+    "2S":"74-24",
+    "2N":"74-09",
+    "3S":"74-37",
     "3M":"",
     "3N":"",
-    "4S":"74-12",
+    "4S":"",
     "4M":"",
     "4N":"",
-    "5S":"74-14",
+    "5S":"",
     "5M":"",
-    "5N":"",
-    "6SS":"70-12",
-    "6S":"",
+    "5N":"74-04",
+    "6SS":"",
+    "6S":"74-12",
     "6N":"",
-    "7SS":"70-02",
-    "7S":"",
+    "7SS":"",
+    "7S":"74-21",
     "7N":"",
-    "8SS":"74-03",
-    "8S":"",
+    "8SS":"70-12",
+    "8S":"75-42",
     "8N":""
   };
 
   state.planSkifteRows = makeEmptyPlanSkifteRows();
   state.planSkifteRows[0] = {
-    time:"15:10",
-    vehicle:"70-02",
-    fromSpor:"7SS",
-    toSpor:"4S",
-    crew:"1/2/12",
-    tilRep:"r",
-    operationType:"Parkering",
-    utfort:"",
-    source:"Vy-demo"
-  };
-
-  state.planSkifteRows[1] = {
-    time:"15:20",
-    vehicle:"74-03",
-    fromSpor:"8SS",
-    toSpor:"1S",
+    time:"16:45",
+    vehicle:"74-24",
+    fromSpor:"2S",
+    toSpor:"6N",
     crew:"1/2/12",
     tilRep:"",
-    operationType:"Parkering",
+    operationType:"Servicebehov – toalettfeil / tømming-fylling / vask",
     utfort:"",
     source:"Vy-demo"
   };
