@@ -6,14 +6,14 @@ on:
     # GitHub Actions bruker UTC.
     # Norge er UTC+1 vintertid og UTC+2 sommertid.
     #
-    # Workflowen kjører oftere rundt operative skifter for driftssikkerhet.
-    # Den tunge Balise-oppdateringen kjøres bare hvis:
+    # Workflowen kjører en lett kontroll hvert 15. minutt hele døgnet.
+    # Tunge steg kjøres bare hvis:
     # - kjøringen er manuell
     # - lokal Oslo-time er 04, 07 eller 15 og data ikke er oppdatert i samme time
     # - datafilene har feil operativ dato
     #
-    # Dette gjør at forsinkede/mislykkede kjøringer kan fanges opp automatisk.
-    - cron: "*/15 2,3,4,5,6,7,13,14,15 * * *"
+    # Dette gjør at forsinkede/mislykkede kjøringer selvrepareres uten manuell push.
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: write
