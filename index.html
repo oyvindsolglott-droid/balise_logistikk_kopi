@@ -1196,6 +1196,9 @@ button{padding:12px 12px}
 }
 
 .sde-demo-banner{
+  position:sticky;
+  left:0;
+  z-index:5;
   border:2px solid #b91c1c;
   background:#fef2f2;
   color:#7f1d1d;
@@ -1203,6 +1206,29 @@ button{padding:12px 12px}
   padding:10px 12px;
   font-weight:900;
   box-shadow:0 8px 18px rgba(127,29,29,.12);
+  min-width:min(100%, 980px);
+}
+
+.sde-demo-ribbon{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:8px;
+  width:100%;
+}
+
+.sde-demo-ribbon span{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  padding:3px 9px;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.12em;
+  background:#b91c1c;
+  color:#fff;
 }
 
 .sde-demo-banner strong{
@@ -1213,7 +1239,7 @@ button{padding:12px 12px}
   margin-bottom:3px;
 }
 
-.sde-demo-banner span{
+.sde-demo-banner .sde-demo-body{
   display:block;
   font-size:13px;
   line-height:1.35;
@@ -2925,11 +2951,21 @@ function renderSdeReportTextWithTurneringTargets(container, text){
       const banner = document.createElement("div");
       banner.className = "sde-demo-banner";
 
+      const ribbon = document.createElement("div");
+      ribbon.className = "sde-demo-ribbon";
+      for(let i=0; i<8; i+=1){
+        const chip = document.createElement("span");
+        chip.textContent = "DEMO";
+        ribbon.appendChild(chip);
+      }
+      banner.appendChild(ribbon);
+
       const title = document.createElement("strong");
       title.textContent = "DEMO-MODUS AKTIV";
       banner.appendChild(title);
 
       const body = document.createElement("span");
+      body.className = "sde-demo-body";
       body.textContent = cleanLine.replace(/^DEMO:\s*/,"");
       banner.appendChild(body);
 
@@ -5903,6 +5939,25 @@ function getSdeRouteAssessmentForPlanSkifte(fromSlot, toSlot){
 }
 
 
+function getSdePlatformMainTrack(slot){
+  const normalized = normalizeSlot(slot);
+  if(/^2[NS]$/.test(normalized)) return "2";
+  if(/^3[NSM]$/.test(normalized)) return "3";
+  return "";
+}
+
+
+function isSdeDiscouragedPlatformToPlatformMove(fromSlot, toSlot){
+  const fromTrack = getSdePlatformMainTrack(fromSlot);
+  const toTrack = getSdePlatformMainTrack(toSlot);
+
+  if(!fromTrack || !toTrack) return false;
+  if(fromTrack === toTrack) return false;
+
+  return (fromTrack === "2" && toTrack === "3") || (fromTrack === "3" && toTrack === "2");
+}
+
+
 function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
   if(!planRow) return "";
 
@@ -5911,6 +5966,10 @@ function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
   if(!toSlot) return "Kontroller: til-spor mangler. Fyll ut Til spor i + Skifte hvis bevegelsen har et planlagt mål.";
   if(!inputSlots.includes(toSlot)) return `Kontroller: til-spor ${toSlot} er ikke gyldig. Rett Til spor i + Skifte til en gyldig sporplassering, for eksempel 5S, 10N, 6SS eller 9.`;
   if(fromSlot && fromSlot === toSlot) messages.push("Kontroller: fra-spor og til-spor er samme spor. Endre Fra spor eller Til spor i + Skifte, eller fjern bevegelsen hvis den ikke skal utføres.");
+
+  if(isSdeDiscouragedPlatformToPlatformMove(fromSlot, toSlot)){
+    messages.push(`Kontroller: SDE skal normalt ikke foreslå flytting fra spor ${getSdePlatformMainTrack(fromSlot)} til spor ${getSdePlatformMainTrack(toSlot)}. Plattformspor-til-plattformspor er ikke normal løsning. Bruk heller konkret togproduksjon, intern fremtrekk i samme spor, eller egnet parkering/mellomlagring.`);
+  }
 
   const targetVehicle = getSdeVehicleInSlot(toSlot);
 
@@ -6193,6 +6252,72 @@ function getSdePlanningContextText(){
 }
 
 
+function isSdeCriticalPlatformSlot(slot){
+  return ["2N","2S","3N","3M","3S"].includes(normalizeSlot(slot));
+}
+
+
+function isSdeInternalSpor3Move(fromSlot, toSlot){
+  const from = normalizeSlot(fromSlot);
+  const to = normalizeSlot(toSlot);
+  return /^3[NSM]$/.test(from) && /^3[NSM]$/.test(to);
+}
+
+
+function getSdePlannedMoveSlotsFromSuggestion(value){
+  const text = String(value || "");
+  const match = text.match(/\b([0-9A-Z]{1,4})\s*→\s*([0-9A-Z]{1,4})\b/i);
+  if(!match) return null;
+
+  const from = normalizeSlot(match[1]);
+  const to = normalizeSlot(match[2]);
+
+  if(!inputSlots.includes(from) || !inputSlots.includes(to)) return null;
+  return {from, to};
+}
+
+
+function hasSdePlatformProductionJustification(row){
+  if(!row) return false;
+
+  const currentSlot = normalizeSlot(row.currentSlot);
+  const toTrain = normalizeTognr(row.toTrain);
+  const part = String(row.part || "").trim();
+  const suggested = String(row.suggestedSlot || "");
+
+  const plannedMove = getSdePlannedMoveSlotsFromSuggestion(suggested);
+  if(plannedMove && isSdeInternalSpor3Move(plannedMove.from, plannedMove.to)){
+    return true;
+  }
+
+  if(/^3[NSM]$/.test(currentSlot) && toTrain === "802" && (part === "1" || part === "2")){
+    return true;
+  }
+
+  if(/^3[NSM]$/.test(currentSlot) && /spor\s*3|bak\s+802|3S|3M|3N/i.test(suggested)){
+    return true;
+  }
+
+  return false;
+}
+
+
+function getSdePlatformCriticalReason(row){
+  if(!row) return "";
+
+  const currentSlot = normalizeSlot(row.currentSlot);
+  if(!isSdeCriticalPlatformSlot(currentSlot)) return "";
+  if(hasSdePlatformProductionJustification(row)) return "";
+
+  const vehicle = sanitizeVehicleValue(row.vehicle);
+  const vehicleText = vehicle && vehicle !== "Avklares"
+    ? `${vehicle} står`
+    : "Kjøretøy står";
+
+  return `Plattformspor-kritisk: ${vehicleText} i ${currentSlot}, som er produksjonskritisk plattform-/togspor. Spor 2 og 3 må holdes tilgjengelige til riktig tog på riktig tidspunkt. Vurder flytting til egnet parkering/mellomlagring dersom kjøretøyet ikke skal brukes i nært forestående togproduksjon.`;
+}
+
+
 function getSdePriority(row){
   if(!row) return "";
 
@@ -6204,6 +6329,7 @@ function getSdePriority(row){
   if(reason.includes("Avvik:")) return "Høy";
   if(reason.includes("Kontroller:")) return "Høy";
   if(reason.includes("Verkstedflyt:")) return "Høy";
+  if(reason.includes("Plattformspor-kritisk:")) return "Høy";
 
   if(isSdePlanSourceValue(source)) return "Middels";
   if(reason.includes("Buttspor-regel:")) return "Middels";
@@ -6245,6 +6371,8 @@ function getSdeRecommendedAction(row){
   if(status === "Annullert") return "Ikke utfør / annullert";
   if(status === "Avklares") return "Avklar datagrunnlag";
   if(source === "Mangler datagrunnlag") return "Avklar datagrunnlag";
+
+  if(reason.includes("Plattformspor-kritisk:")) return "Vurder flytting fra plattformspor";
 
   if(status === "Avvik") return "Kontroller før skifting";
   if(reason.includes("Avvik:")) return "Kontroller før skifting";
@@ -6340,9 +6468,7 @@ function getSdeNextActionsText(rows,currentDayType){
     .forEach(row=>{
       const phase = String(row.shiftPhase || "Ikke tidsatt").trim() || "Ikke tidsatt";
       if(!grouped[phase]) grouped[phase] = [];
-      if(grouped[phase].length < 6){
-        grouped[phase].push(row);
-      }
+      grouped[phase].push(row);
     });
 
   const parseSdeActionMinutes = row=>{
@@ -6363,6 +6489,56 @@ function getSdeNextActionsText(rows,currentDayType){
     }
 
     return minutes;
+  };
+
+  const getSdeReferenceActionMinutes = ()=>{
+    if(state.demoMode === "vy"){
+      return (16 * 60) + 45;
+    }
+
+    try{
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone:"Europe/Oslo",
+        hour:"2-digit",
+        minute:"2-digit",
+        hour12:false
+      }).formatToParts(new Date());
+
+      const hour = Number(parts.find(part=>part.type === "hour")?.value);
+      const minute = Number(parts.find(part=>part.type === "minute")?.value);
+
+      if(Number.isFinite(hour) && Number.isFinite(minute)){
+        return (hour * 60) + minute;
+      }
+    }catch(err){}
+
+    const now = new Date();
+    return (now.getHours() * 60) + now.getMinutes();
+  };
+
+  const getSdeActionTiming = row=>{
+    const actionMinutes = parseSdeActionMinutes(row);
+    if(!Number.isFinite(actionMinutes) || actionMinutes >= 99999){
+      return {rank:4, label:"Uten klokkeslett"};
+    }
+
+    let referenceMinutes = getSdeReferenceActionMinutes();
+
+    if(String(row?.shiftPhase || "") === "Natt"){
+      const raw = String(row?.arrival || "").trim();
+      const match = raw.match(/^(\d{1,2})[:.](\d{2})$/);
+      const hour = match ? Number(match[1]) : null;
+      if(Number.isFinite(hour) && hour < 7 && referenceMinutes < (7 * 60)){
+        referenceMinutes += 1440;
+      }
+    }
+
+    const diff = actionMinutes - referenceMinutes;
+
+    if(diff < -45) return {rank:0, label:"Forsinket / må tas nå"};
+    if(diff <= 20) return {rank:1, label:"Nå"};
+    if(diff <= 90) return {rank:2, label:"Snart"};
+    return {rank:3, label:"Senere i vakten"};
   };
 
   const prioritySortValue = row=>{
@@ -6559,15 +6735,17 @@ function getSdeNextActionsText(rows,currentDayType){
     const group = getSdeTopReadinessGroup(readinessText);
     const movement = movementText.replace(/^\s*\|\s*/,"").trim();
     const headingByGroup = {
-      "Kontroller":"Kontroller før skifting",
-      "Kan utføres":"Klar til å skifte",
+      "Kontroller":"Må kontrolleres før utførelse",
+      "Kan utføres":"Neste utførbare handling",
       "Avvent":"Avvent",
       "Ikke utfør":"Ikke utfør",
       "Vurder":"Vurder"
     };
 
+    const timing = getSdeActionTiming(row);
     const heading = headingByGroup[group] || actionLabel || "Vurder";
-    const headingText = time ? `${heading} – ${time}` : heading;
+    const headingPrefix = timing.label ? `${timing.label}: ` : "";
+    const headingText = time ? `${headingPrefix}${heading} – ${time}` : `${headingPrefix}${heading}`;
     const expectedVehicle = String(row?.expectedVehicle || "").trim();
     const showVehicleDeviation = vehicle
       && expectedVehicle
@@ -6592,7 +6770,8 @@ function getSdeNextActionsText(rows,currentDayType){
       row,
       headingText,
       detailText,
-      reasonText
+      reasonText,
+      timingRank: timing.rank
     };
   };
 
@@ -6607,14 +6786,18 @@ function getSdeNextActionsText(rows,currentDayType){
     });
 
     const groupRank = {
-      "Kontroller": 0,
-      "Kan utføres": 1,
+      "Kan utføres": 0,
+      "Kontroller": 1,
       "Avvent": 2,
       "Vurder": 3,
       "Ikke utfør": 4
     };
 
     candidates.sort((a,b)=>{
+      const aTimingRank = a.timingRank ?? 9;
+      const bTimingRank = b.timingRank ?? 9;
+      if(aTimingRank !== bTimingRank) return aTimingRank - bTimingRank;
+
       const aRank = groupRank[a.group] ?? 9;
       const bRank = groupRank[b.group] ?? 9;
       if(aRank !== bRank) return aRank - bRank;
@@ -6638,7 +6821,7 @@ function getSdeNextActionsText(rows,currentDayType){
 
   if(state.demoMode === "vy"){
     lines.push("");
-    lines.push("DEMO: Vy-pilotmodus. Dette er et kontrollert demonstrasjonsscenario, ikke operativ produksjon.");
+    lines.push("DEMO: Vy-pilotmodus. Kontrollert demonstrasjon, ikke operativ produksjon. Scenarioet viser hvordan flere samtidige avvik kan skape handlingslammelse, og hvordan SDE løfter frem ett konkret første grep.");
   }
 
   if(nextBestAction){
@@ -6965,6 +7148,11 @@ function buildSdeVaktplan(){
       }
       delete result._reservedIntermediateStorageSlots;
 
+      const platformCriticalReason = getSdePlatformCriticalReason(result);
+      if(platformCriticalReason){
+        result.reason = [result.reason, platformCriticalReason].filter(Boolean).join(" ");
+      }
+
       result.priority = getSdePriority(result);
       result.recommendedAction = getSdeRecommendedAction(result);
       return result;
@@ -7001,6 +7189,11 @@ function buildSdeVaktplan(){
     });
 
   extraPlanRows.forEach(row=>{
+    const platformCriticalReason = getSdePlatformCriticalReason(row);
+    if(platformCriticalReason){
+      row.reason = [row.reason, platformCriticalReason].filter(Boolean).join(" ");
+    }
+
     row.priority = getSdePriority(row);
     row.recommendedAction = getSdeRecommendedAction(row);
   });
