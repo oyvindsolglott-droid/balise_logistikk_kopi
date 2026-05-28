@@ -6886,7 +6886,30 @@ function getSdeNextActionsText(rows,currentDayType){
       return prioritySortValue(a.row) - prioritySortValue(b.row);
     });
 
-    return candidates;
+    const isSafeExecutableMove = preview=>{
+      if(!preview) return false;
+      if(preview.group !== "Kan utføres") return false;
+
+      const heading = String(preview.headingText || "");
+      const detail = String(preview.detailText || "");
+      const reason = String(preview.reasonText || "");
+      const combined = `${heading} ${detail} ${reason}`;
+
+      if(!detail.includes("→")) return false;
+
+      if(/må kontrolleres|kontroller|avvik|til-spor opptatt|opptatt av|rute blokkert|ikke gyldig|samme spor|viser allerede/i.test(combined)){
+        return false;
+      }
+
+      return true;
+    };
+
+    return candidates
+      .filter(isSafeExecutableMove)
+      .filter((preview,index,self)=>{
+        const key = `${preview.headingText || ""}|${preview.detailText || ""}`;
+        return self.findIndex(item=>`${item.headingText || ""}|${item.detailText || ""}` === key) === index;
+      });
   };
 
   const topActionPreviews = getSdeTopActionPreviews();
@@ -6919,6 +6942,11 @@ function getSdeNextActionsText(rows,currentDayType){
       if(action.detailText) lines.push(`@@SDE_FOLLOWING_DETAIL:${action.detailText}@@`);
       if(action.reasonText) lines.push(`@@SDE_FOLLOWING_REASON:${action.reasonText}@@`);
     });
+    lines.push("");
+  }else if(nextBestAction){
+    lines.push("Påfølgende handlinger:");
+    lines.push("@@SDE_FOLLOWING_MAIN:Ingen flere trygge påfølgende flyttinger akkurat nå.@@");
+    lines.push("@@SDE_FOLLOWING_DETAIL:Kontroller, avvik og blokkeringer vises fortsatt i arbeidslisten under.@@");
     lines.push("");
   }
 
