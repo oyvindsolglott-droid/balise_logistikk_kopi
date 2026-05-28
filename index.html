@@ -1173,6 +1173,52 @@ button{padding:12px 12px}
   color:#111827;
 }
 
+.sde-demo-tools{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin:0 0 10px;
+  flex-wrap:wrap;
+}
+
+.sde-demo-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  padding:6px 12px;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.10em;
+  background:#b91c1c;
+  color:#fff;
+  box-shadow:0 0 0 3px rgba(185,28,28,.18);
+}
+
+.sde-demo-banner{
+  border:2px solid #b91c1c;
+  background:#fef2f2;
+  color:#7f1d1d;
+  border-radius:14px;
+  padding:10px 12px;
+  font-weight:900;
+  box-shadow:0 8px 18px rgba(127,29,29,.12);
+}
+
+.sde-demo-banner strong{
+  display:block;
+  font-size:13px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  margin-bottom:3px;
+}
+
+.sde-demo-banner span{
+  display:block;
+  font-size:13px;
+  line-height:1.35;
+}
+
 .sde-import-report-content{
   display:flex;
   flex-direction:column;
@@ -1754,6 +1800,10 @@ Ved fra-spor-avvik rutevurderer SDE ikke videre før Fra spor stemmer med faktis
 <div class="zoom-inner" id="sdeVaktplanZoom">
 <div class="sde-import-report" id="sdeImportReport">
 <div class="sde-import-report-title">SDE vaktplan</div>
+<div class="sde-demo-tools">
+<button class="compact" id="loadVyDemoBtn" type="button">Last Vy-demo</button>
+<span class="sde-demo-badge" id="sdeDemoBadge" hidden>DEMO</span>
+</div>
 <div class="sde-import-report-content" id="sdeImportReportText">Testgrunnlaget er deaktivert. Videre SDE bygger på faktisk Sporplan, Grunnoppstilling, Tursatt og skifteplanlegging i Turnering Kveld/Natt.</div>
 </div>
 <div class="note">
@@ -2471,7 +2521,8 @@ function makeDefaultState(){
       grunnoppstillingZoom:{scale:1,compact:false},
       apiCombinedZoom:{scale:1,compact:false}
     },
-    migrationClearKveldColE_v1:false
+    migrationClearKveldColE_v1:false,
+    demoMode:""
   };
 }
 
@@ -2493,6 +2544,7 @@ if(!state.baliseToday) state.baliseToday={};
 if(!state.baliseTomorrow) state.baliseTomorrow={};
 if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
+if(typeof state.demoMode !== "string") state.demoMode="";
 if(!state.baliseTodayArrivals) state.baliseTodayArrivals={};
 if(!state.baliseTomorrowArrivals) state.baliseTomorrowArrivals={};
 if(!state.baliseTodayDepartureVehicles) state.baliseTodayDepartureVehicles={};
@@ -2868,6 +2920,22 @@ function renderSdeReportTextWithTurneringTargets(container, text){
   lines.forEach(line=>{
     const rawLine = String(line || "");
     const cleanLine = rawLine.replace(/\s*@@SDE_TURNERES_TIL:[^@]+@@/, "").trim();
+
+    if(cleanLine.startsWith("DEMO:")){
+      const banner = document.createElement("div");
+      banner.className = "sde-demo-banner";
+
+      const title = document.createElement("strong");
+      title.textContent = "DEMO-MODUS AKTIV";
+      banner.appendChild(title);
+
+      const body = document.createElement("span");
+      body.textContent = cleanLine.replace(/^DEMO:\s*/,"");
+      banner.appendChild(body);
+
+      container.appendChild(banner);
+      return;
+    }
 
     if(cleanLine === "Neste beste handling:"){
       nextActionCard = document.createElement("div");
@@ -6568,6 +6636,11 @@ function getSdeNextActionsText(rows,currentDayType){
     getSdePlanningContextText()
   ];
 
+  if(state.demoMode === "vy"){
+    lines.push("");
+    lines.push("DEMO: Vy-pilotmodus. Dette er et kontrollert demonstrasjonsscenario, ikke operativ produksjon.");
+  }
+
   if(nextBestAction){
     lines.push("");
     lines.push("Neste beste handling:");
@@ -6702,7 +6775,90 @@ function getSdeNextActionsText(rows,currentDayType){
 }
 
 
+function setSdeDemoBadge(){
+  const isDemo = state.demoMode === "vy";
+
+  const badge = document.getElementById("sdeDemoBadge");
+  if(badge){
+    badge.hidden = !isDemo;
+    badge.textContent = isDemo ? "DEMO AKTIV" : "DEMO";
+  }
+
+  const btn = document.getElementById("loadVyDemoBtn");
+  if(btn){
+    btn.textContent = isDemo ? "Last Vy-demo på nytt" : "Last Vy-demo";
+    btn.classList.toggle("danger", isDemo);
+  }
+}
+
+
+function applyVyDemoScenario(){
+  if(!confirm("Laste Vy-demo? Dette fyller inn et kontrollert demo-oppsett i Grunnoppstilling og Planlegge Skiftebevegelser. Bruk Nullstill for å gå tilbake til vanlig tom drift.")) return;
+
+  state.demoMode = "vy";
+
+  state.grunnoppstilling = {
+    ...state.grunnoppstilling,
+    "1S":"",
+    "1N":"",
+    "2S":"",
+    "2N":"",
+    "3S":"",
+    "3M":"",
+    "3N":"",
+    "4S":"74-12",
+    "4M":"",
+    "4N":"",
+    "5S":"74-14",
+    "5M":"",
+    "5N":"",
+    "6SS":"70-12",
+    "6S":"",
+    "6N":"",
+    "7SS":"70-02",
+    "7S":"",
+    "7N":"",
+    "8SS":"74-03",
+    "8S":"",
+    "8N":""
+  };
+
+  state.planSkifteRows = makeEmptyPlanSkifteRows();
+  state.planSkifteRows[0] = {
+    time:"15:10",
+    vehicle:"70-02",
+    fromSpor:"7SS",
+    toSpor:"4S",
+    crew:"1/2/12",
+    tilRep:"r",
+    operationType:"Parkering",
+    utfort:"",
+    source:"Vy-demo"
+  };
+
+  state.planSkifteRows[1] = {
+    time:"15:20",
+    vehicle:"74-03",
+    fromSpor:"8SS",
+    toSpor:"1S",
+    crew:"1/2/12",
+    tilRep:"",
+    operationType:"Parkering",
+    utfort:"",
+    source:"Vy-demo"
+  };
+
+  persist(true);
+  buildGrunnoppstilling();
+  buildInndata();
+  buildSporplan();
+  buildSdeVaktplan();
+}
+
+
 function buildSdeVaktplan(){
+  setSdeDemoBadge();
+
   const table = document.getElementById("sdeVaktplanTable");
   if(!table) return;
 
@@ -7352,6 +7508,12 @@ async function fetchBaliseApi(){
 document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>activateTab(btn.dataset.tab)));
 document.getElementById("guideTopBtn").addEventListener("click",()=>activateTab("hjelp"));
 document.getElementById("saveBtn").addEventListener("click",()=>persist(false));
+
+
+const loadVyDemoBtn = document.getElementById("loadVyDemoBtn");
+if(loadVyDemoBtn){
+  loadVyDemoBtn.addEventListener("click", applyVyDemoScenario);
+}
 
 
 document.getElementById("resetBtn").addEventListener("click",()=>{
