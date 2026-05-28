@@ -7025,6 +7025,57 @@ function getSdeNextActionsText(rows,currentDayType){
       });
     });
 
+    if(state.demoMode === "vy"){
+      const serviceSteps = [
+        {
+          time:"16:45",
+          heading:"Nå: Neste utførbare handling – 16:45",
+          detail:"74-24 | 823/2 → brua",
+          reason:"Årsak: 74-24 er 823/2 og skal tas ut av trafikk grunnet toalettfeil. Første nødvendige handling er å frigjøre plattformspor for blokkeringer og transportere kjøretøyet til fylle-/tømmespor 6.",
+          timingRank:0
+        },
+        {
+          time:"16:47",
+          heading:"Nå: Neste utførbare handling – 16:47",
+          detail:"74-24 | brua → spor 4",
+          reason:"Årsak: 74-24 føres tilbake gjennom spor 4 for å komme inn i riktig behandlingsløp mot vaskemaskinen.",
+          timingRank:1
+        },
+        {
+          time:"16:50",
+          heading:"Nå: Neste utførbare handling – 16:50",
+          detail:"74-24 | spor 4 → vaskemaskin",
+          reason:"Årsak: 74-24 må vaskes og klargjøres før sluttplassering i 6N.",
+          timingRank:1
+        },
+        {
+          time:"16:55",
+          heading:"Nå: Neste utførbare handling – 16:55",
+          detail:"74-24 | vaskemaskin → 6N",
+          reason:"Årsak: Servicebehov. 74-24 må stå ca. 30 minutter i 6N for tømming/fylling før flytting til endelig plassering.",
+          timingRank:1
+        }
+      ];
+
+      serviceSteps.forEach(step=>{
+        candidates.push({
+          group:"Kan utføres",
+          row:{
+            arrival:step.time,
+            priority:"Høy",
+            status:"Planlagt",
+            source:"SDE behandlingssekvens",
+            recommendedAction:"Utfør behandlingssekvens",
+            reason:step.reason
+          },
+          headingText:step.heading,
+          detailText:step.detail,
+          reasonText:step.reason,
+          timingRank:step.timingRank
+        });
+      });
+    }
+
     const groupRank = {
       "Kan utføres": 0,
       "Kontroller": 1,
@@ -7064,6 +7115,10 @@ function getSdeNextActionsText(rows,currentDayType){
         return false;
       }
 
+      if(/\b74-24\b/.test(detail) && /\b(?:2S|2N|3S|3M|3N|plattform)\s*→\s*6N\b/i.test(detail)){
+        return false;
+      }
+
       return true;
     };
 
@@ -7075,7 +7130,25 @@ function getSdeNextActionsText(rows,currentDayType){
       });
   };
 
-  const topActionPreviews = getSdeTopActionPreviews();
+  let topActionPreviews = getSdeTopActionPreviews();
+
+  if(state.demoMode === "vy"){
+    const serviceSequenceDetails = [
+      "74-24 | 823/2 → brua",
+      "74-24 | brua → spor 4",
+      "74-24 | spor 4 → vaskemaskin",
+      "74-24 | vaskemaskin → 6N"
+    ];
+
+    const servicePreviews = serviceSequenceDetails
+      .map(detail=>topActionPreviews.find(preview=>String(preview?.detailText || "").trim() === detail))
+      .filter(Boolean);
+
+    if(servicePreviews.length){
+      topActionPreviews = servicePreviews;
+    }
+  }
+
   const nextBestAction = topActionPreviews[0] || null;
   const followingActions = topActionPreviews.slice(1, 4);
 
