@@ -173,6 +173,12 @@ margin-bottom:10px
 font-size:13px;
 color:var(--muted)
 }
+.reset-tools{
+display:flex;
+justify-content:flex-end;
+gap:8px;
+margin-top:10px;
+}
 .zoom-wrap{
 overflow:auto;
 -webkit-overflow-scrolling:touch;
@@ -1826,8 +1832,8 @@ button{padding:12px 12px}
 </div>
 </div>
 <div class="stats" id="stats"></div>
-<div class="view-tools">
-<button id="resetBtn" type="button">Nullstill</button>
+<div class="reset-tools">
+<button id="resetBtn" type="button">Reset</button>
 </div>
 </section>
 
@@ -8189,8 +8195,8 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   updateTopDataStatus();
   updateBaliseViewState();
   renderApiTables();
-  activateTab("oppstilling");
-  markSaved("Nullstilt");
+  activateTab("sporplan");
+  markSaved("Reset");
   fetchBaliseApi();
   ensureTodayStaticDataLoaded();
   ensureTomorrowStaticDataLoaded();
