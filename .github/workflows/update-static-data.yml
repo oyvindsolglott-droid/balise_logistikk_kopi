@@ -15,6 +15,23 @@ on:
     # Dette gjør at forsinkede/mislykkede kjøringer selvrepareres uten manuell push.
     - cron: "*/15 * * * *"
 
+    # Ekstra eksplisitte kontroller rundt kritiske norske datovinduer.
+    # 07:00 Oslo er 05:00 UTC ved sommertid og 06:00 UTC ved vintertid.
+    - cron: "5 5 * * *"
+    - cron: "20 5 * * *"
+    - cron: "35 5 * * *"
+    - cron: "5 6 * * *"
+    - cron: "20 6 * * *"
+    - cron: "35 6 * * *"
+
+    # 15:00 Oslo er 13:00 UTC ved sommertid og 14:00 UTC ved vintertid.
+    - cron: "5 13 * * *"
+    - cron: "20 13 * * *"
+    - cron: "35 13 * * *"
+    - cron: "5 14 * * *"
+    - cron: "20 14 * * *"
+    - cron: "35 14 * * *"
+
 permissions:
   contents: write
 
