@@ -2622,7 +2622,8 @@ function makeDefaultState(){
       apiCombinedZoom:{scale:1,compact:false}
     },
     migrationClearKveldColE_v1:false,
-    demoMode:""
+    demoMode:"",
+    preDemoSnapshot:null
   };
 }
 
@@ -2645,6 +2646,7 @@ if(!state.baliseTomorrow) state.baliseTomorrow={};
 if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
 if(typeof state.demoMode !== "string") state.demoMode="";
+if(!("preDemoSnapshot" in state)) state.preDemoSnapshot=null;
 if(!state.baliseTodayArrivals) state.baliseTodayArrivals={};
 if(!state.baliseTomorrowArrivals) state.baliseTomorrowArrivals={};
 if(!state.baliseTodayDepartureVehicles) state.baliseTodayDepartureVehicles={};
@@ -3658,6 +3660,11 @@ function getTurneringPlanSkifteRows(rows, source){
 
 function getEffectivePlanSkifteRows(){
   const planRows = Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [];
+
+  if(state.demoMode === "vy"){
+    return planRows.filter(row => String(row?.source || "").trim() === "Vy-demo");
+  }
+
   const kveldRows = getTurneringPlanSkifteRows(state.turneringKveld, "Turnering Kveld");
   const nattRows = getTurneringPlanSkifteRows(state.turneringNatt, "Turnering Natt");
 
@@ -7381,15 +7388,56 @@ function setSdeDemoBadge(){
 
   const btn = document.getElementById("loadVyDemoBtn");
   if(btn){
-    btn.textContent = isDemo ? "Last Vy-demo på nytt" : "Last Vy-demo";
+    btn.textContent = isDemo ? "Exit demo" : "Last Vy-demo";
     btn.classList.toggle("danger", isDemo);
   }
 }
 
 
-function applyVyDemoScenario(){
-  if(!confirm("Laste Vy-demo? Dette fyller inn et kontrollert demo-oppsett i Grunnoppstilling og Planlegge Skiftebevegelser. Bruk Nullstill for å gå tilbake til vanlig tom drift.")) return;
+function makePreDemoSnapshot(){
+  return {
+    grunnoppstilling:JSON.parse(JSON.stringify(state.grunnoppstilling || {})),
+    grunnoppstillingRep:JSON.parse(JSON.stringify(state.grunnoppstillingRep || {})),
+    planSkifteRows:JSON.parse(JSON.stringify(Array.isArray(state.planSkifteRows) ? state.planSkifteRows : makeEmptyPlanSkifteRows())),
+    demoMode:""
+  };
+}
 
+
+function exitVyDemoScenario(){
+  if(state.demoMode !== "vy") return;
+
+  const snapshot = state.preDemoSnapshot;
+  if(!snapshot){
+    if(!confirm("Avslutte demo? Det finnes ingen lagret før-demo-status. Demo fjernes, men manuelle data kan ikke gjenopprettes automatisk.")) return;
+    state.demoMode = "";
+    state.preDemoSnapshot = null;
+  } else {
+    if(!confirm("Avslutte demo og gå tilbake til statusen fra før demo ble aktivert?")) return;
+    state.grunnoppstilling = JSON.parse(JSON.stringify(snapshot.grunnoppstilling || {}));
+    state.grunnoppstillingRep = JSON.parse(JSON.stringify(snapshot.grunnoppstillingRep || {}));
+    state.planSkifteRows = JSON.parse(JSON.stringify(Array.isArray(snapshot.planSkifteRows) ? snapshot.planSkifteRows : makeEmptyPlanSkifteRows()));
+    state.demoMode = "";
+    state.preDemoSnapshot = null;
+  }
+
+  persist(true);
+  buildGrunnoppstilling();
+  buildInndata();
+  buildSporplan();
+  buildSdeVaktplan();
+}
+
+
+function applyVyDemoScenario(){
+  if(state.demoMode === "vy"){
+    exitVyDemoScenario();
+    return;
+  }
+
+  if(!confirm("Laste Vy-demo? Dette lagrer nåværende Grunnoppstilling og Planlegge Skiftebevegelser midlertidig, slik at Exit demo kan gå tilbake til samme status etterpå.")) return;
+
+  state.preDemoSnapshot = makePreDemoSnapshot();
   state.demoMode = "vy";
 
   state.grunnoppstilling = {
