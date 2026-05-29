@@ -4191,16 +4191,16 @@ function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
   summary.textContent = count ? `Skifte (${count})` : "Skifte";
   details.appendChild(summary);
 
-  const toolbar = document.createElement("div");
-  toolbar.className = "turnering-skifte-toolbar";
+  details.addEventListener("toggle", ()=>{
+    if(!details.open) return;
 
-  const addBtn = document.createElement("button");
-  addBtn.type = "button";
-  addBtn.className = "turnering-skifte-add";
-  addBtn.textContent = "+ Skifte";
-  addBtn.addEventListener("click", ()=>addTurneringSkifteRow(tableId, stateKey, ri));
-  toolbar.appendChild(addBtn);
-  details.appendChild(toolbar);
+    const currentRow = state[stateKey]?.[ri];
+    const currentDynamicRows = Array.isArray(currentRow?.skifteRows) ? currentRow.skifteRows : [];
+
+    if(hasTurneringSkifteContent(currentRow) || currentDynamicRows.length > 0) return;
+
+    addTurneringSkifteRow(tableId, stateKey, ri);
+  });
 
   if(legacyCount){
     appendTurneringSkifteItem(details, tableId, stateKey, row, ri, getTurneringLegacySkifteRow(row), {isLegacy:true});
