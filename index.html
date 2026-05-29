@@ -19,11 +19,11 @@
 --text:#111827;
 --muted:#6b7280;
 --blue:#d9eaf7;
---blue-text:#7d97bf;
+--blue-text:#1e3a5f;
 --yellow:#fde68a;
---yellow-text:#92400e;
+--yellow-text:#78350f;
 --orange:#f3e2d2;
---orange-text:#b97b44;
+--orange-text:#7c3f16;
 --grey:#bfbfbf;
 --green:#c6efce;
 --green-border:#6aa84f;
@@ -572,6 +572,12 @@ overflow:hidden
 .slot.empty.blue{background-color:var(--blue);color:var(--blue-text)}
 .slot.empty.yellow{background-color:var(--yellow);color:var(--yellow-text)}
 .slot.empty.orange{background-color:var(--orange);color:var(--orange-text)}
+
+.slot.empty .slot-top,
+.slot.empty .slot-bottom:not(.mat){
+  font-weight:950;
+  text-shadow:0 1px 1px rgba(255,255,255,.72);
+}
 .slot.filled{background-color:rgba(229,231,235,.70);color:#000}
 .slot.wash-filled{background-color:rgba(187,247,208,.72);color:#000;border-color:var(--green-border)}
 
