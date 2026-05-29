@@ -4915,11 +4915,15 @@ function buildOppstillingMobileHeader(){
     const clonedHead = sourceThead.cloneNode(true);
     headerTable.appendChild(colgroup);
     headerTable.appendChild(clonedHead);
-    headerTable.style.width = `${totalWidth}px`;
-    headerTable.style.minWidth = `${totalWidth}px`;
 
-    const sourceLeft = Math.round((sourceTable.getBoundingClientRect().left + scrollWrap.scrollLeft) * 0.42);
-    headerTable.style.marginLeft = `${sourceLeft}px`;
+    const sourceRect = sourceTable.getBoundingClientRect();
+    const headerWrapRect = headerWrap.getBoundingClientRect();
+    const tableWidth = Math.ceil(sourceRect.width);
+    const tableLeft = Math.round(sourceRect.left - headerWrapRect.left + scrollWrap.scrollLeft);
+
+    headerTable.style.width = `${tableWidth}px`;
+    headerTable.style.minWidth = `${tableWidth}px`;
+    headerTable.style.marginLeft = `${tableLeft}px`;
     headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
   };
 
