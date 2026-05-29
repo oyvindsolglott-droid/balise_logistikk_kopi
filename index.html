@@ -844,6 +844,31 @@ font-size:14px;
 line-height:1;
 }
 
+/* Bredere og symmetrisk Tursatt-visning på laptop/desktop */
+@media (min-width:900px){
+  #oppstilling.panel{
+    width:min(110%, calc(100vw - 32px));
+    max-width:none;
+    margin-left:50%;
+    transform:translateX(-50%);
+  }
+
+  #oppstilling .zoom-wrap{
+    margin-left:auto;
+    margin-right:auto;
+  }
+
+  #oppstilling .zoom-inner{
+    margin-left:auto;
+    margin-right:auto;
+  }
+
+  #oppstillingTable{
+    margin-left:auto;
+    margin-right:auto;
+  }
+}
+
 #inndataTable{
 min-width:0;
 width:auto;
@@ -4893,6 +4918,8 @@ function buildOppstillingMobileHeader(){
     headerTable.style.width = `${totalWidth}px`;
     headerTable.style.minWidth = `${totalWidth}px`;
 
+    const sourceLeft = Math.round((sourceTable.getBoundingClientRect().left + scrollWrap.scrollLeft) * 0.42);
+    headerTable.style.marginLeft = `${sourceLeft}px`;
     headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
   };
 
