@@ -4197,13 +4197,36 @@ function getDefaultTurneringSkifteVehicle(row, skifteIndex){
   return frontVehicle || rearVehicle || "";
 }
 
+function getDefaultTurneringSkifteTime(row){
+  const cleanTime = normalizeTimeString(row?.a || "");
+  const match = String(cleanTime || "").match(/^(\d{1,2}):(\d{2})/);
+  if(!match) return "";
+
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if(Number.isNaN(hours) || Number.isNaN(minutes)) return "";
+
+  const total = (hours * 60 + minutes + 5) % 1440;
+  const nextHours = String(Math.floor(total / 60)).padStart(2, "0");
+  const nextMinutes = String(total % 60).padStart(2, "0");
+
+  return `${nextHours}:${nextMinutes}`;
+}
+
 function fillDefaultTurneringSkifteVehicles(row, wantedCount){
   if(!row || !Array.isArray(row.skifteRows)) return false;
 
   let changed = false;
+  const defaultTime = getDefaultTurneringSkifteTime(row);
 
   row.skifteRows.slice(0, wantedCount).forEach((skifteRow, index)=>{
     if(!skifteRow) return;
+
+    if(defaultTime && !String(skifteRow.time || "").trim()){
+      skifteRow.time = defaultTime;
+      changed = true;
+    }
+
     if(String(skifteRow.vehicle || "").trim()) return;
 
     const defaultVehicle = getDefaultTurneringSkifteVehicle(row, index);
@@ -4241,12 +4264,24 @@ function removeTurneringDynamicSkifteRow(tableId, stateKey, ri, skifteIndex){
   const row = state[stateKey][ri];
 
   if(!Array.isArray(row.skifteRows)) return;
-  row.skifteRows.splice(skifteIndex, 1);
+
+  const wantedCount = getTurneringSkifteRowCount(row);
+
+  if(wantedCount > 1){
+    while(row.skifteRows.length < wantedCount){
+      row.skifteRows.push(makeEmptyTurneringSkifteRow());
+    }
+    row.skifteRows[skifteIndex] = makeEmptyTurneringSkifteRow();
+  }else{
+    row.skifteRows.splice(skifteIndex, 1);
+  }
 
   const skifteKey = makeTurneringSkifteKey(stateKey, ri);
   const hasRemainingDynamicContent = hasTurneringDynamicSkifteContent(row);
   const hasRemainingLegacyContent = hasTurneringLegacySkifteContent(row);
-  const hasRemainingRows = Array.isArray(row.skifteRows) && row.skifteRows.length > 0;
+  const hasRemainingRows = Array.isArray(row.skifteRows) && row.skifteRows.some(skifteRow =>
+    Object.values(skifteRow || {}).some(value => String(value || "").trim())
+  );
 
   if(activeTurneringSkifteKey === skifteKey && !hasRemainingRows && !hasRemainingDynamicContent && !hasRemainingLegacyContent){
     activeTurneringSkifteKey = "";
