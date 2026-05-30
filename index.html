@@ -3057,7 +3057,10 @@ function setOppstillingOverride(train, vehicle1, vehicle2, syncKveld=true){
 function getTurneringSuggestionForTrain(tog,key){
   const train = normalizeTognr(tog);
   if(!train) return "";
-  const parts = splitVehicleNumbers(getVehicleForTrain(train, "idag"));
+
+  const arrivalVehicleMap = getArrivalVehicleMapByMode("idag");
+  const parts = splitVehicleNumbers(arrivalVehicleMap[train] || getVehicleForTrain(train, "idag"));
+
   if(key === "c") return parts[0] || "";
   if(key === "d") return parts[1] || "";
   if(key === "g") return parts[1] || "";
