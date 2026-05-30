@@ -4103,6 +4103,18 @@ function hasTurneringSkifteContent(row){
   return hasTurneringLegacySkifteContent(row) || hasTurneringDynamicSkifteContent(row);
 }
 
+let activeTurneringSkifteKey = "";
+
+function makeTurneringSkifteKey(stateKey, ri){
+  return `${stateKey}:${ri}`;
+}
+
+function closeOtherTurneringSkifteDetails(currentDetails){
+  document.querySelectorAll(".turnering-skifte-row details[open]").forEach(details=>{
+    if(details !== currentDetails) details.open = false;
+  });
+}
+
 function updateTurneringAfterSkifteInput(){
   buildSporplan();
   if(typeof buildSdeVaktplan === "function") buildSdeVaktplan();
@@ -4119,6 +4131,8 @@ function rebuildTurneringAfterSkifteStructureChange(tableId, stateKey){
 function addTurneringSkifteRow(tableId, stateKey, ri){
   if(!state?.[stateKey]?.[ri]) return;
   const row = state[stateKey][ri];
+
+  activeTurneringSkifteKey = makeTurneringSkifteKey(stateKey, ri);
 
   if(!Array.isArray(row.skifteRows)){
     row.skifteRows = [];
@@ -4255,7 +4269,8 @@ function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
   const dynamicRows = Array.isArray(row.skifteRows) ? row.skifteRows : [];
 
   const details = document.createElement("details");
-  details.open = hasTurneringSkifteContent(row) || dynamicRows.length > 0;
+  const skifteKey = makeTurneringSkifteKey(stateKey, ri);
+  details.open = activeTurneringSkifteKey === skifteKey;
 
   const summary = document.createElement("summary");
   const dynamicCount = dynamicRows
@@ -4268,6 +4283,9 @@ function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
 
   details.addEventListener("toggle", ()=>{
     if(!details.open) return;
+
+    activeTurneringSkifteKey = skifteKey;
+    closeOtherTurneringSkifteDetails(details);
 
     const currentRow = state[stateKey]?.[ri];
     const currentDynamicRows = Array.isArray(currentRow?.skifteRows) ? currentRow.skifteRows : [];
