@@ -1734,6 +1734,24 @@ button{padding:12px 12px}
   color:var(--red,#dc2626);
   box-shadow:0 1px 3px rgba(15,23,42,.12);
 }
+.turnering-skifte-remove{
+  width:32px;
+  min-width:32px;
+  height:32px;
+  padding:0;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  border-color:rgba(220,38,38,.35);
+  background:rgba(220,38,38,.08);
+  color:var(--red,#dc2626);
+  font-size:16px;
+  line-height:1;
+}
+.turnering-skifte-remove:hover{
+  background:rgba(220,38,38,.14);
+}
 .turnering-skifte-item{
   border-top:1px solid rgba(148,163,184,.25);
   padding-top:8px;
@@ -4265,18 +4283,24 @@ function appendTurneringSkifteItem(container, tableId, stateKey, row, ri, skifte
   title.textContent = isLegacy ? "Skiftebevegelse" : `Skiftebevegelse ${dynamicIndex + 1}`;
   head.appendChild(title);
 
-  const removeBtn = document.createElement("button");
-  removeBtn.type = "button";
-  removeBtn.className = "turnering-skifte-remove";
-  removeBtn.textContent = "Fjern";
-  removeBtn.addEventListener("click", ()=>{
-    if(isLegacy){
-      clearTurneringLegacySkifteRow(tableId, stateKey, ri);
-    }else{
-      removeTurneringDynamicSkifteRow(tableId, stateKey, ri, dynamicIndex);
-    }
-  });
-  head.appendChild(removeBtn);
+  const showRemoveButton = getTurneringSkifteRowCount(row) > 1;
+
+  if(showRemoveButton){
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "turnering-skifte-remove";
+    removeBtn.textContent = "×";
+    removeBtn.title = "Slett skiftebevegelse";
+    removeBtn.setAttribute("aria-label", "Slett skiftebevegelse");
+    removeBtn.addEventListener("click", ()=>{
+      if(isLegacy){
+        clearTurneringLegacySkifteRow(tableId, stateKey, ri);
+      }else{
+        removeTurneringDynamicSkifteRow(tableId, stateKey, ri, dynamicIndex);
+      }
+    });
+    head.appendChild(removeBtn);
+  }
 
   item.appendChild(head);
 
