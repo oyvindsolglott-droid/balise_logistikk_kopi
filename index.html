@@ -868,9 +868,25 @@ background:#eef5ff;
 font-weight:700;
 }
 #oppstillingTable .opp-missing-second{
-background:var(--soft-red);
-color:var(--soft-red-text);
-font-weight:700;
+background:#f8fafc;
+color:#64748b;
+font-weight:500;
+}
+
+#oppstillingTable .opp-missing-second input{
+background:#f8fafc;
+color:#64748b;
+font-style:italic;
+}
+
+#oppstillingTable .opp-missing-second input::placeholder{
+color:#94a3b8;
+font-style:italic;
+opacity:1;
+}
+
+#oppstillingTable .opp-missing-second .opp-turneres-til{
+color:#94a3b8;
 }
 
 #oppstillingTable .opp-vehicle-cell{
@@ -5132,7 +5148,13 @@ function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecon
   input.type = "text";
   input.className = "opp-vehicle-input";
   input.value = value || "";
-  input.placeholder = fieldKey === "vehicle1" ? "Ikke Tursatt" : "";
+
+  const isSingleSet = fieldKey === "vehicle2" && Boolean(isSecondMissing);
+
+  input.placeholder = fieldKey === "vehicle1"
+    ? "Ikke Tursatt"
+    : (isSingleSet ? "Enkeltsett" : "");
+
   updateVehicleNumberInputValidation(input, input.value);
   input.addEventListener("input", e=>{
     updateVehicleNumberInputValidation(input, e.target.value);
@@ -5142,8 +5164,9 @@ function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecon
   input.addEventListener("change", e=>handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, true));
   td.appendChild(input);
   appendOppstillingTurneringTarget(td, train, fieldKey);
-  if(train && fieldKey === "vehicle2" && isSecondMissing){
+  if(isSingleSet){
     td.classList.add("opp-missing-second");
+    td.title = "Enkeltsett – ingen kjøretøy 2";
   }
 }
 
@@ -5212,7 +5235,8 @@ function appendOppstillingSideCells(tr, rowData, side){
   tr.appendChild(tdSwap);
 
   const tdVehicle2 = document.createElement("td");
-  appendOppstillingVehicleInput(tdVehicle2, train, side, "vehicle2", vehicles.vehicle2, vehicles.missingSecond);
+  const showSingleSet = Boolean(vehicles.vehicle1 && vehicles.missingSecond);
+  appendOppstillingVehicleInput(tdVehicle2, train, side, "vehicle2", vehicles.vehicle2, showSingleSet);
   tr.appendChild(tdVehicle2);
 
   appendOppstillingSlotCell(tr, train, side, 1, vehicles);
