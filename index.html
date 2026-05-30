@@ -4598,6 +4598,14 @@ function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
   body.appendChild(tr);
 }
 
+let lastTurneringVehicleLockMessageAt = 0;
+function showTurneringVehicleLockMessage(){
+  const now = Date.now();
+  if(now - lastTurneringVehicleLockMessageAt < 700) return;
+  lastTurneringVehicleLockMessageAt = now;
+  alert("Dette skal kun registreres i arket: Tursatt.");
+}
+
 function buildTurnering(tableId,key){
   const isKveld = key==="turneringKveld";
   const cols=["a","b","c","d","e","f","g","h","i","j"];
@@ -4645,11 +4653,23 @@ function buildTurnering(tableId,key){
         inp.spellcheck=false;
         inp.value=(k==="b") ? getDisplayTrainNumber(row[k]) : (row[k]||"");
 
-        const isLocked = (k==="a" || k==="b");
+        const isVehicleSourceLocked = (k==="c" || k==="g");
+        const isLocked = (k==="a" || k==="b" || isVehicleSourceLocked);
         if(isLocked){
           inp.readOnly = true;
           inp.classList.add("locked-input");
           inp.tabIndex = -1;
+
+          if(isVehicleSourceLocked){
+            inp.title = "Registreres i Tursatt";
+            inp.addEventListener("click", showTurneringVehicleLockMessage);
+            inp.addEventListener("keydown", e=>{
+              e.preventDefault();
+            });
+            inp.addEventListener("paste", e=>{
+              e.preventDefault();
+            });
+          }
         }else{
           inp.addEventListener("input",e=>{
             state[key][ri][k]=e.target.value;
