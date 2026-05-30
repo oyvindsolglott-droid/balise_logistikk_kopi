@@ -4495,33 +4495,46 @@ function appendTurneringSkifteItem(container, tableId, stateKey, row, ri, skifte
     updateTurneringSkifteSlotInputValidation(inp, field.key, inp.value);
     if(field.key === "vehicle") updateVehicleNumberInputValidation(inp, inp.value);
 
-    inp.addEventListener("input", e=>{
-      updateTurneringSkifteSlotInputValidation(inp, field.key, e.target.value);
-      if(field.key === "vehicle") updateVehicleNumberInputValidation(inp, e.target.value);
-      if(isLegacy){
-        const legacyKeyMap = {
-          time:"skifteTime",
-          vehicle:"skifteVehicle",
-          fromSpor:"skifteFromSpor",
-          toSpor:"skifteToSpor",
-          crew:"skifteCrew",
-          tilRep:"skifteTilRep",
-          operationType:"skifteOperationType",
-          utfort:"skifteUtfort"
-        };
-        state[stateKey][ri][legacyKeyMap[field.key]] = e.target.value;
-      }else{
-        if(!Array.isArray(state[stateKey][ri].skifteRows)){
-          state[stateKey][ri].skifteRows = [];
+    const isSkifteVehicleLocked = field.key === "vehicle";
+    if(isSkifteVehicleLocked){
+      inp.readOnly = true;
+      inp.classList.add("locked-input");
+      inp.title = "Registreres i Tursatt";
+      inp.addEventListener("click", showTurneringVehicleLockMessage);
+      inp.addEventListener("keydown", e=>{
+        e.preventDefault();
+      });
+      inp.addEventListener("paste", e=>{
+        e.preventDefault();
+      });
+    }else{
+      inp.addEventListener("input", e=>{
+        updateTurneringSkifteSlotInputValidation(inp, field.key, e.target.value);
+        if(isLegacy){
+          const legacyKeyMap = {
+            time:"skifteTime",
+            vehicle:"skifteVehicle",
+            fromSpor:"skifteFromSpor",
+            toSpor:"skifteToSpor",
+            crew:"skifteCrew",
+            tilRep:"skifteTilRep",
+            operationType:"skifteOperationType",
+            utfort:"skifteUtfort"
+          };
+          state[stateKey][ri][legacyKeyMap[field.key]] = e.target.value;
+        }else{
+          if(!Array.isArray(state[stateKey][ri].skifteRows)){
+            state[stateKey][ri].skifteRows = [];
+          }
+          if(!state[stateKey][ri].skifteRows[dynamicIndex]){
+            state[stateKey][ri].skifteRows[dynamicIndex] = makeEmptyTurneringSkifteRow();
+          }
+          state[stateKey][ri].skifteRows[dynamicIndex][field.key] = e.target.value;
         }
-        if(!state[stateKey][ri].skifteRows[dynamicIndex]){
-          state[stateKey][ri].skifteRows[dynamicIndex] = makeEmptyTurneringSkifteRow();
-        }
-        state[stateKey][ri].skifteRows[dynamicIndex][field.key] = e.target.value;
-      }
 
-      updateTurneringAfterSkifteInput();
-    });
+        updateTurneringAfterSkifteInput();
+      });
+    }
 
     wrap.appendChild(inp);
     grid.appendChild(wrap);
