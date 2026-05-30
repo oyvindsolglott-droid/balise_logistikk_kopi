@@ -872,6 +872,39 @@ background:var(--soft-red);
 color:var(--soft-red-text);
 font-weight:700;
 }
+
+#oppstillingTable .opp-vehicle-cell{
+min-width:42px;
+width:42px;
+max-width:48px;
+}
+
+#oppstillingTable .opp-vehicle-cell input{
+width:6.5ch;
+min-width:0;
+max-width:100%;
+box-sizing:border-box;
+padding-left:2px;
+padding-right:2px;
+font-size:12px;
+}
+
+#oppstillingTable .opp-slot-cell{
+min-width:38px;
+width:38px;
+max-width:42px;
+font-weight:800;
+color:#1e3a5f;
+background:#f8fbff;
+}
+
+#oppstillingTable .opp-swap-cell{
+min-width:34px;
+width:34px;
+max-width:38px;
+padding-left:2px;
+padding-right:2px;
+}
 #oppstillingTable td.opp-vehicle-cell{
 padding:3px 4px;
 }
@@ -2408,7 +2441,7 @@ Til spor = 6ss</pre>
 <section class="panel" id="oppstilling">
 <div class="api-box">
   <div class="note" id="oppstillingDateStatus">Tursatt viser: dato ikke lest ennå</div>
-  <div class="mobile-table-label">Tursatt – Tognr. | Tid | Kjøretøy 1 | ⇄ | Kjøretøy 2</div>
+  <div class="mobile-table-label">Tursatt – Tognr. | Tid | Kjøretøy 1 | Spor | ⇄ | Kjøretøy 2 | Spor</div>
   <div class="oppstilling-mobile-real-header" id="oppstillingMobileHeader" aria-hidden="true">
     <table id="oppstillingMobileHeaderTable"></table>
   </div>
@@ -4213,6 +4246,29 @@ function getDefaultTurneringSkifteTime(row){
   return `${nextHours}:${nextMinutes}`;
 }
 
+function isTursattSkienArrivalTrain(train){
+  const trainNumber = normalizeTognr(train);
+  return /^8\d{2}$/.test(trainNumber);
+}
+
+function getTursattArrivalSlot(train, partIndex, hasTwoVehicles){
+  if(!isTursattSkienArrivalTrain(train)) return "";
+
+  if(hasTwoVehicles){
+    return partIndex === 1 ? "2S" : "2N";
+  }
+
+  return "2N";
+}
+
+function getDefaultTurneringSkifteFromSpor(row, skifteIndex){
+  const train = normalizeTognr(row?.b);
+  if(!train) return "";
+
+  const {frontVehicle, rearVehicle} = getTurneringSkifteVehicles(row);
+  return getTursattArrivalSlot(train, skifteIndex, Boolean(frontVehicle && rearVehicle));
+}
+
 function fillDefaultTurneringSkifteVehicles(row, wantedCount){
   if(!row || !Array.isArray(row.skifteRows)) return false;
 
@@ -4224,6 +4280,12 @@ function fillDefaultTurneringSkifteVehicles(row, wantedCount){
 
     if(defaultTime && !String(skifteRow.time || "").trim()){
       skifteRow.time = defaultTime;
+      changed = true;
+    }
+
+    const defaultFromSpor = getDefaultTurneringSkifteFromSpor(row, index);
+    if(defaultFromSpor && !String(skifteRow.fromSpor || "").trim()){
+      skifteRow.fromSpor = defaultFromSpor;
       changed = true;
     }
 
@@ -5097,6 +5159,23 @@ function getDisplayTrainNumberForOppstilling(train){
   return getDisplayTrainNumber(train);
 }
 
+function getOppstillingSlotText(train, side, partIndex, vehicles){
+  if(side !== "arrival") return "";
+
+  const vehicle = partIndex === 1 ? vehicles?.vehicle2 : vehicles?.vehicle1;
+  if(!String(vehicle || "").trim()) return "";
+
+  const hasTwoVehicles = Boolean(vehicles?.vehicle1 && vehicles?.vehicle2);
+  return getTursattArrivalSlot(train, partIndex, hasTwoVehicles);
+}
+
+function appendOppstillingSlotCell(tr, train, side, partIndex, vehicles){
+  const td = document.createElement("td");
+  td.className = "opp-slot-cell";
+  td.textContent = getOppstillingSlotText(train, side, partIndex, vehicles);
+  tr.appendChild(td);
+}
+
 function appendOppstillingSideCells(tr, rowData, side){
   const train = rowData?.train || "";
   const time = rowData?.displayTime || rowData?.time || "";
@@ -5117,6 +5196,8 @@ function appendOppstillingSideCells(tr, rowData, side){
   appendOppstillingVehicleInput(tdVehicle1, train, side, "vehicle1", vehicles.vehicle1, false);
   tr.appendChild(tdVehicle1);
 
+  appendOppstillingSlotCell(tr, train, side, 0, vehicles);
+
   const tdSwap = document.createElement("td");
   tdSwap.className = "opp-swap-cell";
   if(train && vehicles.vehicle1 && vehicles.vehicle2){
@@ -5133,6 +5214,8 @@ function appendOppstillingSideCells(tr, rowData, side){
   const tdVehicle2 = document.createElement("td");
   appendOppstillingVehicleInput(tdVehicle2, train, side, "vehicle2", vehicles.vehicle2, vehicles.missingSecond);
   tr.appendChild(tdVehicle2);
+
+  appendOppstillingSlotCell(tr, train, side, 1, vehicles);
 }
 
 function buildOppstillingMobileHeader(){
@@ -5238,18 +5321,18 @@ function buildOppstilling(){
   const trGroup=document.createElement("tr");
   const thArr=document.createElement("th");
   thArr.className="opp-group";
-  thArr.colSpan=5;
+  thArr.colSpan=7;
   thArr.textContent="Ankomst";
   trGroup.appendChild(thArr);
   const thDep=document.createElement("th");
   thDep.className="opp-group";
-  thDep.colSpan=5;
+  thDep.colSpan=7;
   thDep.textContent="Avgang";
   trGroup.appendChild(thDep);
   thead.appendChild(trGroup);
 
   const trHead=document.createElement("tr");
-  ["Tognr.","Ankomsttid","Kjøretøy 1 nr.","","Kjøretøy 2 nr.","Tognr.","Avgangstid","Kjøretøy 1 nr.","","Kjøretøy 2 nr."].forEach(text=>{
+  ["Tognr.","Ankomsttid","Kjøretøy 1 nr.","Spor","","Kjøretøy 2 nr.","Spor","Tognr.","Avgangstid","Kjøretøy 1 nr.","Spor","","Kjøretøy 2 nr.","Spor"].forEach(text=>{
     const th=document.createElement("th");
     th.textContent=text;
     trHead.appendChild(th);
