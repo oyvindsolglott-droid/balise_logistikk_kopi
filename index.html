@@ -868,21 +868,53 @@ background:#eef5ff;
 font-weight:700;
 }
 
+#oppstillingTable .opp-arrival-cell{
+background:linear-gradient(180deg,#fffdf7 0%,#fff7ed 100%);
+}
+
+#oppstillingTable thead .opp-arrival-cell{
+background:linear-gradient(180deg,#fff7ed 0%,#ffedd5 100%);
+}
+
 #oppstillingTable .opp-departure-cell{
-background:#f8fafc;
+background:linear-gradient(180deg,#fbfdff 0%,#f4f8fd 100%);
 }
 
 #oppstillingTable thead .opp-departure-cell{
-background:linear-gradient(180deg,#f8fafc 0%,#eef4fb 100%);
+background:linear-gradient(180deg,#f8fbff 0%,#edf4fb 100%);
 }
 
 #oppstillingTable .opp-departure-start{
-border-left:6px solid #dbe4f0 !important;
-box-shadow:inset 1px 0 0 #94a3b8;
+position:relative;
+border-left:1px solid #b8c7d9 !important;
+box-shadow:
+  inset 12px 0 0 rgba(59,130,246,.08),
+  -10px 0 18px -18px rgba(15,23,42,.55);
+}
+
+#oppstillingTable .opp-departure-start::before{
+content:"";
+position:absolute;
+left:-5px;
+top:-1px;
+bottom:-1px;
+width:4px;
+border-radius:999px;
+background:linear-gradient(180deg,#bfdbfe 0%,#64748b 48%,#bfdbfe 100%);
+box-shadow:
+  0 0 0 1px rgba(255,255,255,.85),
+  0 0 10px rgba(59,130,246,.22);
+pointer-events:none;
+}
+
+#oppstillingTable thead tr:first-child .opp-departure-start::before{
+top:6px;
+bottom:6px;
 }
 
 #oppstillingTable tbody td.opp-departure-start{
-background:linear-gradient(90deg,#eef4fb 0%,#f8fafc 22%,#f8fafc 100%);
+background:
+  linear-gradient(90deg,rgba(219,234,254,.65) 0%,rgba(248,251,255,.95) 18%,#fbfdff 100%);
 }
 #oppstillingTable .opp-missing-second{
 background:#f8fafc;
@@ -5368,7 +5400,7 @@ function buildOppstilling(){
   const thead=document.createElement("thead");
   const trGroup=document.createElement("tr");
   const thArr=document.createElement("th");
-  thArr.className="opp-group";
+  thArr.className="opp-group opp-arrival-cell";
   thArr.colSpan=7;
   thArr.textContent="Ankomst";
   trGroup.appendChild(thArr);
@@ -5382,6 +5414,7 @@ function buildOppstilling(){
   const trHead=document.createElement("tr");
   ["Tognr.","Ankomsttid","Kjøretøy 1 nr.","Spor","","Kjøretøy 2 nr.","Spor","Tognr.","Avgangstid","Kjøretøy 1 nr.","Spor","","Kjøretøy 2 nr.","Spor"].forEach((text,index)=>{
     const th=document.createElement("th");
+    if(index < 7) th.classList.add("opp-arrival-cell");
     if(index >= 7) th.classList.add("opp-departure-cell");
     if(index === 7) th.classList.add("opp-departure-start");
     th.textContent=text;
@@ -5401,6 +5434,7 @@ function buildOppstilling(){
     appendOppstillingSideCells(tr, arrivalRows[i] || null, "arrival");
     appendOppstillingSideCells(tr, departureRows[i] || null, "departure");
     Array.from(tr.children).forEach((cell,index)=>{
+      if(index < 7) cell.classList.add("opp-arrival-cell");
       if(index >= 7) cell.classList.add("opp-departure-cell");
       if(index === 7) cell.classList.add("opp-departure-start");
     });
