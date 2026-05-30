@@ -4149,6 +4149,15 @@ function removeTurneringDynamicSkifteRow(tableId, stateKey, ri, skifteIndex){
   if(!Array.isArray(row.skifteRows)) return;
   row.skifteRows.splice(skifteIndex, 1);
 
+  const skifteKey = makeTurneringSkifteKey(stateKey, ri);
+  const hasRemainingDynamicContent = hasTurneringDynamicSkifteContent(row);
+  const hasRemainingLegacyContent = hasTurneringLegacySkifteContent(row);
+  const hasRemainingRows = Array.isArray(row.skifteRows) && row.skifteRows.length > 0;
+
+  if(activeTurneringSkifteKey === skifteKey && !hasRemainingRows && !hasRemainingDynamicContent && !hasRemainingLegacyContent){
+    activeTurneringSkifteKey = "";
+  }
+
   rebuildTurneringAfterSkifteStructureChange(tableId, stateKey);
 }
 
