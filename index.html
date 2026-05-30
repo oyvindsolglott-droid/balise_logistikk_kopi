@@ -4150,6 +4150,15 @@ function rebuildTurneringAfterSkifteStructureChange(tableId, stateKey){
   persist(true);
 }
 
+function getTurneringSkifteRowCount(row){
+  if(!row || row.type) return 1;
+
+  const frontVehicle = sanitizeVehicleValue(row.c || getTurneringSuggestionForTrain(row.b, "c"));
+  const rearVehicle = sanitizeVehicleValue(row.g || getTurneringSuggestionForTrain(row.b, "g"));
+
+  return frontVehicle && rearVehicle ? 2 : 1;
+}
+
 function addTurneringSkifteRow(tableId, stateKey, ri){
   if(!state?.[stateKey]?.[ri]) return;
   const row = state[stateKey][ri];
@@ -4160,7 +4169,11 @@ function addTurneringSkifteRow(tableId, stateKey, ri){
     row.skifteRows = [];
   }
 
-  row.skifteRows.push(makeEmptyTurneringSkifteRow());
+  const wantedCount = getTurneringSkifteRowCount(row);
+  while(row.skifteRows.length < wantedCount){
+    row.skifteRows.push(makeEmptyTurneringSkifteRow());
+  }
+
   rebuildTurneringAfterSkifteStructureChange(tableId, stateKey);
 }
 
@@ -4321,7 +4334,8 @@ function appendTurneringSkifteRow(body, tableId, stateKey, row, ri, isKveld){
     const currentRow = state[stateKey]?.[ri];
     const currentDynamicRows = Array.isArray(currentRow?.skifteRows) ? currentRow.skifteRows : [];
 
-    if(hasTurneringSkifteContent(currentRow) || currentDynamicRows.length > 0) return;
+    const wantedCount = getTurneringSkifteRowCount(currentRow);
+    if(currentDynamicRows.length >= wantedCount) return;
 
     addTurneringSkifteRow(tableId, stateKey, ri);
   });
