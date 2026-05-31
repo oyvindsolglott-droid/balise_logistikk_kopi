@@ -4084,6 +4084,75 @@ function getEffectivePlanSkifteRows(){
 }
 
 
+function isSdeServiceTargetSlot(slot){
+  const normalizedSlot = normalizeSlot(slot);
+  return normalizedSlot === "6" ||
+    normalizedSlot === "6N" ||
+    normalizedSlot === "6S" ||
+    normalizedSlot === "6SS";
+}
+
+
+function getSdeProductionNeedConfidence(need){
+  if(!need) return "low";
+
+  const fromSlot = normalizeSlot(need.fromSlot);
+  const toSlot = normalizeSlot(need.toSlot);
+
+  if(!need.vehicle) return "low";
+  if(!fromSlot && !toSlot) return "low";
+
+  if(fromSlot && !inputSlots.includes(fromSlot)) return "low";
+  if(toSlot && !inputSlots.includes(toSlot)) return "low";
+
+  if(fromSlot && toSlot && fromSlot === toSlot) return "low";
+  if(!fromSlot || !toSlot) return "medium";
+
+  return "high";
+}
+
+
+function buildSdeProductionNeeds(){
+  const rows = getEffectivePlanSkifteRows();
+
+  return rows
+    .map((row,index)=>{
+      if(!row || !isPlanSkifteRowFilled(row)) return null;
+      if(isPlanSkifteFerdig(row?.utfort)) return null;
+
+      const fromSlot = normalizeSlot(row.fromSpor);
+      const toSlot = normalizeSlot(row.toSpor);
+      const operationType = String(row.operationType || "").trim();
+      const tilRep = String(row.tilRep || "").trim();
+      const serviceRequired = isSdeServiceTargetSlot(toSlot) ||
+        /\b(?:service|wc|vann|fyll|tømm|spor\s*6|6n|6s)\b/i.test(`${operationType} ${tilRep}`);
+
+      const need = {
+        source:String(row.source || "").trim(),
+        index,
+        time:String(row.time || "").trim(),
+        vehicle:sanitizeVehicleValue(row.vehicle),
+        fromSlot,
+        toSlot,
+        requestedPath:[fromSlot,toSlot].filter(Boolean),
+        finalTarget:toSlot,
+        serviceRequired,
+        serviceTrack:serviceRequired ? "6" : "",
+        operationType,
+        crew:String(row.crew || "").trim(),
+        status:"Åpen",
+        confidence:"medium",
+        raw:row
+      };
+
+      need.confidence = getSdeProductionNeedConfidence(need);
+
+      return need;
+    })
+    .filter(Boolean);
+}
+
+
 function applyFinishedPlanSkifteRows(result,map){
   const rows = getEffectivePlanSkifteRows();
 
