@@ -1667,6 +1667,140 @@ button{padding:12px 12px}
   font-weight:950;
 }
 
+/* Grunnoppstilling: operativ dispatch-board stil */
+#grunnoppstilling .zoom-wrap{
+  background:
+    radial-gradient(circle at 18% 0%, rgba(59,130,246,.13) 0%, rgba(59,130,246,0) 32%),
+    linear-gradient(180deg,#f8fbff 0%,#eef6ff 100%);
+  border:1px solid #bfdbfe;
+  border-radius:18px;
+  padding:18px;
+  box-shadow:
+    0 16px 36px rgba(15,23,42,.10),
+    inset 0 1px 0 rgba(255,255,255,.92);
+}
+
+#grunnoppstillingTable{
+  border-collapse:separate;
+  border-spacing:0 6px;
+  background:transparent;
+}
+
+#grunnoppstillingTable thead th{
+  background:linear-gradient(180deg,#1e3a5f 0%,#0f2747 100%);
+  color:#fff;
+  border:none;
+  height:34px;
+  font-size:12px;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  box-shadow:0 8px 18px rgba(15,23,42,.18);
+}
+
+#grunnoppstillingTable thead th:first-child{
+  border-top-left-radius:12px;
+  border-bottom-left-radius:12px;
+}
+
+#grunnoppstillingTable thead th:last-child{
+  border-top-right-radius:12px;
+  border-bottom-right-radius:12px;
+}
+
+#grunnoppstillingTable tbody tr.grunnoppstilling-row td{
+  border:none;
+  background:#ffffff;
+  height:40px;
+  box-shadow:
+    0 5px 14px rgba(15,23,42,.07),
+    inset 0 0 0 1px rgba(203,213,225,.75);
+}
+
+#grunnoppstillingTable tbody tr.grunnoppstilling-row td:first-child{
+  border-top-left-radius:12px;
+  border-bottom-left-radius:12px;
+}
+
+#grunnoppstillingTable tbody tr.grunnoppstilling-row td:last-child{
+  border-top-right-radius:12px;
+  border-bottom-right-radius:12px;
+}
+
+#grunnoppstillingTable tbody tr.grunnoppstilling-row:hover td{
+  transform:translateY(-1px);
+  box-shadow:
+    0 9px 20px rgba(15,23,42,.12),
+    inset 0 0 0 1px rgba(147,197,253,.9);
+}
+
+#grunnoppstillingTable .grunnoppstilling-slot-cell{
+  background:linear-gradient(180deg,#eff6ff 0%,#dbeafe 100%) !important;
+  color:#1e3a5f;
+  font-weight:950 !important;
+  letter-spacing:.03em;
+}
+
+#grunnoppstillingTable .grunnoppstilling-slot-cell::before{
+  content:"";
+  display:inline-block;
+  width:7px;
+  height:7px;
+  margin-right:6px;
+  border-radius:999px;
+  background:#60a5fa;
+  box-shadow:0 0 0 3px rgba(96,165,250,.16);
+  vertical-align:middle;
+}
+
+#grunnoppstillingTable .grunnoppstilling-vehicle-cell input{
+  height:30px;
+  border:1px solid #cbd5e1;
+  border-radius:999px;
+  background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);
+  color:#0f172a;
+  font-weight:850;
+  letter-spacing:.02em;
+  box-shadow:inset 0 1px 2px rgba(15,23,42,.07);
+}
+
+#grunnoppstillingTable tr.has-vehicle .grunnoppstilling-vehicle-cell input{
+  border-color:#93c5fd;
+  background:linear-gradient(180deg,#eff6ff 0%,#dbeafe 100%);
+  color:#1e3a5f;
+  box-shadow:
+    inset 0 1px 2px rgba(15,23,42,.08),
+    0 0 0 3px rgba(59,130,246,.10);
+}
+
+#grunnoppstillingTable .grunnoppstilling-status-cell input{
+  height:28px;
+  border:1px solid #cbd5e1;
+  border-radius:999px;
+  background:#f8fafc;
+  font-weight:950;
+  text-transform:uppercase;
+}
+
+#grunnoppstillingTable tr.has-rep .grunnoppstilling-status-cell input{
+  background:#fee2e2;
+  border-color:#dc2626;
+  color:#991b1b;
+  box-shadow:0 0 0 3px rgba(220,38,38,.12);
+}
+
+#grunnoppstillingTable tr.has-drei .grunnoppstilling-status-cell input{
+  background:#fef3c7;
+  border-color:#f59e0b;
+  color:#92400e;
+  box-shadow:0 0 0 3px rgba(245,158,11,.13);
+}
+
+#grunnoppstillingTable input:focus{
+  outline:2px solid rgba(37,99,235,.22);
+  border-color:#60a5fa;
+}
+
+
 
 .slot .slot-rep-badge{
   position:absolute !important;
@@ -4954,13 +5088,23 @@ function buildGrunnoppstilling(){
 
   inputSlots.forEach(slot=>{
     const tr=document.createElement("tr");
+    tr.className = "grunnoppstilling-row";
+
+    const currentVehicleValue = String(state.grunnoppstilling?.[slot] || "").trim();
+    const currentRepValue = String(state.grunnoppstillingRep?.[slot] || "").trim().toLowerCase();
+
+    if(currentVehicleValue) tr.classList.add("has-vehicle");
+    if(currentRepValue === "r") tr.classList.add("has-rep");
+    if(currentRepValue === "d") tr.classList.add("has-drei");
 
     const slotTd=document.createElement("td");
+    slotTd.className = "grunnoppstilling-slot-cell";
     slotTd.textContent=slot;
     slotTd.style.fontWeight="800";
     tr.appendChild(slotTd);
 
     const vehicleTd=document.createElement("td");
+    vehicleTd.className = "grunnoppstilling-vehicle-cell";
     const inp=document.createElement("input");
     inp.type="text";
     inp.inputMode="text";
@@ -4992,7 +5136,7 @@ function buildGrunnoppstilling(){
     tr.appendChild(vehicleTd);
 
     const repTd=document.createElement("td");
-    repTd.classList.add("rep-cell");
+    repTd.classList.add("rep-cell","grunnoppstilling-status-cell");
     const repInp=document.createElement("input");
     repInp.type="text";
     repInp.inputMode="text";
