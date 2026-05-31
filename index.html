@@ -4365,19 +4365,61 @@ function getDefaultTurneringSkifteTime(row){
   return `${nextHours}:${nextMinutes}`;
 }
 
+function getTursattArrivalDate(){
+  const todayDate = String(state.baliseMetaToday?.date || "");
+  if(todayDate) return todayDate;
+
+  const api = state.apiBalise || {};
+  if((api.mode || "idag") !== "imorgen" && api.date){
+    return String(api.date || "");
+  }
+
+  return "";
+}
+
+function getTursattArrivalWeekday(){
+  const dateText = getTursattArrivalDate();
+  const match = String(dateText || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  if(!year || !month || !day) return null;
+
+  return new Date(year, month - 1, day).getDay();
+}
+
+function isTursattFixedTrack3Arrival(train){
+  const trainNumber = normalizeTognr(train);
+  const weekday = getTursattArrivalWeekday();
+
+  if(weekday >= 1 && weekday <= 5){
+    return ["873","861","863","2489"].includes(trainNumber);
+  }
+
+  if(weekday === 6){
+    return trainNumber === "883";
+  }
+
+  return false;
+}
+
 function isTursattSkienArrivalTrain(train){
   const trainNumber = normalizeTognr(train);
-  return /^8\d{2}$/.test(trainNumber);
+  return /^8\d{2}$/.test(trainNumber) || isTursattFixedTrack3Arrival(trainNumber);
 }
 
 function getTursattArrivalSlot(train, partIndex, hasTwoVehicles){
   if(!isTursattSkienArrivalTrain(train)) return "";
 
+  const track = isTursattFixedTrack3Arrival(train) ? "3" : "2";
+
   if(hasTwoVehicles){
-    return partIndex === 1 ? "2S" : "2N";
+    return partIndex === 1 ? `${track}S` : `${track}N`;
   }
 
-  return "2N";
+  return `${track}N`;
 }
 
 function getDefaultTurneringSkifteFromSpor(row, skifteIndex){
