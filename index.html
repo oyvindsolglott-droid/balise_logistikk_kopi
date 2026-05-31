@@ -4112,6 +4112,66 @@ function getSdeProductionNeedConfidence(need){
 }
 
 
+const SDE_AFTERNOON_PARKING_CANDIDATES = Object.freeze([
+  "851",
+  "821/1",
+  "853/1",
+  "853/2",
+  "861",
+  "823/1",
+  "855/1",
+  "855/2",
+  "863",
+  "829/1",
+  "831/1",
+  "833/1",
+  "835",
+  "837",
+  "839"
+]);
+
+function normalizeSdeTrainPartKey(value){
+  const raw = String(value || "").trim();
+  if(!raw) return "";
+
+  const directMatch = raw.match(/^(\d{3,5})(?:\s*\/\s*([12]))?$/);
+  if(directMatch){
+    const train = normalizeTognr(directMatch[1]);
+    if(!train) return "";
+    return directMatch[2] ? `${train}/${directMatch[2]}` : train;
+  }
+
+  const train = normalizeTognr(raw);
+  if(!train) return "";
+
+  const partMatch = raw.match(/\/\s*([12])\b/);
+  return partMatch ? `${train}/${partMatch[1]}` : train;
+}
+
+function getSdeAfternoonParkingCandidates(){
+  return [...SDE_AFTERNOON_PARKING_CANDIDATES];
+}
+
+function isSdeAfternoonParkingCandidate(value){
+  const key = normalizeSdeTrainPartKey(value);
+  return !!key && SDE_AFTERNOON_PARKING_CANDIDATES.includes(key);
+}
+
+function getSdeParkingCandidateKeyFromRow(row){
+  if(!row) return "";
+
+  const targetText = typeof getSdeTurneringTargetText === "function"
+    ? getSdeTurneringTargetText(row)
+    : "";
+
+  return normalizeSdeTrainPartKey(targetText) ||
+    normalizeSdeTrainPartKey(row.toTrain) ||
+    normalizeSdeTrainPartKey(row.toTog) ||
+    normalizeSdeTrainPartKey(row.train) ||
+    normalizeSdeTrainPartKey(row.tog) ||
+    "";
+}
+
 function buildSdeProductionNeeds(){
   const rows = getEffectivePlanSkifteRows();
 
@@ -4126,6 +4186,7 @@ function buildSdeProductionNeeds(){
       const tilRep = String(row.tilRep || "").trim();
       const serviceRequired = isSdeServiceTargetSlot(toSlot) ||
         /\b(?:service|wc|vann|fyll|tømm|spor\s*6|6n|6s)\b/i.test(`${operationType} ${tilRep}`);
+      const parkingCandidate = getSdeParkingCandidateKeyFromRow(row);
 
       const need = {
         source:String(row.source || "").trim(),
@@ -4136,6 +4197,10 @@ function buildSdeProductionNeeds(){
         toSlot,
         requestedPath:[fromSlot,toSlot].filter(Boolean),
         finalTarget:toSlot,
+        toTrain:normalizeTognr(row.toTrain || row.toTog || row.train || row.tog || ""),
+        turneringTarget:typeof getSdeTurneringTargetText === "function" ? getSdeTurneringTargetText(row) : "",
+        parkingCandidate,
+        isAfternoonParkingCandidate:isSdeAfternoonParkingCandidate(parkingCandidate),
         serviceRequired,
         serviceTrack:serviceRequired ? "6" : "",
         operationType,
