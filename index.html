@@ -5567,6 +5567,61 @@ function createOppstillingVehicleCells(train, side){
   };
 }
 
+function buildSdeTursattVehicleBindings(){
+  const bindings = [];
+
+  function addBinding(row, side, vehicle, partIndex){
+    const cleanVehicle = sanitizeVehicleValue(vehicle);
+    const train = normalizeTognr(row?.train);
+    if(!train || !cleanVehicle) return;
+
+    const fieldKey = partIndex === 1 ? "vehicle2" : "vehicle1";
+    const vehicles = createOppstillingVehicleCells(train, side);
+    const slot = side === "arrival"
+      ? getOppstillingSlotText(train, side, partIndex, vehicles)
+      : "";
+
+    bindings.push({
+      source:"Tursatt",
+      role:side,
+      train,
+      time:String(row?.time || "").trim(),
+      displayTime:String(row?.displayTime || row?.time || "").trim(),
+      sortMinutes:row?.sortMinutes ?? 9999,
+      vehicle:cleanVehicle,
+      part:String(partIndex + 1),
+      fieldKey,
+      slot,
+      turneringTarget:side === "arrival" ? getOppstillingTurneringTarget(train, fieldKey) : "",
+      mustBeAccessible:side === "departure",
+      raw:row
+    });
+  }
+
+  buildArrivalRowsForOppstilling().forEach(row=>{
+    const vehicles = createOppstillingVehicleCells(row.train, "arrival");
+    addBinding(row, "arrival", vehicles.vehicle1, 0);
+    addBinding(row, "arrival", vehicles.vehicle2, 1);
+  });
+
+  buildDepartureRowsForOppstilling().forEach(row=>{
+    const vehicles = createOppstillingVehicleCells(row.train, "departure");
+    addBinding(row, "departure", vehicles.vehicle1, 0);
+    addBinding(row, "departure", vehicles.vehicle2, 1);
+  });
+
+  return bindings.sort((a,b)=>{
+    const ta = a.sortMinutes ?? 9999;
+    const tb = b.sortMinutes ?? 9999;
+    if(ta !== tb) return ta - tb;
+
+    if(a.role !== b.role) return a.role.localeCompare(b.role, "no");
+    if(a.train !== b.train) return String(a.train).localeCompare(String(b.train), "no");
+
+    return Number(a.part || 0) - Number(b.part || 0);
+  });
+}
+
 function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=true){
   const current = createOppstillingVehicleCells(train, side);
   const next1 = fieldKey === "vehicle1" ? value : current.vehicle1;
