@@ -7843,10 +7843,11 @@ function getSdeNextActionsText(rows,currentDayType){
   const getSdeTopActionLabel = (category,row)=>{
     const reason = String(row?.reason || "");
 
-    if(category === "Skifte" && (reason.includes("Kontroller:") || reason.includes("Avvik:"))){
+    if(category === "Skifte" && (reason.includes("Kontroller:") || reason.includes("Avvik:") || reason.includes("Tilgjengelighet:"))){
       return "Kontroller først";
     }
 
+    if(reason.includes("Tilgjengelighet:")) return "Kontroller først";
     if(category === "Kontroll") return "Kontroller først";
     if(category === "Skifte") return "Klar til å skifte";
     if(category === "Vurdering") return "Vurder";
@@ -7869,6 +7870,7 @@ function getSdeNextActionsText(rows,currentDayType){
     if(reason.includes("rute blokkert")) return "Rute blokkert";
     if(reason.includes("nordenden/vaskesporet er blokkert")) return "Rute må vurderes";
     if(reason.includes("verkstedposisjon")) return "Verkstedspor må bekreftes";
+    if(reason.includes("Tilgjengelighet:")) return "Tursatt kjøretøy må holdes tilgjengelig for senere kjøring til togspor";
 
     return "";
   };
