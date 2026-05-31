@@ -1803,7 +1803,57 @@ button{padding:12px 12px}
   color:var(--red,#dc2626);
   box-shadow:0 0 0 2px rgba(220,38,38,.12);
 }
-@media(max-width:900px){
+
+/* Turnering Kveld/Natt: Tursatt-inspirert skille mellom ankomst og avgang */
+.turnering-kveld-table .kveld-col-a,
+.turnering-kveld-table .kveld-col-b,
+.turnering-kveld-table .kveld-col-c,
+.turnering-kveld-table .kveld-col-d,
+.turnering-kveld-table .kveld-col-e,
+.turnering-kveld-table .kveld-col-g,
+.turnering-kveld-table .kveld-col-h,
+.turnering-kveld-table .kveld-col-i,
+.turnering-natt-table th:nth-child(1),
+.turnering-natt-table th:nth-child(2),
+.turnering-natt-table th:nth-child(3),
+.turnering-natt-table th:nth-child(4),
+.turnering-natt-table th:nth-child(5),
+.turnering-natt-table th:nth-child(7),
+.turnering-natt-table th:nth-child(8),
+.turnering-natt-table th:nth-child(9),
+.turnering-natt-table td:nth-child(1),
+.turnering-natt-table td:nth-child(2),
+.turnering-natt-table td:nth-child(3),
+.turnering-natt-table td:nth-child(4),
+.turnering-natt-table td:nth-child(5),
+.turnering-natt-table td:nth-child(7),
+.turnering-natt-table td:nth-child(8),
+.turnering-natt-table td:nth-child(9){
+  background:linear-gradient(180deg,#fffdf7 0%,#fff7ed 100%) !important;
+}
+
+.turnering-kveld-table .kveld-col-f,
+.turnering-kveld-table .kveld-col-j,
+.turnering-natt-table th:nth-child(6),
+.turnering-natt-table th:nth-child(10),
+.turnering-natt-table td:nth-child(6),
+.turnering-natt-table td:nth-child(10){
+  background:linear-gradient(180deg,#fbfdff 0%,#edf4fb 100%) !important;
+}
+
+.turnering-kveld-table td.kveld-col-f,
+.turnering-kveld-table td.kveld-col-j,
+.turnering-natt-table td:nth-child(6),
+.turnering-natt-table td:nth-child(10){
+  border-left:3px solid #b8c7d9 !important;
+  box-shadow:inset 8px 0 0 rgba(59,130,246,.07);
+}
+
+.turnering-kveld-table td input,
+.turnering-natt-table td input{
+  background:rgba(255,255,255,.55) !important;
+}
+\n@media(max-width:900px){
   .turnering-skifte-grid{
     grid-template-columns:repeat(2,minmax(90px,1fr));
   }
