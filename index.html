@@ -8362,6 +8362,120 @@ function applyVyDemoScenario(){
 }
 
 
+function buildSdeKnowledgeSnapshot(){
+  const candidates = getSdeAfternoonParkingCandidates();
+  const bindings = buildSdeTursattVehicleBindings();
+  const needs = buildSdeProductionNeeds();
+
+  const arrivals = bindings.filter(binding => binding.role === "arrival");
+  const departures = bindings.filter(binding => binding.role === "departure");
+  const accessibleDepartures = departures.filter(binding => binding.mustBeAccessible);
+
+  function matchesCandidate(candidate, binding){
+    const candidateKey = normalizeSdeTrainPartKey(candidate);
+    if(!candidateKey || !binding) return false;
+
+    const bindingTrain = normalizeSdeTrainPartKey(binding.train);
+    const bindingPartKey = normalizeSdeTrainPartKey(`${binding.train}/${binding.part || ""}`);
+
+    if(candidateKey.includes("/")) return candidateKey === bindingPartKey;
+    return candidateKey === bindingTrain;
+  }
+
+  function uniqueValues(values){
+    return [...new Set(values.map(value => String(value || "").trim()).filter(Boolean))];
+  }
+
+  const candidateRows = candidates.map(candidate=>{
+    const candidateKey = normalizeSdeTrainPartKey(candidate);
+    const candidateArrivals = arrivals.filter(binding => matchesCandidate(candidateKey, binding));
+    const vehicles = uniqueValues(candidateArrivals.map(binding => binding.vehicle));
+    const slots = uniqueValues(candidateArrivals.map(binding => binding.slot));
+    const turneringTargets = uniqueValues(candidateArrivals.map(binding => binding.turneringTarget));
+    const departureMatches = accessibleDepartures.filter(binding => vehicles.includes(binding.vehicle));
+    const serviceNeeds = needs.filter(need =>
+      need.isAfternoonParkingCandidate && normalizeSdeTrainPartKey(need.parkingCandidate) === candidateKey && need.serviceRequired
+    );
+
+    let status = "Mangler data";
+    if(candidateArrivals.length && vehicles.length && departureMatches.length){
+      status = "Koblet mot tursatt avgang";
+    }else if(candidateArrivals.length && vehicles.length){
+      status = "Kjent ankomst";
+    }else if(candidateArrivals.length){
+      status = "Mangler kjøretøy";
+    }
+
+    return {
+      candidate:candidateKey,
+      found:candidateArrivals.length > 0,
+      vehicles,
+      slots,
+      turneringTargets,
+      departureMatches,
+      serviceRequired:serviceNeeds.length > 0,
+      status
+    };
+  });
+
+  return {
+    generatedAt:new Date().toLocaleTimeString("no-NO", {hour:"2-digit", minute:"2-digit", second:"2-digit"}),
+    candidates:candidateRows,
+    totals:{
+      candidates:candidateRows.length,
+      found:candidateRows.filter(row => row.found).length,
+      withVehicle:candidateRows.filter(row => row.vehicles.length).length,
+      linkedDeparture:candidateRows.filter(row => row.departureMatches.length).length,
+      missing:candidateRows.filter(row => !row.found || !row.vehicles.length).length,
+      accessibleDepartures:accessibleDepartures.length
+    },
+    accessibleDepartures
+  };
+}
+
+function getSdeKnowledgeSnapshotText(snapshot){
+  if(!snapshot) return "";
+
+  const missingRows = snapshot.candidates
+    .filter(row => !row.found || !row.vehicles.length)
+    .map(row => `${row.candidate}: ${row.status}`)
+    .slice(0, 8);
+
+  const linkedRows = snapshot.candidates
+    .filter(row => row.departureMatches.length)
+    .map(row => {
+      const vehicles = row.vehicles.join(", ");
+      const slots = row.slots.length ? ` fra ${row.slots.join("/")}` : "";
+      return `${row.candidate}: ${vehicles}${slots}`;
+    })
+    .slice(0, 8);
+
+  const lines = [
+    "SDE kunnskapsgrunnlag",
+    `Oppdatert: ${snapshot.generatedAt}`,
+    `Ettermiddagskandidater: ${snapshot.totals.candidates}`,
+    `Funnet i Tursatt-ankomst: ${snapshot.totals.found}`,
+    `Med kjøretøy: ${snapshot.totals.withVehicle}`,
+    `Koblet mot morgendagens tursatte avgang: ${snapshot.totals.linkedDeparture}`,
+    `Mangler data/kjøretøy: ${snapshot.totals.missing}`,
+    `Morgendagens kjøretøy som må holdes tilgjengelig: ${snapshot.totals.accessibleDepartures}`
+  ];
+
+  if(linkedRows.length){
+    lines.push("");
+    lines.push("Kjente kandidater:");
+    linkedRows.forEach(line => lines.push(`- ${line}`));
+  }
+
+  if(missingRows.length){
+    lines.push("");
+    lines.push("Mangler / må kontrolleres:");
+    missingRows.forEach(line => lines.push(`- ${line}`));
+  }
+
+  return lines.join("\n");
+}
+
 function buildSdeVaktplan(){
   setSdeDemoBadge();
 
@@ -8545,12 +8659,13 @@ function buildSdeVaktplan(){
 
   const report = document.getElementById("sdeImportReportText");
   if(report){
+    const knowledgeSnapshotText = getSdeKnowledgeSnapshotText(buildSdeKnowledgeSnapshot());
     const nextActionsText = getSdeNextActionsText(rows,currentDayType);
     const shiftSummaryText = getSdeShiftSummaryText(rows);
     const hiddenOldPlanWarningText = getHiddenOldPlanSkifteWarningText();
     report.style.whiteSpace = "pre-line";
     report.style.lineHeight = "1.45";
-    const reportText = [hiddenOldPlanWarningText, nextActionsText, shiftSummaryText].filter(Boolean).join("\n");
+    const reportText = [hiddenOldPlanWarningText, knowledgeSnapshotText, nextActionsText, shiftSummaryText].filter(Boolean).join("\n\n");
     renderSdeReportTextWithTurneringTargets(report, reportText);
   }
 
