@@ -7472,16 +7472,92 @@ function getSdeAccessibleDepartureBindingsForVehicle(vehicle){
     );
 }
 
+function getSdeAccessibilityStateForRow(row){
+  if(!row){
+    return {
+      status: "unknown",
+      reason: "SDE-rad mangler.",
+      currentSlot: "",
+      departureBindings: [],
+      blockers: []
+    };
+  }
+
+  const vehicle = sanitizeVehicleValue(row.vehicle);
+  if(!vehicle || vehicle === "Avklares" || vehicle === "Annullert"){
+    return {
+      status: "unknown",
+      reason: "Kjøretøy mangler eller er ikke aktivt.",
+      currentSlot: "",
+      departureBindings: [],
+      blockers: []
+    };
+  }
+
+  const departureBindings = getSdeAccessibleDepartureBindingsForVehicle(vehicle);
+  if(!departureBindings.length){
+    return {
+      status: "ok",
+      reason: "Ingen tursatt avgang som krever tilgjengelighet er funnet.",
+      currentSlot: normalizeSlot(row.currentSlot || getSdeCurrentSlotForVehicle(vehicle)),
+      departureBindings: [],
+      blockers: []
+    };
+  }
+
+  const currentSlot = normalizeSlot(row.currentSlot || getSdeCurrentSlotForVehicle(vehicle));
+  if(!currentSlot){
+    return {
+      status: "unknown",
+      reason: "Nåværende spor er ikke funnet.",
+      currentSlot: "",
+      departureBindings,
+      blockers: []
+    };
+  }
+
+  const northBlockers = getSdeNorthernInternalBlockers(currentSlot);
+  const southBlockers = getSdeSouthernInternalBlockers(currentSlot);
+  const blockers = Array.from(new Set([...northBlockers, ...southBlockers]));
+
+  if(blockers.length){
+    const blockerText = blockers
+      .map(slot => {
+        const blockerVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(slot));
+        return blockerVehicle ? `${slot} (${blockerVehicle})` : slot;
+      })
+      .join(", ");
+
+    return {
+      status: "potentiallyBlocked",
+      reason: `Mulig intern blokkering ved ${blockerText}.`,
+      currentSlot,
+      departureBindings,
+      blockers
+    };
+  }
+
+  return {
+    status: "ok",
+    reason: "Ingen registrert intern blokkering i nåværende spor.",
+    currentSlot,
+    departureBindings,
+    blockers: []
+  };
+}
+
+
 function getSdeAccessibilityWarningForRow(row){
   if(!row) return "";
 
   const vehicle = sanitizeVehicleValue(row.vehicle);
   if(!vehicle || vehicle === "Avklares" || vehicle === "Annullert") return "";
 
-  const bindings = getSdeAccessibleDepartureBindingsForVehicle(vehicle);
+  const accessibilityState = getSdeAccessibilityStateForRow(row);
+  const bindings = accessibilityState.departureBindings || [];
   if(!bindings.length) return "";
 
-  const currentSlot = normalizeSlot(row.currentSlot || getSdeCurrentSlotForVehicle(vehicle));
+  const currentSlot = normalizeSlot(accessibilityState.currentSlot);
   const departureText = bindings
     .map(binding => {
       const partText = binding.part ? `/${binding.part}` : "";
@@ -7492,7 +7568,16 @@ function getSdeAccessibilityWarningForRow(row){
 
   const slotText = currentSlot ? ` Nåværende spor: ${currentSlot}.` : "";
 
-  return `Tilgjengelighet: ${vehicle} er tursatt for neste driftsdøgn (${departureText}) og må holdes tilgjengelig for senere kjøring til togspor.${slotText} Kontroller at planlagt plassering ikke sperrer kjøretøyet inne eller hindrer senere skifting.`;
+  let stateText = " Kontroller at planlagt plassering ikke sperrer kjøretøyet inne eller hindrer senere skifting.";
+  if(accessibilityState.status === "unknown"){
+    stateText = ` Status: nåværende spor mangler. ${accessibilityState.reason} Kontroller faktisk plassering før videre plan.`;
+  }else if(accessibilityState.status === "potentiallyBlocked"){
+    stateText = ` Status: potensielt blokkert. ${accessibilityState.reason} Kontroller om kjøretøyet kan kjøres ut mot togspor uten ekstra flytting.`;
+  }else if(accessibilityState.status === "ok"){
+    stateText = ` Status: står uten registrert intern blokkering. ${accessibilityState.reason}`;
+  }
+
+  return `Tilgjengelighet: ${vehicle} er tursatt for neste driftsdøgn (${departureText}) og må holdes tilgjengelig for senere kjøring til togspor.${slotText}${stateText}`;
 }
 
 function getSdePlatformCriticalReason(row){
