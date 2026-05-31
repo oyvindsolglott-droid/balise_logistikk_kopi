@@ -7460,6 +7460,41 @@ function hasSdePlatformProductionJustification(row){
 }
 
 
+function getSdeAccessibleDepartureBindingsForVehicle(vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token) return [];
+
+  return buildSdeTursattVehicleBindings()
+    .filter(binding =>
+      binding.role === "departure" &&
+      binding.mustBeAccessible &&
+      normalizeVehicleToken(binding.vehicle) === token
+    );
+}
+
+function getSdeAccessibilityWarningForRow(row){
+  if(!row) return "";
+
+  const vehicle = sanitizeVehicleValue(row.vehicle);
+  if(!vehicle || vehicle === "Avklares" || vehicle === "Annullert") return "";
+
+  const bindings = getSdeAccessibleDepartureBindingsForVehicle(vehicle);
+  if(!bindings.length) return "";
+
+  const currentSlot = normalizeSlot(row.currentSlot || getSdeCurrentSlotForVehicle(vehicle));
+  const departureText = bindings
+    .map(binding => {
+      const partText = binding.part ? `/${binding.part}` : "";
+      const timeText = binding.displayTime ? ` kl. ${binding.displayTime}` : "";
+      return `${binding.train}${partText}${timeText}`;
+    })
+    .join(", ");
+
+  const slotText = currentSlot ? ` Nåværende spor: ${currentSlot}.` : "";
+
+  return `Tilgjengelighet: ${vehicle} er tursatt for neste driftsdøgn (${departureText}) og må holdes tilgjengelig for senere kjøring til togspor.${slotText} Kontroller at planlagt plassering ikke sperrer kjøretøyet inne eller hindrer senere skifting.`;
+}
+
 function getSdePlatformCriticalReason(row){
   if(!row) return "";
 
@@ -7490,6 +7525,7 @@ function getSdePriority(row){
   if(reason.includes("Verkstedflyt:")) return "Høy";
   if(reason.includes("Plattformspor-kritisk:")) return "Høy";
 
+  if(reason.includes("Tilgjengelighet:")) return "Middels";
   if(isSdePlanSourceValue(source)) return "Middels";
   if(reason.includes("Buttspor-regel:")) return "Middels";
   if(reason.includes("plattformspor")) return "Middels";
@@ -7533,6 +7569,7 @@ function getSdeRecommendedAction(row){
   if(source === "Mangler datagrunnlag") return "Avklar datagrunnlag";
 
   if(reason.includes("Plattformspor-kritisk:")) return "Vurder flytting fra plattformspor";
+  if(reason.includes("Tilgjengelighet:")) return "Kontroller tilgjengelighet til togspor";
 
   if(status === "Avvik") return "Kontroller før skifting";
   if(reason.includes("Avvik:")) return "Kontroller før skifting";
@@ -8597,6 +8634,11 @@ function buildSdeVaktplan(){
         result.reason = [result.reason, platformCriticalReason].filter(Boolean).join(" ");
       }
 
+      const accessibilityWarning = getSdeAccessibilityWarningForRow(result);
+      if(accessibilityWarning){
+        result.reason = [result.reason, accessibilityWarning].filter(Boolean).join(" ");
+      }
+
       result.priority = getSdePriority(result);
       result.recommendedAction = getSdeRecommendedAction(result);
       return result;
@@ -8638,6 +8680,11 @@ function buildSdeVaktplan(){
     const platformCriticalReason = getSdePlatformCriticalReason(row);
     if(platformCriticalReason){
       row.reason = [row.reason, platformCriticalReason].filter(Boolean).join(" ");
+    }
+
+    const accessibilityWarning = getSdeAccessibilityWarningForRow(row);
+    if(accessibilityWarning){
+      row.reason = [row.reason, accessibilityWarning].filter(Boolean).join(" ");
     }
 
     row.priority = getSdePriority(row);
