@@ -7156,6 +7156,38 @@ function getSdePlanSkifteTargetSafetyStates(rows=state.planSkifteRows){
 }
 
 
+function getSdePlanSkifteTargetSafetySummary(rows=state.planSkifteRows){
+  const items = getSdePlanSkifteTargetSafetyStates(rows);
+  const statuses = ["safe", "warning", "blocked", "unknown"];
+
+  const summary = {
+    total: items.length,
+    counts: statuses.reduce((acc, status)=>{
+      acc[status] = 0;
+      return acc;
+    }, {}),
+    safe: [],
+    warning: [],
+    blocked: [],
+    unknown: [],
+    items
+  };
+
+  items.forEach(item=>{
+    const status = statuses.includes(item.status) ? item.status : "unknown";
+    summary.counts[status] += 1;
+    summary[status].push(item);
+  });
+
+  summary.hasBlocked = summary.counts.blocked > 0;
+  summary.hasWarning = summary.counts.warning > 0;
+  summary.hasUnknown = summary.counts.unknown > 0;
+  summary.hasIssues = summary.hasBlocked || summary.hasWarning || summary.hasUnknown;
+
+  return summary;
+}
+
+
 function getSdeResolutionCandidateSlots(fromSlot, avoidSlot=""){
   const from = normalizeSlot(fromSlot);
   const avoid = normalizeSlot(avoidSlot);
