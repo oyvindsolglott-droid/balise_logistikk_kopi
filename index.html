@@ -7347,6 +7347,10 @@ function getSdeTargetSlotSafety(vehicle, targetSlot, context={}){
     }
   }
 
+  if(String(context?.service6 || "").trim() === "1"){
+    reasons.push(`F/T 6: ${toSlot} er planlagt sluttplassering etter fylling/tømming via spor 6.`);
+  }
+
   if(isSdeCriticalPlatformSlot(toSlot)){
     const toTrain = normalizeTognr(context?.toTrain);
     if(toTrain){
@@ -7381,7 +7385,9 @@ function getSdeRowTargetSlotSafety(row, targetSlot=""){
     fromSlot: normalizeSlot(sourceRow.fromSpor),
     toTrain: normalizeTognr(sourceRow.toTrain || sourceRow.toTog || sourceRow.train || sourceRow.tog || ""),
     part: String(sourceRow.part || "").trim(),
+    service6: String(sourceRow.service6 || sourceRow.skifteService6 || "").trim(),
     tilRep: String(sourceRow.tilRep || sourceRow.skifteTilRep || "").trim(),
+    utfort: String(sourceRow.utfort || sourceRow.skifteUtfort || "").trim(),
     operationType: String(sourceRow.operationType || "").trim()
   });
 }
@@ -7403,13 +7409,24 @@ function getSdePlanSkifteTargetSafetyStates(rows=state.planSkifteRows){
         "train",
         "tog",
         "part",
+        "service6",
+        "skifteService6",
         "tilRep",
         "skifteTilRep",
+        "utfort",
+        "skifteUtfort",
         "operationType"
       ].some(key => String(sourceRow[key] || "").trim());
 
       if(!hasContent) return null;
 
+      const service6Value = String(sourceRow.service6 || sourceRow.skifteService6 || "").trim();
+      const tilRep = String(sourceRow.tilRep || sourceRow.skifteTilRep || "").trim();
+      const utfort = String(sourceRow.utfort || sourceRow.skifteUtfort || "").trim();
+      const isDrei = isDreiMarker(tilRep);
+      const isRep = isRepMarker(tilRep) && !isDrei;
+      const isUtfort = isPlanSkifteUtfort(utfort);
+      const isFerdig = isPlanSkifteFerdig(utfort);
       const safety = getSdeRowTargetSlotSafety(sourceRow);
 
       return {
@@ -7421,7 +7438,14 @@ function getSdePlanSkifteTargetSafetyStates(rows=state.planSkifteRows){
         targetSlot: safety.targetSlot,
         toTrain: normalizeTognr(sourceRow.toTrain || sourceRow.toTog || sourceRow.train || sourceRow.tog || ""),
         part: String(sourceRow.part || "").trim(),
-        tilRep: String(sourceRow.tilRep || sourceRow.skifteTilRep || "").trim(),
+        service6: service6Value === "1",
+        service6Value,
+        tilRep,
+        isRep,
+        isDrei,
+        utfort,
+        isUtfort,
+        isFerdig,
         operationType: String(sourceRow.operationType || "").trim(),
         status: safety.status,
         targetVehicle: safety.targetVehicle || "",
