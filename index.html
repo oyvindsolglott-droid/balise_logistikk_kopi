@@ -1993,6 +1993,55 @@ button{padding:12px 12px}
   border-color:#60a5fa;
   background:#f8fbff;
 }
+.turnering-rep-toggle{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:3px;
+  min-height:34px;
+  padding:2px;
+  border:1px solid #cbd5e1;
+  border-radius:8px;
+  background:linear-gradient(180deg,#f8fafc,#e2e8f0);
+  box-shadow:
+    inset 0 1px 2px rgba(15,23,42,.08),
+    0 2px 4px rgba(15,23,42,.08);
+}
+.turnering-rep-toggle-btn{
+  appearance:none;
+  border:1px solid rgba(100,116,139,.45);
+  border-radius:6px;
+  min-width:0;
+  padding:4px 3px;
+  font-size:10px;
+  font-weight:900;
+  letter-spacing:.02em;
+  color:#334155;
+  background:linear-gradient(180deg,#ffffff,#e5e7eb);
+  box-shadow:
+    0 2px 0 rgba(100,116,139,.35),
+    inset 0 1px 0 rgba(255,255,255,.80);
+  cursor:pointer;
+}
+.turnering-rep-toggle-btn:hover{
+  filter:brightness(1.04);
+}
+.turnering-rep-toggle-btn:active,
+.turnering-rep-toggle-btn.active{
+  transform:translateY(1px);
+  box-shadow:
+    inset 0 2px 4px rgba(15,23,42,.26),
+    0 1px 0 rgba(100,116,139,.25);
+}
+.turnering-rep-toggle-btn.rep.active{
+  color:#431407;
+  border-color:rgba(194,65,12,.75);
+  background:linear-gradient(180deg,#fdba74,#f97316 52%,#c2410c);
+}
+.turnering-rep-toggle-btn.drei.active{
+  color:#431407;
+  border-color:rgba(194,65,12,.75);
+  background:linear-gradient(180deg,#fdba74,#f97316 52%,#c2410c);
+}
 
 .turnering-kveld-table .turnering-skifte-field input,
 .turnering-natt-table .turnering-skifte-field input{
@@ -4575,7 +4624,7 @@ function getTurneringSkifteFields(){
     {key:"fromSpor", label:"Fra spor", placeholder:"fra"},
     {key:"toSpor", label:"Til spor", placeholder:"til"},
     {key:"crew", label:"Skifter", placeholder:"1/2/12"},
-    {key:"tilRep", label:"Til rep", placeholder:"r"},
+    {key:"tilRep", label:"Rep/Drei", placeholder:""},
     {key:"operationType", label:"Operasjonstype", placeholder:"type"},
     {key:"utfort", label:"Utført", placeholder:""}
   ];
@@ -4951,6 +5000,51 @@ function appendTurneringSkifteItem(container, tableId, stateKey, row, ri, skifte
     const label = document.createElement("label");
     label.textContent = field.label;
     wrap.appendChild(label);
+
+    if(field.key === "tilRep"){
+      const currentValue = String(skifteRow?.tilRep || "").trim().toLowerCase();
+      const activeValue = isDreiMarker(currentValue) ? "d" : (isRepMarker(currentValue) ? "r" : "");
+
+      const toggle = document.createElement("div");
+      toggle.className = "turnering-rep-toggle";
+
+      [
+        {value:"r", label:"REP", className:"rep", title:"Marker reparasjon/verkstedflyt"},
+        {value:"d", label:"DREI", className:"drei", title:"Marker dreiing"}
+      ].forEach(option=>{
+        const btn = document.createElement("button");
+        const isActive = activeValue === option.value;
+        btn.type = "button";
+        btn.className = `turnering-rep-toggle-btn ${option.className}${isActive ? " active" : ""}`;
+        btn.textContent = option.label;
+        btn.title = isActive ? `${option.title} er valgt` : option.title;
+        btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+
+        btn.addEventListener("click", ()=>{
+          const nextValue = isActive ? "" : option.value;
+
+          if(isLegacy){
+            state[stateKey][ri].skifteTilRep = nextValue;
+          }else{
+            if(!Array.isArray(state[stateKey][ri].skifteRows)){
+              state[stateKey][ri].skifteRows = [];
+            }
+            if(!state[stateKey][ri].skifteRows[dynamicIndex]){
+              state[stateKey][ri].skifteRows[dynamicIndex] = makeEmptyTurneringSkifteRow();
+            }
+            state[stateKey][ri].skifteRows[dynamicIndex].tilRep = nextValue;
+          }
+
+          rebuildTurneringAfterSkifteStructureChange(tableId, stateKey);
+        });
+
+        toggle.appendChild(btn);
+      });
+
+      wrap.appendChild(toggle);
+      grid.appendChild(wrap);
+      return;
+    }
 
     const inp = document.createElement("input");
     inp.type = "text";
