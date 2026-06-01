@@ -7705,19 +7705,27 @@ function getSdeAccessibilityWarningForRow(row){
       : ` ${accessibilityState.reason}`;
 
     let sequenceText = "Rekkefølge: ikke avklart.";
+    let statusText = "Status: potensielt blokkert.";
+    let followUpText = "Kontroller om kjøretøyet kan kjøres ut mot togspor uten ekstra flytting.";
+
     if(blockingResolution.status === "clearsBeforeNeeded"){
+      statusText = "Status: intern blokkering registrert, men rekkefølgen ser ut til å løse den før behov.";
       sequenceText = "Rekkefølge: blokkerende kjøretøy ser ut til å flyttes før dette kjøretøyet trengs.";
+      followUpText = "Kontroller at planlagt flytting av blokkerende kjøretøy fortsatt står ved lag.";
     }else if(blockingResolution.status === "blocksAtNeededTime"){
+      statusText = "Status: blokkert ved behov.";
       sequenceText = "Rekkefølge: blokkerende kjøretøy ser ikke ut til å flyttes før dette kjøretøyet trengs.";
+      followUpText = "Blokkering må løses før kjøretøyet trengs til kjøring mot togspor.";
     }else if(blockingResolution.status === "unclear"){
       sequenceText = "Rekkefølge: tidspunkt eller plan for blokkerende kjøretøy er ikke avklart.";
+      followUpText = "Kontroller rekkefølge før videre plan.";
     }
 
     const blockerDetails = Array.isArray(blockingResolution.blockerAssessments) && blockingResolution.blockerAssessments.length
       ? ` Detalj: ${blockingResolution.blockerAssessments.map(item => item.reason).join(" ")}`
       : "";
 
-    stateText = ` Status: potensielt blokkert.${blockerSentence} ${sequenceText}${blockerDetails} Kontroller om kjøretøyet kan kjøres ut mot togspor uten ekstra flytting.`;
+    stateText = ` ${statusText}${blockerSentence} ${sequenceText}${blockerDetails} ${followUpText}`;
   }else if(accessibilityState.status === "ok"){
     stateText = ` Status: står uten registrert intern blokkering. ${accessibilityState.reason}`;
   }
@@ -7741,6 +7749,29 @@ function getSdePlatformCriticalReason(row){
 }
 
 
+function getSdeAccessibilitySequenceStatusFromReason(reason){
+  const text = String(reason || "");
+  if(!text.includes("Tilgjengelighet:")) return "";
+
+  if(text.includes("blokkerende kjøretøy ser ikke ut til å flyttes før dette kjøretøyet trengs")){
+    return "blocksAtNeededTime";
+  }
+
+  if(text.includes("blokkerende kjøretøy ser ut til å flyttes før dette kjøretøyet trengs")){
+    return "clearsBeforeNeeded";
+  }
+
+  if(
+    text.includes("tidspunkt eller plan for blokkerende kjøretøy er ikke avklart") ||
+    text.includes("Rekkefølge: ikke avklart")
+  ){
+    return "unclear";
+  }
+
+  return "";
+}
+
+
 function getSdePriority(row){
   if(!row) return "";
 
@@ -7755,6 +7786,8 @@ function getSdePriority(row){
   if(reason.includes("Verkstedflyt:")) return "Høy";
   if(reason.includes("Plattformspor-kritisk:")) return "Høy";
 
+  const accessibilitySequenceStatus = getSdeAccessibilitySequenceStatusFromReason(reason);
+  if(accessibilitySequenceStatus === "blocksAtNeededTime") return "Høy";
   if(reason.includes("Tilgjengelighet:")) return "Middels";
   if(isSdePlanSourceValue(source)) return "Middels";
   if(reason.includes("Buttspor-regel:")) return "Middels";
@@ -7799,6 +7832,11 @@ function getSdeRecommendedAction(row){
   if(source === "Mangler datagrunnlag") return "Avklar datagrunnlag";
 
   if(reason.includes("Plattformspor-kritisk:")) return "Vurder flytting fra plattformspor";
+
+  const accessibilitySequenceStatus = getSdeAccessibilitySequenceStatusFromReason(reason);
+  if(accessibilitySequenceStatus === "blocksAtNeededTime") return "Løs blokkering før kjøring til togspor";
+  if(accessibilitySequenceStatus === "unclear") return "Kontroller rekkefølge før skifting";
+  if(accessibilitySequenceStatus === "clearsBeforeNeeded") return "Bekreft at rekkefølge fortsatt gjelder";
   if(reason.includes("Tilgjengelighet:")) return "Kontroller tilgjengelighet til togspor";
 
   if(status === "Avvik") return "Kontroller før skifting";
@@ -8087,6 +8125,7 @@ function getSdeNextActionsText(rows,currentDayType){
 
   const getSdeTopControlReason = row=>{
     const reason = String(row?.reason || "");
+    const accessibilitySequenceStatus = getSdeAccessibilitySequenceStatusFromReason(reason);
 
     if(reason.includes("planlagt fra") && reason.includes("Sporplan viser")) return "Fra-spor avviker";
     if(reason.includes("kjøretøy mangler")) return "Kjøretøy mangler";
@@ -8100,6 +8139,9 @@ function getSdeNextActionsText(rows,currentDayType){
     if(reason.includes("rute blokkert")) return "Rute blokkert";
     if(reason.includes("nordenden/vaskesporet er blokkert")) return "Rute må vurderes";
     if(reason.includes("verkstedposisjon")) return "Verkstedspor må bekreftes";
+    if(accessibilitySequenceStatus === "blocksAtNeededTime") return "Blokkering må løses før kjøretøyet trengs til kjøring mot togspor";
+    if(accessibilitySequenceStatus === "unclear") return "Rekkefølge for blokkering må avklares";
+    if(accessibilitySequenceStatus === "clearsBeforeNeeded") return "Rekkefølge ser kontrollert ut, men planlagt flytting må stå ved lag";
     if(reason.includes("Tilgjengelighet:")) return "Tursatt kjøretøy må holdes tilgjengelig for senere kjøring til togspor";
 
     return "";
