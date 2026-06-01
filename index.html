@@ -4340,9 +4340,17 @@ function buildSdeProductionNeeds(){
       const toSlot = normalizeSlot(row.toSpor);
       const operationType = String(row.operationType || "").trim();
       const tilRep = String(row.tilRep || "").trim();
-      const serviceRequired = isSdeServiceTargetSlot(toSlot) ||
+      const service6 = String(row.service6 || "").trim() === "1";
+      const isDrei = isDreiMarker(tilRep);
+      const isRep = isRepMarker(tilRep) && !isDrei;
+      const utfort = String(row.utfort || "").trim();
+      const isUtfort = isPlanSkifteUtfort(utfort);
+      const isFerdig = isPlanSkifteFerdig(utfort);
+      const serviceRequired = service6 ||
+        isSdeServiceTargetSlot(toSlot) ||
         /\b(?:service|wc|vann|fyll|tømm|spor\s*6|6n|6s)\b/i.test(`${operationType} ${tilRep}`);
       const parkingCandidate = getSdeParkingCandidateKeyFromRow(row);
+      const needType = service6 ? "service6" : isDrei ? "drei" : isRep ? "rep" : "skifte";
 
       const need = {
         source:String(row.source || "").trim(),
@@ -4359,6 +4367,14 @@ function buildSdeProductionNeeds(){
         isAfternoonParkingCandidate:isSdeAfternoonParkingCandidate(parkingCandidate),
         serviceRequired,
         serviceTrack:serviceRequired ? "6" : "",
+        service6,
+        tilRep,
+        isRep,
+        isDrei,
+        utfort,
+        isUtfort,
+        isFerdig,
+        needType,
         operationType,
         crew:String(row.crew || "").trim(),
         status:"Åpen",
