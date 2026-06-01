@@ -8831,6 +8831,68 @@ function getSdeDoubleSetButtTrackOrderWarningForRow(row){
   return state.reason || "";
 }
 
+function getSdeDoubleSetButtTrackOrderStates(){
+  const departureBindings = buildSdeTursattVehicleBindings()
+    .filter(binding => binding.role === "departure" && binding.mustBeAccessible && binding.train && binding.part);
+
+  const trains = [...new Set(departureBindings.map(binding => binding.train).filter(Boolean))]
+    .sort((a,b)=>String(a).localeCompare(String(b), "no"));
+
+  return trains.map(train => {
+    const sameTrainBindings = departureBindings.filter(binding => binding.train === train);
+    const part1 = sameTrainBindings.find(binding => String(binding.part) === "1");
+    const part2 = sameTrainBindings.find(binding => String(binding.part) === "2");
+
+    if(!part1 || !part2){
+      return null;
+    }
+
+    const part1Vehicle = sanitizeVehicleValue(part1.vehicle);
+    const part2Vehicle = sanitizeVehicleValue(part2.vehicle);
+    const part1Slot = normalizeSlot(getSdeCurrentSlotForVehicle(part1Vehicle));
+    const part2Slot = normalizeSlot(getSdeCurrentSlotForVehicle(part2Vehicle));
+    const part1IsButtTrackSlot = isSdeDoubleSetButtTrackSlot(part1Slot);
+    const part2IsButtTrackSlot = isSdeDoubleSetButtTrackSlot(part2Slot);
+
+    let status = "notRelevant";
+    let reason = "Dobbeltsettet står ikke samlet i buttspor 10/11/12.";
+
+    if(!part1Vehicle || !part2Vehicle || !part1Slot || !part2Slot){
+      if(part1IsButtTrackSlot || part2IsButtTrackSlot){
+        status = "unknown";
+        reason = `${train}/1 og ${train}/2 er tursatt som dobbeltsett, men faktisk spor mangler for minst én del mens den andre delen er registrert i buttspor 10/11/12.`;
+      }else{
+        status = "notRelevant";
+        reason = "Faktisk spor mangler, og ingen del er registrert i buttspor 10/11/12.";
+      }
+    }else if(part1IsButtTrackSlot && part2IsButtTrackSlot){
+      const part1Track = getSdeSlotTrack(part1Slot);
+      const part2Track = getSdeSlotTrack(part2Slot);
+
+      if(part1Track !== part2Track){
+        status = "notRelevant";
+        reason = `Begge deler står i buttspor 10/11/12, men ikke i samme buttspor (${part1Slot} / ${part2Slot}).`;
+      }else if(part1Slot.endsWith("S") && part2Slot.endsWith("N")){
+        status = "ok";
+        reason = `${train}/1 står i ${part1Slot} og ${train}/2 står i ${part2Slot}. Intern rekkefølge følger /1 → S og /2 → N.`;
+      }else{
+        status = "wrongOrder";
+        reason = `Feil intern rekkefølge: ${train}/1 står i ${part1Slot}, ${train}/2 står i ${part2Slot}. For 10/11/12 skal /1 normalt stå i S-posisjon og /2 i N-posisjon.`;
+      }
+    }
+
+    return {
+      train,
+      part1Vehicle,
+      part2Vehicle,
+      part1Slot,
+      part2Slot,
+      status,
+      reason
+    };
+  }).filter(Boolean);
+}
+
 
 function buildSdeKnowledgeSnapshot(){
   const candidates = getSdeAfternoonParkingCandidates();
