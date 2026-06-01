@@ -7665,6 +7665,17 @@ function formatSdeResolutionSuggestedSlot(resolution){
 }
 
 
+function getSdeServiceTrackStatusText(){
+  const serviceSlots = ["6N", "6S", "6SS"];
+  const statuses = serviceSlots.map(slot=>{
+    const vehicle = sanitizeVehicleValue(getSdeVehicleInSlot(slot));
+    return vehicle ? `${slot} opptatt av ${vehicle}` : `${slot} ledig`;
+  });
+
+  return `Spor 6-status: ${statuses.join(", ")}.`;
+}
+
+
 function getSdePlanSkifteOperationLabel(planRow){
   if(!planRow) return "Planlagt skiftebevegelse";
 
@@ -7711,6 +7722,7 @@ function getSdePlanSkifteReason(planRow){
     parts.push(toSlot
       ? `F/T 6: ${toSlot} er planlagt sluttplassering etter fylling/tømming via spor 6.`
       : "F/T 6: kjøretøyet skal via spor 6 for fylling/tømming før sluttplassering.");
+    parts.push(getSdeServiceTrackStatusText());
   }
   if(isDrei){
     parts.push("DREI: planlagt dreiing. Behandles som egen drei-flyt, ikke ordinær reparasjonsparkering.");
