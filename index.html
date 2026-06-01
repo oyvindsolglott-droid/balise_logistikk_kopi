@@ -8716,6 +8716,121 @@ function buildSdeDoubleSetGroups(values){
     .sort((a,b)=>String(a.train).localeCompare(String(b.train), "no"));
 }
 
+function isSdeDoubleSetButtTrackSlot(slot){
+  const normalizedSlot = normalizeSlot(slot);
+  return /^(10|11|12)[NS]$/.test(normalizedSlot);
+}
+
+function getSdeDoubleSetButtTrackOrderStateForRow(row){
+  if(!row) return {
+    status: "notRelevant",
+    reason: "SDE-rad mangler."
+  };
+
+  const vehicle = sanitizeVehicleValue(row.vehicle);
+  const token = normalizeVehicleToken(vehicle);
+  if(!token || vehicle === "Avklares" || vehicle === "Annullert") return {
+    status: "notRelevant",
+    reason: "Kjøretøy mangler eller er ikke aktivt."
+  };
+
+  const rowToTrain = normalizeTognr(row.toTrain);
+  const rowPart = String(row.part || "").trim();
+
+  const rowBindings = getSdeAccessibleDepartureBindingsForVehicle(vehicle)
+    .filter(binding => {
+      if(!(binding.role === "departure" && binding.mustBeAccessible && binding.train && binding.part)) return false;
+      if(rowToTrain && binding.train !== rowToTrain) return false;
+      if(rowPart && String(binding.part || "") !== rowPart) return false;
+      return true;
+    });
+
+  if(!rowBindings.length) return {
+    status: "notRelevant",
+    reason: "Ingen tursatt avgangsdel funnet for kjøretøyet."
+  };
+
+  const allDepartureBindings = buildSdeTursattVehicleBindings()
+    .filter(binding => binding.role === "departure" && binding.mustBeAccessible && binding.train && binding.part);
+
+  for(const rowBinding of rowBindings){
+    const sameTrainBindings = allDepartureBindings.filter(binding => binding.train === rowBinding.train);
+    const part1 = sameTrainBindings.find(binding => String(binding.part) === "1");
+    const part2 = sameTrainBindings.find(binding => String(binding.part) === "2");
+
+    if(!part1 || !part2) continue;
+
+    const part1Vehicle = sanitizeVehicleValue(part1.vehicle);
+    const part2Vehicle = sanitizeVehicleValue(part2.vehicle);
+    const part1Slot = normalizeSlot(getSdeCurrentSlotForVehicle(part1Vehicle));
+    const part2Slot = normalizeSlot(getSdeCurrentSlotForVehicle(part2Vehicle));
+
+    const part1IsButtTrackSlot = isSdeDoubleSetButtTrackSlot(part1Slot);
+    const part2IsButtTrackSlot = isSdeDoubleSetButtTrackSlot(part2Slot);
+
+    if(!part1Vehicle || !part2Vehicle || !part1Slot || !part2Slot){
+      if(part1IsButtTrackSlot || part2IsButtTrackSlot){
+        return {
+          status: "unknown",
+          train: rowBinding.train,
+          part1Vehicle,
+          part2Vehicle,
+          part1Slot,
+          part2Slot,
+          reason: `Buttspor-regel: ${rowBinding.train}/1 og ${rowBinding.train}/2 er tursatt som dobbeltsett, men faktisk spor mangler for minst én del mens den andre delen er registrert i buttspor 10/11/12. Kontroller plassering før vurdering av buttspor-rekkefølge.`
+        };
+      }
+
+      continue;
+    }
+
+    if(!part1IsButtTrackSlot || !part2IsButtTrackSlot){
+      continue;
+    }
+
+    const part1Track = getSdeSlotTrack(part1Slot);
+    const part2Track = getSdeSlotTrack(part2Slot);
+    if(part1Track !== part2Track){
+      continue;
+    }
+
+    if(part1Slot.endsWith("S") && part2Slot.endsWith("N")){
+      return {
+        status: "ok",
+        train: rowBinding.train,
+        track: part1Track,
+        part1Vehicle,
+        part2Vehicle,
+        part1Slot,
+        part2Slot,
+        reason: `Buttspor-regel: ${rowBinding.train}/1 står i ${part1Slot} og ${rowBinding.train}/2 står i ${part2Slot}. Intern rekkefølge i buttspor ${part1Track} følger /1 → S og /2 → N.`
+      };
+    }
+
+    return {
+      status: "wrongOrder",
+      train: rowBinding.train,
+      track: part1Track,
+      part1Vehicle,
+      part2Vehicle,
+      part1Slot,
+      part2Slot,
+      reason: `Buttspor-regel: feil intern rekkefølge for dobbeltsett ${rowBinding.train} i buttspor ${part1Track}. ${rowBinding.train}/1 står i ${part1Slot}, ${rowBinding.train}/2 står i ${part2Slot}. For 10/11/12 skal /1 normalt stå i S-posisjon og /2 i N-posisjon.`
+    };
+  }
+
+  return {
+    status: "notRelevant",
+    reason: "Ingen komplett dobbeltsettgruppe i buttspor 10/11/12 for denne raden."
+  };
+}
+
+function getSdeDoubleSetButtTrackOrderWarningForRow(row){
+  const state = getSdeDoubleSetButtTrackOrderStateForRow(row);
+  if(!state || state.status === "notRelevant" || state.status === "ok") return "";
+  return state.reason || "";
+}
+
 
 function buildSdeKnowledgeSnapshot(){
   const candidates = getSdeAfternoonParkingCandidates();
@@ -8980,6 +9095,11 @@ function buildSdeVaktplan(){
         result.reason = [result.reason, accessibilityWarning].filter(Boolean).join(" ");
       }
 
+      const doubleSetButtTrackWarning = getSdeDoubleSetButtTrackOrderWarningForRow(result);
+      if(doubleSetButtTrackWarning){
+        result.reason = [result.reason, doubleSetButtTrackWarning].filter(Boolean).join(" ");
+      }
+
       result.priority = getSdePriority(result);
       result.recommendedAction = getSdeRecommendedAction(result);
       return result;
@@ -9026,6 +9146,11 @@ function buildSdeVaktplan(){
     const accessibilityWarning = getSdeAccessibilityWarningForRow(row);
     if(accessibilityWarning){
       row.reason = [row.reason, accessibilityWarning].filter(Boolean).join(" ");
+    }
+
+    const doubleSetButtTrackWarning = getSdeDoubleSetButtTrackOrderWarningForRow(row);
+    if(doubleSetButtTrackWarning){
+      row.reason = [row.reason, doubleSetButtTrackWarning].filter(Boolean).join(" ");
     }
 
     row.priority = getSdePriority(row);
