@@ -7110,6 +7110,52 @@ function getSdeRowTargetSlotSafety(row, targetSlot=""){
 }
 
 
+function getSdePlanSkifteTargetSafetyStates(rows=state.planSkifteRows){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+
+  return sourceRows
+    .map((row, index)=>{
+      const sourceRow = row || {};
+      const hasContent = [
+        "time",
+        "vehicle",
+        "fromSpor",
+        "toSpor",
+        "toTrain",
+        "toTog",
+        "train",
+        "tog",
+        "part",
+        "tilRep",
+        "skifteTilRep",
+        "operationType"
+      ].some(key => String(sourceRow[key] || "").trim());
+
+      if(!hasContent) return null;
+
+      const safety = getSdeRowTargetSlotSafety(sourceRow);
+
+      return {
+        index,
+        rowNumber: index + 1,
+        time: String(sourceRow.time || "").trim(),
+        vehicle: safety.vehicle,
+        fromSlot: normalizeSlot(sourceRow.fromSpor),
+        targetSlot: safety.targetSlot,
+        toTrain: normalizeTognr(sourceRow.toTrain || sourceRow.toTog || sourceRow.train || sourceRow.tog || ""),
+        part: String(sourceRow.part || "").trim(),
+        tilRep: String(sourceRow.tilRep || sourceRow.skifteTilRep || "").trim(),
+        operationType: String(sourceRow.operationType || "").trim(),
+        status: safety.status,
+        targetVehicle: safety.targetVehicle || "",
+        reasons: safety.reasons || [],
+        reason: safety.reason
+      };
+    })
+    .filter(Boolean);
+}
+
+
 function getSdeResolutionCandidateSlots(fromSlot, avoidSlot=""){
   const from = normalizeSlot(fromSlot);
   const avoid = normalizeSlot(avoidSlot);
