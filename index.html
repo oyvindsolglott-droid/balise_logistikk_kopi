@@ -7693,7 +7693,31 @@ function getSdeAccessibilityWarningForRow(row){
   if(accessibilityState.status === "unknown"){
     stateText = ` Status: nåværende spor mangler. ${accessibilityState.reason} Kontroller faktisk plassering før videre plan.`;
   }else if(accessibilityState.status === "potentiallyBlocked"){
-    stateText = ` Status: potensielt blokkert. ${accessibilityState.reason} Kontroller om kjøretøyet kan kjøres ut mot togspor uten ekstra flytting.`;
+    const blockingResolution = accessibilityState.blockingResolution || {};
+    const blockerText = (accessibilityState.blockers || [])
+      .map(slot => {
+        const blockerVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(slot));
+        return blockerVehicle ? `${slot} (${blockerVehicle})` : slot;
+      })
+      .join(", ");
+    const blockerSentence = blockerText
+      ? ` Mulig intern blokkering ved ${blockerText}.`
+      : ` ${accessibilityState.reason}`;
+
+    let sequenceText = "Rekkefølge: ikke avklart.";
+    if(blockingResolution.status === "clearsBeforeNeeded"){
+      sequenceText = "Rekkefølge: blokkerende kjøretøy ser ut til å flyttes før dette kjøretøyet trengs.";
+    }else if(blockingResolution.status === "blocksAtNeededTime"){
+      sequenceText = "Rekkefølge: blokkerende kjøretøy ser ikke ut til å flyttes før dette kjøretøyet trengs.";
+    }else if(blockingResolution.status === "unclear"){
+      sequenceText = "Rekkefølge: tidspunkt eller plan for blokkerende kjøretøy er ikke avklart.";
+    }
+
+    const blockerDetails = Array.isArray(blockingResolution.blockerAssessments) && blockingResolution.blockerAssessments.length
+      ? ` Detalj: ${blockingResolution.blockerAssessments.map(item => item.reason).join(" ")}`
+      : "";
+
+    stateText = ` Status: potensielt blokkert.${blockerSentence} ${sequenceText}${blockerDetails} Kontroller om kjøretøyet kan kjøres ut mot togspor uten ekstra flytting.`;
   }else if(accessibilityState.status === "ok"){
     stateText = ` Status: står uten registrert intern blokkering. ${accessibilityState.reason}`;
   }
