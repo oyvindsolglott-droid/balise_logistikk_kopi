@@ -7001,6 +7001,99 @@ function getSdePlanSkifteTargetValidation(planRow, vehicle, fromSlot, toSlot){
   return messages.join(" ");
 }
 
+function getSdeTargetSlotSafety(vehicle, targetSlot, context={}){
+  const cleanVehicle = sanitizeVehicleValue(vehicle);
+  const toSlot = normalizeSlot(targetSlot);
+  const reasons = [];
+
+  if(!cleanVehicle){
+    return {
+      status: "unknown",
+      vehicle: cleanVehicle,
+      targetSlot: toSlot,
+      reasons: ["Kjøretøy mangler."],
+      reason: "Kjøretøy mangler."
+    };
+  }
+
+  if(!toSlot){
+    return {
+      status: "unknown",
+      vehicle: cleanVehicle,
+      targetSlot: toSlot,
+      reasons: ["Målspor mangler."],
+      reason: "Målspor mangler."
+    };
+  }
+
+  if(!inputSlots.includes(toSlot)){
+    return {
+      status: "blocked",
+      vehicle: cleanVehicle,
+      targetSlot: toSlot,
+      reasons: [`${toSlot} er ikke et gyldig spor i Sporplan.`],
+      reason: `${toSlot} er ikke et gyldig spor i Sporplan.`
+    };
+  }
+
+  const targetVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(toSlot));
+  if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle, cleanVehicle)){
+    reasons.push(`Målspor ${toSlot} er opptatt av ${targetVehicle}.`);
+    return {
+      status: "blocked",
+      vehicle: cleanVehicle,
+      targetSlot: toSlot,
+      targetVehicle,
+      reasons,
+      reason: reasons.join(" ")
+    };
+  }
+
+  if(targetVehicle){
+    reasons.push(`Målspor ${toSlot} viser allerede ${targetVehicle}.`);
+  }
+
+  const buttsporMatch = toSlot.match(/^(10|11|12)N$/);
+  if(buttsporMatch){
+    const southSlot = `${buttsporMatch[1]}S`;
+    const southVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(southSlot));
+    if(!southVehicle){
+      reasons.push(`Buttspor-regel: ${southSlot} bør fylles før ${toSlot} dersom begge posisjoner skal brukes.`);
+    }
+  }
+
+  if(["7N","7S","8N","8S"].includes(toSlot)){
+    if(isRepMarker(context?.tilRep)){
+      reasons.push(`${toSlot} er verksted-/reparasjonsposisjon og samsvarer med rep-markering.`);
+    }else{
+      reasons.push(`${toSlot} er verksted-/reparasjonsposisjon. Bruk normalt bare ved eksplisitt rep/verkstedflyt.`);
+    }
+  }
+
+  if(isSdeCriticalPlatformSlot(toSlot)){
+    const toTrain = normalizeTognr(context?.toTrain);
+    if(toTrain){
+      reasons.push(`${toSlot} er plattform-/produksjonsspor. Bruk må være knyttet til konkret togproduksjon for ${toTrain}.`);
+    }else{
+      reasons.push(`${toSlot} er plattform-/produksjonsspor. Bruk bør være knyttet til togproduksjon, skjøting/deling eller kortvarig operativ flyt.`);
+    }
+  }
+
+  let status = "safe";
+  if(reasons.some(reason => /verksted-|plattform-|Buttspor-regel/i.test(reason))){
+    status = "warning";
+  }
+
+  return {
+    status,
+    vehicle: cleanVehicle,
+    targetSlot: toSlot,
+    targetVehicle,
+    reasons,
+    reason: reasons.join(" ") || `Målspor ${toSlot} ser foreløpig trygt ut for ${cleanVehicle}.`
+  };
+}
+
 
 function getSdeResolutionCandidateSlots(fromSlot, avoidSlot=""){
   const from = normalizeSlot(fromSlot);
