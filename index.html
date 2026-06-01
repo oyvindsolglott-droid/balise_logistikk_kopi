@@ -2042,6 +2042,36 @@ button{padding:12px 12px}
   border-color:rgba(194,65,12,.75);
   background:linear-gradient(180deg,#fdba74,#f97316 52%,#c2410c);
 }
+.turnering-utfort-toggle-btn{
+  appearance:none;
+  width:100%;
+  min-height:34px;
+  border:1px solid rgba(100,116,139,.45);
+  border-radius:8px;
+  padding:4px 6px;
+  font-size:11px;
+  font-weight:900;
+  letter-spacing:.02em;
+  color:#334155;
+  background:linear-gradient(180deg,#ffffff,#e5e7eb);
+  box-shadow:
+    0 2px 0 rgba(100,116,139,.35),
+    inset 0 1px 0 rgba(255,255,255,.80);
+  cursor:pointer;
+}
+.turnering-utfort-toggle-btn:hover{
+  filter:brightness(1.04);
+}
+.turnering-utfort-toggle-btn:active,
+.turnering-utfort-toggle-btn.active{
+  transform:translateY(1px);
+  color:#052e16;
+  border-color:rgba(21,128,61,.80);
+  background:linear-gradient(180deg,#86efac,#22c55e 52%,#15803d);
+  box-shadow:
+    inset 0 2px 4px rgba(15,23,42,.26),
+    0 1px 0 rgba(20,83,45,.35);
+}
 
 .turnering-kveld-table .turnering-skifte-field input,
 .turnering-natt-table .turnering-skifte-field input{
@@ -5042,6 +5072,41 @@ function appendTurneringSkifteItem(container, tableId, stateKey, row, ri, skifte
       });
 
       wrap.appendChild(toggle);
+      grid.appendChild(wrap);
+      return;
+    }
+
+    if(field.key === "utfort"){
+      const isActive = isPlanSkifteUtfort(skifteRow?.utfort) || isPlanSkifteFerdig(skifteRow?.utfort);
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = `turnering-utfort-toggle-btn${isActive ? " active" : ""}`;
+      btn.textContent = "Utført";
+      btn.title = isActive
+        ? "Skiftebevegelsen er kvittert utført."
+        : "Kvitter skiftebevegelsen som utført.";
+      btn.setAttribute("aria-pressed", isActive ? "true" : "false");
+
+      btn.addEventListener("click", ()=>{
+        const nextValue = isActive ? "" : "j";
+
+        if(isLegacy){
+          state[stateKey][ri].skifteUtfort = nextValue;
+        }else{
+          if(!Array.isArray(state[stateKey][ri].skifteRows)){
+            state[stateKey][ri].skifteRows = [];
+          }
+          if(!state[stateKey][ri].skifteRows[dynamicIndex]){
+            state[stateKey][ri].skifteRows[dynamicIndex] = makeEmptyTurneringSkifteRow();
+          }
+          state[stateKey][ri].skifteRows[dynamicIndex].utfort = nextValue;
+        }
+
+        rebuildTurneringAfterSkifteStructureChange(tableId, stateKey);
+      });
+
+      wrap.appendChild(btn);
       grid.appendChild(wrap);
       return;
     }
