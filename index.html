@@ -7472,6 +7472,106 @@ function getSdeAccessibleDepartureBindingsForVehicle(vehicle){
     );
 }
 
+function getSdeOperationalSequenceMinutes(timeValue, role){
+  const minutes = getSdeTimeMinutes(timeValue);
+  if(minutes === null) return null;
+
+  if(role === "departure" && minutes < (12 * 60)){
+    return minutes + 1440;
+  }
+
+  if(role === "plannedMove" && minutes < (7 * 60)){
+    return minutes + 1440;
+  }
+
+  return minutes;
+}
+
+
+function getSdeBlockingResolution(blockers, departureBindings){
+  const blockerSlots = Array.isArray(blockers) ? blockers : [];
+  const bindings = Array.isArray(departureBindings) ? departureBindings : [];
+
+  if(!blockerSlots.length){
+    return {
+      status: "notBlocked",
+      reason: "Ingen intern blokkering å vurdere.",
+      blockerAssessments: []
+    };
+  }
+
+  const neededMinutes = Math.min(
+    ...bindings
+      .map(binding => getSdeOperationalSequenceMinutes(binding.time || binding.displayTime, "departure"))
+      .filter(value => value !== null)
+  );
+
+  const hasNeededTime = Number.isFinite(neededMinutes);
+
+  const blockerAssessments = blockerSlots.map(slot => {
+    const blockerVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(slot));
+    const planRow = blockerVehicle ? getOpenPlanSkifteRowForVehicle(blockerVehicle) : null;
+    const plannedTime = String(planRow?.time || "").trim();
+    const plannedMinutes = getSdeOperationalSequenceMinutes(plannedTime, "plannedMove");
+
+    let status = "unknown";
+    let reason = blockerVehicle
+      ? `${slot} (${blockerVehicle}) har ingen kjent planlagt flyttetid.`
+      : `${slot} har ukjent blokkerende kjøretøy.`;
+
+    if(planRow && !plannedTime){
+      reason = `${slot} (${blockerVehicle}) har åpen planlagt skiftebevegelse, men tidspunkt mangler.`;
+    }else if(planRow && plannedMinutes === null){
+      reason = `${slot} (${blockerVehicle}) har planlagt skiftebevegelse, men tidspunktet kan ikke tolkes.`;
+    }else if(planRow && plannedMinutes !== null && !hasNeededTime){
+      status = "unknown";
+      reason = `${slot} (${blockerVehicle}) har planlagt flytting kl. ${plannedTime}, men behovstid for blokkert kjøretøy er ukjent.`;
+    }else if(planRow && plannedMinutes !== null && plannedMinutes < neededMinutes){
+      status = "clearsBeforeNeeded";
+      reason = `${slot} (${blockerVehicle}) har planlagt flytting kl. ${plannedTime}, før blokkert kjøretøy trengs.`;
+    }else if(planRow && plannedMinutes !== null){
+      status = "blocksAtNeededTime";
+      reason = `${slot} (${blockerVehicle}) har planlagt flytting kl. ${plannedTime}, men ikke før blokkert kjøretøy trengs.`;
+    }
+
+    return {
+      slot,
+      vehicle: blockerVehicle,
+      planRow,
+      plannedTime,
+      plannedMinutes,
+      status,
+      reason
+    };
+  });
+
+  if(blockerAssessments.every(item => item.status === "clearsBeforeNeeded")){
+    return {
+      status: "clearsBeforeNeeded",
+      reason: "Blokkerende kjøretøy ser ut til å flyttes før blokkert kjøretøy trengs.",
+      neededMinutes: hasNeededTime ? neededMinutes : null,
+      blockerAssessments
+    };
+  }
+
+  if(blockerAssessments.some(item => item.status === "blocksAtNeededTime")){
+    return {
+      status: "blocksAtNeededTime",
+      reason: "Minst ett blokkerende kjøretøy ser ikke ut til å flyttes før blokkert kjøretøy trengs.",
+      neededMinutes: hasNeededTime ? neededMinutes : null,
+      blockerAssessments
+    };
+  }
+
+  return {
+    status: "unclear",
+    reason: "Rekkefølge for blokkeringen er ikke avklart.",
+    neededMinutes: hasNeededTime ? neededMinutes : null,
+    blockerAssessments
+  };
+}
+
+
 function getSdeAccessibilityStateForRow(row){
   if(!row){
     return {
@@ -7479,7 +7579,10 @@ function getSdeAccessibilityStateForRow(row){
       reason: "SDE-rad mangler.",
       currentSlot: "",
       departureBindings: [],
-      blockers: []
+      blockers: [],
+      northBlockers: [],
+      southBlockers: [],
+      blockingResolution: null
     };
   }
 
@@ -7490,7 +7593,10 @@ function getSdeAccessibilityStateForRow(row){
       reason: "Kjøretøy mangler eller er ikke aktivt.",
       currentSlot: "",
       departureBindings: [],
-      blockers: []
+      blockers: [],
+      northBlockers: [],
+      southBlockers: [],
+      blockingResolution: null
     };
   }
 
@@ -7501,7 +7607,10 @@ function getSdeAccessibilityStateForRow(row){
       reason: "Ingen tursatt avgang som krever tilgjengelighet er funnet.",
       currentSlot: normalizeSlot(row.currentSlot || getSdeCurrentSlotForVehicle(vehicle)),
       departureBindings: [],
-      blockers: []
+      blockers: [],
+      northBlockers: [],
+      southBlockers: [],
+      blockingResolution: null
     };
   }
 
@@ -7512,7 +7621,10 @@ function getSdeAccessibilityStateForRow(row){
       reason: "Nåværende spor er ikke funnet.",
       currentSlot: "",
       departureBindings,
-      blockers: []
+      blockers: [],
+      northBlockers: [],
+      southBlockers: [],
+      blockingResolution: null
     };
   }
 
@@ -7528,12 +7640,18 @@ function getSdeAccessibilityStateForRow(row){
       })
       .join(", ");
 
+    const blockingResolution = getSdeBlockingResolution(blockers, departureBindings);
+    const resolutionText = blockingResolution?.reason ? ` ${blockingResolution.reason}` : "";
+
     return {
       status: "potentiallyBlocked",
-      reason: `Mulig intern blokkering ved ${blockerText}.`,
+      reason: `Mulig intern blokkering ved ${blockerText}.${resolutionText}`,
       currentSlot,
       departureBindings,
-      blockers
+      blockers,
+      northBlockers,
+      southBlockers,
+      blockingResolution
     };
   }
 
@@ -7542,7 +7660,10 @@ function getSdeAccessibilityStateForRow(row){
     reason: "Ingen registrert intern blokkering i nåværende spor.",
     currentSlot,
     departureBindings,
-    blockers: []
+    blockers: [],
+    northBlockers: [],
+    southBlockers: [],
+    blockingResolution: null
   };
 }
 
