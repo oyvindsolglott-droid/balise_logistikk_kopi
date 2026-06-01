@@ -7665,6 +7665,25 @@ function formatSdeResolutionSuggestedSlot(resolution){
 }
 
 
+function getSdePlanSkifteOperationLabel(planRow){
+  if(!planRow) return "Planlagt skiftebevegelse";
+
+  const operationType = String(planRow.operationType || "").trim();
+  if(operationType) return operationType;
+
+  const tilRep = String(planRow.tilRep || "").trim();
+  const service6 = String(planRow.service6 || "").trim() === "1";
+  const isDrei = isDreiMarker(tilRep);
+  const isRep = isRepMarker(tilRep) && !isDrei;
+
+  if(service6) return "Fylling/tømming via spor 6";
+  if(isDrei) return "Dreiing";
+  if(isRep) return "Reparasjon/verkstedflyt";
+
+  return "Planlagt skiftebevegelse";
+}
+
+
 function getSdePlanSkifteReason(planRow){
   if(!planRow) return "";
 
@@ -9708,7 +9727,7 @@ function buildSdeVaktplan(){
         toTrain: "",
         part: "",
         departure: "",
-        operation: String(planRow.operationType || "").trim() || "Planlagt skiftebevegelse",
+        operation: getSdePlanSkifteOperationLabel(planRow),
         status: "Planlagt",
         reason: resolution ? resolution.reason : getSdePlanSkifteReason(planRow),
         priority: "",
