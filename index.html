@@ -9664,7 +9664,7 @@ function buildSdeVaktplan(){
         part: row.part,
         departure,
         operation: planSkifteRow
-          ? (String(planSkifteRow.operationType || "").trim() || "Planlagt skiftebevegelse")
+          ? getSdePlanSkifteOperationLabel(planSkifteRow)
           : "Normal parkering Skien",
         status,
         reason: cancelled
