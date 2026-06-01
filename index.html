@@ -6840,9 +6840,7 @@ function getSdeSouthernInternalBlockers(fromSlot){
     "7N":["7S","7SS"],
     "7S":["7SS"],
     "8N":["8S","8SS"],
-    "8S":["8SS"],
-    "11N":["11S"],
-    "12N":["12S"]
+    "8S":["8SS"]
   };
 
   return (blockersBySlot[slot] || []).filter(blocker=>!!getSdeVehicleInSlot(blocker));
