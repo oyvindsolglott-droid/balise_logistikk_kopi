@@ -7095,6 +7095,21 @@ function getSdeTargetSlotSafety(vehicle, targetSlot, context={}){
 }
 
 
+function getSdeRowTargetSlotSafety(row, targetSlot=""){
+  const sourceRow = row || {};
+  const vehicle = sanitizeVehicleValue(sourceRow.vehicle);
+  const toSlot = normalizeSlot(targetSlot || sourceRow.toSpor);
+
+  return getSdeTargetSlotSafety(vehicle, toSlot, {
+    fromSlot: normalizeSlot(sourceRow.fromSpor),
+    toTrain: normalizeTognr(sourceRow.toTrain || sourceRow.toTog || sourceRow.train || sourceRow.tog || ""),
+    part: String(sourceRow.part || "").trim(),
+    tilRep: String(sourceRow.tilRep || sourceRow.skifteTilRep || "").trim(),
+    operationType: String(sourceRow.operationType || "").trim()
+  });
+}
+
+
 function getSdeResolutionCandidateSlots(fromSlot, avoidSlot=""){
   const from = normalizeSlot(fromSlot);
   const avoid = normalizeSlot(avoidSlot);
