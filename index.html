@@ -8673,6 +8673,52 @@ function applyVyDemoScenario(){
 }
 
 
+function getSdeTrainPartInfo(value){
+  const key = normalizeSdeTrainPartKey(value);
+  if(!key) return null;
+
+  const match = key.match(/^(\d{3,5})(?:\/([12]))?$/);
+  if(!match) return null;
+
+  return {
+    key,
+    train: match[1],
+    part: match[2] || ""
+  };
+}
+
+function buildSdeDoubleSetGroups(values){
+  const groups = new Map();
+
+  (Array.isArray(values) ? values : []).forEach(value=>{
+    const info = getSdeTrainPartInfo(value);
+    if(!info || !info.train || !info.part) return;
+
+    if(!groups.has(info.train)){
+      groups.set(info.train, {
+        train: info.train,
+        parts: new Set(),
+        keys: new Set()
+      });
+    }
+
+    const group = groups.get(info.train);
+    group.parts.add(info.part);
+    group.keys.add(info.key);
+  });
+
+  return [...groups.values()]
+    .filter(group => group.parts.has("1") && group.parts.has("2"))
+    .map(group => ({
+      train: group.train,
+      parts: [...group.parts].sort(),
+      keys: [...group.keys].sort(),
+      buttTrackRule: `${group.train}/1 → S, ${group.train}/2 → N ved plassering i 10/11/12`
+    }))
+    .sort((a,b)=>String(a.train).localeCompare(String(b.train), "no"));
+}
+
+
 function buildSdeKnowledgeSnapshot(){
   const candidates = getSdeAfternoonParkingCandidates();
   const bindings = buildSdeTursattVehicleBindings();
@@ -8696,6 +8742,14 @@ function buildSdeKnowledgeSnapshot(){
   function uniqueValues(values){
     return [...new Set(values.map(value => String(value || "").trim()).filter(Boolean))];
   }
+
+  const doubleSetGroups = buildSdeDoubleSetGroups([
+    ...candidates,
+    ...accessibleDepartures.map(binding => `${binding.train}/${binding.part || ""}`),
+    ...needs.map(need => need.parkingCandidate),
+    ...needs.map(need => need.turneringTarget),
+    ...needs.map(need => need.toTrain)
+  ]);
 
   const candidateRows = candidates.map(candidate=>{
     const candidateKey = normalizeSdeTrainPartKey(candidate);
@@ -8738,9 +8792,11 @@ function buildSdeKnowledgeSnapshot(){
       withVehicle:candidateRows.filter(row => row.vehicles.length).length,
       linkedDeparture:candidateRows.filter(row => row.departureMatches.length).length,
       missing:candidateRows.filter(row => !row.found || !row.vehicles.length).length,
-      accessibleDepartures:accessibleDepartures.length
+      accessibleDepartures:accessibleDepartures.length,
+      doubleSets:doubleSetGroups.length
     },
-    accessibleDepartures
+    accessibleDepartures,
+    doubleSetGroups
   };
 }
 
@@ -8761,6 +8817,12 @@ function getSdeKnowledgeSnapshotText(snapshot){
     })
     .slice(0, 8);
 
+  const doubleSetRows = Array.isArray(snapshot.doubleSetGroups)
+    ? snapshot.doubleSetGroups
+      .map(group => group.buttTrackRule)
+      .slice(0, 8)
+    : [];
+
   const lines = [
     "SDE kunnskapsgrunnlag",
     `Oppdatert: ${snapshot.generatedAt}`,
@@ -8769,13 +8831,20 @@ function getSdeKnowledgeSnapshotText(snapshot){
     `Med kjøretøy: ${snapshot.totals.withVehicle}`,
     `Koblet mot morgendagens tursatte avgang: ${snapshot.totals.linkedDeparture}`,
     `Mangler data/kjøretøy: ${snapshot.totals.missing}`,
-    `Morgendagens kjøretøy som må holdes tilgjengelig: ${snapshot.totals.accessibleDepartures}`
+    `Morgendagens kjøretøy som må holdes tilgjengelig: ${snapshot.totals.accessibleDepartures}`,
+    `Dobbeltsett med buttsporregel: ${snapshot.totals.doubleSets || 0}`
   ];
 
   if(linkedRows.length){
     lines.push("");
     lines.push("Kjente kandidater:");
     linkedRows.forEach(line => lines.push(`- ${line}`));
+  }
+
+  if(doubleSetRows.length){
+    lines.push("");
+    lines.push("Dobbeltsett / buttsporregel 10/11/12:");
+    doubleSetRows.forEach(line => lines.push(`- ${line}`));
   }
 
   if(missingRows.length){
