@@ -7675,6 +7675,9 @@ function getSdePlanSkifteReason(planRow){
   const fromSlot = normalizeSlot(planRow.fromSpor);
   const toSlot = normalizeSlot(planRow.toSpor);
   const tilRep = String(planRow.tilRep || "").trim();
+  const service6 = String(planRow.service6 || "").trim() === "1";
+  const isDrei = isDreiMarker(tilRep);
+  const isRep = isRepMarker(tilRep) && !isDrei;
   const operationType = String(planRow.operationType || "").trim();
   const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
 
@@ -7685,7 +7688,18 @@ function getSdePlanSkifteReason(planRow){
   if(time) parts.push(`Tid: ${time}.`);
   if(fromSlot || toSlot) parts.push(`Plan: ${fromSlot || "?"} → ${toSlot || "?"}.`);
   if(crew) parts.push(`Skifter: ${crew}.`);
-  if(tilRep) parts.push(`Til rep: ${tilRep}.`);
+  if(service6){
+    parts.push(toSlot
+      ? `F/T 6: ${toSlot} er planlagt sluttplassering etter fylling/tømming via spor 6.`
+      : "F/T 6: kjøretøyet skal via spor 6 for fylling/tømming før sluttplassering.");
+  }
+  if(isDrei){
+    parts.push("DREI: planlagt dreiing. Behandles som egen drei-flyt, ikke ordinær reparasjonsparkering.");
+  }else if(isRep){
+    parts.push("REP: planlagt reparasjon/verkstedflyt. Verkstedspor skal bare brukes når rep/verkstedflyt er eksplisitt markert.");
+  }else if(tilRep){
+    parts.push(`Rep-/drei-markering: ${tilRep}. Kontroller at markeringen er gyldig.`);
+  }
   if(operationType) parts.push(`Operasjonstype: ${operationType}.`);
 
   if(!vehicle){
