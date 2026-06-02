@@ -9823,6 +9823,18 @@ function getSdeArrivalParkingCandidateSlots(need){
 }
 
 
+function isSdeLateNightServiceTrackCandidate(need){
+  const arrivalTrain = String(need?.arrivalTrain || "").trim();
+  if(["837", "839"].includes(arrivalTrain)) return true;
+
+  const sequence = getSdeArrivalLatestSequenceMinutes({
+    displayTime: need?.arrivalTime || need?.displayTime || need?.time || ""
+  });
+
+  return sequence >= 24 * 60;
+}
+
+
 function scoreSdeArrivalParkingCandidate(need, slot){
   const candidate = normalizeSlot(slot);
   const vehicle = sanitizeVehicleValue(need?.vehicle);
@@ -9905,8 +9917,24 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }
 
   if(["6N","6S"].includes(candidate)){
-    score -= 6;
-    reasons.push(`${candidate} er sekundær nattplassering/overflow. Bruk bare når serviceflyt i spor 6 er avklart.`);
+    const lateNightServiceTrackCandidate = isSdeLateNightServiceTrackCandidate(need);
+
+    if(!serviceRequired && !lateNightServiceTrackCandidate){
+      return {
+        slot:candidate,
+        score:-999,
+        status:"rejected",
+        reasons:[`${candidate} holdes av til serviceflyt eller siste nattankomster. Ikke bruk spor 6 som generell overflow før 837/839 er vurdert.`]
+      };
+    }
+
+    if(lateNightServiceTrackCandidate){
+      score += 16;
+      reasons.push(`${candidate} er egnet nattplassering for siste nattankomst. Kjøretøy fra ${need?.arrivalTrain || "sen nattankomst"} kan bli stående i spor 6 når serviceflyten er ferdig og sporet ikke dobbelbookes.`);
+    }else{
+      score -= 6;
+      reasons.push(`${candidate} er sekundær nattplassering/overflow. Bruk bare når serviceflyt i spor 6 er avklart.`);
+    }
   }
 
   if(/^(10|11|12)S$/.test(candidate)){
@@ -10112,6 +10140,32 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
 }
 
 
+function getSdeArrivalLatestSequenceMinutes(arrival){
+  const rawDisplay = String(arrival?.displayTime || arrival?.arrivalTime || "").trim();
+  const rawTime = String(arrival?.time || "").trim();
+  const hasNextDayMarker = /\+1\b/.test(rawDisplay);
+
+  const cleanDisplayTime = rawDisplay.replace(/\s*\+1\b/g, "").trim();
+  const sequenceTime = rawTime || cleanDisplayTime;
+
+  const minutes = getSdeTimeMinutes(sequenceTime);
+  if(minutes === null) return -1;
+
+  // Nattankomster med +1, typisk 837/839, er siste del av operativt døgn.
+  if(hasNextDayMarker) return minutes + 1440;
+
+  const base = getSdeOperationalSequenceMinutes(sequenceTime, "plannedMove");
+  if(base !== null && base !== undefined){
+    if(minutes < 3 * 60) return Math.max(base, minutes + 1440);
+    return base;
+  }
+
+  if(minutes < 3 * 60) return minutes + 1440;
+
+  return minutes;
+}
+
+
 function buildSdeArrivalParkingNeeds(){
   const bindings = buildSdeTursattVehicleBindings();
   const arrivals = bindings.filter(binding => binding.role === "arrival");
@@ -10148,14 +10202,11 @@ function buildSdeArrivalParkingNeeds(){
     const token = normalizeVehicleToken(vehicle);
     if(!token) return;
 
-    const arrivalMinutes = getSdeOperationalSequenceMinutes(
-      arrival.displayTime || arrival.time,
-      "plannedMove"
-    ) ?? -1;
+    const arrivalMinutes = getSdeArrivalLatestSequenceMinutes(arrival);
 
     const existing = latestArrivalByVehicle.get(token);
     const existingMinutes = existing
-      ? (getSdeOperationalSequenceMinutes(existing.displayTime || existing.time, "plannedMove") ?? -1)
+      ? getSdeArrivalLatestSequenceMinutes(existing)
       : -1;
 
     if(!existing || arrivalMinutes >= existingMinutes){
@@ -10165,8 +10216,8 @@ function buildSdeArrivalParkingNeeds(){
 
   const relevantArrivals = Array.from(latestArrivalByVehicle.values())
     .sort((a,b)=>{
-      const ta = getSdeOperationalSequenceMinutes(a.displayTime || a.time, "plannedMove") ?? 99999;
-      const tb = getSdeOperationalSequenceMinutes(b.displayTime || b.time, "plannedMove") ?? 99999;
+      const ta = getSdeArrivalLatestSequenceMinutes(a);
+      const tb = getSdeArrivalLatestSequenceMinutes(b);
       if(ta !== tb) return ta - tb;
       return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
     });
@@ -10466,8 +10517,8 @@ function getSdeShiftShowcaseData(){
       };
     })
     .sort((a,b)=>{
-      const ta = getSdeOperationalSequenceMinutes(a.arrivalTime, "plannedMove") ?? 99999;
-      const tb = getSdeOperationalSequenceMinutes(b.arrivalTime, "plannedMove") ?? 99999;
+      const ta = getSdeArrivalLatestSequenceMinutes({displayTime:a.arrivalTime});
+      const tb = getSdeArrivalLatestSequenceMinutes({displayTime:b.arrivalTime});
       if(ta !== tb) return ta - tb;
       return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
     });
