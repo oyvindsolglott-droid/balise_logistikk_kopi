@@ -1849,6 +1849,350 @@ button{padding:12px 12px}
   -webkit-overflow-scrolling:touch;
 }
 
+.sde-shift-showcase{
+  position:relative;
+  overflow:hidden;
+  border-radius:28px;
+  padding:24px;
+  margin:4px 0 24px;
+  color:#f8fbff;
+  background:
+    radial-gradient(circle at 12% 8%, rgba(78, 185, 255, .34), transparent 30%),
+    radial-gradient(circle at 88% 12%, rgba(47, 255, 190, .20), transparent 28%),
+    linear-gradient(135deg, #07111f 0%, #0d1728 44%, #111827 100%);
+  box-shadow:0 26px 70px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+.sde-shift-showcase::before{
+  content:"";
+  position:absolute;
+  inset:-40%;
+  background:
+    linear-gradient(115deg, transparent 0 36%, rgba(255,255,255,.10) 44%, transparent 52%),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 1px, transparent 1px 82px);
+  transform:rotate(-7deg);
+  animation:sdeShiftSweep 9s linear infinite;
+  pointer-events:none;
+}
+
+@keyframes sdeShiftSweep{
+  from{ transform:translateX(-10%) rotate(-7deg); }
+  to{ transform:translateX(10%) rotate(-7deg); }
+}
+
+.sde-shift-content{
+  position:relative;
+  z-index:1;
+}
+
+.sde-shift-hero{
+  display:grid;
+  grid-template-columns:minmax(220px, 1.1fr) minmax(360px, 2fr);
+  gap:18px;
+  align-items:stretch;
+  margin-bottom:20px;
+}
+
+.sde-shift-score{
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:24px;
+  padding:22px;
+  background:rgba(255,255,255,.08);
+  backdrop-filter:blur(12px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 18px 40px rgba(0,0,0,.20);
+}
+
+.sde-shift-eyebrow{
+  font-size:12px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:#9bdcff;
+  font-weight:800;
+}
+
+.sde-shift-title{
+  margin:6px 0 14px;
+  font-size:clamp(28px, 4vw, 54px);
+  line-height:.95;
+  font-weight:950;
+  letter-spacing:-.045em;
+}
+
+.sde-shift-score-number{
+  display:flex;
+  align-items:flex-end;
+  gap:10px;
+  margin-top:12px;
+}
+
+.sde-shift-score-number strong{
+  font-size:clamp(50px, 7vw, 92px);
+  line-height:.8;
+  letter-spacing:-.07em;
+}
+
+.sde-shift-score-number span{
+  padding-bottom:7px;
+  font-size:18px;
+  color:#c9d7e8;
+  font-weight:800;
+}
+
+.sde-shift-score.good strong{ color:#6dffbd; text-shadow:0 0 28px rgba(109,255,189,.45); }
+.sde-shift-score.warn strong{ color:#ffd166; text-shadow:0 0 28px rgba(255,209,102,.40); }
+.sde-shift-score.bad strong{ color:#ff6b6b; text-shadow:0 0 28px rgba(255,107,107,.42); }
+
+.sde-shift-kpis{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(120px, 1fr));
+  gap:12px;
+}
+
+.sde-shift-kpi{
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:20px;
+  padding:16px;
+  background:rgba(255,255,255,.075);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+}
+
+.sde-shift-kpi strong{
+  display:block;
+  font-size:30px;
+  line-height:1;
+  letter-spacing:-.04em;
+}
+
+.sde-shift-kpi span{
+  display:block;
+  margin-top:7px;
+  font-size:12px;
+  line-height:1.3;
+  color:#bfd0e4;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+
+.sde-shift-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
+  gap:16px;
+}
+
+.sde-shift-card{
+  position:relative;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:24px;
+  padding:18px;
+  background:
+    linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.045)),
+    rgba(10, 18, 32, .82);
+  box-shadow:0 20px 46px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.12);
+  animation:sdeShiftCardIn .45s ease both;
+  animation-delay:var(--delay, 0ms);
+}
+
+@keyframes sdeShiftCardIn{
+  from{ opacity:0; transform:translateY(18px) scale(.985); }
+  to{ opacity:1; transform:translateY(0) scale(1); }
+}
+
+.sde-shift-card:hover{
+  transform:translateY(-3px);
+  box-shadow:0 26px 62px rgba(0,0,0,.38), 0 0 0 1px rgba(123,220,255,.18) inset;
+}
+
+.sde-shift-card::after{
+  content:"";
+  position:absolute;
+  inset:auto -20% -45% 35%;
+  height:140px;
+  background:radial-gradient(circle, rgba(56,189,248,.22), transparent 62%);
+  pointer-events:none;
+}
+
+.sde-shift-card.high{
+  border-color:rgba(255,111,111,.42);
+  box-shadow:0 20px 46px rgba(0,0,0,.30), 0 0 26px rgba(255,92,92,.14);
+}
+
+.sde-shift-card.medium{
+  border-color:rgba(255,209,102,.38);
+}
+
+.sde-shift-card.low{
+  border-color:rgba(109,255,189,.30);
+}
+
+.sde-shift-card-top{
+  display:flex;
+  justify-content:space-between;
+  gap:14px;
+  align-items:flex-start;
+  margin-bottom:14px;
+}
+
+.sde-shift-vehicle{
+  font-size:clamp(34px, 4vw, 58px);
+  line-height:.88;
+  font-weight:950;
+  letter-spacing:-.07em;
+}
+
+.sde-shift-trains{
+  display:grid;
+  gap:6px;
+  min-width:140px;
+  text-align:right;
+}
+
+.sde-shift-train-pill{
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:999px;
+  padding:6px 10px;
+  background:rgba(255,255,255,.09);
+  color:#eaf4ff;
+  font-weight:850;
+  font-size:13px;
+  white-space:nowrap;
+}
+
+.sde-shift-train-pill b{
+  color:#7dd3fc;
+  font-weight:950;
+}
+
+.sde-shift-route{
+  display:grid;
+  grid-template-columns:1fr auto 1fr;
+  align-items:center;
+  gap:12px;
+  margin:16px 0;
+}
+
+.sde-shift-slot{
+  border-radius:20px;
+  padding:18px 12px;
+  text-align:center;
+  font-size:clamp(28px, 4vw, 46px);
+  font-weight:950;
+  letter-spacing:-.06em;
+  background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.16);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+}
+
+.sde-shift-slot.to{
+  color:#7dffcf;
+  text-shadow:0 0 22px rgba(125,255,207,.35);
+  background:linear-gradient(180deg, rgba(35,255,183,.16), rgba(255,255,255,.07));
+}
+
+.sde-shift-arrow{
+  font-size:38px;
+  color:#9bdcff;
+  text-shadow:0 0 20px rgba(125,211,252,.55);
+  animation:sdeShiftArrowPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes sdeShiftArrowPulse{
+  0%,100%{ transform:translateX(0); opacity:.70; }
+  50%{ transform:translateX(4px); opacity:1; }
+}
+
+.sde-shift-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:10px 0 12px;
+}
+
+.sde-shift-badge{
+  border-radius:999px;
+  padding:7px 10px;
+  font-size:12px;
+  font-weight:850;
+  letter-spacing:.03em;
+  color:#eaf4ff;
+  background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.13);
+}
+
+.sde-shift-badge.confidence-high{ color:#7dffcf; border-color:rgba(125,255,207,.35); }
+.sde-shift-badge.confidence-medium{ color:#ffd166; border-color:rgba(255,209,102,.35); }
+.sde-shift-badge.confidence-low{ color:#ff8d8d; border-color:rgba(255,141,141,.35); }
+
+.sde-shift-reason{
+  color:#d7e5f5;
+  font-size:14px;
+  line-height:1.45;
+}
+
+.sde-shift-alternatives{
+  margin-top:12px;
+  color:#9fb4cd;
+  font-size:12px;
+  line-height:1.35;
+}
+
+.sde-shift-section-title{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  margin:18px 0 10px;
+  font-size:18px;
+  font-weight:950;
+}
+
+.sde-shift-unresolved{
+  margin-top:18px;
+  border:1px solid rgba(255,209,102,.30);
+  border-radius:22px;
+  padding:16px;
+  background:rgba(255,209,102,.08);
+}
+
+.sde-shift-unresolved-list{
+  display:grid;
+  gap:8px;
+  margin-top:10px;
+}
+
+.sde-shift-unresolved-item{
+  border-radius:16px;
+  padding:12px;
+  background:rgba(0,0,0,.16);
+  border:1px solid rgba(255,255,255,.10);
+  color:#f5e7bf;
+  font-size:13px;
+  line-height:1.35;
+}
+
+.sde-shift-empty{
+  border:1px dashed rgba(255,255,255,.20);
+  border-radius:22px;
+  padding:24px;
+  text-align:center;
+  color:#bfd0e4;
+  background:rgba(255,255,255,.055);
+}
+
+@media (max-width: 900px){
+  .sde-shift-hero{ grid-template-columns:1fr; }
+  .sde-shift-kpis{ grid-template-columns:repeat(2, minmax(120px, 1fr)); }
+}
+
+@media (max-width: 560px){
+  .sde-shift-showcase{ padding:16px; border-radius:20px; }
+  .sde-shift-card-top{ flex-direction:column; }
+  .sde-shift-trains{ text-align:left; }
+  .sde-shift-route{ grid-template-columns:1fr; }
+  .sde-shift-arrow{ transform:rotate(90deg); text-align:center; }
+}
+
 #sdeVaktplanTable{
   width:max-content;
   min-width:1080px;
@@ -2345,6 +2689,7 @@ button{padding:12px 12px}
 <button class="seg active" type="button" data-tab="oppstilling">Tursatt</button>
 <button class="seg" type="button" data-tab="grunnoppstilling">Grunnoppstilling</button>
 <button class="seg" type="button" data-tab="sdeVaktplan">SDE vaktplan</button>
+<button class="seg" type="button" data-tab="sdeSkiftebevegelser">SDE Skiftebevegelser</button>
 <button class="seg" type="button" data-tab="turneringKveld">Turnering Kveld</button>
 <button class="seg" type="button" data-tab="inndata" style="display:none">Planlegge Skiftebevegelser</button>
 <button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
@@ -2466,6 +2811,17 @@ Ved fra-spor-avvik rutevurderer SDE ikke videre før Fra spor stemmer med faktis
 Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at tidligere testgrunnlag forveksles med operativ status.
 </div>
 <table id="sdeVaktplanTable" style="display:none"></table>
+</div>
+</div>
+</section>
+
+
+<section class="panel" id="sdeSkiftebevegelser">
+<div class="sde-shift-showcase">
+<div class="sde-shift-content">
+<div id="sdeSkiftebevegelserDashboard">
+<div class="sde-shift-empty">SDE Skiftebevegelser bygges når SDE-motoren har beregnet forslag.</div>
+</div>
 </div>
 </div>
 </section>
@@ -9457,7 +9813,8 @@ function getSdeArrivalParkingCandidateSlots(need){
     "1N","1S",
     "10S","11S","12S",
     "10N","11N","12N",
-    "9"
+    "9",
+    "6N","6S"
   ];
 
   return baseSlots
@@ -9545,6 +9902,11 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   if(["1N","1S"].includes(candidate)){
     score += 8;
     reasons.push(`${candidate} kan være egnet dersom tilgang videre ikke blokkeres.`);
+  }
+
+  if(["6N","6S"].includes(candidate)){
+    score -= 6;
+    reasons.push(`${candidate} er sekundær nattplassering/overflow. Bruk bare når serviceflyt i spor 6 er avklart.`);
   }
 
   if(/^(10|11|12)S$/.test(candidate)){
@@ -9659,10 +10021,40 @@ function buildSdeArrivalParkingNeeds(){
     ) || null;
   }
 
+  const latestArrivalByVehicle = new Map();
+
+  arrivals.forEach(arrival=>{
+    const vehicle = sanitizeVehicleValue(arrival.vehicle);
+    const token = normalizeVehicleToken(vehicle);
+    if(!token) return;
+
+    const arrivalMinutes = getSdeOperationalSequenceMinutes(
+      arrival.displayTime || arrival.time,
+      "plannedMove"
+    ) ?? -1;
+
+    const existing = latestArrivalByVehicle.get(token);
+    const existingMinutes = existing
+      ? (getSdeOperationalSequenceMinutes(existing.displayTime || existing.time, "plannedMove") ?? -1)
+      : -1;
+
+    if(!existing || arrivalMinutes >= existingMinutes){
+      latestArrivalByVehicle.set(token, arrival);
+    }
+  });
+
+  const relevantArrivals = Array.from(latestArrivalByVehicle.values())
+    .sort((a,b)=>{
+      const ta = getSdeOperationalSequenceMinutes(a.displayTime || a.time, "plannedMove") ?? 99999;
+      const tb = getSdeOperationalSequenceMinutes(b.displayTime || b.time, "plannedMove") ?? 99999;
+      if(ta !== tb) return ta - tb;
+      return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
+    });
+
   const reservedRecommendedSlots = new Set();
   const recommendationsByVehicle = new Map();
 
-  return arrivals
+  return relevantArrivals
     .map(arrival=>{
       const vehicle = sanitizeVehicleValue(arrival.vehicle);
       if(!vehicle) return null;
@@ -9912,6 +10304,180 @@ function getSdeKnowledgeSnapshotText(snapshot){
   return lines.join("\n");
 }
 
+function getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures, totalDepartures){
+  const total = Array.isArray(needs) ? needs.length : 0;
+  const solved = Array.isArray(moves) ? moves.length : 0;
+  const unresolvedCount = Array.isArray(unresolved) ? unresolved.length : 0;
+  const lowConfidenceCount = (moves || []).filter(row=>row.recommendationConfidence === "low").length;
+
+  const arrivalCoverage = total ? solved / total : 0;
+  const departureCoverage = totalDepartures ? securedDepartures / totalDepartures : 1;
+
+  let score = 35;
+  score += arrivalCoverage * 35;
+  score += departureCoverage * 25;
+  score -= unresolvedCount * 8;
+  score -= lowConfidenceCount * 5;
+
+  if(total && solved === total) score += 5;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+
+function getSdeShiftShowcaseData(){
+  const needs = buildSdeArrivalParkingNeeds();
+  const moves = needs
+    .filter(row=>row && row.recommendedSlot)
+    .map(row=>{
+      const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
+      const departureText = row.nextDepartureText || "Ikke koblet";
+      const arrivalText = row.arrivalTrain
+        ? `${row.arrivalTrain}${arrivalPartText}`
+        : "Ukjent";
+      return {
+        ...row,
+        arrivalTrainText:arrivalText,
+        departureTrainText:departureText,
+        fromSlot:normalizeSlot(row.arrivalSlot) || "?",
+        toSlot:normalizeSlot(row.recommendedSlot) || "?"
+      };
+    })
+    .sort((a,b)=>{
+      const ta = getSdeOperationalSequenceMinutes(a.arrivalTime, "plannedMove") ?? 99999;
+      const tb = getSdeOperationalSequenceMinutes(b.arrivalTime, "plannedMove") ?? 99999;
+      if(ta !== tb) return ta - tb;
+      return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
+    });
+
+  const unresolved = needs.filter(row =>
+    !row?.recommendedSlot ||
+    /ikke funnet|ingen egnet/i.test(String(row.recommendationReason || ""))
+  );
+
+  const uniqueDepartures = new Set(
+    needs
+      .filter(row=>row.nextDepartureTrain)
+      .map(row=>`${row.nextDepartureTrain}/${row.nextDeparturePart || ""}`)
+  );
+
+  const securedDepartures = new Set(
+    moves
+      .filter(row=>row.nextDepartureTrain)
+      .map(row=>`${row.nextDepartureTrain}/${row.nextDeparturePart || ""}`)
+  );
+
+  const score = getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures.size, uniqueDepartures.size);
+
+  return {
+    score,
+    needs,
+    moves,
+    unresolved,
+    totalArrivals:needs.length,
+    solvedArrivals:moves.length,
+    totalDepartures:uniqueDepartures.size,
+    securedDepartures:securedDepartures.size,
+    unresolvedCount:unresolved.length
+  };
+}
+
+
+function getSdeShiftScoreClass(score){
+  if(score >= 85) return "good";
+  if(score >= 65) return "warn";
+  return "bad";
+}
+
+
+function renderSdeSkiftebevegelser(){
+  const root = document.getElementById("sdeSkiftebevegelserDashboard");
+  if(!root) return;
+
+  const data = getSdeShiftShowcaseData();
+  const scoreClass = getSdeShiftScoreClass(data.score);
+  const topMoves = data.moves.slice(0, 12);
+
+  const cardsHtml = topMoves.length
+    ? topMoves.map((row,index)=>{
+        const confidenceClass = `confidence-${escapeHtml(String(row.recommendationConfidence || "low"))}`;
+        const priorityClass = row.recommendationConfidence === "high" ? "high" : row.recommendationConfidence === "medium" ? "medium" : "low";
+        const alternativesText = Array.isArray(row.recommendationAlternatives) && row.recommendationAlternatives.length
+          ? `Alternativer: ${row.recommendationAlternatives.map(alt=>`${alt.slot} (${alt.score})`).join(", ")}`
+          : "Ingen alternative spor i første kandidatsett.";
+
+        return `<article class="sde-shift-card ${priorityClass}" style="--delay:${index * 55}ms">
+          <div class="sde-shift-card-top">
+            <div>
+              <div class="sde-shift-eyebrow">Kjøretøy</div>
+              <div class="sde-shift-vehicle">${escapeHtml(row.vehicle || "Ukjent")}</div>
+            </div>
+            <div class="sde-shift-trains">
+              <div class="sde-shift-train-pill"><b>Ankomst</b> ${escapeHtml(row.arrivalTrainText)}</div>
+              <div class="sde-shift-train-pill"><b>Avgang</b> ${escapeHtml(row.departureTrainText)}</div>
+            </div>
+          </div>
+
+          <div class="sde-shift-route" aria-label="Foreslått skiftebevegelse">
+            <div class="sde-shift-slot from">${escapeHtml(row.fromSlot)}</div>
+            <div class="sde-shift-arrow">→</div>
+            <div class="sde-shift-slot to">${escapeHtml(row.toSlot)}</div>
+          </div>
+
+          <div class="sde-shift-meta">
+            <span class="sde-shift-badge">Tid ${escapeHtml(row.arrivalTime || "ukjent")}</span>
+            <span class="sde-shift-badge ${confidenceClass}">${escapeHtml(String(row.recommendationConfidence || "low").toUpperCase())}</span>
+            <span class="sde-shift-badge">Score ${escapeHtml(String(row.recommendationScore ?? ""))}</span>
+            <span class="sde-shift-badge">${escapeHtml(row.parkingStrategy || "SDE-anbefaling")}</span>
+          </div>
+
+          <div class="sde-shift-reason">${escapeHtml(row.recommendationReason || row.parkingInstruction || "SDE har ikke begrunnelse for denne anbefalingen ennå.")}</div>
+          <div class="sde-shift-alternatives">${escapeHtml(alternativesText)}</div>
+        </article>`;
+      }).join("")
+    : `<div class="sde-shift-empty">Ingen foreslåtte skiftebevegelser er klare. SDE mangler anbefalte nattplasseringer eller datagrunnlag.</div>`;
+
+  const unresolvedHtml = data.unresolved.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Uløst / må avklares <span>${data.unresolved.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${data.unresolved.slice(0, 8).map(row=>{
+            const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
+            const arrivalText = row.arrivalTrain ? `${row.arrivalTrain}${arrivalPartText}` : "Ukjent ankomst";
+            const departureText = row.nextDepartureText || "Ingen kjent avgang";
+            const vehicle = row.vehicle || "Ukjent kjøretøy";
+            const reason = row.recommendationReason || row.parkingInstruction || "SDE har ikke funnet trygg løsning i første kandidatsett.";
+            return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(vehicle)}</strong> · Ankomst ${escapeHtml(arrivalText)} · Avgang ${escapeHtml(departureText)}<br>${escapeHtml(reason)}</div>`;
+          }).join("")}
+        </div>
+      </div>`
+    : "";
+
+  root.innerHTML = `
+    <div class="sde-shift-hero">
+      <div class="sde-shift-score ${scoreClass}">
+        <div class="sde-shift-eyebrow">SDE-resultat</div>
+        <div class="sde-shift-title">Skiftebevegelser</div>
+        <div class="sde-shift-score-number"><strong>${data.score}</strong><span>/ 100</span></div>
+      </div>
+      <div class="sde-shift-kpis">
+        <div class="sde-shift-kpi"><strong>${data.moves.length}</strong><span>foreslåtte skiftebevegelser</span></div>
+        <div class="sde-shift-kpi"><strong>${data.solvedArrivals}/${data.totalArrivals}</strong><span>ankomster ivaretatt</span></div>
+        <div class="sde-shift-kpi"><strong>${data.securedDepartures}/${data.totalDepartures}</strong><span>avganger koblet</span></div>
+        <div class="sde-shift-kpi"><strong>${data.unresolvedCount}</strong><span>uløst / må avklares</span></div>
+      </div>
+    </div>
+
+    <div class="sde-shift-section-title">
+      <span>Foreslåtte skiftebevegelser</span>
+      <span>${data.moves.length} forslag</span>
+    </div>
+    <div class="sde-shift-grid">${cardsHtml}</div>
+    ${unresolvedHtml}
+  `;
+}
+
+
 function buildSdeVaktplan(){
   setSdeDemoBadge();
 
@@ -10125,6 +10691,8 @@ function buildSdeVaktplan(){
     const reportText = [hiddenOldPlanWarningText, knowledgeSnapshotText, arrivalParkingNeedsText, nextActionsText, shiftSummaryText].filter(Boolean).join("\n\n");
     renderSdeReportTextWithTurneringTargets(report, reportText);
   }
+
+  renderSdeSkiftebevegelser();
 
   table.style.display = "table";
   table.innerHTML = "<thead><tr><th>Dag</th><th>Vaktfase</th><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Nåværende spor</th><th>Foreslått spor</th><th>Kilde</th><th>Prioritet</th><th>Anbefalt handling</th><th>Til tog</th><th>Del</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
