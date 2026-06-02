@@ -7667,12 +7667,20 @@ function formatSdeResolutionSuggestedSlot(resolution){
 
 function getSdeServiceTrackStatusText(){
   const serviceSlots = ["6N", "6S", "6SS"];
+  const vehiclesBySlot = Object.fromEntries(
+    serviceSlots.map(slot=>[slot, sanitizeVehicleValue(getSdeVehicleInSlot(slot))])
+  );
   const statuses = serviceSlots.map(slot=>{
-    const vehicle = sanitizeVehicleValue(getSdeVehicleInSlot(slot));
+    const vehicle = vehiclesBySlot[slot];
     return vehicle ? `${slot} opptatt av ${vehicle}` : `${slot} ledig`;
   });
+  const messages = [`Spor 6-status: ${statuses.join(", ")}.`];
 
-  return `Spor 6-status: ${statuses.join(", ")}.`;
+  if(vehiclesBySlot["6N"] && vehiclesBySlot["6S"]){
+    messages.push("Kontroller: F/T 6 er markert, men både 6N og 6S er opptatt. Avklar serviceflyt før skifting.");
+  }
+
+  return messages.join(" ");
 }
 
 
