@@ -10140,6 +10140,11 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
 }
 
 
+function isSdeBorgestad10855Flow(arrival){
+  return String(arrival?.train || arrival?.arrivalTrain || "").trim() === "855";
+}
+
+
 function getSdeArrivalLatestSequenceMinutes(arrival){
   const rawDisplay = String(arrival?.displayTime || arrival?.arrivalTime || "").trim();
   const rawTime = String(arrival?.time || "").trim();
@@ -10168,7 +10173,10 @@ function getSdeArrivalLatestSequenceMinutes(arrival){
 
 function buildSdeArrivalParkingNeeds(){
   const bindings = buildSdeTursattVehicleBindings();
-  const arrivals = bindings.filter(binding => binding.role === "arrival");
+  const arrivals = bindings.filter(binding =>
+    binding.role === "arrival" &&
+    !isSdeBorgestad10855Flow(binding)
+  );
   const departures = bindings.filter(binding => binding.role === "departure" && binding.mustBeAccessible);
   const productionNeeds = buildSdeProductionNeeds();
 
