@@ -9956,13 +9956,133 @@ function scoreSdeArrivalParkingCandidate(need, slot){
 }
 
 
-function getSdeArrivalParkingRecommendation(need, reservedSlots=new Set()){
-  const reserved = reservedSlots instanceof Set ? reservedSlots : new Set();
+function getSdeNeedDepartureSequenceMinutes(need){
+  const raw = String(need?.nextDepartureTime || "").trim();
+  const sequence = getSdeOperationalSequenceMinutes(raw, "departure");
+  if(sequence !== null && sequence !== undefined) return sequence;
+
+  const minutes = getSdeTimeMinutes(raw);
+  return minutes === null ? 99999 : minutes;
+}
+
+
+function haveSameSdeDepartureTrain(a, b){
+  const trainA = String(a?.nextDepartureTrain || "").trim();
+  const trainB = String(b?.nextDepartureTrain || "").trim();
+  return !!trainA && !!trainB && trainA === trainB;
+}
+
+
+function getSdePairedButtSlot(slot){
+  const candidate = normalizeSlot(slot);
+  const match = candidate.match(/^(10|11|12)(N|S)$/);
+  if(!match) return "";
+  return `${match[1]}${match[2] === "N" ? "S" : "N"}`;
+}
+
+
+function getSdeButtPosition(slot){
+  const candidate = normalizeSlot(slot);
+  const match = candidate.match(/^(10|11|12)(N|S)$/);
+  return match ? match[2] : "";
+}
+
+
+function getSdeReservedSlotNeed(reservedSlots, slot){
+  const candidate = normalizeSlot(slot);
+  if(!candidate || !reservedSlots) return null;
+  if(reservedSlots instanceof Map) return reservedSlots.get(candidate)?.need || null;
+  return null;
+}
+
+
+function isSdeCorrectButtDoubleSetPair(candidateSlot, need, pairedSlot, pairedNeed){
+  if(!haveSameSdeDepartureTrain(need, pairedNeed)) return false;
+
+  const candidatePosition = getSdeButtPosition(candidateSlot);
+  const pairedPosition = getSdeButtPosition(pairedSlot);
+  const candidatePart = String(need?.nextDeparturePart || "").trim();
+  const pairedPart = String(pairedNeed?.nextDeparturePart || "").trim();
+
+  return (
+    (candidatePosition === "S" && candidatePart === "1" && pairedPosition === "N" && pairedPart === "2") ||
+    (candidatePosition === "N" && candidatePart === "2" && pairedPosition === "S" && pairedPart === "1")
+  );
+}
+
+
+function evaluateSdeParkingDecision(need, candidate, reservedSlots){
+  const result = {
+    reward:0,
+    penalty:0,
+    benefits:[],
+    violations:[]
+  };
+
+  const candidateSlot = normalizeSlot(candidate?.slot);
+  const position = getSdeButtPosition(candidateSlot);
+  if(!position) return result;
+
+  const pairedSlot = getSdePairedButtSlot(candidateSlot);
+  const pairedNeed = getSdeReservedSlotNeed(reservedSlots, pairedSlot);
+  if(!pairedNeed) return result;
+
+  if(haveSameSdeVehicleTokens(pairedNeed.vehicle, need?.vehicle)) return result;
+
+  if(isSdeCorrectButtDoubleSetPair(candidateSlot, need, pairedSlot, pairedNeed)){
+    result.reward += 24;
+    result.benefits.push(`${candidateSlot}/${pairedSlot}: belønning for korrekt buttsporpar for samme tog: /1 i S og /2 i N.`);
+    return result;
+  }
+
+  const sameTrain = haveSameSdeDepartureTrain(need, pairedNeed);
+  const candidateDeparture = getSdeNeedDepartureSequenceMinutes(need);
+  const pairedDeparture = getSdeNeedDepartureSequenceMinutes(pairedNeed);
+
+  if(position === "S" && pairedDeparture > candidateDeparture && !sameTrain){
+    result.penalty += 120;
+    result.violations.push(`${candidateSlot} straffes: ${pairedSlot} er allerede reservert til senere avgang/behov. N-posisjon kan sperre S-posisjon i buttspor.`);
+  }
+
+  if(position === "N" && candidateDeparture > pairedDeparture && !sameTrain){
+    result.penalty += 120;
+    result.violations.push(`${candidateSlot} straffes: kan sperre ${pairedSlot}, som er reservert til tidligere avgang/behov.`);
+  }
+
+  if(position === "N" && pairedDeparture < candidateDeparture && sameTrain){
+    result.penalty += 50;
+    result.violations.push(`${candidateSlot} straffes: samme tog er registrert i buttspor, men rekkefølge/part må kontrolleres før N får sperre S.`);
+  }
+
+  return result;
+}
+
+
+function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
+  const reserved = reservedSlots instanceof Map
+    ? reservedSlots
+    : reservedSlots instanceof Set
+      ? new Map(Array.from(reservedSlots).map(slot=>[slot, {need:null, recommendation:null}]))
+      : new Map();
 
   const scored = getSdeArrivalParkingCandidateSlots(need)
     .map(slot => scoreSdeArrivalParkingCandidate(need, slot))
     .filter(candidate => candidate.status !== "rejected")
     .filter(candidate => !reserved.has(candidate.slot))
+    .map(candidate=>{
+      const evaluation = evaluateSdeParkingDecision(need, candidate, reserved);
+      return {
+        ...candidate,
+        baseScore:candidate.score,
+        evaluation,
+        score:candidate.score + evaluation.reward - evaluation.penalty,
+        reasons:[
+          ...(candidate.reasons || []),
+          ...(evaluation.benefits || []),
+          ...(evaluation.violations || [])
+        ]
+      };
+    })
     .sort((a,b)=>b.score - a.score);
 
   const best = scored[0] || null;
@@ -10051,7 +10171,7 @@ function buildSdeArrivalParkingNeeds(){
       return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
     });
 
-  const reservedRecommendedSlots = new Set();
+  const reservedRecommendedSlots = new Map();
   const recommendationsByVehicle = new Map();
 
   return relevantArrivals
@@ -10109,7 +10229,9 @@ function buildSdeArrivalParkingNeeds(){
 
       if(vehicleKey && !recommendationsByVehicle.has(vehicleKey)){
         recommendationsByVehicle.set(vehicleKey, recommendation);
-        if(recommendation.slot) reservedRecommendedSlots.add(recommendation.slot);
+        if(recommendation.slot){
+          reservedRecommendedSlots.set(recommendation.slot, {need, recommendation});
+        }
       }
 
       return {
