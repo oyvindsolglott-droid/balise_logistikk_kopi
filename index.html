@@ -9811,6 +9811,7 @@ function getSdeArrivalParkingCandidateSlots(need){
     "4N","4M","4S",
     "5N","5M","5S",
     "1N","1S",
+    "3N",
     "10S","11S","12S",
     "10N","11N","12N",
     "9",
@@ -9823,15 +9824,23 @@ function getSdeArrivalParkingCandidateSlots(need){
 }
 
 
-function isSdeLateNightServiceTrackCandidate(need){
+function getSdeServiceTrackNightRole(need){
   const arrivalTrain = String(need?.arrivalTrain || "").trim();
-  if(["837", "839"].includes(arrivalTrain)) return true;
+  const vehicle = sanitizeVehicleValue(need?.vehicle);
 
-  const sequence = getSdeArrivalLatestSequenceMinutes({
-    displayTime: need?.arrivalTime || need?.displayTime || need?.time || ""
-  });
+  if(arrivalTrain === "837") return "837-night-6n";
+  if(arrivalTrain === "835" && vehicle === "74-20") return "835-service-6s";
 
-  return sequence >= 24 * 60;
+  return "";
+}
+
+
+function isSdeLateNightTrack3Candidate(need, slot){
+  const candidate = normalizeSlot(slot);
+  const arrivalTrain = String(need?.arrivalTrain || "").trim();
+  const vehicle = sanitizeVehicleValue(need?.vehicle);
+
+  return candidate === "3N" && arrivalTrain === "839" && vehicle === "74-06";
 }
 
 
@@ -9849,7 +9858,9 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }
 
   if(["2N","2S","3N","3M","3S"].includes(candidate)){
-    return {slot:candidate, score:-999, status:"rejected", reasons:["Plattformspor skal ikke brukes som generell nattparkering."]};
+    if(!isSdeLateNightTrack3Candidate(need, candidate)){
+      return {slot:candidate, score:-999, status:"rejected", reasons:["Plattformspor skal ikke brukes som generell nattparkering."]};
+    }
   }
 
   if(["7N","7S","8N","8S"].includes(candidate)){
@@ -9866,6 +9877,11 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }
 
   let score = 50;
+
+  if(isSdeLateNightTrack3Candidate(need, candidate)){
+    score += 12;
+    reasons.push(`${candidate} tillates som særvurdering for 839/74-06 når helhetsflyten tilsier at spor 6 bør frigjøres til andre natt-/servicebehov.`);
+  }
 
   const departureMinutes = getSdeTimeMinutes(nextDepartureTime);
   const earlyDeparture = departureMinutes !== null && departureMinutes < (9 * 60);
@@ -9917,20 +9933,31 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }
 
   if(["6N","6S"].includes(candidate)){
-    const lateNightServiceTrackCandidate = isSdeLateNightServiceTrackCandidate(need);
+    const serviceTrackNightRole = getSdeServiceTrackNightRole(need);
+    const preferredServiceSlot =
+      serviceTrackNightRole === "837-night-6n" ? "6N" :
+      serviceTrackNightRole === "835-service-6s" ? "6S" :
+      "";
 
-    if(!serviceRequired && !lateNightServiceTrackCandidate){
+    const hasSpecificServiceTrackNeed = !!preferredServiceSlot;
+
+    if(!serviceRequired && !hasSpecificServiceTrackNeed){
       return {
         slot:candidate,
         score:-999,
         status:"rejected",
-        reasons:[`${candidate} holdes av til serviceflyt eller siste nattankomster. Ikke bruk spor 6 som generell overflow før 837/839 er vurdert.`]
+        reasons:[`${candidate} holdes av til serviceflyt eller konkret natt-/servicebehov. Ikke bruk spor 6 som generell overflow.`]
       };
     }
 
-    if(lateNightServiceTrackCandidate){
-      score += 16;
-      reasons.push(`${candidate} er egnet nattplassering for siste nattankomst. Kjøretøy fra ${need?.arrivalTrain || "sen nattankomst"} kan bli stående i spor 6 når serviceflyten er ferdig og sporet ikke dobbelbookes.`);
+    if(hasSpecificServiceTrackNeed){
+      if(candidate === preferredServiceSlot){
+        score += 28;
+        reasons.push(`${candidate} prioriteres fordi ${need?.arrivalTrain || "toget"} / ${sanitizeVehicleValue(need?.vehicle) || "kjøretøyet"} har konkret natt-/serviceflyt til spor 6 i helhetsplanen.`);
+      }else{
+        score += 2;
+        reasons.push(`${candidate} kan vurderes som reserve for konkret natt-/serviceflyt, men ${preferredServiceSlot} passer bedre i helhetsplanen.`);
+      }
     }else{
       score -= 6;
       reasons.push(`${candidate} er sekundær nattplassering/overflow. Bruk bare når serviceflyt i spor 6 er avklart.`);
