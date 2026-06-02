@@ -9450,6 +9450,331 @@ function getSdeDoubleSetButtTrackOrderStates(){
 }
 
 
+function getSdeArrivalParkingCandidateSlots(need){
+  const baseSlots = [
+    "4N","4M","4S",
+    "5N","5M","5S",
+    "1N","1S",
+    "10S","11S","12S",
+    "10N","11N","12N",
+    "9"
+  ];
+
+  return baseSlots
+    .map(normalizeSlot)
+    .filter(slot => slot && inputSlots.includes(slot));
+}
+
+
+function scoreSdeArrivalParkingCandidate(need, slot){
+  const candidate = normalizeSlot(slot);
+  const vehicle = sanitizeVehicleValue(need?.vehicle);
+  const arrivalSlot = normalizeSlot(need?.arrivalSlot);
+  const nextDepartureTime = String(need?.nextDepartureTime || "").trim();
+  const nextDeparturePart = String(need?.nextDeparturePart || "").trim();
+  const serviceRequired = !!need?.serviceRequired;
+  const reasons = [];
+
+  if(!candidate || !inputSlots.includes(candidate)){
+    return {slot:candidate, score:-999, status:"rejected", reasons:["Ugyldig spor."]};
+  }
+
+  if(["2N","2S","3N","3M","3S"].includes(candidate)){
+    return {slot:candidate, score:-999, status:"rejected", reasons:["Plattformspor skal ikke brukes som generell nattparkering."]};
+  }
+
+  if(["7N","7S","8N","8S"].includes(candidate)){
+    return {slot:candidate, score:-999, status:"rejected", reasons:["Verkstedspor brukes ikke som generell parkering uten eksplisitt rep/verkstedflyt."]};
+  }
+
+  if(["6SS","7SS","8SS"].includes(candidate)){
+    return {slot:candidate, score:-999, status:"rejected", reasons:["SS-posisjon brukes ikke som generell nattparkering."]};
+  }
+
+  const occupyingVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(candidate));
+  if(occupyingVehicle && !haveSameSdeVehicleTokens(occupyingVehicle, vehicle)){
+    return {slot:candidate, score:-999, status:"rejected", reasons:[`${candidate} er opptatt av ${occupyingVehicle}.`]};
+  }
+
+  let score = 50;
+
+  const departureMinutes = getSdeTimeMinutes(nextDepartureTime);
+  const earlyDeparture = departureMinutes !== null && departureMinutes < (9 * 60);
+  const track = getSdeSlotTrack(candidate);
+
+  if(earlyDeparture){
+    score += 25;
+    reasons.push("Tidlig avgang krever lett tilgjengelig nattplassering.");
+
+    if(/^[145]/.test(candidate)){
+      score += 18;
+      reasons.push(`${candidate} prioriteres fordi sporet normalt gir enkel tilgjengelighet.`);
+    }
+
+    if(/^(10|11|12)N$/.test(candidate)){
+      score += nextDeparturePart === "2" ? 28 : -12;
+      reasons.push(nextDeparturePart === "2"
+        ? `${candidate} passer /2-del i buttspor fordi /2 normalt skal stå i N og kunne ut først.`
+        : `${candidate} er N-posisjon i buttspor og bør bare brukes for /1 når rekkefølgen er avklart.`);
+    }
+
+    if(/^(10|11|12)S$/.test(candidate)){
+      score += nextDeparturePart === "1" ? 22 : 4;
+      reasons.push(nextDeparturePart === "1"
+        ? `${candidate} passer /1-del i buttspor fordi /1 normalt skal stå i S.`
+        : `${candidate} er S-posisjon i buttspor; kontroller at /2 ikke blir stående bak.`);
+    }
+  }else if(need?.nextDepartureTrain){
+    score += 10;
+    reasons.push("Kjøretøyet er koblet mot morgendagens avgang og bør ikke blokkere tidligere avganger.");
+  }else{
+    score += 4;
+    reasons.push("Ingen kjent morgendagsavgang; fleksibel nattparkering kan vurderes.");
+  }
+
+  if(serviceRequired){
+    score -= 8;
+    reasons.push("Servicebehov er registrert; sluttplassering må vurderes etter spor 6-flyt.");
+  }
+
+  if(["4N","4M","5N","5M","5S"].includes(candidate)){
+    score += 14;
+    reasons.push(`${candidate} er egnet som generell parkering/mellomlagring.`);
+  }
+
+  if(["1N","1S"].includes(candidate)){
+    score += 8;
+    reasons.push(`${candidate} kan være egnet dersom tilgang videre ikke blokkeres.`);
+  }
+
+  if(/^(10|11|12)S$/.test(candidate)){
+    score += 7;
+    reasons.push(`${candidate} fyller S-posisjon før N i buttspor.`);
+  }
+
+  if(/^(10|11|12)N$/.test(candidate)){
+    const southSlot = `${track}S`;
+    const southVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(southSlot));
+    if(!southVehicle && nextDeparturePart !== "2"){
+      score -= 18;
+      reasons.push(`Buttspor-regel: ${southSlot} bør normalt fylles før ${candidate}.`);
+    }
+  }
+
+  if(arrivalSlot){
+    const internalBlockers = getSdeInternalBlockersBetweenSlots(arrivalSlot, candidate);
+    if(internalBlockers.length){
+      return {
+        slot:candidate,
+        score:-999,
+        status:"rejected",
+        reasons:[`Intern blokkering mellom ${arrivalSlot} og ${candidate}: ${internalBlockers.join(", ")}.`]
+      };
+    }
+
+    const routeAssessment = getSdeRouteAssessmentForPlanSkifte(arrivalSlot, candidate);
+    if(/kontroller|rute blokkert/i.test(routeAssessment)){
+      score -= 30;
+      reasons.push(routeAssessment);
+    }else if(routeAssessment){
+      score += 5;
+      reasons.push(routeAssessment);
+    }
+  }else{
+    reasons.push("Ankomstspor mangler; anbefalingen har lavere sikkerhet.");
+    score -= 10;
+  }
+
+  return {
+    slot:candidate,
+    score,
+    status:score >= 45 ? "candidate" : "weak",
+    reasons
+  };
+}
+
+
+function getSdeArrivalParkingRecommendation(need, reservedSlots=new Set()){
+  const reserved = reservedSlots instanceof Set ? reservedSlots : new Set();
+
+  const scored = getSdeArrivalParkingCandidateSlots(need)
+    .map(slot => scoreSdeArrivalParkingCandidate(need, slot))
+    .filter(candidate => candidate.status !== "rejected")
+    .filter(candidate => !reserved.has(candidate.slot))
+    .sort((a,b)=>b.score - a.score);
+
+  const best = scored[0] || null;
+  if(!best){
+    return {
+      slot:"",
+      score:0,
+      confidence:"low",
+      reason:"SDE fant ingen egnet ledig nattplassering innenfor første kandidatsett."
+    };
+  }
+
+  const confidence = best.score >= 85 ? "high" : best.score >= 60 ? "medium" : "low";
+  const reason = best.reasons.slice(0, 4).join(" ");
+
+  return {
+    slot:best.slot,
+    score:best.score,
+    confidence,
+    reason,
+    alternatives:scored.slice(1, 4).map(candidate => ({
+      slot:candidate.slot,
+      score:candidate.score,
+      reason:candidate.reasons.slice(0, 2).join(" ")
+    }))
+  };
+}
+
+
+function buildSdeArrivalParkingNeeds(){
+  const bindings = buildSdeTursattVehicleBindings();
+  const arrivals = bindings.filter(binding => binding.role === "arrival");
+  const departures = bindings.filter(binding => binding.role === "departure" && binding.mustBeAccessible);
+  const productionNeeds = buildSdeProductionNeeds();
+
+  function getFirstDepartureForVehicle(vehicle){
+    const token = normalizeVehicleToken(vehicle);
+    if(!token) return null;
+
+    return departures
+      .filter(binding => normalizeVehicleToken(binding.vehicle) === token)
+      .sort((a,b)=>{
+        const aMinutes = getSdeOperationalSequenceMinutes(a.time || a.displayTime, "departure") ?? 99999;
+        const bMinutes = getSdeOperationalSequenceMinutes(b.time || b.displayTime, "departure") ?? 99999;
+        return aMinutes - bMinutes;
+      })[0] || null;
+  }
+
+  function getServiceNeedForVehicle(vehicle){
+    const token = normalizeVehicleToken(vehicle);
+    if(!token) return null;
+
+    return productionNeeds.find(need =>
+      normalizeVehicleToken(need.vehicle) === token &&
+      need.serviceRequired
+    ) || null;
+  }
+
+  const reservedRecommendedSlots = new Set();
+  const recommendationsByVehicle = new Map();
+
+  return arrivals
+    .map(arrival=>{
+      const vehicle = sanitizeVehicleValue(arrival.vehicle);
+      if(!vehicle) return null;
+
+      const nextDeparture = getFirstDepartureForVehicle(vehicle);
+      const serviceNeed = getServiceNeedForVehicle(vehicle);
+      const departureClockMinutes = nextDeparture
+        ? getSdeTimeMinutes(nextDeparture.time || nextDeparture.displayTime)
+        : null;
+      const earlyDeparture = departureClockMinutes !== null && departureClockMinutes < (9 * 60);
+
+      let parkingStrategy = "Fleksibel nattparkering";
+      let parkingInstruction = "Ingen kjent morgendagsavgang er koblet mot kjøretøyet. Kan vurderes som fleksibel nattparkering, men må ikke blokkere kjøretøy med kjent avgangsbehov.";
+
+      if(serviceNeed){
+        parkingStrategy = "Service før nattplassering";
+        parkingInstruction = "Kjøretøyet har servicebehov. Det må via spor 6 før endelig nattplassering vurderes mot morgendagens Tursatt og blokkering.";
+      }else if(nextDeparture && earlyDeparture){
+        parkingStrategy = "Tidlig avgang – lett tilgjengelig nattplassering";
+        parkingInstruction = "Kjøretøyet må parkeres slik at det kan tas ut til tidlig togproduksjon uten intern blokkering.";
+      }else if(nextDeparture){
+        parkingStrategy = "Koblet mot morgendagens avgang";
+        parkingInstruction = "Kjøretøyet bør parkeres slik at det ikke sperrer tidligere avganger og selv kan hentes til planlagt togproduksjon.";
+      }
+
+      const departurePartText = nextDeparture?.part ? `/${nextDeparture.part}` : "";
+      const departureText = nextDeparture
+        ? `${nextDeparture.train}${departurePartText}${nextDeparture.displayTime ? ` kl. ${nextDeparture.displayTime}` : ""}`
+        : "";
+
+      const need = {
+        source:"Ankomstbasert parkeringsbehov",
+        arrivalTrain:arrival.train,
+        arrivalPart:arrival.part,
+        arrivalTime:arrival.displayTime || arrival.time,
+        vehicle,
+        arrivalSlot:normalizeSlot(arrival.slot),
+        turneringTarget:arrival.turneringTarget,
+        nextDepartureTrain:nextDeparture?.train || "",
+        nextDeparturePart:nextDeparture?.part || "",
+        nextDepartureTime:nextDeparture?.displayTime || nextDeparture?.time || "",
+        nextDepartureText:departureText,
+        serviceRequired:!!serviceNeed,
+        parkingStrategy,
+        parkingInstruction
+      };
+
+      const vehicleKey = normalizeVehicleToken(vehicle);
+      const recommendation = vehicleKey && recommendationsByVehicle.has(vehicleKey)
+        ? recommendationsByVehicle.get(vehicleKey)
+        : getSdeArrivalParkingRecommendation(need, reservedRecommendedSlots);
+
+      if(vehicleKey && !recommendationsByVehicle.has(vehicleKey)){
+        recommendationsByVehicle.set(vehicleKey, recommendation);
+        if(recommendation.slot) reservedRecommendedSlots.add(recommendation.slot);
+      }
+
+      return {
+        ...need,
+        recommendedSlot:recommendation.slot,
+        recommendationScore:recommendation.score,
+        recommendationConfidence:recommendation.confidence,
+        recommendationReason:recommendation.reason,
+        recommendationAlternatives:recommendation.alternatives || []
+      };
+    })
+    .filter(Boolean)
+    .sort((a,b)=>{
+      const priority = row => {
+        if(row.serviceRequired) return 0;
+        const minutes = getSdeTimeMinutes(row.nextDepartureTime);
+        if(minutes !== null && minutes < (9 * 60)) return 1;
+        if(row.nextDepartureTrain) return 2;
+        return 3;
+      };
+
+      const pa = priority(a);
+      const pb = priority(b);
+      if(pa !== pb) return pa - pb;
+
+      const ta = getSdeOperationalSequenceMinutes(a.arrivalTime, "plannedMove") ?? 99999;
+      const tb = getSdeOperationalSequenceMinutes(b.arrivalTime, "plannedMove") ?? 99999;
+      return ta - tb;
+    });
+}
+
+
+function getSdeArrivalParkingNeedsText(needs){
+  const rows = Array.isArray(needs) ? needs : [];
+  if(!rows.length) return "";
+
+  const lines = ["Ankomstbasert parkeringsbehov"];
+
+  rows.slice(0, 12).forEach(row=>{
+    const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
+    const arrivalText = `${row.arrivalTrain}${arrivalPartText}${row.arrivalTime ? ` kl. ${row.arrivalTime}` : ""}`;
+    const slotText = row.arrivalSlot ? ` fra ${row.arrivalSlot}` : "";
+    const departureText = row.nextDepartureText
+      ? ` Neste kjente avgang: ${row.nextDepartureText}.`
+      : " Ingen kjent morgendagsavgang koblet mot kjøretøyet.";
+    const targetText = row.turneringTarget ? ` Turnering: ${row.turneringTarget}.` : "";
+    const recommendationText = row.recommendedSlot
+      ? ` Anbefalt nattplassering: ${row.recommendedSlot} (${row.recommendationConfidence}, score ${row.recommendationScore}). ${row.recommendationReason}`
+      : " Anbefalt nattplassering: ikke funnet i første kandidatsett.";
+
+    lines.push(`- ${arrivalText}: ${row.vehicle}${slotText}.${departureText}${targetText} ${row.parkingStrategy}: ${row.parkingInstruction}${recommendationText}`);
+  });
+
+  return lines.join("\n");
+}
+
+
 function buildSdeKnowledgeSnapshot(){
   const candidates = getSdeAfternoonParkingCandidates();
   const bindings = buildSdeTursattVehicleBindings();
@@ -9791,12 +10116,13 @@ function buildSdeVaktplan(){
   const report = document.getElementById("sdeImportReportText");
   if(report){
     const knowledgeSnapshotText = getSdeKnowledgeSnapshotText(buildSdeKnowledgeSnapshot());
+    const arrivalParkingNeedsText = getSdeArrivalParkingNeedsText(buildSdeArrivalParkingNeeds());
     const nextActionsText = getSdeNextActionsText(rows,currentDayType);
     const shiftSummaryText = getSdeShiftSummaryText(rows);
     const hiddenOldPlanWarningText = getHiddenOldPlanSkifteWarningText();
     report.style.whiteSpace = "pre-line";
     report.style.lineHeight = "1.45";
-    const reportText = [hiddenOldPlanWarningText, knowledgeSnapshotText, nextActionsText, shiftSummaryText].filter(Boolean).join("\n\n");
+    const reportText = [hiddenOldPlanWarningText, knowledgeSnapshotText, arrivalParkingNeedsText, nextActionsText, shiftSummaryText].filter(Boolean).join("\n\n");
     renderSdeReportTextWithTurneringTargets(report, reportText);
   }
 
