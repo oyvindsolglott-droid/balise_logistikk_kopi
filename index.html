@@ -10598,9 +10598,98 @@ function getSdeShiftScoreClass(score){
 }
 
 
+function getSdeDataStatusText(){
+  return document.getElementById("topDataStatus")?.textContent || "";
+}
+
+
+function getSdeExpectedDataDateText(){
+  const statusText = getSdeDataStatusText();
+  const match = statusText.match(/Forventet\s+dato:\s*([^|\n]+)/i);
+  return match ? match[1].trim() : "";
+}
+
+
+function getSdeExpectedDataTimeText(){
+  // SDE-score skal vurderes når morgendagens JSON/avganger er publisert.
+  // Selv om datavarselet gjelder ankomstgrunnlag, er SDE-score først operativt relevant etter 15:00-vinduet.
+  return "15:00";
+}
+
+
+function getSdeExpectedDataDateTimeText(){
+  const expectedDate = getSdeExpectedDataDateText();
+  const expectedTime = getSdeExpectedDataTimeText();
+
+  if(expectedDate && expectedTime) return `${expectedDate} kl. ${expectedTime}`;
+  if(expectedDate) return expectedDate;
+  if(expectedTime) return `kl. ${expectedTime}`;
+  return "";
+}
+
+
+function isSdeTomorrowJsonReadyForScore(){
+  const statusText = getSdeDataStatusText();
+
+  if(/ikke\s+lest\s+ennå/i.test(statusText)){
+    return false;
+  }
+
+  if(/ADVARSEL/i.test(statusText) && /Forventet\s+dato/i.test(statusText)){
+    return false;
+  }
+
+  const bindings = typeof buildSdeTursattVehicleBindings === "function"
+    ? buildSdeTursattVehicleBindings()
+    : [];
+
+  const accessibleDepartures = Array.isArray(bindings)
+    ? bindings.filter(binding => binding?.role === "departure" && binding?.mustBeAccessible)
+    : [];
+
+  return accessibleDepartures.length > 0;
+}
+
+
+function getSdeTomorrowJsonPendingText(){
+  const expectedDateTime = getSdeExpectedDataDateTimeText();
+  const expectedText = expectedDateTime ? ` Forventet til: ${expectedDateTime}.` : "";
+
+  return `Avventer datagrunnlag.${expectedText} SDE-score presenteres når riktige ankomstdata og morgendagens JSON/avganger er publisert og lastet i nettsiden. Frem til dette er datagrunnlaget ufullstendig, og score ville vært misvisende.`;
+}
+
+
 function renderSdeSkiftebevegelser(){
   const root = document.getElementById("sdeSkiftebevegelserDashboard");
   if(!root) return;
+
+  if(!isSdeTomorrowJsonReadyForScore()){
+    root.innerHTML = `
+      <div class="sde-shift-hero">
+        <div class="sde-shift-score warn">
+          <div class="sde-shift-eyebrow">SDE-resultat</div>
+          <div class="sde-shift-title">Avventer datagrunnlag</div>
+          <div class="sde-shift-score-number"><strong>–</strong><span>/ 100</span></div>
+        </div>
+        <div class="sde-shift-kpis">
+          <div class="sde-shift-kpi"><strong>–</strong><span>foreslåtte skiftebevegelser</span></div>
+          <div class="sde-shift-kpi"><strong>–</strong><span>ankomster ivaretatt</span></div>
+          <div class="sde-shift-kpi"><strong>–</strong><span>avganger koblet</span></div>
+          <div class="sde-shift-kpi"><strong>Venter</strong><span>morgendagens JSON</span></div>
+        </div>
+      </div>
+      <div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">
+          <span>Datagrunnlag ikke komplett</span>
+          <span>Score ikke beregnet</span>
+        </div>
+        <div class="sde-shift-unresolved-item">
+          ${escapeHtml(getSdeTomorrowJsonPendingText())}
+        </div>
+      </div>
+    `;
+    return;
+  }
 
   const data = getSdeShiftShowcaseData();
   const scoreClass = getSdeShiftScoreClass(data.score);
