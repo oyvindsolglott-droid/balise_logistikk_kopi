@@ -2633,6 +2633,506 @@ button{padding:12px 12px}
   text-transform:uppercase;
 }
 
+
+/* DROPS / Verkstedflyt */
+.drops-shell{
+  display:grid;
+  gap:18px;
+}
+.drops-hero{
+  position:relative;
+  overflow:hidden;
+  border-radius:28px;
+  padding:24px;
+  color:#eef7ff;
+  background:
+    radial-gradient(circle at top left, rgba(76,201,240,.28), transparent 34%),
+    radial-gradient(circle at bottom right, rgba(255,209,102,.18), transparent 38%),
+    linear-gradient(135deg, #121a2b, #17243b 55%, #101827);
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 22px 60px rgba(0,0,0,.22);
+}
+.drops-eyebrow{
+  font-size:12px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:#9bdcff;
+  font-weight:900;
+}
+.drops-title{
+  margin:8px 0 8px;
+  font-size:clamp(28px, 4vw, 48px);
+  line-height:1;
+  font-weight:950;
+  letter-spacing:-.04em;
+}
+.drops-sub{
+  max-width:900px;
+  margin:0;
+  color:#cbd9ea;
+  line-height:1.5;
+  font-weight:650;
+}
+.drops-warning{
+  margin-top:16px;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  border:1px solid rgba(255,209,102,.38);
+  background:rgba(255,209,102,.12);
+  color:#ffe7a3;
+  border-radius:999px;
+  padding:9px 13px;
+  font-weight:850;
+}
+.drops-grid{
+  display:grid;
+  grid-template-columns:minmax(280px, .9fr) minmax(320px, 1.1fr);
+  gap:18px;
+}
+.drops-card{
+  border:1px solid rgba(15,23,42,.12);
+  border-radius:24px;
+  background:rgba(255,255,255,.94);
+  box-shadow:0 14px 35px rgba(15,23,42,.10);
+  padding:18px;
+}
+.drops-card h3{
+  margin:0 0 12px;
+  font-size:20px;
+  letter-spacing:-.02em;
+}
+.drops-form{
+  display:grid;
+  gap:12px;
+}
+.drops-field{
+  display:grid;
+  gap:6px;
+}
+.drops-field label{
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:#475569;
+  font-weight:900;
+}
+.drops-field input,
+.drops-field select,
+.drops-field textarea{
+  width:100%;
+  box-sizing:border-box;
+  border:1px solid #cbd5e1;
+  border-radius:14px;
+  padding:11px 12px;
+  font:inherit;
+  background:#fff;
+}
+.drops-field textarea{
+  min-height:94px;
+  resize:vertical;
+}
+.drops-form-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
+.drops-primary-btn{
+  border:0;
+  border-radius:14px;
+  padding:11px 14px;
+  font-weight:950;
+  cursor:pointer;
+}
+.drops-primary-btn{
+  background:#0f172a;
+  color:#fff;
+  box-shadow:0 10px 22px rgba(15,23,42,.22);
+}
+.drops-list{
+  display:grid;
+  gap:12px;
+}
+.drops-empty{
+  border:1px dashed #cbd5e1;
+  border-radius:18px;
+  padding:18px;
+  color:#64748b;
+  background:#f8fafc;
+  font-weight:750;
+}
+.drops-order{
+  border:1px solid #dbe5f0;
+  border-radius:20px;
+  padding:16px;
+  background:linear-gradient(180deg,#fff,#f8fbff);
+  box-shadow:0 8px 20px rgba(15,23,42,.07);
+}
+.drops-order-top{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+}
+.drops-vehicle{
+  font-size:24px;
+  font-weight:950;
+  letter-spacing:-.04em;
+}
+.drops-pill{
+  display:inline-flex;
+  align-items:center;
+  border-radius:999px;
+  padding:6px 10px;
+  font-size:12px;
+  font-weight:900;
+  background:#e0f2fe;
+  color:#075985;
+  white-space:nowrap;
+}
+.drops-pill.waiting{ background:#fef3c7; color:#92400e; }
+.drops-pill.done{ background:#fee2e2; color:#991b1b; }
+.drops-pill.not-ready{ background:#fee2e2; color:#991b1b; }
+.drops-pill.ready{ background:#dcfce7; color:#166534; }
+.drops-meta{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:8px;
+  margin:12px 0;
+}
+.drops-meta div{
+  border-radius:14px;
+  background:#f1f5f9;
+  padding:9px;
+}
+.drops-meta span{
+  display:block;
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.07em;
+  color:#64748b;
+  font-weight:900;
+}
+.drops-meta strong{
+  display:block;
+  margin-top:3px;
+  font-size:14px;
+}
+.drops-work{
+  margin:10px 0 0;
+  color:#334155;
+  line-height:1.45;
+}
+.drops-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  margin-top:16px;
+}
+.drops-status-btn{
+  appearance:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  min-height:32px;
+  border:1px solid rgba(161,98,7,.70);
+  border-radius:999px;
+  padding:6px 12px;
+  font-size:12px;
+  line-height:1.1;
+  font-weight:900;
+  letter-spacing:.02em;
+  color:#422006;
+  background:linear-gradient(180deg,#fde68a,#facc15 52%,#ca8a04);
+  box-shadow:
+    0 2px 0 rgba(113,63,18,.70),
+    0 6px 12px rgba(15,23,42,.16),
+    inset 0 1px 0 rgba(255,255,255,.72);
+  cursor:pointer;
+  transition:filter .14s ease, transform .14s ease, box-shadow .14s ease;
+}
+.drops-status-btn:hover{
+  filter:brightness(1.04);
+}
+.drops-status-btn:active{
+  transform:translateY(1px);
+  box-shadow:
+    0 1px 0 rgba(113,63,18,.70),
+    0 3px 8px rgba(15,23,42,.14),
+    inset 0 1px 2px rgba(15,23,42,.16);
+}
+.drops-status-btn .drops-btn-icon{
+  display:inline-grid;
+  place-items:center;
+  width:18px;
+  height:18px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:950;
+  background:rgba(255,255,255,.42);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.42);
+}
+.drops-status-btn .drops-btn-text{
+  white-space:nowrap;
+}
+.drops-status-btn.complete.is-done,
+.drops-status-btn.ready.is-done{
+  border-color:rgba(21,128,61,.80);
+  color:#052e16;
+  background:linear-gradient(180deg,#86efac,#22c55e 52%,#15803d);
+  box-shadow:
+    0 2px 0 rgba(20,83,45,.75),
+    0 6px 12px rgba(15,23,42,.16),
+    inset 0 1px 0 rgba(255,255,255,.64);
+}
+.drops-status-btn.ready:not(.is-done){
+  border-color:rgba(185,28,28,.70);
+  color:#450a0a;
+  background:linear-gradient(180deg,#fecaca,#f87171 52%,#dc2626);
+  box-shadow:
+    0 2px 0 rgba(127,29,29,.70),
+    0 6px 12px rgba(15,23,42,.16),
+    inset 0 1px 0 rgba(255,255,255,.66);
+}
+.drops-status-btn.delete{
+  color:#7f1d1d;
+  border-color:rgba(185,28,28,.42);
+  background:linear-gradient(180deg,#fff7f7,#fee2e2 54%,#fecaca);
+  box-shadow:
+    0 2px 0 rgba(127,29,29,.38),
+    0 6px 12px rgba(15,23,42,.12),
+    inset 0 1px 0 rgba(255,255,255,.72);
+}
+.drops-status-btn.delete:hover{
+  filter:brightness(1.02);
+  border-color:rgba(185,28,28,.80);
+  color:#450a0a;
+}
+.drops-status-btn[disabled]{
+  cursor:default;
+  opacity:.95;
+}
+.drops-status-btn[disabled]:hover{
+  filter:none;
+  transform:none;
+}
+.drops-board{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(160px,1fr));
+  gap:12px;
+}
+.drops-board-card{
+  border-radius:22px;
+  padding:16px;
+  background:#fff;
+  border:1px solid #e2e8f0;
+  box-shadow:0 10px 24px rgba(15,23,42,.08);
+}
+.drops-board-card strong{
+  display:block;
+  font-size:34px;
+  letter-spacing:-.05em;
+}
+.drops-board-card span{
+  color:#64748b;
+  font-weight:850;
+  text-transform:uppercase;
+  font-size:12px;
+  letter-spacing:.07em;
+}
+.drops-materiell-row{
+  display:grid;
+  grid-template-columns:140px minmax(220px,1fr) 140px 180px;
+  gap:18px;
+  align-items:start;
+  border:1px solid #e2e8f0;
+  border-radius:18px;
+  padding:14px;
+  margin-top:10px;
+  background:linear-gradient(180deg,#ffffff,#f8fbff);
+  box-shadow:0 8px 20px rgba(15,23,42,.06);
+}
+.drops-materiell-row:first-child{
+  margin-top:0;
+}
+.drops-materiell-main{
+  display:grid;
+  gap:8px;
+}
+.drops-materiell-vehicle{
+  font-size:20px;
+  font-weight:950;
+  letter-spacing:-.03em;
+}
+.drops-materiell-work{
+  color:#334155;
+  line-height:1.45;
+  font-weight:700;
+}
+.drops-materiell-slot{
+  display:grid;
+  gap:4px;
+  color:#0f172a;
+}
+.drops-materiell-slot strong{
+  font-size:18px;
+}
+.drops-materiell-slot span{
+  color:#64748b;
+  font-weight:800;
+}
+.drops-note{
+  width:100%;
+  box-sizing:border-box;
+  border:1px solid #cbd5e1;
+  border-radius:999px;
+  padding:9px 12px;
+  font-weight:750;
+  background:#fff;
+}
+.drops-operativ-cell{
+  display:grid;
+  gap:8px;
+}
+.drops-indicator{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  border-radius:16px;
+  padding:9px 11px;
+  border:1px solid #fecaca;
+  background:#fff1f2;
+  color:#7f1d1d;
+  font-weight:900;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+}
+.drops-indicator.ready{
+  border-color:#bbf7d0;
+  background:#f0fdf4;
+  color:#14532d;
+}
+.drops-indicator-lamp{
+  width:14px;
+  height:14px;
+  border-radius:999px;
+  flex:0 0 auto;
+  background:#dc2626;
+  box-shadow:
+    0 0 0 3px rgba(220,38,38,.12),
+    0 0 14px rgba(220,38,38,.50),
+    inset 0 1px 1px rgba(255,255,255,.45);
+}
+.drops-indicator.ready .drops-indicator-lamp{
+  background:#16a34a;
+  box-shadow:
+    0 0 0 3px rgba(22,163,74,.14),
+    0 0 14px rgba(22,163,74,.45),
+    inset 0 1px 1px rgba(255,255,255,.50);
+}
+.drops-indicator-text{
+  display:grid;
+  gap:2px;
+}
+.drops-indicator-text strong{
+  font-size:13px;
+}
+.drops-indicator-text span{
+  font-size:11px;
+  line-height:1.25;
+  font-weight:800;
+  opacity:.86;
+}
+.drops-routing-choice{
+  display:grid;
+  gap:7px;
+  border:1px solid #e2e8f0;
+  border-radius:16px;
+  padding:10px;
+  background:#f8fafc;
+}
+.drops-routing-label{
+  font-size:11px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  color:#64748b;
+  font-weight:950;
+}
+.drops-routing-toggle{
+  position:relative;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  align-items:center;
+  width:100%;
+  min-height:38px;
+  border:1px solid rgba(148,163,184,.65);
+  border-radius:999px;
+  padding:3px;
+  background:linear-gradient(180deg,#f8fafc,#e2e8f0);
+  box-shadow:
+    inset 0 1px 2px rgba(15,23,42,.12),
+    0 6px 14px rgba(15,23,42,.08);
+  cursor:pointer;
+  user-select:none;
+}
+.drops-routing-toggle::before{
+  content:"";
+  position:absolute;
+  z-index:0;
+  top:3px;
+  bottom:3px;
+  left:3px;
+  width:calc(50% - 3px);
+  border-radius:999px;
+  background:linear-gradient(180deg,#fde68a,#facc15 52%,#ca8a04);
+  box-shadow:
+    0 2px 0 rgba(113,63,18,.70),
+    0 6px 12px rgba(15,23,42,.14),
+    inset 0 1px 0 rgba(255,255,255,.72);
+  transition:transform .18s ease, background .18s ease, box-shadow .18s ease;
+}
+.drops-routing-toggle.sde::before{
+  transform:translateX(100%);
+  background:linear-gradient(180deg,#86efac,#22c55e 52%,#15803d);
+  box-shadow:
+    0 2px 0 rgba(20,83,45,.75),
+    0 6px 12px rgba(15,23,42,.14),
+    inset 0 1px 0 rgba(255,255,255,.64);
+}
+.drops-routing-toggle span{
+  position:relative;
+  z-index:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:30px;
+  padding:0 8px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.02em;
+  color:#475569;
+  white-space:nowrap;
+}
+.drops-routing-toggle.manual .drops-routing-manual{
+  color:#422006;
+}
+.drops-routing-toggle.sde .drops-routing-sde{
+  color:#052e16;
+}
+.drops-routing-note{
+  color:#475569;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.35;
+}
+@media(max-width:900px){
+  .drops-grid{ grid-template-columns:1fr; }
+  .drops-form-row{ grid-template-columns:1fr; }
+  .drops-board{ grid-template-columns:repeat(2,minmax(140px,1fr)); }
+  .drops-materiell-row{ grid-template-columns:1fr; }
+}
+
 </style>
 
 <style id="rightsNoticeStyle">
@@ -2690,6 +3190,8 @@ button{padding:12px 12px}
 <button class="seg" type="button" data-tab="grunnoppstilling">Grunnoppstilling</button>
 <button class="seg" type="button" data-tab="sdeVaktplan">SDE vaktplan</button>
 <button class="seg" type="button" data-tab="sdeSkiftebevegelser">SDE Skiftebevegelser</button>
+<button class="seg" type="button" data-tab="verkstedBestillinger">Bestillinger fra verksted</button>
+<button class="seg" type="button" data-tab="dropsMateriellstyrer">DROPS Materiellstyrer</button>
 <button class="seg" type="button" data-tab="turneringKveld">Turnering Kveld</button>
 <button class="seg" type="button" data-tab="inndata" style="display:none">Planlegge Skiftebevegelser</button>
 <button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
@@ -2725,6 +3227,79 @@ button{padding:12px 12px}
 <div class="stats" id="stats"></div>
 <div class="reset-tools">
 <button id="resetBtn" type="button">Reset</button>
+</div>
+</section>
+
+
+<section class="panel" id="verkstedBestillinger">
+<div class="drops-shell">
+  <div class="drops-hero">
+    <div class="drops-eyebrow">Kun for verksted</div>
+    <div class="drops-title">Bestillinger fra verksted</div>
+    <p class="drops-sub">Her registrerer verksted bestilling på materiell inn til verksted/DROPS: tidspunkt for mottak, kjøretøynummer, ønsket spor og hva som skal utbedres eller ettersees.</p>
+    <div class="drops-warning">Adgangsmerking: Verkstedside – ikke øvrig trafikkstyring</div>
+  </div>
+
+  <div class="drops-grid">
+    <div class="drops-card">
+      <h3>Ny verkstedbestilling</h3>
+      <form class="drops-form" id="verkstedBestillingForm">
+        <div class="drops-form-row">
+          <div class="drops-field">
+            <label for="verkstedReadyTime">Klar til mottak</label>
+            <input id="verkstedReadyTime" type="time" required>
+          </div>
+          <div class="drops-field">
+            <label for="verkstedVehicle">Kjøretøy nr.</label>
+            <input id="verkstedVehicle" type="text" placeholder="f.eks. 74-20" required>
+            <div class="vehicle-validation-message" id="verkstedVehicleValidation"></div>
+          </div>
+        </div>
+        <div class="drops-field">
+          <label for="verkstedTrack">Ønsket verkstedspor</label>
+          <select id="verkstedTrack" required>
+            <option value="">Velg spor</option>
+            <option value="7N">7N</option>
+            <option value="7S">7S</option>
+            <option value="8N">8N</option>
+            <option value="8S">8S</option>
+            <option value="7SS">7SS</option>
+            <option value="8SS">8SS</option>
+            <option value="Annet/avklares">Annet / avklares</option>
+          </select>
+        </div>
+        <div class="drops-field">
+          <label for="verkstedWork">Hva skal utbedres eller ettersees?</label>
+          <textarea id="verkstedWork" placeholder="Beskriv arbeid, kontrollpunkt eller ettersyn..." required></textarea>
+        </div>
+        <button class="drops-primary-btn" type="submit">Legg inn bestilling</button>
+      </form>
+    </div>
+
+    <div class="drops-card">
+      <h3>Aktive verkstedbestillinger</h3>
+      <div class="drops-list" id="verkstedBestillingListe"></div>
+    </div>
+  </div>
+</div>
+</section>
+
+
+<section class="panel" id="dropsMateriellstyrer">
+<div class="drops-shell">
+  <div class="drops-hero">
+    <div class="drops-eyebrow">DROPS</div>
+    <div class="drops-title">Materiellstyrer</div>
+    <p class="drops-sub">Samlet oversikt over verkstedbestillinger og materiellstatus. Herfra overvåkes status og operative vurderinger/tiltak iverksettes.</p>
+    <div class="drops-warning">Operativt kontrollark – ikke SDE-motor</div>
+  </div>
+
+  <div class="drops-board" id="dropsMateriellKpi"></div>
+
+  <div class="drops-card">
+    <h3>Materiellstatus og operativ vurdering</h3>
+    <div id="dropsMateriellListe"></div>
+  </div>
 </div>
 </section>
 
@@ -11469,6 +12044,262 @@ async function fetchBaliseApi(){
 
 document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>activateTab(btn.dataset.tab)));
 document.getElementById("guideTopBtn").addEventListener("click",()=>activateTab("hjelp"));
+
+const DROPS_VERKSTED_KEY = "drops_verksted_bestillinger_v1";
+
+function getDropsVerkstedOrders(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(DROPS_VERKSTED_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  }catch(e){
+    return [];
+  }
+}
+
+function saveDropsVerkstedOrders(orders){
+  localStorage.setItem(DROPS_VERKSTED_KEY, JSON.stringify(Array.isArray(orders) ? orders : []));
+}
+
+function getDropsOrderStatus(order){
+  if(order?.driftsklarAt) return {label:"Driftsklart", cls:"ready"};
+  if(order?.workCompleteAt) return {label:"Ikke driftsklar", cls:"not-ready"};
+  return {label:"Ikke driftsklar", cls:"not-ready"};
+}
+
+function formatDropsTimestamp(value){
+  if(!value) return "";
+  try{
+    return new Date(value).toLocaleString("no-NO", {dateStyle:"short", timeStyle:"short"});
+  }catch(e){
+    return String(value);
+  }
+}
+
+function renderDropsWerkstedOrders(){
+  const list = document.getElementById("verkstedBestillingListe");
+  if(!list) return;
+
+  const orders = getDropsVerkstedOrders().sort((a,b)=>String(a.readyTime || "").localeCompare(String(b.readyTime || "")));
+
+  if(!orders.length){
+    list.innerHTML = '<div class="drops-empty">Ingen verkstedbestillinger registrert ennå.</div>';
+    return;
+  }
+
+  list.innerHTML = orders.map(order=>{
+    const status = getDropsOrderStatus(order);
+    return `<article class="drops-order">
+      <div class="drops-order-top">
+        <div>
+          <div class="drops-eyebrow">Kjøretøy</div>
+          <div class="drops-vehicle">${escapeHtml(order.vehicle || "")}</div>
+        </div>
+        <span class="drops-pill ${status.cls}">${escapeHtml(status.label)}</span>
+      </div>
+      <div class="drops-meta">
+        <div><span>Klar mottak</span><strong>${escapeHtml(order.readyTime || "")}</strong></div>
+        <div><span>Ønsket spor</span><strong>${escapeHtml(order.track || "")}</strong></div>
+        <div><span>Registrert</span><strong>${escapeHtml(formatDropsTimestamp(order.createdAt))}</strong></div>
+      </div>
+      <p class="drops-work">${escapeHtml(order.work || "")}</p>
+      ${order.workCompleteAt ? `<p class="drops-work"><strong>Arbeid fullført:</strong> ${escapeHtml(formatDropsTimestamp(order.workCompleteAt))}</p>` : ""}
+      ${order.driftsklarAt ? `<p class="drops-work"><strong>Driftsklart:</strong> ${escapeHtml(formatDropsTimestamp(order.driftsklarAt))}</p>` : ""}
+      <div class="drops-actions">
+        <button class="drops-status-btn complete ${order.workCompleteAt ? "is-done" : ""}" type="button" data-drops-action="complete" data-drops-id="${escapeHtml(order.id)}" ${order.workCompleteAt ? "disabled" : ""}>
+          <span class="drops-btn-icon">${order.workCompleteAt ? "✓" : "UT"}</span>
+          <span class="drops-btn-text">${order.workCompleteAt ? "Arbeid fullført" : "Kan kjøres ut"}</span>
+        </button>
+        <button class="drops-status-btn ready ${order.driftsklarAt ? "is-done" : ""}" type="button" data-drops-action="ready" data-drops-id="${escapeHtml(order.id)}" ${order.driftsklarAt ? "disabled" : ""}>
+          <span class="drops-btn-icon">${order.driftsklarAt ? "✓" : "!"}</span>
+          <span class="drops-btn-text">${order.driftsklarAt ? "Driftsklart bekreftet" : "Ikke driftsklar"}</span>
+        </button>
+        <button class="drops-status-btn delete" type="button" data-drops-action="delete" data-drops-id="${escapeHtml(order.id)}">
+          <span class="drops-btn-icon">×</span>
+          <span class="drops-btn-text">Slett</span>
+        </button>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function renderDropsMateriellstyrer(){
+  const kpi = document.getElementById("dropsMateriellKpi");
+  const list = document.getElementById("dropsMateriellListe");
+  if(!kpi || !list) return;
+
+  const orders = getDropsVerkstedOrders();
+  const waiting = orders.filter(order=>!order.workCompleteAt && !order.driftsklarAt).length;
+  const complete = orders.filter(order=>order.workCompleteAt && !order.driftsklarAt).length;
+  const ready = orders.filter(order=>order.driftsklarAt).length;
+
+  kpi.innerHTML = `
+    <div class="drops-board-card"><strong>${orders.length}</strong><span>totale bestillinger</span></div>
+    <div class="drops-board-card"><strong>${waiting}</strong><span>venter / inne</span></div>
+    <div class="drops-board-card"><strong>${complete}</strong><span>kan kjøres ut</span></div>
+    <div class="drops-board-card"><strong>${ready}</strong><span>driftsklart</span></div>
+  `;
+
+  if(!orders.length){
+    list.innerHTML = '<div class="drops-empty">Ingen materiellstatus å vise. Verkstedbestillinger vil vises her automatisk.</div>';
+    return;
+  }
+
+  list.innerHTML = orders
+    .sort((a,b)=>String(a.readyTime || "").localeCompare(String(b.readyTime || "")))
+    .map(order=>{
+      const status = getDropsOrderStatus(order);
+      const isDriftsklar = !!order.driftsklarAt;
+      const indicatorTitle = isDriftsklar ? "Driftsklar" : "Ikke driftsklar";
+      const recommendedSlot = normalizeSlot(order.sdeRecommendedSlot || "");
+      const routingMode = order.routingMode === "sde" ? "sde" : "manual";
+      const indicatorText = recommendedSlot
+        ? `SDE anbefaler spor ${recommendedSlot}.`
+        : "SDE mangler inputs.";
+      const routingNote = routingMode === "sde"
+        ? "DROPS har valgt å akseptere SDE-anbefalt spor. Ikke anbefalt i testfase uten manuell kontroll."
+        : "Manuell behandling valgt. Sporvalg leveres til TXP for operativ vurdering.";
+
+      return `<div class="drops-materiell-row">
+        <div class="drops-materiell-main">
+          <div class="drops-materiell-vehicle">${escapeHtml(order.vehicle || "")}</div>
+          <span class="drops-pill ${status.cls}">${escapeHtml(status.label)}</span>
+        </div>
+        <div class="drops-materiell-work">${escapeHtml(order.work || "")}</div>
+        <div class="drops-materiell-slot">
+          <strong>${escapeHtml(order.track || "")}</strong>
+          <span>Klar ${escapeHtml(order.readyTime || "")}</span>
+        </div>
+        <div class="drops-operativ-cell">
+          <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="Operativ vurdering / tiltak">
+          <div class="drops-indicator ${isDriftsklar ? "ready" : ""}">
+            <span class="drops-indicator-lamp" aria-hidden="true"></span>
+            <span class="drops-indicator-text">
+              <strong>${escapeHtml(indicatorTitle)}</strong>
+              <span>${escapeHtml(indicatorText)}</span>
+            </span>
+          </div>
+          <div class="drops-routing-choice">
+            <div class="drops-routing-label">Behandling av sporvalg</div>
+            <button class="drops-routing-toggle ${routingMode}" type="button" data-drops-action="routing-toggle" data-drops-id="${escapeHtml(order.id)}" aria-pressed="${routingMode === "sde" ? "true" : "false"}" title="Bytt mellom manuell TXP-behandling og aksept av SDE-anbefaling">
+              <span class="drops-routing-manual">Manuell TXP</span>
+              <span class="drops-routing-sde">Aksepter SDE</span>
+            </button>
+            <div class="drops-routing-note">${escapeHtml(routingNote)}</div>
+          </div>
+        </div>
+      </div>`;
+    }).join("");
+}
+
+function renderDropsPanels(){
+  renderDropsWerkstedOrders();
+  renderDropsMateriellstyrer();
+}
+
+function initDropsPanels(){
+  const form = document.getElementById("verkstedBestillingForm");
+  if(form){
+    form.addEventListener("submit", event=>{
+      event.preventDefault();
+
+      const vehicleInput = document.getElementById("verkstedVehicle");
+      const vehicleValidation = document.getElementById("verkstedVehicleValidation");
+      const rawVehicle = vehicleInput?.value || "";
+      const vehicleMessage = getVehicleNumberValidationMessage(rawVehicle);
+
+      updateVehicleNumberInputValidation(vehicleInput, rawVehicle);
+      if(vehicleValidation){
+        vehicleValidation.textContent = vehicleMessage || "";
+      }
+
+      if(vehicleMessage){
+        vehicleInput?.focus();
+        return;
+      }
+
+      const order = {
+        id:`drops-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        readyTime:document.getElementById("verkstedReadyTime")?.value || "",
+        vehicle:sanitizeVehicleValue(rawVehicle),
+        track:normalizeSlot(document.getElementById("verkstedTrack")?.value || "") || document.getElementById("verkstedTrack")?.value || "",
+        work:document.getElementById("verkstedWork")?.value.trim() || "",
+        createdAt:new Date().toISOString(),
+        workCompleteAt:"",
+        driftsklarAt:"",
+        note:"",
+        routingMode:"manual",
+        sdeRecommendedSlot:""
+      };
+
+      if(!order.readyTime || !order.vehicle || !order.track || !order.work) return;
+
+      const orders = getDropsVerkstedOrders();
+      orders.push(order);
+      saveDropsVerkstedOrders(orders);
+      form.reset();
+      renderDropsPanels();
+    });
+  }
+
+  const vehicleInput = document.getElementById("verkstedVehicle");
+  const vehicleValidation = document.getElementById("verkstedVehicleValidation");
+  if(vehicleInput){
+    vehicleInput.addEventListener("input", ()=>{
+      const message = getVehicleNumberValidationMessage(vehicleInput.value);
+      updateVehicleNumberInputValidation(vehicleInput, vehicleInput.value);
+      if(vehicleValidation){
+        vehicleValidation.textContent = message || "";
+      }
+    });
+  }
+
+  document.addEventListener("click", event=>{
+    const button = event.target.closest("[data-drops-action]");
+    if(!button) return;
+
+    const action = button.dataset.dropsAction;
+    if(!["complete","ready","delete","routing-toggle"].includes(action)) return;
+
+    const id = button.dataset.dropsId;
+    const orders = getDropsVerkstedOrders();
+    const index = orders.findIndex(order=>order.id === id);
+    if(index < 0) return;
+
+    if(action === "complete"){
+      orders[index].workCompleteAt = orders[index].workCompleteAt || new Date().toISOString();
+    }else if(action === "ready"){
+      orders[index].workCompleteAt = orders[index].workCompleteAt || new Date().toISOString();
+      orders[index].driftsklarAt = orders[index].driftsklarAt || new Date().toISOString();
+    }else if(action === "routing-toggle"){
+      orders[index].routingMode = orders[index].routingMode === "sde" ? "manual" : "sde";
+    }else if(action === "delete"){
+      orders.splice(index, 1);
+    }
+
+    saveDropsVerkstedOrders(orders);
+    renderDropsPanels();
+  });
+
+  document.addEventListener("change", event=>{
+    const input = event.target.closest('[data-drops-action="note"]');
+    if(!input) return;
+
+    const id = input.dataset.dropsId;
+    const orders = getDropsVerkstedOrders();
+    const order = orders.find(item=>item.id === id);
+    if(!order) return;
+
+    order.note = input.value;
+    saveDropsVerkstedOrders(orders);
+    renderDropsPanels();
+  });
+
+  renderDropsPanels();
+}
+
+initDropsPanels();
+
+
 document.getElementById("saveBtn").addEventListener("click",()=>persist(false));
 
 
