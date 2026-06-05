@@ -3256,7 +3256,7 @@ button{padding:12px 12px}
       <form class="drops-form" id="verkstedBestillingForm">
         <div class="drops-form-row">
           <div class="drops-field">
-            <label for="verkstedReadyTime">Klar til mottak</label>
+            <label for="verkstedReadyTime">Ønsket mottakstid i verksted</label>
             <input id="verkstedReadyTime" type="time" required>
           </div>
           <div class="drops-field">
@@ -12107,7 +12107,7 @@ function renderDropsWerkstedOrders(){
         <span class="drops-pill ${status.cls}">${escapeHtml(status.label)}</span>
       </div>
       <div class="drops-meta">
-        <div><span>Klar mottak</span><strong>${escapeHtml(order.readyTime || "")}</strong></div>
+        <div><span>Ønsket mottak</span><strong>${escapeHtml(order.readyTime || "")}</strong></div>
         <div><span>Ønsket spor</span><strong>${escapeHtml(order.track || "")}</strong></div>
         <div><span>Registrert</span><strong>${escapeHtml(formatDropsTimestamp(order.createdAt))}</strong></div>
       </div>
@@ -12177,7 +12177,7 @@ function renderDropsMateriellstyrer(){
         <div class="drops-materiell-work">${escapeHtml(order.work || "")}</div>
         <div class="drops-materiell-slot">
           <strong>${escapeHtml(order.track || "")}</strong>
-          <span>Klar ${escapeHtml(order.readyTime || "")}</span>
+          <span>Ønsket mottak ${escapeHtml(order.readyTime || "")}</span>
         </div>
         <div class="drops-operativ-cell">
           <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="Operativ vurdering / tiltak">
