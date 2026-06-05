@@ -2876,6 +2876,16 @@ button{padding:12px 12px}
 .drops-status-btn .drops-btn-text{
   white-space:nowrap;
 }
+.drops-status-btn.complete:not(.is-done){
+  border-color:rgba(185,28,28,.70);
+  color:#450a0a;
+  background:linear-gradient(180deg,#fecaca,#f87171 52%,#dc2626);
+  box-shadow:
+    0 2px 0 rgba(127,29,29,.70),
+    0 6px 12px rgba(15,23,42,.16),
+    inset 0 1px 0 rgba(255,255,255,.66);
+}
+
 .drops-status-btn.complete.is-done,
 .drops-status-btn.ready.is-done{
   border-color:rgba(21,128,61,.80);
@@ -12102,12 +12112,12 @@ function renderDropsWerkstedOrders(){
         <div><span>Registrert</span><strong>${escapeHtml(formatDropsTimestamp(order.createdAt))}</strong></div>
       </div>
       <p class="drops-work">${escapeHtml(order.work || "")}</p>
-      ${order.workCompleteAt ? `<p class="drops-work"><strong>Arbeid fullført:</strong> ${escapeHtml(formatDropsTimestamp(order.workCompleteAt))}</p>` : ""}
+      ${order.workCompleteAt ? `<p class="drops-work"><strong>Bestilt utkjøring:</strong> ${escapeHtml(formatDropsTimestamp(order.workCompleteAt))}</p>` : ""}
       ${order.driftsklarAt ? `<p class="drops-work"><strong>Driftsklart:</strong> ${escapeHtml(formatDropsTimestamp(order.driftsklarAt))}</p>` : ""}
       <div class="drops-actions">
         <button class="drops-status-btn complete ${order.workCompleteAt ? "is-done" : ""}" type="button" data-drops-action="complete" data-drops-id="${escapeHtml(order.id)}" ${order.workCompleteAt ? "disabled" : ""}>
-          <span class="drops-btn-icon">${order.workCompleteAt ? "✓" : "UT"}</span>
-          <span class="drops-btn-text">${order.workCompleteAt ? "Arbeid fullført" : "Kan kjøres ut"}</span>
+          <span class="drops-btn-icon">${order.workCompleteAt ? "✓" : "!"}</span>
+          <span class="drops-btn-text">${order.workCompleteAt ? "Bestilt utkjøring" : "Under utbedring"}</span>
         </button>
         <button class="drops-status-btn ready ${order.driftsklarAt ? "is-done" : ""}" type="button" data-drops-action="ready" data-drops-id="${escapeHtml(order.id)}" ${order.driftsklarAt ? "disabled" : ""}>
           <span class="drops-btn-icon">${order.driftsklarAt ? "✓" : "!"}</span>
