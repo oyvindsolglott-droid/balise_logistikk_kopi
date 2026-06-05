@@ -10783,6 +10783,189 @@ function getSdeArrivalLatestSequenceMinutes(arrival){
 }
 
 
+function isSdeWorkshopSlot(slot){
+  return ["7N","7S","8N","8S"].includes(normalizeSlot(slot));
+}
+
+
+function getSdeGrunnoppstillingRepDreiValueForVehicle(vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token) return "";
+
+  const slot = getSdeCurrentSlotForVehicle(vehicle);
+  if(slot){
+    const value = String(state.grunnoppstillingRep?.[slot] || "").trim();
+    if(value) return value;
+  }
+
+  const match = Object.entries(state.grunnoppstilling || {}).find(([slot,value]) => {
+    const valueToken = normalizeVehicleToken(value);
+    return valueToken === token || splitVehicleList(value).map(v=>normalizeVehicleToken(v)).includes(token);
+  });
+
+  if(!match) return "";
+
+  return String(state.grunnoppstillingRep?.[normalizeSlot(match[0])] || "").trim();
+}
+
+
+function getSdeDropsOrderForVehicle(vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token || typeof getDropsVerkstedOrders !== "function") return null;
+
+  return getDropsVerkstedOrders().find(order =>
+    normalizeVehicleToken(order?.vehicle) === token
+  ) || null;
+}
+
+
+function getSdeArrivalAvailabilityForVehicle(vehicle, departureBinding, arrivals){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token) return null;
+
+  const departureMinutes = getSdeOperationalSequenceMinutes(
+    departureBinding?.time || departureBinding?.displayTime,
+    "departure"
+  );
+
+  return (Array.isArray(arrivals) ? arrivals : [])
+    .filter(arrival => normalizeVehicleToken(arrival?.vehicle) === token)
+    .map(arrival => ({
+      arrival,
+      sequenceMinutes:getSdeArrivalLatestSequenceMinutes(arrival)
+    }))
+    .filter(item => {
+      if(departureMinutes === null || departureMinutes === undefined) return true;
+      return item.sequenceMinutes <= departureMinutes;
+    })
+    .sort((a,b)=>b.sequenceMinutes - a.sequenceMinutes)[0]?.arrival || null;
+}
+
+
+function getSdePhysicalAvailabilityForVehicle(vehicle, departureBinding=null, context={}){
+  const cleanVehicle = sanitizeVehicleValue(vehicle);
+  const token = normalizeVehicleToken(cleanVehicle);
+
+  if(!token){
+    return {
+      status:"unknown",
+      vehicle:cleanVehicle,
+      slot:"",
+      reason:"Kjøretøy mangler eller er ugyldig."
+    };
+  }
+
+  const productionNeeds = Array.isArray(context.productionNeeds)
+    ? context.productionNeeds
+    : [];
+
+  const specialNeed = productionNeeds.find(need =>
+    normalizeVehicleToken(need?.vehicle) === token &&
+    (need?.isRep || need?.isDrei || need?.needType === "rep" || need?.needType === "drei")
+  );
+
+  if(specialNeed){
+    const statusText = specialNeed?.isDrei || specialNeed?.needType === "drei" ? "DREI" : "REP";
+    return {
+      status:"blocked-special-flow",
+      vehicle:cleanVehicle,
+      slot:"",
+      reason:`${cleanVehicle} er markert ${statusText}/verkstedflyt og skal ikke brukes som ordinært trafikkmateriell.`
+    };
+  }
+
+  const currentSlot = getSdeCurrentSlotForVehicle(cleanVehicle);
+  const repDreiValue = getSdeGrunnoppstillingRepDreiValueForVehicle(cleanVehicle);
+  const isDrei = isDreiMarker(repDreiValue);
+  const isRep = isRepMarker(repDreiValue) && !isDrei;
+  const dropsOrder = getSdeDropsOrderForVehicle(cleanVehicle);
+  const dropsReady = !!dropsOrder?.driftsklarAt;
+
+  if(currentSlot && (isRep || isDrei)){
+    return {
+      status:"blocked-special-flow",
+      vehicle:cleanVehicle,
+      slot:currentSlot,
+      reason:`${cleanVehicle} står i ${currentSlot}, men er markert ${isDrei ? "DREI" : "REP"} i Grunnoppstilling/Sporplan og skal ikke brukes som ordinært trafikkmateriell.`
+    };
+  }
+
+  if(currentSlot && isSdeWorkshopSlot(currentSlot) && !dropsReady){
+    return {
+      status:"blocked-workshop",
+      vehicle:cleanVehicle,
+      slot:currentSlot,
+      reason:`${cleanVehicle} står på verkstedspor ${currentSlot} og er ikke meldt driftsklart i DROPS.`
+    };
+  }
+
+  if(dropsOrder && !dropsReady){
+    return {
+      status:"blocked-drops",
+      vehicle:cleanVehicle,
+      slot:currentSlot,
+      reason:`${cleanVehicle} finnes i DROPS/verkstedflyt, men er ikke meldt driftsklart.`
+    };
+  }
+
+  if(currentSlot){
+    return {
+      status:"available-now",
+      vehicle:cleanVehicle,
+      slot:currentSlot,
+      reason:`${cleanVehicle} er fysisk tilgjengelig i Sporplan/Grunnoppstilling på ${currentSlot}.`
+    };
+  }
+
+  const arrival = getSdeArrivalAvailabilityForVehicle(cleanVehicle, departureBinding, context.arrivals);
+  if(arrival){
+    const arrivalPartText = arrival.part ? `/${arrival.part}` : "";
+    const arrivalText = `${arrival.train || "ukjent"}${arrivalPartText}${arrival.displayTime ? ` kl. ${arrival.displayTime}` : ""}`;
+    return {
+      status:"available-by-arrival",
+      vehicle:cleanVehicle,
+      slot:normalizeSlot(arrival.slot),
+      arrivalTrain:arrival.train || "",
+      arrivalPart:arrival.part || "",
+      arrivalTime:arrival.displayTime || arrival.time || "",
+      reason:`${cleanVehicle} står ikke i Sporplan/Grunnoppstilling nå, men blir tilgjengelig gjennom ankomst ${arrivalText} før aktuell avgang.`
+    };
+  }
+
+  return {
+    status:"not-found",
+    vehicle:cleanVehicle,
+    slot:"",
+    reason:`${cleanVehicle} er ikke funnet fysisk tilgjengelig i Sporplan/Grunnoppstilling og er ikke funnet som relevant ankomst før aktuell avgang.`
+  };
+}
+
+
+function getSdePhysicalAvailabilityDiagnostics(){
+  const bindings = buildSdeTursattVehicleBindings();
+  const arrivals = bindings.filter(binding => binding.role === "arrival");
+  const departures = bindings.filter(binding => binding.role === "departure" && binding.mustBeAccessible);
+  const productionNeeds = buildSdeProductionNeeds();
+
+  return departures.map(binding => {
+    const availability = getSdePhysicalAvailabilityForVehicle(binding.vehicle, binding, {
+      arrivals,
+      productionNeeds
+    });
+
+    return {
+      train:binding.train,
+      part:binding.part || "",
+      time:binding.displayTime || binding.time || "",
+      vehicle:sanitizeVehicleValue(binding.vehicle),
+      availabilityStatus:availability.status,
+      slot:availability.slot || "",
+      reason:availability.reason
+    };
+  });
+}
+
+
 function buildSdeArrivalParkingNeeds(){
   const bindings = buildSdeTursattVehicleBindings();
   const arrivals = bindings.filter(binding =>
