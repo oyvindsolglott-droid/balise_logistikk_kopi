@@ -12167,7 +12167,7 @@ function renderDropsMateriellstyrer(){
         : "SDE mangler inputs.";
       const routingNote = routingMode === "sde"
         ? "DROPS har valgt å akseptere SDE-anbefalt spor. Ikke anbefalt i testfase uten manuell kontroll."
-        : "Manuell behandling valgt. Sporvalg leveres til TXP for operativ vurdering.";
+        : "Manuell vurdering valgt. TXP kan gi operativ anbefaling; endelig beslutning ligger hos DROPS/materiellstyring.";
 
       return `<div class="drops-materiell-row">
         <div class="drops-materiell-main">
@@ -12191,7 +12191,7 @@ function renderDropsMateriellstyrer(){
           <div class="drops-routing-choice">
             <div class="drops-routing-label">Behandling av sporvalg</div>
             <button class="drops-routing-toggle ${routingMode}" type="button" data-drops-action="routing-toggle" data-drops-id="${escapeHtml(order.id)}" aria-pressed="${routingMode === "sde" ? "true" : "false"}" title="Bytt mellom manuell TXP-behandling og aksept av SDE-anbefaling">
-              <span class="drops-routing-manual">Manuell TXP</span>
+              <span class="drops-routing-manual">Manuell vurdering</span>
               <span class="drops-routing-sde">Aksepter SDE</span>
             </button>
             <div class="drops-routing-note">${escapeHtml(routingNote)}</div>
