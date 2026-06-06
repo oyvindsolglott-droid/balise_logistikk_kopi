@@ -10966,6 +10966,72 @@ function getSdePhysicalAvailabilityDiagnostics(){
 }
 
 
+function isSdePhysicalAvailabilityAvailable(status){
+  return ["available-now","available-by-arrival"].includes(String(status || "").trim());
+}
+
+
+function getSdeMaterialShortageSeverity(status){
+  const cleanStatus = String(status || "").trim();
+
+  if(cleanStatus === "not-found" || cleanStatus === "unknown"){
+    return "missing";
+  }
+
+  if(
+    cleanStatus === "blocked-drops" ||
+    cleanStatus === "blocked-workshop" ||
+    cleanStatus === "blocked-special-flow"
+  ){
+    return "blocked";
+  }
+
+  return "ok";
+}
+
+
+function getSdeMaterialShortageDiagnostics(){
+  const physicalRows = getSdePhysicalAvailabilityDiagnostics();
+
+  return physicalRows.map(row=>{
+    const status = String(row.availabilityStatus || "unknown").trim() || "unknown";
+    const available = isSdePhysicalAvailabilityAvailable(status);
+    const trainPartText = row.part ? `/${row.part}` : "";
+    const trainText = `${row.train || "ukjent"}${trainPartText}${row.time ? ` kl. ${row.time}` : ""}`;
+    const vehicleText = sanitizeVehicleValue(row.vehicle) || "ukjent kjøretøy";
+
+    return {
+      ...row,
+      trainText,
+      materialShortage:!available,
+      shortageSeverity:getSdeMaterialShortageSeverity(status),
+      shortageReason:available
+        ? `${vehicleText} er fysisk/operativt tilgjengelig for ${trainText}. ${row.reason || ""}`.trim()
+        : `Tursatt materiell ${vehicleText} til ${trainText} er ikke fysisk/operativt tilgjengelig. ${row.reason || ""}`.trim()
+    };
+  });
+}
+
+
+function getSdeMaterialShortageSummary(){
+  const rows = getSdeMaterialShortageDiagnostics();
+  const shortages = rows.filter(row=>row.materialShortage);
+
+  const summary = rows.reduce((acc,row)=>{
+    const key = row.availabilityStatus || "unknown";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+
+  return {
+    total:rows.length,
+    shortageCount:shortages.length,
+    summary,
+    shortages
+  };
+}
+
+
 function buildSdeArrivalParkingNeeds(){
   const bindings = buildSdeTursattVehicleBindings();
   const arrivals = bindings.filter(binding =>
