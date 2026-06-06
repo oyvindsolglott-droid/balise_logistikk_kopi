@@ -10859,34 +10859,34 @@ function getSdePhysicalAvailabilityForVehicle(vehicle, departureBinding=null, co
     ? context.productionNeeds
     : [];
 
+  const dropsOrder = getSdeDropsOrderForVehicle(cleanVehicle);
+  const dropsReady = !!dropsOrder?.driftsklarAt;
+  const currentSlot = getSdeCurrentSlotForVehicle(cleanVehicle);
+  const repDreiValue = getSdeGrunnoppstillingRepDreiValueForVehicle(cleanVehicle);
+  const isDrei = isDreiMarker(repDreiValue);
+  const isRep = isRepMarker(repDreiValue) && !isDrei;
+
   const specialNeed = productionNeeds.find(need =>
     normalizeVehicleToken(need?.vehicle) === token &&
     (need?.isRep || need?.isDrei || need?.needType === "rep" || need?.needType === "drei")
   );
 
-  if(specialNeed){
+  if(specialNeed && !dropsReady){
     const statusText = specialNeed?.isDrei || specialNeed?.needType === "drei" ? "DREI" : "REP";
     return {
       status:"blocked-special-flow",
       vehicle:cleanVehicle,
-      slot:"",
-      reason:`${cleanVehicle} er markert ${statusText}/verkstedflyt og skal ikke brukes som ordinært trafikkmateriell.`
+      slot:currentSlot,
+      reason:`${cleanVehicle} er markert ${statusText}/verkstedflyt og er ikke meldt driftsklart. Kjøretøyet skal ikke brukes som ordinært trafikkmateriell.`
     };
   }
 
-  const currentSlot = getSdeCurrentSlotForVehicle(cleanVehicle);
-  const repDreiValue = getSdeGrunnoppstillingRepDreiValueForVehicle(cleanVehicle);
-  const isDrei = isDreiMarker(repDreiValue);
-  const isRep = isRepMarker(repDreiValue) && !isDrei;
-  const dropsOrder = getSdeDropsOrderForVehicle(cleanVehicle);
-  const dropsReady = !!dropsOrder?.driftsklarAt;
-
-  if(currentSlot && (isRep || isDrei)){
+  if(currentSlot && (isRep || isDrei) && !dropsReady){
     return {
       status:"blocked-special-flow",
       vehicle:cleanVehicle,
       slot:currentSlot,
-      reason:`${cleanVehicle} står i ${currentSlot}, men er markert ${isDrei ? "DREI" : "REP"} i Grunnoppstilling/Sporplan og skal ikke brukes som ordinært trafikkmateriell.`
+      reason:`${cleanVehicle} står i ${currentSlot}, men er markert ${isDrei ? "DREI" : "REP"} og er ikke meldt driftsklart. Kjøretøyet skal ikke brukes som ordinært trafikkmateriell.`
     };
   }
 
@@ -10909,11 +10909,14 @@ function getSdePhysicalAvailabilityForVehicle(vehicle, departureBinding=null, co
   }
 
   if(currentSlot){
+    const readyText = dropsReady
+      ? " Verksted/DROPS har meldt kjøretøyet driftsklart; tidligere REP/DREI-/verkstedstatus sperrer derfor ikke ordinær reserve-/trafikkvurdering."
+      : "";
     return {
       status:"available-now",
       vehicle:cleanVehicle,
       slot:currentSlot,
-      reason:`${cleanVehicle} er fysisk tilgjengelig i Sporplan/Grunnoppstilling på ${currentSlot}.`
+      reason:`${cleanVehicle} er fysisk tilgjengelig i Sporplan/Grunnoppstilling på ${currentSlot}.${readyText}`
     };
   }
 
