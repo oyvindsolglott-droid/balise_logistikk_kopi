@@ -3136,6 +3136,66 @@ button{padding:12px 12px}
   font-weight:800;
   line-height:1.35;
 }
+.drops-decision-stack{
+  display:grid;
+  gap:7px;
+}
+.drops-decision-card{
+  border:1px solid #e2e8f0;
+  border-radius:14px;
+  padding:9px 10px;
+  background:#ffffff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.75);
+}
+.drops-decision-label{
+  display:block;
+  margin-bottom:3px;
+  color:#64748b;
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.drops-decision-value{
+  color:#0f172a;
+  font-size:12px;
+  font-weight:850;
+  line-height:1.35;
+}
+.drops-decision-value.warning{
+  color:#92400e;
+}
+.drops-decision-value.ready{
+  color:#14532d;
+}
+.drops-decision-value.blocked{
+  color:#7f1d1d;
+}
+.drops-materiell-meta{
+  display:grid;
+  gap:7px;
+}
+.drops-materiell-meta-item{
+  border:1px solid #e2e8f0;
+  border-radius:14px;
+  padding:9px 10px;
+  background:#fff;
+}
+.drops-materiell-meta-item span{
+  display:block;
+  color:#64748b;
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.drops-materiell-meta-item strong{
+  display:block;
+  margin-top:3px;
+  color:#0f172a;
+  font-size:14px;
+  font-weight:950;
+}
 @media(max-width:900px){
   .drops-grid{ grid-template-columns:1fr; }
   .drops-form-row{ grid-template-columns:1fr; }
@@ -12411,14 +12471,42 @@ function renderDropsMateriellstyrer(){
     .map(order=>{
       const status = getDropsOrderStatus(order);
       const isDriftsklar = !!order.driftsklarAt;
+      const isWorkComplete = !!order.workCompleteAt;
       const indicatorTitle = isDriftsklar ? "Driftsklar" : "Ikke driftsklar";
       const recommendedSlot = normalizeSlot(order.sdeRecommendedSlot || "");
       const routingMode = order.routingMode === "sde" ? "sde" : "manual";
-      const indicatorText = recommendedSlot
+      const manualAssessment = String(order.note || "").trim();
+      const wantedTrack = normalizeSlot(order.track || "") || order.track || "";
+      const wantedTime = order.readyTime || "";
+
+      const operationalStatus = isDriftsklar
+        ? "Driftsklart bekreftet. Behandles som Res./tilgjengelig materiell inntil DROPS eventuelt tursetter."
+        : isWorkComplete
+          ? "Bestilt utkjøring, men ikke driftsklart. Skal fortsatt behandles som verkstedbundet."
+          : "Under utbedring / ikke driftsklart. Skal ikke vurderes som trafikkklart.";
+
+      const sdeAssessment = recommendedSlot
         ? `SDE anbefaler spor ${recommendedSlot}.`
-        : "SDE mangler inputs.";
+        : "SDE mangler grunnlag eller har ingen trygg anbefaling ennå.";
+
+      const dropsDecision = routingMode === "sde"
+        ? "SDE-forslag valgt for videre behandling. DROPS/materiellstyring må fortsatt eie beslutningen."
+        : "Avventer DROPS-beslutning. Manuell vurdering er valgt som behandlingsmodus.";
+
+      const nextAction = isDriftsklar
+        ? recommendedSlot
+          ? "DROPS må beslutte om SDE-forslag skal brukes, eller om settet skal stå som Res./tursettes."
+          : "DROPS må beslutte Res.-plassering eller eventuell tursatt bruk."
+        : isWorkComplete
+          ? "Avvent driftsklar-kvittering før trafikk-/reservevurdering."
+          : "Avvent verkstedstatus. TXP kan følge opp operativt ved behov.";
+
+      const indicatorText = isDriftsklar
+        ? "Klar for Res.-/tursatt vurdering."
+        : "Sperret for trafikkvurdering til driftsklar er bekreftet.";
+
       const routingNote = routingMode === "sde"
-        ? "DROPS har valgt å akseptere SDE-anbefalt spor. Ikke anbefalt i testfase uten manuell kontroll."
+        ? "SDE-forslag er valgt som grunnlag. Dette er ikke en automatisk endelig beslutning."
         : "Manuell vurdering valgt. TXP kan gi operativ anbefaling; endelig beslutning ligger hos DROPS/materiellstyring.";
 
       return `<div class="drops-materiell-row">
@@ -12426,13 +12514,22 @@ function renderDropsMateriellstyrer(){
           <div class="drops-materiell-vehicle">${escapeHtml(order.vehicle || "")}</div>
           <span class="drops-pill ${status.cls}">${escapeHtml(status.label)}</span>
         </div>
-        <div class="drops-materiell-work">${escapeHtml(order.work || "")}</div>
-        <div class="drops-materiell-slot">
-          <strong>${escapeHtml(order.track || "")}</strong>
-          <span>Ønsket mottak ${escapeHtml(order.readyTime || "")}</span>
+        <div class="drops-materiell-work">
+          <span class="drops-decision-label">Verkstedbestilling</span>
+          <div>${escapeHtml(order.work || "")}</div>
+        </div>
+        <div class="drops-materiell-meta">
+          <div class="drops-materiell-meta-item">
+            <span>Ønsket verkstedspor</span>
+            <strong>${escapeHtml(wantedTrack || "Ikke satt")}</strong>
+          </div>
+          <div class="drops-materiell-meta-item">
+            <span>Ønsket mottak</span>
+            <strong>${escapeHtml(wantedTime || "Ikke satt")}</strong>
+          </div>
         </div>
         <div class="drops-operativ-cell">
-          <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="Operativ vurdering / tiltak">
+          <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="TXP / operativ anbefaling">
           <div class="drops-indicator ${isDriftsklar ? "ready" : ""}">
             <span class="drops-indicator-lamp" aria-hidden="true"></span>
             <span class="drops-indicator-text">
@@ -12440,11 +12537,33 @@ function renderDropsMateriellstyrer(){
               <span>${escapeHtml(indicatorText)}</span>
             </span>
           </div>
+          <div class="drops-decision-stack">
+            <div class="drops-decision-card">
+              <span class="drops-decision-label">Operativ status</span>
+              <div class="drops-decision-value ${isDriftsklar ? "ready" : "blocked"}">${escapeHtml(operationalStatus)}</div>
+            </div>
+            <div class="drops-decision-card">
+              <span class="drops-decision-label">SDE-vurdering</span>
+              <div class="drops-decision-value ${recommendedSlot ? "ready" : "warning"}">${escapeHtml(sdeAssessment)}</div>
+            </div>
+            <div class="drops-decision-card">
+              <span class="drops-decision-label">Manuell anbefaling</span>
+              <div class="drops-decision-value">${escapeHtml(manualAssessment || "Ingen manuell anbefaling registrert.")}</div>
+            </div>
+            <div class="drops-decision-card">
+              <span class="drops-decision-label">DROPS-beslutning</span>
+              <div class="drops-decision-value">${escapeHtml(dropsDecision)}</div>
+            </div>
+            <div class="drops-decision-card">
+              <span class="drops-decision-label">Neste handling</span>
+              <div class="drops-decision-value warning">${escapeHtml(nextAction)}</div>
+            </div>
+          </div>
           <div class="drops-routing-choice">
             <div class="drops-routing-label">Behandling av sporvalg</div>
-            <button class="drops-routing-toggle ${routingMode}" type="button" data-drops-action="routing-toggle" data-drops-id="${escapeHtml(order.id)}" aria-pressed="${routingMode === "sde" ? "true" : "false"}" title="Bytt mellom manuell TXP-behandling og aksept av SDE-anbefaling">
+            <button class="drops-routing-toggle ${routingMode}" type="button" data-drops-action="routing-toggle" data-drops-id="${escapeHtml(order.id)}" aria-pressed="${routingMode === "sde" ? "true" : "false"}" title="Bytt mellom manuell vurdering og SDE-forslag som beslutningsgrunnlag">
               <span class="drops-routing-manual">Manuell vurdering</span>
-              <span class="drops-routing-sde">Aksepter SDE</span>
+              <span class="drops-routing-sde">SDE-forslag</span>
             </button>
             <div class="drops-routing-note">${escapeHtml(routingNote)}</div>
           </div>
