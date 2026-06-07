@@ -13195,6 +13195,21 @@ function renderDropsMateriellstyrer(){
     }).join("");
 }
 
+let sdeRebuildTimer = 0;
+
+function scheduleSdeRebuild(reason){
+  if(sdeRebuildTimer){
+    clearTimeout(sdeRebuildTimer);
+  }
+
+  sdeRebuildTimer = setTimeout(()=>{
+    sdeRebuildTimer = 0;
+    if(typeof buildSdeVaktplan === "function"){
+      buildSdeVaktplan();
+    }
+  }, 120);
+}
+
 function renderDropsPanels(){
   renderDropsWerkstedOrders();
   renderDropsMateriellstyrer();
@@ -13243,6 +13258,7 @@ function initDropsPanels(){
       saveDropsVerkstedOrders(orders);
       form.reset();
       renderDropsPanels();
+      scheduleSdeRebuild("drops-order-created");
     });
   }
 
@@ -13297,6 +13313,7 @@ function initDropsPanels(){
 
     saveDropsVerkstedOrders(orders);
     renderDropsPanels();
+    scheduleSdeRebuild(`drops-${action}`);
   });
 
   document.addEventListener("change", event=>{
@@ -13311,6 +13328,7 @@ function initDropsPanels(){
     order.note = input.value;
     saveDropsVerkstedOrders(orders);
     renderDropsPanels();
+    scheduleSdeRebuild("drops-note-change");
   });
 
   renderDropsPanels();
