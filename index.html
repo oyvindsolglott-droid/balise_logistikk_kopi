@@ -12635,6 +12635,16 @@ function getDropsSkienStationVehicleStatus(item){
   const departureLabel = getSporplanDepartureLabelsForVehicle(vehicle);
   const onWorkshopSlot = isSdeWorkshopSlot(slot);
 
+  if(dropsWorkComplete){
+    return {
+      cls:"action",
+      status:"Bestilt utkjøring",
+      detail:dropsReady
+        ? "KREVER HANDLING: kjøretøyet er driftsklart, men verkstedspor må frigjøres raskt."
+        : "Krever handling: frigjør verkstedspor raskt. Kjøretøyet er fortsatt ikke driftsklart."
+    };
+  }
+
   if(dropsReady){
     return {
       cls:"ready",
@@ -12747,10 +12757,12 @@ function renderDropsMateriellstyrer(){
       const wantedTrack = normalizeSlot(order.track || "") || order.track || "";
       const wantedTime = order.readyTime || "";
 
-      const requiresWorkshopRelease = isWorkComplete && !isDriftsklar;
+      const requiresWorkshopRelease = isWorkComplete;
 
       const operationalStatus = isDriftsklar
-        ? "Driftsklart bekreftet. Behandles som Res./tilgjengelig materiell inntil DROPS eventuelt tursetter."
+        ? requiresWorkshopRelease
+          ? "Bestilt utkjøring – KREVER HANDLING. Kjøretøyet er driftsklart, men verkstedspor må fortsatt frigjøres raskt slik at nytt kjøretøy kan settes inn til reparasjon."
+          : "Driftsklart bekreftet. Behandles som Res./tilgjengelig materiell inntil DROPS eventuelt tursetter."
         : requiresWorkshopRelease
           ? "Bestilt utkjøring – KREVER HANDLING. Kjøretøyet er fortsatt ikke driftsklart, men verkstedspor må frigjøres raskt slik at nytt kjøretøy kan settes inn til reparasjon."
           : "Under utbedring / ikke driftsklart. Skal ikke vurderes som trafikkklart.";
@@ -12763,24 +12775,28 @@ function renderDropsMateriellstyrer(){
         ? "SDE-forslag valgt for videre behandling. DROPS/materiellstyring må fortsatt eie beslutningen."
         : "Avventer DROPS-beslutning. Manuell vurdering er valgt som behandlingsmodus.";
 
-      const nextAction = isDriftsklar
-        ? recommendedSlot
-          ? "DROPS må beslutte om SDE-forslag skal brukes, eller om settet skal stå som Res./tursettes."
-          : "DROPS må beslutte Res.-plassering eller eventuell tursatt bruk."
-        : requiresWorkshopRelease
-          ? "KREVER HANDLING: koordiner uttak og frigjør verkstedspor. Avvent fortsatt driftsklar-kvittering før trafikk-/reservevurdering."
+      const nextAction = requiresWorkshopRelease
+        ? isDriftsklar
+          ? "KREVER HANDLING: koordiner uttak og frigjør verkstedspor. Kjøretøyet er driftsklart og kan deretter håndteres som Res./tursatt etter DROPS-beslutning."
+          : "KREVER HANDLING: koordiner uttak og frigjør verkstedspor. Avvent fortsatt driftsklar-kvittering før trafikk-/reservevurdering."
+        : isDriftsklar
+          ? recommendedSlot
+            ? "DROPS må beslutte om SDE-forslag skal brukes, eller om settet skal stå som Res./tursettes."
+            : "DROPS må beslutte Res.-plassering eller eventuell tursatt bruk."
           : "Avvent verkstedstatus. TXP kan følge opp operativt ved behov.";
 
-      const indicatorText = isDriftsklar
-        ? "Klar for Res.-/tursatt vurdering."
-        : requiresWorkshopRelease
-          ? "KREVER HANDLING: frigjør verkstedspor. Fortsatt ikke driftsklar."
+      const indicatorText = requiresWorkshopRelease
+        ? isDriftsklar
+          ? "KREVER HANDLING: frigjør verkstedspor. Driftsklart bekreftet."
+          : "KREVER HANDLING: frigjør verkstedspor. Fortsatt ikke driftsklar."
+        : isDriftsklar
+          ? "Klar for Res.-/tursatt vurdering."
           : "Sperret for trafikkvurdering til driftsklar er bekreftet.";
 
-      const indicatorTitle = isDriftsklar
-        ? "Driftsklar"
-        : requiresWorkshopRelease
-          ? "Bestilt utkjøring"
+      const indicatorTitle = requiresWorkshopRelease
+        ? "Bestilt utkjøring"
+        : isDriftsklar
+          ? "Driftsklar"
           : "Ikke driftsklar";
 
       const routingNote = routingMode === "sde"
@@ -12808,7 +12824,7 @@ function renderDropsMateriellstyrer(){
         </div>
         <div class="drops-operativ-cell">
           <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="TXP / operativ anbefaling">
-          <div class="drops-indicator ${isDriftsklar ? "ready" : requiresWorkshopRelease ? "action" : ""}">
+          <div class="drops-indicator ${requiresWorkshopRelease ? "action" : isDriftsklar ? "ready" : ""}">
             <span class="drops-indicator-lamp" aria-hidden="true"></span>
             <span class="drops-indicator-text">
               <strong>${escapeHtml(indicatorTitle)}</strong>
@@ -12818,7 +12834,7 @@ function renderDropsMateriellstyrer(){
           <div class="drops-decision-stack">
             <div class="drops-decision-card ${requiresWorkshopRelease ? "action" : ""}">
               <span class="drops-decision-label">${requiresWorkshopRelease ? "Krever handling" : "Operativ status"}</span>
-              <div class="drops-decision-value ${isDriftsklar ? "ready" : requiresWorkshopRelease ? "warning" : "blocked"}">${escapeHtml(operationalStatus)}</div>
+              <div class="drops-decision-value ${requiresWorkshopRelease ? "warning" : isDriftsklar ? "ready" : "blocked"}">${escapeHtml(operationalStatus)}</div>
             </div>
             <div class="drops-decision-card">
               <span class="drops-decision-label">SDE-vurdering</span>
