@@ -2951,6 +2951,13 @@ button{padding:12px 12px}
   font-size:12px;
   letter-spacing:.07em;
 }
+.drops-board-card.attention strong{
+  color:#ca8a04;
+}
+.drops-board-card.attention{
+  border-color:#fde68a;
+  background:linear-gradient(180deg,#fffdf4,#ffffff);
+}
 .drops-materiell-row{
   display:grid;
   grid-template-columns:140px minmax(220px,1fr) 140px 180px;
@@ -3054,6 +3061,13 @@ button{padding:12px 12px}
   box-shadow:
     0 0 0 3px rgba(249,115,22,.18),
     0 0 16px rgba(249,115,22,.58),
+    inset 0 1px 1px rgba(255,255,255,.50);
+}
+.drops-indicator.action.ready-context .drops-indicator-lamp{
+  background:#16a34a;
+  box-shadow:
+    0 0 0 3px rgba(22,163,74,.16),
+    0 0 16px rgba(22,163,74,.52),
     inset 0 1px 1px rgba(255,255,255,.50);
 }
 .drops-indicator-text{
@@ -3299,6 +3313,12 @@ button{padding:12px 12px}
   box-shadow:
     0 0 0 3px rgba(249,115,22,.18),
     0 0 14px rgba(249,115,22,.50);
+}
+.drops-station-row.action.ready-context .drops-station-dot{
+  background:#16a34a;
+  box-shadow:
+    0 0 0 3px rgba(22,163,74,.16),
+    0 0 14px rgba(22,163,74,.48);
 }
 .drops-station-row.blocked .drops-station-dot{
   background:#dc2626;
@@ -12637,7 +12657,7 @@ function getDropsSkienStationVehicleStatus(item){
 
   if(dropsWorkComplete){
     return {
-      cls:"action",
+      cls:dropsReady ? "action ready-context" : "action",
       status:"Bestilt utkjøring",
       detail:dropsReady
         ? "KREVER HANDLING: kjøretøyet er driftsklart, men verkstedspor må frigjøres raskt."
@@ -12732,7 +12752,7 @@ function renderDropsMateriellstyrer(){
   const ready = orders.filter(order=>order.driftsklarAt).length;
 
   kpi.innerHTML = `
-    <div class="drops-board-card"><strong>${orders.length}</strong><span>totale bestillinger</span></div>
+    <div class="drops-board-card ${orders.length > 0 ? "attention" : ""}"><strong>${orders.length}</strong><span>totale bestillinger</span></div>
     <div class="drops-board-card"><strong>${waiting}</strong><span>venter / inne</span></div>
     <div class="drops-board-card"><strong>${complete}</strong><span>kan kjøres ut</span></div>
     <div class="drops-board-card"><strong>${ready}</strong><span>driftsklart</span></div>
@@ -12824,7 +12844,7 @@ function renderDropsMateriellstyrer(){
         </div>
         <div class="drops-operativ-cell">
           <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="TXP / operativ anbefaling">
-          <div class="drops-indicator ${requiresWorkshopRelease ? "action" : isDriftsklar ? "ready" : ""}">
+          <div class="drops-indicator ${requiresWorkshopRelease ? isDriftsklar ? "action ready-context" : "action" : isDriftsklar ? "ready" : ""}">
             <span class="drops-indicator-lamp" aria-hidden="true"></span>
             <span class="drops-indicator-text">
               <strong>${escapeHtml(indicatorTitle)}</strong>
