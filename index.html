@@ -2958,6 +2958,194 @@ button{padding:12px 12px}
   border-color:#fde68a;
   background:linear-gradient(180deg,#fffdf4,#ffffff);
 }
+.drops-log-control{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  border:1px solid rgba(15,23,42,.10);
+  border-radius:24px;
+  padding:14px;
+  background:
+    radial-gradient(circle at top left, rgba(59,130,246,.16), transparent 34%),
+    linear-gradient(180deg,#ffffff,#f8fbff);
+  box-shadow:0 14px 34px rgba(15,23,42,.10);
+}
+.drops-log-control-text{
+  display:grid;
+  gap:3px;
+  min-width:0;
+}
+.drops-log-control-text strong{
+  font-size:18px;
+  letter-spacing:-.03em;
+}
+.drops-log-control-text span{
+  color:#64748b;
+  font-weight:800;
+  font-size:12px;
+  line-height:1.35;
+}
+.drops-log-toggle-btn{
+  appearance:none;
+  border:1px solid rgba(30,64,175,.72);
+  border-radius:999px;
+  padding:10px 16px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  color:#eff6ff;
+  font-weight:950;
+  letter-spacing:.02em;
+  white-space:nowrap;
+  cursor:pointer;
+  background:
+    linear-gradient(180deg, rgba(147,197,253,.95), rgba(37,99,235,.98) 52%, rgba(30,64,175,1));
+  box-shadow:
+    0 3px 0 rgba(30,64,175,.88),
+    0 14px 26px rgba(37,99,235,.30),
+    inset 0 1px 0 rgba(255,255,255,.72),
+    inset 0 -1px 0 rgba(15,23,42,.18);
+  transition:transform .14s ease, filter .14s ease, box-shadow .14s ease;
+}
+.drops-log-toggle-btn:hover{
+  filter:brightness(1.05);
+  transform:translateY(-1px);
+  box-shadow:
+    0 4px 0 rgba(30,64,175,.88),
+    0 18px 30px rgba(37,99,235,.34),
+    inset 0 1px 0 rgba(255,255,255,.74),
+    inset 0 -1px 0 rgba(15,23,42,.18);
+}
+.drops-log-toggle-btn:active{
+  transform:translateY(2px);
+  box-shadow:
+    0 1px 0 rgba(30,64,175,.88),
+    0 8px 16px rgba(37,99,235,.24),
+    inset 0 1px 3px rgba(15,23,42,.24);
+}
+.drops-log-toggle-btn .drops-log-icon{
+  display:inline-grid;
+  place-items:center;
+  width:24px;
+  height:24px;
+  border-radius:999px;
+  background:rgba(255,255,255,.24);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.32);
+}
+.drops-log-panel{
+  border:1px solid rgba(30,64,175,.18);
+  border-radius:26px;
+  padding:16px;
+  background:
+    radial-gradient(circle at top right, rgba(59,130,246,.12), transparent 34%),
+    linear-gradient(180deg,#ffffff,#f8fbff);
+  box-shadow:0 18px 42px rgba(15,23,42,.12);
+}
+.drops-log-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:14px;
+}
+.drops-log-title{
+  display:grid;
+  gap:4px;
+}
+.drops-log-title strong{
+  font-size:20px;
+  letter-spacing:-.03em;
+}
+.drops-log-title span{
+  color:#64748b;
+  font-weight:800;
+  font-size:12px;
+  line-height:1.35;
+}
+.drops-log-count{
+  border-radius:999px;
+  padding:6px 10px;
+  background:#dbeafe;
+  color:#1e3a8a;
+  font-size:12px;
+  font-weight:950;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  white-space:nowrap;
+}
+.drops-log-list{
+  display:grid;
+  gap:10px;
+}
+.drops-log-event{
+  position:relative;
+  display:grid;
+  gap:7px;
+  border:1px solid #e2e8f0;
+  border-radius:18px;
+  padding:13px 13px 13px 42px;
+  background:#fff;
+  box-shadow:0 8px 18px rgba(15,23,42,.07);
+}
+.drops-log-event::before{
+  content:"";
+  position:absolute;
+  left:15px;
+  top:17px;
+  width:14px;
+  height:14px;
+  border-radius:999px;
+  background:#3b82f6;
+  box-shadow:
+    0 0 0 4px rgba(59,130,246,.12),
+    0 0 14px rgba(59,130,246,.36),
+    inset 0 1px 1px rgba(255,255,255,.60);
+}
+.drops-log-event.created::before{ background:#0ea5e9; }
+.drops-log-event.work_complete::before{ background:#f97316; box-shadow:0 0 0 4px rgba(249,115,22,.13), 0 0 14px rgba(249,115,22,.42), inset 0 1px 1px rgba(255,255,255,.60); }
+.drops-log-event.ready::before{ background:#16a34a; box-shadow:0 0 0 4px rgba(22,163,74,.13), 0 0 14px rgba(22,163,74,.42), inset 0 1px 1px rgba(255,255,255,.60); }
+.drops-log-event.deleted::before{ background:#dc2626; box-shadow:0 0 0 4px rgba(220,38,38,.12), 0 0 14px rgba(220,38,38,.38), inset 0 1px 1px rgba(255,255,255,.60); }
+.drops-log-event-top{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  align-items:flex-start;
+}
+.drops-log-event-type{
+  font-weight:950;
+  color:#0f172a;
+}
+.drops-log-time{
+  color:#64748b;
+  font-size:12px;
+  font-weight:850;
+  white-space:nowrap;
+}
+.drops-log-vehicle{
+  font-size:18px;
+  font-weight:950;
+  letter-spacing:-.03em;
+}
+.drops-log-detail{
+  color:#334155;
+  font-weight:750;
+  line-height:1.35;
+}
+.drops-log-meta{
+  color:#64748b;
+  font-size:12px;
+  font-weight:850;
+}
+.drops-log-empty{
+  border:1px dashed #bfdbfe;
+  border-radius:18px;
+  padding:16px;
+  background:#eff6ff;
+  color:#1e3a8a;
+  font-weight:850;
+}
 .drops-materiell-row{
   display:grid;
   grid-template-columns:120px minmax(220px,1fr) 120px minmax(240px,.9fr);
@@ -12537,6 +12725,7 @@ document.getElementById("guideTopBtn").addEventListener("click",()=>activateTab(
 
 const DROPS_VERKSTED_KEY = "drops_verksted_bestillinger_v1";
 const DROPS_VERKSTED_LOGG_KEY = "drops_verksted_logg_v1";
+let dropsVerkstedLogVisible = false;
 
 function getDropsVerkstedOrders(){
   try{
@@ -12589,6 +12778,83 @@ function appendDropsVerkstedLogEvent(order, eventType, eventLabel, timestamp){
   const logEntries = getDropsVerkstedLog();
   logEntries.push(buildDropsVerkstedLogEvent(order, eventType, eventLabel, timestamp));
   saveDropsVerkstedLog(logEntries);
+}
+
+function getDropsLogEventClass(eventType){
+  const cleanType = String(eventType || "").trim();
+  if(["created","work_complete","ready","deleted"].includes(cleanType)) return cleanType;
+  return "unknown";
+}
+
+function getDropsLogEventLabel(entry){
+  const label = String(entry?.eventLabel || "").trim();
+  if(label) return label;
+
+  const type = String(entry?.eventType || "").trim();
+  if(type === "created") return "Bestilling opprettet";
+  if(type === "work_complete") return "Bestilt utkjøring";
+  if(type === "ready") return "Driftsklart bekreftet";
+  if(type === "deleted") return "Bestilling slettet";
+  return "Logghendelse";
+}
+
+function buildDropsVerkstedLogToggleHtml(logCount){
+  const countText = Number(logCount || 0) === 1 ? "1 hendelse" : `${Number(logCount || 0)} hendelser`;
+  const actionText = dropsVerkstedLogVisible ? "Skjul logg" : "Vis logg";
+
+  return `<section class="drops-log-control" aria-label="DROPS verkstedlogg">
+    <div class="drops-log-control-text">
+      <strong>Verkstedlogg</strong>
+      <span>Sporer bestilling, bestilt utkjøring, driftsklart og sletting. ${escapeHtml(countText)} lagret.</span>
+    </div>
+    <button class="drops-log-toggle-btn" type="button" data-drops-action="log-toggle" aria-expanded="${dropsVerkstedLogVisible ? "true" : "false"}">
+      <span class="drops-log-icon" aria-hidden="true">☰</span>
+      <span>${escapeHtml(actionText)}</span>
+    </button>
+  </section>`;
+}
+
+function buildDropsVerkstedLogPanelHtml(logEntries){
+  if(!dropsVerkstedLogVisible) return "";
+
+  const entries = Array.isArray(logEntries) ? [...logEntries] : [];
+  entries.sort((a,b)=>String(b?.timestamp || "").localeCompare(String(a?.timestamp || "")));
+  const visibleEntries = entries.slice(0, 30);
+
+  const rowsHtml = visibleEntries.length
+    ? visibleEntries.map(entry=>{
+        const eventClass = getDropsLogEventClass(entry?.eventType);
+        const eventLabel = getDropsLogEventLabel(entry);
+        const vehicle = entry?.vehicle || "Ukjent kjøretøy";
+        const track = entry?.track || "Ikke satt";
+        const work = entry?.work || "Ingen arbeidstekst registrert";
+        const readyTime = entry?.readyTime || "";
+        const wagonText = entry?.wagonInput || entry?.wagonKey || "";
+
+        return `<article class="drops-log-event ${escapeHtml(eventClass)}">
+          <div class="drops-log-event-top">
+            <div class="drops-log-event-type">${escapeHtml(eventLabel)}</div>
+            <div class="drops-log-time">${escapeHtml(formatDropsTimestamp(entry?.timestamp))}</div>
+          </div>
+          <div class="drops-log-vehicle">${escapeHtml(vehicle)}</div>
+          <div class="drops-log-detail">${escapeHtml(work)}</div>
+          <div class="drops-log-meta">Spor ${escapeHtml(track)}${readyTime ? ` · Ønsket mottak ${escapeHtml(readyTime)}` : ""}${wagonText ? ` · Vogn ${escapeHtml(wagonText)}` : ""}</div>
+        </article>`;
+      }).join("")
+    : '<div class="drops-log-empty">Ingen verkstedhendelser logget ennå. Nye bestillinger og kvitteringer vil vises her automatisk.</div>';
+
+  return `<section class="drops-log-panel" aria-label="DROPS verkstedlogg hendelser">
+    <div class="drops-log-header">
+      <div class="drops-log-title">
+        <strong>DROPS Verkstedlogg</strong>
+        <span>Nyeste hendelser vises først. Dette er historikkgrunnlaget for senere tidsbruk og arbeidstypeanalyse.</span>
+      </div>
+      <div class="drops-log-count">${visibleEntries.length}/${entries.length} vist</div>
+    </div>
+    <div class="drops-log-list">
+      ${rowsHtml}
+    </div>
+  </section>`;
 }
 
 function getDropsOrderStatus(order){
@@ -12788,6 +13054,8 @@ function renderDropsMateriellstyrer(){
   if(!kpi || !list) return;
 
   const orders = getDropsVerkstedOrders();
+  const logEntries = getDropsVerkstedLog();
+  const logHtml = buildDropsVerkstedLogToggleHtml(logEntries.length) + buildDropsVerkstedLogPanelHtml(logEntries);
   const waiting = orders.filter(order=>!order.workCompleteAt && !order.driftsklarAt).length;
   const complete = orders.filter(order=>order.workCompleteAt && !order.driftsklarAt).length;
   const ready = orders.filter(order=>order.driftsklarAt).length;
@@ -12802,11 +13070,11 @@ function renderDropsMateriellstyrer(){
   const stationOverviewHtml = buildDropsSkienStationOverviewHtml();
 
   if(!orders.length){
-    list.innerHTML = stationOverviewHtml + '<div class="drops-empty">Ingen verkstedbestillinger å vise. Nye verkstedbestillinger vil vises her automatisk.</div>';
+    list.innerHTML = logHtml + stationOverviewHtml + '<div class="drops-empty">Ingen verkstedbestillinger å vise. Nye verkstedbestillinger vil vises her automatisk.</div>';
     return;
   }
 
-  list.innerHTML = stationOverviewHtml + orders
+  list.innerHTML = logHtml + stationOverviewHtml + orders
     .sort((a,b)=>String(a.readyTime || "").localeCompare(String(b.readyTime || "")))
     .map(order=>{
       const status = getDropsOrderStatus(order);
@@ -12995,7 +13263,13 @@ function initDropsPanels(){
     if(!button) return;
 
     const action = button.dataset.dropsAction;
-    if(!["complete","ready","delete","routing-toggle"].includes(action)) return;
+    if(!["complete","ready","delete","routing-toggle","log-toggle"].includes(action)) return;
+
+    if(action === "log-toggle"){
+      dropsVerkstedLogVisible = !dropsVerkstedLogVisible;
+      renderDropsPanels();
+      return;
+    }
 
     const id = button.dataset.dropsId;
     const orders = getDropsVerkstedOrders();
