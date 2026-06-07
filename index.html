@@ -12536,6 +12536,7 @@ document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>
 document.getElementById("guideTopBtn").addEventListener("click",()=>activateTab("hjelp"));
 
 const DROPS_VERKSTED_KEY = "drops_verksted_bestillinger_v1";
+const DROPS_VERKSTED_LOGG_KEY = "drops_verksted_logg_v1";
 
 function getDropsVerkstedOrders(){
   try{
@@ -12548,6 +12549,46 @@ function getDropsVerkstedOrders(){
 
 function saveDropsVerkstedOrders(orders){
   localStorage.setItem(DROPS_VERKSTED_KEY, JSON.stringify(Array.isArray(orders) ? orders : []));
+}
+
+function getDropsVerkstedLog(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(DROPS_VERKSTED_LOGG_KEY) || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  }catch(e){
+    return [];
+  }
+}
+
+function saveDropsVerkstedLog(logEntries){
+  localStorage.setItem(DROPS_VERKSTED_LOGG_KEY, JSON.stringify(Array.isArray(logEntries) ? logEntries : []));
+}
+
+function buildDropsVerkstedLogEvent(order, eventType, eventLabel, timestamp){
+  const eventTime = timestamp || new Date().toISOString();
+
+  return {
+    id:`drops-log-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    orderId:order?.id || "",
+    vehicle:order?.vehicle || "",
+    eventType:eventType || "",
+    eventLabel:eventLabel || "",
+    timestamp:eventTime,
+    readyTime:order?.readyTime || "",
+    track:order?.track || "",
+    work:order?.work || "",
+    workType:order?.workType || "",
+    wagonKey:order?.wagonKey || "",
+    wagonInput:order?.wagonInput || ""
+  };
+}
+
+function appendDropsVerkstedLogEvent(order, eventType, eventLabel, timestamp){
+  if(!order) return;
+
+  const logEntries = getDropsVerkstedLog();
+  logEntries.push(buildDropsVerkstedLogEvent(order, eventType, eventLabel, timestamp));
+  saveDropsVerkstedLog(logEntries);
 }
 
 function getDropsOrderStatus(order){
@@ -12930,6 +12971,7 @@ function initDropsPanels(){
 
       const orders = getDropsVerkstedOrders();
       orders.push(order);
+      appendDropsVerkstedLogEvent(order, "created", "Bestilling opprettet", order.createdAt);
       saveDropsVerkstedOrders(orders);
       form.reset();
       renderDropsPanels();
@@ -12961,12 +13003,21 @@ function initDropsPanels(){
     if(index < 0) return;
 
     if(action === "complete"){
-      orders[index].workCompleteAt = orders[index].workCompleteAt || new Date().toISOString();
+      if(!orders[index].workCompleteAt){
+        const timestamp = new Date().toISOString();
+        orders[index].workCompleteAt = timestamp;
+        appendDropsVerkstedLogEvent(orders[index], "work_complete", "Bestilt utkjøring", timestamp);
+      }
     }else if(action === "ready"){
-      orders[index].driftsklarAt = orders[index].driftsklarAt || new Date().toISOString();
+      if(!orders[index].driftsklarAt){
+        const timestamp = new Date().toISOString();
+        orders[index].driftsklarAt = timestamp;
+        appendDropsVerkstedLogEvent(orders[index], "ready", "Driftsklart bekreftet", timestamp);
+      }
     }else if(action === "routing-toggle"){
       orders[index].routingMode = orders[index].routingMode === "sde" ? "manual" : "sde";
     }else if(action === "delete"){
+      appendDropsVerkstedLogEvent(orders[index], "deleted", "Bestilling slettet", new Date().toISOString());
       orders.splice(index, 1);
     }
 
