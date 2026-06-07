@@ -9142,7 +9142,7 @@ function isBeforeSpor3ParkingWindow(row){
   const minutes = getSdeTimeMinutes(row?.arrival);
   if(minutes === null) return false;
 
-  const limit = (21 * 60) + 15;
+  const limit = 21 * 60;
   return minutes >= (15 * 60) && minutes < limit;
 }
 
@@ -9220,9 +9220,39 @@ function getSdeIntermediateStorageSlot(row){
 function getSdeSpor3IntermediateTarget(row, finalTarget){
   const storageSlot = getSdeIntermediateStorageSlot(row);
   if(storageSlot){
-    return `Mellomlagre i ${storageSlot} før ${finalTarget} via vaskesporet etter 21:15`;
+    return `Mellomlagre i ${storageSlot} før ${finalTarget} når spor 3 er ledig for oppstilling etter 2489`;
   }
-  return `Mellomlagre før ${finalTarget} via vaskesporet etter 21:15`;
+  return `Mellomlagre før ${finalTarget} når spor 3 er ledig for oppstilling etter 2489`;
+}
+
+function isSdeSpor3SetupTrain(row){
+  const toTrain = normalizeTognr(row?.toTrain);
+  return toTrain === "802" || toTrain === "852";
+}
+
+function getSdeSpor3SetupTarget(row){
+  const toTrain = normalizeTognr(row?.toTrain);
+  const part = String(row?.part || "").trim();
+
+  if(toTrain === "802" && part === "1"){
+    return "Spor 3S / 3M ved 840 i 3S";
+  }
+
+  if(toTrain === "802" && part === "2"){
+    return "Spor 3M/3N bak 802 del 1";
+  }
+
+  if(toTrain === "852"){
+    return "Spor 3N bak 802 når det er plass";
+  }
+
+  return "";
+}
+
+function getSdeSpor3SetupSequenceReason(row){
+  if(!isSdeSpor3SetupTrain(row)) return "";
+
+  return "Spor 3-sekvens: vurder oppstilling etter kl. 21 når spor 3 er ledig for oppstilling. Spor 3 regnes først som ledig for oppstilling etter at 2489 fra Notodden har ankommet Skien og blitt skiftet bort. Hvis 840 faktisk skal gå fra spor 3, kan 802 enkeltsett settes i 3M med 840 i 3S og 852 i 3N. Hvis 802 er dobbeltsett, må 802 settes opp i riktig rekkefølge før 852 settes bak når det er plass. Hvis 840 går fra spor 2 etter deling av 833, skal 840 ikke brukes som spor 3-blokkering.";
 }
 
 function getSdeIntermediateStorageSlotFromText(value){
@@ -9238,13 +9268,16 @@ function getSdeProductionTarget(row){
   const beforeSpor3Window = isBeforeSpor3ParkingWindow(row);
 
   if(toTrain === "802" && part === "1"){
-    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, "spor 3S") : "Spor 3S";
+    const target = getSdeSpor3SetupTarget(row) || "Spor 3S";
+    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, target) : target;
   }
   if(toTrain === "802" && part === "2"){
-    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, "spor 3 bakre") : "Spor 3 bakre";
+    const target = getSdeSpor3SetupTarget(row) || "Spor 3 bakre";
+    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, target) : target;
   }
   if(toTrain === "852"){
-    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, "bak 802 / spor 3") : "Bak 802 / vurder spor 3";
+    const target = getSdeSpor3SetupTarget(row) || "Bak 802 / vurder spor 3";
+    return beforeSpor3Window ? getSdeSpor3IntermediateTarget(row, target) : target;
   }
 
   if(toTrain === "804" && part === "1") return "Morgenproduksjon 804 del 1";
@@ -9757,6 +9790,8 @@ function getSdeRecommendedAction(row){
   if(status === "Planlagt" && reason.includes("Plan kontrollert mot Sporplan.") && reason.includes("ser ledig ut.")){
     return "Utfør planlagt skifte";
   }
+
+  if(isSdeSpor3SetupTrain(row)) return "Følg spor 3-sekvens";
 
   if(status === "Planlagt") return "Vurder planlagt skifte";
   if(status === "Må håndteres") return "Vurder plassering";
@@ -12159,6 +12194,11 @@ function buildSdeVaktplan(){
         result.reason = [result.reason, doubleSetButtTrackWarning].filter(Boolean).join(" ");
       }
 
+      const spor3SetupReason = getSdeSpor3SetupSequenceReason(result);
+      if(spor3SetupReason){
+        result.reason = [result.reason, spor3SetupReason].filter(Boolean).join(" ");
+      }
+
       result.priority = getSdePriority(result);
       result.recommendedAction = getSdeRecommendedAction(result);
       return result;
@@ -12210,6 +12250,11 @@ function buildSdeVaktplan(){
     const doubleSetButtTrackWarning = getSdeDoubleSetButtTrackOrderWarningForRow(row);
     if(doubleSetButtTrackWarning){
       row.reason = [row.reason, doubleSetButtTrackWarning].filter(Boolean).join(" ");
+    }
+
+    const spor3SetupReason = getSdeSpor3SetupSequenceReason(row);
+    if(spor3SetupReason){
+      row.reason = [row.reason, spor3SetupReason].filter(Boolean).join(" ");
     }
 
     row.priority = getSdePriority(row);
