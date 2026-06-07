@@ -3196,6 +3196,121 @@ button{padding:12px 12px}
   font-size:14px;
   font-weight:950;
 }
+.drops-station-overview{
+  margin-bottom:16px;
+  border:1px solid #dbeafe;
+  border-radius:20px;
+  padding:14px;
+  background:linear-gradient(180deg,#eff6ff,#ffffff);
+  box-shadow:0 10px 24px rgba(15,23,42,.07);
+}
+.drops-station-header{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  margin-bottom:12px;
+}
+.drops-station-title{
+  display:grid;
+  gap:3px;
+}
+.drops-station-title strong{
+  color:#0f172a;
+  font-size:18px;
+  font-weight:950;
+  letter-spacing:-.03em;
+}
+.drops-station-title span{
+  color:#475569;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.35;
+}
+.drops-station-badge{
+  flex:0 0 auto;
+  border-radius:999px;
+  padding:7px 10px;
+  background:#dbeafe;
+  color:#1e3a8a;
+  font-size:11px;
+  font-weight:950;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.drops-station-list{
+  display:grid;
+  gap:7px;
+}
+.drops-station-row{
+  display:grid;
+  grid-template-columns:22px 90px 76px minmax(150px,1fr) minmax(150px,1.3fr);
+  gap:10px;
+  align-items:center;
+  border:1px solid #e2e8f0;
+  border-radius:14px;
+  padding:9px 10px;
+  background:#fff;
+}
+.drops-station-dot{
+  width:13px;
+  height:13px;
+  border-radius:999px;
+  background:#16a34a;
+  box-shadow:
+    0 0 0 3px rgba(22,163,74,.14),
+    0 0 12px rgba(22,163,74,.36);
+}
+.drops-station-row.warning .drops-station-dot{
+  background:#f59e0b;
+  box-shadow:
+    0 0 0 3px rgba(245,158,11,.16),
+    0 0 12px rgba(245,158,11,.38);
+}
+.drops-station-row.blocked .drops-station-dot{
+  background:#dc2626;
+  box-shadow:
+    0 0 0 3px rgba(220,38,38,.14),
+    0 0 12px rgba(220,38,38,.40);
+}
+.drops-station-vehicle{
+  color:#0f172a;
+  font-size:14px;
+  font-weight:950;
+}
+.drops-station-slot{
+  color:#334155;
+  font-size:13px;
+  font-weight:900;
+}
+.drops-station-status{
+  color:#0f172a;
+  font-size:12px;
+  font-weight:900;
+  line-height:1.35;
+}
+.drops-station-detail{
+  color:#64748b;
+  font-size:12px;
+  font-weight:750;
+  line-height:1.35;
+}
+.drops-station-empty{
+  border:1px dashed #bfdbfe;
+  border-radius:14px;
+  padding:12px;
+  background:#f8fbff;
+  color:#475569;
+  font-size:13px;
+  font-weight:800;
+}
+@media(max-width:900px){
+  .drops-station-header{ display:grid; }
+  .drops-station-row{ grid-template-columns:18px 1fr; }
+  .drops-station-slot,
+  .drops-station-status,
+  .drops-station-detail{ grid-column:2; }
+}
 @media(max-width:900px){
   .drops-grid{ grid-template-columns:1fr; }
   .drops-form-row{ grid-template-columns:1fr; }
@@ -12444,6 +12559,125 @@ function renderDropsWerkstedOrders(){
   }).join("");
 }
 
+function getDropsSkienStationVehicles(){
+  const rows = computeInndata();
+  const seen = new Set();
+
+  return rows
+    .flatMap(row => {
+      const slot = normalizeSlot(row?.slot || "");
+      const vehicles = splitVehicleList(row?.mat || "")
+        .map(vehicle => sanitizeVehicleValue(vehicle))
+        .filter(Boolean);
+
+      return vehicles.map(vehicle => ({ slot, vehicle }));
+    })
+    .filter(item => {
+      const token = normalizeVehicleToken(item.vehicle);
+      if(!token || !item.slot) return false;
+      if(seen.has(token)) return false;
+      seen.add(token);
+      return true;
+    })
+    .sort((a,b) => {
+      const aIndex = inputSlots.indexOf(a.slot);
+      const bIndex = inputSlots.indexOf(b.slot);
+      const safeA = aIndex < 0 ? 999 : aIndex;
+      const safeB = bIndex < 0 ? 999 : bIndex;
+      if(safeA !== safeB) return safeA - safeB;
+      return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
+    });
+}
+
+
+function getDropsSkienStationVehicleStatus(item){
+  const vehicle = sanitizeVehicleValue(item?.vehicle || "");
+  const slot = normalizeSlot(item?.slot || "");
+  const dropsOrder = getSdeDropsOrderForVehicle(vehicle);
+  const dropsReady = !!dropsOrder?.driftsklarAt;
+  const dropsWorkComplete = !!dropsOrder?.workCompleteAt;
+  const repDreiValue = getSdeGrunnoppstillingRepDreiValueForVehicle(vehicle);
+  const isDrei = isDreiMarker(repDreiValue);
+  const isRep = isRepMarker(repDreiValue) && !isDrei;
+  const departureLabel = getSporplanDepartureLabelsForVehicle(vehicle);
+  const onWorkshopSlot = isSdeWorkshopSlot(slot);
+
+  if(dropsReady){
+    return {
+      cls:"ready",
+      status:departureLabel ? `Tursatt til ${departureLabel}` : "Res.",
+      detail:onWorkshopSlot
+        ? "Driftsklart bekreftet. Verkstedstatus overstyrt; behandles som tilgjengelig materiell."
+        : "Driftsklart / tilgjengelig materiell."
+    };
+  }
+
+  if(isDrei || isRep){
+    const label = isDrei ? "DREI" : "REP";
+    return {
+      cls:"blocked",
+      status:label,
+      detail:`${label}-markert og ikke driftsklart. Skal ikke behandles som trafikkklart.`
+    };
+  }
+
+  if(dropsOrder || onWorkshopSlot){
+    return {
+      cls:"warning",
+      status:"Verkstedbundet",
+      detail:dropsWorkComplete
+        ? "Bestilt utkjøring, men ikke driftsklart."
+        : "På verksted / avventer driftsklar-kvittering."
+    };
+  }
+
+  if(departureLabel){
+    return {
+      cls:"ready",
+      status:`Tursatt til ${departureLabel}`,
+      detail:"Kjøretøyet har tursatt avgang i grunnlaget."
+    };
+  }
+
+  return {
+    cls:"ready",
+    status:"Res.",
+    detail:"Ingen tursatt avgang funnet i grunnlaget."
+  };
+}
+
+
+function buildDropsSkienStationOverviewHtml(){
+  const vehicles = getDropsSkienStationVehicles();
+
+  const rowsHtml = vehicles.length
+    ? vehicles.map(item => {
+        const status = getDropsSkienStationVehicleStatus(item);
+        return `<div class="drops-station-row ${escapeHtml(status.cls)}">
+          <span class="drops-station-dot" aria-hidden="true"></span>
+          <div class="drops-station-vehicle">${escapeHtml(item.vehicle)}</div>
+          <div class="drops-station-slot">${escapeHtml(item.slot)}</div>
+          <div class="drops-station-status">${escapeHtml(status.status)}</div>
+          <div class="drops-station-detail">${escapeHtml(status.detail)}</div>
+        </div>`;
+      }).join("")
+    : '<div class="drops-station-empty">Ingen fysisk kjøretøyplassering registrert i Sporplan/Grunnoppstilling for Skien stasjon nå. Fyll inn Sporplan/Grunnoppstilling for å vise kjøretøy, spor, status, Res./tursatt/REP/DREI.</div>';
+
+  return `<section class="drops-station-overview" aria-label="Kjøretøy på Skien stasjon">
+    <div class="drops-station-header">
+      <div class="drops-station-title">
+        <strong>DROPS Materiellstyrer – Skien stasjon</strong>
+        <span>Oversikten under gjelder kjøretøy som står på Skien stasjon nå. Driftsklart bekreftet materiell vises som tilgjengelig/Res. selv om det fysisk står på verkstedspor.</span>
+      </div>
+      <div class="drops-station-badge">${vehicles.length} registrert</div>
+    </div>
+    <div class="drops-station-list">
+      ${rowsHtml}
+    </div>
+  </section>`;
+}
+
+
 function renderDropsMateriellstyrer(){
   const kpi = document.getElementById("dropsMateriellKpi");
   const list = document.getElementById("dropsMateriellListe");
@@ -12461,12 +12695,14 @@ function renderDropsMateriellstyrer(){
     <div class="drops-board-card"><strong>${ready}</strong><span>driftsklart</span></div>
   `;
 
+  const stationOverviewHtml = buildDropsSkienStationOverviewHtml();
+
   if(!orders.length){
-    list.innerHTML = '<div class="drops-empty">Ingen materiellstatus å vise. Verkstedbestillinger vil vises her automatisk.</div>';
+    list.innerHTML = stationOverviewHtml + '<div class="drops-empty">Ingen verkstedbestillinger å vise. Nye verkstedbestillinger vil vises her automatisk.</div>';
     return;
   }
 
-  list.innerHTML = orders
+  list.innerHTML = stationOverviewHtml + orders
     .sort((a,b)=>String(a.readyTime || "").localeCompare(String(b.readyTime || "")))
     .map(order=>{
       const status = getDropsOrderStatus(order);
