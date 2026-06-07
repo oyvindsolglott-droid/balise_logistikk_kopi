@@ -10847,7 +10847,7 @@ function getSdeArrivalParkingCandidateSlots(need){
     "4N","4M","4S",
     "5N","5M","5S",
     "1N","1S",
-    "3N",
+    "3S","3M","3N",
     "10S","11S","12S",
     "10N","11N","12N",
     "9",
@@ -10879,6 +10879,85 @@ function isSdeLateNightTrack3Candidate(need, slot){
   return candidate === "3N" && arrivalTrain === "839" && vehicle === "74-06";
 }
 
+function isSdeSpor3ProductionNeed(need){
+  const nextDepartureTrain = normalizeTognr(need?.nextDepartureTrain);
+  return nextDepartureTrain === "802" || nextDepartureTrain === "852";
+}
+
+function isSdeSpor3ProductionCandidate(need, slot){
+  const candidate = normalizeSlot(slot);
+  return ["3S","3M","3N"].includes(candidate) && isSdeSpor3ProductionNeed(need);
+}
+
+function getSdeSpor3PreferredProductionSlot(need){
+  return normalizeSlot(need?.spor3PreferredSlot || "");
+}
+
+function getSdeSpor3ProductionScoreBonus(need, slot){
+  const candidate = normalizeSlot(slot);
+  const preferredSlot = getSdeSpor3PreferredProductionSlot(need);
+  const nextDepartureTrain = normalizeTognr(need?.nextDepartureTrain);
+  const nextDeparturePart = String(need?.nextDeparturePart || "").trim();
+
+  if(preferredSlot){
+    if(candidate === preferredSlot) return 120;
+    if(["3S","3M","3N"].includes(candidate)) return 18;
+  }
+
+  if(nextDepartureTrain === "852"){
+    if(candidate === "3N") return 92;
+    if(candidate === "3M") return 34;
+    if(candidate === "3S") return 12;
+  }
+
+  if(nextDepartureTrain === "802"){
+    if(nextDeparturePart === "2"){
+      if(candidate === "3M") return 90;
+      if(candidate === "3N") return 44;
+      if(candidate === "3S") return 24;
+    }
+
+    if(nextDeparturePart === "1"){
+      if(candidate === "3M") return 88;
+      if(candidate === "3S") return 82;
+      if(candidate === "3N") return 28;
+    }
+
+    if(candidate === "3M") return 84;
+    if(candidate === "3S") return 76;
+    if(candidate === "3N") return 30;
+  }
+
+  return 0;
+}
+
+function getSdeSpor3ProductionReason(need, slot){
+  const candidate = normalizeSlot(slot);
+  const preferredSlot = getSdeSpor3PreferredProductionSlot(need);
+  const nextDepartureTrain = normalizeTognr(need?.nextDepartureTrain);
+  const nextDeparturePart = String(need?.nextDeparturePart || "").trim();
+
+  if(preferredSlot && candidate === preferredSlot){
+    return `${candidate} prioriteres som ønsket posisjon i spor 3-sekvensen for ${nextDepartureTrain}${nextDeparturePart ? `/${nextDeparturePart}` : ""}.`;
+  }
+
+  if(nextDepartureTrain === "852" && candidate === "3N"){
+    return "3N prioriteres fordi 852 skal settes opp bak 802 når spor 3 er ledig for oppstilling etter 2489.";
+  }
+
+  if(nextDepartureTrain === "802" && candidate === "3M"){
+    return nextDeparturePart === "2"
+      ? "3M prioriteres fordi 802 dobbeltsett skal settes opp i riktig spor 3-rekkefølge før 852 settes bak når det er plass."
+      : "3M prioriteres fordi 802 enkeltsett kan stå i 3M når 840 faktisk skal gå fra 3S, med 852 i 3N.";
+  }
+
+  if(nextDepartureTrain === "802" && candidate === "3S"){
+    return "3S kan brukes i spor 3-sekvensen for 802 når 840 ikke står i 3S, eller etter at 840 har kjørt og 802 trekkes frem sørover.";
+  }
+
+  return `${candidate} vurderes som del av 802/852-sekvensen. Dette er produksjonsoppsett i spor 3, ikke generell nattparkering.`;
+}
+
 
 function scoreSdeArrivalParkingCandidate(need, slot){
   const candidate = normalizeSlot(slot);
@@ -10894,7 +10973,8 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }
 
   if(["2N","2S","3N","3M","3S"].includes(candidate)){
-    if(!isSdeLateNightTrack3Candidate(need, candidate)){
+    const allowedSpor3Production = isSdeSpor3ProductionCandidate(need, candidate);
+    if(!isSdeLateNightTrack3Candidate(need, candidate) && !allowedSpor3Production){
       return {slot:candidate, score:-999, status:"rejected", reasons:["Plattformspor skal ikke brukes som generell nattparkering."]};
     }
   }
@@ -10917,6 +10997,13 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   if(isSdeLateNightTrack3Candidate(need, candidate)){
     score += 12;
     reasons.push(`${candidate} tillates som særvurdering for 839/74-06 når helhetsflyten tilsier at spor 6 bør frigjøres til andre natt-/servicebehov.`);
+  }
+
+  if(isSdeSpor3ProductionCandidate(need, candidate)){
+    const spor3Bonus = getSdeSpor3ProductionScoreBonus(need, candidate);
+    score += spor3Bonus;
+    reasons.push(getSdeSpor3ProductionReason(need, candidate));
+    reasons.push("Spor 3 tillates her fordi behovet gjelder 802/852-produksjon. Spor 3 skal fortsatt ikke brukes som generell parkering.");
   }
 
   const departureMinutes = getSdeTimeMinutes(nextDepartureTime);
@@ -11486,6 +11573,104 @@ function getSdeMaterialShortageSummary(){
 }
 
 
+function getSdeSpor3DeparturePreferredSlot(binding, departureBindings){
+  const train = normalizeTognr(binding?.train);
+  const part = String(binding?.part || "").trim();
+  const departures = Array.isArray(departureBindings) ? departureBindings : [];
+  const train802Count = departures.filter(item =>
+    normalizeTognr(item?.train) === "802" &&
+    sanitizeVehicleValue(item?.vehicle)
+  ).length;
+
+  if(train === "852") return "3N";
+
+  if(train === "802"){
+    if(train802Count > 1){
+      return part === "2" ? "3M" : "3S";
+    }
+
+    return "3M";
+  }
+
+  return "";
+}
+
+function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
+  const bindings = buildSdeTursattVehicleBindings();
+  const departureBindings = bindings.filter(binding =>
+    binding?.role === "departure" &&
+    binding?.mustBeAccessible &&
+    ["802","852"].includes(normalizeTognr(binding?.train)) &&
+    sanitizeVehicleValue(binding?.vehicle)
+  );
+
+  if(!departureBindings.length) return [];
+
+  const existingKeys = new Set(
+    (Array.isArray(existingNeeds) ? existingNeeds : []).map(row =>
+      `${normalizeVehicleToken(row?.vehicle)}|${normalizeTognr(row?.nextDepartureTrain)}|${String(row?.nextDeparturePart || "").trim()}`
+    )
+  );
+
+  const reservedSlots = new Map();
+  (Array.isArray(existingNeeds) ? existingNeeds : []).forEach(row=>{
+    const slot = normalizeSlot(row?.recommendedSlot);
+    if(slot){
+      reservedSlots.set(slot, {need:row, recommendation:{slot}});
+    }
+  });
+
+  return departureBindings
+    .map(binding=>{
+      const vehicle = sanitizeVehicleValue(binding.vehicle);
+      const train = normalizeTognr(binding.train);
+      const part = String(binding.part || "").trim();
+      const key = `${normalizeVehicleToken(vehicle)}|${train}|${part}`;
+
+      if(existingKeys.has(key)) return null;
+
+      const preferredSlot = getSdeSpor3DeparturePreferredSlot(binding, departureBindings);
+      const trainPartText = `${train}${part ? `/${part}` : ""}`;
+      const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
+      const departureText = `${trainPartText}${binding.displayTime ? ` kl. ${binding.displayTime}` : binding.time ? ` kl. ${binding.time}` : ""}`;
+
+      const need = {
+        source:"Spor 3-produksjonsbehov",
+        isSpor3ProductionNeed:true,
+        arrivalTrain:"Spor 3-sekvens",
+        arrivalPart:"",
+        arrivalTime:"21:00",
+        vehicle,
+        arrivalSlot:currentSlot,
+        turneringTarget:preferredSlot ? `Spor 3 ${preferredSlot}` : "Spor 3",
+        nextDepartureTrain:train,
+        nextDeparturePart:part,
+        nextDepartureTime:binding.displayTime || binding.time || "",
+        nextDepartureText:departureText,
+        serviceRequired:false,
+        parkingStrategy:"Spor 3-sekvens",
+        parkingInstruction:`${vehicle} er tursatt til ${departureText}. Vurder oppstilling i spor 3 når spor 3 er ledig for oppstilling etter at 2489 fra Notodden har ankommet Skien og blitt skiftet bort.`,
+        spor3PreferredSlot:preferredSlot,
+        showcaseArrivalLabel:`Spor 3-sekvens ${trainPartText}`
+      };
+
+      const recommendation = getSdeArrivalParkingRecommendation(need, reservedSlots);
+      if(recommendation.slot){
+        reservedSlots.set(recommendation.slot, {need, recommendation});
+      }
+
+      return {
+        ...need,
+        recommendedSlot:recommendation.slot,
+        recommendationScore:recommendation.score,
+        recommendationConfidence:recommendation.confidence,
+        recommendationReason:recommendation.reason,
+        recommendationAlternatives:recommendation.alternatives || []
+      };
+    })
+    .filter(Boolean);
+}
+
 function buildSdeArrivalParkingNeeds(){
   const bindings = buildSdeTursattVehicleBindings();
   const arrivals = bindings.filter(binding =>
@@ -11822,24 +12007,44 @@ function getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures, t
 
 
 function getSdeShiftShowcaseData(){
-  const needs = buildSdeArrivalParkingNeeds();
+  const arrivalNeeds = buildSdeArrivalParkingNeeds();
+  const needs = [
+    ...arrivalNeeds,
+    ...buildSdeSpor3ProductionDepartureNeeds(arrivalNeeds)
+  ];
   const moves = needs
     .filter(row=>row && row.recommendedSlot)
     .map(row=>{
       const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
       const departureText = row.nextDepartureText || "Ikke koblet";
-      const arrivalText = row.arrivalTrain
-        ? `${row.arrivalTrain}${arrivalPartText}`
-        : "Ukjent";
+      const arrivalText = row.showcaseArrivalLabel
+        ? String(row.showcaseArrivalLabel)
+        : row.arrivalTrain
+          ? `${row.arrivalTrain}${arrivalPartText}`
+          : "Ukjent";
       return {
         ...row,
         arrivalTrainText:arrivalText,
         departureTrainText:departureText,
-        fromSlot:normalizeSlot(row.arrivalSlot) || "?",
+        fromSlot:normalizeSlot(row.arrivalSlot) || (row.isSpor3ProductionNeed ? "Tursatt" : "?"),
         toSlot:normalizeSlot(row.recommendedSlot) || "?"
       };
     })
     .sort((a,b)=>{
+      const getSpor3SequenceOrder = row => {
+        if(!row?.isSpor3ProductionNeed) return 999;
+        const train = normalizeTognr(row.nextDepartureTrain);
+        const part = String(row.nextDeparturePart || "").trim();
+        if(train === "802" && part === "1") return 0;
+        if(train === "802" && part === "2") return 1;
+        if(train === "852") return 2;
+        return 9;
+      };
+
+      const sa = getSpor3SequenceOrder(a);
+      const sb = getSpor3SequenceOrder(b);
+      if(sa !== sb) return sa - sb;
+
       const ta = getSdeArrivalLatestSequenceMinutes({displayTime:a.arrivalTime});
       const tb = getSdeArrivalLatestSequenceMinutes({displayTime:b.arrivalTime});
       if(ta !== tb) return ta - tb;
