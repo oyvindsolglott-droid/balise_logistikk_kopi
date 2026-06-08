@@ -13099,6 +13099,61 @@ function buildSdePackagePriorityLimitedActiveMotorDiagnostics(moves=[], unresolv
 }
 
 
+function buildSdePackagePrioritySafeActiveMotorDiagnostics(moves=[], unresolved=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const limitedActive = buildSdePackagePriorityLimitedActiveMotorDiagnostics(rows, unresolved);
+  const activeTests = buildSdePackagePriorityActiveTestModeDiagnostics(rows, unresolved);
+
+  return limitedActive.map(item=>{
+    const activeTest = activeTests.find(test =>
+      test.train === item.train &&
+      test.packageLabel === item.packageLabel
+    );
+
+    const displacedRows = Array.isArray(item.displacedRows)
+      ? item.displacedRows
+      : [];
+
+    const displacedEvaluations = displacedRows.map(displaced=>{
+      const alternatives = getSdeRescueAlternativesForBlocker(displaced.row, rows);
+      return {
+        slot:displaced.slot,
+        row:displaced.row,
+        alternatives
+      };
+    });
+
+    const allDisplacedHandled = displacedEvaluations.length > 0 &&
+      displacedEvaluations.every(displaced => Array.isArray(displaced.alternatives) && displaced.alternatives.length);
+
+    const displacedText = displacedEvaluations.length
+      ? displacedEvaluations
+          .map(displaced => {
+            const blockerText = `${displaced.slot} ${getSdePackageRowText(displaced.row)}`;
+            const alternativesText = displaced.alternatives.length
+              ? `kan flyttes til ${displaced.alternatives.map(alt => `${alt.slot} score ${alt.score}`).join(", ")}`
+              : "har ingen trygg ny plass i første kandidatsett";
+            return `${blockerText}: ${alternativesText}`;
+          })
+          .join(" | ")
+      : "ingen blokkering å håndtere";
+
+    const activationText = allDisplacedHandled
+      ? "TRYGG AKTIVERING MULIG I TEST: dobbeltsettet kan samles og blokkeringen har alternativ."
+      : "AKTIVERING AVVIST I TEST: dobbeltsettet kan samles, men blokkeringen har ikke trygg ny plass. Hovedmotor skal derfor ikke endres for dette dobbeltsettet ennå.";
+
+    return {
+      train:item.train,
+      packageLabel:item.packageLabel,
+      activeTest,
+      displacedEvaluations,
+      safeToActivate:allDisplacedHandled,
+      text:`${item.train}: ${activationText} ${displacedText}. ${activeTest ? activeTest.text : ""}`
+    };
+  });
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -13378,6 +13433,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const packagePrioritySafeActiveMotorDiagnostics = buildSdePackagePrioritySafeActiveMotorDiagnostics(data.moves, data.unresolved);
+  const packagePrioritySafeActiveMotorDiagnosticsHtml = packagePrioritySafeActiveMotorDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Pakkeprioritet – trygg aktiv motor <span>${packagePrioritySafeActiveMotorDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${packagePrioritySafeActiveMotorDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -13408,6 +13475,7 @@ function renderSdeSkiftebevegelser(){
     ${packagePriorityCandidateMotorDiagnosticsHtml}
     ${packagePriorityActiveTestModeDiagnosticsHtml}
     ${packagePriorityLimitedActiveMotorDiagnosticsHtml}
+    ${packagePrioritySafeActiveMotorDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
