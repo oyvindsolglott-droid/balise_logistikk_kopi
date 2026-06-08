@@ -11747,11 +11747,27 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
 
 function buildSdeArrivalParkingNeeds(){
   const bindings = buildSdeTursattVehicleBindings();
+  const departures = bindings.filter(binding => binding.role === "departure" && binding.mustBeAccessible);
+  const spor3ProductionVehicleTokens = new Set(
+    departures
+      .filter(binding => {
+        const train = normalizeTognr(binding?.train);
+        const part = String(binding?.part || "").trim();
+
+        return sanitizeVehicleValue(binding?.vehicle) &&
+          (
+            train === "802" ||
+            (train === "852" && (!part || part === "1"))
+          );
+      })
+      .map(binding => normalizeVehicleToken(binding.vehicle))
+      .filter(Boolean)
+  );
   const arrivals = bindings.filter(binding =>
     binding.role === "arrival" &&
-    !isSdeBorgestad10855Flow(binding)
+    !isSdeBorgestad10855Flow(binding) &&
+    !spor3ProductionVehicleTokens.has(normalizeVehicleToken(binding.vehicle))
   );
-  const departures = bindings.filter(binding => binding.role === "departure" && binding.mustBeAccessible);
   const productionNeeds = buildSdeProductionNeeds();
 
   function getFirstDepartureForVehicle(vehicle){
