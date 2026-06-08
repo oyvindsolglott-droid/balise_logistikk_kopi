@@ -2150,6 +2150,178 @@ button{padding:12px 12px}
   font-weight:950;
 }
 
+
+
+.sde-shift-board{
+  position:relative;
+}
+.sde-action-stack{
+  position:absolute;
+  top:0;
+  right:0;
+  z-index:18;
+  width:190px;
+  min-height:72px;
+  pointer-events:none;
+}
+.sde-action-chip{
+  position:absolute;
+  right:0;
+  width:178px;
+  min-height:58px;
+  border-radius:18px;
+  padding:10px 12px;
+  border:1px solid rgba(15,23,42,.14);
+  box-shadow:0 16px 34px rgba(15,23,42,.22);
+  backdrop-filter:blur(14px);
+  transform:translate(var(--drag-x, 0px), calc((var(--stack-index, 0) * 34px) + var(--drag-y, 0px)));
+  pointer-events:auto;
+  cursor:grab;
+  text-align:left;
+  font-family:inherit;
+  transition:box-shadow .16s ease, transform .16s ease, width .16s ease, min-height .16s ease, padding .16s ease;
+}
+.sde-action-chip.done{
+  background:rgba(203,213,205,.92);
+  color:#14532d;
+}
+.sde-action-chip.cancelled{
+  background:rgba(224,204,204,.94);
+  color:#7f1d1d;
+}
+.sde-action-chip strong{
+  display:block;
+  font-size:12px;
+  line-height:1.05;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+}
+.sde-action-chip span{
+  display:block;
+  margin-top:5px;
+  font-size:13px;
+  font-weight:950;
+  line-height:1.05;
+}
+.sde-action-chip small{
+  display:block;
+  margin-top:5px;
+  font-size:11px;
+  font-weight:750;
+  line-height:1.18;
+  opacity:.86;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.sde-action-chip.expanded{
+  width:min(460px, calc(100vw - 42px));
+  min-height:0;
+  padding:18px;
+  z-index:40;
+  box-shadow:0 28px 70px rgba(15,23,42,.30);
+}
+.sde-action-chip.expanded strong{
+  font-size:14px;
+}
+.sde-action-expanded-route{
+  margin-top:9px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-weight:950;
+}
+.sde-action-expanded-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:42px;
+  border-radius:12px;
+  padding:7px 8px;
+  background:rgba(255,255,255,.62);
+  border:1px solid rgba(15,23,42,.10);
+}
+.sde-action-expanded-meta{
+  margin-top:10px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.sde-action-expanded-meta span{
+  margin:0;
+  display:inline-flex;
+  border-radius:999px;
+  padding:5px 7px;
+  background:rgba(255,255,255,.56);
+  font-size:10px;
+  font-weight:850;
+}
+.sde-action-expanded-text{
+  margin-top:12px;
+  font-size:12px;
+  line-height:1.45;
+  font-weight:750;
+  opacity:.92;
+}
+.sde-action-expanded-hint{
+  margin-top:8px;
+  font-size:9px;
+  font-weight:850;
+  opacity:.72;
+}
+.sde-action-chip:hover{
+  box-shadow:0 22px 46px rgba(15,23,42,.26);
+}
+.sde-action-chip.dragging{
+  cursor:grabbing;
+  transition:none;
+  z-index:60;
+}
+.sde-action-drag-hint{
+  position:absolute;
+  top:8px;
+  right:10px;
+  font-size:10px;
+  font-weight:950;
+  opacity:.48;
+  user-select:none;
+}
+.sde-action-chip.expanded .sde-action-drag-hint{
+  top:12px;
+  right:14px;
+}
+
+
+
+.sde-shift-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:12px;
+}
+.sde-shift-action-btn{
+  border:0;
+  border-radius:999px;
+  padding:9px 13px;
+  font-weight:850;
+  cursor:pointer;
+  box-shadow:0 8px 18px rgba(15,23,42,.12);
+}
+.sde-shift-action-btn.done{
+  background:#dcfce7;
+  color:#166534;
+}
+.sde-shift-action-btn.cancel{
+  background:#fee2e2;
+  color:#991b1b;
+}
+.sde-shift-action-btn:hover{
+  transform:translateY(-1px);
+}
+.sde-shift-action-btn:active{
+  transform:translateY(0);
+}
+
 .sde-shift-unresolved{
   margin-top:18px;
   border:1px solid rgba(255,209,102,.30);
@@ -4577,6 +4749,8 @@ if(!("baliseMetaToday" in state)) state.baliseMetaToday=null;
 if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkifteRows();
 else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",tilRep:"",operationType:"",utfort:"",...(row||{})}));
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
+if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.isArray(state.sdeMoveActions)) state.sdeMoveActions={};
+
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
   state.apiBalise={
@@ -12216,6 +12390,346 @@ function getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures, t
 }
 
 
+
+
+function formatSdeMoveActionClock(value){
+  const date = new Date(value);
+  if(Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("nb-NO", {hour:"2-digit", minute:"2-digit"});
+}
+
+function getSdeMoveActionSnapshot(row){
+  if(!row) return {};
+  const alternatives = Array.isArray(row.recommendationAlternatives)
+    ? row.recommendationAlternatives.map(alt => ({
+        slot:String(alt?.slot || "").trim(),
+        score:alt?.score ?? ""
+      }))
+    : [];
+
+  return {
+    vehicle:sanitizeVehicleValue(row.vehicle),
+    arrivalTrainText:String(row.arrivalTrainText || (row.arrivalTrain ? `${row.arrivalTrain}${row.arrivalPart ? `/${row.arrivalPart}` : ""}` : "") || "").trim(),
+    departureTrainText:String(row.departureTrainText || row.nextDepartureText || "").trim(),
+    arrivalTime:String(row.arrivalTime || "").trim(),
+    fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
+    toSlot:normalizeSlot(row.recommendedSlot || row.toSlot),
+    recommendationConfidence:String(row.recommendationConfidence || "").trim(),
+    recommendationScore:row.recommendationScore ?? "",
+    parkingStrategy:String(row.parkingStrategy || "").trim(),
+    reason:String(row.recommendationReason || row.parkingInstruction || "").trim(),
+    alternatives
+  };
+}
+
+function toggleSdeMoveActionHistory(encodedKey){
+  const key = decodeURIComponent(String(encodedKey || ""));
+  const suppressed = window.sdeMoveActionSuppressClick;
+  if(suppressed && suppressed.key === key && Date.now() - suppressed.time < 350){
+    return;
+  }
+
+  const willCollapse = state.sdeExpandedMoveActionKey === key;
+  state.sdeExpandedMoveActionKey = willCollapse ? "" : key;
+
+  if(willCollapse && state.sdeMoveActionDragOffsets){
+    delete state.sdeMoveActionDragOffsets[key];
+  }
+
+  refreshSdeAfterMoveAction();
+}
+
+function getSdeMoveActionDragOffset(key){
+  const offsets = state.sdeMoveActionDragOffsets || {};
+  const offset = offsets[String(key || "")] || {};
+  return {
+    x:Number(offset.x) || 0,
+    y:Number(offset.y) || 0
+  };
+}
+
+function getSdeMoveActionDragStyle(key){
+  const offset = getSdeMoveActionDragOffset(key);
+  return `--drag-x:${offset.x}px; --drag-y:${offset.y}px;`;
+}
+
+function beginSdeMoveActionDrag(event, encodedKey){
+  if(!event || event.button !== 0) return;
+
+  const key = decodeURIComponent(String(encodedKey || ""));
+  const element = event.currentTarget;
+  const offset = getSdeMoveActionDragOffset(key);
+
+  window.sdeMoveActionDragState = {
+    key,
+    element,
+    startX:event.clientX,
+    startY:event.clientY,
+    originX:offset.x,
+    originY:offset.y,
+    moved:false
+  };
+
+  element.classList.add("dragging");
+
+  if(element.setPointerCapture && event.pointerId !== undefined){
+    element.setPointerCapture(event.pointerId);
+  }
+
+  window.addEventListener("pointermove", handleSdeMoveActionDragMove);
+  window.addEventListener("pointerup", endSdeMoveActionDrag, {once:true});
+}
+
+function handleSdeMoveActionDragMove(event){
+  const drag = window.sdeMoveActionDragState;
+  if(!drag || !drag.element) return;
+
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+
+  if(Math.abs(dx) > 4 || Math.abs(dy) > 4){
+    drag.moved = true;
+  }
+
+  const nextX = Math.round(drag.originX + dx);
+  const nextY = Math.round(drag.originY + dy);
+
+  drag.element.style.setProperty("--drag-x", `${nextX}px`);
+  drag.element.style.setProperty("--drag-y", `${nextY}px`);
+}
+
+function endSdeMoveActionDrag(event){
+  const drag = window.sdeMoveActionDragState;
+  window.removeEventListener("pointermove", handleSdeMoveActionDragMove);
+
+  if(!drag || !drag.element){
+    window.sdeMoveActionDragState = null;
+    return;
+  }
+
+  drag.element.classList.remove("dragging");
+
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
+  const nextX = Math.round(drag.originX + dx);
+  const nextY = Math.round(drag.originY + dy);
+
+  if(drag.moved){
+    if(!state.sdeMoveActionDragOffsets || typeof state.sdeMoveActionDragOffsets !== "object" || Array.isArray(state.sdeMoveActionDragOffsets)){
+      state.sdeMoveActionDragOffsets = {};
+    }
+
+    state.sdeMoveActionDragOffsets[drag.key] = {x:nextX, y:nextY};
+    window.sdeMoveActionSuppressClick = {key:drag.key, time:Date.now()};
+  }
+
+  window.sdeMoveActionDragState = null;
+}
+
+function buildSdeExpandedMoveActionHtml(action){
+  const snapshot = action.snapshot || {};
+  const vehicle = snapshot.vehicle || action.vehicle || "Ukjent";
+  const fromSlot = normalizeSlot(snapshot.fromSlot || action.fromSlot);
+  const toSlot = normalizeSlot(snapshot.toSlot || action.toSlot);
+  const arrival = snapshot.arrivalTrainText || "Ukjent";
+  const departure = snapshot.departureTrainText || "Ikke koblet";
+  const confidence = snapshot.recommendationConfidence || "";
+  const score = snapshot.recommendationScore ?? "";
+  const strategy = snapshot.parkingStrategy || "SDE-forslag";
+  const reason = snapshot.reason || "Opprinnelig kortinformasjon mangler for denne eldre kvitteringen.";
+  const alternatives = Array.isArray(snapshot.alternatives) && snapshot.alternatives.length
+    ? `Alternativer: ${snapshot.alternatives.map(alt => `${alt.slot} (${alt.score})`).join(", ")}`
+    : "Ingen alternative spor i første kandidatsett.";
+
+  return `
+    <div class="sde-action-expanded-route">
+      <span class="sde-action-expanded-pill">${escapeHtml(fromSlot || "?")}</span>
+      <span>→</span>
+      <span class="sde-action-expanded-pill">${escapeHtml(toSlot || "?")}</span>
+    </div>
+    <div class="sde-action-expanded-meta">
+      <span>Kjøretøy ${escapeHtml(vehicle)}</span>
+      <span>Ankomst ${escapeHtml(arrival)}</span>
+      <span>Avgang ${escapeHtml(departure)}</span>
+      ${snapshot.arrivalTime ? `<span>Tid ${escapeHtml(snapshot.arrivalTime)}</span>` : ""}
+      ${confidence ? `<span>${escapeHtml(confidence.toUpperCase())}</span>` : ""}
+      ${score !== "" ? `<span>Score ${escapeHtml(String(score))}</span>` : ""}
+      <span>${escapeHtml(strategy)}</span>
+    </div>
+    <div class="sde-action-expanded-text">${escapeHtml(reason)}</div>
+    <div class="sde-action-expanded-text">${escapeHtml(alternatives)}</div>
+    <div class="sde-action-expanded-hint">Trykk på kortet igjen for å folde sammen.</div>
+  `;
+}
+
+function buildSdeMoveActionHistoryHtml(){
+  const actions = Object.entries(state.sdeMoveActions || {})
+    .map(([key, action]) => ({key, ...(action || {})}))
+    .filter(action => action.action === "completed" || action.action === "cancelled")
+    .sort((a,b) => String(b.time || "").localeCompare(String(a.time || "")))
+    .slice(0, 6);
+
+  if(!actions.length) return "";
+
+  return `<div class="sde-action-stack" aria-label="Kvitterte SDE-oppdrag">
+    ${actions.map((action,index)=>{
+      const isCompleted = action.action === "completed";
+      const label = isCompleted ? "Utført" : "Annullert";
+      const className = isCompleted ? "done" : "cancelled";
+      const clock = formatSdeMoveActionClock(action.time) || "--:--";
+      const snapshot = action.snapshot || {};
+      const fromSlot = normalizeSlot(snapshot.fromSlot || action.fromSlot);
+      const toSlot = normalizeSlot(snapshot.toSlot || action.toSlot);
+      const route = [fromSlot, toSlot].filter(Boolean).join(" → ");
+      const vehicle = snapshot.vehicle || action.vehicle || "Ukjent";
+      const detail = `${vehicle}${route ? ` · ${route}` : ""}`;
+      const encodedKey = encodeURIComponent(action.key);
+      const isExpanded = state.sdeExpandedMoveActionKey === action.key;
+      return `<button class="sde-action-chip ${className}${isExpanded ? " expanded" : ""}" type="button" style="--stack-index:${index}; ${getSdeMoveActionDragStyle(action.key)}" onpointerdown="beginSdeMoveActionDrag(event, '${encodedKey}')" onclick="toggleSdeMoveActionHistory('${encodedKey}')">
+        <span class="sde-action-drag-hint">flytt</span>
+        <strong>${escapeHtml(label)}</strong>
+        <span>${escapeHtml(clock)}</span>
+        <small>${escapeHtml(detail)}</small>
+        ${isExpanded ? buildSdeExpandedMoveActionHtml(action) : ""}
+      </button>`;
+    }).join("")}
+  </div>`;
+}
+
+function getSdeMoveActionKey(row){
+  if(!row) return "";
+  return [
+    sanitizeVehicleValue(row.vehicle),
+    normalizeSlot(row.fromSlot || row.arrivalSlot),
+    normalizeSlot(row.recommendedSlot || row.toSlot),
+    normalizeTognr(row.arrivalTrain),
+    String(row.arrivalPart || "").trim(),
+    normalizeTimeString(row.arrivalTime),
+    normalizeTognr(row.nextDepartureTrain),
+    String(row.nextDeparturePart || "").trim()
+  ].join("|");
+}
+
+function getSdeMoveActionRecord(key){
+  const normalizedKey = String(key || "");
+  if(!normalizedKey) return null;
+  const actions = state.sdeMoveActions || {};
+  return actions[normalizedKey] || null;
+}
+
+function isSdeMoveActioned(row){
+  return Boolean(getSdeMoveActionRecord(getSdeMoveActionKey(row)));
+}
+
+function addSdeCompletedMoveToPlanSkifte(row){
+  if(!row) return false;
+
+  if(!Array.isArray(state.planSkifteRows)){
+    state.planSkifteRows = makeEmptyPlanSkifteRows();
+  }
+
+  const vehicle = sanitizeVehicleValue(row.vehicle);
+  const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot);
+  const toSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+  if(!vehicle || !toSlot) return false;
+
+  const planRow = {
+    time:normalizeTimeString(row.arrivalTime) || String(row.arrivalTime || "").trim(),
+    vehicle,
+    fromSpor:fromSlot,
+    toSpor:toSlot,
+    crew:"",
+    tilRep:"",
+    operationType:"SDE automatisk forslag",
+    utfort:"f",
+    source:"SDE Skiftebevegelser"
+  };
+
+  const emptyIndex = state.planSkifteRows.findIndex(existing => !hasPlanSkifteContent(existing));
+  if(emptyIndex >= 0){
+    state.planSkifteRows[emptyIndex] = planRow;
+  }else{
+    state.planSkifteRows.push(planRow);
+  }
+
+  return true;
+}
+
+function refreshSdeAfterMoveAction(){
+  if(typeof buildInndata === "function") buildInndata();
+  if(typeof buildSporplan === "function") buildSporplan();
+  if(typeof renderSdeSkiftebevegelser === "function") renderSdeSkiftebevegelser();
+}
+
+function handleSdeShiftMoveAction(encodedKey, action){
+  const key = decodeURIComponent(String(encodedKey || ""));
+  const actionType = String(action || "").trim();
+
+  const data = getSdeShiftShowcaseData();
+  const row = data.moves.find(candidate => getSdeMoveActionKey(candidate) === key);
+
+  if(!row){
+    alert("SDE-forslaget finnes ikke lenger i aktivt datagrunnlag. Oppdater siden og kontroller Sporplan før du kvitterer.");
+    return;
+  }
+
+  const vehicle = sanitizeVehicleValue(row.vehicle);
+  const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+  if(!vehicle || !targetSlot){
+    alert("SDE-forslaget mangler kjøretøy eller målspor. Kan ikke kvittere automatisk.");
+    return;
+  }
+
+  if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.isArray(state.sdeMoveActions)){
+    state.sdeMoveActions = {};
+  }
+
+  if(actionType === "completed"){
+    const targetVehicle = getSdeVehicleInSlot(targetSlot);
+    const targetToken = normalizeVehicleToken(targetVehicle);
+    const vehicleToken = normalizeVehicleToken(vehicle);
+
+    if(targetVehicle && targetToken && targetToken !== vehicleToken){
+      alert(`Kan ikke kvittere Utført: ${targetSlot} er allerede opptatt av ${targetVehicle}. Kontroller Sporplan manuelt.`);
+      return;
+    }
+
+    if(!addSdeCompletedMoveToPlanSkifte(row)){
+      alert("SDE klarte ikke å registrere ferdig skiftebevegelse. Kontroller forslaget manuelt.");
+      return;
+    }
+
+    state.sdeMoveActions[key] = {
+      action:"completed",
+      vehicle,
+      fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
+      toSlot:targetSlot,
+      time:new Date().toISOString(),
+      snapshot:getSdeMoveActionSnapshot(row)
+    };
+    persist(true);
+    refreshSdeAfterMoveAction();
+    return;
+  }
+
+  if(actionType === "cancelled"){
+    state.sdeMoveActions[key] = {
+      action:"cancelled",
+      vehicle,
+      fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
+      toSlot:targetSlot,
+      time:new Date().toISOString(),
+      snapshot:getSdeMoveActionSnapshot(row)
+    };
+    persist(true);
+    refreshSdeAfterMoveAction();
+    return;
+  }
+
+  alert("Ukjent SDE-kvittering.");
+}
+
+
 function isSdeFlexibleUnknownParkingNeed(row){
   if(!row) return false;
   const hasKnownDeparture = Boolean(normalizeTognr(row.nextDepartureTrain));
@@ -13489,7 +14003,8 @@ function renderSdeSkiftebevegelser(){
 
   const data = getSdeShiftShowcaseData();
   const scoreClass = getSdeShiftScoreClass(data.score);
-  const topMoves = data.moves.slice(0, 12);
+  const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 12);
+  const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
 
   const cardsHtml = topMoves.length
     ? topMoves.map((row,index)=>{
@@ -13498,6 +14013,7 @@ function renderSdeSkiftebevegelser(){
         const alternativesText = Array.isArray(row.recommendationAlternatives) && row.recommendationAlternatives.length
           ? `Alternativer: ${row.recommendationAlternatives.map(alt=>`${alt.slot} (${alt.score})`).join(", ")}`
           : "Ingen alternative spor i første kandidatsett.";
+        const actionKey = encodeURIComponent(getSdeMoveActionKey(row));
 
         return `<article class="sde-shift-card ${priorityClass}" style="--delay:${index * 55}ms">
           <div class="sde-shift-card-top">
@@ -13526,6 +14042,10 @@ function renderSdeSkiftebevegelser(){
 
           <div class="sde-shift-reason">${escapeHtml(row.recommendationReason || row.parkingInstruction || "SDE har ikke begrunnelse for denne anbefalingen ennå.")}</div>
           <div class="sde-shift-alternatives">${escapeHtml(alternativesText)}</div>
+          <div class="sde-shift-actions" aria-label="Kvitter SDE-skifteforslag">
+            <button class="sde-shift-action-btn done" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'completed')">Utført</button>
+            <button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'cancelled')">Annullert</button>
+          </div>
         </article>`;
       }).join("")
     : `<div class="sde-shift-empty">Ingen foreslåtte skiftebevegelser er klare. SDE mangler anbefalte nattplasseringer eller datagrunnlag.</div>`;
@@ -13724,7 +14244,7 @@ function renderSdeSkiftebevegelser(){
       <span>Foreslåtte skiftebevegelser</span>
       <span>${data.moves.length} forslag</span>
     </div>
-    <div class="sde-shift-grid">${cardsHtml}</div>
+    <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
     ${linearTrackDiagnosticsHtml}
     ${pairDiagnosticsHtml}
     ${packageDiagnosticsHtml}
