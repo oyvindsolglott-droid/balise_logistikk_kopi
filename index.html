@@ -13548,14 +13548,14 @@ function renderSdeSkiftebevegelser(){
 
   const flexibleUnknownHtml = data.flexibleUnknownParking?.length
     ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Fleksibel / manuell vurdering <span>${data.flexibleUnknownParking.length}</span></div>
+        <div class="sde-shift-section-title">Ukjent status, parkert <span>${data.flexibleUnknownParking.length}</span></div>
         <div class="sde-shift-unresolved-list">
           ${data.flexibleUnknownParking.slice(0, 8).map(row=>{
             const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
             const arrivalText = row.arrivalTrain ? `${row.arrivalTrain}${arrivalPartText}` : "Ukjent ankomst";
             const vehicle = row.vehicle || "Ukjent kjøretøy";
-            const reason = row.parkingInstruction || row.recommendationReason || "Ingen kjent morgendagsavgang er koblet mot kjøretøyet. Vurder manuelt uten å blokkere kjøretøy med kjent avgangsbehov.";
-            return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(vehicle)}</strong> · Ankomst ${escapeHtml(arrivalText)} · Ingen kjent morgendagsavgang<br>${escapeHtml(reason)}</div>`;
+            const reason = "Årsak er ikke fastslått. Kan være rep, Res., drei eller annen manuell disponering. Må vurderes manuelt før nattplassering antas.";
+            return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(vehicle)}</strong> · Ankomst ${escapeHtml(arrivalText)} · Ingen kjent morgendagsavgang i datagrunnlaget<br>${escapeHtml(reason)}</div>`;
           }).join("")}
         </div>
       </div>`
