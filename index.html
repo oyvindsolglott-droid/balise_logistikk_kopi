@@ -12471,11 +12471,33 @@ function getSdePackageDefinitions(){
 }
 
 
+function isSdeSingleSetTrainWithoutPart(train){
+  const normalized = normalizeTognr(train);
+  return normalized === "862" || normalized === "864";
+}
+
+
+function getSdeDisplayDeparturePart(row){
+  const train = normalizeTognr(row?.nextDepartureTrain);
+  if(isSdeSingleSetTrainWithoutPart(train)) return "";
+  return String(row?.nextDeparturePart || "").trim();
+}
+
+
+function getSdeOperationalSingleSetSlot(row){
+  const train = normalizeTognr(row?.nextDepartureTrain);
+  if(train === "862") return "12N";
+  if(train === "864") return "12S";
+  return "";
+}
+
+
 function getSdePackageRowText(row){
   if(!row) return "ledig";
   const vehicle = row.vehicle || "ukjent kjøretøy";
   const train = row.nextDepartureTrain || "ukjent avgang";
-  const part = row.nextDeparturePart ? `/${row.nextDeparturePart}` : "";
+  const displayPart = getSdeDisplayDeparturePart(row);
+  const part = displayPart ? `/${displayPart}` : "";
   const time = row.nextDepartureTime ? ` kl. ${row.nextDepartureTime}` : "";
   return `${vehicle} → ${train}${part}${time}`;
 }
@@ -12484,7 +12506,7 @@ function getSdePackageRowText(row){
 function getSdePackageDepartureKey(row){
   const train = normalizeTognr(row?.nextDepartureTrain);
   if(!train) return "";
-  const part = String(row?.nextDeparturePart || "").trim();
+  const part = getSdeDisplayDeparturePart(row);
   return part ? `${train}/${part}` : train;
 }
 
@@ -13165,13 +13187,31 @@ function getSdeBlockerRescueCandidateDiagnostics(blockerRow, moves=[]){
     .map(slot => normalizeSlot(slot))
     .filter(slot => slot && slot !== currentSlot)
     .map(slot=>{
+      const expectedSingleSetSlot = getSdeOperationalSingleSetSlot(blockerRow);
+      const blockerTrain = normalizeTognr(blockerRow?.nextDepartureTrain);
+
+      if(expectedSingleSetSlot && slot !== expectedSingleSetSlot){
+        return {
+          slot,
+          status:"operational-mismatch",
+          score:-999,
+          text:`${slot}: ikke operativt mål for ${blockerTrain}. Forventet ${expectedSingleSetSlot}.`
+        };
+      }
+
       if(reserved.has(slot)){
         const reservedNeed = getSdeReservedSlotNeed(reserved, slot);
+        const reservedTrain = normalizeTognr(reservedNeed?.nextDepartureTrain);
+        const reservedExpectedSlot = getSdeOperationalSingleSetSlot(reservedNeed);
+        const operationalText = reservedExpectedSlot && reservedExpectedSlot !== slot
+          ? ` ${reservedTrain} skal operativt stå i ${reservedExpectedSlot}, ikke ${slot}.`
+          : "";
+
         return {
           slot,
           status:"reserved",
           score:-999,
-          text:`${slot}: allerede reservert av ${reservedNeed?.vehicle || "annet SDE-behov"}`
+          text:`${slot}: allerede reservert av ${reservedNeed?.vehicle || "annet SDE-behov"}.${operationalText}`
         };
       }
 
@@ -13220,7 +13260,7 @@ function getSdeBlockerRescueCandidateDiagnostics(blockerRow, moves=[]){
       };
     })
     .sort((a,b)=>{
-      const order = {candidate:0, weak:1, "package-conflict":2, reserved:3, rejected:4};
+      const order = {candidate:0, weak:1, "package-conflict":2, reserved:3, "operational-mismatch":4, rejected:5};
       const oa = order[a.status] ?? 9;
       const ob = order[b.status] ?? 9;
       if(oa !== ob) return oa - ob;
@@ -13255,6 +13295,7 @@ function buildSdeBlockerRescueRejectionDiagnostics(moves=[], unresolved=[]){
         counts.weak ? `${counts.weak} for svak(e)` : "",
         counts["package-conflict"] ? `${counts["package-conflict"]} med ny pakke-/nabokonflikt` : "",
         counts.reserved ? `${counts.reserved} reservert(e)` : "",
+        counts["operational-mismatch"] ? `${counts["operational-mismatch"]} feil operativt mål` : "",
         counts.rejected ? `${counts.rejected} avvist(e)` : ""
       ].filter(Boolean).join(", ") || "ingen kandidater vurdert";
 
