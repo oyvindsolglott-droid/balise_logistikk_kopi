@@ -12981,6 +12981,27 @@ function buildSdePackagePrioritySimulationDiagnostics(moves=[], unresolved=[]){
 }
 
 
+function buildSdePackagePriorityCandidateMotorDiagnostics(moves=[], unresolved=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const simulations = buildSdePackagePrioritySimulationDiagnostics(rows, unresolved);
+  const pairs = buildSdePairDiagnostics(rows, unresolved);
+
+  return simulations
+    .filter(simulation => simulation && simulation.success)
+    .map(simulation=>{
+      const pair = pairs.find(item => item.train === simulation.train);
+      const currentStatus = pair?.status || "Dagens parstatus er ikke funnet.";
+
+      return {
+        train:simulation.train,
+        packageLabel:simulation.packageLabel,
+        currentStatus,
+        text:`${simulation.train}: kandidatmotor ville samle paret i ${simulation.packageLabel}. Dagens status: ${currentStatus} Simulering viser komplett pakke, men dette er ikke aktivert i motor. Dagens SDE-forslag, score og sortering beholdes uendret.`
+      };
+    });
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -13224,6 +13245,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const packagePriorityCandidateMotorDiagnostics = buildSdePackagePriorityCandidateMotorDiagnostics(data.moves, data.unresolved);
+  const packagePriorityCandidateMotorDiagnosticsHtml = packagePriorityCandidateMotorDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Pakkeprioritet – kandidatmotor <span>${packagePriorityCandidateMotorDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${packagePriorityCandidateMotorDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -13251,6 +13284,7 @@ function renderSdeSkiftebevegelser(){
     ${packageRescueDiagnosticsHtml}
     ${packagePriorityDiagnosticsHtml}
     ${packagePrioritySimulationDiagnosticsHtml}
+    ${packagePriorityCandidateMotorDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
