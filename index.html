@@ -11934,6 +11934,10 @@ function buildSdeArrivalParkingNeeds(){
       const vehicle = sanitizeVehicleValue(arrival.vehicle);
       if(!vehicle) return null;
 
+      if(isSdeEveningExitVehicle(vehicle)){
+        return null;
+      }
+
       const nextDeparture = getFirstDepartureForVehicle(vehicle);
       const serviceNeed = getServiceNeedForVehicle(vehicle);
       const departureClockMinutes = nextDeparture
@@ -12515,6 +12519,39 @@ function getSdeOperationalSingleSetSlot(row){
   if(train === "862") return "12N";
   if(train === "864") return "12S";
   return "";
+}
+
+function getSdeEveningExitTrainNumbers(){
+  return new Set(["832", "834", "836", "838", "840"]);
+}
+
+function getSdeEveningExitVehicles(){
+  const source = state.apiBalise?.departureVehicles || {};
+
+  const exitTrains = getSdeEveningExitTrainNumbers();
+  const vehicles = new Set();
+
+  Object.entries(source).forEach(([train, trainVehicles]) => {
+    const cleanTrain = normalizeTognr(train);
+    if(!exitTrains.has(cleanTrain)) return;
+
+    const vehicleList = Array.isArray(trainVehicles)
+      ? trainVehicles
+      : String(trainVehicles || "").split(",");
+
+    vehicleList.forEach(vehicle => {
+      const cleanVehicle = sanitizeVehicleValue(vehicle);
+      if(cleanVehicle) vehicles.add(cleanVehicle);
+    });
+  });
+
+  return vehicles;
+}
+
+function isSdeEveningExitVehicle(vehicle){
+  const cleanVehicle = sanitizeVehicleValue(vehicle);
+  if(!cleanVehicle) return false;
+  return getSdeEveningExitVehicles().has(cleanVehicle);
 }
 
 
