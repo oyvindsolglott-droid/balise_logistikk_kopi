@@ -2044,19 +2044,22 @@ button{padding:12px 12px}
 .sde-shift-trains{
   display:grid;
   gap:6px;
-  min-width:140px;
-  text-align:right;
+  min-width:200px;
+  max-width:260px;
+  text-align:left;
 }
 
 .sde-shift-train-pill{
   border:1px solid rgba(255,255,255,.15);
   border-radius:999px;
-  padding:6px 10px;
+  padding:6px 12px;
   background:rgba(255,255,255,.09);
   color:#eaf4ff;
   font-weight:850;
   font-size:13px;
   white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 
 .sde-shift-train-pill b{
