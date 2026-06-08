@@ -13002,6 +13002,58 @@ function buildSdePackagePriorityCandidateMotorDiagnostics(moves=[], unresolved=[
 }
 
 
+function buildSdePackagePriorityActiveTestModeDiagnostics(moves=[], unresolved=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const priorities = buildSdePackagePriorityDiagnostics(rows, unresolved);
+  const pairs = buildSdePairDiagnostics(rows, unresolved);
+  const packages = getSdePackageDefinitions();
+
+  return priorities.map(priority=>{
+    const pair = pairs.find(item => item.train === priority.train);
+    const packageInfo = packages.find(item => item.label === priority.packageLabel);
+
+    if(!pair || !packageInfo){
+      return null;
+    }
+
+    const conflicts = buildSdePackageConflictDiagnostics(rows, unresolved)
+      .filter(conflict => conflict.train === priority.train && conflict.packageLabel === priority.packageLabel);
+
+    const blockers = conflicts
+      .flatMap(conflict => conflict.blockers || [])
+      .map(blocker => blocker.row)
+      .filter(Boolean);
+
+    const reserved = buildSdeMoveReservationMap(rows, [pair.part1, pair.part2, ...blockers]);
+    const assignments = getSdePackagePrioritySimulationAssignments(pair.part1, pair.part2, packageInfo);
+
+    const successful = assignments
+      .map(assignment => evaluateSdeSimulatedPackageAssignment(assignment, reserved))
+      .filter(result => result.ok)
+      .sort((a,b)=>b.score - a.score)[0] || null;
+
+    if(!successful) return null;
+
+    const currentText = [
+      `/1 ${getSdePairRowText(pair.part1)}`,
+      `/2 ${getSdePairRowText(pair.part2)}`
+    ].join(", ");
+
+    const testText = successful.evaluated
+      .sort((a,b)=>String(a.part).localeCompare(String(b.part), "nb"))
+      .map(item => `/${item.part || "?"} ${item.row.vehicle || "ukjent"} → ${item.slot} score ${item.score}`)
+      .join(", ");
+
+    return {
+      train:priority.train,
+      packageLabel:priority.packageLabel,
+      currentStatus:pair.status,
+      text:`${priority.train}: aktiv testmodus ville erstatte dagens plassering (${currentText}) med testplassering i ${priority.packageLabel}: ${testText}. Dette er fortsatt bare testmodus og brukes ikke som hovedforslag ennå.`
+    };
+  }).filter(Boolean);
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -13257,6 +13309,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const packagePriorityActiveTestModeDiagnostics = buildSdePackagePriorityActiveTestModeDiagnostics(data.moves, data.unresolved);
+  const packagePriorityActiveTestModeDiagnosticsHtml = packagePriorityActiveTestModeDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Pakkeprioritet – aktiv testmodus <span>${packagePriorityActiveTestModeDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${packagePriorityActiveTestModeDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -13285,6 +13349,7 @@ function renderSdeSkiftebevegelser(){
     ${packagePriorityDiagnosticsHtml}
     ${packagePrioritySimulationDiagnosticsHtml}
     ${packagePriorityCandidateMotorDiagnosticsHtml}
+    ${packagePriorityActiveTestModeDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
