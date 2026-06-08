@@ -12099,9 +12099,10 @@ function getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures, t
 
 function getSdeShiftShowcaseData(){
   const arrivalNeeds = buildSdeArrivalParkingNeeds();
+  const nonSpor3ArrivalNeeds = arrivalNeeds.filter(row => !isSdeSpor3ProductionNeed(row));
   const needs = [
-    ...arrivalNeeds,
-    ...buildSdeSpor3ProductionDepartureNeeds(arrivalNeeds)
+    ...nonSpor3ArrivalNeeds,
+    ...buildSdeSpor3ProductionDepartureNeeds(nonSpor3ArrivalNeeds)
   ];
   const moves = needs
     .filter(row=>row && row.recommendedSlot)
