@@ -11314,6 +11314,7 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
         ]
       };
     })
+    .filter(candidate => Number(candidate.score || 0) >= 45)
     .sort((a,b)=>b.score - a.score);
 
   const best = scored[0] || null;
