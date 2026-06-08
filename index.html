@@ -12759,6 +12759,43 @@ function buildSdePackageRescueDiagnostics(moves=[], unresolved=[]){
 }
 
 
+function buildSdePackagePriorityDiagnostics(moves=[], unresolved=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const conflicts = buildSdePackageConflictDiagnostics(rows, unresolved);
+  const rescues = buildSdePackageRescueDiagnostics(rows, unresolved);
+
+  return conflicts.map(conflict=>{
+    const relatedRescues = rescues.filter(rescue =>
+      rescue.train === conflict.train &&
+      rescue.packageLabel === conflict.packageLabel
+    );
+
+    const hasCleanRescue = relatedRescues.some(rescue =>
+      Array.isArray(rescue.alternatives) && rescue.alternatives.length
+    );
+
+    const blockerText = (conflict.blockers || [])
+      .map(blocker => `${blocker.slot} ${getSdePackageRowText(blocker.row)}`)
+      .join(", ");
+
+    const pairPart = conflict.pairRow?.nextDeparturePart ? `/${conflict.pairRow.nextDeparturePart}` : "";
+    const pairText = `${conflict.slot} ${conflict.pairRow?.vehicle || "ukjent kjøretøy"} → ${conflict.train}${pairPart}${conflict.pairRow?.nextDepartureTime ? ` kl. ${conflict.pairRow.nextDepartureTime}` : ""}`;
+
+    const rescueText = hasCleanRescue
+      ? "Etterpå-redning fant mulig alternativ for blokkeren; bør kontrolleres manuelt før eventuell prioriteringsendring."
+      : "Etterpå-redning fant ingen rent alternativ over scoregrensen. Dette taler for at pakken må beskyttes tidligere i prioriteringen.";
+
+    return {
+      train:conflict.train,
+      packageLabel:conflict.packageLabel,
+      hasCleanRescue,
+      text:`${conflict.train}: ${conflict.packageLabel} bør vurderes som tidlig beskyttet pakke. ${pairText} er avhengig av pakken, men ${blockerText || "annen plassering"} beslaglegger naboposisjon. ${rescueText}`
+    };
+  })
+    .filter(item => !item.hasCleanRescue);
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -12978,6 +13015,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const packagePriorityDiagnostics = buildSdePackagePriorityDiagnostics(data.moves, data.unresolved);
+  const packagePriorityDiagnosticsHtml = packagePriorityDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Pakkeprioritet – tidlig beskyttelse <span>${packagePriorityDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${packagePriorityDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -13003,6 +13052,7 @@ function renderSdeSkiftebevegelser(){
     ${packageDiagnosticsHtml}
     ${packageConflictDiagnosticsHtml}
     ${packageRescueDiagnosticsHtml}
+    ${packagePriorityDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
