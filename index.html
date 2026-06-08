@@ -11045,9 +11045,28 @@ function scoreSdeArrivalParkingCandidate(need, slot){
     reasons.push("Servicebehov er registrert; sluttplassering må vurderes etter spor 6-flyt.");
   }
 
-  if(["4N","4M","5N","5M","5S"].includes(candidate)){
+  if(["4N","4M"].includes(candidate)){
     score += 14;
     reasons.push(`${candidate} er egnet som generell parkering/mellomlagring.`);
+  }
+
+  if(["5N","5M","5S"].includes(candidate)){
+    const fiveMEmpty = !sanitizeVehicleValue(getSdeVehicleInSlot("5M"));
+    const fiveSEmpty = !sanitizeVehicleValue(getSdeVehicleInSlot("5S"));
+
+    if(candidate === "5N" && (fiveMEmpty || fiveSEmpty)){
+      score -= 26;
+      reasons.push("5N straffes: ved innskifting fra nord/vaskemaskinen kan plassering i 5N først blokkere senere tilgang til 5M/5S.");
+    }else if(candidate === "5M" && fiveSEmpty){
+      score -= 8;
+      reasons.push("5M vurderes forsiktig fordi 5S fortsatt er ledig og innskifting normalt skjer fra nord/vaskemaskinen.");
+    }else if(candidate === "5S"){
+      score += 12;
+      reasons.push("5S kan være egnet fordi sørlig/dyp plassering bevarer bedre tilgang til 5M/5N ved senere innskifting fra nord.");
+    }else{
+      score += 4;
+      reasons.push(`${candidate} kan vurderes som mellomlagring, men spor 5 må fylles i riktig rekkefølge fra nord.`);
+    }
   }
 
   if(["1N","1S"].includes(candidate)){
