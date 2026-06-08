@@ -13054,6 +13054,51 @@ function buildSdePackagePriorityActiveTestModeDiagnostics(moves=[], unresolved=[
 }
 
 
+function buildSdePackagePriorityLimitedActiveMotorDiagnostics(moves=[], unresolved=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const activeTests = buildSdePackagePriorityActiveTestModeDiagnostics(rows, unresolved);
+  const priorities = buildSdePackagePriorityDiagnostics(rows, unresolved);
+
+  return activeTests.map(test=>{
+    const relatedPriority = priorities.find(priority =>
+      priority.train === test.train &&
+      priority.packageLabel === test.packageLabel
+    );
+
+    const conflicts = buildSdePackageConflictDiagnostics(rows, unresolved)
+      .filter(conflict =>
+        conflict.train === test.train &&
+        conflict.packageLabel === test.packageLabel
+      );
+
+    const displacedRows = conflicts
+      .flatMap(conflict => conflict.blockers || [])
+      .map(blocker => ({
+        slot:normalizeSlot(blocker.slot),
+        row:blocker.row
+      }))
+      .filter(item => item.slot && item.row);
+
+    const displacedText = displacedRows.length
+      ? displacedRows
+          .map(item => `${item.slot} ${getSdePackageRowText(item.row)}`)
+          .join(", ")
+      : "ingen kjent blokkering";
+
+    const safetyText = displacedRows.length
+      ? "Aktiv motor kan ikke bare samle paret; den må samtidig frigjøre eller omplassere blokkeringen."
+      : "Ingen blokkering funnet i dagens diagnose, men dette må fortsatt kontrolleres før hovedmotor aktiveres.";
+
+    return {
+      train:test.train,
+      packageLabel:test.packageLabel,
+      displacedRows,
+      text:`${test.train}: begrenset aktiv motor ville bruke ${test.packageLabel}, men dette fortrenger ${displacedText}. ${safetyText} ${relatedPriority ? relatedPriority.text : ""}`
+    };
+  });
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -13321,6 +13366,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const packagePriorityLimitedActiveMotorDiagnostics = buildSdePackagePriorityLimitedActiveMotorDiagnostics(data.moves, data.unresolved);
+  const packagePriorityLimitedActiveMotorDiagnosticsHtml = packagePriorityLimitedActiveMotorDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Pakkeprioritet – aktiv motor, konsekvens <span>${packagePriorityLimitedActiveMotorDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${packagePriorityLimitedActiveMotorDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -13350,6 +13407,7 @@ function renderSdeSkiftebevegelser(){
     ${packagePrioritySimulationDiagnosticsHtml}
     ${packagePriorityCandidateMotorDiagnosticsHtml}
     ${packagePriorityActiveTestModeDiagnosticsHtml}
+    ${packagePriorityLimitedActiveMotorDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
