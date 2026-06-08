@@ -11045,9 +11045,27 @@ function scoreSdeArrivalParkingCandidate(need, slot){
     reasons.push("Servicebehov er registrert; sluttplassering må vurderes etter spor 6-flyt.");
   }
 
-  if(["4N","4M"].includes(candidate)){
-    score += 14;
-    reasons.push(`${candidate} er egnet som generell parkering/mellomlagring.`);
+  if(["4N","4M","4S"].includes(candidate)){
+    const fourMEmpty = !sanitizeVehicleValue(getSdeVehicleInSlot("4M"));
+    const fourSEmpty = !sanitizeVehicleValue(getSdeVehicleInSlot("4S"));
+
+    if(candidate === "4N" && (fourMEmpty || fourSEmpty)){
+      return {
+        slot:candidate,
+        score:-999,
+        status:"rejected",
+        reasons:["4N avvises: ved innskifting fra nord/vaskemaskinen kan plassering i 4N først blokkere senere tilgang til 4M/4S."]
+      };
+    }else if(candidate === "4M" && fourSEmpty){
+      score -= 7;
+      reasons.push("4M vurderes forsiktig fordi 4S fortsatt er ledig og innskifting normalt skjer fra nord/vaskemaskinen.");
+    }else if(candidate === "4S"){
+      score += 12;
+      reasons.push("4S kan være egnet fordi sørlig/dyp plassering bevarer bedre tilgang til 4M/4N ved senere innskifting fra nord.");
+    }else{
+      score += 4;
+      reasons.push(`${candidate} kan vurderes som mellomlagring, men spor 4 må fylles i riktig rekkefølge fra nord.`);
+    }
   }
 
   if(["5N","5M","5S"].includes(candidate)){
@@ -11055,8 +11073,12 @@ function scoreSdeArrivalParkingCandidate(need, slot){
     const fiveSEmpty = !sanitizeVehicleValue(getSdeVehicleInSlot("5S"));
 
     if(candidate === "5N" && (fiveMEmpty || fiveSEmpty)){
-      score -= 26;
-      reasons.push("5N straffes: ved innskifting fra nord/vaskemaskinen kan plassering i 5N først blokkere senere tilgang til 5M/5S.");
+      return {
+        slot:candidate,
+        score:-999,
+        status:"rejected",
+        reasons:["5N avvises: ved innskifting fra nord/vaskemaskinen kan plassering i 5N først blokkere senere tilgang til 5M/5S."]
+      };
     }else if(candidate === "5M" && fiveSEmpty){
       score -= 8;
       reasons.push("5M vurderes forsiktig fordi 5S fortsatt er ledig og innskifting normalt skjer fra nord/vaskemaskinen.");
@@ -11070,6 +11092,15 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }
 
   if(["1N","1S"].includes(candidate)){
+    if(isSdeBorgestad10855SlotReserved(candidate)){
+      return {
+        slot:candidate,
+        score:-999,
+        status:"rejected",
+        reasons:["1S er reservert fordi 855 faktisk finnes som ankomst i datagrunnlaget. 855 skal skiftes inn i spor 1 etter ankomst og stå i 1S frem til avgang 10855 kl. 20:14."]
+      };
+    }
+
     score += 8;
     reasons.push(`${candidate} kan være egnet dersom tilgang videre ikke blokkeres.`);
   }
@@ -11311,6 +11342,21 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
 
 function isSdeBorgestad10855Flow(arrival){
   return String(arrival?.train || arrival?.arrivalTrain || "").trim() === "855";
+}
+
+function isSdeBorgestad10855SlotReserved(slot){
+  const candidate = normalizeSlot(slot);
+  if(candidate !== "1S") return false;
+
+  const arrivalMaps = [
+    state.apiBalise?.arrivals,
+    state.baliseTodayArrivals
+  ];
+
+  return arrivalMaps.some(arrivals =>
+    arrivals &&
+    Object.keys(arrivals).some(train => normalizeTognr(train) === "855")
+  );
 }
 
 
@@ -11752,7 +11798,33 @@ function buildSdeArrivalParkingNeeds(){
   const reservedRecommendedSlots = new Map();
   const recommendationsByVehicle = new Map();
 
-  return relevantArrivals
+  function getSdeArrivalRecommendationPriority(arrival){
+    const vehicle = sanitizeVehicleValue(arrival?.vehicle);
+    const nextDeparture = getFirstDepartureForVehicle(vehicle);
+    const serviceNeed = getServiceNeedForVehicle(vehicle);
+    const departureClockMinutes = nextDeparture
+      ? getSdeTimeMinutes(nextDeparture.time || nextDeparture.displayTime)
+      : null;
+    const earlyDeparture = departureClockMinutes !== null && departureClockMinutes < (9 * 60);
+
+    if(serviceNeed) return 0;
+    if(earlyDeparture) return 1;
+    if(nextDeparture) return 2;
+    return 3;
+  }
+
+  return [...relevantArrivals]
+    .sort((a,b)=>{
+      const pa = getSdeArrivalRecommendationPriority(a);
+      const pb = getSdeArrivalRecommendationPriority(b);
+      if(pa !== pb) return pa - pb;
+
+      const ta = getSdeArrivalLatestSequenceMinutes(a);
+      const tb = getSdeArrivalLatestSequenceMinutes(b);
+      if(ta !== tb) return ta - tb;
+
+      return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
+    })
     .map(arrival=>{
       const vehicle = sanitizeVehicleValue(arrival.vehicle);
       if(!vehicle) return null;
