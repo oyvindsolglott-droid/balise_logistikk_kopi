@@ -11662,12 +11662,18 @@ function getSdeSpor3DeparturePreferredSlot(binding, departureBindings){
 
 function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
   const bindings = buildSdeTursattVehicleBindings();
-  const departureBindings = bindings.filter(binding =>
-    binding?.role === "departure" &&
-    binding?.mustBeAccessible &&
-    ["802","852"].includes(normalizeTognr(binding?.train)) &&
-    sanitizeVehicleValue(binding?.vehicle)
-  );
+  const departureBindings = bindings.filter(binding => {
+    const train = normalizeTognr(binding?.train);
+    const part = String(binding?.part || "").trim();
+
+    return binding?.role === "departure" &&
+      binding?.mustBeAccessible &&
+      sanitizeVehicleValue(binding?.vehicle) &&
+      (
+        train === "802" ||
+        (train === "852" && (!part || part === "1"))
+      );
+  });
 
   if(!departureBindings.length) return [];
 
@@ -12097,12 +12103,30 @@ function getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures, t
 }
 
 
+function getSdeShiftMoveSortMinutes(row){
+  if(row?.isSpor3ProductionNeed){
+    return getSdeOperationalSequenceMinutes(row?.arrivalTime || "21:00", "plannedMove") ?? 99999;
+  }
+
+  return getSdeOperationalSequenceMinutes(row?.arrivalTime, "plannedMove") ?? 99999;
+}
+
+
 function getSdeShiftShowcaseData(){
   const arrivalNeeds = buildSdeArrivalParkingNeeds();
-  const nonSpor3ArrivalNeeds = arrivalNeeds.filter(row => !isSdeSpor3ProductionNeed(row));
+  const baseArrivalNeeds = arrivalNeeds.filter(row => !isSdeSpor3ProductionNeed(row));
+  const spor3ProductionNeeds = buildSdeSpor3ProductionDepartureNeeds([]);
+  const spor3VehicleTokens = new Set(
+    spor3ProductionNeeds
+      .map(row => normalizeVehicleToken(row?.vehicle))
+      .filter(Boolean)
+  );
+  const nonSpor3ArrivalNeeds = baseArrivalNeeds.filter(row =>
+    !spor3VehicleTokens.has(normalizeVehicleToken(row?.vehicle))
+  );
   const needs = [
     ...nonSpor3ArrivalNeeds,
-    ...buildSdeSpor3ProductionDepartureNeeds(nonSpor3ArrivalNeeds)
+    ...spor3ProductionNeeds
   ];
   const moves = needs
     .filter(row=>row && row.recommendedSlot)
@@ -12123,6 +12147,10 @@ function getSdeShiftShowcaseData(){
       };
     })
     .sort((a,b)=>{
+      const ta = getSdeShiftMoveSortMinutes(a);
+      const tb = getSdeShiftMoveSortMinutes(b);
+      if(ta !== tb) return ta - tb;
+
       const getSpor3SequenceOrder = row => {
         if(!row?.isSpor3ProductionNeed) return 999;
         const train = normalizeTognr(row.nextDepartureTrain);
@@ -12137,9 +12165,6 @@ function getSdeShiftShowcaseData(){
       const sb = getSpor3SequenceOrder(b);
       if(sa !== sb) return sa - sb;
 
-      const ta = getSdeArrivalLatestSequenceMinutes({displayTime:a.arrivalTime});
-      const tb = getSdeArrivalLatestSequenceMinutes({displayTime:b.arrivalTime});
-      if(ta !== tb) return ta - tb;
       return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
     });
 
