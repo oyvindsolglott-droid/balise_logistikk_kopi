@@ -12458,6 +12458,109 @@ function buildSdePairDiagnostics(moves=[], unresolved=[]){
 }
 
 
+function getSdePackageRowText(row){
+  if(!row) return "ledig";
+  const vehicle = row.vehicle || "ukjent kjøretøy";
+  const train = row.nextDepartureTrain || "ukjent avgang";
+  const part = row.nextDeparturePart ? `/${row.nextDeparturePart}` : "";
+  const time = row.nextDepartureTime ? ` kl. ${row.nextDepartureTime}` : "";
+  return `${vehicle} → ${train}${part}${time}`;
+}
+
+
+function getSdePackageDepartureKey(row){
+  const train = normalizeTognr(row?.nextDepartureTrain);
+  if(!train) return "";
+  const part = String(row?.nextDeparturePart || "").trim();
+  return part ? `${train}/${part}` : train;
+}
+
+
+function getSdePackageTrainKey(row){
+  return normalizeTognr(row?.nextDepartureTrain);
+}
+
+
+function buildSdePackageDiagnostics(moves=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const packages = [
+    {label:"4S+4M", slots:["4S","4M"], type:"linear"},
+    {label:"4M+4N", slots:["4M","4N"], type:"linear"},
+    {label:"5S+5M", slots:["5S","5M"], type:"linear"},
+    {label:"5M+5N", slots:["5M","5N"], type:"linear"},
+    {label:"10S+10N", slots:["10S","10N"], type:"butt"},
+    {label:"11S+11N", slots:["11S","11N"], type:"butt"},
+    {label:"12S+12N", slots:["12S","12N"], type:"butt"}
+  ];
+
+  return packages.map(packageInfo=>{
+    const occupants = packageInfo.slots.map(slot=>{
+      const row = rows.find(item => normalizeSlot(item?.recommendedSlot) === slot);
+      return {
+        slot,
+        row:row || null,
+        trainKey:getSdePackageTrainKey(row),
+        departureKey:getSdePackageDepartureKey(row),
+        part:String(row?.nextDeparturePart || "").trim()
+      };
+    });
+
+    const used = occupants.filter(item => item.row);
+
+    let status = "Ledig pakke.";
+    let severity = "free";
+
+    if(used.length === 1){
+      status = `Delvis brukt: ${used[0].slot} er opptatt, ${occupants.find(item => !item.row)?.slot || "andre posisjon"} er ledig.`;
+      severity = "partial";
+    }else if(used.length === 2){
+      const sameTrain = used[0].trainKey && used[0].trainKey === used[1].trainKey;
+      const departureKeys = used.map(item => item.departureKey).filter(Boolean);
+      const sameDeparture = departureKeys.length === 2 && departureKeys[0] === departureKeys[1];
+      const hasPart1 = used.some(item => item.part === "1");
+      const hasPart2 = used.some(item => item.part === "2");
+
+      if(sameTrain && hasPart1 && hasPart2){
+        status = `Brukt av samme par til ${used[0].trainKey}.`;
+        severity = "pair";
+
+        if(packageInfo.type === "butt"){
+          const sRow = occupants.find(item => item.slot.endsWith("S"));
+          const nRow = occupants.find(item => item.slot.endsWith("N"));
+          if(!(sRow?.part === "1" && nRow?.part === "2")){
+            status += " Buttspor bør kontrolleres: /2 skal normalt stå i N og /1 i S.";
+            severity = "warning";
+          }
+        }
+      }else if(sameDeparture){
+        status = `Brukt av samme avgang ${used[0].departureKey}.`;
+        severity = "same";
+      }else if(sameTrain){
+        status = `Brukt av samme tognummer ${used[0].trainKey}, men del/status bør kontrolleres.`;
+        severity = "warning";
+      }else{
+        status = `Splittet mellom ulike avganger: ${used.map(item => item.departureKey || "ukjent").join(" og ")}.`;
+        severity = "split";
+      }
+    }
+
+    const details = occupants
+      .map(item => `${item.slot}: ${getSdePackageRowText(item.row)}`)
+      .join(" | ");
+
+    return {
+      label:packageInfo.label,
+      slots:packageInfo.slots,
+      type:packageInfo.type,
+      usedCount:used.length,
+      severity,
+      status,
+      text:`${packageInfo.label}: ${status} ${details}`
+    };
+  });
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -12641,6 +12744,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const packageDiagnostics = buildSdePackageDiagnostics(data.moves);
+  const packageDiagnosticsHtml = packageDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Pakkestatus spor 4/5 og buttspor <span>${packageDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${packageDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.label)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -12663,6 +12778,7 @@ function renderSdeSkiftebevegelser(){
     <div class="sde-shift-grid">${cardsHtml}</div>
     ${linearTrackDiagnosticsHtml}
     ${pairDiagnosticsHtml}
+    ${packageDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
