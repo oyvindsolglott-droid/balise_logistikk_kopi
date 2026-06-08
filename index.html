@@ -12284,6 +12284,79 @@ function getSdeShiftShowcaseData(){
 }
 
 
+function getSdeLinearTrackPositionOrder(slot){
+  const normalized = normalizeSlot(slot);
+  const match = normalized.match(/^([45])([SMN])$/);
+  if(!match) return null;
+
+  const order = {S:0, M:1, N:2};
+  return {
+    track:match[1],
+    position:match[2],
+    order:order[match[2]]
+  };
+}
+
+
+function getSdeShiftDepartureClockMinutes(row){
+  const minutes = getSdeTimeMinutes(row?.nextDepartureTime);
+  return minutes === null ? 99999 : minutes;
+}
+
+
+function buildSdeLinearTrackDiagnostics(moves=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const diagnostics = [];
+
+  ["4","5"].forEach(track=>{
+    const occupied = ["S","M","N"]
+      .map(position => {
+        const slot = `${track}${position}`;
+        const row = rows.find(item => normalizeSlot(item?.recommendedSlot) === slot);
+        if(!row) return null;
+
+        const info = getSdeLinearTrackPositionOrder(slot);
+        return {
+          slot,
+          row,
+          order:info?.order ?? 0,
+          departureMinutes:getSdeShiftDepartureClockMinutes(row)
+        };
+      })
+      .filter(Boolean);
+
+    occupied.forEach(front=>{
+      occupied.forEach(back=>{
+        if(front.slot === back.slot) return;
+
+        const frontIsNorthOfBack = front.order > back.order;
+        if(!frontIsNorthOfBack) return;
+
+        const frontDeparture = front.departureMinutes;
+        const backDeparture = back.departureMinutes;
+        if(frontDeparture <= backDeparture) return;
+
+        const frontDepartureText = `${front.row.nextDepartureTrain || ""}${front.row.nextDeparturePart ? `/${front.row.nextDeparturePart}` : ""}${front.row.nextDepartureTime ? ` kl. ${front.row.nextDepartureTime}` : ""}`;
+        const backDepartureText = `${back.row.nextDepartureTrain || ""}${back.row.nextDeparturePart ? `/${back.row.nextDeparturePart}` : ""}${back.row.nextDepartureTime ? ` kl. ${back.row.nextDepartureTime}` : ""}`;
+
+        diagnostics.push({
+          track,
+          frontSlot:front.slot,
+          frontVehicle:front.row.vehicle,
+          frontDeparture:frontDepartureText,
+          backSlot:back.slot,
+          backVehicle:back.row.vehicle,
+          backDeparture:backDepartureText,
+          text:`Spor ${track} bør kontrolleres: ${front.slot} ${front.row.vehicle} → ${frontDepartureText} står foran ${back.slot} ${back.row.vehicle} → ${backDepartureText}. Tidligere uttak kan bli sperret av senere uttak.`
+        });
+      });
+    });
+  });
+
+  return diagnostics;
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -12443,6 +12516,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const linearTrackDiagnostics = buildSdeLinearTrackDiagnostics(data.moves);
+  const linearTrackDiagnosticsHtml = linearTrackDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Spor 4/5 – uttaksrekkefølge <span>${linearTrackDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${linearTrackDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(`Spor ${item.track}`)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -12463,6 +12548,7 @@ function renderSdeSkiftebevegelser(){
       <span>${data.moves.length} forslag</span>
     </div>
     <div class="sde-shift-grid">${cardsHtml}</div>
+    ${linearTrackDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
