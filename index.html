@@ -12458,6 +12458,19 @@ function buildSdePairDiagnostics(moves=[], unresolved=[]){
 }
 
 
+function getSdePackageDefinitions(){
+  return [
+    {label:"4S+4M", slots:["4S","4M"], type:"linear"},
+    {label:"4M+4N", slots:["4M","4N"], type:"linear"},
+    {label:"5S+5M", slots:["5S","5M"], type:"linear"},
+    {label:"5M+5N", slots:["5M","5N"], type:"linear"},
+    {label:"10S+10N", slots:["10S","10N"], type:"butt"},
+    {label:"11S+11N", slots:["11S","11N"], type:"butt"},
+    {label:"12S+12N", slots:["12S","12N"], type:"butt"}
+  ];
+}
+
+
 function getSdePackageRowText(row){
   if(!row) return "ledig";
   const vehicle = row.vehicle || "ukjent kjøretøy";
@@ -12483,15 +12496,7 @@ function getSdePackageTrainKey(row){
 
 function buildSdePackageDiagnostics(moves=[]){
   const rows = Array.isArray(moves) ? moves : [];
-  const packages = [
-    {label:"4S+4M", slots:["4S","4M"], type:"linear"},
-    {label:"4M+4N", slots:["4M","4N"], type:"linear"},
-    {label:"5S+5M", slots:["5S","5M"], type:"linear"},
-    {label:"5M+5N", slots:["5M","5N"], type:"linear"},
-    {label:"10S+10N", slots:["10S","10N"], type:"butt"},
-    {label:"11S+11N", slots:["11S","11N"], type:"butt"},
-    {label:"12S+12N", slots:["12S","12N"], type:"butt"}
-  ];
+  const packages = getSdePackageDefinitions();
 
   return packages.map(packageInfo=>{
     const occupants = packageInfo.slots.map(slot=>{
@@ -12558,6 +12563,70 @@ function buildSdePackageDiagnostics(moves=[]){
       text:`${packageInfo.label}: ${status} ${details}`
     };
   });
+}
+
+
+function buildSdePackageConflictDiagnostics(moves=[], unresolved=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const pairs = buildSdePairDiagnostics(moves, unresolved);
+  const packages = getSdePackageDefinitions();
+  const diagnostics = [];
+  const seen = new Set();
+
+  pairs.forEach(pair=>{
+    const pairTrain = normalizeTognr(pair?.train);
+    if(!pairTrain) return;
+
+    [pair.part1, pair.part2].forEach(pairRow=>{
+      const slot = normalizeSlot(pairRow?.recommendedSlot);
+      if(!slot) return;
+
+      const relevantPackages = packages.filter(packageInfo => packageInfo.slots.includes(slot));
+
+      relevantPackages.forEach(packageInfo=>{
+        const occupants = packageInfo.slots.map(packageSlot=>{
+          const row = rows.find(item => normalizeSlot(item?.recommendedSlot) === packageSlot);
+          return {
+            slot:packageSlot,
+            row:row || null,
+            trainKey:getSdePackageTrainKey(row),
+            departureKey:getSdePackageDepartureKey(row)
+          };
+        });
+
+        const blockers = occupants.filter(item =>
+          item.row &&
+          item.slot !== slot &&
+          item.trainKey &&
+          item.trainKey !== pairTrain
+        );
+
+        if(!blockers.length) return;
+
+        const blockerText = blockers
+          .map(item => `${item.slot} ${getSdePackageRowText(item.row)}`)
+          .join(", ");
+
+        const pairPart = pairRow.nextDeparturePart ? `/${pairRow.nextDeparturePart}` : "";
+        const pairText = `${pairRow.vehicle || "ukjent kjøretøy"} → ${pairTrain}${pairPart}${pairRow.nextDepartureTime ? ` kl. ${pairRow.nextDepartureTime}` : ""}`;
+
+        const key = `${pairTrain}|${pairPart}|${slot}|${packageInfo.label}|${blockers.map(item => item.slot).join(",")}`;
+        if(seen.has(key)) return;
+        seen.add(key);
+
+        diagnostics.push({
+          train:pairTrain,
+          packageLabel:packageInfo.label,
+          slot,
+          pairRow,
+          blockers,
+          text:`${pairTrain}: ${slot} ${pairText} står i pakke ${packageInfo.label}, men ${blockerText} beslaglegger naboposisjon. ${pair.status}`
+        });
+      });
+    });
+  });
+
+  return diagnostics;
 }
 
 
@@ -12756,6 +12825,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const packageConflictDiagnostics = buildSdePackageConflictDiagnostics(data.moves, data.unresolved);
+  const packageConflictDiagnosticsHtml = packageConflictDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Pakke-/parkonflikt <span>${packageConflictDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${packageConflictDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -12779,6 +12860,7 @@ function renderSdeSkiftebevegelser(){
     ${linearTrackDiagnosticsHtml}
     ${pairDiagnosticsHtml}
     ${packageDiagnosticsHtml}
+    ${packageConflictDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
