@@ -12357,6 +12357,107 @@ function buildSdeLinearTrackDiagnostics(moves=[]){
 }
 
 
+function getSdePairTrackPackageStatus(part1Row, part2Row){
+  const slot1 = normalizeSlot(part1Row?.recommendedSlot);
+  const slot2 = normalizeSlot(part2Row?.recommendedSlot);
+  if(!slot1 || !slot2) return "Mangler komplett sporplassering.";
+
+  const linear1 = getSdeLinearTrackPositionOrder(slot1);
+  const linear2 = getSdeLinearTrackPositionOrder(slot2);
+
+  if(linear1 && linear2){
+    if(linear1.track !== linear2.track){
+      return `Splittet mellom spor ${linear1.track} og ${linear2.track}.`;
+    }
+
+    const distance = Math.abs(linear1.order - linear2.order);
+    if(distance === 1){
+      return `Samlet i spor ${linear1.track} som tilstøtende pakke ${slot1}+${slot2}.`;
+    }
+
+    return `Samme spor ${linear1.track}, men ikke tilstøtende pakke (${slot1}+${slot2}).`;
+  }
+
+  const butt1 = slot1.match(/^(10|11|12)([NS])$/);
+  const butt2 = slot2.match(/^(10|11|12)([NS])$/);
+
+  if(butt1 && butt2){
+    if(butt1[1] !== butt2[1]){
+      return `Splittet mellom buttspor ${butt1[1]} og ${butt2[1]}.`;
+    }
+
+    if(butt1[2] === "S" && butt2[2] === "N"){
+      return `Samlet korrekt i buttspor ${butt1[1]}: /2 i N og /1 i S.`;
+    }
+
+    return `Buttspor ${butt1[1]} bør kontrolleres: /2 skal normalt stå i N og /1 i S.`;
+  }
+
+  return slot1 === slot2
+    ? `Begge peker mot ${slot1}; må kontrolleres.`
+    : `Splittet mellom ${slot1} og ${slot2}.`;
+}
+
+
+function getSdePairRowText(row){
+  if(!row) return "mangler";
+  const vehicle = row.vehicle || "ukjent kjøretøy";
+  const train = row.nextDepartureTrain || "ukjent avgang";
+  const part = row.nextDeparturePart ? `/${row.nextDeparturePart}` : "";
+  const time = row.nextDepartureTime ? ` kl. ${row.nextDepartureTime}` : "";
+  const slot = row.recommendedSlot ? ` → ${normalizeSlot(row.recommendedSlot)}` : " → uløst";
+  return `${vehicle} → ${train}${part}${time}${slot}`;
+}
+
+
+function buildSdePairDiagnostics(moves=[], unresolved=[]){
+  const solvedRows = Array.isArray(moves) ? moves : [];
+  const unresolvedRows = Array.isArray(unresolved) ? unresolved : [];
+  const groups = new Map();
+
+  [
+    ...solvedRows.map(row => ({...row, pairStatus:"løst"})),
+    ...unresolvedRows.map(row => ({...row, pairStatus:"uløst"}))
+  ].forEach(row=>{
+    const train = normalizeTognr(row?.nextDepartureTrain);
+    const part = String(row?.nextDeparturePart || "").trim();
+    if(!train || !["1","2"].includes(part)) return;
+
+    if(!groups.has(train)){
+      groups.set(train, {train, part1:null, part2:null});
+    }
+
+    const group = groups.get(train);
+    if(part === "1") group.part1 = row;
+    if(part === "2") group.part2 = row;
+  });
+
+  return Array.from(groups.values())
+    .filter(group => group.part1 || group.part2)
+    .filter(group => group.part1 && group.part2)
+    .map(group=>{
+      const part1Solved = !!group.part1?.recommendedSlot;
+      const part2Solved = !!group.part2?.recommendedSlot;
+      const status = part1Solved && part2Solved
+        ? getSdePairTrackPackageStatus(group.part1, group.part2)
+        : part1Solved || part2Solved
+          ? "Ufullstendig par: én del er løst, én del er uløst."
+          : "Begge deler er uløst.";
+
+      return {
+        train:group.train,
+        part1:group.part1,
+        part2:group.part2,
+        part1Solved,
+        part2Solved,
+        status,
+        text:`${group.train}: /1 ${getSdePairRowText(group.part1)}. /2 ${getSdePairRowText(group.part2)}. ${status}`
+      };
+    })
+    .filter(item => !(item.part1Solved && item.part2Solved && /^Samlet korrekt/.test(item.status)));
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -12528,6 +12629,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const pairDiagnostics = buildSdePairDiagnostics(data.moves, data.unresolved);
+  const pairDiagnosticsHtml = pairDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Parstatus /1 og /2 <span>${pairDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${pairDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -12549,6 +12662,7 @@ function renderSdeSkiftebevegelser(){
     </div>
     <div class="sde-shift-grid">${cardsHtml}</div>
     ${linearTrackDiagnosticsHtml}
+    ${pairDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
