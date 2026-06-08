@@ -13154,6 +13154,123 @@ function buildSdePackagePrioritySafeActiveMotorDiagnostics(moves=[], unresolved=
 }
 
 
+function getSdeBlockerRescueCandidateDiagnostics(blockerRow, moves=[]){
+  if(!blockerRow) return [];
+
+  const rows = Array.isArray(moves) ? moves : [];
+  const currentSlot = normalizeSlot(blockerRow.recommendedSlot);
+  const reserved = buildSdeMoveReservationMap(rows, [blockerRow]);
+
+  return getSdeArrivalParkingCandidateSlots(blockerRow)
+    .map(slot => normalizeSlot(slot))
+    .filter(slot => slot && slot !== currentSlot)
+    .map(slot=>{
+      if(reserved.has(slot)){
+        const reservedNeed = getSdeReservedSlotNeed(reserved, slot);
+        return {
+          slot,
+          status:"reserved",
+          score:-999,
+          text:`${slot}: allerede reservert av ${reservedNeed?.vehicle || "annet SDE-behov"}`
+        };
+      }
+
+      const candidate = scoreSdeArrivalParkingCandidate(blockerRow, slot);
+      if(candidate.status === "rejected"){
+        return {
+          slot,
+          status:"rejected",
+          score:candidate.score,
+          text:`${slot}: avvist av fast regel – ${(candidate.reasons || []).slice(0, 2).join(" ")}`
+        };
+      }
+
+      const evaluation = evaluateSdeParkingDecision(blockerRow, candidate, reserved);
+      const finalScore = candidate.score + evaluation.reward - evaluation.penalty;
+      const reasons = [
+        ...(candidate.reasons || []),
+        ...(evaluation.benefits || []),
+        ...(evaluation.violations || [])
+      ];
+      const packageConflicts = getSdePackageNeighborConflictsForSlot(slot, blockerRow, rows);
+
+      if(packageConflicts.length){
+        return {
+          slot,
+          status:"package-conflict",
+          score:finalScore,
+          text:`${slot}: ny pakke-/nabokonflikt – ${packageConflicts.join(", ")}`
+        };
+      }
+
+      if(finalScore < 45){
+        return {
+          slot,
+          status:"weak",
+          score:finalScore,
+          text:`${slot}: for svak kandidat med score ${finalScore} – ${reasons.slice(0, 2).join(" ")}`
+        };
+      }
+
+      return {
+        slot,
+        status:"candidate",
+        score:finalScore,
+        text:`${slot}: mulig kandidat med score ${finalScore} – ${reasons.slice(0, 2).join(" ")}`
+      };
+    })
+    .sort((a,b)=>{
+      const order = {candidate:0, weak:1, "package-conflict":2, reserved:3, rejected:4};
+      const oa = order[a.status] ?? 9;
+      const ob = order[b.status] ?? 9;
+      if(oa !== ob) return oa - ob;
+      return b.score - a.score;
+    });
+}
+
+
+function buildSdeBlockerRescueRejectionDiagnostics(moves=[], unresolved=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const limitedActive = buildSdePackagePriorityLimitedActiveMotorDiagnostics(rows, unresolved);
+  const seen = new Set();
+
+  return limitedActive.flatMap(item =>
+    (item.displacedRows || []).map(displaced=>{
+      const blockerRow = displaced.row;
+      const blockerSlot = normalizeSlot(displaced.slot);
+      const key = `${item.train}|${item.packageLabel}|${blockerSlot}|${getSdePackageDepartureKey(blockerRow)}`;
+
+      if(!blockerRow || seen.has(key)) return null;
+      seen.add(key);
+
+      const diagnostics = getSdeBlockerRescueCandidateDiagnostics(blockerRow, rows);
+      const counts = diagnostics.reduce((acc,row)=>{
+        acc[row.status] = (acc[row.status] || 0) + 1;
+        return acc;
+      }, {});
+
+      const examples = diagnostics.slice(0, 6).map(row => row.text).join(" | ");
+      const summary = [
+        counts.candidate ? `${counts.candidate} mulig(e)` : "",
+        counts.weak ? `${counts.weak} for svak(e)` : "",
+        counts["package-conflict"] ? `${counts["package-conflict"]} med ny pakke-/nabokonflikt` : "",
+        counts.reserved ? `${counts.reserved} reservert(e)` : "",
+        counts.rejected ? `${counts.rejected} avvist(e)` : ""
+      ].filter(Boolean).join(", ") || "ingen kandidater vurdert";
+
+      return {
+        train:item.train,
+        packageLabel:item.packageLabel,
+        blockerSlot,
+        blockerRow,
+        diagnostics,
+        text:`${item.train}: ${blockerSlot} ${getSdePackageRowText(blockerRow)} må frigjøres for ${item.packageLabel}. Blokkerredning vurderte kandidatsettet: ${summary}. ${examples || "Ingen detaljer tilgjengelig."}`
+      };
+    }).filter(Boolean)
+  );
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -13445,6 +13562,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const blockerRescueRejectionDiagnostics = buildSdeBlockerRescueRejectionDiagnostics(data.moves, data.unresolved);
+  const blockerRescueRejectionDiagnosticsHtml = blockerRescueRejectionDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Blokkerredning – forklar avslag <span>${blockerRescueRejectionDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${blockerRescueRejectionDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -13476,6 +13605,7 @@ function renderSdeSkiftebevegelser(){
     ${packagePriorityActiveTestModeDiagnosticsHtml}
     ${packagePriorityLimitedActiveMotorDiagnosticsHtml}
     ${packagePrioritySafeActiveMotorDiagnosticsHtml}
+    ${blockerRescueRejectionDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
