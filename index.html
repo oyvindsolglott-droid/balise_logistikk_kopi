@@ -12630,12 +12630,36 @@ function buildSdePackageConflictDiagnostics(moves=[], unresolved=[]){
 }
 
 
+function isSdeSameReservationRow(a, b){
+  if(!a || !b) return false;
+
+  const slotA = normalizeSlot(a?.recommendedSlot);
+  const slotB = normalizeSlot(b?.recommendedSlot);
+  const vehicleA = normalizeVehicleToken(a?.vehicle);
+  const vehicleB = normalizeVehicleToken(b?.vehicle);
+  const trainA = normalizeTognr(a?.nextDepartureTrain);
+  const trainB = normalizeTognr(b?.nextDepartureTrain);
+  const partA = String(a?.nextDeparturePart || "").trim();
+  const partB = String(b?.nextDeparturePart || "").trim();
+
+  return !!slotA && slotA === slotB &&
+    !!vehicleA && vehicleA === vehicleB &&
+    !!trainA && trainA === trainB &&
+    partA === partB;
+}
+
+
 function buildSdeMoveReservationMap(moves=[], exceptRows=[]){
   const rows = Array.isArray(moves) ? moves : [];
-  const exceptSet = new Set(Array.isArray(exceptRows) ? exceptRows : []);
+  const exceptions = Array.isArray(exceptRows) ? exceptRows.filter(Boolean) : [];
 
   return rows.reduce((map,row)=>{
-    if(!row || exceptSet.has(row)) return map;
+    if(!row) return map;
+
+    const shouldExclude = exceptions.some(exceptRow =>
+      row === exceptRow || isSdeSameReservationRow(row, exceptRow)
+    );
+    if(shouldExclude) return map;
 
     const slot = normalizeSlot(row.recommendedSlot);
     if(!slot) return map;
@@ -12793,6 +12817,167 @@ function buildSdePackagePriorityDiagnostics(moves=[], unresolved=[]){
     };
   })
     .filter(item => !item.hasCleanRescue);
+}
+
+
+function getSdePackagePrioritySimulationAssignments(part1Row, part2Row, packageInfo){
+  if(!part1Row || !part2Row || !packageInfo) return [];
+
+  const slots = Array.isArray(packageInfo.slots) ? packageInfo.slots.map(normalizeSlot).filter(Boolean) : [];
+  if(slots.length !== 2) return [];
+
+  if(packageInfo.type === "butt"){
+    const sSlot = slots.find(slot => slot.endsWith("S"));
+    const nSlot = slots.find(slot => slot.endsWith("N"));
+    if(!sSlot || !nSlot) return [];
+
+    return [[
+      {row:part1Row, slot:sSlot},
+      {row:part2Row, slot:nSlot}
+    ]];
+  }
+
+  return [
+    [
+      {row:part1Row, slot:slots[0]},
+      {row:part2Row, slot:slots[1]}
+    ],
+    [
+      {row:part1Row, slot:slots[1]},
+      {row:part2Row, slot:slots[0]}
+    ]
+  ];
+}
+
+
+function evaluateSdeSimulatedPackageAssignment(assignments, reserved){
+  const rows = Array.isArray(assignments) ? assignments : [];
+  const reservationMap = reserved instanceof Map ? reserved : new Map();
+
+  const evaluated = rows.map(item=>{
+    const slot = normalizeSlot(item?.slot);
+    const row = item?.row || null;
+    const part = String(row?.nextDeparturePart || "").trim();
+
+    if(!slot || !row){
+      return {
+        ok:false,
+        slot,
+        row,
+        part,
+        score:-999,
+        reason:"Mangler rad eller spor i simulert pakke."
+      };
+    }
+
+    if(reservationMap.has(slot)){
+      const reservedNeed = getSdeReservedSlotNeed(reservationMap, slot);
+      return {
+        ok:false,
+        slot,
+        row,
+        part,
+        score:-999,
+        reason:`${slot} er fortsatt reservert av ${reservedNeed?.vehicle || "annet behov"}.`
+      };
+    }
+
+    const candidate = scoreSdeArrivalParkingCandidate(row, slot);
+    if(candidate.status === "rejected"){
+      return {
+        ok:false,
+        slot,
+        row,
+        part,
+        score:candidate.score,
+        reason:(candidate.reasons || []).slice(0, 2).join(" ")
+      };
+    }
+
+    const evaluation = evaluateSdeParkingDecision(row, candidate, reservationMap);
+    const finalScore = candidate.score + evaluation.reward - evaluation.penalty;
+    const reasons = [
+      ...(candidate.reasons || []),
+      ...(evaluation.benefits || []),
+      ...(evaluation.violations || [])
+    ];
+
+    return {
+      ok:finalScore >= 45,
+      slot,
+      row,
+      part,
+      score:finalScore,
+      reason:reasons.slice(0, 2).join(" ")
+    };
+  });
+
+  return {
+    ok:evaluated.length === 2 && evaluated.every(item => item.ok),
+    score:evaluated.reduce((sum,item)=>sum + (Number.isFinite(item.score) ? item.score : -999), 0),
+    evaluated
+  };
+}
+
+
+function buildSdePackagePrioritySimulationDiagnostics(moves=[], unresolved=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const priorities = buildSdePackagePriorityDiagnostics(rows, unresolved);
+  const pairs = buildSdePairDiagnostics(rows, unresolved);
+  const packages = getSdePackageDefinitions();
+
+  return priorities.map(priority=>{
+    const pair = pairs.find(item => item.train === priority.train);
+    const packageInfo = packages.find(item => item.label === priority.packageLabel);
+
+    if(!pair || !packageInfo){
+      return {
+        train:priority.train,
+        packageLabel:priority.packageLabel,
+        success:false,
+        text:`${priority.train}: ${priority.packageLabel} kan ikke simuleres fordi par eller pakkedefinisjon mangler.`
+      };
+    }
+
+    const conflicts = buildSdePackageConflictDiagnostics(rows, unresolved)
+      .filter(conflict => conflict.train === priority.train && conflict.packageLabel === priority.packageLabel);
+
+    const blockers = conflicts.flatMap(conflict => conflict.blockers || []).map(blocker => blocker.row).filter(Boolean);
+    const reserved = buildSdeMoveReservationMap(rows, [pair.part1, pair.part2, ...blockers]);
+    const assignments = getSdePackagePrioritySimulationAssignments(pair.part1, pair.part2, packageInfo);
+
+    const evaluatedAssignments = assignments
+      .map(assignment => evaluateSdeSimulatedPackageAssignment(assignment, reserved))
+      .sort((a,b)=>b.score - a.score);
+
+    const best = evaluatedAssignments[0] || null;
+    const successful = evaluatedAssignments.find(item => item.ok) || null;
+
+    if(successful){
+      const placementText = successful.evaluated
+        .sort((a,b)=>String(a.part).localeCompare(String(b.part), "nb"))
+        .map(item => `/${item.part || "?"} ${item.row.vehicle || "ukjent"} → ${item.slot} score ${item.score}`)
+        .join(", ");
+
+      return {
+        train:priority.train,
+        packageLabel:priority.packageLabel,
+        success:true,
+        text:`${priority.train}: Simulert tidlig beskyttelse av ${priority.packageLabel} ser mulig ut: ${placementText}. Dette er kun analyse, ikke aktiv motorstyring.`
+      };
+    }
+
+    const failureText = best?.evaluated?.length
+      ? best.evaluated.map(item => `/${item.part || "?"} → ${item.slot}: ${item.reason || "score under grense"}${Number.isFinite(item.score) ? ` (score ${item.score})` : ""}`).join(" | ")
+      : "ingen pakkeplassering kunne evalueres.";
+
+    return {
+      train:priority.train,
+      packageLabel:priority.packageLabel,
+      success:false,
+      text:`${priority.train}: Simulert tidlig beskyttelse av ${priority.packageLabel} fant ikke komplett pakke i første kandidatsett. ${failureText}`
+    };
+  });
 }
 
 
@@ -13027,6 +13212,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const packagePrioritySimulationDiagnostics = buildSdePackagePrioritySimulationDiagnostics(data.moves, data.unresolved);
+  const packagePrioritySimulationDiagnosticsHtml = packagePrioritySimulationDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Pakkeprioritet – simulert effekt <span>${packagePrioritySimulationDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${packagePrioritySimulationDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -13053,6 +13250,7 @@ function renderSdeSkiftebevegelser(){
     ${packageConflictDiagnosticsHtml}
     ${packageRescueDiagnosticsHtml}
     ${packagePriorityDiagnosticsHtml}
+    ${packagePrioritySimulationDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
