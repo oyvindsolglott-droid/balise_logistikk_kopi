@@ -12630,6 +12630,135 @@ function buildSdePackageConflictDiagnostics(moves=[], unresolved=[]){
 }
 
 
+function buildSdeMoveReservationMap(moves=[], exceptRows=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const exceptSet = new Set(Array.isArray(exceptRows) ? exceptRows : []);
+
+  return rows.reduce((map,row)=>{
+    if(!row || exceptSet.has(row)) return map;
+
+    const slot = normalizeSlot(row.recommendedSlot);
+    if(!slot) return map;
+
+    map.set(slot, {
+      need:row,
+      recommendation:{
+        slot,
+        score:row.recommendationScore,
+        confidence:row.recommendationConfidence
+      }
+    });
+
+    return map;
+  }, new Map());
+}
+
+
+function getSdePackageNeighborConflictsForSlot(slot, row, moves=[]){
+  const candidateSlot = normalizeSlot(slot);
+  const rowTrain = getSdePackageTrainKey(row);
+  if(!candidateSlot || !rowTrain) return [];
+
+  const rows = Array.isArray(moves) ? moves : [];
+  const packages = getSdePackageDefinitions().filter(packageInfo =>
+    packageInfo.slots.includes(candidateSlot)
+  );
+
+  return packages.flatMap(packageInfo =>
+    packageInfo.slots
+      .filter(packageSlot => packageSlot !== candidateSlot)
+      .map(packageSlot => {
+        const neighbor = rows.find(item => normalizeSlot(item?.recommendedSlot) === packageSlot);
+        if(!neighbor) return null;
+
+        const neighborTrain = getSdePackageTrainKey(neighbor);
+        if(!neighborTrain || neighborTrain === rowTrain) return null;
+
+        return `${packageInfo.label}: ${packageSlot} ${getSdePackageRowText(neighbor)}`;
+      })
+      .filter(Boolean)
+  );
+}
+
+
+function getSdeRescueAlternativesForBlocker(blockerRow, moves=[]){
+  if(!blockerRow) return [];
+
+  const currentSlot = normalizeSlot(blockerRow.recommendedSlot);
+  const reserved = buildSdeMoveReservationMap(moves, [blockerRow]);
+
+  return getSdeArrivalParkingCandidateSlots(blockerRow)
+    .map(slot => normalizeSlot(slot))
+    .filter(slot => slot && slot !== currentSlot)
+    .map(slot => {
+      if(reserved.has(slot)){
+        return null;
+      }
+
+      const candidate = scoreSdeArrivalParkingCandidate(blockerRow, slot);
+      if(candidate.status === "rejected"){
+        return null;
+      }
+
+      const evaluation = evaluateSdeParkingDecision(blockerRow, candidate, reserved);
+      const finalScore = candidate.score + evaluation.reward - evaluation.penalty;
+      const reasons = [
+        ...(candidate.reasons || []),
+        ...(evaluation.benefits || []),
+        ...(evaluation.violations || [])
+      ];
+      const packageConflicts = getSdePackageNeighborConflictsForSlot(slot, blockerRow, moves);
+
+      return {
+        slot,
+        score:finalScore,
+        baseScore:candidate.score,
+        status:finalScore >= 45 ? "candidate" : "weak",
+        reasons,
+        packageConflicts
+      };
+    })
+    .filter(Boolean)
+    .filter(candidate => candidate.status === "candidate")
+    .filter(candidate => !candidate.packageConflicts.length)
+    .sort((a,b)=>b.score - a.score)
+    .slice(0, 3);
+}
+
+
+function buildSdePackageRescueDiagnostics(moves=[], unresolved=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const conflicts = buildSdePackageConflictDiagnostics(rows, unresolved);
+  const seen = new Set();
+
+  return conflicts.flatMap(conflict =>
+    (conflict.blockers || []).map(blocker=>{
+      const blockerRow = blocker.row;
+      const blockerSlot = normalizeSlot(blocker.slot);
+      const key = `${conflict.train}|${conflict.packageLabel}|${blockerSlot}|${getSdePackageDepartureKey(blockerRow)}`;
+
+      if(seen.has(key)) return null;
+      seen.add(key);
+
+      const alternatives = getSdeRescueAlternativesForBlocker(blockerRow, rows);
+      const blockerText = `${blockerSlot} ${getSdePackageRowText(blockerRow)}`;
+      const alternativeText = alternatives.length
+        ? `Mulige rene alternativer for blokkeren: ${alternatives.map(item => `${item.slot} score ${item.score}`).join(", ")}. Må kontrolleres manuelt før eventuell motorstyring.`
+        : "Ingen rent alternativ over scoregrensen ble funnet i første kandidatsett.";
+
+      return {
+        train:conflict.train,
+        packageLabel:conflict.packageLabel,
+        blockerSlot,
+        blockerRow,
+        alternatives,
+        text:`${conflict.train}: ${blockerText} beslaglegger ${conflict.packageLabel}. ${alternativeText}`
+      };
+    }).filter(Boolean)
+  );
+}
+
+
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
   if(score >= 65) return "warn";
@@ -12837,6 +12966,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const packageRescueDiagnostics = buildSdePackageRescueDiagnostics(data.moves, data.unresolved);
+  const packageRescueDiagnosticsHtml = packageRescueDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Mulig pakkeredning <span>${packageRescueDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${packageRescueDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -12861,6 +13002,7 @@ function renderSdeSkiftebevegelser(){
     ${pairDiagnosticsHtml}
     ${packageDiagnosticsHtml}
     ${packageConflictDiagnosticsHtml}
+    ${packageRescueDiagnosticsHtml}
     ${unresolvedHtml}
   `;
 }
