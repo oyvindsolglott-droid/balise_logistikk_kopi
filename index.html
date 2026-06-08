@@ -10966,6 +10966,7 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   const candidate = normalizeSlot(slot);
   const vehicle = sanitizeVehicleValue(need?.vehicle);
   const arrivalSlot = normalizeSlot(need?.arrivalSlot);
+  const nextDepartureTrain = normalizeTognr(need?.nextDepartureTrain);
   const nextDepartureTime = String(need?.nextDepartureTime || "").trim();
   const nextDeparturePart = String(need?.nextDeparturePart || "").trim();
   const serviceRequired = !!need?.serviceRequired;
@@ -10973,6 +10974,16 @@ function scoreSdeArrivalParkingCandidate(need, slot){
 
   if(!candidate || !inputSlots.includes(candidate)){
     return {slot:candidate, score:-999, status:"rejected", reasons:["Ugyldig spor."]};
+  }
+
+  const operationalSingleSetSlot = getSdeOperationalSingleSetSlot(need);
+  if(operationalSingleSetSlot && candidate !== operationalSingleSetSlot){
+    return {
+      slot:candidate,
+      score:-999,
+      status:"rejected",
+      reasons:[`${nextDepartureTrain} er enkeltsett med fast operativ plassering ${operationalSingleSetSlot}. ${candidate} avvises for dette behovet.`]
+    };
   }
 
   if(["2N","2S","3N","3M","3S"].includes(candidate)){
@@ -10996,6 +11007,11 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }
 
   let score = 50;
+
+  if(operationalSingleSetSlot && candidate === operationalSingleSetSlot){
+    score += 150;
+    reasons.push(`${candidate} prioriteres fordi ${nextDepartureTrain} er enkeltsett med fast operativ plassering ${operationalSingleSetSlot}.`);
+  }
 
   if(isSdeLateNightTrack3Candidate(need, candidate)){
     score += 12;
@@ -11939,9 +11955,12 @@ function buildSdeArrivalParkingNeeds(){
         parkingInstruction = "Kjøretøyet bør parkeres slik at det ikke sperrer tidligere avganger og selv kan hentes til planlagt togproduksjon.";
       }
 
-      const departurePartText = nextDeparture?.part ? `/${nextDeparture.part}` : "";
+      const departurePartText = getSdeDisplayDeparturePart({
+        nextDepartureTrain:nextDeparture?.train,
+        nextDeparturePart:nextDeparture?.part
+      });
       const departureText = nextDeparture
-        ? `${nextDeparture.train}${departurePartText}${nextDeparture.displayTime ? ` kl. ${nextDeparture.displayTime}` : ""}`
+        ? `${nextDeparture.train}${departurePartText ? `/${departurePartText}` : ""}${nextDeparture.displayTime ? ` kl. ${nextDeparture.displayTime}` : ""}`
         : "";
 
       const need = {
@@ -12168,7 +12187,10 @@ function getSdeKnowledgeSnapshotText(snapshot){
 function getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures, totalDepartures){
   const total = Array.isArray(needs) ? needs.length : 0;
   const solved = Array.isArray(moves) ? moves.length : 0;
-  const unresolvedCount = Array.isArray(unresolved) ? unresolved.length : 0;
+  const unresolvedRows = Array.isArray(unresolved) ? unresolved : [];
+  const unresolvedCount = unresolvedRows.length;
+  const criticalUnresolvedCount = unresolvedRows.filter(row => normalizeTognr(row?.nextDepartureTrain)).length;
+  const flexibleUnresolvedCount = Math.max(0, unresolvedCount - criticalUnresolvedCount);
   const lowConfidenceCount = (moves || []).filter(row=>row.recommendationConfidence === "low").length;
 
   const arrivalCoverage = total ? solved / total : 0;
@@ -12177,7 +12199,11 @@ function getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures, t
   let score = 35;
   score += arrivalCoverage * 35;
   score += departureCoverage * 25;
-  score -= unresolvedCount * 8;
+
+  // Kjent avgang som ikke er løst er operativt kritisk.
+  // Ukjent/fleksibel nattparkering skal fortsatt vises, men skal ikke straffe SDE som om en konkret avgang er tapt.
+  score -= criticalUnresolvedCount * 8;
+  score -= flexibleUnresolvedCount * 1;
   score -= lowConfidenceCount * 5;
 
   if(total && solved === total) score += 5;
