@@ -11296,34 +11296,97 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
       ? new Map(Array.from(reservedSlots).map(slot=>[slot, {need:null, recommendation:null}]))
       : new Map();
 
-  const scored = getSdeArrivalParkingCandidateSlots(need)
-    .map(slot => scoreSdeArrivalParkingCandidate(need, slot))
-    .filter(candidate => candidate.status !== "rejected")
-    .filter(candidate => !reserved.has(candidate.slot))
-    .map(candidate=>{
+  const candidateDiagnostics = getSdeArrivalParkingCandidateSlots(need)
+    .map(slot => {
+      const candidate = scoreSdeArrivalParkingCandidate(need, slot);
+
+      if(candidate.status === "rejected"){
+        return {
+          ...candidate,
+          finalStatus:"rejected",
+          finalReason:(candidate.reasons || []).slice(0, 2).join(" ")
+        };
+      }
+
+      if(reserved.has(candidate.slot)){
+        const reservedNeed = getSdeReservedSlotNeed(reserved, candidate.slot);
+        const reservedText = reservedNeed?.vehicle
+          ? `${candidate.slot} er allerede reservert til ${reservedNeed.vehicle}.`
+          : `${candidate.slot} er allerede reservert av tidligere SDE-behov.`;
+
+        return {
+          ...candidate,
+          finalStatus:"reserved",
+          finalReason:reservedText,
+          reasons:[...(candidate.reasons || []), reservedText]
+        };
+      }
+
       const evaluation = evaluateSdeParkingDecision(need, candidate, reserved);
+      const finalScore = candidate.score + evaluation.reward - evaluation.penalty;
+      const reasons = [
+        ...(candidate.reasons || []),
+        ...(evaluation.benefits || []),
+        ...(evaluation.violations || [])
+      ];
+
       return {
         ...candidate,
         baseScore:candidate.score,
         evaluation,
-        score:candidate.score + evaluation.reward - evaluation.penalty,
-        reasons:[
-          ...(candidate.reasons || []),
-          ...(evaluation.benefits || []),
-          ...(evaluation.violations || [])
-        ]
+        score:finalScore,
+        finalStatus:finalScore >= 45 ? "candidate" : "weak",
+        finalReason:reasons.slice(0, 2).join(" "),
+        reasons
       };
-    })
-    .filter(candidate => Number(candidate.score || 0) >= 45)
+    });
+
+  const scored = candidateDiagnostics
+    .filter(candidate => candidate.finalStatus === "candidate")
     .sort((a,b)=>b.score - a.score);
 
   const best = scored[0] || null;
   if(!best){
+    const weak = candidateDiagnostics
+      .filter(candidate => candidate.finalStatus === "weak")
+      .sort((a,b)=>b.score - a.score)[0] || null;
+    const reservedCandidates = candidateDiagnostics.filter(candidate => candidate.finalStatus === "reserved");
+    const rejectedCandidates = candidateDiagnostics.filter(candidate => candidate.finalStatus === "rejected");
+    const weakCandidates = candidateDiagnostics.filter(candidate => candidate.finalStatus === "weak");
+    const reservedCount = reservedCandidates.length;
+    const rejectedCount = rejectedCandidates.length;
+    const weakCount = weakCandidates.length;
+    const reservedExamples = reservedCandidates
+      .slice(0, 2)
+      .map(candidate => candidate.finalReason)
+      .filter(Boolean)
+      .join(" ");
+    const rejectedExamples = rejectedCandidates
+      .slice(0, 2)
+      .map(candidate => candidate.finalReason)
+      .filter(Boolean)
+      .join(" ");
+
+    const details = [];
+    details.push(`SDE fant ingen kandidat over akseptgrensen i første kandidatsett.`);
+    if(weak){
+      details.push(`Beste svake alternativ var ${weak.slot} med score ${weak.score}: ${weak.finalReason}`);
+    }
+    if(reservedCount){
+      details.push(`${reservedCount} kandidat(er) var allerede reservert av tidligere SDE-behov.${reservedExamples ? ` Eksempel: ${reservedExamples}` : ""}`);
+    }
+    if(rejectedCount){
+      details.push(`${rejectedCount} kandidat(er) ble avvist av faste regler.${rejectedExamples ? ` Eksempel: ${rejectedExamples}` : ""}`);
+    }
+    if(weakCount){
+      details.push(`${weakCount} kandidat(er) ble vurdert som for svake etter evaluering.`);
+    }
+
     return {
       slot:"",
       score:0,
       confidence:"low",
-      reason:"SDE fant ingen egnet ledig nattplassering innenfor første kandidatsett."
+      reason:details.join(" ")
     };
   }
 
