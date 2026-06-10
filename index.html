@@ -1974,6 +1974,31 @@ button{padding:12px 12px}
   letter-spacing:.08em;
 }
 
+.sde-shift-score-explanation{
+  margin:-4px 0 20px;
+  border:1px solid rgba(155, 220, 255, .22);
+  border-radius:18px;
+  padding:14px 16px;
+  background:rgba(255,255,255,.07);
+  color:#dbeafe;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+}
+
+.sde-shift-score-explanation strong{
+  display:block;
+  margin-bottom:5px;
+  color:#9bdcff;
+  font-size:12px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+}
+
+.sde-shift-score-explanation span{
+  display:block;
+  font-size:14px;
+  line-height:1.45;
+}
+
 .sde-shift-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
@@ -12403,6 +12428,51 @@ function getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures, t
 }
 
 
+function buildSdeShiftScoreExplanationHtml(data){
+  if(!data) return "";
+
+  const moves = Array.isArray(data.moves) ? data.moves : [];
+  const lowConfidenceCount = moves.filter(row => row.recommendationConfidence === "low").length;
+  const mediumConfidenceCount = moves.filter(row => row.recommendationConfidence === "medium").length;
+  const highConfidenceCount = moves.filter(row => row.recommendationConfidence === "high").length;
+  const unresolvedCount = Number(data.unresolvedCount) || 0;
+  const flexibleUnknownCount = Number(data.flexibleUnknownCount) || 0;
+
+  const parts = [];
+
+  parts.push(`${data.solvedArrivals}/${data.totalArrivals} kjente behov er ivaretatt.`);
+
+  if(Number(data.totalDepartures) > 0){
+    parts.push(`${data.securedDepartures}/${data.totalDepartures} kjente avganger er koblet.`);
+  }else{
+    parts.push("Ingen kjente morgendagsavganger er koblet i datagrunnlaget.");
+  }
+
+  if(unresolvedCount > 0){
+    parts.push(`${unresolvedCount} behov står fortsatt uløst og må avklares manuelt.`);
+  }else{
+    parts.push("Ingen kjente behov står uløst.");
+  }
+
+  if(lowConfidenceCount > 0){
+    parts.push(`${lowConfidenceCount} forslag er merket med lav tillit og bør kontrolleres operativt. Dette trekker score ned uten at behovet nødvendigvis står uløst.`);
+  }else if(mediumConfidenceCount > 0){
+    parts.push(`Alle forslag er løst uten lav tillit. ${mediumConfidenceCount} forslag har middels tillit og bør kontrolleres normalt.`);
+  }else if(highConfidenceCount > 0){
+    parts.push("Alle aktive forslag har høy tillit etter dagens regelsett.");
+  }
+
+  if(flexibleUnknownCount > 0){
+    parts.push(`${flexibleUnknownCount} kjøretøy har ukjent videre status og vises som ukjent status, parkert / manuell vurdering.`);
+  }
+
+  return `<div class="sde-shift-score-explanation">
+    <strong>Scoreforklaring</strong>
+    <span>${escapeHtml(parts.join(" "))}</span>
+  </div>`;
+}
+
+
 
 
 function formatSdeMoveActionClock(value){
@@ -14083,6 +14153,7 @@ function renderSdeSkiftebevegelser(){
 
   const data = getSdeShiftShowcaseData();
   const scoreClass = getSdeShiftScoreClass(data.score);
+  const scoreExplanationHtml = buildSdeShiftScoreExplanationHtml(data);
   const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 12);
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
 
@@ -14321,6 +14392,7 @@ function renderSdeSkiftebevegelser(){
         <div class="sde-shift-kpi"><strong>${data.unresolvedCount}</strong><span>uløst / må avklares</span></div>
       </div>
     </div>
+    ${scoreExplanationHtml}
 
     <div class="sde-shift-section-title">
       <span>Foreslåtte skiftebevegelser</span>
