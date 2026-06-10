@@ -2293,6 +2293,19 @@ button{padding:12px 12px}
 
 
 
+.sde-shift-window{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:12px;
+  background:#fff3cd;
+  border:1px solid #f1d47a;
+  color:#5f4600;
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  font-size:0.88rem;
+}
+
 .sde-shift-actions{
   display:flex;
   gap:10px;
@@ -12738,6 +12751,73 @@ function isSdeFlexibleUnknownParkingNeed(row){
 }
 
 
+function formatSdeClockMinutes(totalMinutes){
+  if(!Number.isFinite(totalMinutes)) return "";
+  const normalized = ((Math.round(totalMinutes) % 1440) + 1440) % 1440;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+
+function getSdeNextStationArrivalMinutesAfter(fromSlot, afterMinutes){
+  const trackNumber = String(fromSlot || "").match(/^[12]/)?.[0] || "";
+  const arrivals = buildSdeArrivalParkingNeeds()
+    .map(row => ({
+      slot:normalizeSlot(row?.arrivalSlot),
+      minutes:getSdeTimeMinutes(row?.arrivalTime)
+    }))
+    .filter(row => {
+      if(row.minutes === null) return false;
+      if(trackNumber && !String(row.slot || "").startsWith(trackNumber)) return false;
+      return row.minutes > afterMinutes;
+    })
+    .sort((a,b) => a.minutes - b.minutes);
+
+  return arrivals.length ? arrivals[0].minutes : null;
+}
+
+
+function getSdeTrackClearanceWindow(row){
+  if(!row) return null;
+
+  const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot);
+  if(!["1N", "1S", "2N", "2S"].includes(fromSlot)) return null;
+
+  const arrivalMinutes = getSdeTimeMinutes(row.arrivalTime);
+  if(arrivalMinutes === null) return null;
+
+  const startMinutes = arrivalMinutes + 2;
+  const nextArrivalMinutes = getSdeNextStationArrivalMinutesAfter(fromSlot, arrivalMinutes);
+  const endMinutes = nextArrivalMinutes === null ? null : nextArrivalMinutes - 5;
+  return {
+    fromSlot,
+    startMinutes,
+    endMinutes,
+    hasEnd:Number.isFinite(endMinutes)
+  };
+}
+
+
+function buildSdeTrackClearanceWindowHtml(row){
+  const window = getSdeTrackClearanceWindow(row);
+  if(!window) return "";
+
+  const start = formatSdeClockMinutes(window.startMinutes);
+  const end = window.hasEnd ? formatSdeClockMinutes(window.endMinutes) : "";
+  const title = "Anbefalt skiftevindu";
+
+  const text = window.hasEnd
+    ? `${start}–${end}. Flytting fra ${window.fromSlot} bør utføres før neste ankomstbelastning.`
+    : `Fra ${start}. Ingen kjent neste ankomst i datagrunnlaget.`;
+
+  return `<div class="sde-shift-window">
+    <strong>${escapeHtml(title)}</strong>
+    <span>${escapeHtml(text)}</span>
+  </div>`;
+}
+
+
 function getSdeShiftMoveSortMinutes(row){
   if(row?.isSpor3ProductionNeed){
     return getSdeOperationalSequenceMinutes(row?.arrivalTime || "21:00", "plannedMove") ?? 99999;
@@ -14014,6 +14094,7 @@ function renderSdeSkiftebevegelser(){
           ? `Alternativer: ${row.recommendationAlternatives.map(alt=>`${alt.slot} (${alt.score})`).join(", ")}`
           : "Ingen alternative spor i første kandidatsett.";
         const actionKey = encodeURIComponent(getSdeMoveActionKey(row));
+        const trackClearanceWindowHtml = buildSdeTrackClearanceWindowHtml(row);
 
         return `<article class="sde-shift-card ${priorityClass}" style="--delay:${index * 55}ms">
           <div class="sde-shift-card-top">
@@ -14040,6 +14121,7 @@ function renderSdeSkiftebevegelser(){
             <span class="sde-shift-badge">${escapeHtml(row.parkingStrategy || "SDE-anbefaling")}</span>
           </div>
 
+          ${trackClearanceWindowHtml}
           <div class="sde-shift-reason">${escapeHtml(row.recommendationReason || row.parkingInstruction || "SDE har ikke begrunnelse for denne anbefalingen ennå.")}</div>
           <div class="sde-shift-alternatives">${escapeHtml(alternativesText)}</div>
           <div class="sde-shift-actions" aria-label="Kvitter SDE-skifteforslag">
