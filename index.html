@@ -112,29 +112,109 @@ min-height:36px
 }
 .segmented{
 display:grid;
-grid-template-columns:repeat(5,minmax(120px,1fr));
-gap:6px;
-background:#e9ecf1;
-border-radius:14px;
-padding:6px;
-margin-bottom:12px;
+grid-template-columns:repeat(20,minmax(0,1fr));
+gap:14px;
+background:linear-gradient(180deg,#f8fafc 0%,#e9eef5 100%);
+border-radius:20px;
+padding:18px;
+margin-bottom:16px;
 position:sticky;
 top:var(--sticky-top);
 z-index:20;
 overflow-x:auto;
 -webkit-overflow-scrolling:touch;
 scrollbar-width:none;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.85),0 10px 28px rgba(15,23,42,.10);
 }
 .segmented::-webkit-scrollbar{display:none}
 .segmented button{
-border:none;
-background:transparent;
-min-height:44px;
-font-weight:600
+grid-column:span 4;
+border:2px solid #cbd5e1;
+background:linear-gradient(180deg,#ffffff 0%,#f8fafc 48%,#e5ebf2 100%);
+min-height:76px;
+border-radius:18px;
+font-weight:900;
+font-size:17px;
+letter-spacing:-.02em;
+display:flex;
+align-items:center;
+justify-content:center;
+gap:14px;
+box-shadow:
+  inset 0 2px 0 rgba(255,255,255,.95),
+  inset 0 -4px 0 rgba(15,23,42,.06),
+  0 8px 0 rgba(100,116,139,.28),
+  0 14px 22px rgba(15,23,42,.18);
+transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+white-space:normal;
+line-height:1.08;
+}
+.segmented button:hover{
+filter:brightness(1.02);
+transform:translateY(-1px);
 }
 .segmented button.active{
-background:#fff;
-box-shadow:0 1px 2px rgba(0,0,0,.08)
+transform:translateY(5px);
+box-shadow:
+  inset 0 5px 12px rgba(15,23,42,.28),
+  inset 0 1px 0 rgba(255,255,255,.55),
+  0 2px 0 rgba(15,23,42,.18),
+  0 5px 12px rgba(15,23,42,.18);
+}
+.seg-icon{
+font-size:34px;
+line-height:1;
+filter:drop-shadow(0 2px 1px rgba(15,23,42,.20));
+}
+.seg-main{
+display:block;
+text-align:left;
+}
+.seg-green{
+border-color:#16a34a !important;
+color:#052e16;
+}
+.seg-green .seg-icon{color:#16a34a}
+.seg-green.active{
+background:linear-gradient(180deg,#4ade80 0%,#16a34a 100%);
+color:#fff;
+}
+.seg-blue{
+border-color:#2563eb !important;
+}
+.seg-blue .seg-icon{color:#2563eb}
+.seg-red{
+border-color:#dc2626 !important;
+}
+.seg-red .seg-icon{color:#dc2626}
+.segmented button:nth-child(-n+4){grid-column:span 5;}
+.seg-decision{
+border-color:#2563eb !important;
+background:
+  radial-gradient(circle at 18% 18%,rgba(96,165,250,.35),transparent 34%),
+  linear-gradient(180deg,#0f3b91 0%,#061b49 100%) !important;
+color:#fff;
+box-shadow:
+  inset 0 2px 0 rgba(255,255,255,.35),
+  inset 0 -5px 0 rgba(0,0,0,.20),
+  0 0 0 3px rgba(59,130,246,.62),
+  0 8px 0 rgba(29,78,216,.55),
+  0 16px 24px rgba(30,64,175,.35) !important;
+}
+.seg-decision .seg-icon{color:#fff}
+.seg-decision.active{
+box-shadow:
+  inset 0 6px 14px rgba(0,0,0,.42),
+  0 0 0 3px rgba(96,165,250,.72),
+  0 2px 0 rgba(29,78,216,.55),
+  0 6px 14px rgba(30,64,175,.36) !important;
+}
+@media(max-width:900px){
+  .segmented{grid-template-columns:repeat(2,minmax(160px,1fr));}
+  .segmented button,
+  .segmented button:nth-child(-n+4){grid-column:auto;}
+  .segmented button{min-height:68px;font-size:15px;}
+  .seg-icon{font-size:28px;}
 }
 .panel{
 display:none;
@@ -3824,17 +3904,17 @@ button{padding:12px 12px}
 </div>
 
 
-<div class="segmented">
-<button class="seg active" type="button" data-tab="oppstilling">Tursatt</button>
-<button class="seg" type="button" data-tab="grunnoppstilling">Grunnoppstilling</button>
-<button class="seg" type="button" data-tab="sdeVaktplan">SDE vaktplan</button>
-<button class="seg" type="button" data-tab="sdeSkiftebevegelser">SDE Skiftebevegelser</button>
-<button class="seg" type="button" data-tab="verkstedBestillinger">Bestillinger fra verksted</button>
-<button class="seg" type="button" data-tab="dropsMateriellstyrer">DROPS Materiellstyrer</button>
-<button class="seg" type="button" data-tab="turneringKveld">Turnering Kveld</button>
+<div class="segmented" aria-label="Hovedmeny">
+<button class="seg seg-green active" type="button" data-tab="oppstilling"><span class="seg-icon">🚆</span><span class="seg-main">Tursatt</span></button>
+<button class="seg seg-decision" type="button" data-tab="sdeSkiftebevegelser"><span class="seg-icon">⇄</span><span class="seg-main">SDE<br>Skiftebevegelser</span></button>
+<button class="seg seg-decision" type="button" data-tab="sdeVaktplan"><span class="seg-icon">▦</span><span class="seg-main">SDE<br>Vaktplan</span></button>
+<button class="seg" type="button" data-tab="dropsMateriellstyrer"><span class="seg-icon">▱</span><span class="seg-main">DROPS<br>Materiellstyrer</span></button>
+<button class="seg seg-green" type="button" data-tab="sporplan"><span class="seg-icon">▦</span><span class="seg-main">Sporplan</span></button>
+<button class="seg seg-blue" type="button" data-tab="grunnoppstilling"><span class="seg-icon">TXP</span><span class="seg-main">Input Sporplan</span></button>
+<button class="seg seg-blue" type="button" data-tab="turneringKveld"><span class="seg-icon">☾</span><span class="seg-main">Turnering Kveld</span></button>
+<button class="seg seg-blue" type="button" data-tab="turneringNatt"><span class="seg-icon">☾</span><span class="seg-main">Turnering Natt</span></button>
+<button class="seg seg-red" type="button" data-tab="verkstedBestillinger"><span class="seg-icon">🔧</span><span class="seg-main">Input verksted</span></button>
 <button class="seg" type="button" data-tab="inndata" style="display:none">Planlegge Skiftebevegelser</button>
-<button class="seg" type="button" data-tab="turneringNatt">Turnering Natt</button>
-<button class="seg" type="button" data-tab="sporplan">Sporplan</button>
 </div>
 
 
