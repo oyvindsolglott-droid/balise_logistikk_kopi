@@ -213,6 +213,7 @@ box-shadow:
   .segmented{grid-template-columns:repeat(2,minmax(160px,1fr));}
   .segmented button,
   .segmented button:nth-child(-n+4){grid-column:auto;}
+  .segmented button,
   .segmented button{min-height:68px;font-size:15px;}
   .seg-icon{font-size:28px;}
 }
@@ -4157,29 +4158,56 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 <hr>
 
 <h2>Arkene</h2>
+<p>Arkene følger samme rekkefølge som hovedmenyen. Fargene viser hvilken type funksjon arket har.</p>
+<pre>Grønn ring: operativt grunnbilde
+Blå ring: simulert TXP-input
+Mørk blå beslutningsknapp: SDE-beslutningsstøtte
+Rød ring: simulert verksted-input</pre>
 
-<h3>Tursatt</h3>
-<p>Viser ankomster og avganger med kjøretøy fra Balise-data. Brukes til å kontrollere hva som kommer inn, hva som skal ut, og om noe mangler.</p>
+<h3>1. Tursatt</h3>
+<p><strong>Operativt grunnbilde.</strong> Viser ankomster og avganger med kjøretøy fra Balise-data.</p>
+<p>Brukes til å kontrollere hva som kommer inn, hva som skal ut, og om kjøretøy mangler eller må avklares manuelt.</p>
 
-<h3>Grunnoppstilling</h3>
-<p><strong>Må fylles ut etter fysisk kontroll av tomta.</strong></p>
-<p>Registrer hvilket kjøretøy som står i hver slot. Dette blir startgrunnlaget for Sporplan.</p>
-<pre>5s = 74-50
-6n = 75-17
-5s = 74-50 | rep = r</pre>
+<h3>2. SDE Skiftebevegelser</h3>
+<p><strong>Beslutningsstøtte for konkrete skifteforslag.</strong></p>
+<p>Her viser SDE hvilke kjøretøy som anbefales flyttet, fra hvilket spor, til hvilket spor, og hvorfor flyttingen anbefales.</p>
+<p>Arket kan vise score, skiftevindu, varsler, planlagte bevegelser, avvik og kontrollpunkter. Forslagene skal hjelpe brukeren å prioritere, men må alltid vurderes mot faktisk situasjon.</p>
 
-<h3>Turnering Kveld</h3>
-<p>Viser kjøretøyflyt på kveldsvakten: ankomster, videre produksjon, tømming/fylling, verkstedbehov og kjøretøy som må flyttes bort fra togspor.</p>
+<h3>3. SDE Vaktplan</h3>
+<p><strong>Beslutningsstøtte for helheten i kveldsvakt og nattevakt.</strong></p>
+<p>SDE Vaktplan er kontroll- og oversiktsarket som viser hvordan Tursatt, Sporplan, Input Sporplan, Turnering Kveld/Natt, verkstedstatus og planlagte skifter henger sammen.</p>
+<p>Arket skal gjøre det lettere å oppdage fra-spor-avvik, målspor som er opptatt, ruteproblemer, manglende kjøretøy, verkstedbindinger og andre forhold som bør avklares før skifting gjennomføres.</p>
+<p>Dette arket er ikke en ordre til skifter, men et samlet beslutningsgrunnlag for å forstå konsekvensene av planen.</p>
 
-<h3>Turnering Natt</h3>
-<p>Viser nattens kjøretøyflyt og morgenproduksjon. Brukes for å kontrollere at kjøretøy står riktig før tidlige avganger.</p>
+<h3>4. DROPS Materiellstyrer</h3>
+<p><strong>Materielloversikt og beslutningsstøtte for DROPS.</strong></p>
+<p>Arket gir oversikt over kjøretøy, status, verksted-/reparasjonsforhold, tilgjengelighet og mulige materiellvalg.</p>
+<p>DROPS beholder den taktiske materiellbeslutningen, men SDE kan gjøre informasjonsmengden mer strukturert og lettere å handle på.</p>
 
-<h3>Sporplan</h3>
-<p>Viser faktisk oppstilling på Skien. Dette er programmets viktigste nåbilde.</p>
+<h3>5. Sporplan</h3>
+<p><strong>Faktisk operativt nåbilde.</strong></p>
+<p>Sporplan viser hva som står hvor på Skien. Dette er et av de viktigste grunnlagene for SDE.</p>
+<p>Hvis Sporplan ikke stemmer med virkeligheten, vil også SDE-forslagene få feil utgangspunkt.</p>
 
-<h3>SDE Skiftebevegelser</h3>
-<p>Viser anbefalte skiftebevegelser, prioritet, score, varsler, skiftevindu og kontrollpunkter.</p>
-<p>SDE bruker Sporplan, Tursatt/Balise, Turnering Kveld/Natt, planlagte skifter, verkstedbehov, WC/vann-behov og lokale sporregler.</p>
+<h3>6. Input Sporplan</h3>
+<p><strong>Simulert TXP-input.</strong></p>
+<p>Dette arket erstatter tidligere Grunnoppstilling-navn i menyen. Her registreres fysisk oppstilling etter kontroll av tomta.</p>
+<p>Blå ring betyr at arket representerer manuell eller simulert input fra TXP. TXP kan bruke slike input til å overstyre SDE-grunnlaget når faktisk situasjon, lokale vurderinger eller operative hensyn tilsier det.</p>
+
+<h3>7. Turnering Kveld</h3>
+<p><strong>Simulert TXP-input for kveldsvakt.</strong></p>
+<p>Arket viser og korrigerer kjøretøyflyt på kveldsvakten: ankomster, videre produksjon, tømming/fylling, verkstedbehov og kjøretøy som må flyttes bort fra togspor.</p>
+<p>TXP kan her manuelt registrere eller bestille skifteoperasjoner som SDE skal ta hensyn til.</p>
+
+<h3>8. Turnering Natt</h3>
+<p><strong>Simulert TXP-input for nattevakt.</strong></p>
+<p>Arket brukes for å kontrollere nattens kjøretøyflyt og at kjøretøy står riktig før morgenproduksjonen starter.</p>
+<p>Også her kan TXP overstyre eller supplere SDE ved å legge inn manuelle skiftebehov og operative vurderinger.</p>
+
+<h3>9. Input verksted</h3>
+<p><strong>Simulert verksted-input.</strong></p>
+<p>Her registreres verkstedbestillinger, ønsket mottak, kjøretøy, sporønske og hva som skal utbedres eller kontrolleres.</p>
+<p>Rød ring betyr at arket representerer input fra verksted, slik at SDE og DROPS får bedre grunnlag for å vurdere verkstedbindinger, driftsklarhet og videre disponering.</p>
 
 <hr>
 
