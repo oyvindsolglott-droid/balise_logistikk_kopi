@@ -3911,7 +3911,7 @@ button{padding:12px 12px}
 <button class="seg seg-decision" type="button" data-tab="sdeVaktplan"><span class="seg-icon">▦</span><span class="seg-main">SDE<br>Vaktplan</span></button>
 <button class="seg" type="button" data-tab="dropsMateriellstyrer"><span class="seg-icon">▱</span><span class="seg-main">DROPS<br>Materiellstyrer</span></button>
 <button class="seg seg-green" type="button" data-tab="sporplan"><span class="seg-icon">▦</span><span class="seg-main">Sporplan</span></button>
-<button class="seg seg-blue" type="button" data-tab="grunnoppstilling"><span class="seg-icon">TXP</span><span class="seg-main">Input Sporplan</span></button>
+<button class="seg seg-blue" type="button" data-tab="grunnoppstilling"><span class="seg-icon">TXP</span><span class="seg-main">TXP<br>Input Sporplan</span></button>
 <button class="seg seg-blue" type="button" data-tab="turneringKveld"><span class="seg-icon">☾</span><span class="seg-main">Turnering Kveld</span></button>
 <button class="seg seg-blue" type="button" data-tab="turneringNatt"><span class="seg-icon">☾</span><span class="seg-main">Turnering Natt</span></button>
 <button class="seg seg-red" type="button" data-tab="verkstedBestillinger"><span class="seg-icon">🔧</span><span class="seg-main">Input verksted</span></button>
@@ -4131,7 +4131,7 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 
 <h3>Hva SDE er</h3>
 <p><strong>SDE / Skien sporplan er operativ beslutningsstøtte for skifting på Skien.</strong></p>
-<p>Programmet samler Tursatt/Balise, Grunnoppstilling, Turnering Kveld, Turnering Natt, Sporplan og skiftebevegelser i ett felles bilde.</p>
+<p>Programmet samler Tursatt/Balise, TXP Input Sporplan, Turnering Kveld, Turnering Natt, Sporplan og skiftebevegelser i ett felles bilde.</p>
 <p>Målet er å gjøre det lettere å se hva som står hvor, hva som må flyttes, hva som haster, og hvilke avvik som må kontrolleres.</p>
 
 <h3>Hva SDE ikke er</h3>
@@ -4143,7 +4143,7 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 <h2>Kom i gang</h2>
 <ol>
 <li><strong>Kontroller Tursatt.</strong> Se hvilke tog og kjøretøy som kommer inn og skal ut.</li>
-<li><strong>Oppdater Grunnoppstilling.</strong> Registrer faktisk oppstilling etter fysisk kontroll.</li>
+<li><strong>Oppdater TXP Input Sporplan.</strong> Registrer faktisk oppstilling etter fysisk kontroll.</li>
 <li><strong>Kontroller Turnering Kveld/Natt.</strong> Se produksjonsflyt, servicebehov, verkstedbehov og avvik.</li>
 <li><strong>Planlegg skifter med + Skifte.</strong> Fyll inn kjøretøy, fra spor, til spor, skifter og eventuell operasjonstype.</li>
 <li><strong>Bruk SDE som kontroll.</strong> Se anbefalte handlinger, score, varsler og planlagte bevegelser.</li>
@@ -4152,7 +4152,7 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 
 <h3>Viktigste regel</h3>
 <p><strong>Sporplan skal vise faktisk nåsituasjon.</strong></p>
-<p>Hvis Grunnoppstilling eller Sporplan er feil, får SDE feil utgangspunkt.</p>
+<p>Hvis TXP Input Sporplan eller Sporplan er feil, får SDE feil utgangspunkt.</p>
 <p>Planlagte bevegelser kan vises som <strong>PLAN FRA</strong> og <strong>PLAN TIL</strong>. Først når <strong>Utført = f</strong> er satt, regner programmet kjøretøyet som flyttet.</p>
 
 <hr>
@@ -4175,7 +4175,7 @@ Rød ring: simulert verksted-input</pre>
 
 <h3>3. SDE Vaktplan</h3>
 <p><strong>Beslutningsstøtte for helheten i kveldsvakt og nattevakt.</strong></p>
-<p>SDE Vaktplan er kontroll- og oversiktsarket som viser hvordan Tursatt, Sporplan, Input Sporplan, Turnering Kveld/Natt, verkstedstatus og planlagte skifter henger sammen.</p>
+<p>SDE Vaktplan er kontroll- og oversiktsarket som viser hvordan Tursatt, Sporplan, TXP Input Sporplan, Turnering Kveld/Natt, verkstedstatus og planlagte skifter henger sammen.</p>
 <p>Arket skal gjøre det lettere å oppdage fra-spor-avvik, målspor som er opptatt, ruteproblemer, manglende kjøretøy, verkstedbindinger og andre forhold som bør avklares før skifting gjennomføres.</p>
 <p>Dette arket er ikke en ordre til skifter, men et samlet beslutningsgrunnlag for å forstå konsekvensene av planen.</p>
 
@@ -4189,10 +4189,11 @@ Rød ring: simulert verksted-input</pre>
 <p>Sporplan viser hva som står hvor på Skien. Dette er et av de viktigste grunnlagene for SDE.</p>
 <p>Hvis Sporplan ikke stemmer med virkeligheten, vil også SDE-forslagene få feil utgangspunkt.</p>
 
-<h3>6. Input Sporplan</h3>
+<h3>6. TXP Input Sporplan</h3>
 <p><strong>Simulert TXP-input.</strong></p>
 <p>Dette arket erstatter tidligere Grunnoppstilling-navn i menyen. Her registreres fysisk oppstilling etter kontroll av tomta.</p>
-<p>Blå ring betyr at arket representerer manuell eller simulert input fra TXP. TXP kan bruke slike input til å overstyre SDE-grunnlaget når faktisk situasjon, lokale vurderinger eller operative hensyn tilsier det.</p>
+<p>Blå ring betyr at arket representerer manuell eller simulert input fra TXP. I prototypen brukes dette som en simulering av data og vurderinger som normalt ville kommet fra TXP, eller på sikt fra systemer som Tog i Ro.</p>
+<p>TXP kan bruke slike input til å overstyre SDE-grunnlaget når faktisk situasjon, lokale vurderinger eller operative hensyn tilsier det. Dette gjør at SDE forblir beslutningsstøtte, mens TXP fortsatt kan legge inn operative føringer.</p>
 
 <h3>7. Turnering Kveld</h3>
 <p><strong>Simulert TXP-input for kveldsvakt.</strong></p>
@@ -4286,7 +4287,7 @@ Settnr = 1 eller 2
 <p>SDE viser operasjonstypen som et viktig kontrollpunkt, men flytter ikke kjøretøy automatisk på grunnlag av teksten alene.</p>
 
 <h3>Vanlige feil å kontrollere</h3>
-<pre>Grunnoppstilling stemmer ikke med faktisk oppstilling
+<pre>TXP Input Sporplan stemmer ikke med faktisk oppstilling
 Tursatt mangler kjøretøy eller har feil rekkefølge
 Skifteoppdrag er utført, men Utført = f mangler
 Sporplassering er skrevet for grovt, for eksempel 3 i stedet for 3n
