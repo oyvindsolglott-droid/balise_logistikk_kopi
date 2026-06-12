@@ -4043,137 +4043,70 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 
 
 <section class="panel" id="hjelp">
-<div class="note">Brukerveiledning for Skien sporplan. Denne siden forklarer hvordan arkene kan brukes, og hvilke korte koder som påvirker visning og forslag.</div>
+<div class="note">Kort brukerveiledning for Skien sporplan / SDE. Bruk denne siden for rask oppstart, riktig arbeidsflyt og trygg tolking av forslag.</div>
 
 <div class="api-box">
 <h2>Brukerveiledning</h2>
 
-<h3>Hva SDE / Skien sporplan er</h3>
-<p><strong>SDE / Skien sporplan er et verktøy for operativ beslutningsstøtte ved skifting på Skien.</strong></p>
-<p>Programmet skal hjelpe deg å samle riktig informasjon, se faktisk oppstilling, planlegge skiftebevegelser og vurdere neste handlinger på en mer strukturert måte.</p>
-<p>Systemet kan vise sammenheng mellom Tursatt/Balise, Grunnoppstilling, Turnering Kveld, Turnering Natt, Sporplan og manuelle skiftebevegelser. Målet er å gjøre planleggingen tydeligere, redusere unødvendige bevegelser og gjøre det lettere å oppdage avvik før de skaper problemer.</p>
+<h3>Hva SDE er</h3>
+<p><strong>SDE / Skien sporplan er operativ beslutningsstøtte for skifting på Skien.</strong></p>
+<p>Programmet samler Tursatt/Balise, Grunnoppstilling, Turnering Kveld, Turnering Natt, Sporplan og skiftebevegelser i ett felles bilde.</p>
+<p>Målet er å gjøre det lettere å se hva som står hvor, hva som må flyttes, hva som haster, og hvilke avvik som må kontrolleres.</p>
 
-<h3>Hva programmet ikke er</h3>
-<p><strong>Programmet er ikke en fasit og ikke et automatisk styringssystem.</strong></p>
-<p>Det flytter ikke kjøretøy, tildeler ikke ansvar automatisk og erstatter ikke instrukser, sikkerhetsregler, lokal vurdering eller operativt ansvar.</p>
-<p>Alle forslag fra SDE må vurderes opp mot faktisk situasjon på tomta, gjeldende regler, tilgjengelig personell, signal-/sporforhold og praktisk gjennomførbarhet.</p>
-
-<h3>Anbefalt arbeidsflyt</h3>
-<p>Bruk programmet i denne rekkefølgen når du starter planleggingen:</p>
-<ol>
-<li><strong>Kontroller Tursatt.</strong> Se hvilke tog og kjøretøy som kommer inn og skal ut.</li>
-<li><strong>Oppdater Grunnoppstilling.</strong> Registrer faktisk tomtestatus etter fysisk kontroll.</li>
-<li><strong>Kontroller Turnering Kveld/Natt.</strong> Se produksjonsflyt, tog som skal videre, servicebehov og eventuelle avvik.</li>
-<li><strong>Planlegg skiftebevegelser med + Skifte.</strong> Registrer tid, kjøretøy, fra spor, til spor, skifter, eventuell rep-status og operasjonstype.</li>
-<li><strong>Bruk SDE vaktplan som kontroll og arbeidsliste.</strong> Se prioritet, anbefalt handling, avvik og planlagte bevegelser.</li>
-<li><strong>Marker utført først når bevegelsen faktisk er gjort.</strong> Skriv <strong>f</strong> i Utført-feltet. Da regner programmet kjøretøyet som flyttet til ny plassering.</li>
-</ol>
-
-<h3>Det viktigste prinsippet</h3>
-<p><strong>Sporplan skal representere faktisk nåsituasjon.</strong> Dersom Grunnoppstilling eller Sporplan er feil, vil også SDE-vurderingene få feil utgangspunkt.</p>
-<p>Planlagte skiftebevegelser kan vises i Sporplan som <strong>PLAN FRA</strong> og <strong>PLAN TIL</strong>. Det betyr at bevegelsen er planlagt, men ikke utført. Først når <strong>Utført = f</strong> settes, regner programmet kjøretøyet som flyttet.</p>
-
-<h3>Viktig om lokal lagring og ansvar</h3>
-<p>All informasjon som registreres manuelt av den som bruker siden, lagres kun lokalt på den enheten og i den nettleseren der opplysningene blir skrevet inn.</p>
-<p>Det betyr at det kan finnes flere ulike oppsett samtidig. En telefon, en annen telefon og en datamaskin kan vise forskjellige manuelle registreringer, selv om de åpner samme nettside.</p>
-
-<pre>Telefon 1 kan ha én Sporplan.
-Telefon 2 kan ha en annen Sporplan.
-Datamaskinen kan ha et tredje oppsett.</pre>
-
-<p>Manuelle endringer deles ikke automatisk mellom enheter.</p>
-
-<p>Dette gjelder for eksempel:</p>
-<pre>manuelle endringer i Tursatt
-manuelle endringer i Turnering Kveld
-manuelle endringer i Turnering Natt
-grunnoppstilling
-planlagte skiftebevegelser
-utførte skiftebevegelser
-manuelle kjøretøy- eller sporregistreringer</pre>
-
-<p>Den som begynner sitt skift må derfor kontrollere og oppdatere Sporplan slik at den stemmer med faktisk situasjon ute på tomta.</p>
-<p>Programmet kan bruke tilgjengelige data fra Tursatt, Turnering Kveld, Turnering Natt, Balise og manuelle registreringer, men faktisk plassering må kontrolleres og vedlikeholdes av brukeren.</p>
-<p>Hvis flere personer bruker siden samtidig på hver sin enhet, må de være klar over at de ikke nødvendigvis ser de samme manuelle endringene.</p>
+<h3>Hva SDE ikke er</h3>
+<p><strong>SDE er ikke en fasit og ikke et automatisk styringssystem.</strong></p>
+<p>Forslag må alltid vurderes opp mot faktisk situasjon, lokale regler, signal-/sporforhold, tilgjengelig personell og praktisk gjennomførbarhet.</p>
 
 <hr>
 
-<h2>Arkene i programmet</h2>
+<h2>Kom i gang</h2>
+<ol>
+<li><strong>Kontroller Tursatt.</strong> Se hvilke tog og kjøretøy som kommer inn og skal ut.</li>
+<li><strong>Oppdater Grunnoppstilling.</strong> Registrer faktisk oppstilling etter fysisk kontroll.</li>
+<li><strong>Kontroller Turnering Kveld/Natt.</strong> Se produksjonsflyt, servicebehov, verkstedbehov og avvik.</li>
+<li><strong>Planlegg skifter med + Skifte.</strong> Fyll inn kjøretøy, fra spor, til spor, skifter og eventuell operasjonstype.</li>
+<li><strong>Bruk SDE som kontroll.</strong> Se anbefalte handlinger, score, varsler og planlagte bevegelser.</li>
+<li><strong>Marker utført først når skiftet faktisk er gjort.</strong> Skriv <strong>f</strong> i Utført-feltet.</li>
+</ol>
+
+<h3>Viktigste regel</h3>
+<p><strong>Sporplan skal vise faktisk nåsituasjon.</strong></p>
+<p>Hvis Grunnoppstilling eller Sporplan er feil, får SDE feil utgangspunkt.</p>
+<p>Planlagte bevegelser kan vises som <strong>PLAN FRA</strong> og <strong>PLAN TIL</strong>. Først når <strong>Utført = f</strong> er satt, regner programmet kjøretøyet som flyttet.</p>
+
+<hr>
+
+<h2>Arkene</h2>
 
 <h3>Tursatt</h3>
-<p>Tursatt viser tog som ankommer og avgår Skien, med tilhørende kjøretøy fra Balise-data.</p>
-<p>Ankomst står til venstre. Avgang står til høyre.</p>
-<p>Dette arket brukes for å se:</p>
-<pre>hvilke tog som ankommer Skien
-hvilke kjøretøy som kommer inn
-hvilke tog som avgår
-hvilke kjøretøy som skal ut igjen</pre>
-<p>Dersom kjøretøy mangler, kan det bety at toget ikke er tursatt, at Balise-data ikke er oppdatert, eller at kjøretøyet må avklares manuelt.</p>
-<p>Hvis et tog har to kjøretøy, kan rekkefølgen byttes dersom det er nødvendig for videre planlegging.</p>
-
-<h3>Turnering Kveld</h3>
-<p>Turnering Kveld brukes til å se kjøretøyflyten på kveldsvakten.</p>
-<p>Forhåndsutfylte verdier i Turnering Kveld er basert på data fra Tursatt. Programmet forsøker å hente inn tognummer og kjøretøy automatisk der det finnes tilgjengelige data.</p>
-<p>Disse verdiene kan overskrives manuelt. Dette er viktig fordi faktisk drift kan avvike fra det som ligger i Tursatt eller Balise.</p>
-<p>Du kan korrigere manuelt dersom:</p>
-<pre>feil kjøretøy er hentet inn
-kjøretøy mangler
-rekkefølgen på kjøretøyene er feil
-toget kjøres med annet materiell enn forventet
-det finnes en avvikssituasjon</pre>
-<p>Manuelle endringer bør brukes med omtanke, fordi de kan påvirke videre visning og forslag i programmet.</p>
-<p>Turnering Kveld er særlig nyttig for å se:</p>
-<pre>hvilke kjøretøy som kommer inn på kvelden
-hvilke kjøretøy som skal videre i produksjon
-hvilke kjøretøy som skal tømmes/fylles
-hvilke kjøretøy som skal mot verksted eller reparasjon
-hvilke kjøretøy som må flyttes bort fra togspor</pre>
-
-<h3>Turnering Kveld – kolonnene for Tømme</h3>
-<p>I Turnering Kveld kan du skrive <strong>j</strong> under kolonnene for Tømme.</p>
-<p>Dette betyr: ja, kjøretøyet skal tømmes/fylles.</p>
-<p>Når <strong>j</strong> skrives i en Tømme-kolonne, tolker programmet at kjøretøyet har behov for WC/vann og derfor skal via spor 6.</p>
-<p>Dette påvirker hvordan kjøretøyet vurderes og kan vises i Sporplan. Kjøretøyet blir behandlet som et kjøretøy med planlagt servicebehov. Programmet kan bruke dette som grunnlag for å vise eller foreslå flyt mot spor 6.</p>
-<pre>Tog: 835
-Kjøretøy: 74-44
-Tømme: j</pre>
-<p>Programmet bør da tolke dette som at 74-44 skal via spor 6 for WC/vann før videre plassering.</p>
-<p>Bruk derfor <strong>j</strong> bare når kjøretøyet faktisk skal tømmes eller fylles.</p>
-
-<h3>Anbefalt fremgangsmåte før planlegging</h3>
-<p><strong>Start alltid med å skaffe riktig nåbilde.</strong> Programmet blir ikke bedre enn grunnlaget som legges inn.</p>
-<ol>
-<li><strong>Oppdater Grunnoppstilling.</strong> Gå fysisk gjennom tomta og registrer hva som faktisk står i hver slot.</li>
-<li><strong>Sjekk Tursatt mot Topas Toginfo.</strong> Kontroller at ankommende tog og kjøretøy stemmer med Topas Toginfo / kjøretøy før du bruker dem videre som grunnlag.</li>
-<li><strong>Merk kjøretøy som skal ut av drift.</strong> Bruk rep-/verkstedfeltet der dette finnes. Skriv <strong>r</strong> for reparasjon/verkstedflyt. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</li>
-<li><strong>Planlegg skiftebevegelser.</strong> Bruk <strong>+ Skifte</strong> i Turnering Kveld/Natt til å registrere klokkeslett, kjøretøy, fra spor, til spor, skifter, eventuell rep-status og operasjonstype.</li>
-<li><strong>Marker utført når bevegelsen er gjort.</strong> Skriv <strong>f</strong> i Utført-kolonnen. Da regner programmet kjøretøyet som flyttet til ny faktisk plassering. Verdiene <strong>j</strong>, <strong>ja</strong> og <strong>ferdig</strong> aksepteres også, men anbefalt standard er <strong>f</strong>.</li>
-</ol>
-<p>Hvis Grunnoppstilling eller Tursatt-kontrollen er feil, vil Sporplan og senere SDE-vurderinger få feil utgangspunkt.</p>
+<p>Viser ankomster og avganger med kjøretøy fra Balise-data. Brukes til å kontrollere hva som kommer inn, hva som skal ut, og om noe mangler.</p>
 
 <h3>Grunnoppstilling</h3>
-<p><strong>Grunnoppstilling må fylles ut ved fysisk kontroll av tomta før SDE brukes operativt.</strong></p>
-<p>Programmet kan ikke vite sikkert hva som faktisk står på stasjonen uten at dette registreres manuelt. Tursatt og Balise kan vise togdata, men de erstatter ikke fysisk kontroll av sporene.</p>
-<p>Gå rundt på tomta og registrer hvilket kjøretøy som står i hver slot. Hvis kjøretøyet skal ut av normal drift til reparasjon eller verkstedflyt, bruk rep-/verkstedfeltet.</p>
-<pre>5s = 74-50 | rep = r
-6n = 75-17</pre>
-<p><strong>r</strong> betyr reparasjon/verkstedflyt og gir rød varsling i Sporplan. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</p>
-<p>Grunnoppstilling brukes som startstatus i Sporplan. Det betyr at kjøretøyene du legger inn her vises som fysisk plassert i Sporplan. Hvis rep er satt til r, får samme slot rød varsling.</p>
-<p>Grunnoppstilling er likevel <strong>flyktig</strong>. Når du senere registrerer en ferdig skiftebevegelse i Turnering Kveld/Natt, overstyrer den grunnoppstillingen.</p>
-<pre>Grunnoppstilling:
-5s = 74-50
+<p><strong>Må fylles ut etter fysisk kontroll av tomta.</strong></p>
+<p>Registrer hvilket kjøretøy som står i hver slot. Dette blir startgrunnlaget for Sporplan.</p>
+<pre>5s = 74-50
+6n = 75-17
+5s = 74-50 | rep = r</pre>
 
-Skifteplanlegging i Turnering Kveld/Natt:
-Kjøretøy_nr = 74-50
-Fra spor = 5s
-Til spor = 2s
-Utført = f</pre>
-<p>Da regner programmet 74-50 som flyttet til 2s. Den gamle plasseringen i 5s frigjøres automatisk i Sporplan.</p>
-<p>Hvis Grunnoppstilling er feil eller ufullstendig, vil Sporplan og senere SDE-vurderinger få et dårligere utgangspunkt. Derfor bør dette alltid være første kontrollpunkt før videre planlegging.</p>
+<h3>Turnering Kveld</h3>
+<p>Viser kjøretøyflyt på kveldsvakten: ankomster, videre produksjon, tømming/fylling, verkstedbehov og kjøretøy som må flyttes bort fra togspor.</p>
 
-<h3>Skifteplanlegging i Turnering Kveld/Natt</h3>
-<p>Denne funksjonen brukes til å planlegge konkrete skiftebevegelser.</p>
-<p>Her kan du føre inn:</p>
+<h3>Turnering Natt</h3>
+<p>Viser nattens kjøretøyflyt og morgenproduksjon. Brukes for å kontrollere at kjøretøy står riktig før tidlige avganger.</p>
+
+<h3>Sporplan</h3>
+<p>Viser faktisk oppstilling på Skien. Dette er programmets viktigste nåbilde.</p>
+
+<h3>SDE Skiftebevegelser</h3>
+<p>Viser anbefalte skiftebevegelser, prioritet, score, varsler, skiftevindu og kontrollpunkter.</p>
+<p>SDE bruker Sporplan, Tursatt/Balise, Turnering Kveld/Natt, planlagte skifter, verkstedbehov, WC/vann-behov og lokale sporregler.</p>
+
+<hr>
+
+<h2>Planlegge skiftebevegelser</h2>
+
+<h3>+ Skifte</h3>
+<p>Bruk <strong>+ Skifte</strong> i Turnering Kveld/Natt for konkrete skifteoppdrag.</p>
 <pre>klokkeslett
 kjøretøy
 fra spor
@@ -4181,190 +4114,76 @@ til spor
 skifter
 til rep
 operasjonstype
-om oppdraget er utført</pre>
-<p>Planlagte bevegelser som ikke er utført, kan vises tydelig i Sporplan. Når en bevegelse merkes som utført, oppdateres logikken slik at kjøretøyet regnes som plassert på nytt sted.</p>
-<p>I feltet <strong>Til rep</strong> under <strong>+ Skifte</strong> i Turnering Kveld/Natt kan du skrive <strong>r</strong> for reparasjon/verkstedflyt. Skien har ikke hjuldreiing på verkstedet, så <strong>d</strong> skal ikke brukes som operativ planregel.</p>
+utført</pre>
 
-<h3>Turnering Natt</h3>
-<p>Turnering Natt brukes til å se nattens kjøretøyflyt og produksjon.</p>
-<p>Arket er viktig for å forstå:</p>
-<pre>hvilke kjøretøy som skal brukes tidlig neste morgen
-hvilke faste nattoppgaver som må gjøres
-hvilke tog som skal klargjøres
-hvilke kjøretøy som må stå riktig før morgenproduksjonen starter</pre>
-<p>Nattarket gjelder normalt perioden fra cirka kl. 23:00 til 07:00.</p>
-<p>Klargjøring av 22xx-tog gjelder ikke natt til lørdag og natt til søndag.</p>
-
-<h3>Sporplan</h3>
-<p>Sporplan viser hvor kjøretøyene står fysisk i sporene på Skien.</p>
-<p>Dette er programmets viktigste nåbilde.</p>
-<p>Sporplan bygger først på Grunnoppstilling, altså det som er registrert ved fysisk kontroll av tomta. Deretter kan ferdige skiftebevegelser og andre registrerte endringer oppdatere plasseringen.</p>
-<p>Når programmet skal vurdere skifting, skal faktisk Sporplan være utgangspunktet. Programmet skal ikke planlegge fra en tenkt situasjon, men fra det som faktisk står i sporene.</p>
-<p>Sporplan kan også vise planlagte skiftebevegelser. Da blir det lettere å se:</p>
-<pre>hva som står hvor
-hva som skal flyttes
-hvilke spor som blir berørt
-hvilke oppdrag som fortsatt ikke er utført</pre>
-<p>Når et skifteoppdrag merkes som ferdig, blir kjøretøyet regnet som plassert på sitt nye spor. Tidligere spor frigjøres, og oppdraget vises ikke lenger som en tydelig åpen planlagt bevegelse.</p>
-
-<h3>SDE vaktplan</h3>
-<p>SDE vaktplan er beslutningsstøtte for kveldsvakt og nattevakt.</p>
-<p>Den viser arbeidsliste, prioritet, anbefalt handling, avvik, planlagte skiftebevegelser og kontrollpunkter basert på tilgjengelig datagrunnlag.</p>
-<p>SDE bruker blant annet:</p>
-<pre>faktisk Sporplan
-Grunnoppstilling fra fysisk tomtekontroll
-Tursatt/Balise
-Turnering Kveld
-Turnering Natt
-planlagte skiftebevegelser
-verkstedbehov
-WC/vann-behov
-lokale sporregler</pre>
-<p>SDE skal hjelpe deg å vurdere:</p>
-<pre>hva som bør kontrolleres først
-hvilke planlagte skifter som er aktive
-hvilke kjøretøy som har avvik
-hvilket spor som foreslås
-hvilken handling som bør prioriteres</pre>
-<p>Forslag fra SDE skal behandles som beslutningsstøtte, ikke fasit. Programmet flytter ikke kjøretøy automatisk og erstatter ikke lokal vurdering.</p>
-<p>Hvis SDE viser <strong>Skjult gammel skifteplan</strong>, betyr det at det fortsatt finnes aktive rader fra den gamle skjulte skifteplanfanen. Kontroller om disse radene fortsatt skal gjelde, eller om de er gamle rester fra tidligere planlegging.</p>
-
-<hr>
-
-<h2>Hva kan skrives i kolonnene?</h2>
-
-<h3>Fra tog</h3>
-<p>Skriv tognummeret kjøretøyet kommer fra.</p>
-<pre>823
-835
-2489</pre>
-<p>Dette forteller programmet hvilket tog kjøretøyet ankommer med.</p>
-
-<h3>Til tog</h3>
-<p>Skriv hvilket tog kjøretøyet skal brukes i videre.</p>
-<pre>802
-852
-856
-808
-2470</pre>
-<p>Dette tolkes som videre produksjon.</p>
-<p>Hvis kjøretøyet skal til reparasjon eller verkstedflyt, skriv:</p>
-<pre>rep</pre>
-<p>Anbefalt standard er <strong>rep</strong>. Unngå varianter som Rep, rep., verksted, reparasjon eller til rep.</p>
-
-<h3>Settnr</h3>
-<p>Settnr brukes når det er viktig hvilket sett i toget som menes.</p>
-<pre>1
-2</pre>
-<p>Dette kan være viktig ved deling, skjøting eller når fremre og bakre sett skal håndteres forskjellig.</p>
-
-<h3>Kjøretøy</h3>
-<p>Skriv kjøretøynummeret.</p>
-<pre>74-42
-75-17
-70-06</pre>
-<p>Dette er kjøretøyet programmet skal følge videre i planen.</p>
-
-<h3>WC/vann</h3>
-<p>WC/vann brukes når kjøretøyet skal tømmes eller fylles i spor 6.</p>
-<p>Gyldig verdi:</p>
-<pre>j</pre>
-<p><strong>j</strong> betyr ja, kjøretøyet skal via spor 6 for WC/vann.</p>
-<pre>Fra tog: 835
-Til tog: 802
-Kjøretøy: 74-44
-WC/vann: j</pre>
-<p>Programmet tolker dette som at kjøretøyet først skal til spor 6 for tømming/fylling, og deretter vurderes videre mot tog 802.</p>
-<p>Anbefalt standard er <strong>j</strong>. Unngå å bruke flere varianter som x, ja, wc, vann eller WC/vann.</p>
-
-<h3>Operasjonstype</h3>
-<p>Operasjonstype brukes under <strong>+ Skifte</strong> i Turnering Kveld/Natt når en planlagt bevegelse har en særskilt operativ betydning.</p>
-<pre>Motsatt deling
-Fra spor 6 etter service
-Fast skifter 2-oppgave
-Avklares</pre>
-<p>Viktig eksempel: <strong>Motsatt deling</strong>.</p>
-<p>Dette betyr at et tog med to kjøretøy deles motsatt: søndre kjøretøy skal parkeres, mens nordre kjøretøy skal returnere eller kjøres videre mot Oslo som nytt tognummer.</p>
-<p>SDE skal vise operasjonstypen, men ikke automatisk tildele ansvar eller flytte kjøretøy basert på den alene.</p>
+<h3>Fra spor og Til spor</h3>
+<p>Skriv alltid nøyaktig sporplassering når sporet har flere posisjoner.</p>
+<pre>3n
+5m
+6ss
+11s
+12n</pre>
+<p>Ikke skriv bare 3, 5, 6, 11 eller 12 hvis du mener en bestemt del av sporet.</p>
+<p>Unntak: Spor 9 skrives bare som <strong>9</strong>.</p>
 
 <h3>Utført</h3>
-<p>Utført-feltet brukes under <strong>+ Skifte</strong> i Turnering Kveld/Natt.</p>
-<p>Her kan du skrive:</p>
-<pre>f
-ferdig
-j
-ja</pre>
-<p>Dette betyr at skifteoppdraget er utført. Anbefalt standard er <strong>f</strong>.</p>
-<p>Når <strong>f</strong> skrives, regner programmet skiftebevegelsen som ferdig. Da skjer dette:</p>
-<pre>Kjøretøyet anses som plassert på sitt nye spor.
-Det tidligere sporet frigjøres.
-Oppdraget vises ikke lenger like tydelig som en åpen planlagt bevegelse i Sporplan.</pre>
-<p>Tom Utført-kolonne betyr at oppdraget er planlagt, men ikke utført. <strong>f</strong> i Utført-kolonnen betyr at oppdraget er ferdig, og kjøretøyet har fått sin nye plass.</p>
+<p>Skriv <strong>f</strong> når oppdraget faktisk er utført.</p>
 <pre>Kjøretøy: 74-42
 Fra spor: 3n
 Til spor: 6n
 Utført: f</pre>
-<p>Programmet tolker dette som at 74-42 er flyttet fra 3n til 6n, 3n frigjøres, og 6n blir kjøretøyets gjeldende plassering.</p>
-
-<h3>Fra spor og Til spor</h3>
-<p>Fra spor og Til spor brukes når du selv planlegger eller registrerer en konkret skiftebevegelse.</p>
-<p>Når spor skrives manuelt, må sporplassering skrives nøyaktig.</p>
-<p>Programmet skiller mellom ulike deler av samme spor. Derfor må du skrive hele sporplassen, for eksempel:</p>
-<pre>3n
-6ss
-11s
-12n
-5m</pre>
-<p>Ikke skriv bare 3, 6, 11 eller 12 dersom du egentlig mener en bestemt del av sporet.</p>
-<p>Eksempler:</p>
-<pre>3s
-3m
-3n</pre>
-<p>er tre forskjellige plasseringer.</p>
-<pre>6ss
-6s
-6n</pre>
-<p>er også tre forskjellige plasseringer.</p>
-<p>Unntaket er spor 9. Spor 9 har bare plass til ett sett, og skrives derfor bare:</p>
-<pre>9</pre>
-<p>Hovedregel: Skriv alltid nøyaktig sporplassering når sporet har flere posisjoner. Bruk bare rent spornummer der sporet faktisk bare har én plass, som spor 9.</p>
-
-<h3>Til spor i + Skifte og SDE-planlegging</h3>
-<p>Når du registrerer en konkret skiftebevegelse med <strong>+ Skifte</strong>, er <strong>Til spor</strong> den planlagte målplassen for akkurat den bevegelsen.</p>
-<pre>+ Skifte:
-Fra spor = 10s
-Til spor = 5s</pre>
-<p>Da bruker programmet dette som en aktiv planlagt skiftebevegelse. Den kan vises i Sporplan som <strong>PLAN FRA</strong> og <strong>PLAN TIL</strong>, og SDE kan vise den som planlagt handling.</p>
-<p>I ren SDE-beregning er prinsippet annerledes: SDE skal ikke få fasit fra et eksternt fasitark. Da skal SDE selv forsøke å finne egnet spor ut fra faktisk Sporplan, ledige spor, WC/vann-behov, rep/verkstedbehov, buttspor-regler, S før N i 10/11/12, morgenproduksjon og togrekkefølge.</p>
-<pre>Manuell + Skifte = bruker Til spor som planlagt mål.
-Automatisk SDE-vurdering = SDE skal selv foreslå egnet spor.</pre>
+<p>Da regner programmet kjøretøyet som flyttet til ny plassering, og tidligere spor frigjøres.</p>
 
 <hr>
 
-<h2>Viktige korte koder</h2>
-<pre>Utført:        f
-WC/vann:       j
-Tømme:         j
-Reparasjon:    rep
-Operasjonstype: Motsatt deling
-Settnr:        1 eller 2</pre>
+<h2>Korte koder</h2>
+<table>
+<thead>
+<tr><th>Felt</th><th>Verdi</th><th>Betydning</th></tr>
+</thead>
+<tbody>
+<tr><td>Utført</td><td><strong>f</strong></td><td>Skifteoppdraget er utført</td></tr>
+<tr><td>WC/vann</td><td><strong>j</strong></td><td>Kjøretøyet skal via spor 6</td></tr>
+<tr><td>Tømme</td><td><strong>j</strong></td><td>Kjøretøyet skal via spor 6</td></tr>
+<tr><td>Til tog</td><td><strong>rep</strong></td><td>Reparasjon/verkstedflyt</td></tr>
+<tr><td>Til rep</td><td><strong>r</strong></td><td>Markerer reparasjon/verkstedflyt</td></tr>
+<tr><td>Settnr</td><td><strong>1</strong> eller <strong>2</strong></td><td>Angir del av dobbeltsett</td></tr>
+</tbody>
+</table>
 
-<h2>Eksempler på tolkning</h2>
-<pre>Til tog = 802</pre>
-<p>Programmet tolker dette som produksjon mot tog 802.</p>
-<pre>Til tog = rep</pre>
-<p>Programmet tolker dette som reparasjon eller verkstedflyt.</p>
-<pre>WC/vann = j</pre>
-<p>Programmet foreslår først spor 6.</p>
-<pre>Tømme = j</pre>
-<p>Programmet tolker at kjøretøyet skal via spor 6 for tømming/fylling.</p>
-<pre>Operasjonstype = Motsatt deling</pre>
-<p>Programmet viser at bevegelsen er en motsatt deling og at dette må tas hensyn til i videre planlegging.</p>
-<pre>Utført = f</pre>
-<p>Programmet regner skiftebevegelsen som ferdig. Kjøretøyet får sin nye plassering, og tidligere plass frigjøres.</p>
-<pre>Fra spor = 3n
-Til spor = 6ss</pre>
-<p>Programmet tolker nøyaktig hvilken del av spor 3 og spor 6 som gjelder.</p>
+<p>Bruk standardkodene der det er mulig. Unngå varianter som “x”, “ja”, “rep.” eller “verksted” hvis standardkode finnes.</p>
+
+<h3>Hvordan SDE tolker kodene</h3>
+<pre>WC/vann = j
+→ kjøretøyet skal via spor 6 for tømming/fylling
+
+Tømme = j
+→ kjøretøyet skal via spor 6 for tømming/fylling
+
+Til tog = rep
+→ kjøretøyet behandles som reparasjon/verkstedflyt
+
+Til rep = r
+→ kjøretøyet markeres som reparasjon/verkstedflyt
+
+Utført = f
+→ skiftebevegelsen er gjennomført, og Sporplan oppdateres
+
+Settnr = 1 eller 2
+→ angir hvilken del av dobbeltsettet som menes</pre>
+
+<h3>Motsatt deling</h3>
+<p><strong>Motsatt deling</strong> brukes når et tog med to kjøretøy deles motsatt av normal forventning.</p>
+<p>Typisk betyr det at søndre kjøretøy skal parkeres, mens nordre kjøretøy skal returnere eller kjøres videre mot Oslo som nytt tognummer.</p>
+<p>SDE viser operasjonstypen som et viktig kontrollpunkt, men flytter ikke kjøretøy automatisk på grunnlag av teksten alene.</p>
+
+<h3>Vanlige feil å kontrollere</h3>
+<pre>Grunnoppstilling stemmer ikke med faktisk oppstilling
+Tursatt mangler kjøretøy eller har feil rekkefølge
+Skifteoppdrag er utført, men Utført = f mangler
+Sporplassering er skrevet for grovt, for eksempel 3 i stedet for 3n
+Kjøretøy er merket til WC/vann uten at spor 6 faktisk er tilgjengelig
+Rep-/verkstedstatus er lagt inn med ulik tekst i stedet for standardkode</pre>
 
 <hr>
 
@@ -4372,45 +4191,40 @@ Til spor = 6ss</pre>
 
 <h3>Spor 6</h3>
 <p>Spor 6 brukes til WC/vann, tømming og fylling.</p>
-<p>Hvis et kjøretøy er merket med WC/vann eller Tømme = <strong>j</strong>, skal det normalt først via spor 6.</p>
-<p>Spor 6 har flere posisjoner, og disse må skrives nøyaktig:</p>
 <pre>6ss
 6s
 6n</pre>
 
 <h3>Buttspor 10, 11 og 12</h3>
 <p>Spor 10, 11 og 12 er buttspor.</p>
-<p>For spor 10, 11 og 12 gjelder:</p>
-<pre>S må inn før N hvis begge posisjoner skal brukes.</pre>
-<p>Dette betyr at programmet ikke skal plassere et kjøretøy i N først hvis S også skal brukes og fortsatt er ledig.</p>
-<pre>11s må fylles før 11n.
-12s må fylles før 12n.
-10s må fylles før 10n.</pre>
+<p><strong>S må inn før N hvis begge posisjoner skal brukes.</strong></p>
+<pre>10s før 10n
+11s før 11n
+12s før 12n</pre>
 
 <h3>Togspor 1, 2 og 3</h3>
-<p>Spor 1, 2 og 3 er togspor.</p>
-<p>Spor 2 og 3 brukes normalt ikke til langtidsparkering fordi de er plattformspor.</p>
-<p>Spor 1 kan brukes mer fleksibelt, men bør vurderes opp mot trafikkbildet.</p>
-<p>Spor 3 har flere posisjoner og må skrives nøyaktig:</p>
+<p>Spor 1, 2 og 3 er togspor. Spor 2 og 3 bør normalt ikke brukes til langtidsparkering fordi de er plattformspor.</p>
 <pre>3s
 3m
 3n</pre>
 
 <h3>Spor 9</h3>
-<p>Spor 9 er et unntak. Spor 9 har bare plass til ett sett. Derfor skrives det bare:</p>
+<p>Spor 9 har bare én plass og skrives bare som:</p>
 <pre>9</pre>
-<p>Ikke skriv 9s, 9n eller 9m.</p>
 
 <hr>
 
-<h2>Viktig sluttregel</h2>
-<p>Programmet skal hjelpe deg å se planen tydeligere, men det er fortsatt skifteren som må vurdere om planen kan gjennomføres.</p>
-<p>Sporplan må kontrolleres og oppdateres av den enkelte som begynner sitt skift. Programmet kan ikke automatisk vite sikkert hvilket materiell som faktisk står på tomta.</p>
-<p>Husk også at manuelle registreringer bare gjelder på den enheten og i den nettleseren de er lagt inn på. De deles ikke automatisk med andre brukere eller andre enheter.</p>
+<h2>Lokal lagring</h2>
+<p>Manuelle registreringer lagres bare på den enheten og i den nettleseren der de er skrevet inn.</p>
+<p>En telefon, en annen telefon og en datamaskin kan derfor vise forskjellige manuelle endringer.</p>
+<p>Kontroller alltid Sporplan mot faktisk situasjon når du overtar eller starter planlegging.</p>
 
+<hr>
+
+<h2>Operativ sluttregel</h2>
+<p>SDE skal gjøre planen tydeligere, men operativ vurdering og gjennomføring må fortsatt gjøres av bruker.</p>
 </div>
 </section>
-
 
 <section class="panel" id="oppstilling">
 <div class="api-box">
