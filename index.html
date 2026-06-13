@@ -2317,6 +2317,31 @@ button{padding:12px 12px}
   font-weight:950;
 }
 
+.sde-shift-section-title-main{flex:1;}
+.sde-shift-section-title-count{flex:1;text-align:right;}
+
+.sde-shift-details-toggle{
+  flex:0 0 auto;
+  min-width:54px;
+  min-height:42px;
+  border:2px solid #38bdf8;
+  border-radius:16px;
+  background:linear-gradient(180deg,#60a5fa 0%,#2563eb 100%);
+  color:#fff;
+  font-size:22px;
+  font-weight:1000;
+  cursor:pointer;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.38), inset 0 -4px 0 rgba(15,23,42,.18), 0 6px 0 rgba(30,64,175,.55), 0 12px 20px rgba(15,23,42,.22);
+  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+.sde-shift-details-toggle:hover{filter:brightness(1.04);transform:translateY(-1px);}
+.sde-shift-details-toggle.active{
+  transform:translateY(5px);
+  box-shadow:inset 0 5px 12px rgba(0,0,0,.34), 0 1px 0 rgba(30,64,175,.55), 0 5px 12px rgba(15,23,42,.18);
+}
+.sde-shift-details{display:none;margin-top:10px;}
+.sde-shift-details.show{display:block;}
+
 
 
 .sde-shift-board{
@@ -14162,6 +14187,23 @@ function getSdeTomorrowJsonPendingText(){
 }
 
 
+let sdeShiftDetailsExpanded = false;
+
+function toggleSdeShiftDetails(){
+  sdeShiftDetailsExpanded = !sdeShiftDetailsExpanded;
+
+  document.querySelectorAll(".sde-shift-details").forEach(el=>{
+    el.classList.toggle("show", sdeShiftDetailsExpanded);
+  });
+
+  const btn = document.getElementById("sdeShiftDetailsToggle");
+  if(btn){
+    btn.classList.toggle("active", sdeShiftDetailsExpanded);
+    btn.setAttribute("aria-pressed", sdeShiftDetailsExpanded ? "true" : "false");
+  }
+}
+
+
 function renderSdeSkiftebevegelser(){
   const root = document.getElementById("sdeSkiftebevegelserDashboard");
   if(!root) return;
@@ -14236,8 +14278,10 @@ function renderSdeSkiftebevegelser(){
           </div>
 
           ${trackClearanceWindowHtml}
-          <div class="sde-shift-reason">${escapeHtml(row.recommendationReason || row.parkingInstruction || "SDE har ikke begrunnelse for denne anbefalingen ennå.")}</div>
-          <div class="sde-shift-alternatives">${escapeHtml(alternativesText)}</div>
+          <div class="sde-shift-details">
+            <div class="sde-shift-reason">${escapeHtml(row.recommendationReason || row.parkingInstruction || "SDE har ikke begrunnelse for denne anbefalingen ennå.")}</div>
+            <div class="sde-shift-alternatives">${escapeHtml(alternativesText)}</div>
+          </div>
           <div class="sde-shift-actions" aria-label="Kvitter SDE-skifteforslag">
             <button class="sde-shift-action-btn done" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'completed')">Utført</button>
             <button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'cancelled')">Annullert</button>
@@ -14438,8 +14482,9 @@ function renderSdeSkiftebevegelser(){
     ${scoreExplanationHtml}
 
     <div class="sde-shift-section-title">
-      <span>Foreslåtte skiftebevegelser</span>
-      <span>${data.moves.length} forslag</span>
+      <span class="sde-shift-section-title-main">Foreslåtte skiftebevegelser</span>
+      <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
+      <span class="sde-shift-section-title-count">${data.moves.length} forslag</span>
     </div>
     <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
     ${linearTrackDiagnosticsHtml}
@@ -14456,6 +14501,17 @@ function renderSdeSkiftebevegelser(){
     ${blockerRescueRejectionDiagnosticsHtml}
     ${unresolvedHtml}${flexibleUnknownHtml}
   `;
+
+  const detailsToggle = document.getElementById("sdeShiftDetailsToggle");
+  if(detailsToggle){
+    detailsToggle.addEventListener("click", toggleSdeShiftDetails);
+    detailsToggle.classList.toggle("active", sdeShiftDetailsExpanded);
+    detailsToggle.setAttribute("aria-pressed", sdeShiftDetailsExpanded ? "true" : "false");
+  }
+
+  document.querySelectorAll(".sde-shift-details").forEach(el=>{
+    el.classList.toggle("show", sdeShiftDetailsExpanded);
+  });
 }
 
 
