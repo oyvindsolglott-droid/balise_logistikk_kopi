@@ -78,18 +78,50 @@ margin:0 0 12px;
   font-weight:800;
 }
 .guide-top-btn{
-background:#dc2626;
-color:#fff;
-border:1px solid #991b1b;
-border-radius:0;
-padding:9px 14px;
+display:inline-flex;
+align-items:center;
+justify-content:center;
+gap:9px;
+background:linear-gradient(180deg,#ffffff 0%,#f8fafc 46%,#e5ebf2 100%);
+color:#0f172a;
+border:2px solid #7c3aed;
+border-radius:16px;
+padding:10px 16px;
+min-height:44px;
 font-size:13px;
-font-weight:800;
+font-weight:900;
 letter-spacing:.01em;
-box-shadow:0 2px 8px rgba(220,38,38,.22);
+box-shadow:
+  inset 0 2px 0 rgba(255,255,255,.95),
+  inset 0 -3px 0 rgba(15,23,42,.06),
+  0 5px 0 rgba(124,58,237,.32),
+  0 10px 18px rgba(15,23,42,.18);
+transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+.guide-top-btn::before{
+content:"?";
+display:inline-flex;
+align-items:center;
+justify-content:center;
+width:24px;
+height:24px;
+border-radius:999px;
+background:linear-gradient(180deg,#a78bfa 0%,#6d28d9 100%);
+color:#fff;
+font-size:16px;
+font-weight:1000;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 2px 4px rgba(76,29,149,.35);
 }
 .guide-top-btn:hover{
-background:#b91c1c;
+filter:brightness(1.03);
+transform:translateY(-1px);
+}
+.guide-top-btn:active{
+transform:translateY(4px);
+box-shadow:
+  inset 0 4px 10px rgba(15,23,42,.26),
+  0 1px 0 rgba(76,29,149,.35),
+  0 5px 12px rgba(15,23,42,.16);
 }
 .ios-banner{background:#eef5ff;border:1px solid #bfd4ff;color:#274472;border-radius:14px;padding:10px 12px;margin-bottom:12px;font-size:14px}
 .toolbar{display:none}
