@@ -11499,6 +11499,29 @@ function evaluateSdeParkingDecision(need, candidate, reservedSlots){
   };
 
   const candidateSlot = normalizeSlot(candidate?.slot);
+
+  const linearCandidate = getSdeLinearTrackPositionOrder(candidateSlot);
+  if(linearCandidate){
+    const candidateDeparture = getSdeNeedDepartureSequenceMinutes(need);
+    reservedSlots.forEach((entry, reservedSlotRaw)=>{
+      const reservedSlot = normalizeSlot(reservedSlotRaw);
+      const reservedInfo = getSdeLinearTrackPositionOrder(reservedSlot);
+      if(!reservedInfo || reservedInfo.track !== linearCandidate.track) return;
+
+      const reservedNeed = entry?.need || null;
+      if(!reservedNeed || haveSameSdeVehicleTokens(reservedNeed.vehicle, need?.vehicle)) return;
+
+      const reservedDeparture = getSdeNeedDepartureSequenceMinutes(reservedNeed);
+      const candidateIsNorthOfReserved = linearCandidate.order > reservedInfo.order;
+      const candidateLeavesLater = candidateDeparture > reservedDeparture;
+
+      if(candidateIsNorthOfReserved && candidateLeavesLater){
+        result.penalty += 80;
+        result.violations.push(`${candidateSlot} straffes: ${candidateSlot} ligger nord for ${reservedSlot}, men har senere avgang/behov. Normal uttaksvei fra spor ${linearCandidate.track} er nordover via vaskemaskinen, og ${candidateSlot} kan sperre tidligere uttak fra ${reservedSlot}.`);
+      }
+    });
+  }
+
   const position = getSdeButtPosition(candidateSlot);
   if(!position) return result;
 
