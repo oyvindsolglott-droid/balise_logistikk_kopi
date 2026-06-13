@@ -110,6 +110,35 @@ button.compact{
 padding:8px 10px;
 min-height:36px
 }
+.access-level-bar{
+display:flex;
+align-items:center;
+gap:10px;
+margin:0 0 12px;
+padding:10px 12px;
+background:#f8fafc;
+border:1px solid #cbd5e1;
+border-radius:14px;
+box-shadow:0 4px 14px rgba(15,23,42,.08);
+}
+.access-level-bar label{
+font-size:13px;
+font-weight:900;
+color:#334155;
+}
+.access-level-select{
+min-height:38px;
+border:2px solid #94a3b8;
+border-radius:10px;
+padding:6px 10px;
+font-weight:800;
+background:#fff;
+color:#0f172a;
+}
+.seg.level-hidden{
+display:none !important;
+}
+
 .segmented{
 display:grid;
 grid-template-columns:repeat(20,minmax(0,1fr));
@@ -3905,17 +3934,29 @@ button{padding:12px 12px}
 </div>
 
 
+<div class="access-level-bar">
+<label for="accessLevelSelect">Visningsnivå</label>
+<select class="access-level-select" id="accessLevelSelect">
+<option value="0">Nivå 0 – alle funksjoner</option>
+<option value="1">Nivå 1 – DROPS</option>
+<option value="2">Nivå 2 – TXP</option>
+<option value="3">Nivå 3 – Skiftere</option>
+<option value="4">Nivå 4 – Verksted</option>
+<option value="5">Nivå 5 – Agila</option>
+</select>
+</div>
+
 <div class="segmented" aria-label="Hovedmeny">
-<button class="seg seg-green active" type="button" data-tab="oppstilling"><span class="seg-icon">🚆</span><span class="seg-main">Tursatt</span></button>
-<button class="seg seg-decision" type="button" data-tab="sdeSkiftebevegelser"><span class="seg-icon">⇄</span><span class="seg-main">SDE<br>Skiftebevegelser</span></button>
-<button class="seg seg-decision" type="button" data-tab="sdeVaktplan"><span class="seg-icon">▦</span><span class="seg-main">SDE<br>Vaktplan</span></button>
-<button class="seg" type="button" data-tab="dropsMateriellstyrer"><span class="seg-icon">▱</span><span class="seg-main">DROPS<br>Materiellstyrer</span></button>
-<button class="seg seg-green" type="button" data-tab="sporplan"><span class="seg-icon">▦</span><span class="seg-main">Sporplan</span></button>
-<button class="seg seg-blue" type="button" data-tab="grunnoppstilling"><span class="seg-icon">TXP</span><span class="seg-main">TXP<br>Input Sporplan</span></button>
-<button class="seg seg-blue" type="button" data-tab="turneringKveld"><span class="seg-icon">☾</span><span class="seg-main">Turnering Kveld</span></button>
-<button class="seg seg-blue" type="button" data-tab="turneringNatt"><span class="seg-icon">☾</span><span class="seg-main">Turnering Natt</span></button>
-<button class="seg seg-red" type="button" data-tab="verkstedBestillinger"><span class="seg-icon">🔧</span><span class="seg-main">Input verksted</span></button>
-<button class="seg" type="button" data-tab="inndata" style="display:none">Planlegge Skiftebevegelser</button>
+<button class="seg seg-green active" type="button" data-tab="oppstilling" data-levels="0 1 2 3 5"><span class="seg-icon">🚆</span><span class="seg-main">Tursatt</span></button>
+<button class="seg seg-decision" type="button" data-tab="sdeSkiftebevegelser" data-levels="0 2 3"><span class="seg-icon">⇄</span><span class="seg-main">SDE<br>Skiftebevegelser</span></button>
+<button class="seg seg-decision" type="button" data-tab="sdeVaktplan" data-levels="0 1"><span class="seg-icon">▦</span><span class="seg-main">SDE<br>Vaktplan</span></button>
+<button class="seg" type="button" data-tab="dropsMateriellstyrer" data-levels="0 1"><span class="seg-icon">▱</span><span class="seg-main">DROPS<br>Materiellstyrer</span></button>
+<button class="seg seg-green" type="button" data-tab="sporplan" data-levels="0 1 2 3 5"><span class="seg-icon">▦</span><span class="seg-main">Sporplan</span></button>
+<button class="seg seg-blue" type="button" data-tab="grunnoppstilling" data-levels="0 2"><span class="seg-icon">TXP</span><span class="seg-main">TXP<br>Input Sporplan</span></button>
+<button class="seg seg-blue" type="button" data-tab="turneringKveld" data-levels="0 2"><span class="seg-icon">☾</span><span class="seg-main">Turnering Kveld</span></button>
+<button class="seg seg-blue" type="button" data-tab="turneringNatt" data-levels="0 2"><span class="seg-icon">☾</span><span class="seg-main">Turnering Natt</span></button>
+<button class="seg seg-red" type="button" data-tab="verkstedBestillinger" data-levels="0 4"><span class="seg-icon">🔧</span><span class="seg-main">Input verksted</span></button>
+<button class="seg" type="button" data-tab="inndata" data-levels="0" style="display:none">Planlegge Skiftebevegelser</button>
 </div>
 
 
@@ -14596,7 +14637,45 @@ function buildSdeVaktplan(){
 }
 
 
+function getActiveAccessLevel(){
+  const select = document.getElementById("accessLevelSelect");
+  return select ? String(select.value || "0") : "0";
+}
+
+function isTabAllowedAtCurrentLevel(tabName){
+  const level = getActiveAccessLevel();
+  const btn = document.querySelector(`.seg[data-tab="${tabName}"]`);
+  if(!btn) return true;
+  return String(btn.dataset.levels || "0").split(/\s+/).includes(level);
+}
+
+function getDefaultTabForCurrentLevel(){
+  const level = getActiveAccessLevel();
+  const visibleAllowed = Array.from(document.querySelectorAll(".seg")).find(btn=>{
+    if(btn.style.display === "none") return false;
+    return String(btn.dataset.levels || "0").split(/\s+/).includes(level);
+  });
+  return visibleAllowed ? visibleAllowed.dataset.tab : "oppstilling";
+}
+
+function applyAccessLevel(){
+  const level = getActiveAccessLevel();
+  localStorage.setItem("sde_access_level_v1", level);
+
+  document.querySelectorAll(".seg").forEach(btn=>{
+    if(btn.style.display === "none") return;
+    const allowed = String(btn.dataset.levels || "0").split(/\s+/).includes(level);
+    btn.classList.toggle("level-hidden", !allowed);
+  });
+
+  const activeBtn = document.querySelector(".seg.active");
+  if(activeBtn && activeBtn.classList.contains("level-hidden")){
+    activateTab(getDefaultTabForCurrentLevel());
+  }
+}
+
 function activateTab(name){
+  if(!isTabAllowedAtCurrentLevel(name)) name = getDefaultTabForCurrentLevel();
   document.querySelectorAll(".seg").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===name));
   window.scrollTo({top:0,behavior:"smooth"});
@@ -15043,6 +15122,12 @@ async function fetchBaliseApi(){
 
 document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>activateTab(btn.dataset.tab)));
 document.getElementById("guideTopBtn").addEventListener("click",()=>activateTab("hjelp"));
+const accessLevelSelect = document.getElementById("accessLevelSelect");
+if(accessLevelSelect){
+  accessLevelSelect.value = localStorage.getItem("sde_access_level_v1") || "0";
+  accessLevelSelect.addEventListener("change", applyAccessLevel);
+  applyAccessLevel();
+}
 
 const DROPS_VERKSTED_KEY = "drops_verksted_bestillinger_v1";
 const DROPS_VERKSTED_LOGG_KEY = "drops_verksted_logg_v1";
