@@ -4198,8 +4198,32 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 
 <hr>
 
+<h2>Visningsnivåer og roller</h2>
+<p>Visningsnivåene simulerer hvilken tilgang hver operativ gruppe har til programmet.</p>
+<p>Hensikten er å vise hvordan ulike roller kan bidra med egne input til SDE, uten at alle brukere må forholde seg til alle funksjoner.</p>
+<p>Dette er visningsnivåer i prototypen, ikke ekte innlogging eller sikkerhetstilgang.</p>
+
+<table>
+<thead>
+<tr><th>Nivå</th><th>Rolle</th><th>Hva rollen bidrar med</th></tr>
+</thead>
+<tbody>
+<tr><td>0</td><td>Alle funksjoner</td><td>Full oversikt over alle ark, input og beslutningsfunksjoner.</td></tr>
+<tr><td>1</td><td>DROPS</td><td>Materiellbeslutninger, vurdering av tilgjengelig materiell, verkstedstatus og SDE Vaktplan.</td></tr>
+<tr><td>2</td><td>TXP</td><td>Simulert operativ input gjennom TXP Input Sporplan, Turnering Kveld og Turnering Natt. TXP kan overstyre SDE-grunnlaget ved behov.</td></tr>
+<tr><td>3</td><td>Skiftere</td><td>Oversikt over Tursatt, Sporplan og anbefalte skiftebevegelser fra SDE.</td></tr>
+<tr><td>4</td><td>Verksted</td><td>Input verksted: registrering av verkstedbehov, ønsket mottak, kjøretøy, sporønske og status.</td></tr>
+<tr><td>5</td><td>Agila</td><td>Lesetilgang til Tursatt og Sporplan for operativ oversikt.</td></tr>
+</tbody>
+</table>
+
+<p>Blå knapper representerer simulert TXP-input. I en videre løsning kan deler av dette datagrunnlaget komme fra TXP, Tog i Ro eller andre operative systemer.</p>
+<p>SDE samler disse inputene og prosesserer dem til beslutningsstøtte, men operative roller kan fortsatt korrigere eller overstyre grunnlaget når faktisk situasjon tilsier det.</p>
+
+<hr>
+
 <h2>Arkene</h2>
-<p>Arkene følger samme rekkefølge som hovedmenyen. Fargene viser hvilken type funksjon arket har.</p>
+
 <pre>Grønn ring: operativt grunnbilde
 Blå ring: simulert TXP-input
 Mørk blå beslutningsknapp: SDE-beslutningsstøtte
