@@ -12683,7 +12683,7 @@ function buildSdeExpandedMoveActionHtml(action){
   const fromSlot = normalizeSlot(snapshot.fromSlot || action.fromSlot);
   const toSlot = normalizeSlot(snapshot.toSlot || action.toSlot);
   const arrival = snapshot.arrivalTrainText || "Ukjent";
-  const departure = snapshot.departureTrainText || "Ikke koblet";
+  const departure = snapshot.departureTrainText || "Ikke registrert";
   const confidence = snapshot.recommendationConfidence || "";
   const score = snapshot.recommendationScore ?? "";
   const strategy = snapshot.parkingStrategy || "SDE-forslag";
@@ -12983,7 +12983,7 @@ function getSdeShiftShowcaseData(){
     .filter(row=>row && row.recommendedSlot)
     .map(row=>{
       const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
-      const departureText = row.nextDepartureText || "Ikke koblet";
+      const departureText = row.nextDepartureText || "Ikke registrert";
       const arrivalText = row.showcaseArrivalLabel
         ? String(row.showcaseArrivalLabel)
         : row.arrivalTrain
