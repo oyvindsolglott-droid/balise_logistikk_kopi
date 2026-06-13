@@ -12943,14 +12943,12 @@ function buildSdeTrackClearanceWindowHtml(row){
 
   const start = formatSdeClockMinutes(window.startMinutes);
   const end = window.hasEnd ? formatSdeClockMinutes(window.endMinutes) : "";
-  const title = "Anbefalt skiftevindu";
-
   const text = window.hasEnd
-    ? `${start}–${end}. Flytting fra ${window.fromSlot} bør utføres før neste ankomstbelastning.`
-    : `Fra ${start}. Ingen kjent neste ankomst i datagrunnlaget.`;
+    ? `${start}–${end}`
+    : `Fra ${start}`;
 
   return `<div class="sde-shift-window">
-    <strong>${escapeHtml(title)}</strong>
+    <strong>Utføres i tidsrommet:</strong>
     <span>${escapeHtml(text)}</span>
   </div>`;
 }
