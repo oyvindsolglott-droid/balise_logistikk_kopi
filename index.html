@@ -6159,11 +6159,24 @@ function isRepMarker(value){
 
 function getKveldRepSlots(){
   const slots = new Set();
+  const movedFromRepSlots = new Set();
+
+  getEffectivePlanSkifteRows().forEach(row=>{
+    if(!row) return;
+    if(!isPlanSkifteFerdig(row.utfort)) return;
+
+    const fromSlot = normalizeSlot(row.fromSpor);
+    const vehicle = sanitizeVehicleValue(row.vehicle);
+    if(!fromSlot || !vehicle) return;
+    if(isRepMarker(state.grunnoppstillingRep?.[fromSlot])){
+      movedFromRepSlots.add(fromSlot);
+    }
+  });
 
   Object.entries(state.grunnoppstillingRep || {}).forEach(([slot,value])=>{
     if(!isRepMarker(value)) return;
     const normalizedSlot = normalizeSlot(slot);
-    if(normalizedSlot) slots.add(normalizedSlot);
+    if(normalizedSlot && !movedFromRepSlots.has(normalizedSlot)) slots.add(normalizedSlot);
   });
 
   (state.turneringKveld || []).forEach(row=>{
@@ -6183,6 +6196,10 @@ function getKveldRepSlots(){
     if(!isRepMarker(row.tilRep)) return;
     const slot = normalizeSlot(row.toSpor);
     if(slot) slots.add(slot);
+  });
+
+  movedFromRepSlots.forEach(slot => {
+    slots.delete(slot);
   });
 
   return slots;
@@ -7906,7 +7923,8 @@ function getPlanSkifteMarkersBySlot(){
     const toSlot = normalizeSlot(row?.toSpor);
 
     if(isPlanSkifteFerdig(row?.utfort)){
-      if(toSlot){
+      const isWorkshopMove = String(row?.operationType || "").trim() === "SDE verkstedflytting";
+      if(toSlot && !isWorkshopMove){
         if(!markers[toSlot]) markers[toSlot] = {from:[],to:[],ferdig:[],service6To:[]};
         if(!markers[toSlot].ferdig) markers[toSlot].ferdig = [];
         markers[toSlot].ferdig.push(vehicle || "ferdig");
@@ -7931,6 +7949,21 @@ function getPlanSkifteMarkersBySlot(){
       }
     }
   });
+
+  if(typeof buildSdeWorkshopMoveNeeds === "function"){
+    buildSdeWorkshopMoveNeeds().forEach(row=>{
+      const vehicle = String(row?.vehicle || "").trim();
+      const fromSlot = normalizeSlot(row?.arrivalSlot);
+      const toSlot = normalizeSlot(row?.recommendedSlot);
+      if(!vehicle || !fromSlot || !toSlot) return;
+
+      if(!markers[fromSlot]) markers[fromSlot] = {from:[],to:[],ferdig:[],service6To:[]};
+      if(!markers[toSlot]) markers[toSlot] = {from:[],to:[],ferdig:[],service6To:[]};
+
+      if(!markers[fromSlot].from.includes(vehicle)) markers[fromSlot].from.push(vehicle);
+      if(!markers[toSlot].to.includes(vehicle)) markers[toSlot].to.push(vehicle);
+    });
+  }
 
   return markers;
 }
@@ -12857,8 +12890,8 @@ function addSdeCompletedMoveToPlanSkifte(row){
     fromSpor:fromSlot,
     toSpor:toSlot,
     crew:"",
-    tilRep:"",
-    operationType:"SDE automatisk forslag",
+    tilRep:row.isWorkshopMoveNeed ? "r" : "",
+    operationType:row.isWorkshopMoveNeed ? "SDE verkstedflytting" : "SDE automatisk forslag",
     utfort:"f",
     source:"SDE Skiftebevegelser"
   };
@@ -13030,6 +13063,42 @@ function getSdeShiftMoveSortMinutes(row){
 }
 
 
+function buildSdeWorkshopMoveNeeds(){
+  if(typeof getDropsVerkstedOrders !== "function") return [];
+
+  return getDropsVerkstedOrders()
+    .filter(order => order && order.dropsApprovedAt)
+    .map(order => {
+      const vehicle = sanitizeVehicleValue(order.vehicle || "");
+      const currentSlot = normalizeSlot(getSdeCurrentSlotForVehicle(vehicle));
+      const targetSlot = normalizeSlot(order.track || "");
+      if(!vehicle || !currentSlot || !targetSlot) return null;
+      if(currentSlot === targetSlot) return null;
+
+      return {
+        vehicle,
+        arrivalSlot:currentSlot,
+        recommendedSlot:targetSlot,
+        arrivalTime:order.readyTime || "",
+        arrivalTrainText:"Verkstedbestilling",
+        showcaseArrivalLabel:"Verkstedbestilling",
+        departureTrainText:"Verksted",
+        nextDepartureText:"Verksted",
+        nextDepartureTrain:"",
+        nextDeparturePart:"",
+        nextDepartureTime:order.readyTime || "",
+        recommendationConfidence:"high",
+        recommendationScore:145,
+        parkingStrategy:"DROPS-godkjent verkstedflytting",
+        recommendationReason:`DROPS har godkjent verkstedbestilling. Flytt ${vehicle} fra ${currentSlot} til ønsket verkstedspor ${targetSlot}.`,
+        isWorkshopMoveNeed:true,
+        dropsOrderId:order.id || ""
+      };
+    })
+    .filter(Boolean);
+}
+
+
 function getSdeShiftShowcaseData(){
   const arrivalNeeds = buildSdeArrivalParkingNeeds();
   const baseArrivalNeeds = arrivalNeeds.filter(row => !isSdeSpor3ProductionNeed(row));
@@ -13042,9 +13111,17 @@ function getSdeShiftShowcaseData(){
   const nonSpor3ArrivalNeeds = baseArrivalNeeds.filter(row =>
     !spor3VehicleTokens.has(normalizeVehicleToken(row?.vehicle))
   );
+  const workshopMoveNeeds = buildSdeWorkshopMoveNeeds();
+  const workshopVehicleTokens = new Set(
+    workshopMoveNeeds
+      .map(row => normalizeVehicleToken(row?.vehicle))
+      .filter(Boolean)
+  );
+
   const needs = [
-    ...nonSpor3ArrivalNeeds,
-    ...spor3ProductionNeeds
+    ...nonSpor3ArrivalNeeds.filter(row => !workshopVehicleTokens.has(normalizeVehicleToken(row?.vehicle))),
+    ...spor3ProductionNeeds.filter(row => !workshopVehicleTokens.has(normalizeVehicleToken(row?.vehicle))),
+    ...workshopMoveNeeds
   ];
   const moves = needs
     .filter(row=>row && row.recommendedSlot)
@@ -15516,12 +15593,14 @@ function buildDropsVerkstedLogPanelHtml(logEntries){
 }
 
 function getDropsOrderStatus(order){
+  const approved = !!order?.dropsApprovedAt;
   const vehicle = sanitizeVehicleValue(order?.vehicle || "");
   const repDreiValue = getSdeGrunnoppstillingRepDreiValueForVehicle(vehicle);
   const isDrei = isDreiMarker(repDreiValue);
   const isRep = isRepMarker(repDreiValue) && !isDrei;
 
   if(isDrei || isRep) return {label:isDrei ? "DREI" : "REP", cls:"not-ready"};
+  if(!approved) return {label:"Ikke driftsklart", cls:"not-ready"};
   if(order?.driftsklarAt) return {label:"Driftsklart", cls:"ready"};
   if(order?.workCompleteAt) return {label:"Ikke driftsklar", cls:"not-ready"};
   return {label:"Ikke driftsklar", cls:"not-ready"};
@@ -15566,6 +15645,10 @@ function renderDropsWerkstedOrders(){
       ${order.workCompleteAt ? `<p class="drops-work"><strong>Bestilt utkjøring:</strong> ${escapeHtml(formatDropsTimestamp(order.workCompleteAt))}</p>` : ""}
       ${order.driftsklarAt ? `<p class="drops-work"><strong>Driftsklart:</strong> ${escapeHtml(formatDropsTimestamp(order.driftsklarAt))}</p>` : ""}
       <div class="drops-actions">
+        <button class="drops-status-btn complete ${order.dropsApprovedAt ? "is-done" : ""}" type="button" data-drops-action="approve" data-drops-id="${escapeHtml(order.id)}" ${order.dropsApprovedAt ? "disabled" : ""}>
+          <span class="drops-btn-icon">${order.dropsApprovedAt ? "✓" : "!"}</span>
+          <span class="drops-btn-text">${order.dropsApprovedAt ? "Godkjent av DROPS" : "Godkjenn bestilling"}</span>
+        </button>
         <button class="drops-status-btn complete ${order.workCompleteAt ? "is-done" : ""}" type="button" data-drops-action="complete" data-drops-id="${escapeHtml(order.id)}" ${order.workCompleteAt ? "disabled" : ""}>
           <span class="drops-btn-icon">${order.workCompleteAt ? "✓" : "!"}</span>
           <span class="drops-btn-text">${order.workCompleteAt ? "Bestilt utkjøring" : "Under utbedring"}</span>
@@ -15625,6 +15708,23 @@ function getDropsSkienStationVehicleStatus(item){
   const isRep = isRepMarker(repDreiValue) && !isDrei;
   const departureLabel = getSporplanDepartureLabelsForVehicle(vehicle);
   const onWorkshopSlot = isSdeWorkshopSlot(slot);
+
+  if(isDrei || isRep){
+    const label = isDrei ? "DREI" : "REP";
+    return {
+      cls:"blocked",
+      status:label,
+      detail:`${label}-markert. Ikke driftsklart. Skal ikke behandles som trafikkklart.${dropsOrder && !dropsOrder.dropsApprovedAt ? " Verkstedbestilling avventer DROPS-godkjenning." : ""}`
+    };
+  }
+
+  if(dropsOrder && !dropsOrder.dropsApprovedAt){
+    return {
+      cls:"warning",
+      status:"Ikke driftsklart",
+      detail:"Verkstedbehov registrert. Avventer at DROPS godkjenner bestilling av kjøretøy til verksted."
+    };
+  }
 
   if(dropsWorkComplete){
     return {
@@ -15742,6 +15842,7 @@ function renderDropsMateriellstyrer(){
     .sort((a,b)=>String(a.readyTime || "").localeCompare(String(b.readyTime || "")))
     .map(order=>{
       const status = getDropsOrderStatus(order);
+      const isDropsApproved = !!order.dropsApprovedAt;
       const isSpecialStatus = status.label === "REP" || status.label === "DREI";
       const specialStatusLabel = status.label;
       const isDriftsklar = !!order.driftsklarAt;
@@ -15756,7 +15857,9 @@ function renderDropsMateriellstyrer(){
       const requiresWorkshopRelease = isWorkComplete;
 
       const operationalStatus = isSpecialStatus
-        ? `${specialStatusLabel}-markert. Ikke driftsklart. Skal ikke behandles som trafikkklart.`
+        ? `${specialStatusLabel}-markert. Ikke driftsklart. Skal ikke behandles som trafikkklart.${!isDropsApproved ? " Verkstedbestilling avventer DROPS-godkjenning." : ""}`
+        : !isDropsApproved
+          ? "Verkstedbehov registrert. Avventer at DROPS godkjenner bestilling av kjøretøy til verksted."
         : isDriftsklar
           ? requiresWorkshopRelease
             ? "Bestilt utkjøring – KREVER HANDLING. Kjøretøyet er driftsklart, men verkstedspor må fortsatt frigjøres raskt slik at nytt kjøretøy kan settes inn til reparasjon."
@@ -15769,12 +15872,18 @@ function renderDropsMateriellstyrer(){
         ? `SDE anbefaler spor ${recommendedSlot}.`
         : "SDE mangler grunnlag eller har ingen trygg anbefaling ennå.";
 
-      const dropsDecision = routingMode === "sde"
-        ? "SDE-forslag valgt for videre behandling. DROPS/materiellstyring må fortsatt eie beslutningen."
-        : "Avventer DROPS-beslutning. Manuell vurdering er valgt som behandlingsmodus.";
+      const dropsDecision = !isDropsApproved
+        ? "Ikke behandlet av DROPS ennå."
+        : routingMode === "sde"
+          ? "SDE-forslag valgt for videre behandling. DROPS/materiellstyring må fortsatt eie beslutningen."
+          : "Avventer DROPS-beslutning. Manuell vurdering er valgt som behandlingsmodus.";
 
       const nextAction = isSpecialStatus
-        ? "Kjøretøyet er under reparasjon eller annen teknisk disponering og skal ikke vurderes som Res. eller tursatt materiell før verkstedstatus er endret."
+        ? (!isDropsApproved
+          ? "Kjøretøyet er REP/DREI-markert og ikke driftsklart. DROPS må ta stilling til verkstedbestillingen, men kjøretøyet skal uansett ikke vurderes som Res. eller tursatt materiell før verkstedstatus er endret."
+          : "Kjøretøyet er under reparasjon eller annen teknisk disponering og skal ikke vurderes som Res. eller tursatt materiell før verkstedstatus er endret.")
+        : !isDropsApproved
+          ? "DROPS må ta stilling til verkstedbestillingen. Kjøretøyet skal ikke vurderes som trafikkklart før verkstedstatus er endret."
         : requiresWorkshopRelease
           ? isDriftsklar
             ? "KREVER HANDLING: koordiner uttak og frigjør verkstedspor. Kjøretøyet er driftsklart og kan deretter håndteres som Res./tursatt etter DROPS-beslutning."
@@ -15786,7 +15895,9 @@ function renderDropsMateriellstyrer(){
             : "Avvent verkstedstatus. TXP kan følge opp operativt ved behov.";
 
       const indicatorText = isSpecialStatus
-        ? "Ikke driftsklart. Skal ikke behandles som trafikkklart."
+        ? `Ikke driftsklart. Skal ikke behandles som trafikkklart.${!isDropsApproved ? " Avventer DROPS-godkjenning." : ""}`
+        : !isDropsApproved
+          ? "Verkstedbehov registrert. Avventer at DROPS godkjenner bestilling av kjøretøy til verksted."
         : requiresWorkshopRelease
           ? isDriftsklar
             ? "KREVER HANDLING: frigjør verkstedspor. Driftsklart bekreftet."
@@ -15797,6 +15908,8 @@ function renderDropsMateriellstyrer(){
 
       const indicatorTitle = isSpecialStatus
         ? specialStatusLabel
+        : !isDropsApproved
+          ? "Ikke driftsklart"
         : requiresWorkshopRelease
           ? "Bestilt utkjøring"
           : isDriftsklar
@@ -15807,7 +15920,7 @@ function renderDropsMateriellstyrer(){
         ? "SDE-forslag er valgt som grunnlag. Dette er ikke en automatisk endelig beslutning."
         : "Manuell vurdering valgt. TXP kan gi operativ anbefaling; endelig beslutning ligger hos DROPS/materiellstyring.";
 
-      const sdeAssessmentHtml = isSpecialStatus
+      const sdeAssessmentHtml = !isDropsApproved || isSpecialStatus
         ? ""
         : `<div class="drops-decision-card">
               <span class="drops-decision-label">SDE-vurdering</span>
@@ -15821,7 +15934,7 @@ function renderDropsMateriellstyrer(){
               <div class="drops-decision-value">${escapeHtml(dropsDecision)}</div>
             </div>`;
 
-      const manualAssessmentHtml = isSpecialStatus && !manualAssessment
+      const manualAssessmentHtml = (!isDropsApproved || isSpecialStatus) && !manualAssessment
         ? ""
         : `<div class="drops-decision-card">
               <span class="drops-decision-label">${isSpecialStatus ? "Verkstedmerknad" : "Manuell anbefaling"}</span>
@@ -15829,7 +15942,7 @@ function renderDropsMateriellstyrer(){
             </div>`;
 
       const hasTrackChoice = !!recommendedSlot;
-      const routingChoiceHtml = hasTrackChoice
+      const routingChoiceHtml = isDropsApproved && hasTrackChoice
         ? `<div class="drops-routing-choice">
             <div class="drops-routing-label">Behandling av sporvalg</div>
             <button class="drops-routing-toggle ${routingMode}" type="button" data-drops-action="routing-toggle" data-drops-id="${escapeHtml(order.id)}" aria-pressed="${routingMode === "sde" ? "true" : "false"}" title="Bytt mellom manuell vurdering og SDE-forslag som beslutningsgrunnlag">
@@ -15837,6 +15950,15 @@ function renderDropsMateriellstyrer(){
               <span class="drops-routing-sde">SDE-forslag</span>
             </button>
             <div class="drops-routing-note">${escapeHtml(routingNote)}</div>
+          </div>`
+        : "";
+
+      const dropsApprovalActionHtml = !isDropsApproved
+        ? `<div class="drops-actions">
+            <button class="drops-status-btn complete" type="button" data-drops-action="approve" data-drops-id="${escapeHtml(order.id)}">
+              <span class="drops-btn-icon">!</span>
+              <span class="drops-btn-text">Godkjenn bestilling</span>
+            </button>
           </div>`
         : "";
 
@@ -15861,7 +15983,7 @@ function renderDropsMateriellstyrer(){
         </div>
         <div class="drops-operativ-cell">
           <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="${escapeHtml(notePlaceholder)}">
-          <div class="drops-indicator ${isSpecialStatus ? "" : requiresWorkshopRelease ? isDriftsklar ? "action ready-context" : "action" : isDriftsklar ? "ready" : ""}">
+          <div class="drops-indicator ${!isDropsApproved ? "action" : isSpecialStatus ? "" : requiresWorkshopRelease ? isDriftsklar ? "action ready-context" : "action" : isDriftsklar ? "ready" : ""}">
             <span class="drops-indicator-lamp" aria-hidden="true"></span>
             <span class="drops-indicator-text">
               <strong>${escapeHtml(indicatorTitle)}</strong>
@@ -15871,7 +15993,7 @@ function renderDropsMateriellstyrer(){
           <div class="drops-decision-stack">
             <div class="drops-decision-card ${requiresWorkshopRelease ? "action" : ""}">
               <span class="drops-decision-label">${requiresWorkshopRelease ? "Krever handling" : "Operativ status"}</span>
-              <div class="drops-decision-value ${requiresWorkshopRelease ? "warning" : isSpecialStatus ? "blocked" : isDriftsklar ? "ready" : "blocked"}">${escapeHtml(operationalStatus)}</div>
+              <div class="drops-decision-value ${!isDropsApproved ? "warning" : requiresWorkshopRelease ? "warning" : isSpecialStatus ? "blocked" : isDriftsklar ? "ready" : "blocked"}">${escapeHtml(operationalStatus)}</div>
             </div>
             ${sdeAssessmentHtml}
             ${manualAssessmentHtml}
@@ -15881,6 +16003,7 @@ function renderDropsMateriellstyrer(){
               <div class="drops-decision-value warning">${escapeHtml(nextAction)}</div>
             </div>
           </div>
+          ${dropsApprovalActionHtml}
           ${routingChoiceHtml}
         </div>
       </div>`;
@@ -15937,6 +16060,7 @@ function initDropsPanels(){
         createdAt:new Date().toISOString(),
         workCompleteAt:"",
         driftsklarAt:"",
+        dropsApprovedAt:"",
         note:"",
         routingMode:"manual",
         sdeRecommendedSlot:""
@@ -15971,7 +16095,7 @@ function initDropsPanels(){
     if(!button) return;
 
     const action = button.dataset.dropsAction;
-    if(!["complete","ready","delete","routing-toggle","log-toggle"].includes(action)) return;
+    if(!["approve","complete","ready","delete","routing-toggle","log-toggle"].includes(action)) return;
 
     if(action === "log-toggle"){
       dropsVerkstedLogVisible = !dropsVerkstedLogVisible;
@@ -15984,7 +16108,13 @@ function initDropsPanels(){
     const index = orders.findIndex(order=>order.id === id);
     if(index < 0) return;
 
-    if(action === "complete"){
+    if(action === "approve"){
+      if(!orders[index].dropsApprovedAt){
+        const timestamp = new Date().toISOString();
+        orders[index].dropsApprovedAt = timestamp;
+        appendDropsVerkstedLogEvent(orders[index], "approved", "Godkjent av DROPS", timestamp);
+      }
+    }else if(action === "complete"){
       if(!orders[index].workCompleteAt){
         const timestamp = new Date().toISOString();
         orders[index].workCompleteAt = timestamp;
