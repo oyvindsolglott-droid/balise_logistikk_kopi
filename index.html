@@ -1603,6 +1603,78 @@ button{padding:12px 12px}
   color:#111827;
 }
 
+.sde-vakt-overview{
+  display:grid;
+  gap:12px;
+  margin:0 0 16px;
+}
+
+.sde-vakt-overview-hero{
+  border-radius:22px;
+  padding:18px;
+  background:linear-gradient(135deg,#071b45 0%,#0f3b91 70%,#052e16 100%);
+  color:white;
+  box-shadow:0 14px 30px rgba(15,23,42,.18);
+}
+
+.sde-vakt-overview-kicker{
+  font-size:11px;
+  font-weight:950;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:#bfdbfe;
+}
+
+.sde-vakt-overview-title{
+  margin-top:4px;
+  font-size:24px;
+  font-weight:1000;
+  letter-spacing:-.03em;
+}
+
+.sde-vakt-overview-sub{
+  margin-top:8px;
+  max-width:760px;
+  font-size:13px;
+  line-height:1.4;
+  font-weight:750;
+  color:#dbeafe;
+}
+
+.sde-vakt-overview-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:12px;
+}
+
+.sde-vakt-overview-card{
+  border-radius:18px;
+  padding:14px;
+  background:#fff;
+  border:1px solid #dbe4f0;
+  box-shadow:0 8px 18px rgba(15,23,42,.07);
+}
+
+.sde-vakt-overview-card strong{
+  display:block;
+  font-size:14px;
+  color:#0f172a;
+  margin-bottom:7px;
+}
+
+.sde-vakt-overview-card span{
+  display:block;
+  font-size:13px;
+  line-height:1.38;
+  font-weight:740;
+  color:#334155;
+}
+
+.sde-vakt-overview-card.blue{border-color:#60a5fa;background:linear-gradient(180deg,#eff6ff 0%,#fff 100%);}
+.sde-vakt-overview-card.amber{border-color:#f59e0b;background:linear-gradient(180deg,#fffbeb 0%,#fff 100%);}
+.sde-vakt-overview-card.green{border-color:#22c55e;background:linear-gradient(180deg,#f0fdf4 0%,#fff 100%);}
+
+
 .sde-next-action-card{
   border:1px solid #22c55e;
   border-radius:16px;
@@ -4175,21 +4247,14 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="sdeVaktplan">
-<div class="note">SDE vaktplan viser beslutningsstøtte for kveldsvakt og nattevakt. Den bygger på faktisk Sporplan, Grunnoppstilling, Tursatt/Balise, Turnering Kveld/Natt og planlagte skiftebevegelser. Forslagene må alltid kontrolleres mot faktisk drift og lokale regler.</div>
-<div class="note">
-<strong>SDE kontrollgrunnlag:</strong>
-Fra-spor-avvik betyr at planlagt Fra spor ikke stemmer med faktisk Sporplan.
-Målspor opptatt eller målspor brukt flere ganger må kontrolleres før skifting.
-Rute blokkert betyr at både nordenden/vaskesporet og sørenden/bro-ruten ser blokkert ut.
-Rute må vurderes betyr at nordenden/vaskesporet er blokkert, men sørenden/bro-ruten kan være mulig.
-Ved fra-spor-avvik rutevurderer SDE ikke videre før Fra spor stemmer med faktisk Sporplan.
-</div>
+<div class="note">SDE Vaktplan viser et overordnet vaktbilde for DROPS/TXP. Den skal løfte status, datagrunnlag, risiko og oppfølging – ikke detaljstyre konkrete skiftebevegelser.</div>
 
 <div class="view-tools">
 <span class="label">SDE vaktplan</span>
 </div>
 
 <div class="mobile-table-label">SDE vaktplan</div>
+<div id="sdeVaktOverview"></div>
 <div class="zoom-wrap">
 <div class="zoom-inner" id="sdeVaktplanZoom">
 <div class="sde-import-report" id="sdeImportReport">
@@ -14515,6 +14580,53 @@ function renderSdeSkiftebevegelser(){
 }
 
 
+function buildSdeVaktOverviewHtml(rows, currentDayType){
+  const activeRows = Array.isArray(rows) ? rows : [];
+  const avvikCount = activeRows.filter(row=>row.status === "Avvik").length;
+  const highCount = activeRows.filter(row=>row.priority === "Høy").length;
+  const routeRisk = activeRows.some(row=>/rute/i.test(String(row.reason || "")));
+  const materialRisk = activeRows.some(row=>/materiell|dobbeltsett|buttspor|rekkefølge|rep|verksted|driftsklar/i.test(String(row.reason || "")));
+
+  const riskText = avvikCount || routeRisk || materialRisk
+    ? `${avvikCount} avvik. ${routeRisk ? "Ruteutfordring registrert. " : ""}${materialRisk ? "Materiellforhold bør vurderes." : ""}`.trim()
+    : "Ingen overordnede risikoforhold løftet akkurat nå.";
+
+  const followText = avvikCount || routeRisk || materialRisk
+    ? "DROPS/TXP bør avklare risikoforhold før vaktbildet anses stabilt."
+    : "Følg med på endringer i Tursatt, verkstedstatus og faktisk sporbruk gjennom vakten.";
+
+  return `<div class="sde-vakt-overview">
+    <div class="sde-vakt-overview-hero">
+      <div class="sde-vakt-overview-kicker">SDE Vaktplan · ${escapeHtml(currentDayType || "driftsdøgn")}</div>
+      <div class="sde-vakt-overview-title">Overordnet vaktbilde</div>
+      <div class="sde-vakt-overview-sub">Dette arket gir en rask vurdering av status for vakten. Konkrete flyttinger, tidsvinduer og kvittering ligger i SDE Skiftebevegelser.</div>
+    </div>
+
+    <div class="sde-vakt-overview-grid">
+      <div class="sde-vakt-overview-card blue">
+        <strong>Vaktstatus</strong>
+        <span>${activeRows.length} vurderingslinjer i grunnlaget. ${highCount} med høy prioritet.</span>
+      </div>
+
+      <div class="sde-vakt-overview-card">
+        <strong>Datagrunnlag</strong>
+        <span>Tursatt/Balise, TXP Input Sporplan, Turnering Kveld/Natt og verkstedstatus inngår i vurderingsbildet.</span>
+      </div>
+
+      <div class="sde-vakt-overview-card amber">
+        <strong>Risikobilde</strong>
+        <span>${escapeHtml(riskText)}</span>
+      </div>
+
+      <div class="sde-vakt-overview-card green">
+        <strong>Oppfølging DROPS/TXP</strong>
+        <span>${escapeHtml(followText)}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+
 function buildSdeVaktplan(){
   setSdeDemoBadge();
 
@@ -14725,6 +14837,11 @@ function buildSdeVaktplan(){
     if(aPriority !== bPriority) return aPriority - bPriority;
     return (a._sdeOriginalIndex || 0) - (b._sdeOriginalIndex || 0);
   });
+
+  const overview = document.getElementById("sdeVaktOverview");
+  if(overview){
+    overview.innerHTML = buildSdeVaktOverviewHtml(rows, currentDayType);
+  }
 
   const report = document.getElementById("sdeImportReportText");
   if(report){
