@@ -15773,7 +15773,7 @@ function renderDropsMateriellstyrer(){
         : "Avventer DROPS-beslutning. Manuell vurdering er valgt som behandlingsmodus.";
 
       const nextAction = isSpecialStatus
-        ? `${specialStatusLabel}-markering må fjernes før kjøretøyet vurderes som Res. eller tursatt materiell.`
+        ? "Kjøretøyet er under reparasjon eller annen teknisk disponering og skal ikke vurderes som Res. eller tursatt materiell før verkstedstatus er endret."
         : requiresWorkshopRelease
           ? isDriftsklar
             ? "KREVER HANDLING: koordiner uttak og frigjør verkstedspor. Kjøretøyet er driftsklart og kan deretter håndteres som Res./tursatt etter DROPS-beslutning."
