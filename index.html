@@ -14588,12 +14588,12 @@ function buildSdeVaktOverviewHtml(rows, currentDayType){
   const materialRisk = activeRows.some(row=>/materiell|dobbeltsett|buttspor|rekkefølge|rep|verksted|driftsklar/i.test(String(row.reason || "")));
 
   const riskText = avvikCount || routeRisk || materialRisk
-    ? `${avvikCount} avvik. ${routeRisk ? "Ruteutfordring registrert. " : ""}${materialRisk ? "Materiellforhold bør vurderes." : ""}`.trim()
+    ? `${avvikCount} forhold krever ekstra oppmerksomhet. ${routeRisk ? "Ruteutfordringer kan påvirke disponeringen. " : ""}${materialRisk ? "Materiellforhold bør følges gjennom vakten." : ""}`.trim()
     : "Ingen overordnede risikoforhold løftet akkurat nå.";
 
   const followText = avvikCount || routeRisk || materialRisk
-    ? "DROPS/TXP bør avklare risikoforhold før vaktbildet anses stabilt."
-    : "Følg med på endringer i Tursatt, verkstedstatus og faktisk sporbruk gjennom vakten.";
+    ? "Vurder om dagens disponering fortsatt er hensiktsmessig dersom forutsetningene endrer seg."
+    : "Følg utviklingen i Tursatt, sporbruk, materiellstatus og verkstedstatus gjennom vakten.";
 
   return `<div class="sde-vakt-overview">
     <div class="sde-vakt-overview-hero">
@@ -14605,7 +14605,7 @@ function buildSdeVaktOverviewHtml(rows, currentDayType){
     <div class="sde-vakt-overview-grid">
       <div class="sde-vakt-overview-card blue">
         <strong>Vaktstatus</strong>
-        <span>${activeRows.length} vurderingslinjer i grunnlaget. ${highCount} med høy prioritet.</span>
+        <span>${activeRows.length} forhold inngår i dagens vurderingsbilde. ${highCount} med høy prioritet.</span>
       </div>
 
       <div class="sde-vakt-overview-card">
