@@ -6074,6 +6074,51 @@ function buildSdeProductionNeeds(){
 }
 
 
+function syncInputSporplanFromFinishedPlanSkifteRows(){
+  const rows = getEffectivePlanSkifteRows();
+  let changed = false;
+
+  rows.forEach(row=>{
+    if(!row) return;
+    if(!isPlanSkifteFerdig(row.utfort)) return;
+    if(String(row.source || "").trim() !== "SDE Skiftebevegelser") return;
+
+    const vehicle = sanitizeVehicleValue(row.vehicle);
+    const fromSlot = normalizeSlot(row.fromSpor);
+    const toSlot = normalizeSlot(row.toSpor);
+    if(!vehicle || !toSlot) return;
+
+    const existingRepMarker = fromSlot ? String(state.grunnoppstillingRep?.[fromSlot] || "").trim() : "";
+    const rowRepMarker = String(row.tilRep || "").trim();
+    const nextRepMarker = rowRepMarker || existingRepMarker;
+
+    Object.entries(state.grunnoppstilling || {}).forEach(([slot,value])=>{
+      if(normalizeVehicleToken(value) === normalizeVehicleToken(vehicle)){
+        delete state.grunnoppstilling[slot];
+        changed = true;
+      }
+    });
+
+    if(state.grunnoppstilling[toSlot] !== vehicle){
+      state.grunnoppstilling[toSlot] = vehicle;
+      changed = true;
+    }
+
+    if(fromSlot && state.grunnoppstillingRep?.[fromSlot]){
+      delete state.grunnoppstillingRep[fromSlot];
+      changed = true;
+    }
+
+    if(nextRepMarker && state.grunnoppstillingRep[toSlot] !== nextRepMarker){
+      state.grunnoppstillingRep[toSlot] = nextRepMarker;
+      changed = true;
+    }
+  });
+
+  return changed;
+}
+
+
 function applyFinishedPlanSkifteRows(result,map){
   const rows = getEffectivePlanSkifteRows();
 
@@ -6095,6 +6140,8 @@ function applyFinishedPlanSkifteRows(result,map){
 
 
 function computeInndata(){
+  syncInputSporplanFromFinishedPlanSkifteRows();
+
   const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
   const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
 
@@ -12883,6 +12930,27 @@ function addSdeCompletedMoveToPlanSkifte(row){
   const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot);
   const toSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
   if(!vehicle || !toSlot) return false;
+
+  const existingRepMarker = fromSlot ? String(state.grunnoppstillingRep?.[fromSlot] || "").trim() : "";
+  const nextRepMarker = row.isWorkshopMoveNeed ? "r" : existingRepMarker;
+
+  Object.entries(state.grunnoppstilling || {}).forEach(([slot,value])=>{
+    if(normalizeVehicleToken(value) === normalizeVehicleToken(vehicle)){
+      delete state.grunnoppstilling[slot];
+    }
+  });
+
+  if(toSlot){
+    state.grunnoppstilling[toSlot] = vehicle;
+  }
+
+  if(fromSlot && state.grunnoppstillingRep?.[fromSlot]){
+    delete state.grunnoppstillingRep[fromSlot];
+  }
+
+  if(nextRepMarker && toSlot){
+    state.grunnoppstillingRep[toSlot] = nextRepMarker;
+  }
 
   const planRow = {
     time:normalizeTimeString(row.arrivalTime) || String(row.arrivalTime || "").trim(),
