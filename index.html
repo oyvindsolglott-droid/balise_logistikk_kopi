@@ -15516,6 +15516,12 @@ function buildDropsVerkstedLogPanelHtml(logEntries){
 }
 
 function getDropsOrderStatus(order){
+  const vehicle = sanitizeVehicleValue(order?.vehicle || "");
+  const repDreiValue = getSdeGrunnoppstillingRepDreiValueForVehicle(vehicle);
+  const isDrei = isDreiMarker(repDreiValue);
+  const isRep = isRepMarker(repDreiValue) && !isDrei;
+
+  if(isDrei || isRep) return {label:isDrei ? "DREI" : "REP", cls:"not-ready"};
   if(order?.driftsklarAt) return {label:"Driftsklart", cls:"ready"};
   if(order?.workCompleteAt) return {label:"Ikke driftsklar", cls:"not-ready"};
   return {label:"Ikke driftsklar", cls:"not-ready"};
