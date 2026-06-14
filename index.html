@@ -15749,6 +15749,7 @@ function renderDropsMateriellstyrer(){
       const recommendedSlot = normalizeSlot(order.sdeRecommendedSlot || "");
       const routingMode = order.routingMode === "sde" ? "sde" : "manual";
       const manualAssessment = String(order.note || "").trim();
+      const notePlaceholder = isSpecialStatus ? "Verksted / teknisk merknad" : "TXP / operativ anbefaling";
       const wantedTrack = normalizeSlot(order.track || "") || order.track || "";
       const wantedTime = order.readyTime || "";
 
@@ -15806,6 +15807,27 @@ function renderDropsMateriellstyrer(){
         ? "SDE-forslag er valgt som grunnlag. Dette er ikke en automatisk endelig beslutning."
         : "Manuell vurdering valgt. TXP kan gi operativ anbefaling; endelig beslutning ligger hos DROPS/materiellstyring.";
 
+      const sdeAssessmentHtml = isSpecialStatus
+        ? ""
+        : `<div class="drops-decision-card">
+              <span class="drops-decision-label">SDE-vurdering</span>
+              <div class="drops-decision-value ${recommendedSlot ? "ready" : "warning"}">${escapeHtml(sdeAssessment)}</div>
+            </div>`;
+
+      const dropsDecisionHtml = isSpecialStatus
+        ? ""
+        : `<div class="drops-decision-card">
+              <span class="drops-decision-label">DROPS-beslutning</span>
+              <div class="drops-decision-value">${escapeHtml(dropsDecision)}</div>
+            </div>`;
+
+      const manualAssessmentHtml = isSpecialStatus && !manualAssessment
+        ? ""
+        : `<div class="drops-decision-card">
+              <span class="drops-decision-label">${isSpecialStatus ? "Verkstedmerknad" : "Manuell anbefaling"}</span>
+              <div class="drops-decision-value">${escapeHtml(manualAssessment || "Ingen manuell anbefaling registrert.")}</div>
+            </div>`;
+
       const hasTrackChoice = !!recommendedSlot;
       const routingChoiceHtml = hasTrackChoice
         ? `<div class="drops-routing-choice">
@@ -15838,7 +15860,7 @@ function renderDropsMateriellstyrer(){
           </div>
         </div>
         <div class="drops-operativ-cell">
-          <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="TXP / operativ anbefaling">
+          <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="${escapeHtml(notePlaceholder)}">
           <div class="drops-indicator ${isSpecialStatus ? "" : requiresWorkshopRelease ? isDriftsklar ? "action ready-context" : "action" : isDriftsklar ? "ready" : ""}">
             <span class="drops-indicator-lamp" aria-hidden="true"></span>
             <span class="drops-indicator-text">
@@ -15851,18 +15873,9 @@ function renderDropsMateriellstyrer(){
               <span class="drops-decision-label">${requiresWorkshopRelease ? "Krever handling" : "Operativ status"}</span>
               <div class="drops-decision-value ${requiresWorkshopRelease ? "warning" : isSpecialStatus ? "blocked" : isDriftsklar ? "ready" : "blocked"}">${escapeHtml(operationalStatus)}</div>
             </div>
-            <div class="drops-decision-card">
-              <span class="drops-decision-label">SDE-vurdering</span>
-              <div class="drops-decision-value ${recommendedSlot ? "ready" : "warning"}">${escapeHtml(sdeAssessment)}</div>
-            </div>
-            <div class="drops-decision-card">
-              <span class="drops-decision-label">Manuell anbefaling</span>
-              <div class="drops-decision-value">${escapeHtml(manualAssessment || "Ingen manuell anbefaling registrert.")}</div>
-            </div>
-            <div class="drops-decision-card">
-              <span class="drops-decision-label">DROPS-beslutning</span>
-              <div class="drops-decision-value">${escapeHtml(dropsDecision)}</div>
-            </div>
+            ${sdeAssessmentHtml}
+            ${manualAssessmentHtml}
+            ${dropsDecisionHtml}
             <div class="drops-decision-card">
               <span class="drops-decision-label">Neste handling</span>
               <div class="drops-decision-value warning">${escapeHtml(nextAction)}</div>
