@@ -15630,6 +15630,17 @@ function getDropsSkienStationVehicleStatus(item){
     };
   }
 
+  if(isDrei || isRep){
+    const label = isDrei ? "DREI" : "REP";
+    return {
+      cls:"blocked",
+      status:label,
+      detail:dropsReady
+        ? `${label}-markert, selv om driftsklar er bekreftet. Må vurderes manuelt før trafikk-/reservebruk.`
+        : `${label}-markert og ikke driftsklart. Skal ikke behandles som trafikkklart.`
+    };
+  }
+
   if(dropsReady){
     return {
       cls:"ready",
@@ -15637,15 +15648,6 @@ function getDropsSkienStationVehicleStatus(item){
       detail:onWorkshopSlot
         ? "Driftsklart bekreftet. Verkstedstatus overstyrt; behandles som tilgjengelig materiell."
         : "Driftsklart / tilgjengelig materiell."
-    };
-  }
-
-  if(isDrei || isRep){
-    const label = isDrei ? "DREI" : "REP";
-    return {
-      cls:"blocked",
-      status:label,
-      detail:`${label}-markert og ikke driftsklart. Skal ikke behandles som trafikkklart.`
     };
   }
 
