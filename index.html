@@ -11616,6 +11616,15 @@ function scoreSdeArrivalParkingCandidate(need, slot){
     return {slot:candidate, score:-999, status:"rejected", reasons:["Ugyldig spor."]};
   }
 
+  if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(candidate)){
+    return {
+      slot:candidate,
+      score:-999,
+      status:"rejected",
+      reasons:[`${candidate} er markert uvirksom i TXP Input Sporplan.`]
+    };
+  }
+
   const operationalSingleSetSlot = getSdeOperationalSingleSetSlot(need);
   if(operationalSingleSetSlot && candidate !== operationalSingleSetSlot){
     return {
