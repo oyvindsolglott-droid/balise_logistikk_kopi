@@ -1990,6 +1990,86 @@ button{padding:12px 12px}
   vertical-align:middle;
 }
 
+.txp-unavailable-panel{
+  margin:12px 0 14px;
+  padding:12px;
+  border:1px solid #fecaca;
+  border-radius:14px;
+  background:linear-gradient(180deg,#fff7ed 0%,#fee2e2 100%);
+  box-shadow:0 8px 20px rgba(127,29,29,.08);
+}
+
+.txp-unavailable-panel h3{
+  margin:0 0 6px;
+  font-size:16px;
+  color:#7f1d1d;
+}
+
+.txp-unavailable-panel p{
+  margin:0 0 10px;
+  color:#7f1d1d;
+  font-size:13px;
+  line-height:1.35;
+}
+
+.txp-unavailable-groups{
+  display:grid;
+  gap:10px;
+}
+
+.txp-unavailable-group{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+  align-items:center;
+}
+
+.txp-unavailable-label{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:7px 10px;
+  border-radius:999px;
+  border:1px solid #fed7aa;
+  background:rgba(255,255,255,.78);
+  font-weight:800;
+  color:#7c2d12;
+  cursor:pointer;
+  user-select:none;
+}
+
+.txp-unavailable-label input{
+  margin:0;
+}
+
+.txp-unavailable-label.is-active{
+  border-color:#dc2626;
+  background:#fee2e2;
+  color:#7f1d1d;
+  box-shadow:0 0 0 2px rgba(220,38,38,.14);
+}
+
+#grunnoppstillingTable tr.is-unavailable{
+  background:linear-gradient(90deg,rgba(254,226,226,.9),rgba(255,247,237,.9));
+}
+
+#grunnoppstillingTable tr.is-unavailable input{
+  border-color:#fca5a5;
+  background:#fff7f7;
+}
+
+.grunnoppstilling-unavailable-badge{
+  display:inline-block;
+  margin-top:4px;
+  padding:2px 7px;
+  border-radius:999px;
+  background:#dc2626;
+  color:#fff;
+  font-size:10px;
+  font-weight:950;
+  letter-spacing:.06em;
+}
+
 #grunnoppstillingTable .grunnoppstilling-vehicle-cell input{
   height:30px;
   border:1px solid #cbd5e1;
@@ -4091,6 +4171,7 @@ button{padding:12px 12px}
 
 <section class="panel" id="grunnoppstilling">
 <div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for Sporplan og videre SDE-arbeid.</div>
+<div class="txp-unavailable-panel" id="txpUnavailableInfrastructurePanel"></div>
 <div class="mobile-table-label">Grunnoppstilling</div>
 <div class="zoom-wrap">
 <div class="zoom-inner" id="grunnoppstillingZoom">
@@ -4880,6 +4961,12 @@ if(!state.oppstillingModes) state.oppstillingModes=Object.fromEntries(fixedOppst
 if(!state.oppstillingOverrides) state.oppstillingOverrides={};
 if(!state.grunnoppstilling) state.grunnoppstilling={};
 if(!state.grunnoppstillingRep) state.grunnoppstillingRep={};
+if(!state.txpUnavailableInfrastructure || typeof state.txpUnavailableInfrastructure !== "object" || Array.isArray(state.txpUnavailableInfrastructure)){
+  state.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
+}
+if(!Array.isArray(state.txpUnavailableInfrastructure.slots)) state.txpUnavailableInfrastructure.slots=[];
+if(!Array.isArray(state.txpUnavailableInfrastructure.tracks)) state.txpUnavailableInfrastructure.tracks=[];
+if(typeof state.txpUnavailableInfrastructure.washRouteUnavailable !== "boolean") state.txpUnavailableInfrastructure.washRouteUnavailable=false;
 if(!state.kjoretoy) state.kjoretoy={};
 if(!state.baliseToday) state.baliseToday={};
 if(!state.baliseTomorrow) state.baliseTomorrow={};
@@ -7239,12 +7326,151 @@ function updateGrunnoppstillingRepDreiInputValidation(input, value){
   return message;
 }
 
+
+const TXP_UNAVAILABLE_TRACK_SLOTS = {
+  "1":["1N","1S"],
+  "2":["2N","2S"],
+  "3":["3N","3M","3S"]
+};
+
+function ensureTxpUnavailableInfrastructure(){
+  if(!state.txpUnavailableInfrastructure || typeof state.txpUnavailableInfrastructure !== "object" || Array.isArray(state.txpUnavailableInfrastructure)){
+    state.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
+  }
+  const infra = state.txpUnavailableInfrastructure;
+  if(!Array.isArray(infra.slots)) infra.slots=[];
+  if(!Array.isArray(infra.tracks)) infra.tracks=[];
+  infra.slots = [...new Set(infra.slots.map(slot => normalizeSlot(slot)).filter(Boolean))];
+  infra.tracks = [...new Set(infra.tracks.map(track => String(track || "").trim()).filter(track => ["1","2","3"].includes(track)))];
+  infra.washRouteUnavailable = !!infra.washRouteUnavailable;
+  return infra;
+}
+
+function getTxpUnavailableSlotSet(){
+  const infra = ensureTxpUnavailableInfrastructure();
+  const slots = new Set();
+
+  infra.slots.forEach(slot => {
+    const normalizedSlot = normalizeSlot(slot);
+    if(normalizedSlot) slots.add(normalizedSlot);
+  });
+
+  infra.tracks.forEach(track => {
+    (TXP_UNAVAILABLE_TRACK_SLOTS[track] || []).forEach(slot => slots.add(slot));
+  });
+
+  return slots;
+}
+
+function isTxpUnavailableSlot(slot){
+  const normalizedSlot = normalizeSlot(slot);
+  return !!normalizedSlot && getTxpUnavailableSlotSet().has(normalizedSlot);
+}
+
+function setTxpUnavailableSlot(slot, checked){
+  const infra = ensureTxpUnavailableInfrastructure();
+  const normalizedSlot = normalizeSlot(slot);
+  if(!normalizedSlot) return;
+  const slots = new Set(infra.slots.map(item => normalizeSlot(item)).filter(Boolean));
+  if(checked) slots.add(normalizedSlot);
+  else slots.delete(normalizedSlot);
+  infra.slots = [...slots];
+}
+
+function setTxpUnavailableTrack(track, checked){
+  const infra = ensureTxpUnavailableInfrastructure();
+  const normalizedTrack = String(track || "").trim();
+  if(!["1","2","3"].includes(normalizedTrack)) return;
+  const tracks = new Set(infra.tracks.map(item => String(item || "").trim()).filter(Boolean));
+  if(checked) tracks.add(normalizedTrack);
+  else tracks.delete(normalizedTrack);
+  infra.tracks = [...tracks].filter(item => ["1","2","3"].includes(item));
+}
+
+function renderTxpUnavailableInfrastructureControls(){
+  const el = document.getElementById("txpUnavailableInfrastructurePanel");
+  if(!el) return;
+
+  const infra = ensureTxpUnavailableInfrastructure();
+  const unavailableSlots = getTxpUnavailableSlotSet();
+  const trackLabel = track => `Spor ${track} uvirksom`;
+  const slotLabels = inputSlots.map(slot => {
+    const active = unavailableSlots.has(slot);
+    return `
+      <label class="txp-unavailable-label ${active ? "is-active" : ""}">
+        <input type="checkbox" data-txp-unavailable-slot="${escapeHtml(slot)}" ${active ? "checked" : ""}>
+        ${escapeHtml(slot)}
+      </label>
+    `;
+  }).join("");
+
+  const trackLabels = ["1","2","3"].map(track => {
+    const active = infra.tracks.includes(track);
+    return `
+      <label class="txp-unavailable-label ${active ? "is-active" : ""}">
+        <input type="checkbox" data-txp-unavailable-track="${escapeHtml(track)}" ${active ? "checked" : ""}>
+        ${escapeHtml(trackLabel(track))}
+      </label>
+    `;
+  }).join("");
+
+  const washActive = !!infra.washRouteUnavailable;
+
+  el.innerHTML = `
+    <h3>TXP driftsbegrensning / uvirksom infrastruktur</h3>
+    <p>Brukes for å registrere at spor, slotter eller nordenden/vaskemaskinen er uvirksom. Første versjon markerer avviket visuelt i TXP Input Sporplan. SDE-motoren påvirkes ikke ennå.</p>
+    <div class="txp-unavailable-groups">
+      <div class="txp-unavailable-group">
+        ${trackLabels}
+        <label class="txp-unavailable-label ${washActive ? "is-active" : ""}">
+          <input type="checkbox" data-txp-unavailable-wash="1" ${washActive ? "checked" : ""}>
+          Vaskemaskin / nordende uvirksom
+        </label>
+      </div>
+      <div class="txp-unavailable-group">
+        ${slotLabels}
+      </div>
+    </div>
+  `;
+
+  el.querySelectorAll("[data-txp-unavailable-track]").forEach(input => {
+    input.addEventListener("change", e => {
+      setTxpUnavailableTrack(e.target.dataset.txpUnavailableTrack, e.target.checked);
+      buildGrunnoppstilling();
+      buildSporplan();
+      persist(true);
+    });
+  });
+
+  el.querySelectorAll("[data-txp-unavailable-slot]").forEach(input => {
+    input.addEventListener("change", e => {
+      setTxpUnavailableSlot(e.target.dataset.txpUnavailableSlot, e.target.checked);
+      buildGrunnoppstilling();
+      buildSporplan();
+      persist(true);
+    });
+  });
+
+  const washInput = el.querySelector("[data-txp-unavailable-wash]");
+  if(washInput){
+    washInput.addEventListener("change", e => {
+      ensureTxpUnavailableInfrastructure().washRouteUnavailable = !!e.target.checked;
+      buildGrunnoppstilling();
+      buildSporplan();
+      persist(true);
+    });
+  }
+}
+
+
 function buildGrunnoppstilling(){
   const table=document.getElementById("grunnoppstillingTable");
   if(!table) return;
 
   if(!state.grunnoppstilling) state.grunnoppstilling={};
   if(!state.grunnoppstillingRep) state.grunnoppstillingRep={};
+  ensureTxpUnavailableInfrastructure();
+  renderTxpUnavailableInfrastructureControls();
   const duplicateVehicles = getDuplicateGrunnoppstillingVehicles();
 
   table.innerHTML="<thead><tr><th>Slot</th><th>Kjøretøy</th><th><span class='rep-heading-mark'>r</span>ep/<span class='rep-heading-mark'>d</span>rei</th></tr></thead>";
@@ -7257,14 +7483,24 @@ function buildGrunnoppstilling(){
 
     const currentVehicleValue = String(state.grunnoppstilling?.[slot] || "").trim();
     const currentRepValue = String(state.grunnoppstillingRep?.[slot] || "").trim().toLowerCase();
+    const isUnavailable = isTxpUnavailableSlot(slot);
 
     if(currentVehicleValue) tr.classList.add("has-vehicle");
     if(currentRepValue === "r") tr.classList.add("has-rep");
     if(currentRepValue === "d") tr.classList.add("has-drei");
+    if(isUnavailable) tr.classList.add("is-unavailable");
 
     const slotTd=document.createElement("td");
     slotTd.className = "grunnoppstilling-slot-cell";
     slotTd.textContent=slot;
+    if(isUnavailable){
+      const br=document.createElement("br");
+      const badge=document.createElement("span");
+      badge.className="grunnoppstilling-unavailable-badge";
+      badge.textContent="UVIRKSOM";
+      slotTd.appendChild(br);
+      slotTd.appendChild(badge);
+    }
     slotTd.style.fontWeight="800";
     tr.appendChild(slotTd);
 
