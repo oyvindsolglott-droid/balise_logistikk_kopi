@@ -7367,6 +7367,15 @@ function isTxpUnavailableSlot(slot){
   return !!normalizedSlot && getTxpUnavailableSlotSet().has(normalizedSlot);
 }
 
+function isTxpWashRouteUnavailable(){
+  return !!ensureTxpUnavailableInfrastructure().washRouteUnavailable;
+}
+
+function isSdeDriftsbanegardSlot(slot){
+  const normalizedSlot = normalizeSlot(slot);
+  return !!normalizedSlot && ["9","10N","10S","11N","11S","12N","12S"].includes(normalizedSlot);
+}
+
 function setTxpUnavailableSlot(slot, checked){
   const infra = ensureTxpUnavailableInfrastructure();
   const normalizedSlot = normalizeSlot(slot);
@@ -11622,6 +11631,16 @@ function scoreSdeArrivalParkingCandidate(need, slot){
       score:-999,
       status:"rejected",
       reasons:[`${candidate} er markert uvirksom i TXP Input Sporplan.`]
+    };
+  }
+
+  if(typeof isTxpWashRouteUnavailable === "function" && isTxpWashRouteUnavailable() &&
+    typeof isSdeDriftsbanegardSlot === "function" && isSdeDriftsbanegardSlot(candidate)){
+    return {
+      slot:candidate,
+      score:-999,
+      status:"rejected",
+      reasons:[`${candidate} kan ikke nås når vaskemaskin/nordende er markert uvirksom i TXP Input Sporplan.`]
     };
   }
 
