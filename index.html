@@ -13734,7 +13734,7 @@ function getSdeShiftShowcaseData(){
         ...row,
         arrivalTrainText:arrivalText,
         departureTrainText:departureText,
-        fromSlot:normalizeSlot(row.arrivalSlot) || (row.isSpor3ProductionNeed ? "Tursatt" : "?"),
+        fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot) || "Ukjent",
         toSlot:normalizeSlot(row.recommendedSlot) || "?"
       };
     })
