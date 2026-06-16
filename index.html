@@ -2518,6 +2518,39 @@ button{padding:12px 12px}
 .sde-shift-section-title-main{flex:1;}
 .sde-shift-section-title-count{flex:1;text-align:right;}
 
+.sde-shift-reset-btn{
+  flex:0 0 auto;
+  min-height:42px;
+  padding:9px 14px;
+  border-radius:999px;
+  border:1px solid rgba(146,64,14,.34);
+  background:linear-gradient(180deg, #fbbf24, #d97706);
+  color:#1f1300;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:950;
+  letter-spacing:.02em;
+  box-shadow:0 14px 24px rgba(120,53,15,.26), inset 0 1px 0 rgba(255,255,255,.46);
+  cursor:pointer;
+  user-select:none;
+  transition:transform .14s ease, box-shadow .14s ease, filter .14s ease;
+}
+.sde-shift-reset-btn:hover{
+  transform:translateY(-1px);
+  filter:saturate(1.06);
+  box-shadow:0 18px 32px rgba(120,53,15,.30), inset 0 1px 0 rgba(255,255,255,.50);
+}
+.sde-shift-reset-btn:active{
+  transform:translateY(3px);
+  box-shadow:inset 0 5px 12px rgba(120,53,15,.32), 0 5px 14px rgba(120,53,15,.16);
+}
+.sde-shift-reset-btn:disabled{
+  opacity:.42;
+  cursor:not-allowed;
+  filter:grayscale(.25);
+  transform:none;
+}
+
 .sde-shift-details-toggle{
   flex:0 0 auto;
   min-width:54px;
@@ -13363,6 +13396,97 @@ function refreshSdeAfterMoveAction(){
   if(typeof renderSdeSkiftebevegelser === "function") renderSdeSkiftebevegelser();
 }
 
+function isSdeGeneratedPlanSkifteRow(row){
+  return String(row?.source || "").trim() === "SDE Skiftebevegelser";
+}
+
+function getSdeResettableSummary(){
+  const actions = Object.values(state.sdeMoveActions || {})
+    .filter(action => action && (action.action === "completed" || action.action === "cancelled"));
+  const completed = actions.filter(action => action.action === "completed").length;
+  const cancelled = actions.filter(action => action.action === "cancelled").length;
+  const sdePlanRows = Array.isArray(state.planSkifteRows)
+    ? state.planSkifteRows.filter(isSdeGeneratedPlanSkifteRow).length
+    : 0;
+
+  return {
+    actions:actions.length,
+    completed,
+    cancelled,
+    sdePlanRows,
+    total:actions.length + sdePlanRows
+  };
+}
+
+function cloneSdeResetValue(value){
+  return JSON.parse(JSON.stringify(value ?? null));
+}
+
+function ensureSdeResetSnapshot(){
+  if(state.sdeResetSnapshot && typeof state.sdeResetSnapshot === "object" && !Array.isArray(state.sdeResetSnapshot)){
+    return;
+  }
+
+  state.sdeResetSnapshot = {
+    time:new Date().toISOString(),
+    grunnoppstilling:cloneSdeResetValue(state.grunnoppstilling || {}),
+    grunnoppstillingRep:cloneSdeResetValue(state.grunnoppstillingRep || {}),
+    planSkifteRows:cloneSdeResetValue(Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [])
+  };
+}
+
+function handleSdeResetForDay(){
+  const summary = getSdeResettableSummary();
+
+  if(!summary.total){
+    alert("Ingen SDE-kvitteringer eller SDE-genererte skifterader å nullstille.");
+    return;
+  }
+
+  const snapshot = state.sdeResetSnapshot;
+  if(!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)){
+    alert(
+      `SDE-reset kan ikke utføres trygt.\n\n` +
+      `Denne SDE-historikken mangler før-bilde. Det skyldes normalt at handlingene ble opprettet før snapshot-basert reset var aktiv.\n\n` +
+      `Rydd testdata manuelt eller start ny SDE-test før reset brukes.`
+    );
+    return;
+  }
+
+  const confirmed = confirm(
+    `Nullstille SDE for dagen?\n\n` +
+    `Dette gjenoppretter lokal Sporplan/Input Sporplan til tilstanden før SDE-kvitteringene begynte å påvirke oppstillingen.\n\n` +
+    `Utførte: ${summary.completed}\n` +
+    `Annullerte: ${summary.cancelled}\n` +
+    `SDE-skifterader: ${summary.sdePlanRows}\n\n` +
+    `Reset bygger ikke ny sporplan fra SDE-beregning, men legger tilbake lagret før-bilde.\n\n` +
+    `Fortsett?`
+  );
+
+  if(!confirmed) return;
+
+  state.grunnoppstilling = cloneSdeResetValue(snapshot.grunnoppstilling || {});
+  state.grunnoppstillingRep = cloneSdeResetValue(snapshot.grunnoppstillingRep || {});
+  state.planSkifteRows = cloneSdeResetValue(Array.isArray(snapshot.planSkifteRows) ? snapshot.planSkifteRows : []);
+
+  state.sdeMoveActions = {};
+  state.sdeMoveActionDragOffsets = {};
+  state.sdeExpandedMoveActionKey = "";
+  delete state.sdeResetSnapshot;
+  window.sdeMoveActionHistoryCollapsed = true;
+
+  persist(true);
+  refreshSdeAfterMoveAction();
+
+  alert(
+    `SDE nullstilt.\n\n` +
+    `Gjenopprettet før-bilde fra: ${snapshot.time ? formatSdeMoveActionClock(snapshot.time) : "ukjent tidspunkt"}\n` +
+    `Fjernet utførte kvitteringer: ${summary.completed}\n` +
+    `Fjernet annullerte kvitteringer: ${summary.cancelled}\n` +
+    `SDE-skifterader er tilbakestilt til før-bildet.`
+  );
+}
+
 function handleSdeShiftMoveAction(encodedKey, action){
   const key = decodeURIComponent(String(encodedKey || ""));
   const actionType = String(action || "").trim();
@@ -13387,6 +13511,8 @@ function handleSdeShiftMoveAction(encodedKey, action){
   }
 
   if(actionType === "completed"){
+    ensureSdeResetSnapshot();
+
     const targetVehicle = getSdeVehicleInSlot(targetSlot);
     const targetToken = normalizeVehicleToken(targetVehicle);
     const vehicleToken = normalizeVehicleToken(vehicle);
@@ -13415,6 +13541,8 @@ function handleSdeShiftMoveAction(encodedKey, action){
   }
 
   if(actionType === "cancelled"){
+    ensureSdeResetSnapshot();
+
     state.sdeMoveActions[key] = {
       action:"cancelled",
       vehicle,
@@ -14834,6 +14962,15 @@ function renderSdeSkiftebevegelser(){
   const scoreExplanationHtml = buildSdeShiftScoreExplanationHtml(data);
   const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 12);
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
+  const sdeResetSummary = getSdeResettableSummary();
+  const hasSdeResetSnapshot = Boolean(state.sdeResetSnapshot && typeof state.sdeResetSnapshot === "object" && !Array.isArray(state.sdeResetSnapshot));
+  const canUseSdeReset = Boolean(sdeResetSummary.actions && hasSdeResetSnapshot);
+  const sdeResetDisabled = canUseSdeReset ? "" : " disabled";
+  const sdeResetTitle = canUseSdeReset
+    ? `Nullstill SDE-kvitteringer: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.sdePlanRows} SDE-skifterader`
+    : sdeResetSummary.sdePlanRows
+      ? "Gammel SDE-skifterad finnes, men mangler før-bilde. Start ny SDE-test før reset brukes."
+      : "Ingen SDE-kvitteringer å nullstille";
 
   const cardsHtml = topMoves.length
     ? topMoves.map((row,index)=>{
@@ -15076,6 +15213,7 @@ function renderSdeSkiftebevegelser(){
 
     <div class="sde-shift-section-title">
       <span class="sde-shift-section-title-main">Foreslåtte skiftebevegelser</span>
+      <button class="sde-shift-reset-btn" type="button" onclick="handleSdeResetForDay()" title="${escapeHtml(sdeResetTitle)}"${sdeResetDisabled}>⟲ Nullstill SDE</button>
       <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
       <span class="sde-shift-section-title-count">${data.moves.length} forslag</span>
     </div>
