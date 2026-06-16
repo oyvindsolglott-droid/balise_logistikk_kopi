@@ -12621,6 +12621,37 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
     }
   });
 
+  const getLatestArrivalSlotForVehicleBeforeDeparture = (vehicle, departureBinding) => {
+    const token = normalizeVehicleToken(vehicle);
+    if(!token) return "";
+
+    const departureMinutes = getSdeOperationalSequenceMinutes(
+      departureBinding?.time || departureBinding?.displayTime,
+      "departure"
+    );
+
+    return bindings
+      .filter(binding =>
+        binding?.role === "arrival" &&
+        normalizeVehicleToken(binding?.vehicle) === token &&
+        normalizeSlot(binding?.slot)
+      )
+      .map(binding => ({
+        binding,
+        slot: normalizeSlot(binding.slot),
+        minutes: getSdeArrivalLatestSequenceMinutes(binding)
+      }))
+      .filter(item =>
+        item.minutes >= 0 &&
+        (
+          departureMinutes === null ||
+          departureMinutes === undefined ||
+          item.minutes <= departureMinutes
+        )
+      )
+      .sort((a,b)=>b.minutes - a.minutes)[0]?.slot || "";
+  };
+
   return departureBindings
     .map(binding=>{
       const vehicle = sanitizeVehicleValue(binding.vehicle);
@@ -12633,6 +12664,7 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
       const preferredSlot = getSdeSpor3DeparturePreferredSlot(binding, departureBindings);
       const trainPartText = `${train}${part ? `/${part}` : ""}`;
       const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
+      const fallbackArrivalSlot = getLatestArrivalSlotForVehicleBeforeDeparture(vehicle, binding);
       const departureText = `${trainPartText}${binding.displayTime ? ` kl. ${binding.displayTime}` : binding.time ? ` kl. ${binding.time}` : ""}`;
 
       const need = {
@@ -12642,7 +12674,7 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
         arrivalPart:"",
         arrivalTime:"21:00",
         vehicle,
-        arrivalSlot:currentSlot,
+        arrivalSlot:currentSlot || fallbackArrivalSlot,
         turneringTarget:preferredSlot ? `Spor 3 ${preferredSlot}` : "Spor 3",
         nextDepartureTrain:train,
         nextDeparturePart:part,
