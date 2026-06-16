@@ -2791,29 +2791,47 @@ button{padding:12px 12px}
   display:flex;
   gap:10px;
   flex-wrap:wrap;
-  margin-top:12px;
+  margin-top:14px;
 }
 .sde-shift-action-btn{
-  border:0;
-  border-radius:999px;
-  padding:9px 13px;
-  font-weight:850;
+  flex:1 1 130px;
+  min-height:46px;
+  border-radius:16px;
+  padding:11px 15px;
+  border:1px solid rgba(255,255,255,.38);
+  font-family:inherit;
+  font-size:13px;
+  font-weight:950;
+  letter-spacing:.03em;
   cursor:pointer;
-  box-shadow:0 8px 18px rgba(15,23,42,.12);
+  user-select:none;
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,.46),
+    inset 0 -4px 0 rgba(15,23,42,.16),
+    0 6px 0 rgba(15,23,42,.22),
+    0 14px 24px rgba(15,23,42,.22);
+  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
 }
 .sde-shift-action-btn.done{
-  background:#dcfce7;
-  color:#166534;
+  background:linear-gradient(180deg,#86efac 0%,#22c55e 58%,#15803d 100%);
+  color:#052e16;
+  text-shadow:0 1px 0 rgba(255,255,255,.24);
 }
 .sde-shift-action-btn.cancel{
-  background:#fee2e2;
-  color:#991b1b;
+  background:linear-gradient(180deg,#fca5a5 0%,#ef4444 58%,#b91c1c 100%);
+  color:#450a0a;
+  text-shadow:0 1px 0 rgba(255,255,255,.18);
 }
 .sde-shift-action-btn:hover{
   transform:translateY(-1px);
+  filter:brightness(1.04) saturate(1.06);
 }
 .sde-shift-action-btn:active{
-  transform:translateY(0);
+  transform:translateY(5px);
+  box-shadow:
+    inset 0 5px 12px rgba(15,23,42,.28),
+    0 1px 0 rgba(15,23,42,.18),
+    0 5px 12px rgba(15,23,42,.16);
 }
 
 .sde-shift-unresolved{
