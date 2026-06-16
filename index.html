@@ -12621,9 +12621,9 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
     }
   });
 
-  const getLatestArrivalSlotForVehicleBeforeDeparture = (vehicle, departureBinding) => {
+  const getLatestArrivalBindingForVehicleBeforeDeparture = (vehicle, departureBinding) => {
     const token = normalizeVehicleToken(vehicle);
-    if(!token) return "";
+    if(!token) return null;
 
     const departureMinutes = getSdeOperationalSequenceMinutes(
       departureBinding?.time || departureBinding?.displayTime,
@@ -12649,7 +12649,7 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
           item.minutes <= departureMinutes
         )
       )
-      .sort((a,b)=>b.minutes - a.minutes)[0]?.slot || "";
+      .sort((a,b)=>b.minutes - a.minutes)[0] || null;
   };
 
   return departureBindings
@@ -12664,14 +12664,20 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
       const preferredSlot = getSdeSpor3DeparturePreferredSlot(binding, departureBindings);
       const trainPartText = `${train}${part ? `/${part}` : ""}`;
       const currentSlot = getSdeCurrentSlotForVehicle(vehicle);
-      const fallbackArrivalSlot = getLatestArrivalSlotForVehicleBeforeDeparture(vehicle, binding);
+      const fallbackArrival = getLatestArrivalBindingForVehicleBeforeDeparture(vehicle, binding);
+      const fallbackArrivalSlot = normalizeSlot(fallbackArrival?.slot);
+      const fallbackArrivalTrain = normalizeTognr(fallbackArrival?.binding?.train);
+      const fallbackArrivalPart = String(fallbackArrival?.binding?.part || "").trim();
+      const fallbackArrivalText = fallbackArrivalTrain
+        ? `${fallbackArrivalTrain}${fallbackArrivalPart ? `/${fallbackArrivalPart}` : ""}`
+        : "";
       const departureText = `${trainPartText}${binding.displayTime ? ` kl. ${binding.displayTime}` : binding.time ? ` kl. ${binding.time}` : ""}`;
 
       const need = {
         source:"Spor 3-produksjonsbehov",
         isSpor3ProductionNeed:true,
-        arrivalTrain:"Spor 3-sekvens",
-        arrivalPart:"",
+        arrivalTrain:fallbackArrivalTrain || "Spor 3-sekvens",
+        arrivalPart:fallbackArrivalTrain ? fallbackArrivalPart : "",
         arrivalTime:"21:00",
         vehicle,
         arrivalSlot:currentSlot || fallbackArrivalSlot,
@@ -12684,7 +12690,7 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
         parkingStrategy:"Spor 3-sekvens",
         parkingInstruction:`${vehicle} er tursatt til ${departureText}. Vurder oppstilling i spor 3 når spor 3 er ledig for oppstilling etter at 2489 fra Notodden har ankommet Skien og blitt skiftet bort.`,
         spor3PreferredSlot:preferredSlot,
-        showcaseArrivalLabel:`Spor 3-sekvens ${trainPartText}`
+        showcaseArrivalLabel:fallbackArrivalText || `Spor 3-sekvens ${trainPartText}`
       };
 
       const recommendation = getSdeArrivalParkingRecommendation(need, reservedSlots);
