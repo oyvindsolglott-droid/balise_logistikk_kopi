@@ -123,6 +123,52 @@ box-shadow:
   0 1px 0 rgba(76,29,149,.35),
   0 5px 12px rgba(15,23,42,.16);
 }
+.refresh-top-btn{
+display:inline-flex;
+align-items:center;
+justify-content:center;
+gap:8px;
+background:linear-gradient(180deg,#ffffff 0%,#f8fafc 46%,#e0f2fe 100%);
+color:#0f172a;
+border:2px solid #0284c7;
+border-radius:16px;
+padding:10px 16px;
+min-height:44px;
+font-size:13px;
+font-weight:900;
+letter-spacing:.01em;
+box-shadow:
+  inset 0 2px 0 rgba(255,255,255,.95),
+  inset 0 -3px 0 rgba(15,23,42,.06),
+  0 5px 0 rgba(2,132,199,.30),
+  0 10px 18px rgba(15,23,42,.16);
+transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+.refresh-top-btn::before{
+content:"↻";
+display:inline-flex;
+align-items:center;
+justify-content:center;
+width:24px;
+height:24px;
+border-radius:999px;
+background:linear-gradient(180deg,#38bdf8 0%,#0369a1 100%);
+color:#fff;
+font-size:17px;
+font-weight:1000;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.45),0 2px 4px rgba(12,74,110,.32);
+}
+.refresh-top-btn:hover{
+filter:brightness(1.03);
+transform:translateY(-1px);
+}
+.refresh-top-btn:active{
+transform:translateY(4px);
+box-shadow:
+  inset 0 4px 10px rgba(15,23,42,.22),
+  0 1px 0 rgba(12,74,110,.35),
+  0 5px 12px rgba(15,23,42,.14);
+}
 .ios-banner{background:#eef5ff;border:1px solid #bfd4ff;color:#274472;border-radius:14px;padding:10px 12px;margin-bottom:12px;font-size:14px}
 .toolbar{display:none}
 #saveBtn{display:none}
@@ -4188,6 +4234,7 @@ button{padding:12px 12px}
 <p class="sub">Siste revisjon: 12. juni 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
+<button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
 <button class="guide-top-btn" id="guideTopBtn" type="button">Brukerveiledning</button>
 </div>
 
@@ -15426,6 +15473,29 @@ function activateTab(name){
   }
 }
 
+function getActiveTabName(){
+  const activeBtn = document.querySelector(".seg.active");
+  return activeBtn?.dataset?.tab || getDefaultTabForCurrentLevel();
+}
+
+function getStartupTabFromUrl(){
+  const params = new URLSearchParams(window.location.search);
+  const requestedTab = String(params.get("tab") || "").trim();
+  if(!requestedTab) return "";
+
+  const exists = Array.from(document.querySelectorAll(".seg"))
+    .some(btn => btn.dataset.tab === requestedTab);
+
+  return exists ? requestedTab : "";
+}
+
+function refreshPageKeepingActiveTab(){
+  const url = new URL(window.location.href);
+  url.searchParams.set("v", String(Date.now()));
+  url.searchParams.set("tab", getActiveTabName());
+  window.location.href = url.toString();
+}
+
 
 function escapeHtml(s){
   return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
@@ -15860,6 +15930,11 @@ if(accessLevelSelect){
   accessLevelSelect.value = localStorage.getItem("sde_access_level_v1") || "0";
   accessLevelSelect.addEventListener("change", applyAccessLevel);
   applyAccessLevel();
+}
+
+const startupTabFromUrl = getStartupTabFromUrl();
+if(startupTabFromUrl){
+  setTimeout(() => activateTab(startupTabFromUrl), 0);
 }
 
 const DROPS_VERKSTED_KEY = "drops_verksted_bestillinger_v1";
