@@ -13272,7 +13272,7 @@ function buildSdeMoveActionHistoryHtml(){
     .map(([key, action]) => ({key, ...(action || {})}))
     .filter(action => action.action === "completed" || action.action === "cancelled")
     .sort((a,b) => String(b.time || "").localeCompare(String(a.time || "")))
-    .slice(0, 6);
+    .slice(0, 18);
 
   if(!actions.length) return "";
 
