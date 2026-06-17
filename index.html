@@ -16843,6 +16843,27 @@ function setDropsDecisionMode(mode){
   }catch(_error){}
 }
 
+function resetSdeAutoApprovedDropsOrdersForManualMode(){
+  const orders = getDropsVerkstedOrders();
+  let changed = false;
+
+  orders.forEach(order=>{
+    if(!order || !order.autoApprovedBySdeAt) return;
+    if(order.workCompleteAt) return;
+
+    order.dropsApprovedAt = "";
+    order.routingMode = "manual";
+    order.autoApprovedBySdeAt = "";
+    changed = true;
+  });
+
+  if(changed){
+    saveDropsVerkstedOrders(orders);
+  }
+
+  return changed;
+}
+
 function renderDropsMateriellstyrer(){
   const kpi = document.getElementById("dropsMateriellKpi");
   const list = document.getElementById("dropsMateriellListe");
@@ -17167,18 +17188,21 @@ function initDropsPanels(){
         return;
       }
 
+      const createdAt = new Date().toISOString();
+      const followSdeMode = typeof getDropsDecisionMode === "function" && getDropsDecisionMode() === "sde";
       const order = {
         id:`drops-${Date.now()}-${Math.random().toString(16).slice(2)}`,
         readyTime:document.getElementById("verkstedReadyTime")?.value || "",
         vehicle:sanitizeVehicleValue(rawVehicle),
         track:normalizeSlot(document.getElementById("verkstedTrack")?.value || "") || document.getElementById("verkstedTrack")?.value || "",
         work:document.getElementById("verkstedWork")?.value.trim() || "",
-        createdAt:new Date().toISOString(),
+        createdAt,
         workCompleteAt:"",
         driftsklarAt:"",
-        dropsApprovedAt:"",
+        dropsApprovedAt:followSdeMode ? createdAt : "",
+        autoApprovedBySdeAt:followSdeMode ? createdAt : "",
         note:"",
-        routingMode:"manual",
+        routingMode:followSdeMode ? "sde" : "manual",
         sdeRecommendedSlot:""
       };
 
@@ -17222,7 +17246,9 @@ function initDropsPanels(){
     if(action === "hero-mode"){
       const mode = button.dataset.dropsMode === "sde" ? "sde" : "manual";
       setDropsDecisionMode(mode);
+      const changed = mode === "manual" ? resetSdeAutoApprovedDropsOrdersForManualMode() : false;
       renderDropsPanels();
+      scheduleSdeRebuild(changed ? "drops-mode-manual-reset" : `drops-mode-${mode}`);
       return;
     }
 
