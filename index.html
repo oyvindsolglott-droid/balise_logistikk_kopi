@@ -13734,6 +13734,67 @@ function buildSdeWorkshopMoveNeeds(){
 }
 
 
+function getSdeCurrentOsloClockMinutes(){
+  try{
+    if(typeof getOsloDateParts === "function"){
+      const parts = getOsloDateParts(new Date());
+      const hour = Number(parts?.hour);
+      const minute = Number(parts?.minute);
+      if(Number.isFinite(hour) && Number.isFinite(minute)){
+        return hour * 60 + minute;
+      }
+    }
+  }catch(err){}
+
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+
+function isSdePastDepartureMoveForCurrentDay(row, nowMinutes=getSdeCurrentOsloClockMinutes()){
+  if(!row || row.isWorkshopMoveNeed) return false;
+  if(!normalizeTognr(row.nextDepartureTrain)) return false;
+
+  const departureMinutes = getSdeTimeMinutes(row.nextDepartureTime);
+  if(departureMinutes === null) return false;
+
+  const dates = typeof getOperationalTursattDatesOslo === "function"
+    ? getOperationalTursattDatesOslo()
+    : null;
+
+  if(dates?.window !== "day_07_to_15") return false;
+  if(nowMinutes < (7 * 60) || nowMinutes >= (15 * 60)) return false;
+
+  return departureMinutes < nowMinutes;
+}
+
+
+function buildSdePastDepartureDiagnostics(moves=[]){
+  const rows = Array.isArray(moves) ? moves : [];
+  const nowMinutes = getSdeCurrentOsloClockMinutes();
+  const nowText = formatSdeClockMinutes(nowMinutes);
+
+  return rows
+    .filter(row => isSdePastDepartureMoveForCurrentDay(row, nowMinutes))
+    .map(row=>{
+      const train = normalizeTognr(row.nextDepartureTrain);
+      const part = String(row.nextDeparturePart || "").trim();
+      const departureText = `${train}${part ? `/${part}` : ""}${row.nextDepartureTime ? ` kl. ${row.nextDepartureTime}` : ""}`;
+      const arrivalPart = String(row.arrivalPart || "").trim();
+      const arrivalText = row.arrivalTrainText ||
+        (row.arrivalTrain ? `${row.arrivalTrain}${arrivalPart ? `/${arrivalPart}` : ""}${row.arrivalTime ? ` kl. ${row.arrivalTime}` : ""}` : "ukjent ankomst");
+      const vehicle = sanitizeVehicleValue(row.vehicle) || "ukjent kjøretøy";
+      const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot) || "ukjent";
+      const toSlot = normalizeSlot(row.toSlot || row.recommendedSlot) || "ukjent";
+
+      return {
+        vehicle,
+        text:`${fromSlot} → ${toSlot}. Avgang ${departureText} er passert relativt til nåtid ${nowText} i 07–15-vinduet. Ankomstgrunnlag: ${arrivalText}. Forslaget er filtrert bort fra aktiv SDE-liste fordi avgangen allerede er passert.`
+      };
+    });
+}
+
+
 function buildSdeSpor3PlatformClearanceDiagnostics(){
   const spor3ProductionNeeds = buildSdeSpor3ProductionDepartureNeeds([]);
   const spor3VehicleTokens = new Set(
@@ -13845,11 +13906,13 @@ function getSdeShiftShowcaseData(){
       .filter(Boolean)
   );
 
-  const needs = [
+  const rawNeeds = [
     ...nonSpor3ArrivalNeeds.filter(row => !workshopVehicleTokens.has(normalizeVehicleToken(row?.vehicle))),
     ...spor3ProductionNeeds.filter(row => !workshopVehicleTokens.has(normalizeVehicleToken(row?.vehicle))),
     ...workshopMoveNeeds
   ];
+  const filteredPastDepartureNeeds = rawNeeds.filter(row => isSdePastDepartureMoveForCurrentDay(row));
+  const needs = rawNeeds.filter(row => !isSdePastDepartureMoveForCurrentDay(row));
   const moves = needs
     .filter(row=>row && row.recommendedSlot)
     .map(row=>{
@@ -13917,6 +13980,7 @@ function getSdeShiftShowcaseData(){
     moves,
     unresolved,
     flexibleUnknownParking,
+    filteredPastDepartureNeeds,
     totalArrivals:needs.length,
     solvedArrivals:moves.length,
     totalDepartures:uniqueDepartures.size,
@@ -15343,6 +15407,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const pastDepartureDiagnostics = buildSdePastDepartureDiagnostics(data.filteredPastDepartureNeeds || []);
+  const pastDepartureDiagnosticsHtml = pastDepartureDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Passert avgang – filtrert fra aktiv SDE-liste <span>${pastDepartureDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${pastDepartureDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.vehicle)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   const spor3PlatformClearanceDiagnostics = buildSdeSpor3PlatformClearanceDiagnostics();
   const spor3PlatformClearanceDiagnosticsHtml = spor3PlatformClearanceDiagnostics.length
     ? `<div class="sde-shift-unresolved">
@@ -15378,6 +15454,7 @@ function renderSdeSkiftebevegelser(){
       <span class="sde-shift-section-title-count">${data.moves.length} forslag</span>
     </div>
     <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
+    ${pastDepartureDiagnosticsHtml}
     ${linearTrackDiagnosticsHtml}
     ${pairDiagnosticsHtml}
     ${packageDiagnosticsHtml}
