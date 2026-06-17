@@ -4059,6 +4059,69 @@ button{padding:12px 12px}
     inset 0 1px 0 rgba(255,255,255,.75),
     0 0 0 3px rgba(249,115,22,.08);
 }
+
+.drops-operational-impact{
+  border:1px solid #bbf7d0;
+  border-radius:16px;
+  padding:11px 12px;
+  background:linear-gradient(135deg,#f0fdf4,#ffffff);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.82),
+    0 12px 24px rgba(22,101,52,.07);
+}
+.drops-impact-title{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  color:#14532d;
+  font-size:13px;
+  font-weight:950;
+}
+.drops-impact-title::before{
+  content:"↯";
+  display:inline-grid;
+  place-items:center;
+  width:22px;
+  height:22px;
+  border-radius:999px;
+  background:#dcfce7;
+  color:#166534;
+  font-size:14px;
+  font-weight:950;
+}
+.drops-impact-text{
+  margin-top:6px;
+  color:#0f172a;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.42;
+}
+.drops-impact-tags{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  margin-top:8px;
+}
+.drops-impact-tag{
+  border:1px solid #bbf7d0;
+  border-radius:999px;
+  padding:4px 8px;
+  background:#ffffff;
+  color:#166534;
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+  letter-spacing:.055em;
+}
+.drops-value-line{
+  margin-top:8px;
+  border-top:1px solid rgba(22,163,74,.18);
+  padding-top:7px;
+  color:#166534;
+  font-size:11px;
+  font-weight:900;
+  line-height:1.35;
+}
 .drops-decision-label{
   display:block;
   margin-bottom:3px;
@@ -4416,8 +4479,8 @@ button{padding:12px 12px}
 <div class="drops-shell">
   <div class="drops-hero">
     <div class="drops-eyebrow">DROPS</div>
-    <div class="drops-title">Materiellstyrer</div>
-    <p class="drops-sub">Samlet oversikt over verkstedbestillinger og materiellstatus. Herfra overvåkes status og operative vurderinger/tiltak iverksettes.</p>
+    <div class="drops-title">Materiellstyrer – verkstedstatus og operativ effekt</div>
+    <p class="drops-sub">Verkstedstatus kobles til materiellvalg, sporbruk og anbefalt videre handling, slik at DROPS raskere kan vurdere tursetting, Res., rep-parkering eller utkjøring fra verksted.</p>
     <div class="drops-warning">Operativt kontrollark – ikke SDE-motor</div>
   </div>
 
@@ -16675,15 +16738,16 @@ function renderDropsMateriellstyrer(){
   const orders = getDropsVerkstedOrders();
   const logEntries = getDropsVerkstedLog();
   const logHtml = buildDropsVerkstedLogToggleHtml(logEntries.length) + buildDropsVerkstedLogPanelHtml(logEntries);
-  const waiting = orders.filter(order=>!order.workCompleteAt && !order.driftsklarAt).length;
-  const complete = orders.filter(order=>order.workCompleteAt && !order.driftsklarAt).length;
   const ready = orders.filter(order=>order.driftsklarAt).length;
+  const releaseNeeded = orders.filter(order=>order.workCompleteAt).length;
+  const dropsChoiceNeeded = orders.filter(order=>!order.dropsApprovedAt || order.workCompleteAt || order.driftsklarAt).length;
+  const sdeActionPossible = orders.filter(order=>order.dropsApprovedAt && normalizeSlot(order.sdeRecommendedSlot || "")).length;
 
   kpi.innerHTML = `
-    <div class="drops-board-card ${orders.length > 0 ? "attention" : ""}"><strong>${orders.length}</strong><span>totale bestillinger</span></div>
-    <div class="drops-board-card"><strong>${waiting}</strong><span>venter / inne</span></div>
-    <div class="drops-board-card"><strong>${complete}</strong><span>kan kjøres ut</span></div>
-    <div class="drops-board-card"><strong>${ready}</strong><span>driftsklart</span></div>
+    <div class="drops-board-card ${orders.length > 0 ? "attention" : ""}"><strong>${orders.length}</strong><span>aktive verkstedløp</span></div>
+    <div class="drops-board-card ${releaseNeeded > 0 ? "attention" : ""}"><strong>${releaseNeeded}</strong><span>binder / kan frigjøre verkstedspor</span></div>
+    <div class="drops-board-card ${dropsChoiceNeeded > 0 ? "attention" : ""}"><strong>${dropsChoiceNeeded}</strong><span>krever DROPS-valg</span></div>
+    <div class="drops-board-card"><strong>${ready} / ${sdeActionPossible}</strong><span>driftsklart / SDE-sporforslag</span></div>
   `;
 
   const stationOverviewHtml = buildDropsSkienStationOverviewHtml();
@@ -16748,6 +16812,53 @@ function renderDropsMateriellstyrer(){
               ? "DROPS må beslutte om SDE-forslag skal brukes, eller om settet skal stå som Res./tursettes."
               : "DROPS må beslutte Res.-plassering eller eventuell tursatt bruk."
             : "Avvent verkstedstatus. TXP kan følge opp operativt ved behov.";
+
+      const operationalImpactTitle = isSpecialStatus
+        ? `${specialStatusLabel}-status – teknisk disponering`
+        : !isDropsApproved
+          ? "Verkstedbehov – venter DROPS-avklaring"
+          : requiresWorkshopRelease
+            ? isDriftsklar
+              ? "Driftsklart – verkstedspor bør frigjøres"
+              : "Utkjøring bestilt – frigjør kapasitet"
+            : isDriftsklar
+              ? "Driftsklart – tilgjengelig for materiellvurdering"
+              : "Under arbeid – følg status mot kommende produksjon";
+
+      const operationalImpactText = isSpecialStatus
+        ? "Kjøretøyet skal holdes utenfor trafikk-/reservevurdering til verkstedstatus endres. SDE viser statusen slik at DROPS ikke bruker materiell som teknisk er disponert."
+        : !isDropsApproved
+          ? "Verksted har registrert behov. DROPS må ta stilling før kjøretøyet behandles videre i operativ materiellstyring."
+          : requiresWorkshopRelease
+            ? isDriftsklar
+              ? "Kjøretøyet er meldt driftsklart, men står fortsatt i verkstedflyt. Rask håndtering kan frigjøre kapasitet og gjøre materiellet tilgjengelig for tursetting, Res. eller videre parkering."
+              : "Kjøretøyet skal ikke behandles som trafikkklart ennå, men utkjøring kan frigjøre verkstedspor slik at nytt materiell kan tas inn til arbeid."
+            : isDriftsklar
+              ? "Statusen kan nå omsettes til en DROPS-beslutning: tursett, sett som Res., parker som rep-/reserveflyt eller la kjøretøyet stå."
+              : "Kjøretøyet er fortsatt ikke driftsklart. SDE holder statusen synlig slik at materiellvalg ikke baseres på utdatert eller ufullstendig informasjon.";
+
+      const operationalImpactTags = [
+        isDropsApproved ? "Bestilling godkjent" : "Venter DROPS",
+        requiresWorkshopRelease ? "Frigjør kapasitet" : isDriftsklar ? "Materiellvalg" : "Statusovervåking",
+        recommendedSlot ? `SDE: ${recommendedSlot}` : "Ingen trygg sporvei"
+      ];
+
+      const operationalValueLine = requiresWorkshopRelease
+        ? "SDE-verdi: verkstedstatus gjøres om til et konkret kapasitets- og skiftebehov."
+        : isDriftsklar
+          ? "SDE-verdi: driftsklarhet kobles direkte til materiellvalg og videre disponering."
+          : "SDE-verdi: informasjonsstøy sorteres før den når operativ beslutning.";
+
+      const operationalImpactHtml = `
+        <div class="drops-operational-impact">
+          <div class="drops-impact-title">${escapeHtml(operationalImpactTitle)}</div>
+          <div class="drops-impact-text">${escapeHtml(operationalImpactText)}</div>
+          <div class="drops-impact-tags">
+            ${operationalImpactTags.map(tag=>`<span class="drops-impact-tag">${escapeHtml(tag)}</span>`).join("")}
+          </div>
+          <div class="drops-value-line">${escapeHtml(operationalValueLine)}</div>
+        </div>
+      `;
 
       const indicatorText = isSpecialStatus
         ? `Ikke driftsklart. Skal ikke behandles som trafikkklart.${!isDropsApproved ? " Avventer DROPS-godkjenning." : ""}`
@@ -16837,6 +16948,7 @@ function renderDropsMateriellstyrer(){
           </div>
         </div>
         <div class="drops-operativ-cell">
+          ${operationalImpactHtml}
           <input class="drops-note" type="text" data-drops-action="note" data-drops-id="${escapeHtml(order.id)}" value="${escapeHtml(order.note || "")}" placeholder="${escapeHtml(notePlaceholder)}">
           <div class="drops-indicator ${!isDropsApproved ? "action" : isSpecialStatus ? "" : requiresWorkshopRelease ? isDriftsklar ? "action ready-context" : "action" : isDriftsklar ? "ready" : ""}">
             <span class="drops-indicator-lamp" aria-hidden="true"></span>
