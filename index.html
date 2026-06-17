@@ -13766,6 +13766,14 @@ function buildSdeSpor3PlatformClearanceDiagnostics(){
     return map;
   }, new Map());
 
+  const spor3ProductionNeedByVehicle = new Map();
+  spor3ProductionNeeds.forEach(row=>{
+    const token = normalizeVehicleToken(row?.vehicle);
+    if(token && !spor3ProductionNeedByVehicle.has(token)){
+      spor3ProductionNeedByVehicle.set(token, row);
+    }
+  });
+
   const reservedSlots = new Map();
 
   return arrivals.map(arrival=>{
@@ -13775,6 +13783,10 @@ function buildSdeSpor3PlatformClearanceDiagnostics(){
     const arrivalPart = String(arrival.part || "").trim();
     const arrivalText = `${normalizeTognr(arrival.train)}${arrivalPart ? `/${arrivalPart}` : ""}`;
     const arrivalTime = arrival.displayTime || arrival.time || "";
+    const spor3Need = spor3ProductionNeedByVehicle.get(token) || null;
+    const laterSpor3Text = spor3Need?.nextDepartureText
+      ? ` Senere spor 3-bruk: ${spor3Need.nextDepartureText}${spor3Need.spor3PreferredSlot ? `, ønsket posisjon ${spor3Need.spor3PreferredSlot}` : ""}.`
+      : " Senere spor 3-bruk er identifisert, men avgangsdetalj mangler.";
 
     const need = {
       source:"Spor 3-forberedelse / plattformrydding",
@@ -13808,7 +13820,7 @@ function buildSdeSpor3PlatformClearanceDiagnostics(){
 
     return {
       vehicle,
-      text:`${arrivalText}${arrivalTime ? ` kl. ${arrivalTime}` : ""} fra ${arrivalSlot}. ${candidateText} Testen bruker kandidatmotoren kun for å synliggjøre mulig plattformrydding før senere spor 3-sekvens.${duplicateText} Ikke aktivert som SDE-skifteforslag.`
+      text:`${arrivalText}${arrivalTime ? ` kl. ${arrivalTime}` : ""} fra ${arrivalSlot}.${laterSpor3Text} ${candidateText} Testen bruker kandidatmotoren kun for å synliggjøre mulig plattformrydding før senere spor 3-sekvens.${duplicateText} Ikke aktivert som SDE-skifteforslag.`
     };
   });
 }
