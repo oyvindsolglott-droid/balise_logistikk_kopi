@@ -16928,6 +16928,19 @@ function renderDropsMateriellstyrer(){
           </div>`
         : "";
 
+      const dropsOperationalActionsHtml = isDropsApproved && !isSpecialStatus
+        ? `<div class="drops-actions">
+            <button class="drops-status-btn complete ${isWorkComplete ? "is-done" : ""}" type="button" data-drops-action="complete" data-drops-id="${escapeHtml(order.id)}" ${isWorkComplete ? "disabled" : ""}>
+              <span class="drops-btn-icon">${isWorkComplete ? "✓" : "!"}</span>
+              <span class="drops-btn-text">${isWorkComplete ? "Utkjøring bestilt" : "Bestill utkjøring"}</span>
+            </button>
+            <button class="drops-status-btn ready ${isDriftsklar ? "is-done" : ""}" type="button" data-drops-action="ready" data-drops-id="${escapeHtml(order.id)}" ${isDriftsklar ? "disabled" : ""}>
+              <span class="drops-btn-icon">${isDriftsklar ? "✓" : "!"}</span>
+              <span class="drops-btn-text">${isDriftsklar ? "Driftsklart bekreftet" : "Bekreft driftsklart"}</span>
+            </button>
+          </div>`
+        : "";
+
       return `<div class="drops-materiell-row">
         <div class="drops-materiell-main">
           <div class="drops-materiell-vehicle">${escapeHtml(order.vehicle || "")}</div>
@@ -16971,6 +16984,7 @@ function renderDropsMateriellstyrer(){
             </div>
           </div>
           ${dropsApprovalActionHtml}
+          ${dropsOperationalActionsHtml}
           ${routingChoiceHtml}
         </div>
       </div>`;
