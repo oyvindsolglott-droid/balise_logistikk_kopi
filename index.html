@@ -13734,6 +13734,86 @@ function buildSdeWorkshopMoveNeeds(){
 }
 
 
+function buildSdeSpor3PlatformClearanceDiagnostics(){
+  const spor3ProductionNeeds = buildSdeSpor3ProductionDepartureNeeds([]);
+  const spor3VehicleTokens = new Set(
+    spor3ProductionNeeds
+      .map(row => normalizeVehicleToken(row?.vehicle))
+      .filter(Boolean)
+  );
+
+  if(!spor3VehicleTokens.size) return [];
+
+  const arrivals = buildSdeTursattVehicleBindings()
+    .filter(binding =>
+      binding?.role === "arrival" &&
+      !isSdeBorgestad10855Flow(binding) &&
+      spor3VehicleTokens.has(normalizeVehicleToken(binding?.vehicle)) &&
+      normalizeSlot(binding?.slot)
+    )
+    .sort((a,b)=>{
+      const ta = getSdeArrivalLatestSequenceMinutes(a);
+      const tb = getSdeArrivalLatestSequenceMinutes(b);
+      if(ta !== tb) return ta - tb;
+      return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
+    });
+
+  if(!arrivals.length) return [];
+
+  const vehicleCounts = arrivals.reduce((map, arrival)=>{
+    const token = normalizeVehicleToken(arrival?.vehicle);
+    if(token) map.set(token, (map.get(token) || 0) + 1);
+    return map;
+  }, new Map());
+
+  const reservedSlots = new Map();
+
+  return arrivals.map(arrival=>{
+    const vehicle = sanitizeVehicleValue(arrival.vehicle);
+    const token = normalizeVehicleToken(vehicle);
+    const arrivalSlot = normalizeSlot(arrival.slot);
+    const arrivalPart = String(arrival.part || "").trim();
+    const arrivalText = `${normalizeTognr(arrival.train)}${arrivalPart ? `/${arrivalPart}` : ""}`;
+    const arrivalTime = arrival.displayTime || arrival.time || "";
+
+    const need = {
+      source:"Spor 3-forberedelse / plattformrydding",
+      arrivalTrain:normalizeTognr(arrival.train),
+      arrivalPart,
+      arrivalTime,
+      vehicle,
+      arrivalSlot,
+      nextDepartureTrain:"",
+      nextDeparturePart:"",
+      nextDepartureTime:"",
+      nextDepartureText:"Senere spor 3-sekvens",
+      serviceRequired:false,
+      parkingStrategy:"Plattformrydding før spor 3-sekvens",
+      parkingInstruction:"Kjøretøyet skal senere brukes i spor 3-sekvens, men må først vurderes ryddet bort fra ankomstspor."
+    };
+
+    const recommendation = getSdeArrivalParkingRecommendation(need, reservedSlots);
+
+    if(recommendation.slot){
+      reservedSlots.set(recommendation.slot, {need, recommendation});
+    }
+
+    const duplicateText = vehicleCounts.get(token) > 1
+      ? " Flere ankomster finnes for samme kjøretøy; må vurderes før eventuell aktiv motor."
+      : "";
+
+    const candidateText = recommendation.slot
+      ? `Testkandidat ${arrivalSlot} → ${recommendation.slot} (${recommendation.confidence}, score ${recommendation.score}).`
+      : "Ingen trygg testkandidat funnet i første kandidatsett.";
+
+    return {
+      vehicle,
+      text:`${arrivalText}${arrivalTime ? ` kl. ${arrivalTime}` : ""} fra ${arrivalSlot}. ${candidateText} Testen bruker kandidatmotoren kun for å synliggjøre mulig plattformrydding før senere spor 3-sekvens.${duplicateText} Ikke aktivert som SDE-skifteforslag.`
+    };
+  });
+}
+
+
 function getSdeShiftShowcaseData(){
   const arrivalNeeds = buildSdeArrivalParkingNeeds();
   const baseArrivalNeeds = arrivalNeeds.filter(row => !isSdeSpor3ProductionNeed(row));
@@ -15251,6 +15331,18 @@ function renderSdeSkiftebevegelser(){
       </div>`
     : "";
 
+  const spor3PlatformClearanceDiagnostics = buildSdeSpor3PlatformClearanceDiagnostics();
+  const spor3PlatformClearanceDiagnosticsHtml = spor3PlatformClearanceDiagnostics.length
+    ? `<div class="sde-shift-unresolved">
+        <div class="sde-shift-section-title">Spor 3-forberedelse – plattformrydding, test <span>${spor3PlatformClearanceDiagnostics.length}</span></div>
+        <div class="sde-shift-unresolved-list">
+          ${spor3PlatformClearanceDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.vehicle)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")}
+        </div>
+      </div>`
+    : "";
+
   root.innerHTML = `
     <div class="sde-shift-hero">
       <div class="sde-shift-score ${scoreClass}">
@@ -15286,6 +15378,7 @@ function renderSdeSkiftebevegelser(){
     ${packagePriorityLimitedActiveMotorDiagnosticsHtml}
     ${packagePrioritySafeActiveMotorDiagnosticsHtml}
     ${blockerRescueRejectionDiagnosticsHtml}
+    ${spor3PlatformClearanceDiagnosticsHtml}
     ${unresolvedHtml}${flexibleUnknownHtml}
   `;
 
