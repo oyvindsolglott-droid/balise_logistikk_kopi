@@ -13719,10 +13719,6 @@ function recordSdeMoveLearningEvent(key, action, row, time, reason){
   const actionType = String(action || "").trim();
   if(!cleanKey || !row || !["completed","cancelled"].includes(actionType)) return;
 
-  if(log.some(event => event && event.key === cleanKey && event.action === actionType)){
-    return;
-  }
-
   log.push({
     id:`${Date.now()}-${log.length}`,
     version:1,
@@ -13767,6 +13763,8 @@ function getSdeMoveLearningReason(actionType){
     reasons.map((reason,index)=>`${index + 1} ${reason.label}`).join("\n") +
     `\n\nSkriv nummer, eventuelt med fritekst etterpå.`
   );
+  if(answer === null) return null;
+
   const text = String(answer || "").trim();
   if(!text) return fallback;
 
@@ -13808,8 +13806,6 @@ function handleSdeShiftMoveAction(encodedKey, action){
   }
 
   if(actionType === "completed"){
-    ensureSdeResetSnapshot();
-
     const targetVehicle = getSdeVehicleInSlot(targetSlot);
     const targetToken = normalizeVehicleToken(targetVehicle);
     const vehicleToken = normalizeVehicleToken(vehicle);
@@ -13818,6 +13814,11 @@ function handleSdeShiftMoveAction(encodedKey, action){
       alert(`Kan ikke kvittere Utført: ${targetSlot} er allerede opptatt av ${targetVehicle}. Kontroller Sporplan manuelt.`);
       return;
     }
+
+    const learningReason = getSdeMoveLearningReason("completed");
+    if(learningReason === null) return;
+
+    ensureSdeResetSnapshot();
 
     if(!addSdeCompletedMoveToPlanSkifte(row)){
       alert("SDE klarte ikke å registrere ferdig skiftebevegelse. Kontroller forslaget manuelt.");
@@ -13833,7 +13834,6 @@ function handleSdeShiftMoveAction(encodedKey, action){
       time:actionTime,
       snapshot:getSdeMoveActionSnapshot(row)
     };
-    const learningReason = getSdeMoveLearningReason("completed");
     recordSdeMoveLearningEvent(key, "completed", row, actionTime, learningReason);
     persist(true);
     refreshSdeAfterMoveAction();
@@ -13841,6 +13841,9 @@ function handleSdeShiftMoveAction(encodedKey, action){
   }
 
   if(actionType === "cancelled"){
+    const learningReason = getSdeMoveLearningReason("cancelled");
+    if(learningReason === null) return;
+
     ensureSdeResetSnapshot();
 
     const actionTime = new Date().toISOString();
@@ -13852,7 +13855,6 @@ function handleSdeShiftMoveAction(encodedKey, action){
       time:actionTime,
       snapshot:getSdeMoveActionSnapshot(row)
     };
-    const learningReason = getSdeMoveLearningReason("cancelled");
     recordSdeMoveLearningEvent(key, "cancelled", row, actionTime, learningReason);
     persist(true);
     refreshSdeAfterMoveAction();
