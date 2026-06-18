@@ -5305,6 +5305,7 @@ if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkift
 else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",tilRep:"",operationType:"",utfort:"",...(row||{})}));
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.isArray(state.sdeMoveActions)) state.sdeMoveActions={};
+if(!Array.isArray(state.sdeMoveLearningLog)) state.sdeMoveLearningLog=[];
 
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
@@ -13705,6 +13706,34 @@ function handleSdeResetForDay(){
   );
 }
 
+function ensureSdeMoveLearningLog(){
+  if(!Array.isArray(state.sdeMoveLearningLog)){
+    state.sdeMoveLearningLog = [];
+  }
+  return state.sdeMoveLearningLog;
+}
+
+function recordSdeMoveLearningEvent(key, action, row, time){
+  const log = ensureSdeMoveLearningLog();
+  const cleanKey = String(key || "");
+  const actionType = String(action || "").trim();
+  if(!cleanKey || !row || !["completed","cancelled"].includes(actionType)) return;
+
+  if(log.some(event => event && event.key === cleanKey && event.action === actionType)){
+    return;
+  }
+
+  log.push({
+    id:`${Date.now()}-${log.length}`,
+    version:1,
+    source:"SDE Skiftebevegelser",
+    key:cleanKey,
+    action:actionType,
+    time:time || new Date().toISOString(),
+    snapshot:getSdeMoveActionSnapshot(row)
+  });
+}
+
 function handleSdeShiftMoveAction(encodedKey, action){
   const key = decodeURIComponent(String(encodedKey || ""));
   const actionType = String(action || "").trim();
@@ -13745,14 +13774,16 @@ function handleSdeShiftMoveAction(encodedKey, action){
       return;
     }
 
+    const actionTime = new Date().toISOString();
     state.sdeMoveActions[key] = {
       action:"completed",
       vehicle,
       fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
       toSlot:targetSlot,
-      time:new Date().toISOString(),
+      time:actionTime,
       snapshot:getSdeMoveActionSnapshot(row)
     };
+    recordSdeMoveLearningEvent(key, "completed", row, actionTime);
     persist(true);
     refreshSdeAfterMoveAction();
     return;
@@ -13761,14 +13792,16 @@ function handleSdeShiftMoveAction(encodedKey, action){
   if(actionType === "cancelled"){
     ensureSdeResetSnapshot();
 
+    const actionTime = new Date().toISOString();
     state.sdeMoveActions[key] = {
       action:"cancelled",
       vehicle,
       fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
       toSlot:targetSlot,
-      time:new Date().toISOString(),
+      time:actionTime,
       snapshot:getSdeMoveActionSnapshot(row)
     };
+    recordSdeMoveLearningEvent(key, "cancelled", row, actionTime);
     persist(true);
     refreshSdeAfterMoveAction();
     return;
