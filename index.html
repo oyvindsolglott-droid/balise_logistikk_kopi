@@ -13868,7 +13868,19 @@ function buildSdeMoveLearningDiagnostics(){
   const wrongTrackAlternatives = Array.from(wrongTrackGroups.values()).map(group=>{
     const rejectedSlots = Array.from(group.rejectedSlots);
     const nextSlot = group.alternatives.find(slot => !group.rejectedSlots.has(slot)) || "Ingen funnet";
-    return {...group, rejectedSlots, nextSlot};
+    const shouldAssessNextSlot = nextSlot && nextSlot !== "Ingen funnet";
+    const nextSlotOccupant = shouldAssessNextSlot ? getSdeVehicleInSlot(nextSlot) : "";
+    const nextSlotOccupancyStatus = shouldAssessNextSlot
+      ? nextSlotOccupant
+        ? "occupied"
+        : "available"
+      : "not_assessed";
+    const nextSlotAssessmentText = nextSlotOccupancyStatus === "available"
+      ? `${nextSlot} er ledig i Sporplan nå.`
+      : nextSlotOccupancyStatus === "occupied"
+        ? `${nextSlot} er opptatt av ${nextSlotOccupant} nå.`
+        : "ikke vurdert.";
+    return {...group, rejectedSlots, nextSlot, nextSlotOccupancyStatus, nextSlotOccupant, nextSlotAssessmentText};
   });
 
   const normalizeEvent = event => {
@@ -13942,6 +13954,7 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
           <strong>${escapeHtml(group.vehicle)}</strong> · ${escapeHtml(group.fromSlot)} · Ankomst ${escapeHtml(group.arrivalTrainText)} · Avgang ${escapeHtml(group.departureTrainText)}<br>
           Avvist spor: ${escapeHtml(group.rejectedSlots.join(", "))}<br>
           Neste mulige spor: ${escapeHtml(group.nextSlot)}<br>
+          Nåvurdering: ${escapeHtml(group.nextSlotAssessmentText)}<br>
           Tidligere avvist for samme behov: ${escapeHtml(group.rejectedSlots.join(", "))}
         </div>
       `).join("")}`
