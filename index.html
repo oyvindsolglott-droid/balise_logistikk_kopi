@@ -15976,8 +15976,6 @@ function getDefaultTabForCurrentLevel(){
   return visibleAllowed ? visibleAllowed.dataset.tab : "oppstilling";
 }
 
-const ACTIVE_TAB_STORAGE_KEY = "sde_active_tab_v1";
-
 function applyAccessLevel(){
   const level = getActiveAccessLevel();
   localStorage.setItem("sde_access_level_v1", level);
@@ -15996,7 +15994,6 @@ function applyAccessLevel(){
 
 function activateTab(name){
   if(!isTabAllowedAtCurrentLevel(name)) name = getDefaultTabForCurrentLevel();
-  localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, name);
   document.querySelectorAll(".seg").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===name));
   window.scrollTo({top:0,behavior:"smooth"});
@@ -16017,13 +16014,6 @@ function activateTab(name){
 function getActiveTabName(){
   const activeBtn = document.querySelector(".seg.active");
   return activeBtn?.dataset?.tab || getDefaultTabForCurrentLevel();
-}
-
-function getStoredActiveTab(){
-  const stored = String(localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || "").trim();
-  if(!stored) return "";
-  const exists = Array.from(document.querySelectorAll(".seg")).some(btn => btn.dataset.tab === stored);
-  return exists ? stored : "";
 }
 
 function getStartupTabFromUrl(){
@@ -16481,6 +16471,9 @@ if(accessLevelSelect){
 }
 
 const startupTabFromUrl = getStartupTabFromUrl();
+if(startupTabFromUrl){
+  setTimeout(() => activateTab(startupTabFromUrl), 0);
+}
 
 const DROPS_VERKSTED_KEY = "drops_verksted_bestillinger_v1";
 const DROPS_VERKSTED_LOGG_KEY = "drops_verksted_logg_v1";
@@ -17328,7 +17321,6 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   if(!confirm("Nullstille hele appen?")) return;
 
 
-  const activeTabBeforeReset = getActiveTabName();
   localStorage.removeItem(STORAGE_KEY);
   state=makeDefaultState();
 
@@ -17344,7 +17336,7 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   updateTopDataStatus();
   updateBaliseViewState();
   renderApiTables();
-  activateTab(activeTabBeforeReset || getStoredActiveTab() || "sporplan");
+  activateTab("sporplan");
   markSaved("Reset");
   fetchBaliseApi();
   ensureTodayStaticDataLoaded();
@@ -17460,8 +17452,7 @@ updateTopDataStatus();
 updateBaliseViewState();
 renderApiTables();
 initDesktopWheelPassThrough();
-const startupTab = startupTabFromUrl || getStoredActiveTab() || "oppstilling";
-activateTab(startupTab);
+activateTab("oppstilling");
 markSaved("Klar");
 fetchBaliseApi();
 ensureTodayStaticDataLoaded();
