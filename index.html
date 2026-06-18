@@ -13823,6 +13823,54 @@ function buildSdeMoveLearningDiagnostics(){
     reasonCounts.set(key, current);
   });
 
+  const getWrongTrackNeedKey = event => {
+    const snapshot = event?.snapshot || {};
+    return [
+      String(snapshot.vehicle || "").trim(),
+      String(snapshot.fromSlot || "").trim(),
+      String(snapshot.arrivalTrainText || "").trim(),
+      String(snapshot.departureTrainText || "").trim(),
+      String(snapshot.arrivalTime || "").trim()
+    ].join("|");
+  };
+
+  const wrongTrackGroups = new Map();
+  events
+    .filter(event => event?.action === "cancelled" && event?.reasonCode === "wrong_track")
+    .forEach(event=>{
+      const snapshot = event?.snapshot || {};
+      const vehicle = String(snapshot.vehicle || "").trim();
+      const fromSlot = String(snapshot.fromSlot || "").trim();
+      const rejectedSlot = String(snapshot.toSlot || "").trim();
+      if(!vehicle || !fromSlot || !rejectedSlot) return;
+
+      const needKey = getWrongTrackNeedKey(event);
+      const group = wrongTrackGroups.get(needKey) || {
+        vehicle:vehicle || "Ukjent",
+        fromSlot:fromSlot || "Ukjent",
+        arrivalTrainText:String(snapshot.arrivalTrainText || "Ukjent").trim() || "Ukjent",
+        departureTrainText:String(snapshot.departureTrainText || "Ukjent").trim() || "Ukjent",
+        arrivalTime:String(snapshot.arrivalTime || "Ukjent").trim() || "Ukjent",
+        rejectedSlots:new Set(),
+        alternatives:[]
+      };
+
+      group.rejectedSlots.add(rejectedSlot);
+      if(Array.isArray(snapshot.alternatives)){
+        snapshot.alternatives.forEach(alt=>{
+          const slot = String(alt?.slot || "").trim();
+          if(slot && !group.alternatives.includes(slot)) group.alternatives.push(slot);
+        });
+      }
+      wrongTrackGroups.set(needKey, group);
+    });
+
+  const wrongTrackAlternatives = Array.from(wrongTrackGroups.values()).map(group=>{
+    const rejectedSlots = Array.from(group.rejectedSlots);
+    const nextSlot = group.alternatives.find(slot => !group.rejectedSlots.has(slot)) || "Ingen funnet";
+    return {...group, rejectedSlots, nextSlot};
+  });
+
   const normalizeEvent = event => {
     const snapshot = event?.snapshot || {};
     return {
@@ -13850,7 +13898,8 @@ function buildSdeMoveLearningDiagnostics(){
     cancelled:events.filter(event => event?.action === "cancelled").length,
     reasons:Array.from(reasonCounts.values())
       .sort((a,b)=>b.count - a.count || a.reasonLabel.localeCompare(b.reasonLabel, "nb")),
-    latestEvents
+    latestEvents,
+    wrongTrackAlternatives
   };
 }
 
@@ -13883,6 +13932,21 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
     </div>`;
   }).join("");
 
+  const wrongTrackHtml = Array.isArray(diagnostics.wrongTrackAlternatives) && diagnostics.wrongTrackAlternatives.length
+    ? `<div class="sde-learning-diagnostics-item">
+        <strong>Feil spor – alternativ vurdering</strong><br>
+        Kun diagnose – påvirker ikke aktiv SDE-liste, score eller sortering.
+      </div>
+      ${diagnostics.wrongTrackAlternatives.map(group=>`
+        <div class="sde-learning-diagnostics-item">
+          <strong>${escapeHtml(group.vehicle)}</strong> · ${escapeHtml(group.fromSlot)} · Ankomst ${escapeHtml(group.arrivalTrainText)} · Avgang ${escapeHtml(group.departureTrainText)}<br>
+          Avvist spor: ${escapeHtml(group.rejectedSlots.join(", "))}<br>
+          Neste mulige spor: ${escapeHtml(group.nextSlot)}<br>
+          Tidligere avvist for samme behov: ${escapeHtml(group.rejectedSlots.join(", "))}
+        </div>
+      `).join("")}`
+    : "";
+
   return `<div class="sde-learning-diagnostics">
     <div class="sde-shift-section-title">SDE-læring – observasjon <span>${diagnostics.total}</span></div>
     <div class="sde-learning-diagnostics-list">
@@ -13891,6 +13955,7 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
         Totalt: ${escapeHtml(String(diagnostics.total))} · Utført: ${escapeHtml(String(diagnostics.completed))} · Annullert: ${escapeHtml(String(diagnostics.cancelled))}<br>
         Vanlige årsaker: ${escapeHtml(reasonText)}
       </div>
+      ${wrongTrackHtml}
       ${latestHtml}
     </div>
   </div>`;
