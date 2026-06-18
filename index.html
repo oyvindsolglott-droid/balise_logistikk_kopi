@@ -14063,8 +14063,13 @@ function getSdeShiftMoveSortMinutes(row){
 function buildSdeWorkshopMoveNeeds(){
   if(typeof getDropsVerkstedOrders !== "function") return [];
 
+  const followSdeMode = typeof getDropsDecisionMode === "function" && getDropsDecisionMode() === "sde";
+
   return getDropsVerkstedOrders()
-    .filter(order => order && order.dropsApprovedAt)
+    .filter(order => {
+      const isApprovedForSdeWorkshopMove = Boolean(order?.dropsApprovedAt || followSdeMode);
+      return order && isApprovedForSdeWorkshopMove;
+    })
     .map(order => {
       const vehicle = sanitizeVehicleValue(order.vehicle || "");
       const currentSlot = normalizeSlot(getSdeCurrentSlotForVehicle(vehicle));
