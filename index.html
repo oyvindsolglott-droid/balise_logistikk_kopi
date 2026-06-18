@@ -17339,6 +17339,7 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   if(!confirm("Nullstille hele appen?")) return;
 
 
+  const activeTabBeforeReset = getActiveTabName() || getRememberedActiveTab();
   localStorage.removeItem(STORAGE_KEY);
   state=makeDefaultState();
 
@@ -17354,7 +17355,7 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   updateTopDataStatus();
   updateBaliseViewState();
   renderApiTables();
-  activateTab("sporplan");
+  activateTab(activeTabBeforeReset || "sporplan");
   markSaved("Reset");
   fetchBaliseApi();
   ensureTodayStaticDataLoaded();
