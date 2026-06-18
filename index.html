@@ -15976,6 +15976,8 @@ function getDefaultTabForCurrentLevel(){
   return visibleAllowed ? visibleAllowed.dataset.tab : "oppstilling";
 }
 
+const ACTIVE_TAB_SESSION_KEY = "sde_active_tab_session_v1";
+
 function applyAccessLevel(){
   const level = getActiveAccessLevel();
   localStorage.setItem("sde_access_level_v1", level);
@@ -16014,6 +16016,19 @@ function activateTab(name){
 function getActiveTabName(){
   const activeBtn = document.querySelector(".seg.active");
   return activeBtn?.dataset?.tab || getDefaultTabForCurrentLevel();
+}
+
+function rememberActiveTab(name){
+  if(!name) return;
+  sessionStorage.setItem(ACTIVE_TAB_SESSION_KEY, name);
+}
+
+function getRememberedActiveTab(){
+  const stored = String(sessionStorage.getItem(ACTIVE_TAB_SESSION_KEY) || "").trim();
+  if(!stored) return "";
+  const exists = Array.from(document.querySelectorAll(".seg")).some(btn => btn.dataset.tab === stored);
+  if(exists) return stored;
+  return stored === "hjelp" ? stored : "";
 }
 
 function getStartupTabFromUrl(){
@@ -16461,8 +16476,14 @@ async function fetchBaliseApi(){
   }
 }
 
-document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>activateTab(btn.dataset.tab)));
-document.getElementById("guideTopBtn").addEventListener("click",()=>activateTab("hjelp"));
+document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>{
+  rememberActiveTab(btn.dataset.tab);
+  activateTab(btn.dataset.tab);
+}));
+document.getElementById("guideTopBtn").addEventListener("click",()=>{
+  rememberActiveTab("hjelp");
+  activateTab("hjelp");
+});
 const accessLevelSelect = document.getElementById("accessLevelSelect");
 if(accessLevelSelect){
   accessLevelSelect.value = localStorage.getItem("sde_access_level_v1") || "0";
@@ -16471,9 +16492,6 @@ if(accessLevelSelect){
 }
 
 const startupTabFromUrl = getStartupTabFromUrl();
-if(startupTabFromUrl){
-  setTimeout(() => activateTab(startupTabFromUrl), 0);
-}
 
 const DROPS_VERKSTED_KEY = "drops_verksted_bestillinger_v1";
 const DROPS_VERKSTED_LOGG_KEY = "drops_verksted_logg_v1";
@@ -17452,7 +17470,8 @@ updateTopDataStatus();
 updateBaliseViewState();
 renderApiTables();
 initDesktopWheelPassThrough();
-activateTab("oppstilling");
+const rememberedStartupTab = startupTabFromUrl || getRememberedActiveTab() || "oppstilling";
+activateTab(rememberedStartupTab);
 markSaved("Klar");
 fetchBaliseApi();
 ensureTodayStaticDataLoaded();
