@@ -13969,14 +13969,15 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
   const wrongTrackHtml = Array.isArray(diagnostics.wrongTrackAlternatives) && diagnostics.wrongTrackAlternatives.length
     ? `<div class="sde-learning-diagnostics-item">
         <strong>Feil spor – alternativ vurdering</strong><br>
-        Kun diagnose – påvirker ikke aktiv SDE-liste, score eller sortering.
+        Kun diagnose – påvirker ikke aktiv SDE-liste, score eller sortering.<br>
+        Alternativene er hentet fra det opprinnelige SDE-forslaget da kortet ble annullert. Nåvurdering viser bare Sporplan akkurat nå, ikke operativ godkjenning.
       </div>
       ${diagnostics.wrongTrackAlternatives.map(group=>`
         <div class="sde-learning-diagnostics-item">
           <strong>${escapeHtml(group.vehicle)}</strong> · ${escapeHtml(group.fromSlot)} · Ankomst ${escapeHtml(group.arrivalTrainText)} · Avgang ${escapeHtml(group.departureTrainText)}<br>
           Avvist spor: ${escapeHtml(group.rejectedSlots.join(", "))}<br>
-          Neste mulige spor: ${escapeHtml(group.nextSlot)}<br>
-          Nåvurdering: ${escapeHtml(group.nextSlotAssessmentText)}<br>
+          Neste ikke-avviste alternativ fra opprinnelig forslag: ${escapeHtml(group.nextSlot)}<br>
+          Nåstatus i Sporplan: ${escapeHtml(group.nextSlotAssessmentText)}<br>
           ${escapeHtml(group.nextSlotOperationalCaveatText)}<br>
           Tidligere avvist for samme behov: ${escapeHtml(group.rejectedSlots.join(", "))}
         </div>
