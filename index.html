@@ -4472,6 +4472,7 @@ button{padding:12px 12px}
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
 <button class="guide-top-btn" id="guideTopBtn" type="button">Brukerveiledning</button>
+<button class="guide-top-btn" id="sdeLearningTopBtn" type="button" aria-pressed="false">SDE-selvlæring</button>
 </div>
 
 
@@ -15482,6 +15483,7 @@ function getSdeTomorrowJsonPendingText(){
 
 
 let sdeShiftDetailsExpanded = false;
+let sdeLearningDiagnosticsVisible = false;
 
 function toggleSdeShiftDetails(){
   sdeShiftDetailsExpanded = !sdeShiftDetailsExpanded;
@@ -15533,7 +15535,9 @@ function renderSdeSkiftebevegelser(){
   const data = getSdeShiftShowcaseData();
   const scoreClass = getSdeShiftScoreClass(data.score);
   const scoreExplanationHtml = buildSdeShiftScoreExplanationHtml(data);
-  const learningDiagnosticsHtml = buildSdeMoveLearningDiagnosticsHtml(buildSdeMoveLearningDiagnostics());
+  const learningDiagnosticsHtml = sdeLearningDiagnosticsVisible
+    ? buildSdeMoveLearningDiagnosticsHtml(buildSdeMoveLearningDiagnostics())
+    : "";
   const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 12);
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
   const sdeResetSummary = getSdeResettableSummary();
@@ -16684,6 +16688,13 @@ document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>
 document.getElementById("guideTopBtn").addEventListener("click",()=>{
   rememberActiveTab("hjelp");
   activateTab("hjelp");
+});
+document.getElementById("sdeLearningTopBtn").addEventListener("click",()=>{
+  sdeLearningDiagnosticsVisible = !sdeLearningDiagnosticsVisible;
+  document.getElementById("sdeLearningTopBtn").setAttribute("aria-pressed", sdeLearningDiagnosticsVisible ? "true" : "false");
+  rememberActiveTab("sdeSkiftebevegelser");
+  activateTab("sdeSkiftebevegelser");
+  renderSdeSkiftebevegelser();
 });
 const accessLevelSelect = document.getElementById("accessLevelSelect");
 if(accessLevelSelect){
