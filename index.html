@@ -8768,7 +8768,7 @@ function buildSporplan(){
         html += `<span class="slot-bottom mat" title="${escapeHtml(invalidVehicleMessage || duplicateVehicleMessage)}">${matText}</span>`;
       }
 
-      if(planMarker?.from?.length){
+      if(filled && planMarker?.from?.length){
         html += `<span class="slot-plan-badge plan-fra">PLAN FRA: ${escapeHtml(planMarker.from.join(", "))}</span>`;
       }
 
