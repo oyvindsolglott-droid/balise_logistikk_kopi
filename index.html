@@ -14112,6 +14112,70 @@ function getSdeWrongTrackReplacementNeedKeyFromEvent(event){
   );
 }
 
+function getFreshSdeWrongTrackReplacementAlternative(baseRow, rejectedSlots, reservedTargetSlotsByNeedKey, needKey){
+  if(!baseRow || baseRow.source !== "Ankomstbasert parkeringsbehov" || baseRow.isWorkshopMoveNeed || baseRow.isSpor3ProductionNeed){
+    return null;
+  }
+
+  const extraReservedSlots = new Set();
+  const maxAttempts = getSdeArrivalParkingCandidateSlots(baseRow).length;
+
+  for(let attempt = 0; attempt < maxAttempts; attempt += 1){
+    const reservedSlots = new Map();
+
+    rejectedSlots.forEach(slot=>{
+      const normalizedSlot = normalizeSlot(slot);
+      if(normalizedSlot) reservedSlots.set(normalizedSlot, {need:baseRow, recommendation:{slot:normalizedSlot}});
+    });
+
+    reservedTargetSlotsByNeedKey.forEach((needKeys, slot)=>{
+      const normalizedSlot = normalizeSlot(slot);
+      if(!normalizedSlot) return;
+      if(Array.from(needKeys || []).some(reservedNeedKey => reservedNeedKey !== needKey)){
+        reservedSlots.set(normalizedSlot, {need:null, recommendation:{slot:normalizedSlot}});
+      }
+    });
+
+    extraReservedSlots.forEach(slot=>{
+      const normalizedSlot = normalizeSlot(slot);
+      if(normalizedSlot) reservedSlots.set(normalizedSlot, {need:baseRow, recommendation:{slot:normalizedSlot}});
+    });
+
+    const recommendation = getSdeArrivalParkingRecommendation(baseRow, reservedSlots);
+    const slot = normalizeSlot(recommendation?.slot);
+    if(!slot) return null;
+
+    if(rejectedSlots.has(slot) || getSdeVehicleInSlot(slot)){
+      extraReservedSlots.add(slot);
+      continue;
+    }
+
+    if(Array.from(reservedTargetSlotsByNeedKey.get(slot) || []).some(reservedNeedKey => reservedNeedKey !== needKey)){
+      extraReservedSlots.add(slot);
+      continue;
+    }
+
+    const adaptiveRow = {
+      ...baseRow,
+      recommendedSlot:slot,
+      toSlot:slot
+    };
+    if(isSdeMoveActioned(adaptiveRow)){
+      extraReservedSlots.add(slot);
+      continue;
+    }
+
+    return {
+      slot,
+      score:recommendation.score,
+      reason:recommendation.reason,
+      alternatives:Array.isArray(recommendation.alternatives) ? recommendation.alternatives : []
+    };
+  }
+
+  return null;
+}
+
 function buildSdeWrongTrackReplacementMoves(baseMoves){
   const moves = Array.isArray(baseMoves) ? baseMoves : [];
   const learningEvents = Array.isArray(state.sdeMoveLearningLog)
@@ -14192,9 +14256,7 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
     if(!baseRow) return;
 
     const snapshot = group.snapshot || {};
-    if(!group.alternatives.length) return;
-
-    const nextAlternative = group.alternatives.find(alt=>{
+    let nextAlternative = group.alternatives.find(alt=>{
       const slot = normalizeSlot(alt?.slot);
       if(!slot || group.rejectedSlots.has(slot)) return false;
       if(getSdeVehicleInSlot(slot)) return false;
@@ -14214,11 +14276,17 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
       };
       return !isSdeMoveActioned(adaptiveRow);
     });
+    let remainingAlternativeSource = group.alternatives;
+
+    if(!nextAlternative){
+      nextAlternative = getFreshSdeWrongTrackReplacementAlternative(baseRow, group.rejectedSlots, reservedTargetSlotsByNeedKey, needKey);
+      remainingAlternativeSource = Array.isArray(nextAlternative?.alternatives) ? nextAlternative.alternatives : [];
+    }
 
     if(!nextAlternative) return;
 
     const nextSlot = normalizeSlot(nextAlternative.slot);
-    const remainingAlternatives = group.alternatives
+    const remainingAlternatives = remainingAlternativeSource
       .filter(alt=>{
         const slot = normalizeSlot(alt?.slot);
         return slot && slot !== nextSlot && !group.rejectedSlots.has(slot);
