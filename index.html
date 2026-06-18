@@ -13293,7 +13293,7 @@ function getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures, t
 function buildSdeShiftScoreExplanationHtml(data){
   if(!data) return "";
 
-  const moves = Array.isArray(data.moves) ? data.moves : [];
+  const moves = Array.isArray(data.scoreMoves) ? data.scoreMoves : Array.isArray(data.moves) ? data.moves : [];
   const lowConfidenceCount = moves.filter(row => row.recommendationConfidence === "low").length;
   const mediumConfidenceCount = moves.filter(row => row.recommendationConfidence === "medium").length;
   const highConfidenceCount = moves.filter(row => row.recommendationConfidence === "high").length;
@@ -14080,6 +14080,165 @@ function handleSdeShiftMoveAction(encodedKey, action){
   alert("Ukjent SDE-kvittering.");
 }
 
+function getSdeWrongTrackReplacementNeedKeyFromParts(vehicle, fromSlot, arrivalTrainText, departureTrainText, arrivalTime){
+  return [
+    String(vehicle || "").trim(),
+    String(fromSlot || "").trim(),
+    String(arrivalTrainText || "").trim(),
+    String(departureTrainText || "").trim(),
+    String(arrivalTime || "").trim()
+  ].join("|");
+}
+
+function getSdeWrongTrackReplacementNeedKeyFromMove(row){
+  if(!row) return "";
+  return getSdeWrongTrackReplacementNeedKeyFromParts(
+    row.vehicle,
+    row.fromSlot || row.arrivalSlot,
+    row.arrivalTrainText,
+    row.departureTrainText,
+    row.arrivalTime
+  );
+}
+
+function getSdeWrongTrackReplacementNeedKeyFromEvent(event){
+  const snapshot = event?.snapshot || {};
+  return getSdeWrongTrackReplacementNeedKeyFromParts(
+    snapshot.vehicle,
+    snapshot.fromSlot,
+    snapshot.arrivalTrainText,
+    snapshot.departureTrainText,
+    snapshot.arrivalTime
+  );
+}
+
+function buildSdeWrongTrackReplacementMoves(baseMoves){
+  const moves = Array.isArray(baseMoves) ? baseMoves : [];
+  const learningEvents = Array.isArray(state.sdeMoveLearningLog)
+    ? state.sdeMoveLearningLog.filter(Boolean)
+    : [];
+  const wrongTrackEvents = learningEvents.filter(event => event?.action === "cancelled" && event?.reasonCode === "wrong_track");
+  if(!wrongTrackEvents.length) return [];
+
+  const completedNeedKeys = new Set();
+  learningEvents
+    .filter(event => event?.action === "completed")
+    .forEach(event=>{
+      const needKey = getSdeWrongTrackReplacementNeedKeyFromEvent(event);
+      if(needKey) completedNeedKeys.add(needKey);
+    });
+
+  Object.values(state.sdeMoveActions || {})
+    .filter(action => action?.action === "completed")
+    .forEach(action=>{
+      const snapshot = action?.snapshot || {};
+      const needKey = getSdeWrongTrackReplacementNeedKeyFromParts(
+        snapshot.vehicle || action.vehicle,
+        snapshot.fromSlot || action.fromSlot,
+        snapshot.arrivalTrainText,
+        snapshot.departureTrainText,
+        snapshot.arrivalTime
+      );
+      if(needKey) completedNeedKeys.add(needKey);
+    });
+
+  const baseMovesByNeedKey = new Map();
+  moves.forEach(row=>{
+    const needKey = getSdeWrongTrackReplacementNeedKeyFromMove(row);
+    if(needKey && !baseMovesByNeedKey.has(needKey)) baseMovesByNeedKey.set(needKey, row);
+  });
+
+  const groups = new Map();
+  wrongTrackEvents.forEach(event=>{
+    const snapshot = event?.snapshot || {};
+    const needKey = getSdeWrongTrackReplacementNeedKeyFromEvent(event);
+    const rejectedSlot = normalizeSlot(snapshot.toSlot);
+    if(!needKey || !rejectedSlot) return;
+
+    const group = groups.get(needKey) || {
+      event,
+      snapshot,
+      rejectedSlots:new Set(),
+      alternatives:[]
+    };
+    group.rejectedSlots.add(rejectedSlot);
+
+    if(Array.isArray(snapshot.alternatives)){
+      snapshot.alternatives.forEach(alt=>{
+        const slot = normalizeSlot(alt?.slot);
+        if(slot && !group.alternatives.some(existing => normalizeSlot(existing?.slot) === slot)){
+          group.alternatives.push({...alt, slot});
+        }
+      });
+    }
+
+    groups.set(needKey, group);
+  });
+
+  const replacements = [];
+  groups.forEach((group, needKey)=>{
+    if(completedNeedKeys.has(needKey)) return;
+
+    const baseRow = baseMovesByNeedKey.get(needKey);
+    if(!baseRow) return;
+
+    const snapshot = group.snapshot || {};
+    if(!group.alternatives.length) return;
+
+    const nextAlternative = group.alternatives.find(alt=>{
+      const slot = normalizeSlot(alt?.slot);
+      if(!slot || group.rejectedSlots.has(slot)) return false;
+      if(getSdeVehicleInSlot(slot)) return false;
+
+      const duplicateOrdinaryMove = moves.some(row =>
+        getSdeWrongTrackReplacementNeedKeyFromMove(row) === needKey &&
+        normalizeSlot(row.recommendedSlot || row.toSlot) === slot &&
+        !isSdeMoveActioned(row)
+      );
+      if(duplicateOrdinaryMove) return false;
+
+      const adaptiveRow = {
+        ...baseRow,
+        recommendedSlot:slot,
+        toSlot:slot
+      };
+      return !isSdeMoveActioned(adaptiveRow);
+    });
+
+    if(!nextAlternative) return;
+
+    const nextSlot = normalizeSlot(nextAlternative.slot);
+    const remainingAlternatives = group.alternatives
+      .filter(alt=>{
+        const slot = normalizeSlot(alt?.slot);
+        return slot && slot !== nextSlot && !group.rejectedSlots.has(slot);
+      })
+      .map(alt=>({
+        ...alt,
+        slot:normalizeSlot(alt.slot)
+      }));
+
+    const replacement = {
+      ...baseRow,
+      fromSlot:normalizeSlot(baseRow.fromSlot || baseRow.arrivalSlot) || "Ukjent",
+      arrivalSlot:normalizeSlot(baseRow.arrivalSlot || baseRow.fromSlot) || "",
+      recommendedSlot:nextSlot,
+      toSlot:nextSlot,
+      recommendationConfidence:baseRow.recommendationConfidence === "medium" ? "medium" : "low",
+      recommendationScore:nextAlternative.score ?? baseRow.recommendationScore ?? snapshot.recommendationScore ?? "",
+      recommendationReason:"Adaptivt forslag etter Feil spor. Basert på opprinnelig SDE-forslag. Kontroller operativt før utføring.",
+      recommendationAlternatives:remainingAlternatives,
+      parkingStrategy:"Adaptivt forslag etter Feil spor",
+      parkingInstruction:"Adaptivt forslag etter Feil spor. Kontroller operativt før utføring.",
+      isWrongTrackReplacementMove:true
+    };
+
+    if(!isSdeMoveActioned(replacement)) replacements.push(replacement);
+  });
+
+  return replacements;
+}
+
 
 function isSdeFlexibleUnknownParkingNeed(row){
   if(!row) return false;
@@ -14383,7 +14542,7 @@ function getSdeShiftShowcaseData(){
   ];
   const filteredPastDepartureNeeds = rawNeeds.filter(row => isSdePastDepartureMoveForCurrentDay(row));
   const needs = rawNeeds.filter(row => !isSdePastDepartureMoveForCurrentDay(row));
-  const moves = needs
+  const baseMoves = needs
     .filter(row=>row && row.recommendedSlot)
     .map(row=>{
       const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
@@ -14422,6 +14581,8 @@ function getSdeShiftShowcaseData(){
 
       return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
     });
+  const adaptiveMoves = buildSdeWrongTrackReplacementMoves(baseMoves);
+  const moves = [...adaptiveMoves, ...baseMoves];
 
   const unresolvedCandidates = needs.filter(row =>
     !row?.recommendedSlot ||
@@ -14437,22 +14598,25 @@ function getSdeShiftShowcaseData(){
   );
 
   const securedDepartures = new Set(
-    moves
+    baseMoves
       .filter(row=>row.nextDepartureTrain)
       .map(row=>`${row.nextDepartureTrain}/${row.nextDeparturePart || ""}`)
   );
 
-  const score = getSdeShiftShowcaseScore(needs, moves, unresolved, securedDepartures.size, uniqueDepartures.size);
+  const score = getSdeShiftShowcaseScore(needs, baseMoves, unresolved, securedDepartures.size, uniqueDepartures.size);
 
   return {
     score,
     needs,
     moves,
+    scoreMoves:baseMoves,
+    baseMoveCount:baseMoves.length,
+    adaptiveMoveCount:adaptiveMoves.length,
     unresolved,
     flexibleUnknownParking,
     filteredPastDepartureNeeds,
     totalArrivals:needs.length,
-    solvedArrivals:moves.length,
+    solvedArrivals:baseMoves.length,
     totalDepartures:uniqueDepartures.size,
     securedDepartures:securedDepartures.size,
     unresolvedCount:unresolved.length,
@@ -15911,7 +16075,7 @@ function renderSdeSkiftebevegelser(){
         <div class="sde-shift-score-number"><strong>${data.score}</strong><span>/ 100</span></div>
       </div>
       <div class="sde-shift-kpis">
-        <div class="sde-shift-kpi"><strong>${data.moves.length}</strong><span>foreslåtte skiftebevegelser</span></div>
+        <div class="sde-shift-kpi"><strong>${data.baseMoveCount ?? data.moves.length}</strong><span>foreslåtte skiftebevegelser</span></div>
         <div class="sde-shift-kpi"><strong>${data.solvedArrivals}/${data.totalArrivals}</strong><span>ankomster ivaretatt</span></div>
         <div class="sde-shift-kpi"><strong>${data.securedDepartures}/${data.totalDepartures}</strong><span>avganger koblet</span></div>
         <div class="sde-shift-kpi"><strong>${data.unresolvedCount}</strong><span>uløst / må avklares</span></div>
@@ -15924,7 +16088,7 @@ function renderSdeSkiftebevegelser(){
       <span class="sde-shift-section-title-main">Foreslåtte skiftebevegelser</span>
       <button class="sde-shift-reset-btn" type="button" onclick="handleSdeResetForDay()" title="${escapeHtml(sdeResetTitle)}"${sdeResetDisabled}>⟲ Nullstill SDE</button>
       <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
-      <span class="sde-shift-section-title-count">${data.moves.length} forslag</span>
+      <span class="sde-shift-section-title-count">${data.baseMoveCount ?? data.moves.length} forslag</span>
     </div>
     <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
     ${pastDepartureDiagnosticsHtml}
