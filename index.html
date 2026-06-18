@@ -13782,6 +13782,94 @@ function getSdeMoveLearningReason(actionType){
   };
 }
 
+function buildSdeMoveLearningDiagnostics(){
+  const events = Array.isArray(state.sdeMoveLearningLog)
+    ? state.sdeMoveLearningLog.filter(Boolean)
+    : [];
+  const reasonCounts = new Map();
+
+  events.forEach(event=>{
+    const reasonCode = String(event.reasonCode || "no_reason").trim() || "no_reason";
+    const reasonLabel = String(event.reasonLabel || "Ingen årsak oppgitt").trim() || "Ingen årsak oppgitt";
+    const key = `${reasonCode}|${reasonLabel}`;
+    const current = reasonCounts.get(key) || {reasonCode, reasonLabel, count:0};
+    current.count += 1;
+    reasonCounts.set(key, current);
+  });
+
+  const normalizeEvent = event => {
+    const snapshot = event?.snapshot || {};
+    return {
+      vehicle:String(snapshot.vehicle || "Ukjent").trim() || "Ukjent",
+      fromSlot:String(snapshot.fromSlot || "Ukjent").trim() || "Ukjent",
+      toSlot:String(snapshot.toSlot || "Ukjent").trim() || "Ukjent",
+      action:String(event?.action || "Ukjent").trim() || "Ukjent",
+      reasonLabel:String(event?.reasonLabel || "Ingen årsak oppgitt").trim() || "Ingen årsak oppgitt",
+      recommendationScore:snapshot.recommendationScore ?? "Ukjent",
+      arrivalTrainText:String(snapshot.arrivalTrainText || "Ukjent").trim() || "Ukjent",
+      departureTrainText:String(snapshot.departureTrainText || "Ukjent").trim() || "Ukjent",
+      time:String(event?.time || "Ukjent").trim() || "Ukjent"
+    };
+  };
+
+  const latestEvents = events
+    .slice()
+    .sort((a,b)=>String(b?.time || "").localeCompare(String(a?.time || "")))
+    .slice(0, 5)
+    .map(normalizeEvent);
+
+  return {
+    total:events.length,
+    completed:events.filter(event => event?.action === "completed").length,
+    cancelled:events.filter(event => event?.action === "cancelled").length,
+    reasons:Array.from(reasonCounts.values())
+      .sort((a,b)=>b.count - a.count || a.reasonLabel.localeCompare(b.reasonLabel, "nb")),
+    latestEvents
+  };
+}
+
+function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
+  if(!diagnostics || !diagnostics.total){
+    return `<div class="sde-shift-unresolved">
+      <div class="sde-shift-section-title">SDE-læring – observasjon <span>0</span></div>
+      <div class="sde-shift-unresolved-list">
+        <div class="sde-shift-unresolved-item">Ingen læringshendelser registrert ennå.</div>
+      </div>
+    </div>`;
+  }
+
+  const reasonText = diagnostics.reasons.length
+    ? diagnostics.reasons.map(reason =>
+        `${reason.reasonLabel} (${reason.reasonCode}): ${reason.count}`
+      ).join(" · ")
+    : "Ingen årsaker registrert.";
+
+  const latestHtml = diagnostics.latestEvents.map(event=>{
+    const actionLabel = event.action === "completed"
+      ? "Utført"
+      : event.action === "cancelled"
+        ? "Annullert"
+        : event.action;
+    const route = `${event.fromSlot} → ${event.toSlot}`;
+    return `<div class="sde-shift-unresolved-item">
+      <strong>${escapeHtml(event.vehicle)}</strong> · ${escapeHtml(route)} · ${escapeHtml(actionLabel)} · ${escapeHtml(event.reasonLabel)}<br>
+      Score ${escapeHtml(String(event.recommendationScore))} · Ankomst ${escapeHtml(event.arrivalTrainText)} · Avgang ${escapeHtml(event.departureTrainText)} · ${escapeHtml(event.time)}
+    </div>`;
+  }).join("");
+
+  return `<div class="sde-shift-unresolved">
+    <div class="sde-shift-section-title">SDE-læring – observasjon <span>${diagnostics.total}</span></div>
+    <div class="sde-shift-unresolved-list">
+      <div class="sde-shift-unresolved-item">
+        Dette er kun observasjon fra Utført/Annullert. Brukes ikke til motor, score eller sortering ennå.<br>
+        Totalt: ${escapeHtml(String(diagnostics.total))} · Utført: ${escapeHtml(String(diagnostics.completed))} · Annullert: ${escapeHtml(String(diagnostics.cancelled))}<br>
+        Vanlige årsaker: ${escapeHtml(reasonText)}
+      </div>
+      ${latestHtml}
+    </div>
+  </div>`;
+}
+
 function handleSdeShiftMoveAction(encodedKey, action){
   const key = decodeURIComponent(String(encodedKey || ""));
   const actionType = String(action || "").trim();
@@ -15421,6 +15509,7 @@ function renderSdeSkiftebevegelser(){
   const data = getSdeShiftShowcaseData();
   const scoreClass = getSdeShiftScoreClass(data.score);
   const scoreExplanationHtml = buildSdeShiftScoreExplanationHtml(data);
+  const learningDiagnosticsHtml = buildSdeMoveLearningDiagnosticsHtml(buildSdeMoveLearningDiagnostics());
   const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 12);
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
   const sdeResetSummary = getSdeResettableSummary();
@@ -15695,6 +15784,7 @@ function renderSdeSkiftebevegelser(){
       </div>
     </div>
     ${scoreExplanationHtml}
+    ${learningDiagnosticsHtml}
 
     <div class="sde-shift-section-title">
       <span class="sde-shift-section-title-main">Foreslåtte skiftebevegelser</span>
