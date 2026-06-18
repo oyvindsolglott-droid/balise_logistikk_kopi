@@ -14143,9 +14143,18 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
     });
 
   const baseMovesByNeedKey = new Map();
+  const reservedTargetSlotsByNeedKey = new Map();
   moves.forEach(row=>{
     const needKey = getSdeWrongTrackReplacementNeedKeyFromMove(row);
     if(needKey && !baseMovesByNeedKey.has(needKey)) baseMovesByNeedKey.set(needKey, row);
+    if(!needKey || isSdeMoveActioned(row)) return;
+
+    const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+    if(!targetSlot) return;
+
+    const needKeys = reservedTargetSlotsByNeedKey.get(targetSlot) || new Set();
+    needKeys.add(needKey);
+    reservedTargetSlotsByNeedKey.set(targetSlot, needKeys);
   });
 
   const groups = new Map();
@@ -14189,6 +14198,7 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
       const slot = normalizeSlot(alt?.slot);
       if(!slot || group.rejectedSlots.has(slot)) return false;
       if(getSdeVehicleInSlot(slot)) return false;
+      if(Array.from(reservedTargetSlotsByNeedKey.get(slot) || []).some(reservedNeedKey => reservedNeedKey !== needKey)) return false;
 
       const duplicateOrdinaryMove = moves.some(row =>
         getSdeWrongTrackReplacementNeedKeyFromMove(row) === needKey &&
@@ -14233,7 +14243,13 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
       isWrongTrackReplacementMove:true
     };
 
-    if(!isSdeMoveActioned(replacement)) replacements.push(replacement);
+    if(!isSdeMoveActioned(replacement)){
+      replacements.push(replacement);
+
+      const reservedNeedKeys = reservedTargetSlotsByNeedKey.get(nextSlot) || new Set();
+      reservedNeedKeys.add(needKey);
+      reservedTargetSlotsByNeedKey.set(nextSlot, reservedNeedKeys);
+    }
   });
 
   return replacements;
