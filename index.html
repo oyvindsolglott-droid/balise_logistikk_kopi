@@ -2858,6 +2858,30 @@ button{padding:12px 12px}
   line-height:1.35;
 }
 
+.sde-learning-diagnostics{
+  margin-top:18px;
+  border:1px solid rgba(148,163,184,.24);
+  border-radius:22px;
+  padding:16px;
+  background:rgba(15,23,42,.24);
+}
+
+.sde-learning-diagnostics-list{
+  display:grid;
+  gap:8px;
+  margin-top:10px;
+}
+
+.sde-learning-diagnostics-item{
+  border-radius:16px;
+  padding:12px;
+  background:rgba(15,23,42,.28);
+  border:1px solid rgba(148,163,184,.18);
+  color:#dbe4ef;
+  font-size:13px;
+  line-height:1.35;
+}
+
 .sde-shift-empty{
   border:1px dashed rgba(255,255,255,.20);
   border-radius:22px;
@@ -13830,10 +13854,10 @@ function buildSdeMoveLearningDiagnostics(){
 
 function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
   if(!diagnostics || !diagnostics.total){
-    return `<div class="sde-shift-unresolved">
+    return `<div class="sde-learning-diagnostics">
       <div class="sde-shift-section-title">SDE-læring – observasjon <span>0</span></div>
-      <div class="sde-shift-unresolved-list">
-        <div class="sde-shift-unresolved-item">Ingen læringshendelser registrert ennå.</div>
+      <div class="sde-learning-diagnostics-list">
+        <div class="sde-learning-diagnostics-item">Ingen læringshendelser registrert ennå.</div>
       </div>
     </div>`;
   }
@@ -13851,16 +13875,16 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
         ? "Annullert"
         : event.action;
     const route = `${event.fromSlot} → ${event.toSlot}`;
-    return `<div class="sde-shift-unresolved-item">
+    return `<div class="sde-learning-diagnostics-item">
       <strong>${escapeHtml(event.vehicle)}</strong> · ${escapeHtml(route)} · ${escapeHtml(actionLabel)} · ${escapeHtml(event.reasonLabel)}<br>
       Score ${escapeHtml(String(event.recommendationScore))} · Ankomst ${escapeHtml(event.arrivalTrainText)} · Avgang ${escapeHtml(event.departureTrainText)} · ${escapeHtml(event.time)}
     </div>`;
   }).join("");
 
-  return `<div class="sde-shift-unresolved">
+  return `<div class="sde-learning-diagnostics">
     <div class="sde-shift-section-title">SDE-læring – observasjon <span>${diagnostics.total}</span></div>
-    <div class="sde-shift-unresolved-list">
-      <div class="sde-shift-unresolved-item">
+    <div class="sde-learning-diagnostics-list">
+      <div class="sde-learning-diagnostics-item">
         Dette er kun observasjon fra Utført/Annullert. Brukes ikke til motor, score eller sortering ennå.<br>
         Totalt: ${escapeHtml(String(diagnostics.total))} · Utført: ${escapeHtml(String(diagnostics.completed))} · Annullert: ${escapeHtml(String(diagnostics.cancelled))}<br>
         Vanlige årsaker: ${escapeHtml(reasonText)}
