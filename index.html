@@ -13713,7 +13713,7 @@ function ensureSdeMoveLearningLog(){
   return state.sdeMoveLearningLog;
 }
 
-function recordSdeMoveLearningEvent(key, action, row, time){
+function recordSdeMoveLearningEvent(key, action, row, time, reason){
   const log = ensureSdeMoveLearningLog();
   const cleanKey = String(key || "");
   const actionType = String(action || "").trim();
@@ -13730,8 +13730,58 @@ function recordSdeMoveLearningEvent(key, action, row, time){
     key:cleanKey,
     action:actionType,
     time:time || new Date().toISOString(),
+    reasonCode:reason?.reasonCode || "no_reason",
+    reasonLabel:reason?.reasonLabel || "Ingen årsak oppgitt",
+    reasonText:reason?.reasonText || "",
     snapshot:getSdeMoveActionSnapshot(row)
   });
+}
+
+function getSdeMoveLearningReason(actionType){
+  const completedReasons = [
+    {code:"proposal_fit", label:"Forslag passet"},
+    {code:"right_window", label:"Riktig skiftevindu"},
+    {code:"freed_platform", label:"Frigjorde plattform"},
+    {code:"freed_workshop_track", label:"Frigjorde verkstedspor"},
+    {code:"secured_departure", label:"Sikret avgang"},
+    {code:"other", label:"Annet"}
+  ];
+  const cancelledReasons = [
+    {code:"wrong_track", label:"Feil spor"},
+    {code:"wrong_time", label:"Feil tidspunkt"},
+    {code:"vehicle_unavailable", label:"Kjøretøy ikke tilgjengelig"},
+    {code:"blocks_other_move", label:"Blokkerer annen bevegelse"},
+    {code:"workshop_status_changed", label:"Verkstedstatus endret"},
+    {code:"drops_chose_other", label:"DROPS valgte annet"},
+    {code:"other", label:"Annet"}
+  ];
+  const reasons = actionType === "completed" ? completedReasons : cancelledReasons;
+  const fallback = {
+    reasonCode:"no_reason",
+    reasonLabel:"Ingen årsak oppgitt",
+    reasonText:""
+  };
+  const title = actionType === "completed" ? "Hvorfor ble SDE-forslaget utført?" : "Hvorfor ble SDE-forslaget annullert?";
+  const answer = window.prompt(
+    `${title}\n\n` +
+    reasons.map((reason,index)=>`${index + 1} ${reason.label}`).join("\n") +
+    `\n\nSkriv nummer, eventuelt med fritekst etterpå.`
+  );
+  const text = String(answer || "").trim();
+  if(!text) return fallback;
+
+  const match = text.match(/^(\d+)(?:\s+(.*))?$/);
+  if(!match) return fallback;
+
+  const index = Number(match[1]) - 1;
+  const reason = reasons[index];
+  if(!reason) return fallback;
+
+  return {
+    reasonCode:reason.code,
+    reasonLabel:reason.label,
+    reasonText:reason.code === "other" ? String(match[2] || "").trim() : ""
+  };
 }
 
 function handleSdeShiftMoveAction(encodedKey, action){
@@ -13783,7 +13833,8 @@ function handleSdeShiftMoveAction(encodedKey, action){
       time:actionTime,
       snapshot:getSdeMoveActionSnapshot(row)
     };
-    recordSdeMoveLearningEvent(key, "completed", row, actionTime);
+    const learningReason = getSdeMoveLearningReason("completed");
+    recordSdeMoveLearningEvent(key, "completed", row, actionTime, learningReason);
     persist(true);
     refreshSdeAfterMoveAction();
     return;
@@ -13801,7 +13852,8 @@ function handleSdeShiftMoveAction(encodedKey, action){
       time:actionTime,
       snapshot:getSdeMoveActionSnapshot(row)
     };
-    recordSdeMoveLearningEvent(key, "cancelled", row, actionTime);
+    const learningReason = getSdeMoveLearningReason("cancelled");
+    recordSdeMoveLearningEvent(key, "cancelled", row, actionTime, learningReason);
     persist(true);
     refreshSdeAfterMoveAction();
     return;
