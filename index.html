@@ -4474,6 +4474,7 @@ button{padding:12px 12px}
 <button class="guide-top-btn" id="guideTopBtn" type="button">Brukerveiledning</button>
 <button class="guide-top-btn" id="sdeLearningTopBtn" type="button" aria-pressed="false">SDE-selvlæring</button>
 </div>
+<div id="sdeLearningTopPanel"></div>
 
 
 
@@ -15540,9 +15541,7 @@ function renderSdeSkiftebevegelser(){
   const data = getSdeShiftShowcaseData();
   const scoreClass = getSdeShiftScoreClass(data.score);
   const scoreExplanationHtml = buildSdeShiftScoreExplanationHtml(data);
-  const learningDiagnosticsHtml = sdeLearningDiagnosticsVisible
-    ? buildSdeMoveLearningDiagnosticsHtml(buildSdeMoveLearningDiagnostics())
-    : "";
+  const learningDiagnosticsHtml = "";
   const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 12);
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
   const sdeResetSummary = getSdeResettableSummary();
@@ -16697,9 +16696,12 @@ document.getElementById("guideTopBtn").addEventListener("click",()=>{
 document.getElementById("sdeLearningTopBtn").addEventListener("click",()=>{
   sdeLearningDiagnosticsVisible = !sdeLearningDiagnosticsVisible;
   document.getElementById("sdeLearningTopBtn").setAttribute("aria-pressed", sdeLearningDiagnosticsVisible ? "true" : "false");
-  rememberActiveTab("sdeSkiftebevegelser");
-  activateTab("sdeSkiftebevegelser");
-  renderSdeSkiftebevegelser();
+  const panel = document.getElementById("sdeLearningTopPanel");
+  if(panel){
+    panel.innerHTML = sdeLearningDiagnosticsVisible
+      ? buildSdeMoveLearningDiagnosticsHtml(buildSdeMoveLearningDiagnostics())
+      : "";
+  }
 });
 const accessLevelSelect = document.getElementById("accessLevelSelect");
 if(accessLevelSelect){
