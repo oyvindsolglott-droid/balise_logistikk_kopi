@@ -14035,6 +14035,80 @@ function getSdeLearningEventReasonLabelText(event){
   return labels.length ? labels.join(", ") : "Ingen årsak oppgitt";
 }
 
+function buildSdeMoveLearningShadowPreview(events){
+  const cleanEvents = Array.isArray(events) ? events.filter(Boolean) : [];
+  const reasonWeights = {
+    completed:{
+      proposal_fit:0.04,
+      right_window:0.03,
+      freed_platform:0.03,
+      freed_workshop_track:0.02,
+      secured_departure:0.04,
+      service_fill_empty:0.02
+    },
+    cancelled:{
+      wrong_track:-0.05,
+      wrong_time:-0.04,
+      vehicle_unavailable:-0.03,
+      blocks_other_move:-0.04,
+      workshop_status_changed:-0.03,
+      drops_chose_other:-0.02
+    }
+  };
+  const factorMap = new Map();
+  let rawTotal = 0;
+
+  cleanEvents.forEach(event=>{
+    const action = String(event?.action || "").trim();
+    const actionWeights = reasonWeights[action];
+    if(!actionWeights) return;
+
+    let eventTotal = 0;
+    getSdeLearningEventReasonItems(event).forEach(reason=>{
+      const reasonCode = reason.reasonCode;
+      const weight = actionWeights[reasonCode] || 0;
+      if(!weight) return;
+
+      eventTotal += weight;
+      const factorKey = `${action}|${reasonCode}`;
+      const factor = factorMap.get(factorKey) || {
+        reasonCode,
+        reasonLabel:reason.reasonLabel,
+        action,
+        count:0,
+        total:0
+      };
+      factor.count += 1;
+      factor.total += weight;
+      factorMap.set(factorKey, factor);
+    });
+
+    rawTotal += Math.max(-0.06, Math.min(0.06, eventTotal));
+  });
+
+  const indication = Math.max(-0.25, Math.min(0.25, rawTotal));
+  const direction = indication > 0.015
+    ? "positiv"
+    : indication < -0.015
+      ? "negativ"
+      : "nøytral";
+  const maturityText = cleanEvents.length >= 8
+    ? "Observasjonsgrunnlag, men fortsatt ikke motorpåvirkning."
+    : "For lite grunnlag – kun tidlig indikasjon.";
+  const factors = Array.from(factorMap.values())
+    .sort((a,b)=>Math.abs(b.total) - Math.abs(a.total) || a.reasonLabel.localeCompare(b.reasonLabel, "nb"));
+
+  return {
+    eventCount:cleanEvents.length,
+    maturityText,
+    direction,
+    indication,
+    indicationText:`${indication >= 0 ? "+" : ""}${indication.toFixed(2)}`,
+    positiveFactors:factors.filter(factor => factor.total > 0).slice(0, 3),
+    negativeFactors:factors.filter(factor => factor.total < 0).slice(0, 3)
+  };
+}
+
 function buildSdeMoveLearningDiagnostics(){
   const events = Array.isArray(state.sdeMoveLearningLog)
     ? state.sdeMoveLearningLog.filter(Boolean)
@@ -14155,6 +14229,7 @@ function buildSdeMoveLearningDiagnostics(){
     .sort((a,b)=>String(b?.time || "").localeCompare(String(a?.time || "")))
     .slice(0, 5)
     .map(normalizeEvent);
+  const shadowPreview = buildSdeMoveLearningShadowPreview(events);
 
   return {
     total:events.length,
@@ -14163,6 +14238,7 @@ function buildSdeMoveLearningDiagnostics(){
     reasons:Array.from(reasonCounts.values())
       .sort((a,b)=>b.count - a.count || a.reasonLabel.localeCompare(b.reasonLabel, "nb")),
     latestEvents,
+    shadowPreview,
     wrongTrackAlternatives
   };
 }
@@ -14182,6 +14258,22 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
         `${reason.reasonLabel} (${reason.reasonCode}): ${reason.count}`
       ).join(" · ")
     : "Ingen årsaker registrert.";
+  const shadowPreview = diagnostics.shadowPreview || null;
+  const formatShadowFactors = factors => Array.isArray(factors) && factors.length
+    ? factors.map(factor =>
+        `${factor.reasonLabel} (${factor.count})`
+      ).join(" · ")
+    : "Ingen tydelig faktor ennå.";
+  const shadowPreviewHtml = shadowPreview
+    ? `<div class="sde-learning-diagnostics-item">
+        <strong>Skyggediagnose – læringsindikasjon</strong><br>
+        Brukes ikke i aktiv SDE-motor, score eller sortering.<br>
+        Læringshendelser: ${escapeHtml(String(shadowPreview.eventCount))} · Modenhet: ${escapeHtml(shadowPreview.maturityText)}<br>
+        Retning: ${escapeHtml(shadowPreview.direction)} · Hypotetisk læringseffekt: ${escapeHtml(shadowPreview.indicationText)}<br>
+        Topp positive faktorer: ${escapeHtml(formatShadowFactors(shadowPreview.positiveFactors))}<br>
+        Topp negative faktorer: ${escapeHtml(formatShadowFactors(shadowPreview.negativeFactors))}
+      </div>`
+    : "";
 
   const latestHtml = diagnostics.latestEvents.map(event=>{
     const actionLabel = event.action === "completed"
@@ -14222,6 +14314,7 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
         Totalt: ${escapeHtml(String(diagnostics.total))} · Utført: ${escapeHtml(String(diagnostics.completed))} · Annullert: ${escapeHtml(String(diagnostics.cancelled))}<br>
         Vanlige årsaker: ${escapeHtml(reasonText)}
       </div>
+      ${shadowPreviewHtml}
       ${wrongTrackHtml}
       ${latestHtml}
     </div>
