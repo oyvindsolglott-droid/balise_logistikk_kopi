@@ -2882,6 +2882,74 @@ button{padding:12px 12px}
   line-height:1.35;
 }
 
+.sde-learning-modal-backdrop{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(15,23,42,.58);
+  backdrop-filter:blur(5px);
+}
+
+.sde-learning-modal{
+  width:min(520px, 100%);
+  border:1px solid rgba(255,255,255,.18);
+  border-radius:18px;
+  padding:18px;
+  background:#0f172a;
+  color:#e5eefc;
+  box-shadow:0 24px 70px rgba(0,0,0,.42);
+}
+
+.sde-learning-modal h3{
+  margin:0 0 12px;
+  font-size:20px;
+}
+
+.sde-learning-modal-options{
+  display:grid;
+  gap:8px;
+  margin:10px 0 14px;
+}
+
+.sde-learning-modal-option{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:12px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.06);
+  font-weight:800;
+}
+
+.sde-learning-modal-option input{
+  width:18px;
+  height:18px;
+}
+
+.sde-learning-modal-comment{
+  width:100%;
+  min-height:74px;
+  resize:vertical;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:12px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.08);
+  color:#e5eefc;
+  font:inherit;
+}
+
+.sde-learning-modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:14px;
+}
+
 .sde-shift-empty{
   border:1px dashed rgba(255,255,255,.20);
   border-radius:22px;
@@ -13653,13 +13721,17 @@ function getSdeResettableSummary(){
   const sdePlanRows = Array.isArray(state.planSkifteRows)
     ? state.planSkifteRows.filter(isSdeGeneratedPlanSkifteRow).length
     : 0;
+  const learningEvents = Array.isArray(state.sdeMoveLearningLog)
+    ? state.sdeMoveLearningLog.length
+    : 0;
 
   return {
     actions:actions.length,
     completed,
     cancelled,
     sdePlanRows,
-    total:actions.length + sdePlanRows
+    learningEvents,
+    total:actions.length + sdePlanRows + learningEvents
   };
 }
 
@@ -13684,12 +13756,13 @@ function handleSdeResetForDay(){
   const summary = getSdeResettableSummary();
 
   if(!summary.total){
-    alert("Ingen SDE-kvitteringer eller SDE-genererte skifterader å nullstille.");
+    alert("Ingen SDE-kvitteringer, SDE-genererte skifterader eller læringshendelser å nullstille.");
     return;
   }
 
   const snapshot = state.sdeResetSnapshot;
-  if(!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)){
+  const resetNeedsSnapshot = Boolean(summary.actions || summary.sdePlanRows);
+  if(resetNeedsSnapshot && (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot))){
     alert(
       `SDE-reset kan ikke utføres trygt.\n\n` +
       `Denne SDE-historikken mangler før-bilde. Det skyldes normalt at handlingene ble opprettet før snapshot-basert reset var aktiv.\n\n` +
@@ -13700,21 +13773,29 @@ function handleSdeResetForDay(){
 
   const confirmed = confirm(
     `Nullstille SDE for dagen?\n\n` +
-    `Dette gjenoppretter lokal Sporplan/Input Sporplan til tilstanden før SDE-kvitteringene begynte å påvirke oppstillingen.\n\n` +
+    (resetNeedsSnapshot
+      ? `Dette gjenoppretter lokal Sporplan/Input Sporplan til tilstanden før SDE-kvitteringene begynte å påvirke oppstillingen.\n\n`
+      : `Dette rydder SDE-læringshendelser som påvirker adaptive forslag. Sporplan/Input Sporplan endres ikke.\n\n`) +
     `Utførte: ${summary.completed}\n` +
     `Annullerte: ${summary.cancelled}\n` +
-    `SDE-skifterader: ${summary.sdePlanRows}\n\n` +
-    `Reset bygger ikke ny sporplan fra SDE-beregning, men legger tilbake lagret før-bilde.\n\n` +
+    `SDE-skifterader: ${summary.sdePlanRows}\n` +
+    `Læringshendelser: ${summary.learningEvents}\n\n` +
+    (resetNeedsSnapshot
+      ? `Reset bygger ikke ny sporplan fra SDE-beregning, men legger tilbake lagret før-bilde.\n\n`
+      : ``) +
     `Fortsett?`
   );
 
   if(!confirmed) return;
 
-  state.grunnoppstilling = cloneSdeResetValue(snapshot.grunnoppstilling || {});
-  state.grunnoppstillingRep = cloneSdeResetValue(snapshot.grunnoppstillingRep || {});
-  state.planSkifteRows = cloneSdeResetValue(Array.isArray(snapshot.planSkifteRows) ? snapshot.planSkifteRows : []);
+  if(resetNeedsSnapshot){
+    state.grunnoppstilling = cloneSdeResetValue(snapshot.grunnoppstilling || {});
+    state.grunnoppstillingRep = cloneSdeResetValue(snapshot.grunnoppstillingRep || {});
+    state.planSkifteRows = cloneSdeResetValue(Array.isArray(snapshot.planSkifteRows) ? snapshot.planSkifteRows : []);
+  }
 
   state.sdeMoveActions = {};
+  state.sdeMoveLearningLog = [];
   state.sdeMoveActionDragOffsets = {};
   state.sdeExpandedMoveActionKey = "";
   delete state.sdeResetSnapshot;
@@ -13725,10 +13806,13 @@ function handleSdeResetForDay(){
 
   alert(
     `SDE nullstilt.\n\n` +
-    `Gjenopprettet før-bilde fra: ${snapshot.time ? formatSdeMoveActionClock(snapshot.time) : "ukjent tidspunkt"}\n` +
+    (resetNeedsSnapshot
+      ? `Gjenopprettet før-bilde fra: ${snapshot.time ? formatSdeMoveActionClock(snapshot.time) : "ukjent tidspunkt"}\n`
+      : ``) +
     `Fjernet utførte kvitteringer: ${summary.completed}\n` +
     `Fjernet annullerte kvitteringer: ${summary.cancelled}\n` +
-    `SDE-skifterader er tilbakestilt til før-bildet.`
+    `Fjernet læringshendelser: ${summary.learningEvents}\n` +
+    (resetNeedsSnapshot ? `SDE-skifterader er tilbakestilt til før-bildet.` : `SDE-læring er ryddet.`)
   );
 }
 
@@ -13744,10 +13828,12 @@ function recordSdeMoveLearningEvent(key, action, row, time, reason){
   const cleanKey = String(key || "");
   const actionType = String(action || "").trim();
   if(!cleanKey || !row || !["completed","cancelled"].includes(actionType)) return;
+  const reasonCodes = Array.isArray(reason?.reasonCodes) && reason.reasonCodes.length ? reason.reasonCodes.filter(Boolean) : [reason?.reasonCode || "no_reason"];
+  const reasonLabels = Array.isArray(reason?.reasonLabels) && reason.reasonLabels.length ? reason.reasonLabels.filter(Boolean) : [reason?.reasonLabel || "Ingen årsak oppgitt"];
 
   log.push({
     id:`${Date.now()}-${log.length}`,
-    version:1,
+    version:2,
     source:"SDE Skiftebevegelser",
     key:cleanKey,
     action:actionType,
@@ -13755,20 +13841,27 @@ function recordSdeMoveLearningEvent(key, action, row, time, reason){
     reasonCode:reason?.reasonCode || "no_reason",
     reasonLabel:reason?.reasonLabel || "Ingen årsak oppgitt",
     reasonText:reason?.reasonText || "",
+    reasonCodes,
+    reasonLabels,
+    commentText:reason?.commentText || reason?.reasonText || "",
+    reasonCatalogVersion:reason?.reasonCatalogVersion || 1,
     snapshot:getSdeMoveActionSnapshot(row)
   });
 }
 
-function getSdeMoveLearningReason(actionType){
-  const completedReasons = [
-    {code:"proposal_fit", label:"Forslag passet"},
-    {code:"right_window", label:"Riktig skiftevindu"},
-    {code:"freed_platform", label:"Frigjorde plattform"},
-    {code:"freed_workshop_track", label:"Frigjorde verkstedspor"},
-    {code:"secured_departure", label:"Sikret avgang"},
-    {code:"other", label:"Annet"}
-  ];
-  const cancelledReasons = [
+function getSdeMoveLearningReasonOptions(actionType){
+  if(actionType === "completed"){
+    return [
+      {code:"proposal_fit", label:"Forslag passet"},
+      {code:"right_window", label:"Riktig skiftevindu"},
+      {code:"freed_platform", label:"Frigjorde plattform"},
+      {code:"freed_workshop_track", label:"Frigjorde verkstedspor"},
+      {code:"secured_departure", label:"Sikret avgang"},
+      {code:"other", label:"Annet"}
+    ];
+  }
+
+  return [
     {code:"wrong_track", label:"Feil spor"},
     {code:"wrong_time", label:"Feil tidspunkt"},
     {code:"vehicle_unavailable", label:"Kjøretøy ikke tilgjengelig"},
@@ -13777,35 +13870,138 @@ function getSdeMoveLearningReason(actionType){
     {code:"drops_chose_other", label:"DROPS valgte annet"},
     {code:"other", label:"Annet"}
   ];
-  const reasons = actionType === "completed" ? completedReasons : cancelledReasons;
-  const fallback = {
+}
+
+function getSdeNoMoveLearningReason(commentText=""){
+  const cleanComment = String(commentText || "").trim();
+  return {
     reasonCode:"no_reason",
     reasonLabel:"Ingen årsak oppgitt",
-    reasonText:""
+    reasonText:cleanComment,
+    reasonCodes:["no_reason"],
+    reasonLabels:["Ingen årsak oppgitt"],
+    commentText:cleanComment,
+    reasonCatalogVersion:1
   };
+}
+
+function getSdePrimaryMoveLearningReason(actionType, selectedReasons){
+  const selected = Array.isArray(selectedReasons) ? selectedReasons.filter(Boolean) : [];
+  if(actionType === "cancelled"){
+    const wrongTrack = selected.find(reason => reason.code === "wrong_track");
+    if(wrongTrack) return wrongTrack;
+  }
+  return selected[0] || null;
+}
+
+function closeSdeMoveLearningReasonModal(resolve, value){
+  const modal = window.sdeMoveLearningReasonModal;
+  if(modal?.backdrop?.parentNode){
+    modal.backdrop.parentNode.removeChild(modal.backdrop);
+  }
+  window.sdeMoveLearningReasonModal = null;
+  if(typeof resolve === "function") resolve(value);
+}
+
+function openSdeMoveLearningReasonModal(actionType){
+  const existingModal = window.sdeMoveLearningReasonModal;
+  if(existingModal?.promise) return existingModal.promise;
+
+  const reasons = getSdeMoveLearningReasonOptions(actionType);
   const title = actionType === "completed" ? "Hvorfor ble SDE-forslaget utført?" : "Hvorfor ble SDE-forslaget annullert?";
-  const answer = window.prompt(
-    `${title}\n\n` +
-    reasons.map((reason,index)=>`${index + 1} ${reason.label}`).join("\n") +
-    `\n\nSkriv nummer, eventuelt med fritekst etterpå.`
-  );
-  if(answer === null) return null;
 
-  const text = String(answer || "").trim();
-  if(!text) return fallback;
+  const backdrop = document.createElement("div");
+  backdrop.className = "sde-learning-modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="sde-learning-modal" role="dialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+      <h3>${escapeHtml(title)}</h3>
+      <div class="sde-learning-modal-options">
+        ${reasons.map(reason => `
+          <label class="sde-learning-modal-option">
+            <input type="checkbox" value="${escapeHtml(reason.code)}">
+            <span>${escapeHtml(reason.label)}</span>
+          </label>
+        `).join("")}
+      </div>
+      <textarea class="sde-learning-modal-comment" placeholder="Kommentar / annet"></textarea>
+      <div class="sde-learning-modal-actions">
+        <button class="sde-shift-action-btn cancel" type="button" data-sde-learning-cancel>Avbryt</button>
+        <button class="sde-shift-action-btn done" type="button" data-sde-learning-save>Lagre</button>
+      </div>
+    </div>
+  `;
 
-  const match = text.match(/^(\d+)(?:\s+(.*))?$/);
-  if(!match) return fallback;
+  let resolveModal = null;
+  const promise = new Promise(resolve=>{
+    resolveModal = resolve;
+  });
+  window.sdeMoveLearningReasonModal = {backdrop, promise};
 
-  const index = Number(match[1]) - 1;
-  const reason = reasons[index];
-  if(!reason) return fallback;
-
-  return {
-    reasonCode:reason.code,
-    reasonLabel:reason.label,
-    reasonText:reason.code === "other" ? String(match[2] || "").trim() : ""
+  let closed = false;
+  const finish = value => {
+    if(closed) return;
+    closed = true;
+    closeSdeMoveLearningReasonModal(resolveModal, value);
   };
+  const cancel = () => finish(null);
+  const save = () => {
+    const selectedCodes = Array.from(backdrop.querySelectorAll('input[type="checkbox"]:checked'))
+      .map(input => String(input.value || "").trim())
+      .filter(Boolean);
+    const selectedReasons = reasons.filter(reason => selectedCodes.includes(reason.code));
+    const commentText = String(backdrop.querySelector(".sde-learning-modal-comment")?.value || "").trim();
+
+    if(!selectedReasons.length){
+      finish(getSdeNoMoveLearningReason(commentText));
+      return;
+    }
+
+    const primaryReason = getSdePrimaryMoveLearningReason(actionType, selectedReasons) || selectedReasons[0];
+    finish({
+      reasonCode:primaryReason.code,
+      reasonLabel:primaryReason.label,
+      reasonText:commentText,
+      reasonCodes:selectedReasons.map(reason => reason.code),
+      reasonLabels:selectedReasons.map(reason => reason.label),
+      commentText,
+      reasonCatalogVersion:1
+    });
+  };
+
+  backdrop.querySelector("[data-sde-learning-cancel]")?.addEventListener("click", cancel);
+  backdrop.querySelector("[data-sde-learning-save]")?.addEventListener("click", save);
+  backdrop.addEventListener("keydown", event=>{
+    if(event.key === "Escape") cancel();
+  });
+
+  document.body.appendChild(backdrop);
+  backdrop.querySelector('input[type="checkbox"]')?.focus();
+  return promise;
+}
+
+function getSdeMoveLearningReason(actionType){
+  return openSdeMoveLearningReasonModal(actionType);
+}
+
+function getSdeLearningEventReasonItems(event){
+  const codes = Array.isArray(event?.reasonCodes) && event.reasonCodes.length
+    ? event.reasonCodes
+    : [event?.reasonCode || "no_reason"];
+  const labels = Array.isArray(event?.reasonLabels) && event.reasonLabels.length
+    ? event.reasonLabels
+    : [event?.reasonLabel || "Ingen årsak oppgitt"];
+
+  return codes.map((code,index)=>({
+    reasonCode:String(code || "no_reason").trim() || "no_reason",
+    reasonLabel:String(labels[index] || labels[0] || "Ingen årsak oppgitt").trim() || "Ingen årsak oppgitt"
+  }));
+}
+
+function getSdeLearningEventReasonLabelText(event){
+  const labels = getSdeLearningEventReasonItems(event)
+    .map(reason => reason.reasonLabel)
+    .filter(Boolean);
+  return labels.length ? labels.join(", ") : "Ingen årsak oppgitt";
 }
 
 function buildSdeMoveLearningDiagnostics(){
@@ -13815,12 +14011,14 @@ function buildSdeMoveLearningDiagnostics(){
   const reasonCounts = new Map();
 
   events.forEach(event=>{
-    const reasonCode = String(event.reasonCode || "no_reason").trim() || "no_reason";
-    const reasonLabel = String(event.reasonLabel || "Ingen årsak oppgitt").trim() || "Ingen årsak oppgitt";
-    const key = `${reasonCode}|${reasonLabel}`;
-    const current = reasonCounts.get(key) || {reasonCode, reasonLabel, count:0};
-    current.count += 1;
-    reasonCounts.set(key, current);
+    getSdeLearningEventReasonItems(event).forEach(reason=>{
+      const reasonCode = reason.reasonCode;
+      const reasonLabel = reason.reasonLabel;
+      const key = `${reasonCode}|${reasonLabel}`;
+      const current = reasonCounts.get(key) || {reasonCode, reasonLabel, count:0};
+      current.count += 1;
+      reasonCounts.set(key, current);
+    });
   });
 
   const getWrongTrackNeedKey = event => {
@@ -13913,6 +14111,7 @@ function buildSdeMoveLearningDiagnostics(){
       toSlot:String(snapshot.toSlot || "Ukjent").trim() || "Ukjent",
       action:String(event?.action || "Ukjent").trim() || "Ukjent",
       reasonLabel:String(event?.reasonLabel || "Ingen årsak oppgitt").trim() || "Ingen årsak oppgitt",
+      reasonLabelText:getSdeLearningEventReasonLabelText(event),
       recommendationScore:snapshot.recommendationScore ?? "Ukjent",
       arrivalTrainText:String(snapshot.arrivalTrainText || "Ukjent").trim() || "Ukjent",
       departureTrainText:String(snapshot.departureTrainText || "Ukjent").trim() || "Ukjent",
@@ -13961,7 +14160,7 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
         : event.action;
     const route = `${event.fromSlot} → ${event.toSlot}`;
     return `<div class="sde-learning-diagnostics-item">
-      <strong>${escapeHtml(event.vehicle)}</strong> · ${escapeHtml(route)} · ${escapeHtml(actionLabel)} · ${escapeHtml(event.reasonLabel)}<br>
+      <strong>${escapeHtml(event.vehicle)}</strong> · ${escapeHtml(route)} · ${escapeHtml(actionLabel)} · ${escapeHtml(event.reasonLabelText || event.reasonLabel)}<br>
       Score ${escapeHtml(String(event.recommendationScore))} · Ankomst ${escapeHtml(event.arrivalTrainText)} · Avgang ${escapeHtml(event.departureTrainText)} · ${escapeHtml(event.time)}
     </div>`;
   }).join("");
@@ -13998,7 +14197,7 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
   </div>`;
 }
 
-function handleSdeShiftMoveAction(encodedKey, action){
+async function handleSdeShiftMoveAction(encodedKey, action){
   const key = decodeURIComponent(String(encodedKey || ""));
   const actionType = String(action || "").trim();
 
@@ -14031,50 +14230,62 @@ function handleSdeShiftMoveAction(encodedKey, action){
       return;
     }
 
-    const learningReason = getSdeMoveLearningReason("completed");
-    if(learningReason === null) return;
+    if(window.sdeMoveActionPendingKey) return;
+    window.sdeMoveActionPendingKey = `${key}|${actionType}`;
+    try{
+      const learningReason = await getSdeMoveLearningReason("completed");
+      if(learningReason === null) return;
 
-    ensureSdeResetSnapshot();
+      ensureSdeResetSnapshot();
 
-    if(!addSdeCompletedMoveToPlanSkifte(row)){
-      alert("SDE klarte ikke å registrere ferdig skiftebevegelse. Kontroller forslaget manuelt.");
+      if(!addSdeCompletedMoveToPlanSkifte(row)){
+        alert("SDE klarte ikke å registrere ferdig skiftebevegelse. Kontroller forslaget manuelt.");
+        return;
+      }
+
+      const actionTime = new Date().toISOString();
+      state.sdeMoveActions[key] = {
+        action:"completed",
+        vehicle,
+        fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
+        toSlot:targetSlot,
+        time:actionTime,
+        snapshot:getSdeMoveActionSnapshot(row)
+      };
+      recordSdeMoveLearningEvent(key, "completed", row, actionTime, learningReason);
+      persist(true);
+      refreshSdeAfterMoveAction();
       return;
+    }finally{
+      window.sdeMoveActionPendingKey = "";
     }
-
-    const actionTime = new Date().toISOString();
-    state.sdeMoveActions[key] = {
-      action:"completed",
-      vehicle,
-      fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
-      toSlot:targetSlot,
-      time:actionTime,
-      snapshot:getSdeMoveActionSnapshot(row)
-    };
-    recordSdeMoveLearningEvent(key, "completed", row, actionTime, learningReason);
-    persist(true);
-    refreshSdeAfterMoveAction();
-    return;
   }
 
   if(actionType === "cancelled"){
-    const learningReason = getSdeMoveLearningReason("cancelled");
-    if(learningReason === null) return;
+    if(window.sdeMoveActionPendingKey) return;
+    window.sdeMoveActionPendingKey = `${key}|${actionType}`;
+    try{
+      const learningReason = await getSdeMoveLearningReason("cancelled");
+      if(learningReason === null) return;
 
-    ensureSdeResetSnapshot();
+      ensureSdeResetSnapshot();
 
-    const actionTime = new Date().toISOString();
-    state.sdeMoveActions[key] = {
-      action:"cancelled",
-      vehicle,
-      fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
-      toSlot:targetSlot,
-      time:actionTime,
-      snapshot:getSdeMoveActionSnapshot(row)
-    };
-    recordSdeMoveLearningEvent(key, "cancelled", row, actionTime, learningReason);
-    persist(true);
-    refreshSdeAfterMoveAction();
-    return;
+      const actionTime = new Date().toISOString();
+      state.sdeMoveActions[key] = {
+        action:"cancelled",
+        vehicle,
+        fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
+        toSlot:targetSlot,
+        time:actionTime,
+        snapshot:getSdeMoveActionSnapshot(row)
+      };
+      recordSdeMoveLearningEvent(key, "cancelled", row, actionTime, learningReason);
+      persist(true);
+      refreshSdeAfterMoveAction();
+      return;
+    }finally{
+      window.sdeMoveActionPendingKey = "";
+    }
   }
 
   alert("Ukjent SDE-kvittering.");
@@ -15896,13 +16107,14 @@ function renderSdeSkiftebevegelser(){
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
   const sdeResetSummary = getSdeResettableSummary();
   const hasSdeResetSnapshot = Boolean(state.sdeResetSnapshot && typeof state.sdeResetSnapshot === "object" && !Array.isArray(state.sdeResetSnapshot));
-  const canUseSdeReset = Boolean(sdeResetSummary.actions && hasSdeResetSnapshot);
+  const sdeResetNeedsSnapshot = Boolean(sdeResetSummary.actions || sdeResetSummary.sdePlanRows);
+  const canUseSdeReset = Boolean(sdeResetSummary.total && (!sdeResetNeedsSnapshot || hasSdeResetSnapshot));
   const sdeResetDisabled = canUseSdeReset ? "" : " disabled";
   const sdeResetTitle = canUseSdeReset
-    ? `Nullstill SDE-kvitteringer: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.sdePlanRows} SDE-skifterader`
-    : sdeResetSummary.sdePlanRows
+    ? `Nullstill SDE: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.sdePlanRows} SDE-skifterader, ${sdeResetSummary.learningEvents} læringshendelser`
+    : sdeResetNeedsSnapshot
       ? "Gammel SDE-skifterad finnes, men mangler før-bilde. Start ny SDE-test før reset brukes."
-      : "Ingen SDE-kvitteringer å nullstille";
+      : "Ingen SDE-kvitteringer eller læringshendelser å nullstille";
 
   const cardsHtml = topMoves.length
     ? topMoves.map((row,index)=>{
