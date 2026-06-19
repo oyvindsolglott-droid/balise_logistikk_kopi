@@ -2518,6 +2518,36 @@ button{padding:12px 12px}
 .sde-shift-section-title-main{flex:1;}
 .sde-shift-section-title-count{flex:1;text-align:right;}
 
+.sde-diagnostic-toggle{
+  flex:0 0 auto;
+  width:30px;
+  height:30px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.28);
+  background:rgba(15,23,42,.62);
+  color:#dbeafe;
+  font-family:inherit;
+  font-size:15px;
+  font-weight:950;
+  line-height:1;
+  cursor:pointer;
+}
+
+.sde-diagnostic-toggle:hover{
+  filter:brightness(1.08);
+}
+
+.sde-diagnostic-section-title{
+  flex:1 1 auto;
+  min-width:0;
+}
+
+.sde-diagnostic-section-count{
+  flex:0 0 auto;
+  white-space:nowrap;
+  text-align:right;
+}
+
 .sde-shift-reset-btn{
   flex:0 0 auto;
   min-height:42px;
@@ -16051,6 +16081,43 @@ function getSdeTomorrowJsonPendingText(){
 
 let sdeShiftDetailsExpanded = false;
 let sdeLearningDiagnosticsVisible = false;
+const sdeDiagnosticSectionExpanded = {};
+
+function isSdeDiagnosticSectionCollapsed(id){
+  const key = String(id || "").trim();
+  return !(key && sdeDiagnosticSectionExpanded[key]);
+}
+
+function toggleSdeDiagnosticSection(id){
+  const key = String(id || "").trim();
+  if(!key) return;
+
+  if(sdeDiagnosticSectionExpanded[key]){
+    delete sdeDiagnosticSectionExpanded[key];
+  }else{
+    sdeDiagnosticSectionExpanded[key] = true;
+  }
+
+  renderSdeSkiftebevegelser();
+}
+
+function buildSdeDiagnosticSectionHtml({id, title, count, bodyHtml}){
+  const key = String(id || "").trim();
+  const collapsed = isSdeDiagnosticSectionCollapsed(key);
+  const countText = count === undefined || count === null ? "" : String(count);
+  const countHtml = countText
+    ? `<span class="sde-diagnostic-section-count">${escapeHtml(countText)}</span>`
+    : "";
+
+  return `<div class="sde-shift-unresolved" data-sde-diagnostic-section="${escapeHtml(key)}">
+    <div class="sde-shift-section-title">
+      <button class="sde-diagnostic-toggle" type="button" data-sde-diagnostic-toggle="${escapeHtml(key)}" aria-expanded="${collapsed ? "false" : "true"}" title="${collapsed ? "Vis" : "Skjul"} ${escapeHtml(title)}">${collapsed ? "▸" : "▾"}</button>
+      <span class="sde-diagnostic-section-title">${escapeHtml(title)}</span>
+      ${countHtml}
+    </div>
+    ${collapsed ? "" : `<div class="sde-shift-unresolved-list">${bodyHtml || ""}</div>`}
+  </div>`;
+}
 
 function toggleSdeShiftDetails(){
   sdeShiftDetailsExpanded = !sdeShiftDetailsExpanded;
@@ -16071,6 +16138,12 @@ function renderSdeSkiftebevegelser(){
   const root = document.getElementById("sdeSkiftebevegelserDashboard");
   if(!root) return;
 
+  root.onclick = event=>{
+    const toggle = event.target.closest("[data-sde-diagnostic-toggle]");
+    if(!toggle || !root.contains(toggle)) return;
+    toggleSdeDiagnosticSection(toggle.dataset.sdeDiagnosticToggle);
+  };
+
   if(!isSdeTomorrowJsonReadyForScore()){
     root.innerHTML = `
       <div class="sde-shift-hero">
@@ -16086,15 +16159,12 @@ function renderSdeSkiftebevegelser(){
           <div class="sde-shift-kpi"><strong>Venter</strong><span>morgendagens JSON</span></div>
         </div>
       </div>
-      <div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">
-          <span>Datagrunnlag ikke komplett</span>
-          <span>Score ikke beregnet</span>
-        </div>
-        <div class="sde-shift-unresolved-item">
-          ${escapeHtml(getSdeTomorrowJsonPendingText())}
-        </div>
-      </div>
+      ${buildSdeDiagnosticSectionHtml({
+        id:"data-pending",
+        title:"Datagrunnlag ikke komplett",
+        count:"Score ikke beregnet",
+        bodyHtml:`<div class="sde-shift-unresolved-item">${escapeHtml(getSdeTomorrowJsonPendingText())}</div>`
+      })}
     `;
     return;
   }
@@ -16165,202 +16235,202 @@ function renderSdeSkiftebevegelser(){
     : `<div class="sde-shift-empty">Ingen foreslåtte skiftebevegelser er klare. SDE mangler anbefalte nattplasseringer eller datagrunnlag.</div>`;
 
   const unresolvedHtml = data.unresolved.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Uløst / må avklares <span>${data.unresolved.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${data.unresolved.slice(0, 8).map(row=>{
+    ? buildSdeDiagnosticSectionHtml({
+        id:"unresolved",
+        title:"Uløst / må avklares",
+        count:data.unresolved.length,
+        bodyHtml:data.unresolved.slice(0, 8).map(row=>{
             const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
             const arrivalText = row.arrivalTrain ? `${row.arrivalTrain}${arrivalPartText}` : "Ukjent ankomst";
             const departureText = row.nextDepartureText || "Ingen kjent avgang";
             const vehicle = row.vehicle || "Ukjent kjøretøy";
             const reason = row.recommendationReason || row.parkingInstruction || "SDE har ikke funnet trygg løsning i første kandidatsett.";
             return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(vehicle)}</strong> · Ankomst ${escapeHtml(arrivalText)} · Avgang ${escapeHtml(departureText)}<br>${escapeHtml(reason)}</div>`;
-          }).join("")}
-        </div>
-      </div>`
+          }).join("")
+      })
     : "";
 
   const flexibleUnknownHtml = data.flexibleUnknownParking?.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Ukjent status, parkert <span>${data.flexibleUnknownParking.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${data.flexibleUnknownParking.slice(0, 8).map(row=>{
+    ? buildSdeDiagnosticSectionHtml({
+        id:"flexible-unknown",
+        title:"Ukjent status, parkert",
+        count:data.flexibleUnknownParking.length,
+        bodyHtml:data.flexibleUnknownParking.slice(0, 8).map(row=>{
             const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
             const arrivalText = row.arrivalTrain ? `${row.arrivalTrain}${arrivalPartText}` : "Ukjent ankomst";
             const vehicle = row.vehicle || "Ukjent kjøretøy";
             const reason = "Årsak er ikke fastslått. Kan være rep, Res., drei eller annen manuell disponering. Må vurderes manuelt før nattplassering antas.";
             return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(vehicle)}</strong> · Ankomst ${escapeHtml(arrivalText)} · Ingen kjent morgendagsavgang i datagrunnlaget<br>${escapeHtml(reason)}</div>`;
-          }).join("")}
-        </div>
-      </div>`
+          }).join("")
+      })
     : "";
 
   const linearTrackDiagnostics = buildSdeLinearTrackDiagnostics(data.moves);
   const linearTrackDiagnosticsHtml = linearTrackDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Spor 4/5 – uttaksrekkefølge <span>${linearTrackDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${linearTrackDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"linear-track",
+        title:"Spor 4/5 – uttaksrekkefølge",
+        count:linearTrackDiagnostics.length,
+        bodyHtml:linearTrackDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(`Spor ${item.track}`)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const pairDiagnostics = buildSdePairDiagnostics(data.moves, data.unresolved);
   const pairDiagnosticsHtml = pairDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Parstatus /1 og /2 <span>${pairDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${pairDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"pair-status",
+        title:"Parstatus /1 og /2",
+        count:pairDiagnostics.length,
+        bodyHtml:pairDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const packageDiagnostics = buildSdePackageDiagnostics(data.moves);
   const packageDiagnosticsHtml = packageDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Pakkestatus spor 4/5 og buttspor <span>${packageDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${packageDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"package-status",
+        title:"Pakkestatus spor 4/5 og buttspor",
+        count:packageDiagnostics.length,
+        bodyHtml:packageDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.label)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const packageConflictDiagnostics = buildSdePackageConflictDiagnostics(data.moves, data.unresolved);
   const packageConflictDiagnosticsHtml = packageConflictDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Pakke-/parkonflikt <span>${packageConflictDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${packageConflictDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"package-conflict",
+        title:"Pakke-/parkonflikt",
+        count:packageConflictDiagnostics.length,
+        bodyHtml:packageConflictDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const packageRescueDiagnostics = buildSdePackageRescueDiagnostics(data.moves, data.unresolved);
   const packageRescueDiagnosticsHtml = packageRescueDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Mulig pakkeredning <span>${packageRescueDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${packageRescueDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"package-rescue",
+        title:"Mulig pakkeredning",
+        count:packageRescueDiagnostics.length,
+        bodyHtml:packageRescueDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const packagePriorityDiagnostics = buildSdePackagePriorityDiagnostics(data.moves, data.unresolved);
   const packagePriorityDiagnosticsHtml = packagePriorityDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Pakkeprioritet – tidlig beskyttelse <span>${packagePriorityDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${packagePriorityDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"package-priority",
+        title:"Pakkeprioritet – tidlig beskyttelse",
+        count:packagePriorityDiagnostics.length,
+        bodyHtml:packagePriorityDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const packagePrioritySimulationDiagnostics = buildSdePackagePrioritySimulationDiagnostics(data.moves, data.unresolved);
   const packagePrioritySimulationDiagnosticsHtml = packagePrioritySimulationDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Pakkeprioritet – simulert effekt <span>${packagePrioritySimulationDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${packagePrioritySimulationDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"package-priority-simulation",
+        title:"Pakkeprioritet – simulert effekt",
+        count:packagePrioritySimulationDiagnostics.length,
+        bodyHtml:packagePrioritySimulationDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const packagePriorityCandidateMotorDiagnostics = buildSdePackagePriorityCandidateMotorDiagnostics(data.moves, data.unresolved);
   const packagePriorityCandidateMotorDiagnosticsHtml = packagePriorityCandidateMotorDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Pakkeprioritet – kandidatmotor <span>${packagePriorityCandidateMotorDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${packagePriorityCandidateMotorDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"package-priority-candidate-motor",
+        title:"Pakkeprioritet – kandidatmotor",
+        count:packagePriorityCandidateMotorDiagnostics.length,
+        bodyHtml:packagePriorityCandidateMotorDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const packagePriorityActiveTestModeDiagnostics = buildSdePackagePriorityActiveTestModeDiagnostics(data.moves, data.unresolved);
   const packagePriorityActiveTestModeDiagnosticsHtml = packagePriorityActiveTestModeDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Pakkeprioritet – aktiv testmodus <span>${packagePriorityActiveTestModeDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${packagePriorityActiveTestModeDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"package-priority-active-test",
+        title:"Pakkeprioritet – aktiv testmodus",
+        count:packagePriorityActiveTestModeDiagnostics.length,
+        bodyHtml:packagePriorityActiveTestModeDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const packagePriorityLimitedActiveMotorDiagnostics = buildSdePackagePriorityLimitedActiveMotorDiagnostics(data.moves, data.unresolved);
   const packagePriorityLimitedActiveMotorDiagnosticsHtml = packagePriorityLimitedActiveMotorDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Pakkeprioritet – aktiv motor, konsekvens <span>${packagePriorityLimitedActiveMotorDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${packagePriorityLimitedActiveMotorDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"package-priority-limited-active",
+        title:"Pakkeprioritet – aktiv motor, konsekvens",
+        count:packagePriorityLimitedActiveMotorDiagnostics.length,
+        bodyHtml:packagePriorityLimitedActiveMotorDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const packagePrioritySafeActiveMotorDiagnostics = buildSdePackagePrioritySafeActiveMotorDiagnostics(data.moves, data.unresolved);
   const packagePrioritySafeActiveMotorDiagnosticsHtml = packagePrioritySafeActiveMotorDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Pakkeprioritet – trygg aktiv motor <span>${packagePrioritySafeActiveMotorDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${packagePrioritySafeActiveMotorDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"package-priority-safe-active",
+        title:"Pakkeprioritet – trygg aktiv motor",
+        count:packagePrioritySafeActiveMotorDiagnostics.length,
+        bodyHtml:packagePrioritySafeActiveMotorDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const blockerRescueRejectionDiagnostics = buildSdeBlockerRescueRejectionDiagnostics(data.moves, data.unresolved);
   const blockerRescueRejectionDiagnosticsHtml = blockerRescueRejectionDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Blokkerredning – forklar avslag <span>${blockerRescueRejectionDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${blockerRescueRejectionDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"blocker-rescue-rejection",
+        title:"Blokkerredning – forklar avslag",
+        count:blockerRescueRejectionDiagnostics.length,
+        bodyHtml:blockerRescueRejectionDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const pastDepartureDiagnostics = buildSdePastDepartureDiagnostics(data.filteredPastDepartureNeeds || []);
   const pastDepartureDiagnosticsHtml = pastDepartureDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Passert avgang – filtrert fra aktiv SDE-liste <span>${pastDepartureDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${pastDepartureDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"past-departure",
+        title:"Passert avgang – filtrert fra aktiv SDE-liste",
+        count:pastDepartureDiagnostics.length,
+        bodyHtml:pastDepartureDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.vehicle)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   const spor3PlatformClearanceDiagnostics = buildSdeSpor3PlatformClearanceDiagnostics();
   const spor3PlatformClearanceDiagnosticsHtml = spor3PlatformClearanceDiagnostics.length
-    ? `<div class="sde-shift-unresolved">
-        <div class="sde-shift-section-title">Spor 3-forberedelse – plattformrydding, test <span>${spor3PlatformClearanceDiagnostics.length}</span></div>
-        <div class="sde-shift-unresolved-list">
-          ${spor3PlatformClearanceDiagnostics.map(item =>
+    ? buildSdeDiagnosticSectionHtml({
+        id:"spor3-platform-clearance",
+        title:"Spor 3-forberedelse – plattformrydding, test",
+        count:spor3PlatformClearanceDiagnostics.length,
+        bodyHtml:spor3PlatformClearanceDiagnostics.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.vehicle)}</strong><br>${escapeHtml(item.text)}</div>`
-          ).join("")}
-        </div>
-      </div>`
+          ).join("")
+      })
     : "";
 
   root.innerHTML = `
