@@ -13882,11 +13882,12 @@ function recordSdeMoveLearningEvent(key, action, row, time, reason){
 function getSdeMoveLearningReasonOptions(actionType){
   if(actionType === "completed"){
     return [
-      {code:"proposal_fit", label:"Forslag passet"},
+      {code:"proposal_fit", label:"Må parkeres midlertidig (mellomparkeres)"},
       {code:"right_window", label:"Riktig skiftevindu"},
       {code:"freed_platform", label:"Frigjorde plattform"},
       {code:"freed_workshop_track", label:"Frigjorde verkstedspor"},
       {code:"secured_departure", label:"Sikret avgang"},
+      {code:"service_fill_empty", label:"Kjøretøyet skal fylles/tømmes"},
       {code:"other", label:"Annet"}
     ];
   }
