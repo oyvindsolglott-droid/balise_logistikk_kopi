@@ -12998,6 +12998,13 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
     .filter(Boolean);
 }
 
+function isSdeNightArrivalPlatformClearanceNeed(arrival){
+  const train = normalizeTognr(arrival?.train);
+  const slot = normalizeSlot(arrival?.slot);
+  return train === "839" && ["1N","1S","2N","2S","3N","3M","3S"].includes(slot);
+}
+
+
 function buildSdeArrivalParkingNeeds(){
   const bindings = buildSdeTursattVehicleBindings();
   const departures = bindings.filter(binding => binding.role === "departure" && binding.mustBeAccessible);
@@ -13084,11 +13091,13 @@ function buildSdeArrivalParkingNeeds(){
       ? getSdeTimeMinutes(nextDeparture.time || nextDeparture.displayTime)
       : null;
     const earlyDeparture = departureClockMinutes !== null && departureClockMinutes < (9 * 60);
+    const nightPlatformClearance = isSdeNightArrivalPlatformClearanceNeed(arrival);
 
     if(serviceNeed) return 0;
-    if(earlyDeparture) return 1;
-    if(nextDeparture) return 2;
-    return 3;
+    if(nightPlatformClearance) return 1;
+    if(earlyDeparture) return 2;
+    if(nextDeparture) return 3;
+    return 4;
   }
 
   return [...relevantArrivals]
@@ -13119,12 +13128,17 @@ function buildSdeArrivalParkingNeeds(){
         : null;
       const earlyDeparture = departureClockMinutes !== null && departureClockMinutes < (9 * 60);
 
+      const nightPlatformClearance = isSdeNightArrivalPlatformClearanceNeed(arrival);
+
       let parkingStrategy = "Fleksibel nattparkering";
       let parkingInstruction = "Ingen kjent morgendagsavgang er koblet mot kjøretøyet. Kan vurderes som fleksibel nattparkering, men må ikke blokkere kjøretøy med kjent avgangsbehov.";
 
       if(serviceNeed){
         parkingStrategy = "Service før nattplassering";
         parkingInstruction = "Kjøretøyet har servicebehov. Det må via spor 6 før endelig nattplassering vurderes mot morgendagens Tursatt og blokkering.";
+      }else if(nightPlatformClearance){
+        parkingStrategy = "839 nattankomst – plattform må ryddes";
+        parkingInstruction = "839 er nattankomst i plattformspor. Kjøretøyet skal skiftes bort fra plattform dersom SDE finner trygg kandidat.";
       }else if(nextDeparture && earlyDeparture){
         parkingStrategy = "Tidlig avgang – lett tilgjengelig nattplassering";
         parkingInstruction = "Kjøretøyet må parkeres slik at det kan tas ut til tidlig togproduksjon uten intern blokkering.";
@@ -13183,10 +13197,11 @@ function buildSdeArrivalParkingNeeds(){
     .sort((a,b)=>{
       const priority = row => {
         if(row.serviceRequired) return 0;
+        if(row.parkingStrategy === "839 nattankomst – plattform må ryddes") return 1;
         const minutes = getSdeTimeMinutes(row.nextDepartureTime);
-        if(minutes !== null && minutes < (9 * 60)) return 1;
-        if(row.nextDepartureTrain) return 2;
-        return 3;
+        if(minutes !== null && minutes < (9 * 60)) return 2;
+        if(row.nextDepartureTrain) return 3;
+        return 4;
       };
 
       const pa = priority(a);
