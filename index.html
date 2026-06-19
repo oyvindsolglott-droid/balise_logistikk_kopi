@@ -4882,6 +4882,8 @@ Rød ring: simulert verksted-input</pre>
 <p><strong>Beslutningsstøtte for konkrete skifteforslag.</strong></p>
 <p>Her viser SDE hvilke kjøretøy som anbefales flyttet, fra hvilket spor, til hvilket spor, og hvorfor flyttingen anbefales.</p>
 <p>Arket kan vise score, skiftevindu, varsler, planlagte bevegelser, avvik og kontrollpunkter. Forslagene skal hjelpe brukeren å prioritere, men må alltid vurderes mot faktisk situasjon.</p>
+<p><strong>SDE-selvlæring og skyggediagnose.</strong> Når et SDE-forslag markeres som <strong>Utført</strong> eller <strong>Annullert</strong>, kan brukeren registrere én eller flere årsaker. SDE-selvlæring viser registrerte hendelser og årsaker som observasjon av hvordan forslagene fungerer i praksis.</p>
+<p>Ved <strong>Annullert → Feil spor</strong> kan SDE vise et adaptivt nytt forslag for samme behov. Skyggediagnosen viser en foreløpig læringsindikasjon, men <strong>brukes ikke i aktiv SDE-motor, score eller sortering</strong>. Få hendelser skal bare leses som tidlig indikasjon, ikke som beslutningsgrunnlag.</p>
 
 <h3>3. SDE Vaktplan</h3>
 <p><strong>Beslutningsstøtte for helheten i kveldsvakt og nattevakt.</strong></p>
@@ -4942,8 +4944,7 @@ utført</pre>
 6ss
 11s
 12n</pre>
-<p>Ikke skriv bare 3, 5, 6, 11 eller 12 hvis du mener en bestemt del av sporet.</p>
-<p>Unntak: Spor 9 skrives bare som <strong>9</strong>.</p>
+<p>For spor med plass til flere kjøretøy må kjøretøyets faktiske eller planlagte plassering oppgis med riktig sporadresse. Eksempel: 3N, 3M, 3S, 5N, 5M, 5S, 6N, 6S, 6SS, 11N, 11S eller 12N/12S. Spor 9 skrives som <strong>9</strong>.</p>
 
 <h3>Utført</h3>
 <p>Skriv <strong>f</strong> når oppdraget faktisk er utført.</p>
@@ -5035,7 +5036,7 @@ Rep-/verkstedstatus er lagt inn med ulik tekst i stedet for standardkode</pre>
 
 <h2>Lokal lagring</h2>
 <p>Manuelle registreringer lagres bare på den enheten og i den nettleseren der de er skrevet inn.</p>
-<p>En telefon, en annen telefon og en datamaskin kan derfor vise forskjellige manuelle endringer.</p>
+<p>Ulike enheter kan derfor vise ulike manuelle endringer, for eksempel dersom samme løsning åpnes på to smarttelefoner og en laptop.</p>
 <p>Kontroller alltid Sporplan mot faktisk situasjon når du overtar eller starter planlegging.</p>
 
 <hr>
