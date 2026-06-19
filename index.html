@@ -16268,7 +16268,7 @@ function renderSdeSkiftebevegelser(){
   const scoreClass = getSdeShiftScoreClass(data.score);
   const scoreExplanationHtml = buildSdeShiftScoreExplanationHtml(data);
   const learningDiagnosticsHtml = "";
-  const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 12);
+  const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 20);
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
   const sdeResetSummary = getSdeResettableSummary();
   const hasSdeResetSnapshot = Boolean(state.sdeResetSnapshot && typeof state.sdeResetSnapshot === "object" && !Array.isArray(state.sdeResetSnapshot));
