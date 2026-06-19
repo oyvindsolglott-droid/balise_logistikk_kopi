@@ -13107,7 +13107,8 @@ function buildSdeArrivalParkingNeeds(){
       const vehicle = sanitizeVehicleValue(arrival.vehicle);
       if(!vehicle) return null;
 
-      if(isSdeEveningExitVehicle(vehicle)){
+      const arrivalSequenceMinutes = getSdeArrivalLatestSequenceMinutes(arrival);
+      if(isSdeEveningExitVehicle(vehicle) && arrivalSequenceMinutes < 1440){
         return null;
       }
 
@@ -16348,14 +16349,20 @@ function renderSdeSkiftebevegelser(){
   const flexibleUnknownHtml = data.flexibleUnknownParking?.length
     ? buildSdeDiagnosticSectionHtml({
         id:"flexible-unknown",
-        title:"Ukjent status, parkert",
+        title:"Ukjent status / manuell vurdering",
         count:data.flexibleUnknownParking.length,
         bodyHtml:data.flexibleUnknownParking.slice(0, 8).map(row=>{
             const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
             const arrivalText = row.arrivalTrain ? `${row.arrivalTrain}${arrivalPartText}` : "Ukjent ankomst";
             const vehicle = row.vehicle || "Ukjent kjøretøy";
-            const reason = "Årsak er ikke fastslått. Kan være rep, Res., drei eller annen manuell disponering. Må vurderes manuelt før nattplassering antas.";
-            return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(vehicle)}</strong> · Ankomst ${escapeHtml(arrivalText)} · Ingen kjent morgendagsavgang i datagrunnlaget<br>${escapeHtml(reason)}</div>`;
+            const needsManualCandidateReview = !row.recommendedSlot && row.recommendationReason;
+            const statusText = needsManualCandidateReview
+              ? "Ingen trygg SDE-kandidat funnet"
+              : "Ingen kjent morgendagsavgang i datagrunnlaget";
+            const reason = needsManualCandidateReview
+              ? row.recommendationReason
+              : "Årsak er ikke fastslått. Kan være rep, Res., drei eller annen manuell disponering. Må vurderes manuelt før nattplassering antas.";
+            return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(vehicle)}</strong> · Ankomst ${escapeHtml(arrivalText)} · ${escapeHtml(statusText)}<br>${escapeHtml(reason)}</div>`;
           }).join("")
       })
     : "";
