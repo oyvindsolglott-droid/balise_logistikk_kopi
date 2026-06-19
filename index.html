@@ -13969,7 +13969,7 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
   const wrongTrackHtml = Array.isArray(diagnostics.wrongTrackAlternatives) && diagnostics.wrongTrackAlternatives.length
     ? `<div class="sde-learning-diagnostics-item">
         <strong>Feil spor – alternativ vurdering</strong><br>
-        Kun diagnose – påvirker ikke aktiv SDE-liste, score eller sortering.<br>
+        Forklarer hvordan Feil spor kan gi adaptivt nytt SDE-forslag. Påvirker ikke score eller sortering.<br>
         Visningen under forklarer alternativer fra det opprinnelige SDE-forslaget da kortet ble annullert. Hvis disse er brukt opp, kan aktiv SDE-liste hente et nytt ferskt fallback-forslag fra dagens datagrunnlag. Nåvurdering viser bare Sporplan akkurat nå, ikke operativ godkjenning.
       </div>
       ${diagnostics.wrongTrackAlternatives.map(group=>`
@@ -13988,7 +13988,7 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
     <div class="sde-shift-section-title">SDE-læring – observasjon <span>${diagnostics.total}</span></div>
     <div class="sde-learning-diagnostics-list">
       <div class="sde-learning-diagnostics-item">
-        Dette er kun observasjon fra Utført/Annullert. Brukes ikke til motor, score eller sortering ennå.<br>
+        Observerer Utført/Annullert og forklarer hvordan Feil spor kan brukes til adaptive SDE-forslag. Påvirker ikke score eller sortering.<br>
         Totalt: ${escapeHtml(String(diagnostics.total))} · Utført: ${escapeHtml(String(diagnostics.completed))} · Annullert: ${escapeHtml(String(diagnostics.cancelled))}<br>
         Vanlige årsaker: ${escapeHtml(reasonText)}
       </div>
