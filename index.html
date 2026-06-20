@@ -16770,6 +16770,118 @@ function buildSdeWashTrackVnSafetyAssessment({
   };
 }
 
+function buildSdeWashTrackSimulatedVnUseAssessment({
+  physicalState,
+  operationalContract,
+  routingPreconditionAssessment,
+  accessResourceAssessment,
+  vnSafetyAssessment,
+  signals,
+  concreteBlockageKnown = false,
+  vsHandled = false,
+  exitPlanKnown = false,
+  nextOperationKnown = false,
+  nextOperationIsDoubleSetDriftsbanegard = null
+} = {}){
+  const state = physicalState && typeof physicalState === "object"
+    ? physicalState
+    : getSdeWashTrackPhysicalState();
+  const contract = operationalContract || buildSdeWashTrackOperationalContract({ physicalState:state });
+  const routing = routingPreconditionAssessment || buildSdeWashTrackRoutingPreconditionAssessment({
+    physicalState:state,
+    operationalContract:contract
+  });
+  const accessResource = accessResourceAssessment || buildSdeWashTrackAccessResourceAssessment({
+    physicalState:state,
+    operationalContract:contract,
+    routingPreconditionAssessment:routing
+  });
+  const vnSafety = vnSafetyAssessment || buildSdeWashTrackVnSafetyAssessment({
+    physicalState:state,
+    operationalContract:contract,
+    routingPreconditionAssessment:routing,
+    accessResourceAssessment:accessResource,
+    signals
+  });
+  const signalRows = Array.isArray(signals) ? signals : [];
+  const hasElasticitySignal = signalRows.length > 0;
+  const vnPhysicallyRelevant = Boolean(hasElasticitySignal && state?.doubleSetCapacityAvailable);
+  const vsClearOrHandled = Boolean(state?.accessSlotFree || vsHandled);
+  const hardStop = nextOperationKnown && nextOperationIsDoubleSetDriftsbanegard === true;
+  const blockers = [];
+
+  if(!concreteBlockageKnown){
+    blockers.push("Konkret blokkering/floke er ikke dokumentert.");
+  }
+  if(!vnPhysicallyRelevant){
+    blockers.push("VN er ikke fysisk/reelt klarert som relevant midlertidig ressurs i denne vurderingen.");
+  }
+  if(!vsClearOrHandled){
+    blockers.push("VS er ikke ledig eller eksplisitt håndtert.");
+  }
+  if(!exitPlanKnown){
+    blockers.push("Ut-igjen-plan mangler.");
+  }
+  if(!nextOperationKnown){
+    blockers.push("Neste skifteoperasjon er ukjent.");
+  }
+  if(hardStop){
+    blockers.push("Hard stop: neste skifteoperasjon er dobbeltsett til/fra driftsbanegården.");
+  }
+
+  const missingPreconditions = [
+    ...(Array.isArray(routing?.missingPreconditions) ? routing.missingPreconditions : []),
+    ...(Array.isArray(vnSafety?.missingPreconditions) ? vnSafety.missingPreconditions : []),
+    "Simulert VN-bruk mangler dokumentert konkret flokegrunnlag.",
+    "Simulert VN-bruk mangler ut-igjen-plan.",
+    "Simulert VN-bruk mangler eksplisitt modell for neste skifteoperasjon."
+  ];
+
+  const requiredEvidence = [
+    "Konkret blokkering/floke som ikke løses av ordinær SDE-logikk.",
+    "Dokumentert at VN er fysisk relevant og at VS er ledig eller håndtert.",
+    "Dokumentert ut-igjen-plan før eventuell midlertidig VN-bruk.",
+    "Eksplisitt kontroll av neste skifteoperasjon.",
+    "Bekreftelse på at neste skifteoperasjon ikke er dobbeltsett til/fra driftsbanegården."
+  ];
+
+  const warnings = [
+    "Dette er kun simulert/read-only vurdering.",
+    "Fysisk ledig Vaskespor er ikke nok til å bruke VN.",
+    "Ingen aktiv SDE-motor kan bruke VN/VS fra denne vurderingen.",
+    ...(Array.isArray(accessResource?.reasons) ? accessResource.reasons : [])
+  ];
+
+  const text = hardStop
+    ? "Simulert VN-vurdering: hard stop. VN skal avvises fordi neste skifteoperasjon er dobbeltsett til/fra driftsbanegården. Dette gir ingen kandidatspor, score, sortering eller SDE-kort."
+    : "Simulert VN-vurdering: ikke klarert. VN er fortsatt observe-only/manualOnly og krever dokumentert blokkering/floke, VS-håndtering, ut-igjen-plan og eksplisitt kontroll av neste skifteoperasjon. Dette gir ingen kandidatspor, score, sortering eller SDE-kort.";
+
+  return {
+    status:"observe_only",
+    readiness:"not_ready",
+    manualOnly:true,
+    simulatedOnly:true,
+    temporaryOnly:true,
+    concreteBlockageKnown:Boolean(concreteBlockageKnown),
+    vnPhysicallyRelevant,
+    vsClearOrHandled,
+    exitPlanKnown:Boolean(exitPlanKnown),
+    nextOperationKnown:Boolean(nextOperationKnown),
+    nextOperationIsDoubleSetDriftsbanegard,
+    hardStop,
+    hardStopReason:hardStop ? "Neste skifteoperasjon er dobbeltsett til/fra driftsbanegården." : "",
+    noCandidateSlots:true,
+    noScoreImpact:true,
+    noMoveCreation:true,
+    noActiveRecommendation:true,
+    blockers,
+    missingPreconditions,
+    requiredEvidence,
+    warnings,
+    text
+  };
+}
+
 function buildSdeWashTrackElasticityNeedDiagnostics({
   data,
   physicalState,
@@ -16818,6 +16930,14 @@ function buildSdeWashTrackElasticityNeedDiagnostics({
     accessResourceAssessment,
     signals
   });
+  const simulatedVnUseAssessment = buildSdeWashTrackSimulatedVnUseAssessment({
+    physicalState:state,
+    operationalContract,
+    routingPreconditionAssessment,
+    accessResourceAssessment,
+    vnSafetyAssessment,
+    signals
+  });
   const hardStops = [
     "Vaskesporet skal ikke brukes som ordinært parkeringsspor.",
     "Midlertidig parkering i Vaskesporet skal unngås i størst mulig grad.",
@@ -16858,6 +16978,7 @@ function buildSdeWashTrackElasticityNeedDiagnostics({
     routingPreconditionAssessment,
     accessResourceAssessment,
     vnSafetyAssessment,
+    simulatedVnUseAssessment,
     hardStops,
     messages,
     text:messages.join(" ")
