@@ -16770,6 +16770,56 @@ function buildSdeWashTrackVnSafetyAssessment({
   };
 }
 
+function buildSdeWashTrackNextOperationAssessment({
+  nextOperationKnown = false,
+  nextOperationIsDoubleSetDriftsbanegard = null
+} = {}){
+  const isKnown = Boolean(nextOperationKnown);
+  const hardStop = Boolean(isKnown && nextOperationIsDoubleSetDriftsbanegard === true);
+  const blockers = [];
+  const missingPreconditions = [];
+  const requiredEvidence = [
+    "Eksplisitt kontroll av neste skifteoperasjon.",
+    "Bekreftelse på at neste skifteoperasjon ikke er dobbeltsett til/fra driftsbanegården."
+  ];
+  const warnings = [
+    "Dette er intern observe-only-vurdering og ikke aktiv klarering av VN."
+  ];
+
+  if(!isKnown){
+    missingPreconditions.push("Neste skifteoperasjon er ikke kjent eller modellert.");
+    warnings.push("VN kan ikke klareres uten eksplisitt modell for neste skifteoperasjon.");
+  } else if(nextOperationIsDoubleSetDriftsbanegard === true){
+    blockers.push("Hard stop: neste skifteoperasjon er dobbeltsett til/fra driftsbanegården.");
+  } else {
+    warnings.push("Neste skifteoperasjon er kjent, men VN er fortsatt ikke klarert i denne fasen.");
+  }
+
+  const text = hardStop
+    ? "Neste skifteoperasjon: hard stop. VN skal avvises fordi neste skifteoperasjon er dobbeltsett til/fra driftsbanegården."
+    : isKnown
+      ? "Neste skifteoperasjon: kjent, men dette er fortsatt intern vurdering og ikke aktiv VN-klarering."
+      : "Neste skifteoperasjon: ikke kjent eller modellert. VN er ikke klarert.";
+
+  return {
+    status:"observe_only",
+    readiness:"not_ready",
+    manualOnly:true,
+    noCandidateSlots:true,
+    noScoreImpact:true,
+    noMoveCreation:true,
+    noActiveRecommendation:true,
+    nextOperationKnown:isKnown,
+    nextOperationIsDoubleSetDriftsbanegard,
+    hardStop,
+    blockers,
+    missingPreconditions,
+    requiredEvidence,
+    warnings,
+    text
+  };
+}
+
 function buildSdeWashTrackSimulatedVnUseAssessment({
   physicalState,
   operationalContract,
@@ -16807,7 +16857,11 @@ function buildSdeWashTrackSimulatedVnUseAssessment({
   const hasElasticitySignal = signalRows.length > 0;
   const vnPhysicallyRelevant = Boolean(hasElasticitySignal && state?.doubleSetCapacityAvailable);
   const vsClearOrHandled = Boolean(state?.accessSlotFree || vsHandled);
-  const hardStop = nextOperationKnown && nextOperationIsDoubleSetDriftsbanegard === true;
+  const nextOperationAssessment = buildSdeWashTrackNextOperationAssessment({
+    nextOperationKnown,
+    nextOperationIsDoubleSetDriftsbanegard
+  });
+  const hardStop = nextOperationAssessment.hardStop;
   const blockers = [];
 
   if(!concreteBlockageKnown){
@@ -16872,6 +16926,7 @@ function buildSdeWashTrackSimulatedVnUseAssessment({
     nextOperationIsDoubleSetDriftsbanegard,
     hardStop,
     hardStopReason:hardStop ? "Neste skifteoperasjon er dobbeltsett til/fra driftsbanegården." : "",
+    nextOperationAssessment,
     noCandidateSlots:true,
     noScoreImpact:true,
     noMoveCreation:true,
