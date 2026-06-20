@@ -16446,6 +16446,45 @@ function buildSdeWashTrackShadowPlanAssessment({
   };
 }
 
+function buildSdeWashTrackIntegrationReadinessDiagnostics({
+  physicalState,
+  classifications,
+  theoreticalSignals,
+  shadowAssessment
+} = {}){
+  const state = physicalState && typeof physicalState === "object"
+    ? physicalState
+    : getSdeWashTrackPhysicalState();
+  const signals = Array.isArray(theoreticalSignals)
+    ? theoreticalSignals
+    : Array.isArray(classifications)
+      ? classifications.filter(item => item?.type !== "physical_limited")
+      : [];
+
+  if(!signals.length) return null;
+
+  const blockers = [
+    "Det mangler eksplisitt rute-/kapasitetsmodell.",
+    "Det mangler testet blokkering via VS.",
+    "Det mangler testet dobbeltsett-/returmodell."
+  ];
+  const availabilityText = state.doubleSetCapacityAvailable
+    ? "Vaskesporet er fysisk ledig i denne observasjonen."
+    : "Vaskesporet er ikke fullt fysisk tilgjengelig i denne observasjonen.";
+  const shadowText = shadowAssessment?.level
+    ? `Skyggenivå ${shadowAssessment.level}.`
+    : "Skyggemodell uten operativt nivå.";
+
+  return {
+    status:"observe_only",
+    readiness:"not_ready",
+    manualOnly:true,
+    level:"low",
+    blockers,
+    text:`Readiness: Vaskesporet er kun i skyggemodell/readiness. ${availabilityText} ${shadowText} Dette er ikke aktiv motor. VN/VS brukes fortsatt ikke som målspor. Eventuell bruk krever manuell vurdering. ${blockers.join(" ")} Ingen score- eller sorteringspåvirkning.`
+  };
+}
+
 function buildSdeWashTrackRelevanceDiagnostics({
   physicalState,
   linearTrackDiagnostics,
@@ -16471,6 +16510,12 @@ function buildSdeWashTrackRelevanceDiagnostics({
     physicalState:state,
     classifications
   });
+  const integrationReadiness = buildSdeWashTrackIntegrationReadinessDiagnostics({
+    physicalState:state,
+    classifications,
+    theoreticalSignals,
+    shadowAssessment
+  });
   const signals = classifications.map(item => `${item.label} (${item.count})`);
   const physicalText = state.doubleSetCapacityAvailable
     ? "Vaskesporet er fysisk ledig nå, men brukes fortsatt ikke som aktivt kandidatspor."
@@ -16479,6 +16524,7 @@ function buildSdeWashTrackRelevanceDiagnostics({
     `Teoretisk diagnose: Eksisterende SDE-diagnoser har relevanssignaler: ${signals.join(", ")}. Vaskesporet kan være relevant å observere som fysisk ranger-/rekkefølgeressurs.`,
     physicalText,
     ...(shadowAssessment ? [shadowAssessment.text] : []),
+    ...(integrationReadiness ? [integrationReadiness.text] : []),
     "Ikke aktivert som SDE-skifteforslag.",
     "VN/VS brukes ikke som målspor.",
     "Ingen score- eller sorteringspåvirkning."
@@ -16491,6 +16537,7 @@ function buildSdeWashTrackRelevanceDiagnostics({
     signals,
     classifications,
     shadowAssessment,
+    integrationReadiness,
     messages,
     text:messages.join(" ")
   }];
