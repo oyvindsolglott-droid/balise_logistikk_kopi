@@ -16416,6 +16416,36 @@ function classifySdeWashTrackRelevanceSignals({
   return signals;
 }
 
+function buildSdeWashTrackShadowPlanAssessment({
+  physicalState,
+  classifications
+} = {}){
+  const state = physicalState && typeof physicalState === "object"
+    ? physicalState
+    : getSdeWashTrackPhysicalState();
+  const items = Array.isArray(classifications) ? classifications : [];
+  const theoreticalSignals = items.filter(item => item?.type !== "physical_limited");
+
+  if(!theoreticalSignals.length) return null;
+
+  const level = state.doubleSetCapacityAvailable && theoreticalSignals.length > 1
+    ? "medium"
+    : "low";
+  const signalText = theoreticalSignals
+    .map(item => String(item?.label || "").toLowerCase())
+    .filter(Boolean)
+    .join(", ");
+  const availabilityText = state.doubleSetCapacityAvailable
+    ? "Vaskesporet er fysisk ledig i VN/VS."
+    : "Vaskesporet er ikke fullt tilgjengelig fysisk nå.";
+
+  return {
+    level,
+    manualOnly:true,
+    text:`Skyggemodell: ${signalText ? `Signalgrunnlag er ${signalText}. ` : ""}${availabilityText} Dette er ikke en operativ anbefaling. Eventuell bruk av VN/VS krever manuell vurdering. VN/VS brukes fortsatt ikke som målspor, og dette gir ingen score- eller sorteringspåvirkning.`
+  };
+}
+
 function buildSdeWashTrackRelevanceDiagnostics({
   physicalState,
   linearTrackDiagnostics,
@@ -16437,15 +16467,18 @@ function buildSdeWashTrackRelevanceDiagnostics({
 
   if(!theoreticalSignals.length) return [];
 
+  const shadowAssessment = buildSdeWashTrackShadowPlanAssessment({
+    physicalState:state,
+    classifications
+  });
   const signals = classifications.map(item => `${item.label} (${item.count})`);
   const physicalText = state.doubleSetCapacityAvailable
     ? "Vaskesporet er fysisk ledig nå, men brukes fortsatt ikke som aktivt kandidatspor."
     : "Vaskesporet er samtidig ikke fullt tilgjengelig nå, basert på fysisk status for VN/VS.";
-  const manualObservationText = "Kun simulert observasjon: Dette er ikke en operativ anbefaling. Eventuell bruk av VN/VS må vurderes manuelt, og VN/VS brukes fortsatt ikke som målspor.";
   const messages = [
     `Teoretisk diagnose: Eksisterende SDE-diagnoser har relevanssignaler: ${signals.join(", ")}. Vaskesporet kan være relevant å observere som fysisk ranger-/rekkefølgeressurs.`,
     physicalText,
-    manualObservationText,
+    ...(shadowAssessment ? [shadowAssessment.text] : []),
     "Ikke aktivert som SDE-skifteforslag.",
     "VN/VS brukes ikke som målspor.",
     "Ingen score- eller sorteringspåvirkning."
@@ -16457,7 +16490,7 @@ function buildSdeWashTrackRelevanceDiagnostics({
     title:"Teoretisk relevans for Vaskesporet",
     signals,
     classifications,
-    manualObservation:manualObservationText,
+    shadowAssessment,
     messages,
     text:messages.join(" ")
   }];
