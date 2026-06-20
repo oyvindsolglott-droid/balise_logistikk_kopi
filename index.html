@@ -10327,7 +10327,113 @@ function getSdePlanSkifteTargetSafetySummary(rows=state.planSkifteRows){
 }
 
 
-function getSdeResolutionCandidateSlots(fromSlot, avoidSlot=""){
+function getSdeWashTrackTemporaryReliefCandidateAssessment(context = {}){
+  const from = normalizeSlot(context.fromSlot);
+  const avoid = normalizeSlot(context.avoidSlot);
+  const state = context.physicalState && typeof context.physicalState === "object"
+    ? context.physicalState
+    : getSdeWashTrackPhysicalState();
+  const operationalContract = context.operationalContract || buildSdeWashTrackOperationalContract({ physicalState:state });
+  const routingPreconditionAssessment = context.routingPreconditionAssessment || buildSdeWashTrackRoutingPreconditionAssessment({
+    physicalState:state,
+    operationalContract
+  });
+  const accessResourceAssessment = context.accessResourceAssessment || buildSdeWashTrackAccessResourceAssessment({
+    physicalState:state,
+    operationalContract,
+    routingPreconditionAssessment
+  });
+  const vnSafetyAssessment = context.vnSafetyAssessment || buildSdeWashTrackVnSafetyAssessment({
+    physicalState:state,
+    operationalContract,
+    routingPreconditionAssessment,
+    accessResourceAssessment,
+    signals:context.signals
+  });
+  const nextOperationAssessment = context.nextOperationAssessment || buildSdeWashTrackNextOperationAssessment({
+    nextOperationKnown:context.nextOperationKnown,
+    nextOperationIsDoubleSetDriftsbanegard:context.nextOperationIsDoubleSetDriftsbanegard
+  });
+  const blockers = [];
+  const missingPreconditions = [];
+  const requiredEvidence = [
+    "Konkret blokkering/floke må være eksplisitt dokumentert.",
+    "Ut-igjen-plan må være eksplisitt dokumentert.",
+    "Rute-/adkomstmodell må være verifisert.",
+    "Neste skifteoperasjon må være kjent og ikke dobbeltsett til/fra driftsbanegården.",
+    "VN må være fysisk ledig og VS/adkomst må være ledig eller eksplisitt håndtert."
+  ];
+  const warnings = [
+    "VN er kun låst midlertidig avlastningskandidat i denne vurderingen.",
+    "Dette er ikke aktiv anbefaling, score, sortering eller SDE-kort."
+  ];
+  const uniqueTexts = values => Array.from(new Set((Array.isArray(values) ? values : []).filter(Boolean)));
+  const addBlockers = (items, prefix) => {
+    if(!Array.isArray(items) || !items.length) return;
+    items.forEach(item=>blockers.push(prefix ? `${prefix}: ${item}` : item));
+  };
+
+  if(context.enableWashTrackTemporaryRelief !== true){
+    missingPreconditions.push("enableWashTrackTemporaryRelief må være true.");
+  }
+  if(context.concreteBlockageKnown !== true){
+    missingPreconditions.push("concreteBlockageKnown må være true.");
+  }
+  if(context.hasExitPlan !== true && context.exitPlanKnown !== true){
+    missingPreconditions.push("hasExitPlan eller exitPlanKnown må være true.");
+  }
+  if(context.routeVerified !== true){
+    missingPreconditions.push("routeVerified må være true.");
+  }
+  if(nextOperationAssessment.nextOperationKnown !== true){
+    missingPreconditions.push("Neste skifteoperasjon må være kjent.");
+  }
+  if(nextOperationAssessment.nextOperationIsDoubleSetDriftsbanegard !== false){
+    if(nextOperationAssessment.hardStop){
+      blockers.push("Hard stop: neste skifteoperasjon er dobbeltsett til/fra driftsbanegården.");
+    } else {
+      missingPreconditions.push("Neste skifteoperasjon må eksplisitt være bekreftet som ikke dobbeltsett til/fra driftsbanegården.");
+    }
+  }
+  if(state?.vnOccupied){
+    blockers.push("VN er ikke fysisk ledig.");
+  }
+  if(!(state?.accessSlotFree === true || context.vsHandled === true)){
+    missingPreconditions.push("VS/adkomst må være ledig eller eksplisitt håndtert.");
+  }
+
+  addBlockers(operationalContract?.blocks, "Operativ kontrakt");
+  addBlockers(routingPreconditionAssessment?.blockers, "Ruteforutsetning");
+  addBlockers(accessResourceAssessment?.blockers, "Adkomstressurs");
+  addBlockers(vnSafetyAssessment?.blockers, "VN-sikkerhet");
+  addBlockers(nextOperationAssessment?.blockers, "Neste operasjon");
+
+  const candidateSlots = !blockers.length && !missingPreconditions.length && from !== "VN" && avoid !== "VN" && inputSlots.includes("VN")
+    ? ["VN"]
+    : [];
+  const isOpen = candidateSlots.length > 0;
+
+  return {
+    status:isOpen ? "candidate_locked_open" : (blockers.length ? "blocked" : "not_ready"),
+    readiness:isOpen ? "conditional" : "not_ready",
+    manualOnly:true,
+    temporaryOnly:true,
+    noScoreImpact:true,
+    noMoveCreation:true,
+    noActiveRecommendation:true,
+    candidateSlots,
+    blockers:uniqueTexts(blockers),
+    missingPreconditions:uniqueTexts(missingPreconditions),
+    requiredEvidence,
+    warnings,
+    reason:isOpen
+      ? "VN er låst åpen kun fordi alle eksplisitte hard gates er oppfylt."
+      : "VN er ikke tilgjengelig som midlertidig avlastningskandidat fordi ett eller flere hard gates mangler."
+  };
+}
+
+
+function getSdeResolutionCandidateSlots(fromSlot, avoidSlot="", context={}){
   const from = normalizeSlot(fromSlot);
   const avoid = normalizeSlot(avoidSlot);
 
@@ -10339,9 +10445,15 @@ function getSdeResolutionCandidateSlots(fromSlot, avoidSlot=""){
     "10S","11S","12S",
     "10N","11N","12N"
   ];
+  const washAssessment = getSdeWashTrackTemporaryReliefCandidateAssessment({
+    fromSlot:from,
+    avoidSlot:avoid,
+    ...context
+  });
+  const candidates = preferred.concat(Array.isArray(washAssessment?.candidateSlots) ? washAssessment.candidateSlots : []);
 
   const seen = new Set();
-  return preferred
+  return candidates
     .map(normalizeSlot)
     .filter(slot=>{
       if(!slot || seen.has(slot)) return false;
