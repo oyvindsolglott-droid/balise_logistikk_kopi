@@ -9631,6 +9631,21 @@ function getSdeVehicleInSlot(slot){
   return row ? sanitizeVehicleValue(row.mat) : "";
 }
 
+function getSdeWashTrackOccupancy(){
+  const vnVehicle = getSdeVehicleInSlot("VN");
+  const vsVehicle = getSdeVehicleInSlot("VS");
+  const vnOccupied = Boolean(vnVehicle);
+  const vsOccupied = Boolean(vsVehicle);
+
+  return {
+    vnVehicle,
+    vsVehicle,
+    vnOccupied,
+    vsOccupied,
+    bothOccupied: vnOccupied && vsOccupied
+  };
+}
+
 
 function getSdeSlotTrack(slot){
   const normalizedSlot = normalizeSlot(slot);
@@ -16212,6 +16227,18 @@ function buildSdeBlockerRescueRejectionDiagnostics(moves=[], unresolved=[]){
   );
 }
 
+function buildSdeWashTrackBlockingDiagnostics(){
+  const occupancy = getSdeWashTrackOccupancy();
+  if(!occupancy.bothOccupied) return [];
+
+  return [{
+    severity:"info",
+    vnVehicle:occupancy.vnVehicle,
+    vsVehicle:occupancy.vsVehicle,
+    text:`Vaskesporet er opptatt. ${occupancy.vsVehicle} står i VS og blokkerer tilgang til ${occupancy.vnVehicle} i VN. Kjøretøy i VN kan ikke tas ut uten at VS først flyttes. Dette er kun observasjon og brukes ikke i SDE-motor, score, sortering eller målsporvalg.`
+  }];
+}
+
 
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
@@ -16509,6 +16536,18 @@ function renderSdeSkiftebevegelser(){
       })
     : "";
 
+  const washTrackBlockingDiagnostics = buildSdeWashTrackBlockingDiagnostics();
+  const washTrackBlockingDiagnosticsHtml = washTrackBlockingDiagnostics.length
+    ? buildSdeDiagnosticSectionHtml({
+        id:"wash-track-blocking",
+        title:"Vaskesporet – blokkering",
+        count:washTrackBlockingDiagnostics.length,
+        bodyHtml:washTrackBlockingDiagnostics.map(item =>
+            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(`${item.vnVehicle} i VN`)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")
+      })
+    : "";
+
   const packageConflictDiagnostics = buildSdePackageConflictDiagnostics(data.moves, data.unresolved);
   const packageConflictDiagnosticsHtml = packageConflictDiagnostics.length
     ? buildSdeDiagnosticSectionHtml({
@@ -16669,6 +16708,7 @@ function renderSdeSkiftebevegelser(){
     ${linearTrackDiagnosticsHtml}
     ${pairDiagnosticsHtml}
     ${packageDiagnosticsHtml}
+    ${washTrackBlockingDiagnosticsHtml}
     ${packageConflictDiagnosticsHtml}
     ${packageRescueDiagnosticsHtml}
     ${packagePriorityDiagnosticsHtml}
