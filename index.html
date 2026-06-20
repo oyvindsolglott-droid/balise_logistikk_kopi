@@ -9800,6 +9800,57 @@ function buildSdeWashTrackRoutingPreconditionAssessment({ physicalState, operati
   };
 }
 
+function buildSdeWashTrackAccessResourceAssessment({ physicalState, operationalContract, routingPreconditionAssessment } = {}){
+  const state = physicalState || (typeof getSdeWashTrackPhysicalState === "function" ? getSdeWashTrackPhysicalState() : null);
+  const contract = operationalContract || (
+    typeof buildSdeWashTrackOperationalContract === "function"
+      ? buildSdeWashTrackOperationalContract({ physicalState: state })
+      : null
+  );
+  const routing = routingPreconditionAssessment || (
+    typeof buildSdeWashTrackRoutingPreconditionAssessment === "function"
+      ? buildSdeWashTrackRoutingPreconditionAssessment({ physicalState: state, operationalContract: contract })
+      : null
+  );
+  const theoreticalAccessResources = [
+    "VN er innerst / buttenden.",
+    "VS er ytterst / adkomstenden.",
+    "Inn/ut til VN forutsetter håndtering av VS.",
+    "VS kan blokkere VN.",
+    "VN/VS kan være relevant som teoretisk adkomst-/gjennomkjøringsressurs."
+  ];
+  const affectedAreas = [
+    "Adkomst til VN via VS.",
+    "Mulig påvirkning på nordlige adkomster og parkeringsområder må kartlegges før aktiv bruk.",
+    "Mulige skifteveier som kan være avhengige av fri adkomst via VS må ruteverifiseres."
+  ];
+  const missingModel = [
+    ...(Array.isArray(routing?.missingPreconditions) ? routing.missingPreconditions : []),
+    "Påvirkning mot andre spor/skifteveier er teoretisk og ikke ruteverifisert.",
+    "Aktiv bruk krever egen rute-/kapasitetsmodell."
+  ];
+  const reasons = [
+    ...(Array.isArray(contract?.reasons) ? contract.reasons : []),
+    "VN/VS skal fortsatt ikke inn i kandidatspor, målspor, score, sortering eller aktive SDE-kort."
+  ];
+
+  return {
+    status:"observe_only",
+    readiness:"not_ready",
+    manualOnly:true,
+    theoreticalOnly:true,
+    routeVerified:false,
+    noCandidateSlots:true,
+    noScoreImpact:true,
+    noMoveCreation:true,
+    noActiveRecommendation:true,
+    theoreticalAccessResources,
+    affectedAreas,
+    missingModel,
+    reasons
+  };
+}
+
 function getSdeWashTrackAccessAssessment(){
   const physicalState = getSdeWashTrackPhysicalState();
   const observationText = "Dette er fysisk observasjon og ikke aktivert i SDE-motor, score, sortering eller målsporvalg.";
