@@ -9641,6 +9641,38 @@ function getSdeVehicleInSlot(slot){
   return row ? sanitizeVehicleValue(row.mat) : "";
 }
 
+function isSdeWashTrackSlot(slot){
+  return washMachineSlots.includes(normalizeSlot(slot));
+}
+
+function getSdeWashTrackSlotRole(slot){
+  const normalizedSlot = normalizeSlot(slot);
+
+  if(normalizedSlot === "VN"){
+    return {
+      slot:"VN",
+      position:"inner",
+      label:"innerst / buttenden",
+      isAccessEnd:false,
+      isBlockedByVs:true,
+      canBlockVn:false
+    };
+  }
+
+  if(normalizedSlot === "VS"){
+    return {
+      slot:"VS",
+      position:"outer",
+      label:"ytterst / adkomstenden",
+      isAccessEnd:true,
+      isBlockedByVs:false,
+      canBlockVn:true
+    };
+  }
+
+  return null;
+}
+
 function getSdeWashTrackOccupancy(){
   const vnVehicle = getSdeVehicleInSlot("VN");
   const vsVehicle = getSdeVehicleInSlot("VS");
@@ -9653,6 +9685,82 @@ function getSdeWashTrackOccupancy(){
     vnOccupied,
     vsOccupied,
     bothOccupied: vnOccupied && vsOccupied
+  };
+}
+
+function getSdeWashTrackPhysicalState(){
+  const occupancy = getSdeWashTrackOccupancy();
+  const isEmpty = !occupancy.vnOccupied && !occupancy.vsOccupied;
+  const partlyUsed = !isEmpty && !occupancy.bothOccupied;
+  const accessSlotFree = !occupancy.vsOccupied;
+  const vsBlocksVn = occupancy.vsOccupied;
+
+  return {
+    ...occupancy,
+    isEmpty,
+    partlyUsed,
+    vsBlocksVn,
+    vnAccessible: occupancy.vnOccupied && accessSlotFree,
+    accessSlotFree,
+    doubleSetCapacityAvailable: isEmpty
+  };
+}
+
+function getSdeWashTrackAccessAssessment(){
+  const physicalState = getSdeWashTrackPhysicalState();
+  const observationText = "Dette er fysisk observasjon og ikke aktivert i SDE-motor, score, sortering eller målsporvalg.";
+
+  if(physicalState.isEmpty){
+    return {
+      status:"empty",
+      title:"Vaskesporet er fysisk ledig",
+      messages:[
+        "VN og VS er ledige.",
+        "Teoretisk kan Vaskesporet observeres som tilgjengelig for ranger-/rekkefølgebruk, men det er ikke aktiv kandidat i SDE.",
+        observationText
+      ],
+      canObserveAsRangerResource:true
+    };
+  }
+
+  if(physicalState.vnOccupied && !physicalState.vsOccupied){
+    return {
+      status:"partly_used_access_free",
+      title:"VN brukt, adkomst ledig",
+      messages:[
+        `${physicalState.vnVehicle} står i VN (innerst / buttenden).`,
+        "VS er ledig, så kjøretøy i VN er fysisk tilgjengelig via adkomstenden.",
+        "Teoretisk ranger-/rekkefølgebruk er begrenset fordi VN allerede er brukt.",
+        observationText
+      ],
+      canObserveAsRangerResource:false
+    };
+  }
+
+  if(!physicalState.vnOccupied && physicalState.vsOccupied){
+    return {
+      status:"partly_used_access_blocked",
+      title:"VS brukt, adkomst blokkert",
+      messages:[
+        `${physicalState.vsVehicle} står i VS (ytterst / adkomstenden).`,
+        "VS er adkomstenden og blokkerer fysisk tilgang til VN så lenge den står der.",
+        "Vaskesporet er ikke tilgjengelig som teoretisk ranger-/rekkefølgeressurs akkurat nå.",
+        observationText
+      ],
+      canObserveAsRangerResource:false
+    };
+  }
+
+  return {
+    status:"full_blocked",
+    title:"Vaskesporet er opptatt",
+    messages:[
+      `${physicalState.vnVehicle} står i VN (innerst / buttenden).`,
+      `${physicalState.vsVehicle} står i VS (ytterst / adkomstenden) og blokkerer tilgang til VN.`,
+      "Kjøretøy i VN kan ikke tas ut uten at VS først flyttes.",
+      observationText
+    ],
+    canObserveAsRangerResource:false
   };
 }
 
@@ -16238,14 +16346,25 @@ function buildSdeBlockerRescueRejectionDiagnostics(moves=[], unresolved=[]){
 }
 
 function buildSdeWashTrackBlockingDiagnostics(){
+  return buildSdeWashTrackPhysicalDiagnostics()
+    .filter(item => item.status === "full_blocked");
+}
+
+function buildSdeWashTrackPhysicalDiagnostics(){
+  const assessment = getSdeWashTrackAccessAssessment();
+  if(assessment.status === "empty") return [];
+
   const occupancy = getSdeWashTrackOccupancy();
-  if(!occupancy.bothOccupied) return [];
 
   return [{
     severity:"info",
+    status:assessment.status,
+    title:assessment.title,
     vnVehicle:occupancy.vnVehicle,
     vsVehicle:occupancy.vsVehicle,
-    text:`Vaskesporet er opptatt. ${occupancy.vsVehicle} står i VS og blokkerer tilgang til ${occupancy.vnVehicle} i VN. Kjøretøy i VN kan ikke tas ut uten at VS først flyttes. Dette er kun observasjon og brukes ikke i SDE-motor, score, sortering eller målsporvalg.`
+    messages:assessment.messages,
+    canObserveAsRangerResource:assessment.canObserveAsRangerResource,
+    text:assessment.messages.join(" ")
   }];
 }
 
@@ -16546,14 +16665,14 @@ function renderSdeSkiftebevegelser(){
       })
     : "";
 
-  const washTrackBlockingDiagnostics = buildSdeWashTrackBlockingDiagnostics();
-  const washTrackBlockingDiagnosticsHtml = washTrackBlockingDiagnostics.length
+  const washTrackPhysicalDiagnostics = buildSdeWashTrackPhysicalDiagnostics();
+  const washTrackPhysicalDiagnosticsHtml = washTrackPhysicalDiagnostics.length
     ? buildSdeDiagnosticSectionHtml({
         id:"wash-track-blocking",
-        title:"Vaskesporet – blokkering",
-        count:washTrackBlockingDiagnostics.length,
-        bodyHtml:washTrackBlockingDiagnostics.map(item =>
-            `<div class="sde-shift-observation-item"><strong>${escapeHtml(`${item.vnVehicle} i VN`)}</strong><br>${escapeHtml(item.text)}</div>`
+        title:"Vaskesporet – fysisk status",
+        count:washTrackPhysicalDiagnostics.length,
+        bodyHtml:washTrackPhysicalDiagnostics.map(item =>
+            `<div class="sde-shift-observation-item"><strong>${escapeHtml(item.title)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
       })
     : "";
@@ -16718,7 +16837,7 @@ function renderSdeSkiftebevegelser(){
     ${linearTrackDiagnosticsHtml}
     ${pairDiagnosticsHtml}
     ${packageDiagnosticsHtml}
-    ${washTrackBlockingDiagnosticsHtml}
+    ${washTrackPhysicalDiagnosticsHtml}
     ${packageConflictDiagnosticsHtml}
     ${packageRescueDiagnosticsHtml}
     ${packagePriorityDiagnosticsHtml}
