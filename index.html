@@ -10450,7 +10450,31 @@ function getSdeResolutionCandidateSlots(fromSlot, avoidSlot="", context={}){
     avoidSlot:avoid,
     ...context
   });
-  const candidates = preferred.concat(Array.isArray(washAssessment?.candidateSlots) ? washAssessment.candidateSlots : []);
+  const activeWashContext = context && typeof context === "object" ? context : {};
+  const washPhysicalState = activeWashContext.physicalState && typeof activeWashContext.physicalState === "object"
+    ? activeWashContext.physicalState
+    : (typeof getSdeWashTrackPhysicalState === "function" ? getSdeWashTrackPhysicalState() : null);
+  const activeWashEvidenceLevels = ["partial_relevant_observation"];
+  const ordinaryCandidateGateOpen = activeWashContext.allowVnAlongsideOrdinaryCandidates === true ||
+    activeWashContext.hasOrdinaryResolutionCandidate === false ||
+    Number(activeWashContext.ordinaryResolutionCandidateCount) === 0;
+  // VN er aktivert kun som midlertidig resolution-kandidat ved konkret konflikt/floke.
+  // VN er ikke ordinært parkeringsspor, og VS er ikke målspor.
+  const activeWashCandidateSlots = activeWashContext.enableActiveWashTrackResolution === true &&
+    activeWashContext.washTrackResolutionMode === "temporary_relief" &&
+    activeWashContext.conflictKnown === true &&
+    activeWashEvidenceLevels.includes(activeWashContext.vnTemporaryReliefEvidenceLevel) &&
+    washPhysicalState &&
+    washPhysicalState.vnOccupied !== true &&
+    washPhysicalState.accessSlotFree === true &&
+    from !== "VN" && from !== "VS" &&
+    avoid !== "VN" &&
+    ordinaryCandidateGateOpen
+      ? ["VN"]
+      : [];
+  const candidates = preferred
+    .concat(Array.isArray(washAssessment?.candidateSlots) ? washAssessment.candidateSlots : [])
+    .concat(activeWashCandidateSlots);
 
   const seen = new Set();
   return candidates
@@ -10544,7 +10568,20 @@ function scoreSdeResolutionTarget(slot){
 
 
 function getSdeBestResolutionTarget(vehicle, fromSlot, avoidSlot="", context={}){
-  return getSdeResolutionCandidateSlots(fromSlot, avoidSlot, context)
+  const ordinaryTargets = getSdeResolutionCandidateSlots(fromSlot, avoidSlot)
+    .filter(slot=>isSdeSafeResolutionMove(vehicle, fromSlot, slot))
+    .map(slot=>({slot, score:scoreSdeResolutionTarget(slot)}))
+    .sort((a,b)=>b.score - a.score);
+
+  if(ordinaryTargets.length && context?.allowVnAlongsideOrdinaryCandidates !== true){
+    return ordinaryTargets[0]?.slot || "";
+  }
+
+  const resolutionContext = context && typeof context === "object"
+    ? {...context, hasOrdinaryResolutionCandidate:ordinaryTargets.length > 0, ordinaryResolutionCandidateCount:ordinaryTargets.length}
+    : context;
+
+  return getSdeResolutionCandidateSlots(fromSlot, avoidSlot, resolutionContext)
     .filter(slot=>isSdeSafeResolutionMove(vehicle, fromSlot, slot))
     .map(slot=>({slot, score:scoreSdeResolutionTarget(slot)}))
     .sort((a,b)=>b.score - a.score)[0]?.slot || "";
@@ -10779,8 +10816,22 @@ function getSdeBlockedTargetResolution(planRow, vehicle, fromSlot, toSlot){
   if(haveSameSdeVehicleTokens(blockingVehicle, planVehicle)) return null;
 
   const candidates = [];
+  const contextAssessment = buildSdeBlockedTargetWashTrackContextAssessment(planRow, planVehicle, from, to);
+  const washTrackResolutionContext = contextAssessment.concreteBlockageKnown
+    ? {
+        enableActiveWashTrackResolution:true,
+        washTrackResolutionMode:"temporary_relief",
+        conflictKnown:contextAssessment.concreteBlockageKnown,
+        vnTemporaryReliefEvidenceLevel:contextAssessment.vnTemporaryReliefEvidenceLevel,
+        vnTemporaryReliefReadiness:contextAssessment.vnTemporaryReliefReadiness,
+        blockedTarget:to,
+        planVehicle,
+        blockingVehicle,
+        allowVnAlongsideOrdinaryCandidates:false
+      }
+    : {};
 
-  const blockerTarget = getSdeBestResolutionTarget(blockingVehicle, to, from);
+  const blockerTarget = getSdeBestResolutionTarget(blockingVehicle, to, from, washTrackResolutionContext);
   if(blockerTarget){
     candidates.push({
       score: 100 + scoreSdeResolutionTarget(blockerTarget),
