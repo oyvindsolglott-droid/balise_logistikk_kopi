@@ -16368,6 +16368,52 @@ function buildSdeWashTrackPhysicalDiagnostics(){
   }];
 }
 
+function buildSdeWashTrackRelevanceDiagnostics({
+  physicalState,
+  linearTrackDiagnostics,
+  pairDiagnostics,
+  packageDiagnostics,
+  packageConflictDiagnostics
+} = {}){
+  const state = physicalState && typeof physicalState === "object"
+    ? physicalState
+    : getSdeWashTrackPhysicalState();
+  const linearCount = Array.isArray(linearTrackDiagnostics) ? linearTrackDiagnostics.length : 0;
+  const pairCount = Array.isArray(pairDiagnostics) ? pairDiagnostics.length : 0;
+  const packageWarnings = Array.isArray(packageDiagnostics)
+    ? packageDiagnostics.filter(item => item?.severity === "split" || item?.severity === "warning")
+    : [];
+  const packageConflictCount = Array.isArray(packageConflictDiagnostics) ? packageConflictDiagnostics.length : 0;
+
+  if(!linearCount && !pairCount && !packageWarnings.length && !packageConflictCount) return [];
+
+  const signals = [
+    linearCount ? `${linearCount} uttaksrekkefølge-diagnose(r)` : "",
+    pairCount ? `${pairCount} parstatus-diagnose(r)` : "",
+    packageWarnings.length ? `${packageWarnings.length} pakke-/buttspor-diagnose(r)` : "",
+    packageConflictCount ? `${packageConflictCount} pakke-/parkonflikt(er)` : ""
+  ].filter(Boolean);
+  const physicalText = state.doubleSetCapacityAvailable
+    ? "Vaskesporet er fysisk ledig nå, men brukes fortsatt ikke som aktivt kandidatspor."
+    : "Vaskesporet er samtidig ikke fullt tilgjengelig nå, basert på fysisk status for VN/VS.";
+  const messages = [
+    `Teoretisk diagnose: Eksisterende SDE-diagnoser har ${signals.join(", ")} der Vaskesporet kan være relevant å observere som fysisk ranger-/rekkefølgeressurs.`,
+    physicalText,
+    "Ikke aktivert som SDE-skifteforslag.",
+    "VN/VS brukes ikke som målspor.",
+    "Ingen score- eller sorteringspåvirkning."
+  ];
+
+  return [{
+    severity:"info",
+    status:state.doubleSetCapacityAvailable ? "theoretical_available" : "theoretical_observed_but_not_available",
+    title:"Teoretisk relevans for Vaskesporet",
+    signals,
+    messages,
+    text:messages.join(" ")
+  }];
+}
+
 
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
@@ -16689,6 +16735,23 @@ function renderSdeSkiftebevegelser(){
       })
     : "";
 
+  const washTrackRelevanceDiagnostics = buildSdeWashTrackRelevanceDiagnostics({
+    linearTrackDiagnostics,
+    pairDiagnostics,
+    packageDiagnostics,
+    packageConflictDiagnostics
+  });
+  const washTrackRelevanceDiagnosticsHtml = washTrackRelevanceDiagnostics.length
+    ? buildSdeDiagnosticSectionHtml({
+        id:"wash-track-relevance",
+        title:"Vaskesporet – teoretisk relevans",
+        count:washTrackRelevanceDiagnostics.length,
+        bodyHtml:washTrackRelevanceDiagnostics.map(item =>
+            `<div class="sde-shift-observation-item"><strong>${escapeHtml(item.title)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")
+      })
+    : "";
+
   const packageRescueDiagnostics = buildSdePackageRescueDiagnostics(data.moves, data.unresolved);
   const packageRescueDiagnosticsHtml = packageRescueDiagnostics.length
     ? buildSdeDiagnosticSectionHtml({
@@ -16838,6 +16901,7 @@ function renderSdeSkiftebevegelser(){
     ${pairDiagnosticsHtml}
     ${packageDiagnosticsHtml}
     ${washTrackPhysicalDiagnosticsHtml}
+    ${washTrackRelevanceDiagnosticsHtml}
     ${packageConflictDiagnosticsHtml}
     ${packageRescueDiagnosticsHtml}
     ${packagePriorityDiagnosticsHtml}
