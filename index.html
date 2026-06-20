@@ -9706,6 +9706,61 @@ function getSdeWashTrackPhysicalState(){
   };
 }
 
+function buildSdeWashTrackOperationalContract({ physicalState } = {}){
+  const state = physicalState || getSdeWashTrackPhysicalState();
+  const vnOccupied = Boolean(state?.vnOccupied);
+  const vsOccupied = Boolean(state?.vsOccupied);
+  const blocks = [];
+  const reasons = [];
+  const requiredPreconditions = [
+    "Eksplisitt rute-/kapasitetsmodell må finnes før aktiv motor.",
+    "Blokkering via VS må være testet.",
+    "Dobbeltsett-/returmodell må være testet."
+  ];
+
+  if(vsOccupied){
+    blocks.push("VS blokkerer tilgang til VN.");
+    reasons.push("VS er adkomstenden til Vaskesporet. Når VS er opptatt, er VN ikke fritt tilgjengelig.");
+  }
+
+  if(vnOccupied && vsOccupied){
+    blocks.push("Vaskesporet er fullt/blokkert.");
+    reasons.push("Både VN og VS er opptatt. Det finnes ingen fri posisjon i Vaskesporet.");
+  } else if(vnOccupied){
+    reasons.push("VN er opptatt, men kan teoretisk hentes ut via VS dersom VS er ledig.");
+  } else if(vsOccupied){
+    reasons.push("VS er opptatt. VN kan ikke brukes før VS er håndtert.");
+  } else {
+    reasons.push("VN og VS er fysisk ledige i observasjonen, men Vaskesporet er fortsatt ikke aktivt målspor.");
+  }
+
+  let status = "empty";
+  if(vnOccupied && vsOccupied){
+    status = "full_blocked";
+  } else if(vnOccupied){
+    status = "vn_only_access_free";
+  } else if(vsOccupied){
+    status = "vs_only_blocks_vn";
+  }
+
+  return {
+    vnOccupied,
+    vsOccupied,
+    vnAccessible: !vsOccupied,
+    vsAccessible: !vsOccupied,
+    canEnterVs: !vsOccupied,
+    canEnterVn: !vnOccupied && !vsOccupied,
+    canExitVs: vsOccupied,
+    canExitVn: vnOccupied && !vsOccupied,
+    blocks,
+    requiredPreconditions,
+    reasons,
+    status,
+    level: "observe_only",
+    manualOnly: true
+  };
+}
+
 function getSdeWashTrackAccessAssessment(){
   const physicalState = getSdeWashTrackPhysicalState();
   const observationText = "Dette er fysisk observasjon og ikke aktivert i SDE-motor, score, sortering eller målsporvalg.";
