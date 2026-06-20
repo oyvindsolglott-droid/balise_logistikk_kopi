@@ -16694,6 +16694,82 @@ function buildSdeWashTrackRelevanceDiagnostics({
   }];
 }
 
+function buildSdeWashTrackVnSafetyAssessment({
+  physicalState,
+  operationalContract,
+  routingPreconditionAssessment,
+  accessResourceAssessment,
+  signals,
+  elasticitySignals
+} = {}){
+  const state = physicalState && typeof physicalState === "object"
+    ? physicalState
+    : getSdeWashTrackPhysicalState();
+  const contract = operationalContract || buildSdeWashTrackOperationalContract({ physicalState:state });
+  const routing = routingPreconditionAssessment || buildSdeWashTrackRoutingPreconditionAssessment({
+    physicalState:state,
+    operationalContract:contract
+  });
+  const accessResource = accessResourceAssessment || buildSdeWashTrackAccessResourceAssessment({
+    physicalState:state,
+    operationalContract:contract,
+    routingPreconditionAssessment:routing
+  });
+  const signalRows = Array.isArray(signals)
+    ? signals
+    : (Array.isArray(elasticitySignals) ? elasticitySignals : []);
+  const hasRealElasticityNeed = signalRows.length > 0;
+  const hardStops = [
+    "Vaskesporet skal ikke brukes som ordinært parkeringsspor.",
+    "Midlertidig parkering i Vaskesporet skal unngås i størst mulig grad.",
+    "VN kan bare vurderes ved konkret blokkering/floke.",
+    "VN skal avvises dersom neste skifteoperasjon er dobbeltsett til/fra driftsbanegården."
+  ];
+  const blockers = [
+    "Neste skifteoperasjon er ikke eksplisitt modellert for VN-sikkerhet.",
+    "Ut-igjen-plan for eventuell VN-bruk mangler.",
+    "Rute-/adkomstmodell for VN/VS er ikke verifisert."
+  ];
+  const missingPreconditions = [
+    ...(Array.isArray(routing?.missingPreconditions) ? routing.missingPreconditions : []),
+    "Eksplisitt modell for neste skifteoperasjon mangler.",
+    "Dokumentert blokkering/floke må finnes før VN kan vurderes.",
+    "Sikkerhetskontrakt for midlertidig VN-bruk mangler."
+  ];
+  const requiredEvidence = [
+    "Konkret blokkering/floke som ikke løses av ordinær SDE-logikk.",
+    "Dokumentert ut-igjen-plan før VN tas i bruk.",
+    "Kontrollert at neste skifteoperasjon ikke er dobbeltsett til/fra driftsbanegården.",
+    "Rute-/adkomstmodell som viser hvordan VS håndteres."
+  ];
+  const warnings = [
+    "VN er observe-only og ikke klarert som målspor.",
+    "Fysisk ledig VN/VS er ikke nok til aktiv bruk.",
+    ...(Array.isArray(accessResource?.reasons) ? accessResource.reasons : [])
+  ];
+  const text = "VN er ikke klarert for aktiv SDE-bruk. Aktiv bruk krever dokumentert blokkering/floke, ut-igjen-plan, rute-/adkomstmodell og eksplisitt kontroll av neste skifteoperasjon. VN skal avvises dersom neste skifteoperasjon er dobbeltsett til/fra driftsbanegården.";
+
+  return {
+    status:"observe_only",
+    readiness:"not_ready",
+    manualOnly:true,
+    temporaryOnly:true,
+    vnCandidateAllowed:false,
+    vnParkingAllowed:false,
+    hasRealElasticityNeed,
+    nextOperationKnown:false,
+    nextOperationIsDoubleSetDriftsbanegard:null,
+    routeVerified:false,
+    hasExitPlan:false,
+    hardStops,
+    blockers,
+    missingPreconditions,
+    requiredEvidence,
+    warnings,
+    text
+  };
+}
+
 function buildSdeWashTrackElasticityNeedDiagnostics({
   data,
   physicalState,
@@ -16735,6 +16811,13 @@ function buildSdeWashTrackElasticityNeedDiagnostics({
     operationalContract,
     routingPreconditionAssessment
   });
+  const vnSafetyAssessment = buildSdeWashTrackVnSafetyAssessment({
+    physicalState:state,
+    operationalContract,
+    routingPreconditionAssessment,
+    accessResourceAssessment,
+    signals
+  });
   const hardStops = [
     "Vaskesporet skal ikke brukes som ordinært parkeringsspor.",
     "Midlertidig parkering i Vaskesporet skal unngås i størst mulig grad.",
@@ -16774,6 +16857,7 @@ function buildSdeWashTrackElasticityNeedDiagnostics({
     operationalContract,
     routingPreconditionAssessment,
     accessResourceAssessment,
+    vnSafetyAssessment,
     hardStops,
     messages,
     text:messages.join(" ")
