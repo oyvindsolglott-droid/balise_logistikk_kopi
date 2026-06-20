@@ -16856,6 +16856,8 @@ function buildSdeWashTrackSimulatedVnUseAssessment({
     ? "Simulert VN-vurdering: hard stop. VN skal avvises fordi neste skifteoperasjon er dobbeltsett til/fra driftsbanegården. Dette gir ingen kandidatspor, score, sortering eller SDE-kort."
     : "Simulert VN-vurdering: ikke klarert. VN er fortsatt observe-only/manualOnly og krever dokumentert blokkering/floke, VS-håndtering, ut-igjen-plan og eksplisitt kontroll av neste skifteoperasjon. Dette gir ingen kandidatspor, score, sortering eller SDE-kort.";
 
+  const uniqueTexts = values => Array.from(new Set((Array.isArray(values) ? values : []).filter(Boolean)));
+
   return {
     status:"observe_only",
     readiness:"not_ready",
@@ -16874,10 +16876,10 @@ function buildSdeWashTrackSimulatedVnUseAssessment({
     noScoreImpact:true,
     noMoveCreation:true,
     noActiveRecommendation:true,
-    blockers,
-    missingPreconditions,
-    requiredEvidence,
-    warnings,
+    blockers:uniqueTexts(blockers),
+    missingPreconditions:uniqueTexts(missingPreconditions),
+    requiredEvidence:uniqueTexts(requiredEvidence),
+    warnings:uniqueTexts(warnings),
     text
   };
 }
