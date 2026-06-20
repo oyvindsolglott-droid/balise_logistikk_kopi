@@ -16694,6 +16694,92 @@ function buildSdeWashTrackRelevanceDiagnostics({
   }];
 }
 
+function buildSdeWashTrackElasticityNeedDiagnostics({
+  data,
+  physicalState,
+  linearTrackDiagnostics,
+  pairDiagnostics,
+  packageDiagnostics,
+  packageConflictDiagnostics
+} = {}){
+  const state = physicalState && typeof physicalState === "object"
+    ? physicalState
+    : getSdeWashTrackPhysicalState();
+  const unresolvedRows = Array.isArray(data?.unresolved) ? data.unresolved : [];
+  const flexibleRows = Array.isArray(data?.flexibleUnknownParking) ? data.flexibleUnknownParking : [];
+  const totalArrivals = Number(data?.totalArrivals) || 0;
+  const solvedArrivals = Number(data?.solvedArrivals) || 0;
+  const unsolvedArrivalCount = Math.max(0, totalArrivals - solvedArrivals);
+  const linearRows = Array.isArray(linearTrackDiagnostics) ? linearTrackDiagnostics : [];
+  const pairRows = Array.isArray(pairDiagnostics) ? pairDiagnostics : [];
+  const packageWarnings = Array.isArray(packageDiagnostics)
+    ? packageDiagnostics.filter(item => item?.severity === "warning" || item?.severity === "split")
+    : [];
+  const packageConflicts = Array.isArray(packageConflictDiagnostics) ? packageConflictDiagnostics : [];
+  const signals = [];
+
+  if(unresolvedRows.length) signals.push({type:"unresolved_need", label:"Uløst SDE-behov", count:unresolvedRows.length});
+  if(flexibleRows.length) signals.push({type:"manual_review", label:"Manuell/fleksibel vurdering", count:flexibleRows.length});
+  if(unsolvedArrivalCount) signals.push({type:"unsolved_arrival", label:"Ankomst uten løst aktivt forslag", count:unsolvedArrivalCount});
+  if(linearRows.length) signals.push({type:"order_issue", label:"Rekkefølgekonflikt i spor 4/5", count:linearRows.length});
+  if(pairRows.length) signals.push({type:"double_set_diagnostic", label:"Dobbeltsett-/plasseringdiagnose", count:pairRows.length});
+  if(packageWarnings.length) signals.push({type:"package_or_butt_conflict", label:"Pakke-/buttsporkonflikt", count:packageWarnings.length});
+  if(packageConflicts.length) signals.push({type:"package_neighbor_conflict", label:"Pakke-/nabokonflikt", count:packageConflicts.length});
+
+  if(!signals.length) return [];
+
+  const operationalContract = buildSdeWashTrackOperationalContract({ physicalState:state });
+  const routingPreconditionAssessment = buildSdeWashTrackRoutingPreconditionAssessment({ physicalState:state, operationalContract });
+  const accessResourceAssessment = buildSdeWashTrackAccessResourceAssessment({
+    physicalState:state,
+    operationalContract,
+    routingPreconditionAssessment
+  });
+  const hardStops = [
+    "Vaskesporet skal ikke brukes som ordinært parkeringsspor.",
+    "Midlertidig parkering i Vaskesporet skal unngås i størst mulig grad.",
+    "VN kan bare være aktuell ved konkret blokkering/floke.",
+    "VN må avvises dersom neste skifteoperasjon er dobbeltsett til/fra driftsbanegården.",
+    "Aktiv bruk krever sikkerhetskontrakt, ut-igjen-plan og rute-/adkomstmodell."
+  ];
+  const signalText = signals.map(item => `${item.label} (${item.count})`).join(", ");
+  const physicalText = state.doubleSetCapacityAvailable
+    ? "Fysisk status: VN/VS er ledige, men dette er bare tilleggsinfo og utløser ikke diagnose alene."
+    : state.vsBlocksVn
+      ? "Fysisk status: VS er opptatt og kan blokkere tilgang til VN."
+      : "Fysisk status: Vaskesporet er delvis brukt og må vurderes manuelt før eventuell fremtidig elastisitetsbruk.";
+  const messages = [
+    "Read-only diagnose: Dagens SDE-data viser mulig elastisitetsbehov i tomta.",
+    `Signalgrunnlag: ${signalText}.`,
+    physicalText,
+    "Vaskesporet observeres kun som mulig fremtidig midlertidig elastisitetsressurs, ikke som ordinært parkeringsspor.",
+    "Midlertidig parkering i Vaskesporet skal unngås i størst mulig grad.",
+    "VN kan bare være aktuell ved konkret blokkering/floke, og må avvises dersom neste skifteoperasjon er dobbeltsett til/fra driftsbanegården.",
+    "Aktiv bruk krever sikkerhetskontrakt, ut-igjen-plan og rute-/adkomstmodell.",
+    "VN/VS gir ingen kandidatspor, score, sortering eller SDE-kort nå."
+  ];
+
+  return [{
+    severity:"info",
+    status:"observe_only",
+    title:"Midlertidig elastisitetsressurs",
+    manualOnly:true,
+    temporaryOnly:true,
+    noCandidateSlots:true,
+    noScoreImpact:true,
+    noMoveCreation:true,
+    noActiveRecommendation:true,
+    signals,
+    physicalState:state,
+    operationalContract,
+    routingPreconditionAssessment,
+    accessResourceAssessment,
+    hardStops,
+    messages,
+    text:messages.join(" ")
+  }];
+}
+
 
 function getSdeShiftScoreClass(score){
   if(score >= 85) return "good";
@@ -17032,6 +17118,24 @@ function renderSdeSkiftebevegelser(){
       })
     : "";
 
+  const washTrackElasticityNeedDiagnostics = buildSdeWashTrackElasticityNeedDiagnostics({
+    data,
+    linearTrackDiagnostics,
+    pairDiagnostics,
+    packageDiagnostics,
+    packageConflictDiagnostics
+  });
+  const washTrackElasticityNeedDiagnosticsHtml = washTrackElasticityNeedDiagnostics.length
+    ? buildSdeDiagnosticSectionHtml({
+        id:"wash-track-elasticity-need",
+        title:"Vaskesporet – elastisitetsbehov",
+        count:washTrackElasticityNeedDiagnostics.length,
+        bodyHtml:washTrackElasticityNeedDiagnostics.map(item =>
+            `<div class="sde-shift-observation-item"><strong>${escapeHtml(item.title)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")
+      })
+    : "";
+
   const packageRescueDiagnostics = buildSdePackageRescueDiagnostics(data.moves, data.unresolved);
   const packageRescueDiagnosticsHtml = packageRescueDiagnostics.length
     ? buildSdeDiagnosticSectionHtml({
@@ -17182,6 +17286,7 @@ function renderSdeSkiftebevegelser(){
     ${packageDiagnosticsHtml}
     ${washTrackPhysicalDiagnosticsHtml}
     ${washTrackRelevanceDiagnosticsHtml}
+    ${washTrackElasticityNeedDiagnosticsHtml}
     ${packageConflictDiagnosticsHtml}
     ${packageRescueDiagnosticsHtml}
     ${packagePriorityDiagnosticsHtml}
