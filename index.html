@@ -16664,6 +16664,7 @@ function buildSdeWashTrackRelevanceDiagnostics({
     theoreticalSignals,
     shadowAssessment
   });
+  const accessResourceAssessment = buildSdeWashTrackAccessResourceAssessment({ physicalState:state });
   const signals = classifications.map(item => `${item.label} (${item.count})`);
   const physicalText = state.doubleSetCapacityAvailable
     ? "Vaskesporet er fysisk ledig nå, men brukes fortsatt ikke som aktivt kandidatspor."
@@ -16673,6 +16674,7 @@ function buildSdeWashTrackRelevanceDiagnostics({
     physicalText,
     ...(shadowAssessment ? [shadowAssessment.text] : []),
     ...(integrationReadiness ? [integrationReadiness.text] : []),
+    "Adkomstressurs: VN/VS kan teoretisk påvirke adkomst via VS. Mulig påvirkning på nordlige adkomster, parkeringsområder og skifteveier må ruteverifiseres før aktiv bruk. Dette gir ingen kandidatspor, score, sortering eller SDE-kort.",
     "Ikke aktivert som SDE-skifteforslag.",
     "VN/VS brukes ikke som målspor.",
     "Ingen score- eller sorteringspåvirkning."
@@ -16686,6 +16688,7 @@ function buildSdeWashTrackRelevanceDiagnostics({
     classifications,
     shadowAssessment,
     integrationReadiness,
+    accessResourceAssessment,
     messages,
     text:messages.join(" ")
   }];
