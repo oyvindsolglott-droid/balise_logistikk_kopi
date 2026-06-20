@@ -10603,6 +10603,20 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
   const exitPlanObservation = nextPlanRowForBlockingVehicle
     ? "partial_exit_plan_observed"
     : "insufficient_for_exit_plan";
+  const nextPlanRowHasTime = Boolean(nextPlanRowForBlockingVehicle?.time);
+  const nextPlanRowHasFromSlot = Boolean(nextPlanRowForBlockingVehicle?.fromSlot);
+  const nextPlanRowHasToSlot = Boolean(nextPlanRowForBlockingVehicle?.toSlot);
+  const nextPlanRowTargetDiffersFromBlockedTarget = Boolean(nextPlanRowHasToSlot && nextPlanRowForBlockingVehicle.toSlot !== to);
+  const nextPlanRowStartsAtBlockedTarget = Boolean(nextPlanRowHasFromSlot && nextPlanRowForBlockingVehicle.fromSlot === to);
+  const nextPlanRowMovesBlockingVehicleAway = Boolean(
+    nextPlanRowForBlockingVehicle &&
+    nextPlanRowStartsAtBlockedTarget &&
+    nextPlanRowHasToSlot &&
+    nextPlanRowForBlockingVehicle.toSlot !== to
+  );
+  const exitPlanObservationQuality = !nextPlanRowForBlockingVehicle
+    ? "none"
+    : (nextPlanRowMovesBlockingVehicleAway ? "partial_relevant" : "weak");
   const missingPreconditions = [
     "Ut-igjen-plan mangler.",
     "Rute-/adkomstverifisering for VN/VS mangler.",
@@ -10639,11 +10653,18 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
     nextPlanRowsForBlockingVehicleCount:nextPlanRowsForBlockingVehicle.length,
     nextPlanRowForBlockingVehicle,
     nextPlanRowClassification,
+    nextPlanRowHasTime,
+    nextPlanRowHasFromSlot,
+    nextPlanRowHasToSlot,
+    nextPlanRowTargetDiffersFromBlockedTarget,
+    nextPlanRowStartsAtBlockedTarget,
+    nextPlanRowMovesBlockingVehicleAway,
     nextOperationKnown:false,
     nextOperationEvidenceLevel:nextPlanRowForBlockingVehicle ? "partial" : "missing",
     exitPlanKnown:false,
     exitPlanEvidenceLevel:"missing",
     exitPlanObservation,
+    exitPlanObservationQuality,
     routeVerified:false,
     routeEvidenceLevel:"missing",
     nextOperationIsDoubleSetDriftsbanegard:null,
