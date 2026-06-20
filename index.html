@@ -16368,7 +16368,7 @@ function buildSdeWashTrackPhysicalDiagnostics(){
   }];
 }
 
-function buildSdeWashTrackRelevanceDiagnostics({
+function classifySdeWashTrackRelevanceSignals({
   physicalState,
   linearTrackDiagnostics,
   pairDiagnostics,
@@ -16384,20 +16384,65 @@ function buildSdeWashTrackRelevanceDiagnostics({
     ? packageDiagnostics.filter(item => item?.severity === "split" || item?.severity === "warning")
     : [];
   const packageConflictCount = Array.isArray(packageConflictDiagnostics) ? packageConflictDiagnostics.length : 0;
+  const hasTheoreticalSignal = Boolean(linearCount || pairCount || packageWarnings.length || packageConflictCount);
+  const signals = [];
 
-  if(!linearCount && !pairCount && !packageWarnings.length && !packageConflictCount) return [];
+  if(linearCount){
+    signals.push({type:"order_issue", label:"Rekkefølgeproblem", count:linearCount});
+  }
 
-  const signals = [
-    linearCount ? `${linearCount} uttaksrekkefølge-diagnose(r)` : "",
-    pairCount ? `${pairCount} parstatus-diagnose(r)` : "",
-    packageWarnings.length ? `${packageWarnings.length} pakke-/buttspor-diagnose(r)` : "",
-    packageConflictCount ? `${packageConflictCount} pakke-/parkonflikt(er)` : ""
-  ].filter(Boolean);
+  if(pairCount){
+    signals.push({type:"double_set_diagnostic", label:"Dobbeltsett-/plasseringdiagnose", count:pairCount});
+  }
+
+  if(packageWarnings.length){
+    signals.push({type:"package_or_butt_conflict", label:"Pakke-/buttsporkonflikt", count:packageWarnings.length});
+  }
+
+  if(packageConflictCount){
+    signals.push({type:"package_neighbor_conflict", label:"Pakke-/nabokonflikt", count:packageConflictCount});
+  }
+
+  if(state && !state.doubleSetCapacityAvailable){
+    signals.push({type:"physical_limited", label:"Fysisk blokkering/utilgjengelighet", count:1});
+  }
+
+  const hasNonPhysicalSignal = signals.some(item => item.type !== "physical_limited");
+
+  if(hasTheoreticalSignal && !hasNonPhysicalSignal){
+    signals.push({type:"unknown_theoretical_signal", label:"Ukjent/annet teoretisk signal", count:1});
+  }
+
+  return signals;
+}
+
+function buildSdeWashTrackRelevanceDiagnostics({
+  physicalState,
+  linearTrackDiagnostics,
+  pairDiagnostics,
+  packageDiagnostics,
+  packageConflictDiagnostics
+} = {}){
+  const state = physicalState && typeof physicalState === "object"
+    ? physicalState
+    : getSdeWashTrackPhysicalState();
+  const classifications = classifySdeWashTrackRelevanceSignals({
+    physicalState:state,
+    linearTrackDiagnostics,
+    pairDiagnostics,
+    packageDiagnostics,
+    packageConflictDiagnostics
+  });
+  const theoreticalSignals = classifications.filter(item => item.type !== "physical_limited");
+
+  if(!theoreticalSignals.length) return [];
+
+  const signals = classifications.map(item => `${item.label} (${item.count})`);
   const physicalText = state.doubleSetCapacityAvailable
     ? "Vaskesporet er fysisk ledig nå, men brukes fortsatt ikke som aktivt kandidatspor."
     : "Vaskesporet er samtidig ikke fullt tilgjengelig nå, basert på fysisk status for VN/VS.";
   const messages = [
-    `Teoretisk diagnose: Eksisterende SDE-diagnoser har ${signals.join(", ")} der Vaskesporet kan være relevant å observere som fysisk ranger-/rekkefølgeressurs.`,
+    `Teoretisk diagnose: Eksisterende SDE-diagnoser har relevanssignaler: ${signals.join(", ")}. Vaskesporet kan være relevant å observere som fysisk ranger-/rekkefølgeressurs.`,
     physicalText,
     "Ikke aktivert som SDE-skifteforslag.",
     "VN/VS brukes ikke som målspor.",
@@ -16409,6 +16454,7 @@ function buildSdeWashTrackRelevanceDiagnostics({
     status:state.doubleSetCapacityAvailable ? "theoretical_available" : "theoretical_observed_but_not_available",
     title:"Teoretisk relevans for Vaskesporet",
     signals,
+    classifications,
     messages,
     text:messages.join(" ")
   }];
