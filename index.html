@@ -16406,10 +16406,12 @@ function buildSdeWashTrackBlockingDiagnostics(){
 }
 
 function buildSdeWashTrackPhysicalDiagnostics(){
+  const physicalState = getSdeWashTrackPhysicalState();
   const assessment = getSdeWashTrackAccessAssessment();
   if(assessment.status === "empty") return [];
 
   const occupancy = getSdeWashTrackOccupancy();
+  const operationalContract = buildSdeWashTrackOperationalContract({ physicalState });
 
   return [{
     severity:"info",
@@ -16417,6 +16419,7 @@ function buildSdeWashTrackPhysicalDiagnostics(){
     title:assessment.title,
     vnVehicle:occupancy.vnVehicle,
     vsVehicle:occupancy.vsVehicle,
+    operationalContract,
     messages:assessment.messages,
     canObserveAsRangerResource:assessment.canObserveAsRangerResource,
     text:assessment.messages.join(" ")
