@@ -10639,6 +10639,52 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
     : (!nextPlanRowHasComparableTime
       ? "missing_time"
       : (nextPlanRowIsAfterCurrentPlanRow ? "after_current_observed" : "not_after_current"));
+  const vnTemporaryReliefReadiness = "not_ready";
+  const vnTemporaryReliefHardLocks = [
+    "exitPlanKnown:false",
+    "nextOperationKnown:false",
+    "routeVerified:false",
+    "enableWashTrackTemporaryRelief:false",
+    "noCandidateSlots:true",
+    "noScoreImpact:true",
+    "noMoveCreation:true",
+    "noActiveRecommendation:true"
+  ];
+  let vnTemporaryReliefEvidenceLevel = "none";
+  const vnTemporaryReliefEvidenceReasons = [];
+  const vnTemporaryReliefMissingEvidence = [];
+
+  if(concreteBlockageKnown){
+    vnTemporaryReliefEvidenceReasons.push("Konkret blokkering/floke er observert.");
+  } else {
+    vnTemporaryReliefMissingEvidence.push("Konkret blokkering/floke mangler.");
+  }
+
+  if(nextPlanRowForBlockingVehicle){
+    vnTemporaryReliefEvidenceReasons.push("Senere planrad for blokkerende kjøretøy er observert.");
+  } else {
+    vnTemporaryReliefMissingEvidence.push("Senere planrad for blokkerende kjøretøy mangler.");
+  }
+
+  if(nextPlanRowMovesBlockingVehicleAway){
+    vnTemporaryReliefEvidenceReasons.push("Senere planrad starter på blokkert målspor og flytter kjøretøyet til annet spor.");
+  } else {
+    vnTemporaryReliefMissingEvidence.push("Senere planrad dokumenterer ikke flytting fra blokkert målspor til annet spor.");
+  }
+
+  if(nextPlanRowTimingObservation === "after_current_observed"){
+    vnTemporaryReliefEvidenceReasons.push("Senere planrad er tidsmessig etter gjeldende planrad.");
+  } else {
+    vnTemporaryReliefMissingEvidence.push("Senere planrad er ikke tidsmessig dokumentert etter gjeldende planrad.");
+  }
+
+  if(concreteBlockageKnown && nextPlanRowForBlockingVehicle && nextPlanRowMovesBlockingVehicleAway && nextPlanRowTimingObservation === "after_current_observed"){
+    vnTemporaryReliefEvidenceLevel = "partial_relevant_observation";
+  } else if(concreteBlockageKnown && nextPlanRowForBlockingVehicle && (nextPlanRowMovesBlockingVehicleAway || nextPlanRowTimingObservation === "after_current_observed")){
+    vnTemporaryReliefEvidenceLevel = "partial_observation";
+  } else if(concreteBlockageKnown && nextPlanRowForBlockingVehicle){
+    vnTemporaryReliefEvidenceLevel = "weak";
+  }
   const missingPreconditions = [
     "Ut-igjen-plan mangler.",
     "Rute-/adkomstverifisering for VN/VS mangler.",
@@ -10687,6 +10733,11 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
     nextPlanRowIsAfterCurrentPlanRow,
     nextPlanRowTimeDeltaMinutes,
     nextPlanRowTimingObservation,
+    vnTemporaryReliefReadiness,
+    vnTemporaryReliefEvidenceLevel,
+    vnTemporaryReliefEvidenceReasons,
+    vnTemporaryReliefMissingEvidence,
+    vnTemporaryReliefHardLocks,
     nextOperationKnown:false,
     nextOperationEvidenceLevel:nextPlanRowForBlockingVehicle ? "partial" : "missing",
     exitPlanKnown:false,
