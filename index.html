@@ -7878,6 +7878,12 @@ function setTxpUnavailableTrack(track, checked){
   infra.tracks = [...tracks].filter(item => ["1","2","3"].includes(item));
 }
 
+function getTxpUnavailableSlotLabel(slot){
+  if(slot === "VN") return "Vaskesporet VN";
+  if(slot === "VS") return "Vaskesporet VS";
+  return slot;
+}
+
 function renderTxpUnavailableInfrastructureControls(){
   const el = document.getElementById("txpUnavailableInfrastructurePanel");
   if(!el) return;
@@ -7890,7 +7896,7 @@ function renderTxpUnavailableInfrastructureControls(){
     return `
       <label class="txp-unavailable-label ${active ? "is-active" : ""}">
         <input type="checkbox" data-txp-unavailable-slot="${escapeHtml(slot)}" ${active ? "checked" : ""}>
-        ${escapeHtml(slot)}
+        ${escapeHtml(getTxpUnavailableSlotLabel(slot))}
       </label>
     `;
   }).join("");
@@ -7909,13 +7915,13 @@ function renderTxpUnavailableInfrastructureControls(){
 
   el.innerHTML = `
     <h3>TXP driftsbegrensning / uvirksom infrastruktur</h3>
-    <p>Brukes for å registrere at spor, slotter eller nordenden/vaskemaskinen er uvirksom. Første versjon markerer avviket visuelt i TXP Input Sporplan. SDE-motoren påvirkes ikke ennå.</p>
+    <p>Brukes for å registrere at spor, slotter eller rute/adkomst via nordenden er uvirksom. Vaskesporet VN/VS er fysiske slotter i Vaskesporet. «Nordende/adkomst uvirksom» gjelder rute til driftsbanegården, ikke parkering i VN/VS. Første versjon markerer avviket visuelt i TXP Input Sporplan. SDE-motoren påvirkes ikke ennå.</p>
     <div class="txp-unavailable-groups">
       <div class="txp-unavailable-group">
         ${trackLabels}
         <label class="txp-unavailable-label ${washActive ? "is-active" : ""}">
           <input type="checkbox" data-txp-unavailable-wash="1" ${washActive ? "checked" : ""}>
-          Vaskemaskin / nordende uvirksom
+          Nordende/adkomst uvirksom
         </label>
       </div>
       <div class="txp-unavailable-group">
