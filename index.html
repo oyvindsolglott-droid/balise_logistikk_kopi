@@ -10597,6 +10597,12 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
         }))
     : [];
   const nextPlanRowForBlockingVehicle = nextPlanRowsForBlockingVehicle[0] || null;
+  const nextPlanRowClassification = nextPlanRowForBlockingVehicle
+    ? "same_vehicle_later_move_observed"
+    : "no_later_move_observed";
+  const exitPlanObservation = nextPlanRowForBlockingVehicle
+    ? "partial_exit_plan_observed"
+    : "insufficient_for_exit_plan";
   const missingPreconditions = [
     "Ut-igjen-plan mangler.",
     "Rute-/adkomstverifisering for VN/VS mangler.",
@@ -10632,10 +10638,12 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
     normalizedTo:to,
     nextPlanRowsForBlockingVehicleCount:nextPlanRowsForBlockingVehicle.length,
     nextPlanRowForBlockingVehicle,
+    nextPlanRowClassification,
     nextOperationKnown:false,
     nextOperationEvidenceLevel:nextPlanRowForBlockingVehicle ? "partial" : "missing",
     exitPlanKnown:false,
     exitPlanEvidenceLevel:"missing",
+    exitPlanObservation,
     routeVerified:false,
     routeEvidenceLevel:"missing",
     nextOperationIsDoubleSetDriftsbanegard:null,
