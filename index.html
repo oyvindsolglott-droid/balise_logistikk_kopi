@@ -9761,6 +9761,44 @@ function buildSdeWashTrackOperationalContract({ physicalState } = {}){
   };
 }
 
+function buildSdeWashTrackRoutingPreconditionAssessment({ physicalState, operationalContract } = {}){
+  const state = physicalState || (typeof getSdeWashTrackPhysicalState === "function" ? getSdeWashTrackPhysicalState() : null);
+  const contract = operationalContract || (
+    typeof buildSdeWashTrackOperationalContract === "function"
+      ? buildSdeWashTrackOperationalContract({ physicalState: state })
+      : null
+  );
+  const blockers = Array.isArray(contract?.blocks) ? contract.blocks.slice() : [];
+  const missingPreconditions = [
+    "Egen rute-/kapasitetsmodell for VN/VS mangler.",
+    "Eksplisitt VS-blokkeringsmodell mangler.",
+    "Dobbeltsett-/returmodell mangler.",
+    "Score-/sorteringskontrakt mangler.",
+    "Kvittering/historikk-kontrakt mangler.",
+    "Reset/state-regresjon mangler.",
+    "Det er ikke avklart i motor at VN/VS ikke skal behandles som ordinære parkeringsspor."
+  ];
+  const reasons = [
+    ...(Array.isArray(contract?.reasons) ? contract.reasons : []),
+    "Vaskesporet er fortsatt kun observe-only/readiness og ikke aktiv motor."
+  ];
+
+  return {
+    status:"observe_only",
+    readiness:"not_ready",
+    eligible:false,
+    manualOnly:true,
+    observeOnly:true,
+    noCandidateSlots:true,
+    noScoreImpact:true,
+    noMoveCreation:true,
+    noActiveRecommendation:true,
+    blockers,
+    missingPreconditions,
+    reasons
+  };
+}
+
 function getSdeWashTrackAccessAssessment(){
   const physicalState = getSdeWashTrackPhysicalState();
   const observationText = "Dette er fysisk observasjon og ikke aktivert i SDE-motor, score, sortering eller målsporvalg.";
