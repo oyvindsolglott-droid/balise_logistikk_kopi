@@ -760,6 +760,42 @@ gap:var(--yard-gap);
 align-items:stretch;
 position:relative
 }
+.yard-wash-machine{
+margin-bottom:16px;
+margin-left:calc((var(--yard-col) + var(--yard-gap)) * 8 + var(--yard-col));
+transform:translateX(-50%);
+display:inline-grid;
+grid-template-columns:var(--yard-col);
+gap:0;
+padding:10px;
+border:2px solid #1f2937;
+border-radius:12px;
+background:#eef2ff;
+box-shadow:inset 0 0 0 1px rgba(255,255,255,.7);
+}
+.yard-wash-machine-title{
+grid-column:1 / -1;
+text-align:center;
+font-weight:900;
+color:#1f2937;
+font-size:12px;
+line-height:1.1;
+margin-bottom:8px;
+}
+.yard-wash-machine .slot{
+border-color:#1f2937;
+border-radius:0;
+justify-self:stretch;
+}
+.yard-wash-machine .slot[data-slot="VN"]{
+border-bottom-width:1px;
+border-radius:7px 7px 0 0;
+}
+.yard-wash-machine .slot[data-slot="VS"]{
+border-top-width:1px;
+border-radius:0 0 7px 7px;
+margin-top:-1px;
+}
 .head{text-align:center;font-weight:700}
 .slot{
 border:2px solid #000;
@@ -4633,6 +4669,7 @@ button{padding:12px 12px}
 </div>
 <div class="yard-wrap zoom-wrap">
 <div class="yard zoom-inner" id="yardZoom">
+<div class="yard-wash-machine" id="yardWashMachine"></div>
 <div class="yard-grid" id="yardGrid"></div>
 </div>
 </div>
@@ -5228,10 +5265,11 @@ const fixedOppstillingRows=[
 ];
 
 
-const inputSlots=["1N","1S","2N","2S","3N","3M","3S","4N","4M","4S","5N","5M","5S","6N","6S","6SS","7N","7S","7SS","8N","8S","8SS","9","10N","10S","11N","11S","12N","12S"];
+const inputSlots=["1N","1S","2N","2S","3N","3M","3S","4N","4M","4S","5N","5M","5S","6N","6S","6SS","7N","7S","7SS","8N","8S","8SS","9","10N","10S","11N","11S","12N","12S","VN","VS"];
 const topRow=["12N","11N","10N","9","8N","7N","platformA","6N","5N","4N","3N","platformB","2N","1N"];
 const midRow=["12S","11S","10S",null,"8S","7S","platformA-skip","6S","5M","4M","3M","platformB-skip","2S","1S"];
 const botRow=[null,null,null,null,"8SS","7SS",null,"6SS","5S","4S","3S",null,null,null];
+const washMachineSlots=["VN","VS"];
 
 function makeEmptyTurneringSkifteRow(){
   return {
@@ -6694,7 +6732,7 @@ function computeInndata(){
 
 function getSdeSporplanStatus(){
   const status = Object.fromEntries(inputSlots.map(slot=>[slot, null]));
-  const slotElements = Array.from(document.querySelectorAll("#yardGrid .slot"));
+  const slotElements = Array.from(document.querySelectorAll("#yardGrid .slot, #yardWashMachine .slot"));
 
   slotElements.forEach(el=>{
     const slot = normalizeSlot(el.dataset.slot);
@@ -8776,7 +8814,9 @@ function buildSporplan(){
   const dreiSlots = getDreiSlots();
   const planSkifteMarkers = getPlanSkifteMarkersBySlot();
   const grid=document.getElementById("yardGrid");
+  const washGrid=document.getElementById("yardWashMachine");
   grid.innerHTML="";
+  if(washGrid) washGrid.innerHTML="";
 
 
   ["12","11","10","9","8","7","","6","5","4","3","","2","1"].forEach(txt=>{
@@ -8900,6 +8940,51 @@ function buildSporplan(){
   appendRow(topRow);
   appendRow(midRow);
   appendRow(botRow);
+
+  if(washGrid){
+    const title=document.createElement("div");
+    title.className="yard-wash-machine-title";
+    title.textContent="Vaskesporet";
+    washGrid.appendChild(title);
+
+    washMachineSlots.forEach(slot=>{
+      const info=data[slot]||{tog:"",mat:"",wash:false};
+      const filled=Boolean((info.tog||"").trim()||(info.mat||"").trim());
+      const fillClass=filled?(info.wash?"wash-filled":"filled"):"empty";
+      const div=document.createElement("div");
+      div.className=`slot ${fillClass} ${slotKind(slot)}`;
+      const invalidVehicleMessage = info.mat ? getVehicleNumberValidationMessage(info.mat) : "";
+      const duplicateVehicleInfo = duplicateVehicles[slot];
+      if(invalidVehicleMessage) div.classList.add("invalid-vehicle");
+      if(duplicateVehicleInfo) div.classList.add("invalid-vehicle");
+      if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
+      if(dreiSlots.has(normalizeSlot(slot))) div.classList.add("drei-slot");
+
+      div.dataset.slot = slot;
+      const addressColor = getSlotAddressColorClass(slot);
+      let html = "";
+      if(filled){
+        html += `<span class="slot-train-image" aria-hidden="true"></span>`;
+      }
+      html += `<span class="slot-address" style="color:${addressColor}">${escapeHtml(slot)}</span>`;
+
+      if(info.mat){
+        const departureLabel = (invalidVehicleMessage || duplicateVehicleInfo) ? "" : getSporplanDepartureLabelsForVehicle(info.mat);
+        const duplicateVehicleMessage = duplicateVehicleInfo ? `${duplicateVehicleInfo.vehicle} er ført opp flere steder: ${duplicateVehicleInfo.slots.join(", ")}` : "";
+        const matText = invalidVehicleMessage
+          ? `${escapeHtml(info.mat)}<br><span class="slot-invalid-vehicle-badge">UGYLDIG KJØRETØYNR</span>`
+          : duplicateVehicleInfo
+            ? `${escapeHtml(info.mat)}<br><span class="slot-duplicate-vehicle-badge">DUPLIKAT KJØRETØYNR</span>`
+            : (departureLabel
+              ? `${escapeHtml(info.mat)}<br><span style="display:block;color:#fde68a;font-size:1.05em;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.85);">${escapeHtml(departureLabel)}</span>`
+              : escapeHtml(info.mat));
+        html += `<span class="slot-bottom mat" title="${escapeHtml(invalidVehicleMessage || duplicateVehicleMessage)}">${matText}</span>`;
+      }
+
+      div.innerHTML=html;
+      washGrid.appendChild(div);
+    });
+  }
 
   const hallSlots = ["8N","7N","8S","7S"]
     .map(name => grid.querySelector(`[data-slot="${name}"]`))
