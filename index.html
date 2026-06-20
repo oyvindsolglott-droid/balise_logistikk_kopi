@@ -2924,6 +2924,16 @@ button{padding:12px 12px}
   line-height:1.35;
 }
 
+.sde-shift-observation-item{
+  border-radius:16px;
+  padding:12px;
+  background:rgba(15,23,42,.28);
+  border:1px solid rgba(148,163,184,.18);
+  color:#dbe4ef;
+  font-size:13px;
+  line-height:1.35;
+}
+
 .sde-learning-diagnostics{
   margin-top:18px;
   border:1px solid rgba(148,163,184,.24);
@@ -16543,7 +16553,7 @@ function renderSdeSkiftebevegelser(){
         title:"Vaskesporet – blokkering",
         count:washTrackBlockingDiagnostics.length,
         bodyHtml:washTrackBlockingDiagnostics.map(item =>
-            `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(`${item.vnVehicle} i VN`)}</strong><br>${escapeHtml(item.text)}</div>`
+            `<div class="sde-shift-observation-item"><strong>${escapeHtml(`${item.vnVehicle} i VN`)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
       })
     : "";
