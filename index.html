@@ -10558,6 +10558,45 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
   const blockingVehicle = sanitizeVehicleValue(to ? getSdeVehicleInSlot(to) : "");
   const sameVehicle = Boolean(blockingVehicle && planVehicle && haveSameSdeVehicleTokens(blockingVehicle, planVehicle));
   const concreteBlockageKnown = Boolean(planVehicle && from && to && blockingVehicle && !sameVehicle);
+  const blockingVehicleTokens = splitVehicleList(blockingVehicle)
+    .map(token=>normalizeVehicleToken(token))
+    .filter(Boolean);
+  const isSamePlanRow = row => row === planRow || (
+    row &&
+    planRow &&
+    sanitizeVehicleValue(row.vehicle) === sanitizeVehicleValue(planRow.vehicle) &&
+    String(row.time || "").trim() === String(planRow.time || "").trim() &&
+    normalizeSlot(row.fromSpor) === normalizeSlot(planRow.fromSpor) &&
+    normalizeSlot(row.toSpor) === normalizeSlot(planRow.toSpor) &&
+    String(row.operationType || "").trim() === String(planRow.operationType || "").trim()
+  );
+  const nextPlanRowsForBlockingVehicle = blockingVehicleTokens.length
+    ? getEffectivePlanSkifteRows()
+        .filter(row=>{
+          if(!row || isSamePlanRow(row)) return false;
+          if(!isPlanSkifteRowFilled(row)) return false;
+          if(isPlanSkifteFerdig(row?.utfort)) return false;
+          const rowTokens = splitVehicleList(row.vehicle)
+            .map(token=>normalizeVehicleToken(token))
+            .filter(Boolean);
+          if(!rowTokens.some(token=>blockingVehicleTokens.includes(token))) return false;
+          return Boolean(
+            String(row.time || "").trim() ||
+            normalizeSlot(row.fromSpor) ||
+            normalizeSlot(row.toSpor) ||
+            String(row.operationType || "").trim()
+          );
+        })
+        .map(row=>({
+          vehicle:sanitizeVehicleValue(row.vehicle),
+          time:String(row.time || "").trim(),
+          fromSlot:normalizeSlot(row.fromSpor),
+          toSlot:normalizeSlot(row.toSpor),
+          operation:String(row.operationType || "").trim(),
+          source:String(row.source || "").trim()
+        }))
+    : [];
+  const nextPlanRowForBlockingVehicle = nextPlanRowsForBlockingVehicle[0] || null;
   const missingPreconditions = [
     "Ut-igjen-plan mangler.",
     "Rute-/adkomstverifisering for VN/VS mangler.",
@@ -10588,8 +10627,18 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
     planVehicle,
     blockingVehicle,
     concreteBlockageKnown,
+    blockedTargetRequiresTemporaryRemoval:concreteBlockageKnown,
     normalizedFrom:from,
     normalizedTo:to,
+    nextPlanRowsForBlockingVehicleCount:nextPlanRowsForBlockingVehicle.length,
+    nextPlanRowForBlockingVehicle,
+    nextOperationKnown:false,
+    nextOperationEvidenceLevel:nextPlanRowForBlockingVehicle ? "partial" : "missing",
+    exitPlanKnown:false,
+    exitPlanEvidenceLevel:"missing",
+    routeVerified:false,
+    routeEvidenceLevel:"missing",
+    nextOperationIsDoubleSetDriftsbanegard:null,
     missingPreconditions,
     requiredEvidence:[
       "Konkret blockingVehicle som sperrer planlagt målspor.",
