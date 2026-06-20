@@ -10543,8 +10543,8 @@ function scoreSdeResolutionTarget(slot){
 }
 
 
-function getSdeBestResolutionTarget(vehicle, fromSlot, avoidSlot=""){
-  return getSdeResolutionCandidateSlots(fromSlot, avoidSlot)
+function getSdeBestResolutionTarget(vehicle, fromSlot, avoidSlot="", context={}){
+  return getSdeResolutionCandidateSlots(fromSlot, avoidSlot, context)
     .filter(slot=>isSdeSafeResolutionMove(vehicle, fromSlot, slot))
     .map(slot=>({slot, score:scoreSdeResolutionTarget(slot)}))
     .sort((a,b)=>b.score - a.score)[0]?.slot || "";
