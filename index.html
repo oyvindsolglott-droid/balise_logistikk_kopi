@@ -10551,6 +10551,62 @@ function getSdeBestResolutionTarget(vehicle, fromSlot, avoidSlot="", context={})
 }
 
 
+function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromSlot, toSlot){
+  const planVehicle = sanitizeVehicleValue(vehicle || planRow?.vehicle);
+  const from = normalizeSlot(fromSlot || planRow?.fromSpor);
+  const to = normalizeSlot(toSlot || planRow?.toSpor);
+  const blockingVehicle = sanitizeVehicleValue(to ? getSdeVehicleInSlot(to) : "");
+  const sameVehicle = Boolean(blockingVehicle && planVehicle && haveSameSdeVehicleTokens(blockingVehicle, planVehicle));
+  const concreteBlockageKnown = Boolean(planVehicle && from && to && blockingVehicle && !sameVehicle);
+  const missingPreconditions = [
+    "Ut-igjen-plan mangler.",
+    "Rute-/adkomstverifisering for VN/VS mangler.",
+    "Neste skifteoperasjon mangler.",
+    "Dobbeltsett til/fra driftsbanegården er ikke avklart.",
+    "VS/adkomst er ikke eksplisitt håndtert."
+  ];
+  const warnings = [
+    "Dette er kun read-only kontekst for mulig senere VN-vurdering.",
+    "VN åpnes ikke fra denne vurderingen.",
+    "Vaskesporet skal ikke behandles som ordinært parkeringsspor."
+  ];
+
+  if(!concreteBlockageKnown){
+    missingPreconditions.unshift("Konkret blockingVehicle/floke er ikke dokumentert.");
+  }
+
+  return {
+    status:"observe_only",
+    readiness:"not_ready",
+    manualOnly:true,
+    observeOnly:true,
+    enableWashTrackTemporaryRelief:false,
+    noCandidateSlots:true,
+    noScoreImpact:true,
+    noMoveCreation:true,
+    noActiveRecommendation:true,
+    planVehicle,
+    blockingVehicle,
+    concreteBlockageKnown,
+    normalizedFrom:from,
+    normalizedTo:to,
+    missingPreconditions,
+    requiredEvidence:[
+      "Konkret blockingVehicle som sperrer planlagt målspor.",
+      "Dokumentert ut-igjen-plan.",
+      "Rute-/adkomstverifisering for VN/VS.",
+      "Eksplisitt modell for neste skifteoperasjon.",
+      "Avklaring av dobbeltsett til/fra driftsbanegården.",
+      "Eksplisitt håndtering av VS/adkomst."
+    ],
+    warnings,
+    reason:concreteBlockageKnown
+      ? "Konkret blokkering er observert, men VN kan ikke åpnes fordi nødvendige sikkerhetsforutsetninger mangler."
+      : "VN kan ikke vurderes fordi konkret blokkering/floke ikke er dokumentert."
+  };
+}
+
+
 function getSdeBlockedTargetResolution(planRow, vehicle, fromSlot, toSlot){
   if(!planRow) return null;
 
