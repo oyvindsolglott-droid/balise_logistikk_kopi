@@ -10617,6 +10617,28 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
   const exitPlanObservationQuality = !nextPlanRowForBlockingVehicle
     ? "none"
     : (nextPlanRowMovesBlockingVehicleAway ? "partial_relevant" : "weak");
+  const parsePlanRowTimeMinutes = value => {
+    const text = String(value || "").trim();
+    const match = text.match(/^(\d{1,2})[:.](\d{2})(?:\s*\+(\d+))?/);
+    if(!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const dayOffset = Number(match[3] || 0);
+    if(!Number.isFinite(hours) || !Number.isFinite(minutes) || hours < 0 || minutes < 0 || minutes > 59) return null;
+    return (dayOffset * 1440) + (hours * 60) + minutes;
+  };
+  const currentPlanRowTimeMinutes = parsePlanRowTimeMinutes(planRow?.time);
+  const nextPlanRowTimeMinutes = parsePlanRowTimeMinutes(nextPlanRowForBlockingVehicle?.time);
+  const nextPlanRowHasComparableTime = Number.isFinite(currentPlanRowTimeMinutes) && Number.isFinite(nextPlanRowTimeMinutes);
+  const nextPlanRowTimeDeltaMinutes = nextPlanRowHasComparableTime
+    ? nextPlanRowTimeMinutes - currentPlanRowTimeMinutes
+    : null;
+  const nextPlanRowIsAfterCurrentPlanRow = Boolean(nextPlanRowHasComparableTime && nextPlanRowTimeDeltaMinutes > 0);
+  const nextPlanRowTimingObservation = !nextPlanRowForBlockingVehicle
+    ? "none"
+    : (!nextPlanRowHasComparableTime
+      ? "missing_time"
+      : (nextPlanRowIsAfterCurrentPlanRow ? "after_current_observed" : "not_after_current"));
   const missingPreconditions = [
     "Ut-igjen-plan mangler.",
     "Rute-/adkomstverifisering for VN/VS mangler.",
@@ -10659,6 +10681,12 @@ function buildSdeBlockedTargetWashTrackContextAssessment(planRow, vehicle, fromS
     nextPlanRowTargetDiffersFromBlockedTarget,
     nextPlanRowStartsAtBlockedTarget,
     nextPlanRowMovesBlockingVehicleAway,
+    currentPlanRowTimeMinutes,
+    nextPlanRowTimeMinutes,
+    nextPlanRowHasComparableTime,
+    nextPlanRowIsAfterCurrentPlanRow,
+    nextPlanRowTimeDeltaMinutes,
+    nextPlanRowTimingObservation,
     nextOperationKnown:false,
     nextOperationEvidenceLevel:nextPlanRowForBlockingVehicle ? "partial" : "missing",
     exitPlanKnown:false,
