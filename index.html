@@ -14002,7 +14002,7 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
       .sort((a,b)=>b.minutes - a.minutes)[0] || null;
   };
 
-  return departureBindings
+  const spor3Needs = departureBindings
     .map(binding=>{
       const vehicle = sanitizeVehicleValue(binding.vehicle);
       const train = normalizeTognr(binding.train);
@@ -14043,7 +14043,25 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
         showcaseArrivalLabel:fallbackArrivalText || `Spor 3-sekvens ${trainPartText}`
       };
 
-      const recommendation = getSdeArrivalParkingRecommendation(need, reservedSlots);
+      return need;
+    })
+    .filter(Boolean);
+
+  const manualOverrideReservations = buildSdeManualOverridePreseedReservations(spor3Needs);
+  manualOverrideReservations.forEach((entry, slot) => {
+    reservedSlots.set(slot, entry);
+  });
+
+  return spor3Needs
+    .map(need=>{
+      const reservedForNeed = getSdeReservedSlotsWithoutNeed(reservedSlots, need);
+      const originalRecommendation = getSdeArrivalParkingRecommendation(need, reservedForNeed);
+      const {recommendation, manualOverrideMeta} = applySdeManualMoveOverrideRecommendation(
+        need,
+        originalRecommendation,
+        reservedSlots
+      );
+
       if(recommendation.slot){
         reservedSlots.set(recommendation.slot, {need, recommendation});
       }
@@ -14051,10 +14069,12 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
       return {
         ...need,
         recommendedSlot:recommendation.slot,
+        toSlot:recommendation.slot,
         recommendationScore:recommendation.score,
         recommendationConfidence:recommendation.confidence,
         recommendationReason:recommendation.reason,
-        recommendationAlternatives:recommendation.alternatives || []
+        recommendationAlternatives:recommendation.alternatives || [],
+        ...(manualOverrideMeta || {})
       };
     })
     .filter(Boolean);
@@ -14067,7 +14087,7 @@ function isSdeNightArrivalPlatformClearanceNeed(arrival){
 }
 
 
-function buildSdeArrivalParkingNeeds(){
+function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
   const bindings = buildSdeTursattVehicleBindings();
   const departures = bindings.filter(binding => binding.role === "departure" && binding.mustBeAccessible);
   const spor3ProductionVehicleTokens = new Set(
@@ -14240,7 +14260,10 @@ function buildSdeArrivalParkingNeeds(){
     .map(buildArrivalParkingNeed)
     .filter(Boolean);
 
-  const manualOverrideReservations = buildSdeManualOverridePreseedReservations(sortedNeeds);
+  const manualOverrideReservations = buildSdeManualOverridePreseedReservations([
+    ...(Array.isArray(manualOverridePreseedNeeds) ? manualOverridePreseedNeeds : []),
+    ...sortedNeeds
+  ]);
   manualOverrideReservations.forEach((entry, slot) => {
     reservedRecommendedSlots.set(slot, entry);
   });
@@ -14808,10 +14831,11 @@ function getSdeMoveActionKey(row){
 
 function getSdeMoveNeedKey(row){
   if(!row) return "";
+  const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot);
   return [
     "arrival",
     sanitizeVehicleValue(row?.vehicle),
-    normalizeSlot(row?.fromSlot || row?.arrivalSlot),
+    fromSlot === "UKJENT" ? "" : fromSlot,
     normalizeTognr(row?.arrivalTrain),
     String(row?.arrivalPart || "").trim(),
     normalizeTimeString(row?.arrivalTime),
@@ -14823,8 +14847,13 @@ function getSdeMoveNeedKey(row){
 function isSdeManualOverrideEligibleRow(row){
   return Boolean(
     row &&
-    row.source === "Ankomstbasert parkeringsbehov" &&
-    !row.isSpor3ProductionNeed &&
+    (
+      row.source === "Ankomstbasert parkeringsbehov" ||
+      (
+        row.source === "Spor 3-produksjonsbehov" &&
+        row.isSpor3ProductionNeed
+      )
+    ) &&
     !row.isWorkshopMoveNeed &&
     !row.isWrongTrackReplacementMove
   );
@@ -15211,6 +15240,48 @@ function buildSdeManualOverrideRecommendation(need, override, originalRecommenda
       manualOverrideRecordedAt:override?.timestamp || override?.time || "",
       manualOverrideAvailableSlots:candidates
     }
+  };
+}
+
+function applySdeManualMoveOverrideRecommendation(need, originalRecommendation, reservedSlots){
+  const recommendation = originalRecommendation || {};
+  const manualOverride = getSdeManualMoveOverrideForRow(need);
+  if(!manualOverride){
+    return {
+      recommendation,
+      manualOverrideMeta:null
+    };
+  }
+
+  const manualRecommendation = buildSdeManualOverrideRecommendation(
+    need,
+    manualOverride,
+    recommendation,
+    reservedSlots
+  );
+
+  if(manualRecommendation){
+    return {
+      recommendation:{
+        ...manualRecommendation.recommendation,
+        manualOverrideMeta:manualRecommendation.meta
+      },
+      manualOverrideMeta:manualRecommendation.meta
+    };
+  }
+
+  const manualOverrideMeta = {
+    manualOverrideIgnored:true,
+    manualOverrideSlot:normalizeSlot(manualOverride.overrideSlot || manualOverride.slot),
+    manualOverrideIgnoredReason:"Lagret overstyring er ikke lenger gyldig i gjeldende SDE-grunnlag. SDE-forslaget brukes inntil operatør velger en ny gyldig overstyring."
+  };
+
+  return {
+    recommendation:{
+      ...recommendation,
+      manualOverrideMeta
+    },
+    manualOverrideMeta
   };
 }
 
@@ -16684,9 +16755,17 @@ function buildSdeSpor3PlatformClearanceDiagnostics(){
 
 
 function getSdeShiftShowcaseData(){
-  const arrivalNeeds = buildSdeArrivalParkingNeeds();
+  const preliminarySpor3ProductionNeeds = buildSdeSpor3ProductionDepartureNeeds([]);
+  const activeSpor3ManualOverrideNeeds = preliminarySpor3ProductionNeeds
+    .filter(row => row?.manualOverrideActive)
+    .map(row => ({
+      ...row,
+      recommendedSlot:"",
+      toSlot:""
+    }));
+  const arrivalNeeds = buildSdeArrivalParkingNeeds(activeSpor3ManualOverrideNeeds);
   const baseArrivalNeeds = arrivalNeeds.filter(row => !isSdeSpor3ProductionNeed(row));
-  const spor3ProductionNeeds = buildSdeSpor3ProductionDepartureNeeds([]);
+  const spor3ProductionNeeds = buildSdeSpor3ProductionDepartureNeeds(baseArrivalNeeds);
   const spor3VehicleTokens = new Set(
     spor3ProductionNeeds
       .map(row => normalizeVehicleToken(row?.vehicle))
