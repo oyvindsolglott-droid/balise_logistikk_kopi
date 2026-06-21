@@ -8325,19 +8325,61 @@ function setManualTursattVehicleOverride(train, side, vehicle1, vehicle2){
 }
 
 
+function getTursattBaseVehicleMapByMode(side, mode){
+  const cleanMode = mode === "idag" ? "idag" : "imorgen";
+  const baliseMap = side === "departure"
+    ? (cleanMode === "imorgen"
+      ? (state.baliseTomorrowDepartureVehicles || {})
+      : (state.baliseTodayDepartureVehicles || {}))
+    : (cleanMode === "imorgen"
+      ? (state.baliseTomorrowArrivalVehicles || {})
+      : (state.baliseTodayArrivalVehicles || {}));
+  const fallbackMap = getBaliseMapByMode(cleanMode);
+  const hasPrimaryBaliseMap = Object.keys(baliseMap).length > 0;
+
+  return {
+    map:hasPrimaryBaliseMap ? baliseMap : fallbackMap,
+    label:hasPrimaryBaliseMap ? "Balise" : "Datagrunnlag"
+  };
+}
+
+
+function getTursattVehicleCellInfo(train, side, mode){
+  const key = normalizeTognr(train);
+  const base = getTursattBaseVehicleMapByMode(side, mode);
+  const manualMap = side === "departure"
+    ? (state.manualTursattDepartureVehicles || {})
+    : (state.manualTursattArrivalVehicles || {});
+  const baseValue = sanitizeVehicleValue(base.map?.[key] || "");
+  const manualValue = sanitizeVehicleValue(manualMap[key] || "");
+  const effectiveValue = baseValue || manualValue;
+
+  return {
+    key,
+    side,
+    mode,
+    baseValue,
+    baseLabel:base.label,
+    manualValue,
+    effectiveValue,
+    isManualOverride:Boolean(manualValue),
+    differsFromBase:Boolean(manualValue && baseValue && manualValue !== baseValue)
+  };
+}
+
+
 function createOppstillingVehicleCells(train, side){
   const key = normalizeTognr(train);
   const mode = side === "departure" ? "imorgen" : "idag";
-  const sourceMap = side === "departure"
-    ? getDepartureVehicleMapByMode(mode)
-    : getArrivalVehicleMapByMode(mode);
+  const overrideInfo = getTursattVehicleCellInfo(key, side, mode);
 
-  const [vehicle1, vehicle2] = splitVehicleNumbers(sourceMap[key] || getVehicleForTrain(key, mode));
+  const [vehicle1, vehicle2] = splitVehicleNumbers(overrideInfo.effectiveValue || getVehicleForTrain(key, mode));
 
   return {
     vehicle1: vehicle1 || "",
     vehicle2: vehicle2 || "",
-    missingSecond: !vehicle2
+    missingSecond: !vehicle2,
+    overrideInfo
   };
 }
 
