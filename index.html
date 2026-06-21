@@ -5457,7 +5457,7 @@ if(!state.txpUnavailableInfrastructure || typeof state.txpUnavailableInfrastruct
 }
 if(!Array.isArray(state.txpUnavailableInfrastructure.slots)) state.txpUnavailableInfrastructure.slots=[];
 if(!Array.isArray(state.txpUnavailableInfrastructure.tracks)) state.txpUnavailableInfrastructure.tracks=[];
-if(typeof state.txpUnavailableInfrastructure.washRouteUnavailable !== "boolean") state.txpUnavailableInfrastructure.washRouteUnavailable=false;
+state.txpUnavailableInfrastructure.washRouteUnavailable=false;
 if(!state.kjoretoy) state.kjoretoy={};
 if(!state.baliseToday) state.baliseToday={};
 if(!state.baliseTomorrow) state.baliseTomorrow={};
@@ -7834,7 +7834,7 @@ function ensureTxpUnavailableInfrastructure(){
   if(!Array.isArray(infra.tracks)) infra.tracks=[];
   infra.slots = [...new Set(infra.slots.map(slot => normalizeSlot(slot)).filter(Boolean))];
   infra.tracks = [...new Set(infra.tracks.map(track => String(track || "").trim()).filter(track => ["1","2","3"].includes(track)))];
-  infra.washRouteUnavailable = !!infra.washRouteUnavailable;
+  infra.washRouteUnavailable = false;
   return infra;
 }
 
@@ -7860,7 +7860,7 @@ function isTxpUnavailableSlot(slot){
 }
 
 function isTxpWashRouteUnavailable(){
-  return !!ensureTxpUnavailableInfrastructure().washRouteUnavailable;
+  return false;
 }
 
 function isSdeDriftsbanegardSlot(slot){
@@ -7921,18 +7921,12 @@ function renderTxpUnavailableInfrastructureControls(){
     `;
   }).join("");
 
-  const washActive = !!infra.washRouteUnavailable;
-
   el.innerHTML = `
     <h3>TXP driftsbegrensning / uvirksom infrastruktur</h3>
-    <p>Brukes for å registrere at spor, slotter eller rute/adkomst via nordenden er uvirksom. Vaskesporet VN/VS er fysiske slotter i Vaskesporet. «Nordende/adkomst uvirksom» gjelder rute til driftsbanegården, ikke parkering i VN/VS. SDE vurderer dette som lavere egnethet/tillit for berørte skifteveier, men avviser ikke automatisk.</p>
+    <p>Brukes for å registrere at konkrete spor eller slotter er uvirksomme. Vaskesporet VN/VS er fysiske slotter i Vaskesporet.</p>
     <div class="txp-unavailable-groups">
       <div class="txp-unavailable-group">
         ${trackLabels}
-        <label class="txp-unavailable-label ${washActive ? "is-active" : ""}">
-          <input type="checkbox" data-txp-unavailable-wash="1" ${washActive ? "checked" : ""}>
-          Nordende/adkomst uvirksom
-        </label>
       </div>
       <div class="txp-unavailable-group">
         ${slotLabels}
@@ -7958,15 +7952,6 @@ function renderTxpUnavailableInfrastructureControls(){
     });
   });
 
-  const washInput = el.querySelector("[data-txp-unavailable-wash]");
-  if(washInput){
-    washInput.addEventListener("change", e => {
-      ensureTxpUnavailableInfrastructure().washRouteUnavailable = !!e.target.checked;
-      buildGrunnoppstilling();
-      buildSporplan();
-      persist(true);
-    });
-  }
 }
 
 
@@ -13014,12 +12999,6 @@ function scoreSdeArrivalParkingCandidate(need, slot){
     };
   }
 
-  const northAccessUnavailableForDriftsbanegard =
-    typeof isTxpWashRouteUnavailable === "function" &&
-    isTxpWashRouteUnavailable() &&
-    typeof isSdeDriftsbanegardSlot === "function" &&
-    isSdeDriftsbanegardSlot(candidate);
-
   const operationalSingleSetSlot = getSdeOperationalSingleSetSlot(need);
   if(operationalSingleSetSlot && candidate !== operationalSingleSetSlot){
     return {
@@ -13051,11 +13030,6 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }
 
   let score = 50;
-
-  if(northAccessUnavailableForDriftsbanegard){
-    score -= 30;
-    reasons.push(`${candidate}: Nordende/adkomst uvirksom – primær skiftevei via nordenden er ikke tilgjengelig. Skiftet må vurderes via sørenden. Lavere egnethet; kontroller lokal skiftevei før bruk.`);
-  }
 
   if(operationalSingleSetSlot && candidate === operationalSingleSetSlot){
     score += 150;
@@ -13234,7 +13208,7 @@ function scoreSdeArrivalParkingCandidate(need, slot){
     if(/kontroller|rute blokkert/i.test(routeAssessment)){
       score -= 30;
       reasons.push(routeAssessment);
-    }else if(routeAssessment && !northAccessUnavailableForDriftsbanegard){
+    }else if(routeAssessment){
       score += 5;
       reasons.push(routeAssessment);
     }
