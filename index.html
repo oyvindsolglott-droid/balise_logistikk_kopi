@@ -2639,6 +2639,76 @@ button{padding:12px 12px}
 .sde-shift-details{display:none;margin-top:10px;}
 .sde-shift-details.show{display:block;}
 
+.sde-manual-override{
+  margin-top:12px;
+  border:1px solid rgba(125,211,252,.20);
+  border-radius:14px;
+  background:rgba(15,23,42,.24);
+  color:#dbeafe;
+}
+.sde-manual-override summary{
+  cursor:pointer;
+  padding:11px 13px;
+  font-size:13px;
+  font-weight:950;
+  letter-spacing:.02em;
+}
+.sde-manual-override-body{
+  padding:0 13px 13px;
+  display:grid;
+  gap:10px;
+}
+.sde-manual-override-note,
+.sde-manual-override-status{
+  font-size:12px;
+  line-height:1.38;
+  color:#b7c9df;
+}
+.sde-manual-override-status{
+  padding:8px 10px;
+  border-radius:12px;
+  background:rgba(125,255,207,.10);
+  border:1px solid rgba(125,255,207,.22);
+  color:#d7fff0;
+  font-weight:850;
+}
+.sde-manual-override-form{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+.sde-manual-override-select{
+  flex:1 1 190px;
+  min-height:44px;
+  border-radius:14px;
+  border:1px solid rgba(226,232,240,.28);
+  background:rgba(15,23,42,.72);
+  color:#f8fafc;
+  font-family:inherit;
+  font-size:13px;
+  font-weight:850;
+  padding:0 12px;
+}
+.sde-shift-action-btn.override{
+  flex:0 1 170px;
+  background:linear-gradient(180deg,#bae6fd 0%,#38bdf8 58%,#0284c7 100%);
+  color:#082f49;
+  text-shadow:0 1px 0 rgba(255,255,255,.30);
+}
+.sde-shift-action-btn.clear-override{
+  flex:0 1 150px;
+  background:linear-gradient(180deg,#e2e8f0 0%,#94a3b8 62%,#64748b 100%);
+  color:#0f172a;
+  text-shadow:0 1px 0 rgba(255,255,255,.30);
+}
+.sde-shift-action-btn:disabled{
+  opacity:.48;
+  cursor:not-allowed;
+  filter:grayscale(.22);
+  transform:none;
+}
+
 
 
 .sde-shift-board{
@@ -5479,6 +5549,7 @@ else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",f
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.isArray(state.sdeMoveActions)) state.sdeMoveActions={};
 if(!Array.isArray(state.sdeMoveLearningLog)) state.sdeMoveLearningLog=[];
+if(!state.sdeManualMoveOverrides || typeof state.sdeManualMoveOverrides !== "object" || Array.isArray(state.sdeManualMoveOverrides)) state.sdeManualMoveOverrides = {};
 
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
@@ -14164,9 +14235,44 @@ function buildSdeArrivalParkingNeeds(){
       };
 
       const vehicleKey = normalizeVehicleToken(vehicle);
-      const recommendation = vehicleKey && recommendationsByVehicle.has(vehicleKey)
-        ? recommendationsByVehicle.get(vehicleKey)
-        : getSdeArrivalParkingRecommendation(need, reservedRecommendedSlots);
+      let recommendation = null;
+      let manualOverrideMeta = null;
+
+      if(vehicleKey && recommendationsByVehicle.has(vehicleKey)){
+        recommendation = recommendationsByVehicle.get(vehicleKey);
+        manualOverrideMeta = recommendation?.manualOverrideMeta || null;
+      }else{
+        const originalRecommendation = getSdeArrivalParkingRecommendation(need, reservedRecommendedSlots);
+        recommendation = originalRecommendation;
+
+        const manualOverride = getSdeManualMoveOverrideForRow(need);
+        if(manualOverride){
+          const manualRecommendation = buildSdeManualOverrideRecommendation(
+            need,
+            manualOverride,
+            originalRecommendation,
+            reservedRecommendedSlots
+          );
+
+          if(manualRecommendation){
+            recommendation = {
+              ...manualRecommendation.recommendation,
+              manualOverrideMeta:manualRecommendation.meta
+            };
+            manualOverrideMeta = manualRecommendation.meta;
+          }else{
+            manualOverrideMeta = {
+              manualOverrideIgnored:true,
+              manualOverrideSlot:normalizeSlot(manualOverride.overrideSlot || manualOverride.slot),
+              manualOverrideIgnoredReason:"Lagret overstyring er ikke lenger gyldig i gjeldende SDE-grunnlag. SDE-forslaget brukes inntil operatør velger en ny gyldig overstyring."
+            };
+            recommendation = {
+              ...originalRecommendation,
+              manualOverrideMeta
+            };
+          }
+        }
+      }
 
       if(vehicleKey && !recommendationsByVehicle.has(vehicleKey)){
         recommendationsByVehicle.set(vehicleKey, recommendation);
@@ -14181,7 +14287,8 @@ function buildSdeArrivalParkingNeeds(){
         recommendationScore:recommendation.score,
         recommendationConfidence:recommendation.confidence,
         recommendationReason:recommendation.reason,
-        recommendationAlternatives:recommendation.alternatives || []
+        recommendationAlternatives:recommendation.alternatives || [],
+        ...(manualOverrideMeta || {})
       };
     })
     .filter(Boolean)
@@ -14683,6 +14790,252 @@ function getSdeMoveActionKey(row){
   ].join("|");
 }
 
+function getSdeMoveNeedKey(row){
+  if(!row) return "";
+  return [
+    "arrival",
+    sanitizeVehicleValue(row?.vehicle),
+    normalizeSlot(row?.fromSlot || row?.arrivalSlot),
+    normalizeTognr(row?.arrivalTrain),
+    String(row?.arrivalPart || "").trim(),
+    normalizeTimeString(row?.arrivalTime),
+    normalizeTognr(row?.nextDepartureTrain),
+    String(row?.nextDeparturePart || "").trim()
+  ].join("|");
+}
+
+function isSdeManualOverrideEligibleRow(row){
+  return Boolean(
+    row &&
+    row.source === "Ankomstbasert parkeringsbehov" &&
+    !row.isSpor3ProductionNeed &&
+    !row.isWorkshopMoveNeed &&
+    !row.isWrongTrackReplacementMove
+  );
+}
+
+function getSdeManualMoveOverrides(){
+  if(!state.sdeManualMoveOverrides || typeof state.sdeManualMoveOverrides !== "object" || Array.isArray(state.sdeManualMoveOverrides)){
+    state.sdeManualMoveOverrides = {};
+  }
+  return state.sdeManualMoveOverrides;
+}
+
+function getSdeManualMoveOverrideForRow(row){
+  const key = getSdeMoveNeedKey(row);
+  if(!key) return null;
+  return getSdeManualMoveOverrides()[key] || null;
+}
+
+function setSdeManualMoveOverrideForRow(row, override){
+  const key = getSdeMoveNeedKey(row);
+  if(!key || !override) return "";
+  getSdeManualMoveOverrides()[key] = {
+    ...override,
+    needKey:key
+  };
+  return key;
+}
+
+function clearSdeManualMoveOverrideForRow(row){
+  const key = getSdeMoveNeedKey(row);
+  if(!key) return false;
+  const overrides = getSdeManualMoveOverrides();
+  if(!(key in overrides)) return false;
+  delete overrides[key];
+  return true;
+}
+
+function buildSdeManualOverrideReservedSlots(row, context={}){
+  const targetNeedKey = getSdeMoveNeedKey(row);
+  const reserved = new Map();
+  const addReserved = (slot, need, recommendation={}) => {
+    const normalizedSlot = normalizeSlot(slot);
+    if(!normalizedSlot) return;
+    if(getSdeMoveNeedKey(need) === targetNeedKey) return;
+    reserved.set(normalizedSlot, {
+      need:need || null,
+      recommendation:{
+        slot:normalizedSlot,
+        ...(recommendation || {})
+      }
+    });
+  };
+
+  if(context.reservedSlots instanceof Map){
+    context.reservedSlots.forEach((entry, slot) => {
+      addReserved(slot, entry?.need || null, entry?.recommendation || {slot});
+    });
+  }
+
+  if(Array.isArray(context.moves)){
+    context.moves.forEach(move => {
+      addReserved(
+        move?.recommendedSlot || move?.toSlot,
+        move,
+        {
+          slot:normalizeSlot(move?.recommendedSlot || move?.toSlot),
+          score:move?.recommendationScore,
+          confidence:move?.recommendationConfidence
+        }
+      );
+    });
+  }
+
+  return reserved;
+}
+
+function getSdeManualOverrideConfidence(score){
+  const value = Number(score);
+  if(value >= 85) return "high";
+  if(value >= 60) return "medium";
+  return "low";
+}
+
+function getSdeManualOverrideVnAvailability(row, reservedSlots, excludedSlots){
+  const reserved = reservedSlots instanceof Map ? reservedSlots : new Map();
+  const excluded = excludedSlots instanceof Set ? excludedSlots : new Set();
+  const unavailable = reason => ({available:false, reason});
+
+  if(excluded.has("VN")) return unavailable("VN er allerede aktivt/originalt spor for dette behovet.");
+  if(!inputSlots.includes("VN")) return unavailable("VN finnes ikke i aktiv sporplan.");
+  if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot("VN")){
+    return unavailable("VN er markert uvirksom i TXP Input Sporplan.");
+  }
+  if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot("VS")){
+    return unavailable("VS/adkomst er markert uvirksom i TXP Input Sporplan.");
+  }
+  if(reserved.has("VN")){
+    return unavailable("VN er allerede reservert av annet aktivt SDE-behov eller overstyring.");
+  }
+
+  const physicalState = typeof getSdeWashTrackPhysicalState === "function"
+    ? getSdeWashTrackPhysicalState()
+    : null;
+  const vnVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VN"));
+  const vsVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VS"));
+  if(vnVehicle || physicalState?.vnOccupied){
+    return unavailable("VN er opptatt.");
+  }
+  if(vsVehicle || physicalState?.vsOccupied || physicalState?.accessSlotFree === false){
+    return unavailable("VS/adkomst er opptatt eller blokkert.");
+  }
+
+  const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot);
+  if(typeof getSdeInternalBlockersBetweenSlots === "function"){
+    const blockers = getSdeInternalBlockersBetweenSlots(fromSlot, "VN");
+    if(Array.isArray(blockers) && blockers.length){
+      return unavailable(`Hardregel blokkerer VN fra ${fromSlot || "ukjent spor"}: ${blockers.join(", ")}.`);
+    }
+  }
+
+  return {
+    available:true,
+    reason:"VN er ledig og VS/adkomst er fri. Dette er kun manuell overstyring, ikke ordinær SDE-anbefaling."
+  };
+}
+
+function buildSdeManualOverrideCandidateSlots(row, context={}){
+  if(!isSdeManualOverrideEligibleRow(row)) return [];
+
+  const reservedSlots = buildSdeManualOverrideReservedSlots(row, context);
+  const currentRecommendedSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+  const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot);
+  const originalRecommendedSlot = normalizeSlot(
+    context.originalRecommendedSlot ||
+    row?.originalRecommendedSlot ||
+    currentRecommendedSlot
+  );
+  const excludedSlots = new Set([currentRecommendedSlot, originalRecommendedSlot, fromSlot].filter(Boolean));
+  const vnAvailability = getSdeManualOverrideVnAvailability(row, reservedSlots, excludedSlots);
+  const candidateSlots = getSdeArrivalParkingCandidateSlots(row)
+    .map(normalizeSlot)
+    .filter(Boolean);
+  if(vnAvailability.available && !candidateSlots.includes("VN")){
+    candidateSlots.push("VN");
+  }
+
+  return candidateSlots
+    .map(slot => {
+      const candidateSlot = normalizeSlot(slot);
+      if(!candidateSlot || candidateSlot === "VS") return null;
+      if(candidateSlot === "VN" && !vnAvailability.available) return null;
+      if(excludedSlots.has(candidateSlot)) return null;
+      if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(candidateSlot)) return null;
+      if(reservedSlots.has(candidateSlot)) return null;
+
+      const occupant = sanitizeVehicleValue(getSdeVehicleInSlot(candidateSlot));
+      if(occupant) return null;
+
+      const candidate = scoreSdeArrivalParkingCandidate(row, candidateSlot);
+      if(candidate.status === "rejected") return null;
+
+      const evaluation = evaluateSdeParkingDecision(row, candidate, reservedSlots);
+      const rawScore = candidate.score + (evaluation.reward || 0) - (evaluation.penalty || 0);
+      if(rawScore < 45) return null;
+
+      const reasons = [
+        ...(candidate.reasons || []),
+        ...(evaluation.benefits || []),
+        ...(evaluation.violations || []),
+        ...(candidateSlot === "VN" ? [vnAvailability.reason] : [])
+      ];
+      const score = Math.max(0, Math.min(100, Math.round(rawScore)));
+
+      return {
+        slot:candidateSlot,
+        score,
+        confidence:getSdeManualOverrideConfidence(score),
+        reason:reasons.slice(0, 2).join(" ") || `${candidateSlot} er ledig og godkjent av SDE-kandidatmotoren.`
+      };
+    })
+    .filter(Boolean)
+    .sort((a,b)=>b.score - a.score || a.slot.localeCompare(b.slot, "nb"));
+}
+
+function buildSdeManualOverrideRecommendation(need, override, originalRecommendation, reservedSlots){
+  const overrideSlot = normalizeSlot(override?.overrideSlot || override?.slot);
+  if(!overrideSlot) return null;
+
+  const candidates = buildSdeManualOverrideCandidateSlots(need, {
+    reservedSlots,
+    originalRecommendedSlot:originalRecommendation?.slot
+  });
+  const candidate = candidates.find(item => normalizeSlot(item.slot) === overrideSlot);
+  if(!candidate) return null;
+
+  const originalSlot = normalizeSlot(originalRecommendation?.slot);
+  const originalText = originalSlot || "ukjent SDE-spor";
+  const reason = `Operativ overprøving av SDE: opprinnelig ${originalText} → valgt ${candidate.slot}. ${candidate.reason} Valget låser ${candidate.slot} for dette behovet og SDE beregner resterende kort på nytt.`;
+
+  return {
+    recommendation:{
+      slot:candidate.slot,
+      score:candidate.score,
+      confidence:candidate.confidence,
+      reason,
+      alternatives:candidates
+        .filter(item => item.slot !== candidate.slot)
+        .slice(0, 3)
+        .map(item => ({
+          slot:item.slot,
+          score:item.score,
+          reason:item.reason
+        }))
+    },
+    meta:{
+      manualOverrideActive:true,
+      manualOverrideSlot:candidate.slot,
+      originalRecommendedSlot:originalSlot,
+      originalRecommendationScore:originalRecommendation?.score ?? "",
+      originalRecommendationConfidence:originalRecommendation?.confidence || "",
+      originalRecommendationReason:originalRecommendation?.reason || "",
+      manualOverrideRecordedAt:override?.timestamp || override?.time || "",
+      manualOverrideAvailableSlots:candidates
+    }
+  };
+}
+
 function getSdeMoveActionRecord(key){
   const normalizedKey = String(key || "");
   if(!normalizedKey) return null;
@@ -14770,6 +15123,7 @@ function getSdeResettableSummary(){
   const learningEvents = Array.isArray(state.sdeMoveLearningLog)
     ? state.sdeMoveLearningLog.length
     : 0;
+  const manualOverrides = Object.keys(getSdeManualMoveOverrides()).length;
 
   return {
     actions:actions.length,
@@ -14777,7 +15131,8 @@ function getSdeResettableSummary(){
     cancelled,
     sdePlanRows,
     learningEvents,
-    total:actions.length + sdePlanRows + learningEvents
+    manualOverrides,
+    total:actions.length + sdePlanRows + learningEvents + manualOverrides
   };
 }
 
@@ -14824,6 +15179,7 @@ function handleSdeResetForDay(){
       : `Dette rydder SDE-læringshendelser som påvirker adaptive forslag. Sporplan/Input Sporplan endres ikke.\n\n`) +
     `Utførte: ${summary.completed}\n` +
     `Annullerte: ${summary.cancelled}\n` +
+    `Overstyringer: ${summary.manualOverrides}\n` +
     `SDE-skifterader: ${summary.sdePlanRows}\n` +
     `Læringshendelser: ${summary.learningEvents}\n\n` +
     (resetNeedsSnapshot
@@ -14842,6 +15198,7 @@ function handleSdeResetForDay(){
 
   state.sdeMoveActions = {};
   state.sdeMoveLearningLog = [];
+  state.sdeManualMoveOverrides = {};
   state.sdeMoveActionDragOffsets = {};
   state.sdeExpandedMoveActionKey = "";
   delete state.sdeResetSnapshot;
@@ -14857,6 +15214,7 @@ function handleSdeResetForDay(){
       : ``) +
     `Fjernet utførte kvitteringer: ${summary.completed}\n` +
     `Fjernet annullerte kvitteringer: ${summary.cancelled}\n` +
+    `Fjernet overstyringer: ${summary.manualOverrides}\n` +
     `Fjernet læringshendelser: ${summary.learningEvents}\n` +
     (resetNeedsSnapshot ? `SDE-skifterader er tilbakestilt til før-bildet.` : `SDE-læring er ryddet.`)
   );
@@ -14893,6 +15251,147 @@ function recordSdeMoveLearningEvent(key, action, row, time, reason){
     reasonCatalogVersion:reason?.reasonCatalogVersion || 1,
     snapshot:getSdeMoveActionSnapshot(row)
   });
+}
+
+function recordSdeManualMoveOverrideLearningEvent(needKey, row, override, candidate){
+  const log = ensureSdeMoveLearningLog();
+  const cleanKey = String(needKey || "");
+  if(!cleanKey || !row || !override) return;
+
+  const timestamp = override.timestamp || new Date().toISOString();
+  log.push({
+    id:`${Date.now()}-${log.length}`,
+    version:1,
+    source:"SDE Skiftebevegelser",
+    key:cleanKey,
+    action:"overridden",
+    status:"overridden",
+    reason:"manual_override",
+    type:"manual_override",
+    reasonCode:"manual_override",
+    reasonLabel:"Manuell overstyring",
+    reasonText:"Operatør valgte annet ledig spor enn SDE-forslaget.",
+    time:timestamp,
+    timestamp,
+    vehicle:override.vehicle,
+    fromSlot:override.fromSlot,
+    originalRecommendedSlot:override.originalRecommendedSlot,
+    overrideSlot:override.overrideSlot,
+    arrivalTrain:override.arrivalTrain,
+    arrivalPart:override.arrivalPart,
+    nextDepartureTrain:override.nextDepartureTrain,
+    nextDeparturePart:override.nextDeparturePart,
+    originalScore:override.originalScore,
+    originalConfidence:override.originalConfidence,
+    originalReason:override.originalReason,
+    availableSlotsAtDecision:override.availableSlotsAtDecision || [],
+    selectedCandidate:candidate || null,
+    snapshot:{
+      ...getSdeMoveActionSnapshot(row),
+      toSlot:override.overrideSlot,
+      originalRecommendedSlot:override.originalRecommendedSlot
+    }
+  });
+}
+
+function findSdeManualOverrideRowByNeedKey(data, needKey){
+  const key = String(needKey || "");
+  if(!key || !data) return null;
+  const rows = [
+    ...(Array.isArray(data.moves) ? data.moves : []),
+    ...(Array.isArray(data.needs) ? data.needs : [])
+  ];
+  return rows.find(row => isSdeManualOverrideEligibleRow(row) && getSdeMoveNeedKey(row) === key) || null;
+}
+
+function handleSdeManualMoveOverride(encodedNeedKey, selectedSlotRaw){
+  const needKey = decodeURIComponent(String(encodedNeedKey || ""));
+  const selectedSlot = normalizeSlot(selectedSlotRaw);
+  if(!needKey || !selectedSlot){
+    alert("Velg et ledig spor før overstyring kvitteres.");
+    return;
+  }
+
+  if(selectedSlot === "VS"){
+    alert("VS kan ikke velges som operativt målspor i denne overstyringen.");
+    return;
+  }
+
+  const data = getSdeShiftShowcaseData();
+  const row = findSdeManualOverrideRowByNeedKey(data, needKey);
+  if(!row){
+    alert("SDE-forslaget finnes ikke lenger i aktivt datagrunnlag. Oppdater og kontroller Sporplan før overstyring.");
+    return;
+  }
+
+  const originalRecommendedSlot = normalizeSlot(row.originalRecommendedSlot || row.recommendedSlot || row.toSlot);
+  const currentSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+  if(selectedSlot === originalRecommendedSlot){
+    alert("Velg et annet spor enn SDE anbefaler.");
+    return;
+  }
+  if(selectedSlot === currentSlot){
+    alert("Valgt spor er allerede aktivt for dette kortet.");
+    return;
+  }
+
+  const candidates = buildSdeManualOverrideCandidateSlots(row, {
+    moves:data.moves,
+    originalRecommendedSlot
+  });
+  const selectedCandidate = candidates.find(candidate => normalizeSlot(candidate.slot) === selectedSlot);
+  if(!selectedCandidate){
+    alert(`${selectedSlot} er ikke lenger et gyldig ledig spor for denne overstyringen. SDE-listen er ikke endret.`);
+    return;
+  }
+
+  const timestamp = new Date().toISOString();
+  const override = {
+    action:"overridden",
+    status:"overridden",
+    reason:"manual_override",
+    type:"manual_override",
+    vehicle:sanitizeVehicleValue(row.vehicle),
+    fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
+    originalRecommendedSlot,
+    overrideSlot:selectedSlot,
+    arrivalTrain:normalizeTognr(row.arrivalTrain),
+    arrivalPart:String(row.arrivalPart || "").trim(),
+    nextDepartureTrain:normalizeTognr(row.nextDepartureTrain),
+    nextDeparturePart:String(row.nextDeparturePart || "").trim(),
+    originalScore:row.originalRecommendationScore ?? row.recommendationScore ?? "",
+    originalConfidence:row.originalRecommendationConfidence || row.recommendationConfidence || "",
+    originalReason:row.originalRecommendationReason || row.recommendationReason || "",
+    availableSlotsAtDecision:candidates.map(candidate => ({
+      slot:candidate.slot,
+      score:candidate.score,
+      confidence:candidate.confidence,
+      reason:candidate.reason
+    })),
+    timestamp
+  };
+
+  setSdeManualMoveOverrideForRow(row, override);
+  recordSdeManualMoveOverrideLearningEvent(needKey, row, override, selectedCandidate);
+  persist(true);
+  refreshSdeAfterMoveAction();
+}
+
+function handleClearSdeManualMoveOverride(encodedNeedKey){
+  const needKey = decodeURIComponent(String(encodedNeedKey || ""));
+  if(!needKey) return;
+
+  const data = getSdeShiftShowcaseData();
+  const row = findSdeManualOverrideRowByNeedKey(data, needKey);
+  const overrides = getSdeManualMoveOverrides();
+  if(row){
+    clearSdeManualMoveOverrideForRow(row);
+  }else{
+    delete overrides[needKey];
+  }
+
+  persist(true);
+  refreshSdeAfterMoveAction();
 }
 
 function getSdeMoveLearningReasonOptions(actionType){
@@ -15745,6 +16244,51 @@ function buildSdeTrackClearanceWindowHtml(row){
     <strong>Utføres i tidsrommet:</strong>
     <span>${escapeHtml(text)}</span>
   </div>`;
+}
+
+function buildSdeManualOverrideControlHtml(row, data, index){
+  if(!isSdeManualOverrideEligibleRow(row)) return "";
+
+  const needKey = getSdeMoveNeedKey(row);
+  if(!needKey) return "";
+
+  const selectId = `sdeManualOverrideSelect${index}`;
+  const encodedNeedKey = encodeURIComponent(needKey);
+  const originalSlot = normalizeSlot(row.originalRecommendedSlot || row.recommendedSlot || row.toSlot);
+  const overrideSlot = normalizeSlot(row.manualOverrideSlot);
+  const candidates = buildSdeManualOverrideCandidateSlots(row, {
+    moves:Array.isArray(data?.moves) ? data.moves : [],
+    originalRecommendedSlot:originalSlot
+  });
+  const optionsHtml = candidates.map(candidate => {
+    const label = `${candidate.slot} · ${candidate.confidence.toUpperCase()} · score ${candidate.score}`;
+    return `<option value="${escapeHtml(candidate.slot)}">${escapeHtml(label)}</option>`;
+  }).join("");
+  const disabled = candidates.length ? "" : " disabled";
+  const activeHtml = row.manualOverrideActive
+    ? `<div class="sde-manual-override-status">SDE overprøvd: opprinnelig ${escapeHtml(originalSlot || "ukjent")} → valgt ${escapeHtml(overrideSlot || "ukjent")}</div>`
+    : row.manualOverrideIgnored
+      ? `<div class="sde-manual-override-status">Lagret overstyring ${escapeHtml(row.manualOverrideSlot || "ukjent")} er ikke gyldig nå. SDE-forslaget brukes.</div>`
+      : "";
+  const clearHtml = row.manualOverrideActive || row.manualOverrideIgnored
+    ? `<button class="sde-shift-action-btn clear-override" type="button" onclick="handleClearSdeManualMoveOverride('${encodedNeedKey}')">Fjern overstyring</button>`
+    : "";
+
+  return `<details class="sde-manual-override">
+    <summary>Overprøv SDE</summary>
+    <div class="sde-manual-override-body">
+      ${activeHtml}
+      <div class="sde-manual-override-note">Brukes når operatør velger et annet ledig spor enn SDE anbefaler. Valget låses og SDE beregner resten på nytt.</div>
+      <div class="sde-manual-override-form">
+        <select class="sde-manual-override-select" id="${escapeHtml(selectId)}"${disabled}>
+          <option value="">Velg ledig spor ...</option>
+          ${optionsHtml}
+        </select>
+        <button class="sde-shift-action-btn override" type="button" onclick="handleSdeManualMoveOverride('${encodedNeedKey}', document.getElementById('${escapeHtml(selectId)}')?.value)"${disabled}>Kvitter overstyring</button>
+        ${clearHtml}
+      </div>
+    </div>
+  </details>`;
 }
 
 
@@ -17857,7 +18401,7 @@ function renderSdeSkiftebevegelser(){
   const canUseSdeReset = Boolean(sdeResetSummary.total && (!sdeResetNeedsSnapshot || hasSdeResetSnapshot));
   const sdeResetDisabled = canUseSdeReset ? "" : " disabled";
   const sdeResetTitle = canUseSdeReset
-    ? `Nullstill SDE: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.sdePlanRows} SDE-skifterader, ${sdeResetSummary.learningEvents} læringshendelser`
+    ? `Nullstill SDE: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.manualOverrides} overstyringer, ${sdeResetSummary.sdePlanRows} SDE-skifterader, ${sdeResetSummary.learningEvents} læringshendelser`
     : sdeResetNeedsSnapshot
       ? "Gammel SDE-skifterad finnes, men mangler før-bilde. Start ny SDE-test før reset brukes."
       : "Ingen SDE-kvitteringer eller læringshendelser å nullstille";
@@ -17871,6 +18415,7 @@ function renderSdeSkiftebevegelser(){
           : "Ingen alternative spor i første kandidatsett.";
         const actionKey = encodeURIComponent(getSdeMoveActionKey(row));
         const trackClearanceWindowHtml = buildSdeTrackClearanceWindowHtml(row);
+        const manualOverrideControlHtml = buildSdeManualOverrideControlHtml(row, data, index);
 
         return `<article class="sde-shift-card ${priorityClass}" style="--delay:${index * 55}ms">
           <div class="sde-shift-card-top">
@@ -17902,6 +18447,7 @@ function renderSdeSkiftebevegelser(){
             <div class="sde-shift-reason">${escapeHtml(row.recommendationReason || row.parkingInstruction || "SDE har ikke begrunnelse for denne anbefalingen ennå.")}</div>
             <div class="sde-shift-alternatives">${escapeHtml(alternativesText)}</div>
           </div>
+          ${manualOverrideControlHtml}
           <div class="sde-shift-actions" aria-label="Kvitter SDE-skifteforslag">
             <button class="sde-shift-action-btn done" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'completed')">Utført</button>
             <button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'cancelled')">Annullert</button>
