@@ -9893,6 +9893,155 @@ function buildSdeWashTrackAccessResourceAssessment({ physicalState, operationalC
   };
 }
 
+function buildSdeWashTrackFlexAssessment(move, context={}){
+  const noEffect = {
+    applies:false,
+    effect:"none",
+    availability:"not_relevant",
+    bonus:0,
+    severity:"none",
+    penalty:0,
+    reasonCode:"wash_track_not_relevant",
+    text:""
+  };
+  const best = context?.best || {};
+  const candidateSlot = normalizeSlot(best.slot || move?.recommendedSlot || move?.toSlot || "");
+  const arrivalSlot = normalizeSlot(move?.arrivalSlot || move?.fromSlot || "");
+  const vnReliefContext = context?.vnReliefContext || context?.washTrackResolutionContext || context?.washTrackContext || null;
+  const explicitFlexContext = context?.washTrackFlexContext || context?.washTrackFlexibilityContext || null;
+  const vnReliefRelevant = Boolean(
+    vnReliefContext &&
+    (
+      vnReliefContext.enableActiveWashTrackResolution === true ||
+      vnReliefContext.washTrackResolutionMode === "temporary_relief" ||
+      vnReliefContext.conflictKnown === true ||
+      vnReliefContext.concreteBlockageKnown === true ||
+      vnReliefContext.vnTemporaryReliefEvidenceLevel
+    )
+  );
+  const explicitFlexRelevant = Boolean(
+    explicitFlexContext &&
+    (
+      explicitFlexContext.flexibilityReserveRelevant === true ||
+      explicitFlexContext.washTrackFlexibilityReserveRelevant === true ||
+      explicitFlexContext.operationalFlexibilityRelevant === true ||
+      explicitFlexContext.concreteBlockageKnown === true
+    )
+  );
+  const washSlotRelevant = isSdeWashTrackSlot(candidateSlot) || isSdeWashTrackSlot(arrivalSlot);
+
+  if(!washSlotRelevant && !vnReliefRelevant && !explicitFlexRelevant){
+    return noEffect;
+  }
+
+  const physicalState = context?.physicalState || getSdeWashTrackPhysicalState();
+  const operationalContract = context?.operationalContract || buildSdeWashTrackOperationalContract({ physicalState });
+  const blocks = Array.isArray(operationalContract?.blocks) ? operationalContract.blocks : [];
+  const contextWithExitPlan = Boolean(
+    vnReliefContext?.exitPlanKnown === true ||
+    vnReliefContext?.hasExitPlan === true ||
+    explicitFlexContext?.exitPlanKnown === true ||
+    explicitFlexContext?.hasExitPlan === true ||
+    context?.exitPlanKnown === true ||
+    context?.hasExitPlan === true
+  );
+  const flexReserveConfirmed = Boolean(
+    explicitFlexContext?.flexibilityReserveRelevant === true ||
+    explicitFlexContext?.washTrackFlexibilityReserveRelevant === true ||
+    explicitFlexContext?.operationalFlexibilityRelevant === true ||
+    context?.flexibilityReserveRelevant === true ||
+    context?.washTrackFlexibilityReserveRelevant === true ||
+    context?.operationalFlexibilityRelevant === true
+  );
+
+  if(isSdeWashTrackSlot(candidateSlot)){
+    return {
+      applies:true,
+      effect:"penalty",
+      availability:physicalState?.isEmpty ? "available" : (physicalState?.accessSlotFree ? "limited" : "blocked"),
+      bonus:0,
+      severity:"high",
+      penalty:15,
+      reasonCode:candidateSlot === "VN" ? "vn_would_be_ordinary_parking" : "wash_access_limited",
+      text:`Vaskesporet-vurdering: ${candidateSlot} skal ikke brukes som ordinært målspor i SDE. Lavere robusthet uten å åpne VN/VS som kandidatspor.`
+    };
+  }
+
+  if(vnReliefRelevant || explicitFlexRelevant){
+    if(physicalState?.accessSlotFree !== true){
+      return {
+        applies:true,
+        effect:"penalty",
+        availability:"blocked",
+        bonus:0,
+        severity:"moderate",
+        penalty:15,
+        reasonCode:"wash_access_limited",
+        text:"Vaskesporet-vurdering: Vaskesporet/adkomst er begrenset. Lavere robusthet ved behov for midlertidig avlastning eller rekkefølgebytte."
+      };
+    }
+
+    if((vnReliefRelevant || explicitFlexContext?.requiresExitPlan === true) && !contextWithExitPlan){
+      return {
+        applies:true,
+        effect:"penalty",
+        availability:physicalState?.isEmpty ? "available" : "limited",
+        bonus:0,
+        severity:"moderate",
+        penalty:10,
+        reasonCode:"vn_without_exit_plan",
+        text:"Vaskesporet-vurdering: relevant Vaskesporet-fleksibilitet mangler dokumentert ut-igjen-plan. Lavere robusthet uten å aktivere VN bredere."
+      };
+    }
+
+    if(!physicalState?.isEmpty || blocks.length){
+      return {
+        applies:true,
+        effect:"penalty",
+        availability:physicalState?.accessSlotFree ? "limited" : "blocked",
+        bonus:0,
+        severity:"moderate",
+        penalty:8,
+        reasonCode:"wash_track_occupied",
+        text:"Vaskesporet-vurdering: Vaskesporet/adkomst er begrenset. Lavere robusthet ved behov for midlertidig avlastning eller rekkefølgebytte."
+      };
+    }
+
+    if(flexReserveConfirmed && physicalState?.isEmpty === true && physicalState?.accessSlotFree === true){
+      return {
+        applies:true,
+        effect:"bonus",
+        availability:"available",
+        bonus:4,
+        penalty:0,
+        severity:"low",
+        reasonCode:"wash_track_flex_available",
+        text:"Vaskesporet-vurdering: Vaskesporet er tomt og gir relevant operativ fleksibilitetsreserve. Liten robusthetsbonus uten å åpne VN/VS som kandidatspor."
+      };
+    }
+
+    return {
+      ...noEffect,
+      reasonCode:"vn_temporary_relief_context_only"
+    };
+  }
+
+  if(isSdeWashTrackSlot(arrivalSlot)){
+    return {
+      applies:true,
+      effect:"penalty",
+      availability:physicalState?.isEmpty ? "available" : (physicalState?.accessSlotFree ? "limited" : "blocked"),
+      bonus:0,
+      severity:"moderate",
+      penalty:8,
+      reasonCode:"wash_access_limited",
+      text:"Vaskesporet-vurdering: Vaskesporet/adkomst er relevant for denne vurderingen. Lavere robusthet uten å gjøre VN/VS til ordinært målspor."
+    };
+  }
+
+  return noEffect;
+}
+
 function getSdeWashTrackAccessAssessment(){
   const physicalState = getSdeWashTrackPhysicalState();
   const observationText = "Dette er fysisk observasjon og ikke aktivert i SDE-motor, score, sortering eller målsporvalg.";
@@ -13328,14 +13477,24 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
     };
   }
 
-  const confidence = best.score >= 85 ? "high" : best.score >= 60 ? "medium" : "low";
-  const reason = best.reasons.slice(0, 4).join(" ");
+  const washTrackFlexAssessment = buildSdeWashTrackFlexAssessment(need, {
+    best,
+    ordinaryCandidates:scored
+  });
+  const adjustedScore = Math.max(0, Math.min(100, best.score + (washTrackFlexAssessment.bonus || 0) - (washTrackFlexAssessment.penalty || 0)));
+  const confidence = adjustedScore >= 85 ? "high" : adjustedScore >= 60 ? "medium" : "low";
+  const reasonParts = best.reasons.slice(0, 4);
+  if(washTrackFlexAssessment.applies && washTrackFlexAssessment.text){
+    reasonParts.push(washTrackFlexAssessment.text);
+  }
+  const reason = reasonParts.join(" ");
 
   return {
     slot:best.slot,
-    score:best.score,
+    score:adjustedScore,
     confidence,
     reason,
+    washTrackFlexAssessment,
     alternatives:scored.slice(1, 4).map(candidate => ({
       slot:candidate.slot,
       score:candidate.score,
