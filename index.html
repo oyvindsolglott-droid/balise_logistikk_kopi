@@ -2639,6 +2639,215 @@ button{padding:12px 12px}
 .sde-shift-details{display:none;margin-top:10px;}
 .sde-shift-details.show{display:block;}
 
+.sde-night-placement-toggle{
+  flex:0 0 auto;
+  min-height:42px;
+  padding:9px 14px;
+  border-radius:16px;
+  border:2px solid rgba(125,211,252,.76);
+  background:linear-gradient(180deg,#d9f99d 0%,#86efac 42%,#22c55e 100%);
+  color:#052e16;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:1000;
+  letter-spacing:.02em;
+  cursor:pointer;
+  box-shadow:inset 0 2px 0 rgba(255,255,255,.44), inset 0 -4px 0 rgba(20,83,45,.18), 0 6px 0 rgba(21,128,61,.50), 0 12px 20px rgba(15,23,42,.20);
+  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
+}
+.sde-night-placement-toggle:hover{filter:brightness(1.04);transform:translateY(-1px);}
+.sde-night-placement-toggle.active{
+  transform:translateY(5px);
+  box-shadow:inset 0 5px 12px rgba(0,0,0,.26), 0 1px 0 rgba(21,128,61,.48), 0 5px 12px rgba(15,23,42,.16);
+}
+
+.sde-night-placement-panel{
+  margin:12px 0 20px;
+  border:1px solid rgba(125,211,252,.28);
+  border-radius:18px;
+  background:linear-gradient(180deg, rgba(15,23,42,.96), rgba(17,24,39,.92));
+  color:#eaf4ff;
+  box-shadow:0 22px 52px rgba(15,23,42,.30), inset 0 1px 0 rgba(255,255,255,.10);
+  overflow:hidden;
+}
+.sde-night-placement-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+  padding:18px 20px;
+  border-bottom:1px solid rgba(125,211,252,.18);
+  background:rgba(255,255,255,.04);
+}
+.sde-night-placement-title{
+  font-size:24px;
+  line-height:1.05;
+  font-weight:1000;
+}
+.sde-night-placement-subtitle{
+  margin-top:6px;
+  color:#b9d2ee;
+  font-size:13px;
+  line-height:1.35;
+  font-weight:700;
+}
+.sde-night-placement-close{
+  flex:0 0 auto;
+  min-height:40px;
+  border:1px solid rgba(226,232,240,.28);
+  border-radius:14px;
+  background:rgba(226,232,240,.12);
+  color:#f8fafc;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:950;
+  padding:8px 12px;
+  cursor:pointer;
+}
+.sde-night-placement-close:hover{
+  filter:brightness(1.08);
+}
+.sde-night-placement-summary{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:14px 20px 0;
+}
+.sde-night-placement-pill{
+  border:1px solid rgba(226,232,240,.16);
+  border-radius:999px;
+  padding:7px 10px;
+  background:rgba(255,255,255,.07);
+  color:#dbeafe;
+  font-size:12px;
+  font-weight:850;
+}
+.sde-night-placement-yard-wrap{
+  padding:16px 20px 20px;
+  overflow-x:auto;
+}
+.sde-night-placement-grid{
+  min-width:1040px;
+  display:grid;
+  grid-template-columns:repeat(14, minmax(64px, 1fr));
+  gap:8px;
+}
+.sde-night-placement-head{
+  min-height:28px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:10px;
+  background:rgba(148,163,184,.12);
+  color:#cbd5e1;
+  font-size:12px;
+  font-weight:950;
+}
+.sde-night-placement-slot,
+.sde-night-placement-platform,
+.sde-night-placement-spacer{
+  min-height:112px;
+  border-radius:14px;
+  border:1px solid rgba(226,232,240,.14);
+  padding:10px;
+}
+.sde-night-placement-slot{
+  display:grid;
+  grid-template-rows:auto 1fr auto;
+  gap:6px;
+  background:rgba(15,23,42,.68);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+}
+.sde-night-placement-slot.blue{border-color:rgba(96,165,250,.36);}
+.sde-night-placement-slot.yellow{border-color:rgba(250,204,21,.40);}
+.sde-night-placement-slot.orange{border-color:rgba(251,146,60,.40);}
+.sde-night-placement-slot.empty{
+  background:rgba(30,41,59,.34);
+  color:#8ea7c4;
+}
+.sde-night-placement-slot.collision{
+  border-color:rgba(248,113,113,.70);
+  box-shadow:inset 0 0 0 1px rgba(248,113,113,.24);
+}
+.sde-night-placement-address{
+  font-size:13px;
+  font-weight:1000;
+  color:#f8fafc;
+}
+.sde-night-placement-vehicle{
+  align-self:center;
+  color:#f8fafc;
+  font-size:18px;
+  font-weight:1000;
+  line-height:1.05;
+  word-break:break-word;
+}
+.sde-night-placement-train{
+  color:#fde68a;
+  font-size:11px;
+  font-weight:850;
+  line-height:1.25;
+}
+.sde-night-placement-source{
+  color:#a7f3d0;
+  font-size:10px;
+  font-weight:850;
+  line-height:1.2;
+  text-transform:uppercase;
+}
+.sde-night-placement-empty-text{
+  align-self:center;
+  color:#7b92ad;
+  font-size:12px;
+  font-weight:850;
+}
+.sde-night-placement-platform{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:rgba(125,211,252,.08);
+  color:#9bdcff;
+  font-size:12px;
+  font-weight:950;
+  writing-mode:vertical-rl;
+  text-orientation:mixed;
+}
+.sde-night-placement-spacer{
+  border-color:transparent;
+  background:transparent;
+  box-shadow:none;
+}
+.sde-night-placement-reserve,
+.sde-night-placement-warnings{
+  margin:0 20px 18px;
+  display:grid;
+  gap:8px;
+}
+.sde-night-placement-reserve-title,
+.sde-night-placement-warnings-title{
+  color:#c4d9f2;
+  font-size:13px;
+  font-weight:950;
+}
+.sde-night-placement-reserve-item,
+.sde-night-placement-warning{
+  border-radius:12px;
+  padding:10px 12px;
+  font-size:12px;
+  line-height:1.35;
+  font-weight:800;
+}
+.sde-night-placement-reserve-item{
+  border:1px solid rgba(34,197,94,.24);
+  background:rgba(34,197,94,.10);
+  color:#d7fff0;
+}
+.sde-night-placement-warning{
+  border:1px solid rgba(251,191,36,.28);
+  background:rgba(251,191,36,.10);
+  color:#ffedd5;
+}
+
 .sde-manual-override{
   margin-top:12px;
   border:1px solid rgba(125,211,252,.20);
@@ -18567,6 +18776,7 @@ function getSdeTomorrowJsonPendingText(){
 
 
 let sdeShiftDetailsExpanded = false;
+let sdeNightPlacementVisible = false;
 let sdeLearningDiagnosticsVisible = false;
 const sdeDiagnosticSectionExpanded = {};
 
@@ -18618,6 +18828,345 @@ function toggleSdeShiftDetails(){
     btn.classList.toggle("active", sdeShiftDetailsExpanded);
     btn.setAttribute("aria-pressed", sdeShiftDetailsExpanded ? "true" : "false");
   }
+}
+
+
+function toggleSdeNightPlacement(force){
+  if(typeof force === "boolean"){
+    sdeNightPlacementVisible = force;
+  }else{
+    sdeNightPlacementVisible = !sdeNightPlacementVisible;
+  }
+
+  renderSdeSkiftebevegelser();
+}
+
+function getSdeNightPlacementLayoutRows(){
+  return [topRow, midRow, botRow].map(row => row.slice());
+}
+
+function isSdeNightPlacementPlatformCell(value){
+  const text = String(value || "");
+  return /^platform/i.test(text) && !/-skip$/i.test(text);
+}
+
+function isSdeNightPlacementSpacerCell(value){
+  return !value || /-skip$/i.test(String(value || ""));
+}
+
+function isSdeNightPlacementOrdinarySlot(value){
+  const slot = normalizeSlot(value);
+  return Boolean(slot && !isSdeNightPlacementPlatformCell(value) && !isSdeNightPlacementSpacerCell(value) && slot !== "VN" && slot !== "VS");
+}
+
+function getSdeNightPlacementTrainLabel(vehicle, row=null){
+  const train = normalizeTognr(row?.nextDepartureTrain);
+  if(train){
+    const part = typeof getSdeDisplayDeparturePart === "function"
+      ? getSdeDisplayDeparturePart(row)
+      : String(row?.nextDeparturePart || "").trim();
+    const time = String(row?.nextDepartureTime || "").trim();
+    return `${train}${part ? `/${part}` : ""}${time ? ` kl. ${time}` : ""}`;
+  }
+
+  const cleanVehicle = sanitizeVehicleValue(vehicle);
+  const sporplanLabel = cleanVehicle && typeof getSporplanDepartureLabelsForVehicle === "function"
+    ? getSporplanDepartureLabelsForVehicle(cleanVehicle)
+    : "";
+  if(sporplanLabel) return sporplanLabel;
+
+  const token = normalizeVehicleToken(cleanVehicle);
+  const bindings = typeof buildSdeTursattVehicleBindings === "function"
+    ? buildSdeTursattVehicleBindings()
+    : [];
+  const binding = Array.isArray(bindings)
+    ? bindings.find(item => item?.role === "departure" && normalizeVehicleToken(item?.vehicle) === token)
+    : null;
+  if(binding){
+    const bindingTrain = normalizeTognr(binding.train);
+    const bindingPart = String(binding.part || "").trim();
+    const bindingTime = String(binding.displayTime || binding.time || "").trim();
+    if(bindingTrain) return `${bindingTrain}${bindingPart ? `/${bindingPart}` : ""}${bindingTime ? ` kl. ${bindingTime}` : ""}`;
+  }
+
+  return "Ingen kjent avgang";
+}
+
+function getSdeNightPlacementSourceLabel(row, source){
+  if(source === "standing") return "Fysisk grunnlag";
+  if(row?.manualOverrideActive) return "Manuell overstyring";
+  if(row?.isWrongTrackReplacementMove) return "Adaptiv SDE";
+  if(row?.isWorkshopMoveNeed) return "Verkstedflytting";
+  if(row?.isSpor3ProductionNeed) return "Spor 3 SDE";
+  return "SDE-forslag";
+}
+
+function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
+  const layoutRows = getSdeNightPlacementLayoutRows();
+  const ordinarySlots = new Set();
+
+  layoutRows.forEach(row=>{
+    row.forEach(slot=>{
+      if(isSdeNightPlacementOrdinarySlot(slot)){
+        ordinarySlots.add(normalizeSlot(slot));
+      }
+    });
+  });
+
+  const slots = {};
+  ordinarySlots.forEach(slot=>{
+    slots[slot] = {
+      slot,
+      vehicle:"",
+      trainLabel:"",
+      source:"Tom",
+      row:null,
+      collisionVehicles:[]
+    };
+  });
+
+  const warnings = [];
+  let reservePlacements = [];
+
+  const addWarning = (code, text, meta={}) => {
+    warnings.push({
+      code,
+      text,
+      ...meta
+    });
+  };
+
+  const removeVehicleFromPlacement = vehicle => {
+    const token = normalizeVehicleToken(vehicle);
+    if(!token) return;
+
+    Object.values(slots).forEach(entry=>{
+      if(normalizeVehicleToken(entry.vehicle) !== token) return;
+      entry.vehicle = "";
+      entry.trainLabel = "";
+      entry.source = "Tom";
+      entry.row = null;
+      entry.collisionVehicles = [];
+    });
+
+    reservePlacements = reservePlacements.filter(item => normalizeVehicleToken(item.vehicle) !== token);
+  };
+
+  const addReservePlacement = (slot, vehicle, row, source) => {
+    const cleanVehicle = sanitizeVehicleValue(vehicle);
+    if(!cleanVehicle) return;
+
+    const sourceLabel = getSdeNightPlacementSourceLabel(row, source);
+    reservePlacements.push({
+      slot,
+      vehicle:cleanVehicle,
+      trainLabel:getSdeNightPlacementTrainLabel(cleanVehicle, row),
+      source:sourceLabel,
+      text:`${cleanVehicle} er projisert til ${slot}. ${slot === "VN" ? "VN vises som Vaskespor-reserve, ikke som ordinær nattplassering." : "VS/adkomst vises ikke som ordinær nattplassering."}`
+    });
+
+    if(source === "move"){
+      addWarning(
+        "wash_track_plan",
+        `${cleanVehicle} har aktiv SDE-plan mot ${slot}. Dette vises som Vaskespor-reserve og endrer ikke SDE-motoren.`,
+        {slot, vehicle:cleanVehicle}
+      );
+    }
+  };
+
+  const placeVehicle = (slot, vehicle, row, source) => {
+    const targetSlot = normalizeSlot(slot);
+    const cleanVehicle = sanitizeVehicleValue(vehicle);
+    if(!cleanVehicle || !targetSlot) return;
+
+    if(targetSlot === "VN" || targetSlot === "VS"){
+      addReservePlacement(targetSlot, cleanVehicle, row, source);
+      return;
+    }
+
+    if(!ordinarySlots.has(targetSlot)){
+      addWarning(
+        "missing_slot",
+        `${cleanVehicle} har planlagt sluttspor ${targetSlot}, men sporet finnes ikke i ordinær nattplassering.`,
+        {slot:targetSlot, vehicle:cleanVehicle}
+      );
+      return;
+    }
+
+    const entry = slots[targetSlot];
+    const existingToken = normalizeVehicleToken(entry.vehicle);
+    const vehicleToken = normalizeVehicleToken(cleanVehicle);
+    if(entry.vehicle && existingToken && existingToken !== vehicleToken){
+      const collisionVehicles = new Set([
+        entry.vehicle,
+        ...(Array.isArray(entry.collisionVehicles) ? entry.collisionVehicles : []),
+        cleanVehicle
+      ].filter(Boolean));
+      entry.collisionVehicles = Array.from(collisionVehicles);
+      addWarning(
+        "slot_collision",
+        `${targetSlot} får flere kjøretøy i projisert nattplassering: ${entry.collisionVehicles.join(", ")}.`,
+        {slot:targetSlot}
+      );
+      return;
+    }
+
+    entry.vehicle = cleanVehicle;
+    entry.trainLabel = getSdeNightPlacementTrainLabel(cleanVehicle, row);
+    entry.source = getSdeNightPlacementSourceLabel(row, source);
+    entry.row = row || null;
+    entry.collisionVehicles = [];
+  };
+
+  computeInndata().forEach(row=>{
+    const slot = normalizeSlot(row?.slot);
+    const vehicle = sanitizeVehicleValue(row?.mat);
+    if(!vehicle || !slot) return;
+    placeVehicle(slot, vehicle, null, "standing");
+  });
+
+  const activeMoves = (Array.isArray(data?.moves) ? data.moves : [])
+    .filter(row => !isSdeMoveActioned(row));
+
+  activeMoves.forEach(row=>{
+    const vehicle = sanitizeVehicleValue(row?.vehicle);
+    const targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+    if(!vehicle) return;
+    if(!targetSlot){
+      addWarning(
+        "missing_slot",
+        `${vehicle} har aktivt SDE-forslag uten kjent sluttspor.`,
+        {vehicle}
+      );
+      return;
+    }
+
+    removeVehicleFromPlacement(vehicle);
+    placeVehicle(targetSlot, vehicle, row, "move");
+  });
+
+  const finalVehicleSlots = new Map();
+  Object.values(slots).forEach(entry=>{
+    const vehicles = entry.collisionVehicles?.length ? entry.collisionVehicles : [entry.vehicle];
+    vehicles.filter(Boolean).forEach(vehicle=>{
+      const token = normalizeVehicleToken(vehicle);
+      if(!token) return;
+      if(!finalVehicleSlots.has(token)) finalVehicleSlots.set(token, []);
+      finalVehicleSlots.get(token).push(entry.slot);
+    });
+  });
+  reservePlacements.forEach(item=>{
+    const token = normalizeVehicleToken(item.vehicle);
+    if(!token) return;
+    if(!finalVehicleSlots.has(token)) finalVehicleSlots.set(token, []);
+    finalVehicleSlots.get(token).push(item.slot);
+  });
+
+  finalVehicleSlots.forEach((vehicleSlots, token)=>{
+    const uniqueSlots = Array.from(new Set(vehicleSlots));
+    if(uniqueSlots.length <= 1) return;
+    addWarning(
+      "duplicate_vehicle",
+      `${token} finnes i flere sluttposisjoner: ${uniqueSlots.join(", ")}.`,
+      {vehicle:token}
+    );
+  });
+
+  const occupiedCount = Object.values(slots).filter(entry => Boolean(entry.vehicle)).length;
+  return {
+    layoutRows,
+    slots,
+    reservePlacements,
+    warnings,
+    counts:{
+      ordinarySlots:ordinarySlots.size,
+      occupied:occupiedCount,
+      empty:ordinarySlots.size - occupiedCount,
+      activeMoves:activeMoves.length
+    }
+  };
+}
+
+function renderSdeNightPlacementOverview(data){
+  const overview = buildSdeNightPlacementOverviewData(data);
+  const columnLabels = ["12","11","10","9","8","7","","6","5","4","3","","2","1"];
+  const headerHtml = columnLabels
+    .map(label => `<div class="sde-night-placement-head">${escapeHtml(label)}</div>`)
+    .join("");
+
+  const cellHtml = overview.layoutRows.map(row => row.map(cell=>{
+    if(isSdeNightPlacementSpacerCell(cell)) return `<div class="sde-night-placement-spacer" aria-hidden="true"></div>`;
+    if(isSdeNightPlacementPlatformCell(cell)){
+      return `<div class="sde-night-placement-platform">Plattform</div>`;
+    }
+
+    const slot = normalizeSlot(cell);
+    const entry = overview.slots[slot] || {slot, vehicle:"", trainLabel:"", source:"Tom", collisionVehicles:[]};
+    const hasCollision = Array.isArray(entry.collisionVehicles) && entry.collisionVehicles.length > 1;
+    const hasVehicle = Boolean(entry.vehicle || hasCollision);
+    const vehicleText = hasCollision ? entry.collisionVehicles.join(" / ") : entry.vehicle;
+    const classes = [
+      "sde-night-placement-slot",
+      slotKind(slot),
+      hasVehicle ? "occupied" : "empty",
+      hasCollision ? "collision" : ""
+    ].filter(Boolean).join(" ");
+
+    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}">
+      <div class="sde-night-placement-address">${escapeHtml(slot)}</div>
+      ${hasVehicle
+        ? `<div class="sde-night-placement-vehicle">${escapeHtml(vehicleText)}</div>
+           <div>
+             <div class="sde-night-placement-train">${escapeHtml(hasCollision ? "Slot-kollisjon" : entry.trainLabel || "Ingen kjent avgang")}</div>
+             <div class="sde-night-placement-source">${escapeHtml(hasCollision ? "Varsel" : entry.source || "SDE")}</div>
+           </div>`
+        : `<div class="sde-night-placement-empty-text">Tom</div><div class="sde-night-placement-source">Ledig</div>`}
+    </div>`;
+  }).join("")).join("");
+
+  const reserveHtml = overview.reservePlacements.length
+    ? `<div class="sde-night-placement-reserve">
+        <div class="sde-night-placement-reserve-title">Vaskespor-reserve</div>
+        ${overview.reservePlacements.map(item => `
+          <div class="sde-night-placement-reserve-item">
+            <strong>${escapeHtml(item.slot)} · ${escapeHtml(item.vehicle)}</strong><br>
+            ${escapeHtml(item.trainLabel)} · ${escapeHtml(item.source)}<br>
+            ${escapeHtml(item.text)}
+          </div>
+        `).join("")}
+      </div>`
+    : "";
+
+  const warningsHtml = overview.warnings.length
+    ? `<div class="sde-night-placement-warnings">
+        <div class="sde-night-placement-warnings-title">Varsler i nattplassering</div>
+        ${overview.warnings.map(item => `<div class="sde-night-placement-warning">${escapeHtml(item.text)}</div>`).join("")}
+      </div>`
+    : "";
+
+  return `<section class="sde-night-placement-panel" id="sdeNightPlacementPanel" aria-label="SDE Nattplassering">
+    <div class="sde-night-placement-header">
+      <div>
+        <div class="sde-night-placement-title">SDE Nattplassering</div>
+        <div class="sde-night-placement-subtitle">Planlagt sluttposisjon etter SDE-forslag og aktive manuelle overstyringer.</div>
+      </div>
+      <button class="sde-night-placement-close" type="button" data-sde-night-placement-close>Skjul SDE Nattplassering</button>
+    </div>
+    <div class="sde-night-placement-summary">
+      <span class="sde-night-placement-pill">${escapeHtml(String(overview.counts.occupied))} plasserte kjøretøy</span>
+      <span class="sde-night-placement-pill">${escapeHtml(String(overview.counts.empty))} tomme ordinære slots</span>
+      <span class="sde-night-placement-pill">${escapeHtml(String(overview.counts.activeMoves))} aktive SDE-forslag brukt</span>
+      <span class="sde-night-placement-pill">${escapeHtml(String(overview.warnings.length))} varsler</span>
+    </div>
+    <div class="sde-night-placement-yard-wrap">
+      <div class="sde-night-placement-grid">
+        ${headerHtml}
+        ${cellHtml}
+      </div>
+    </div>
+    ${reserveHtml}
+    ${warningsHtml}
+  </section>`;
 }
 
 
@@ -18974,6 +19523,9 @@ function renderSdeSkiftebevegelser(){
           ).join("")
       })
     : "";
+  const nightPlacementOverviewHtml = sdeNightPlacementVisible
+    ? renderSdeNightPlacementOverview(data)
+    : "";
 
   root.innerHTML = `
     <div class="sde-shift-hero">
@@ -18995,9 +19547,11 @@ function renderSdeSkiftebevegelser(){
     <div class="sde-shift-section-title">
       <span class="sde-shift-section-title-main">Foreslåtte skiftebevegelser</span>
       <button class="sde-shift-reset-btn" type="button" onclick="handleSdeResetForDay()" title="${escapeHtml(sdeResetTitle)}"${sdeResetDisabled}>⟲ Nullstill SDE</button>
+      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="false" title="Vis eller skjul SDE Nattplassering">SDE Nattplassering</button>
       <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
       <span class="sde-shift-section-title-count">${data.baseMoveCount ?? data.moves.length} forslag</span>
     </div>
+    ${nightPlacementOverviewHtml}
     <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
     ${pastDepartureDiagnosticsHtml}
     ${linearTrackDiagnosticsHtml}
@@ -19024,6 +19578,18 @@ function renderSdeSkiftebevegelser(){
     detailsToggle.addEventListener("click", toggleSdeShiftDetails);
     detailsToggle.classList.toggle("active", sdeShiftDetailsExpanded);
     detailsToggle.setAttribute("aria-pressed", sdeShiftDetailsExpanded ? "true" : "false");
+  }
+
+  const nightPlacementToggle = document.getElementById("sdeNightPlacementToggle");
+  if(nightPlacementToggle){
+    nightPlacementToggle.addEventListener("click", ()=>toggleSdeNightPlacement());
+    nightPlacementToggle.classList.toggle("active", sdeNightPlacementVisible);
+    nightPlacementToggle.setAttribute("aria-pressed", sdeNightPlacementVisible ? "true" : "false");
+  }
+
+  const nightPlacementClose = document.querySelector("[data-sde-night-placement-close]");
+  if(nightPlacementClose){
+    nightPlacementClose.addEventListener("click", ()=>toggleSdeNightPlacement(false));
   }
 
   document.querySelectorAll(".sde-shift-details").forEach(el=>{
