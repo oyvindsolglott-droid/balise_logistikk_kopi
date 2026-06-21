@@ -2854,22 +2854,24 @@ button{padding:12px 12px}
   border-radius:0;
   background:transparent;
   color:#dbeafe;
+  display:grid;
+  justify-items:center;
 }
 .sde-manual-override summary{
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  gap:8px;
-  min-width:190px;
-  min-height:50px;
+  gap:6px;
+  min-width:154px;
+  min-height:46px;
   cursor:pointer;
-  padding:12px 18px;
+  padding:10px 15px;
   border:2px solid rgba(146,64,14,.56);
   border-radius:16px;
   background:linear-gradient(180deg,#fde68a 0%,#fbbf24 58%,#d97706 100%);
   color:#1f1300;
   font-family:inherit;
-  font-size:14px;
+  font-size:13px;
   font-weight:1000;
   letter-spacing:0;
   text-shadow:0 1px 0 rgba(255,255,255,.42);
@@ -2898,6 +2900,9 @@ button{padding:12px 12px}
   content:"▴";
 }
 .sde-manual-override-body{
+  justify-self:stretch;
+  width:100%;
+  box-sizing:border-box;
   margin-top:10px;
   padding:13px;
   border:1px solid rgba(251,191,36,.22);
