@@ -14271,6 +14271,7 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
       const fallbackArrivalSlot = normalizeSlot(fallbackArrival?.slot);
       const fallbackArrivalTrain = normalizeTognr(fallbackArrival?.binding?.train);
       const fallbackArrivalPart = String(fallbackArrival?.binding?.part || "").trim();
+      const spor3OperationalSequenceMinutes = getSdeOperationalSequenceMinutes("21:00", "plannedMove") ?? 99999;
       const fallbackArrivalText = fallbackArrivalTrain
         ? `${fallbackArrivalTrain}${fallbackArrivalPart ? `/${fallbackArrivalPart}` : ""}`
         : "";
@@ -14282,6 +14283,8 @@ function buildSdeSpor3ProductionDepartureNeeds(existingNeeds=[]){
         arrivalTrain:fallbackArrivalTrain || "Spor 3-sekvens",
         arrivalPart:fallbackArrivalTrain ? fallbackArrivalPart : "",
         arrivalTime:"21:00",
+        arrivalSequenceMinutes:spor3OperationalSequenceMinutes,
+        operationalSequenceMinutes:spor3OperationalSequenceMinutes,
         vehicle,
         arrivalSlot:currentSlot || fallbackArrivalSlot,
         turneringTarget:preferredSlot ? `Spor 3 ${preferredSlot}` : "Spor 3",
@@ -14453,6 +14456,7 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
     if(!vehicle) return null;
 
     const arrivalSequenceMinutes = getSdeArrivalLatestSequenceMinutes(arrival);
+    const normalizedArrivalSequenceMinutes = arrivalSequenceMinutes >= 0 ? arrivalSequenceMinutes : null;
     if(isSdeEveningExitVehicle(vehicle) && arrivalSequenceMinutes < 1440){
       return null;
     }
@@ -14496,6 +14500,8 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
       arrivalTrain:arrival.train,
       arrivalPart:arrival.part,
       arrivalTime:arrival.displayTime || arrival.time,
+      arrivalSequenceMinutes:normalizedArrivalSequenceMinutes,
+      operationalSequenceMinutes:normalizedArrivalSequenceMinutes,
       vehicle,
       arrivalSlot:normalizeSlot(arrival.slot),
       turneringTarget:arrival.turneringTarget,
@@ -16805,11 +16811,86 @@ function buildSdeManualOverrideControlHtml(row, data, index){
 
 
 function getSdeShiftMoveSortMinutes(row){
+  const explicitSequence = row?.arrivalSequenceMinutes === null || row?.arrivalSequenceMinutes === undefined || row?.arrivalSequenceMinutes === ""
+    ? NaN
+    : Number(row.arrivalSequenceMinutes);
+  if(Number.isFinite(explicitSequence) && explicitSequence >= 0){
+    return explicitSequence;
+  }
+
+  const arrivalSequence = getSdeArrivalLatestSequenceMinutes({
+    displayTime:row?.arrivalTime,
+    time:""
+  });
+  if(arrivalSequence >= 0) return arrivalSequence;
+
+  const explicitOperational = row?.operationalSequenceMinutes === null || row?.operationalSequenceMinutes === undefined || row?.operationalSequenceMinutes === ""
+    ? NaN
+    : Number(row.operationalSequenceMinutes);
+  if(Number.isFinite(explicitOperational) && explicitOperational >= 0){
+    return explicitOperational;
+  }
+
   if(row?.isSpor3ProductionNeed){
     return getSdeOperationalSequenceMinutes(row?.arrivalTime || "21:00", "plannedMove") ?? 99999;
   }
 
   return getSdeOperationalSequenceMinutes(row?.arrivalTime, "plannedMove") ?? 99999;
+}
+
+function getSdeSpor3SequenceOrder(row){
+  if(!row?.isSpor3ProductionNeed) return 999;
+  const train = normalizeTognr(row.nextDepartureTrain);
+  const part = String(row.nextDeparturePart || "").trim();
+  if(train === "802" && part === "1") return 0;
+  if(train === "802" && part === "2") return 1;
+  if(train === "852") return 2;
+  return 9;
+}
+
+function compareSdeShiftMoveArrivalTrain(a, b){
+  const trainA = normalizeTognr(a?.arrivalTrain);
+  const trainB = normalizeTognr(b?.arrivalTrain);
+  if(trainA === trainB) return 0;
+
+  const numA = Number(trainA);
+  const numB = Number(trainB);
+  const hasNumA = Number.isFinite(numA);
+  const hasNumB = Number.isFinite(numB);
+  if(hasNumA && hasNumB) return numA - numB;
+  if(hasNumA !== hasNumB) return 0;
+
+  return trainA.localeCompare(trainB, "nb");
+}
+
+function getSdeShiftMoveArrivalPartSortValue(row){
+  const part = String(row?.arrivalPart || "").trim();
+  const numericPart = Number(part);
+  return Number.isFinite(numericPart) ? numericPart : 999;
+}
+
+function compareSdeShiftMoveDisplayRows(a, b){
+  const timeA = getSdeShiftMoveSortMinutes(a);
+  const timeB = getSdeShiftMoveSortMinutes(b);
+  if(timeA !== timeB) return timeA - timeB;
+
+  const trainCompare = compareSdeShiftMoveArrivalTrain(a, b);
+  if(trainCompare) return trainCompare;
+
+  const partCompare = getSdeShiftMoveArrivalPartSortValue(a) - getSdeShiftMoveArrivalPartSortValue(b);
+  if(partCompare) return partCompare;
+
+  const spor3Compare = getSdeSpor3SequenceOrder(a) - getSdeSpor3SequenceOrder(b);
+  if(spor3Compare) return spor3Compare;
+
+  return String(a?.vehicle || "").localeCompare(String(b?.vehicle || ""), "nb");
+}
+
+function sortSdeShiftMovesForDisplay(rows){
+  return (Array.isArray(rows) ? rows : [])
+    .map((row, index) => ({row, index}))
+    .sort((a,b) => compareSdeShiftMoveDisplayRows(a.row, b.row) || a.index - b.index)
+    .map(item => item.row);
 }
 
 
@@ -17059,29 +17140,9 @@ function getSdeShiftShowcaseData(){
         toSlot:normalizeSlot(row.recommendedSlot) || "?"
       };
     })
-    .sort((a,b)=>{
-      const ta = getSdeShiftMoveSortMinutes(a);
-      const tb = getSdeShiftMoveSortMinutes(b);
-      if(ta !== tb) return ta - tb;
-
-      const getSpor3SequenceOrder = row => {
-        if(!row?.isSpor3ProductionNeed) return 999;
-        const train = normalizeTognr(row.nextDepartureTrain);
-        const part = String(row.nextDeparturePart || "").trim();
-        if(train === "802" && part === "1") return 0;
-        if(train === "802" && part === "2") return 1;
-        if(train === "852") return 2;
-        return 9;
-      };
-
-      const sa = getSpor3SequenceOrder(a);
-      const sb = getSpor3SequenceOrder(b);
-      if(sa !== sb) return sa - sb;
-
-      return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
-    });
+    .sort(compareSdeShiftMoveDisplayRows);
   const adaptiveMoves = buildSdeWrongTrackReplacementMoves(baseMoves);
-  const moves = [...adaptiveMoves, ...baseMoves];
+  const moves = sortSdeShiftMovesForDisplay([...adaptiveMoves, ...baseMoves]);
 
   const unresolvedCandidates = needs.filter(row =>
     !row?.recommendedSlot ||
