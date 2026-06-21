@@ -14162,7 +14162,7 @@ function buildSdeArrivalParkingNeeds(){
     return 4;
   }
 
-  return [...relevantArrivals]
+  const sortedArrivals = [...relevantArrivals]
     .sort((a,b)=>{
       const pa = getSdeArrivalRecommendationPriority(a);
       const pb = getSdeArrivalRecommendationPriority(b);
@@ -14173,66 +14173,81 @@ function buildSdeArrivalParkingNeeds(){
       if(ta !== tb) return ta - tb;
 
       return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
-    })
-    .map(arrival=>{
-      const vehicle = sanitizeVehicleValue(arrival.vehicle);
-      if(!vehicle) return null;
+    });
 
-      const arrivalSequenceMinutes = getSdeArrivalLatestSequenceMinutes(arrival);
-      if(isSdeEveningExitVehicle(vehicle) && arrivalSequenceMinutes < 1440){
-        return null;
-      }
+  function buildArrivalParkingNeed(arrival){
+    const vehicle = sanitizeVehicleValue(arrival.vehicle);
+    if(!vehicle) return null;
 
-      const nextDeparture = getFirstDepartureForVehicle(vehicle);
-      const serviceNeed = getServiceNeedForVehicle(vehicle);
-      const departureClockMinutes = nextDeparture
-        ? getSdeTimeMinutes(nextDeparture.time || nextDeparture.displayTime)
-        : null;
-      const earlyDeparture = departureClockMinutes !== null && departureClockMinutes < (9 * 60);
+    const arrivalSequenceMinutes = getSdeArrivalLatestSequenceMinutes(arrival);
+    if(isSdeEveningExitVehicle(vehicle) && arrivalSequenceMinutes < 1440){
+      return null;
+    }
 
-      const nightPlatformClearance = isSdeNightArrivalPlatformClearanceNeed(arrival);
+    const nextDeparture = getFirstDepartureForVehicle(vehicle);
+    const serviceNeed = getServiceNeedForVehicle(vehicle);
+    const departureClockMinutes = nextDeparture
+      ? getSdeTimeMinutes(nextDeparture.time || nextDeparture.displayTime)
+      : null;
+    const earlyDeparture = departureClockMinutes !== null && departureClockMinutes < (9 * 60);
 
-      let parkingStrategy = "Fleksibel nattparkering";
-      let parkingInstruction = "Ingen kjent morgendagsavgang er koblet mot kjøretøyet. Kan vurderes som fleksibel nattparkering, men må ikke blokkere kjøretøy med kjent avgangsbehov.";
+    const nightPlatformClearance = isSdeNightArrivalPlatformClearanceNeed(arrival);
 
-      if(serviceNeed){
-        parkingStrategy = "Service før nattplassering";
-        parkingInstruction = "Kjøretøyet har servicebehov. Det må via spor 6 før endelig nattplassering vurderes mot morgendagens Tursatt og blokkering.";
-      }else if(nightPlatformClearance){
-        parkingStrategy = "839 nattankomst – plattform må ryddes";
-        parkingInstruction = "839 er nattankomst i plattformspor. Kjøretøyet skal skiftes bort fra plattform dersom SDE finner trygg kandidat.";
-      }else if(nextDeparture && earlyDeparture){
-        parkingStrategy = "Tidlig avgang – lett tilgjengelig nattplassering";
-        parkingInstruction = "Kjøretøyet må parkeres slik at det kan tas ut til tidlig togproduksjon uten intern blokkering.";
-      }else if(nextDeparture){
-        parkingStrategy = "Koblet mot morgendagens avgang";
-        parkingInstruction = "Kjøretøyet bør parkeres slik at det ikke sperrer tidligere avganger og selv kan hentes til planlagt togproduksjon.";
-      }
+    let parkingStrategy = "Fleksibel nattparkering";
+    let parkingInstruction = "Ingen kjent morgendagsavgang er koblet mot kjøretøyet. Kan vurderes som fleksibel nattparkering, men må ikke blokkere kjøretøy med kjent avgangsbehov.";
 
-      const departurePartText = getSdeDisplayDeparturePart({
-        nextDepartureTrain:nextDeparture?.train,
-        nextDeparturePart:nextDeparture?.part
-      });
-      const departureText = nextDeparture
-        ? `${nextDeparture.train}${departurePartText ? `/${departurePartText}` : ""}${nextDeparture.displayTime ? ` kl. ${nextDeparture.displayTime}` : ""}`
-        : "";
+    if(serviceNeed){
+      parkingStrategy = "Service før nattplassering";
+      parkingInstruction = "Kjøretøyet har servicebehov. Det må via spor 6 før endelig nattplassering vurderes mot morgendagens Tursatt og blokkering.";
+    }else if(nightPlatformClearance){
+      parkingStrategy = "839 nattankomst – plattform må ryddes";
+      parkingInstruction = "839 er nattankomst i plattformspor. Kjøretøyet skal skiftes bort fra plattform dersom SDE finner trygg kandidat.";
+    }else if(nextDeparture && earlyDeparture){
+      parkingStrategy = "Tidlig avgang – lett tilgjengelig nattplassering";
+      parkingInstruction = "Kjøretøyet må parkeres slik at det kan tas ut til tidlig togproduksjon uten intern blokkering.";
+    }else if(nextDeparture){
+      parkingStrategy = "Koblet mot morgendagens avgang";
+      parkingInstruction = "Kjøretøyet bør parkeres slik at det ikke sperrer tidligere avganger og selv kan hentes til planlagt togproduksjon.";
+    }
 
-      const need = {
-        source:"Ankomstbasert parkeringsbehov",
-        arrivalTrain:arrival.train,
-        arrivalPart:arrival.part,
-        arrivalTime:arrival.displayTime || arrival.time,
-        vehicle,
-        arrivalSlot:normalizeSlot(arrival.slot),
-        turneringTarget:arrival.turneringTarget,
-        nextDepartureTrain:nextDeparture?.train || "",
-        nextDeparturePart:nextDeparture?.part || "",
-        nextDepartureTime:nextDeparture?.displayTime || nextDeparture?.time || "",
-        nextDepartureText:departureText,
-        serviceRequired:!!serviceNeed,
-        parkingStrategy,
-        parkingInstruction
-      };
+    const departurePartText = getSdeDisplayDeparturePart({
+      nextDepartureTrain:nextDeparture?.train,
+      nextDeparturePart:nextDeparture?.part
+    });
+    const departureText = nextDeparture
+      ? `${nextDeparture.train}${departurePartText ? `/${departurePartText}` : ""}${nextDeparture.displayTime ? ` kl. ${nextDeparture.displayTime}` : ""}`
+      : "";
+
+    return {
+      source:"Ankomstbasert parkeringsbehov",
+      arrivalTrain:arrival.train,
+      arrivalPart:arrival.part,
+      arrivalTime:arrival.displayTime || arrival.time,
+      vehicle,
+      arrivalSlot:normalizeSlot(arrival.slot),
+      turneringTarget:arrival.turneringTarget,
+      nextDepartureTrain:nextDeparture?.train || "",
+      nextDeparturePart:nextDeparture?.part || "",
+      nextDepartureTime:nextDeparture?.displayTime || nextDeparture?.time || "",
+      nextDepartureText:departureText,
+      serviceRequired:!!serviceNeed,
+      parkingStrategy,
+      parkingInstruction
+    };
+  }
+
+  const sortedNeeds = sortedArrivals
+    .map(buildArrivalParkingNeed)
+    .filter(Boolean);
+
+  const manualOverrideReservations = buildSdeManualOverridePreseedReservations(sortedNeeds);
+  manualOverrideReservations.forEach((entry, slot) => {
+    reservedRecommendedSlots.set(slot, entry);
+  });
+
+  return sortedNeeds
+    .map(need=>{
+      const vehicle = sanitizeVehicleValue(need.vehicle);
 
       const vehicleKey = normalizeVehicleToken(vehicle);
       let recommendation = null;
@@ -14242,7 +14257,8 @@ function buildSdeArrivalParkingNeeds(){
         recommendation = recommendationsByVehicle.get(vehicleKey);
         manualOverrideMeta = recommendation?.manualOverrideMeta || null;
       }else{
-        const originalRecommendation = getSdeArrivalParkingRecommendation(need, reservedRecommendedSlots);
+        const reservedForNeed = getSdeReservedSlotsWithoutNeed(reservedRecommendedSlots, need);
+        const originalRecommendation = getSdeArrivalParkingRecommendation(need, reservedForNeed);
         recommendation = originalRecommendation;
 
         const manualOverride = getSdeManualMoveOverrideForRow(need);
@@ -14885,6 +14901,72 @@ function buildSdeManualOverrideReservedSlots(row, context={}){
   return reserved;
 }
 
+function getSdeReservedSlotsWithoutNeed(reservedSlots, need){
+  const reserved = reservedSlots instanceof Map ? reservedSlots : new Map();
+  const targetNeedKey = getSdeMoveNeedKey(need);
+  if(!targetNeedKey || !reserved.size) return reserved;
+
+  const filtered = new Map();
+  reserved.forEach((entry, slot) => {
+    if(getSdeMoveNeedKey(entry?.need) === targetNeedKey) return;
+    filtered.set(slot, entry);
+  });
+  return filtered;
+}
+
+function isSdeManualOverrideReservationEntry(entry){
+  return Boolean(
+    entry?.manualOverrideReservation ||
+    entry?.need?.manualOverrideActive ||
+    entry?.recommendation?.manualOverrideActive ||
+    entry?.recommendation?.manualOverrideMeta?.manualOverrideActive
+  );
+}
+
+function getSdeManualOverrideReservedVehicle(entry){
+  return sanitizeVehicleValue(entry?.need?.vehicle || entry?.recommendation?.vehicle || "");
+}
+
+function getSdeManualOverrideReservedWarningText(entry){
+  if(!entry) return "";
+  const vehicle = getSdeManualOverrideReservedVehicle(entry);
+  return vehicle
+    ? `Reservert av ${vehicle}.`
+    : "Reservert av annet SDE-kort.";
+}
+
+function buildSdeManualOverridePreseedReservations(needs=[]){
+  const reservations = new Map();
+
+  (Array.isArray(needs) ? needs : []).forEach(need => {
+    if(!isSdeManualOverrideEligibleRow(need)) return;
+
+    const override = getSdeManualMoveOverrideForRow(need);
+    const overrideSlot = normalizeSlot(override?.overrideSlot || override?.slot);
+    if(!overrideSlot || reservations.has(overrideSlot)) return;
+
+    const candidates = buildSdeManualOverrideCandidateSlots(need, {
+      reservedSlots:reservations,
+      originalRecommendedSlot:override?.originalRecommendedSlot
+    });
+    const candidate = candidates.find(item => normalizeSlot(item.slot) === overrideSlot);
+    if(!candidate) return;
+
+    reservations.set(candidate.slot, {
+      need,
+      recommendation:{
+        slot:candidate.slot,
+        score:candidate.score,
+        confidence:candidate.confidence,
+        manualOverridePreseed:true
+      },
+      manualOverrideReservation:true
+    });
+  });
+
+  return reservations;
+}
+
 function getSdeManualOverrideConfidence(score){
   const value = Number(score);
   if(value >= 85) return "high";
@@ -14972,7 +15054,8 @@ function buildSdeManualOverrideCandidateSlots(row, context={}){
       if(candidateSlot === "VN" && !vnAvailability.available) return null;
       if(excludedSlots.has(candidateSlot)) return null;
       if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(candidateSlot)) return null;
-      if(reservedSlots.has(candidateSlot)) return null;
+      const reservedEntry = reservedSlots.get(candidateSlot) || null;
+      if(isSdeManualOverrideReservationEntry(reservedEntry)) return null;
 
       const occupant = sanitizeVehicleValue(getSdeVehicleInSlot(candidateSlot));
       if(occupant) return null;
@@ -14987,15 +15070,21 @@ function buildSdeManualOverrideCandidateSlots(row, context={}){
         ...(candidate.reasons || []),
         ...(evaluation.benefits || []),
         ...(evaluation.violations || []),
+        ...(reservedEntry ? [getSdeManualOverrideReservedWarningText(reservedEntry)] : []),
         ...(candidateSlot === "VN" ? [vnAvailability.reason] : [])
       ];
       const score = Math.max(0, Math.min(100, Math.round(rawScore)));
+      const reservedByVehicle = getSdeManualOverrideReservedVehicle(reservedEntry);
 
       return {
         slot:candidateSlot,
         score,
         confidence:getSdeManualOverrideConfidence(score),
-        reason:reasons.slice(0, 2).join(" ") || `${candidateSlot} er ledig og godkjent av SDE-kandidatmotoren.`
+        reason:reasons.slice(0, 2).join(" ") || `${candidateSlot} er ledig og godkjent av SDE-kandidatmotoren.`,
+        reservedBySde:Boolean(reservedEntry),
+        reservedByVehicle,
+        reservedByNeedKey:reservedEntry ? getSdeMoveNeedKey(reservedEntry?.need) : "",
+        warningText:reservedEntry ? getSdeManualOverrideReservedWarningText(reservedEntry) : ""
       };
     })
     .filter(Boolean)
@@ -15375,7 +15464,11 @@ function handleSdeManualMoveOverride(encodedNeedKey, selectedSlotRaw){
       slot:candidate.slot,
       score:candidate.score,
       confidence:candidate.confidence,
-      reason:candidate.reason
+      reason:candidate.reason,
+      reservedBySde:!!candidate.reservedBySde,
+      reservedByVehicle:candidate.reservedByVehicle || "",
+      reservedByNeedKey:candidate.reservedByNeedKey || "",
+      warningText:candidate.warningText || ""
     })),
     timestamp
   };
@@ -16270,7 +16363,10 @@ function buildSdeManualOverrideControlHtml(row, data, index){
     originalRecommendedSlot:originalSlot
   });
   const optionsHtml = candidates.map(candidate => {
-    const label = `${candidate.slot} · ${candidate.confidence.toUpperCase()} · score ${candidate.score}`;
+    const reservedText = candidate.reservedBySde
+      ? ` · reservert av ${candidate.reservedByVehicle || "annet SDE-kort"}`
+      : "";
+    const label = `${candidate.slot} · ${candidate.confidence.toUpperCase()} · score ${candidate.score}${reservedText}`;
     return `<option value="${escapeHtml(candidate.slot)}">${escapeHtml(label)}</option>`;
   }).join("");
   const disabled = candidates.length ? "" : " disabled";
