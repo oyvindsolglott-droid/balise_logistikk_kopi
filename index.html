@@ -14986,6 +14986,28 @@ function buildSdeManualOverrideBaseSlots(row){
     });
 }
 
+const sdeManualOverrideSlotOrder = [
+  "1S", "1N",
+  "2S", "2N",
+  "3S", "3M", "3N",
+  "4S", "4M", "4N",
+  "5S", "5M", "5N",
+  "6SS", "6S", "6N",
+  "7SS", "7S", "7N",
+  "8SS", "8S", "8N",
+  "9",
+  "10S", "10N",
+  "11S", "11N",
+  "12S", "12N",
+  "VN"
+];
+
+function getSdeManualOverrideSlotSortIndex(slot){
+  const normalized = normalizeSlot(slot);
+  const index = sdeManualOverrideSlotOrder.indexOf(normalized);
+  return index >= 0 ? index : 9999;
+}
+
 function getSdeManualOverrideVnAvailability(row, reservedSlots, excludedSlots){
   const reserved = reservedSlots instanceof Map ? reservedSlots : new Map();
   const excluded = excludedSlots instanceof Set ? excludedSlots : new Set();
@@ -15088,7 +15110,12 @@ function buildSdeManualOverrideCandidateSlots(row, context={}){
       };
     })
     .filter(Boolean)
-    .sort((a,b)=>b.score - a.score || a.slot.localeCompare(b.slot, "nb"));
+    .sort((a,b)=>{
+      const ia = getSdeManualOverrideSlotSortIndex(a.slot);
+      const ib = getSdeManualOverrideSlotSortIndex(b.slot);
+      if(ia !== ib) return ia - ib;
+      return String(a.slot || "").localeCompare(String(b.slot || ""), "nb");
+    });
 }
 
 function buildSdeManualOverrideRecommendation(need, override, originalRecommendation, reservedSlots){
