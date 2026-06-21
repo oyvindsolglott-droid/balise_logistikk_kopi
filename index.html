@@ -14974,6 +14974,42 @@ function getSdeManualOverrideConfidence(score){
   return "low";
 }
 
+function classifySdeManualOverrideRejectedCandidate(slot, scoreResult){
+  const candidateSlot = normalizeSlot(slot);
+  const reasonText = (Array.isArray(scoreResult?.reasons) ? scoreResult.reasons : [])
+    .filter(Boolean)
+    .join(" ");
+  const showWarning = warningText => ({
+    action:"show_warning",
+    confidence:"low",
+    score:0,
+    warningText,
+    reason:`${candidateSlot}: ${warningText}`
+  });
+
+  if(/Plattformspor skal ikke brukes som generell nattparkering/i.test(reasonText)){
+    return showWarning("plattformspor - operativ vurdering kreves");
+  }
+
+  if(/holdes av til serviceflyt|Ikke bruk spor 6 som generell overflow/i.test(reasonText)){
+    return showWarning("service-/fylle-/tømmespor - operativ vurdering kreves");
+  }
+
+  if(/Verkstedspor brukes ikke som generell parkering/i.test(reasonText)){
+    return showWarning("verkstedspor - operativ vurdering kreves");
+  }
+
+  if(/SS-posisjon brukes ikke som generell nattparkering/i.test(reasonText)){
+    return showWarning("SS-posisjon - operativ vurdering kreves");
+  }
+
+  if(/^[45]N avvises: ved innskifting fra nord\/vaskemaskinen/i.test(reasonText)){
+    return showWarning("innskiftingsrekkefølge fra nord/vaskemaskinen - operativ vurdering kreves");
+  }
+
+  return {action:"hide"};
+}
+
 function buildSdeManualOverrideBaseSlots(row){
   const seen = new Set();
   return inputSlots
@@ -15083,7 +15119,24 @@ function buildSdeManualOverrideCandidateSlots(row, context={}){
       if(occupant) return null;
 
       const candidate = scoreSdeArrivalParkingCandidate(row, candidateSlot);
-      if(candidate.status === "rejected") return null;
+      if(candidate.status === "rejected"){
+        const rejectedClassification = classifySdeManualOverrideRejectedCandidate(candidateSlot, candidate);
+        if(rejectedClassification.action !== "show_warning") return null;
+
+        const reservedByVehicle = getSdeManualOverrideReservedVehicle(reservedEntry);
+
+        return {
+          slot:candidateSlot,
+          score:rejectedClassification.score,
+          confidence:rejectedClassification.confidence,
+          reason:rejectedClassification.reason,
+          reservedBySde:Boolean(reservedEntry),
+          reservedByVehicle,
+          reservedByNeedKey:reservedEntry ? getSdeMoveNeedKey(reservedEntry?.need) : "",
+          warningText:rejectedClassification.warningText,
+          manualOverrideWarning:true
+        };
+      }
 
       const evaluation = evaluateSdeParkingDecision(row, candidate, reservedSlots);
       const rawScore = candidate.score + (evaluation.reward || 0) - (evaluation.penalty || 0);
@@ -16393,7 +16446,10 @@ function buildSdeManualOverrideControlHtml(row, data, index){
     const reservedText = candidate.reservedBySde
       ? ` · reservert av ${candidate.reservedByVehicle || "annet SDE-kort"}`
       : "";
-    const label = `${candidate.slot} · ${candidate.confidence.toUpperCase()} · score ${candidate.score}${reservedText}`;
+    const warningText = candidate.manualOverrideWarning && candidate.warningText
+      ? ` · ${candidate.warningText}${reservedText}`
+      : reservedText;
+    const label = `${candidate.slot} · ${candidate.confidence.toUpperCase()} · score ${candidate.score}${warningText}`;
     return `<option value="${escapeHtml(candidate.slot)}">${escapeHtml(label)}</option>`;
   }).join("");
   const disabled = candidates.length ? "" : " disabled";
