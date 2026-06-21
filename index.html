@@ -10109,19 +10109,13 @@ function getSdeWashTrackTxpUnavailableState(){
 function buildSdeWashTrackTxpRobustnessAssessment(context={}){
   const txpState = getSdeWashTrackTxpUnavailableState();
   const maxPenalty = 15;
-  const basePenalty = txpState.vnUnavailable && txpState.vsUnavailable
-    ? 12
-    : txpState.vsUnavailable
-      ? 8
-      : txpState.vnUnavailable
-        ? 5
-        : 0;
-  const physicalState = context?.physicalState && typeof context.physicalState === "object"
-    ? context.physicalState
-    : (typeof getSdeWashTrackPhysicalState === "function" ? getSdeWashTrackPhysicalState() : null);
-  const hasPhysicalWashTrackContext = Boolean(txpState.anyUnavailable && physicalState && physicalState.isEmpty === false);
-  const contextPenalty = hasPhysicalWashTrackContext ? 3 : 0;
-  const totalPenalty = Math.min(maxPenalty, basePenalty + contextPenalty);
+  const basePenalty = txpState.vsUnavailable
+    ? 15
+    : txpState.vnUnavailable
+      ? 6
+      : 0;
+  const contextPenalty = 0;
+  const totalPenalty = Math.min(maxPenalty, basePenalty);
   const severity = totalPenalty >= 13
     ? "high"
     : totalPenalty >= 8
@@ -10138,10 +10132,12 @@ function buildSdeWashTrackTxpRobustnessAssessment(context={}){
 
   if(txpState.anyUnavailable){
     messages.push(`Vaskespor ${slotText} er markert uvirksom i TXP Input Sporplan.`);
-    messages.push("Vaskespor er en sentral adkomst-, ranger- og avlastningsressurs i Skien. Dette reduserer operativ robusthet, men gjør ikke VN/VS til målspor eller kandidatspor.");
-    if(contextPenalty){
-      messages.push("Fysisk Vaskespor-status viser samtidig at Vaskesporet ikke er tomt, så robusthetstrekket økes noe.");
+    if(txpState.vsUnavailable){
+      messages.push("VS er adkomstenden til Vaskespor. Når VS er uvirksom, regnes VN operativt utilgjengelig fordi adkomsten inn og ut av Vaskespor er borte.");
+    }else if(txpState.vnUnavailable){
+      messages.push("VN er markert uvirksom alene. Dette kan skyldes havari eller blokkering i VN og reduserer kapasitet og fleksibilitet i Vaskespor.");
     }
+    messages.push("Vaskespor er en sentral adkomst-, ranger- og avlastningsressurs i Skien. Dette reduserer operativ robusthet, men gjør ikke VN/VS til målspor eller kandidatspor.");
     messages.push(`SDE-score trekkes ${totalPenalty} poeng uten å endre kandidatspor, skifteforslag eller uløste behov.`);
   }
 
