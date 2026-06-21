@@ -7925,7 +7925,7 @@ function renderTxpUnavailableInfrastructureControls(){
 
   el.innerHTML = `
     <h3>TXP driftsbegrensning / uvirksom infrastruktur</h3>
-    <p>Brukes for å registrere at spor, slotter eller rute/adkomst via nordenden er uvirksom. Vaskesporet VN/VS er fysiske slotter i Vaskesporet. «Nordende/adkomst uvirksom» gjelder rute til driftsbanegården, ikke parkering i VN/VS. Første versjon markerer avviket visuelt i TXP Input Sporplan. SDE-motoren påvirkes ikke ennå.</p>
+    <p>Brukes for å registrere at spor, slotter eller rute/adkomst via nordenden er uvirksom. Vaskesporet VN/VS er fysiske slotter i Vaskesporet. «Nordende/adkomst uvirksom» gjelder rute til driftsbanegården, ikke parkering i VN/VS. SDE vurderer dette som lavere egnethet/tillit for berørte skifteveier, men avviser ikke automatisk.</p>
     <div class="txp-unavailable-groups">
       <div class="txp-unavailable-group">
         ${trackLabels}
@@ -13014,15 +13014,11 @@ function scoreSdeArrivalParkingCandidate(need, slot){
     };
   }
 
-  if(typeof isTxpWashRouteUnavailable === "function" && isTxpWashRouteUnavailable() &&
-    typeof isSdeDriftsbanegardSlot === "function" && isSdeDriftsbanegardSlot(candidate)){
-    return {
-      slot:candidate,
-      score:-999,
-      status:"rejected",
-      reasons:[`${candidate} kan ikke nås når vaskemaskin/nordende er markert uvirksom i TXP Input Sporplan.`]
-    };
-  }
+  const northAccessUnavailableForDriftsbanegard =
+    typeof isTxpWashRouteUnavailable === "function" &&
+    isTxpWashRouteUnavailable() &&
+    typeof isSdeDriftsbanegardSlot === "function" &&
+    isSdeDriftsbanegardSlot(candidate);
 
   const operationalSingleSetSlot = getSdeOperationalSingleSetSlot(need);
   if(operationalSingleSetSlot && candidate !== operationalSingleSetSlot){
@@ -13055,6 +13051,11 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }
 
   let score = 50;
+
+  if(northAccessUnavailableForDriftsbanegard){
+    score -= 30;
+    reasons.push(`${candidate}: Nordende/adkomst uvirksom – primær skiftevei via nordenden er ikke tilgjengelig. Skiftet må vurderes via sørenden. Lavere egnethet; kontroller lokal skiftevei før bruk.`);
+  }
 
   if(operationalSingleSetSlot && candidate === operationalSingleSetSlot){
     score += 150;
@@ -13233,7 +13234,7 @@ function scoreSdeArrivalParkingCandidate(need, slot){
     if(/kontroller|rute blokkert/i.test(routeAssessment)){
       score -= 30;
       reasons.push(routeAssessment);
-    }else if(routeAssessment){
+    }else if(routeAssessment && !northAccessUnavailableForDriftsbanegard){
       score += 5;
       reasons.push(routeAssessment);
     }
