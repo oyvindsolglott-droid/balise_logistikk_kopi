@@ -14892,6 +14892,18 @@ function getSdeManualOverrideConfidence(score){
   return "low";
 }
 
+function buildSdeManualOverrideBaseSlots(row){
+  const seen = new Set();
+  return inputSlots
+    .map(normalizeSlot)
+    .filter(slot => {
+      if(!slot || seen.has(slot)) return false;
+      seen.add(slot);
+      if(slot === "VN" || slot === "VS") return false;
+      return true;
+    });
+}
+
 function getSdeManualOverrideVnAvailability(row, reservedSlots, excludedSlots){
   const reserved = reservedSlots instanceof Map ? reservedSlots : new Map();
   const excluded = excludedSlots instanceof Set ? excludedSlots : new Set();
@@ -14948,9 +14960,7 @@ function buildSdeManualOverrideCandidateSlots(row, context={}){
   );
   const excludedSlots = new Set([currentRecommendedSlot, originalRecommendedSlot, fromSlot].filter(Boolean));
   const vnAvailability = getSdeManualOverrideVnAvailability(row, reservedSlots, excludedSlots);
-  const candidateSlots = getSdeArrivalParkingCandidateSlots(row)
-    .map(normalizeSlot)
-    .filter(Boolean);
+  const candidateSlots = buildSdeManualOverrideBaseSlots(row);
   if(vnAvailability.available && !candidateSlots.includes("VN")){
     candidateSlots.push("VN");
   }
@@ -14972,7 +14982,6 @@ function buildSdeManualOverrideCandidateSlots(row, context={}){
 
       const evaluation = evaluateSdeParkingDecision(row, candidate, reservedSlots);
       const rawScore = candidate.score + (evaluation.reward || 0) - (evaluation.penalty || 0);
-      if(rawScore < 45) return null;
 
       const reasons = [
         ...(candidate.reasons || []),
