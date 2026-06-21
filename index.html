@@ -10085,6 +10085,25 @@ function getSdeWashTrackAccessAssessment(){
   };
 }
 
+function getSdeWashTrackTxpUnavailableState(){
+  const vnUnavailable = typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot("VN");
+  const vsUnavailable = typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot("VS");
+  const text = [];
+
+  if(vnUnavailable) text.push("VN er markert uvirksom i TXP Input Sporplan.");
+  if(vsUnavailable) text.push("VS er markert uvirksom i TXP Input Sporplan.");
+  if(text.length){
+    text.push("Dette er en observasjon. Det endrer ikke SDE-score, kandidatspor eller skifteforslag.");
+  }
+
+  return {
+    vnUnavailable,
+    vsUnavailable,
+    anyUnavailable: vnUnavailable || vsUnavailable,
+    text
+  };
+}
+
 
 function getSdeSlotTrack(slot){
   const normalizedSlot = normalizeSlot(slot);
@@ -17050,21 +17069,29 @@ function buildSdeWashTrackBlockingDiagnostics(){
 function buildSdeWashTrackPhysicalDiagnostics(){
   const physicalState = getSdeWashTrackPhysicalState();
   const assessment = getSdeWashTrackAccessAssessment();
-  if(assessment.status === "empty") return [];
+  const txpUnavailableState = getSdeWashTrackTxpUnavailableState();
+  if(assessment.status === "empty" && !txpUnavailableState.anyUnavailable) return [];
 
   const occupancy = getSdeWashTrackOccupancy();
   const operationalContract = buildSdeWashTrackOperationalContract({ physicalState });
+  const messages = [
+    ...assessment.messages,
+    ...txpUnavailableState.text
+  ];
 
   return [{
     severity:"info",
     status:assessment.status,
-    title:assessment.title,
+    title:assessment.status === "empty" && txpUnavailableState.anyUnavailable
+      ? "TXP-observasjon for Vaskesporet"
+      : assessment.title,
     vnVehicle:occupancy.vnVehicle,
     vsVehicle:occupancy.vsVehicle,
     operationalContract,
-    messages:assessment.messages,
+    txpUnavailableState,
+    messages,
     canObserveAsRangerResource:assessment.canObserveAsRangerResource,
-    text:assessment.messages.join(" ")
+    text:messages.join(" ")
   }];
 }
 
