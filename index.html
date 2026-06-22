@@ -2332,6 +2332,46 @@ button{padding:12px 12px}
   box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
 }
 
+.sde-shift-kpi-button{
+  -webkit-appearance:none;
+  appearance:none;
+  box-sizing:border-box;
+  width:100%;
+  height:100%;
+  color:inherit;
+  font:inherit;
+  text-align:left;
+  cursor:pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.18),
+    0 12px 24px rgba(0,0,0,.24),
+    0 2px 0 rgba(15,23,42,.36);
+  transition:transform .16s ease, box-shadow .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.sde-shift-kpi-button:hover{
+  transform:translateY(-1px);
+  border-color:rgba(255,209,102,.36);
+  background:rgba(255,255,255,.10);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.20),
+    0 16px 30px rgba(0,0,0,.28),
+    0 3px 0 rgba(15,23,42,.38);
+}
+
+.sde-shift-kpi-button:active{
+  transform:translateY(1px);
+  box-shadow:
+    inset 0 2px 8px rgba(15,23,42,.22),
+    0 6px 16px rgba(0,0,0,.20),
+    0 1px 0 rgba(15,23,42,.34);
+}
+
+.sde-shift-kpi-button:focus-visible{
+  outline:2px solid rgba(255,209,102,.82);
+  outline-offset:3px;
+}
+
 .sde-shift-kpi strong{
   display:block;
   font-size:30px;
@@ -2373,6 +2413,92 @@ button{padding:12px 12px}
   display:block;
   font-size:14px;
   line-height:1.45;
+}
+
+.sde-unresolved-details-panel{
+  margin:-6px 0 20px;
+  border:1px solid rgba(255,209,102,.32);
+  border-radius:22px;
+  padding:16px;
+  background:linear-gradient(180deg, rgba(255,209,102,.12), rgba(255,209,102,.07));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12), 0 18px 40px rgba(0,0,0,.20);
+}
+
+.sde-unresolved-details-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  margin-bottom:12px;
+}
+
+.sde-unresolved-details-head strong{
+  display:block;
+  color:#ffe8a3;
+  font-size:12px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+
+.sde-unresolved-details-head span{
+  display:block;
+  margin-top:4px;
+  color:#f8e9bf;
+  font-size:13px;
+  line-height:1.35;
+}
+
+.sde-unresolved-detail-list{
+  display:grid;
+  gap:10px;
+}
+
+.sde-unresolved-detail-card{
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;
+  padding:13px;
+  background:rgba(0,0,0,.16);
+  color:#f8e9bf;
+}
+
+.sde-unresolved-detail-title{
+  margin-bottom:8px;
+  color:#fff5d2;
+  font-weight:900;
+}
+
+.sde-unresolved-detail-lines{
+  display:grid;
+  gap:5px;
+  margin:0;
+}
+
+.sde-unresolved-detail-lines div{
+  display:grid;
+  grid-template-columns:minmax(90px, .45fr) 1fr;
+  gap:10px;
+  align-items:start;
+  font-size:13px;
+  line-height:1.35;
+}
+
+.sde-unresolved-detail-lines dt{
+  color:#e4c979;
+  font-weight:800;
+}
+
+.sde-unresolved-detail-lines dd{
+  margin:0;
+  color:#f8e9bf;
+}
+
+.sde-unresolved-detail-why{
+  margin-top:10px;
+  border-top:1px solid rgba(255,255,255,.10);
+  padding-top:10px;
+  color:#fff7d9;
+  font-size:13px;
+  line-height:1.42;
 }
 
 .sde-shift-grid{
@@ -19212,6 +19338,7 @@ function getSdeTomorrowJsonPendingText(){
 
 let sdeShiftDetailsExpanded = false;
 let sdeNightPlacementVisible = false;
+let sdeUnresolvedDetailsVisible = false;
 let sdeLearningDiagnosticsVisible = false;
 const sdeDiagnosticSectionExpanded = {};
 
@@ -19274,6 +19401,85 @@ function toggleSdeNightPlacement(force){
   }
 
   renderSdeSkiftebevegelser();
+}
+
+function toggleSdeUnresolvedDetails(count){
+  const unresolvedCount = Number(count) || 0;
+  if(unresolvedCount <= 0){
+    if(sdeUnresolvedDetailsVisible){
+      sdeUnresolvedDetailsVisible = false;
+      renderSdeSkiftebevegelser();
+    }
+    return;
+  }
+
+  sdeUnresolvedDetailsVisible = !sdeUnresolvedDetailsVisible;
+  renderSdeSkiftebevegelser();
+}
+
+function buildSdeUnresolvedDetailLine(label, value){
+  const cleanLabel = String(label || "").trim();
+  const cleanValue = String(value || "").trim();
+  if(!cleanLabel || !cleanValue) return "";
+
+  return `<div><dt>${escapeHtml(cleanLabel)}</dt><dd>${escapeHtml(cleanValue)}</dd></div>`;
+}
+
+function buildSdeUnresolvedItemHtml(row, index){
+  const vehicle = sanitizeVehicleValue(row?.vehicle) || "Ukjent kjøretøy";
+  const arrivalPartText = row?.arrivalPart ? `/${row.arrivalPart}` : "";
+  const arrivalText = row?.arrivalTrain
+    ? `${row.arrivalTrain}${arrivalPartText}${row.arrivalTime ? ` kl. ${row.arrivalTime}` : ""}`
+    : (row?.arrivalTime ? `Ukjent ankomst kl. ${row.arrivalTime}` : "Ukjent ankomst");
+  const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot);
+  const targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot || row?.turneringTarget);
+  const departureText = row?.nextDepartureText ||
+    (row?.nextDepartureTrain
+      ? `${row.nextDepartureTrain}${row.nextDeparturePart ? `/${row.nextDeparturePart}` : ""}${row.nextDepartureTime ? ` kl. ${row.nextDepartureTime}` : ""}`
+      : "");
+  const statusText = row?.recommendationConfidence
+    ? `${String(row.recommendationConfidence).toUpperCase()}${row.recommendationScore !== undefined ? `, score ${row.recommendationScore}` : ""}`
+    : (row?.status || row?.confidence || "");
+  const targetText = targetSlot || "Mangler tryggt målspor";
+  const reason = row?.recommendationReason ||
+    row?.reason ||
+    row?.message ||
+    row?.parkingInstruction ||
+    "SDE har ikke funnet trygg løsning i første kandidatsett.";
+  const title = vehicle !== "Ukjent kjøretøy"
+    ? `${vehicle} må avklares`
+    : `Uløst sak ${index + 1}`;
+  const lines = [
+    buildSdeUnresolvedDetailLine("Kjøretøy", vehicle),
+    buildSdeUnresolvedDetailLine("Ankomst", arrivalText),
+    buildSdeUnresolvedDetailLine("Fra-spor", fromSlot),
+    buildSdeUnresolvedDetailLine("Målspor", targetText),
+    buildSdeUnresolvedDetailLine("Neste avgang", departureText),
+    buildSdeUnresolvedDetailLine("Status", statusText)
+  ].filter(Boolean).slice(0, 6).join("");
+
+  return `<article class="sde-unresolved-detail-card">
+    <div class="sde-unresolved-detail-title">${escapeHtml(title)}</div>
+    <dl class="sde-unresolved-detail-lines">${lines}</dl>
+    <div class="sde-unresolved-detail-why"><strong>Hvorfor må dette avklares:</strong> ${escapeHtml(reason)}</div>
+  </article>`;
+}
+
+function buildSdeUnresolvedDetailsHtml(unresolved){
+  const rows = Array.isArray(unresolved) ? unresolved : [];
+  if(!rows.length) return "";
+
+  return `<section class="sde-unresolved-details-panel" id="sdeUnresolvedDetailsPanel" aria-label="Detaljer for uløste SDE-saker">
+    <div class="sde-unresolved-details-head">
+      <div>
+        <strong>Uløste saker</strong>
+        <span>${rows.length} ${rows.length === 1 ? "sak" : "saker"} må avklares manuelt før SDE kan regnes som komplett.</span>
+      </div>
+    </div>
+    <div class="sde-unresolved-detail-list">
+      ${rows.map(buildSdeUnresolvedItemHtml).join("")}
+    </div>
+  </section>`;
 }
 
 function getSdeNightPlacementLayoutRows(){
@@ -19610,6 +19816,12 @@ function renderSdeSkiftebevegelser(){
   if(!root) return;
 
   root.onclick = event=>{
+    const unresolvedToggle = event.target.closest("[data-sde-unresolved-kpi]");
+    if(unresolvedToggle && root.contains(unresolvedToggle)){
+      toggleSdeUnresolvedDetails(unresolvedToggle.dataset.sdeUnresolvedCount);
+      return;
+    }
+
     const toggle = event.target.closest("[data-sde-diagnostic-toggle]");
     if(!toggle || !root.contains(toggle)) return;
     toggleSdeDiagnosticSection(toggle.dataset.sdeDiagnosticToggle);
@@ -19641,8 +19853,14 @@ function renderSdeSkiftebevegelser(){
   }
 
   const data = getSdeShiftShowcaseData();
+  const unresolvedCount = Number(data.unresolvedCount) || 0;
+  if(unresolvedCount <= 0) sdeUnresolvedDetailsVisible = false;
   const scoreClass = getSdeShiftScoreClass(data.score);
   const scoreExplanationHtml = buildSdeShiftScoreExplanationHtml(data);
+  const unresolvedDetailsHtml = sdeUnresolvedDetailsVisible
+    ? buildSdeUnresolvedDetailsHtml(data.unresolved)
+    : "";
+  const unresolvedKpiExpanded = Boolean(sdeUnresolvedDetailsVisible && unresolvedCount > 0);
   const learningDiagnosticsHtml = "";
   const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 20);
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
@@ -19707,21 +19925,7 @@ function renderSdeSkiftebevegelser(){
       }).join("")
     : `<div class="sde-shift-empty">Ingen foreslåtte skiftebevegelser er klare. SDE mangler anbefalte nattplasseringer eller datagrunnlag.</div>`;
 
-  const unresolvedHtml = data.unresolved.length
-    ? buildSdeDiagnosticSectionHtml({
-        id:"unresolved",
-        title:"Uløst / må avklares",
-        count:data.unresolved.length,
-        bodyHtml:data.unresolved.slice(0, 8).map(row=>{
-            const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
-            const arrivalText = row.arrivalTrain ? `${row.arrivalTrain}${arrivalPartText}` : "Ukjent ankomst";
-            const departureText = row.nextDepartureText || "Ingen kjent avgang";
-            const vehicle = row.vehicle || "Ukjent kjøretøy";
-            const reason = row.recommendationReason || row.parkingInstruction || "SDE har ikke funnet trygg løsning i første kandidatsett.";
-            return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(vehicle)}</strong> · Ankomst ${escapeHtml(arrivalText)} · Avgang ${escapeHtml(departureText)}<br>${escapeHtml(reason)}</div>`;
-          }).join("")
-      })
-    : "";
+  const unresolvedHtml = "";
 
   const flexibleUnknownHtml = data.flexibleUnknownParking?.length
     ? buildSdeDiagnosticSectionHtml({
@@ -19973,9 +20177,10 @@ function renderSdeSkiftebevegelser(){
         <div class="sde-shift-kpi"><strong>${data.baseMoveCount ?? data.moves.length}</strong><span>foreslåtte skiftebevegelser</span></div>
         <div class="sde-shift-kpi"><strong>${data.solvedArrivals}/${data.totalArrivals}</strong><span>ankomster ivaretatt</span></div>
         <div class="sde-shift-kpi"><strong>${data.securedDepartures}/${data.totalDepartures}</strong><span>avganger koblet</span></div>
-        <div class="sde-shift-kpi"><strong>${data.unresolvedCount}</strong><span>uløst / må avklares</span></div>
+        <button class="sde-shift-kpi sde-shift-kpi-button" type="button" data-sde-unresolved-kpi data-sde-unresolved-count="${unresolvedCount}" aria-expanded="${unresolvedKpiExpanded ? "true" : "false"}" aria-controls="sdeUnresolvedDetailsPanel" title="${unresolvedCount > 0 ? "Vis eller skjul uløste SDE-saker" : "Ingen uløste SDE-saker"}"><strong>${data.unresolvedCount}</strong><span>uløst / må avklares</span></button>
       </div>
     </div>
+    ${unresolvedDetailsHtml}
     ${scoreExplanationHtml}
     ${learningDiagnosticsHtml}
 
