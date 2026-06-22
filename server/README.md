@@ -17,7 +17,7 @@ Serveren bruker Express og Node sin innebygde SQLite-modul (`node:sqlite`).
 ## Installasjon
 
 ```bash
-cd server
+cd /Users/solglottsr/balise_logistikk_kopi/server
 npm install
 npm start
 ```
@@ -25,6 +25,23 @@ npm start
 Serveren starter som standard på port `8787`. Bruk `PORT` for å velge annen port.
 Databasen opprettes som standard i `server/data/sde-server.sqlite3`. Bruk
 `SDE_SERVER_DB_PATH` for å velge annen databasefil.
+
+## Lokal drift på Mac mini
+
+Bruk repoet `/Users/solglottsr/balise_logistikk_kopi` og servermappen
+`/Users/solglottsr/balise_logistikk_kopi/server` for lokal serverdrift, patch,
+commit og push. Ikke bruk klonen i `/Users/solglottsr/Downloads/balise_logistikk_kopi`
+til dette.
+
+Serveren lytter på port `8787`. Hvis `npm start` feiler med `EADDRINUSE`, betyr
+det vanligvis at en server allerede kjører på porten. Det er ikke nødvendigvis
+en feil. Identifiser prosessen før eventuell stopp:
+
+```bash
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+```
+
+Ikke stopp en riktig serverprosess blindt.
 
 ## Testkommandoer
 
@@ -35,6 +52,22 @@ curl http://localhost:8787/api/state/revision
 curl http://localhost:8787/api/events
 curl -N http://localhost:8787/api/stream
 ```
+
+For LAN-test, bruk Mac mini sin aktuelle LAN-IP:
+
+```bash
+curl http://<mac-mini-lan-ip>:8787/api/health
+```
+
+`192.168.10.235` og `192.168.10.151` er observerte eksempler, ikke evige fasiter.
+
+## Repo- og filhygiene
+
+- `server/package-lock.json` skal være versjonert.
+- `server/node_modules/` skal ikke committes.
+- `server/data/sde-server.sqlite3` skal ikke committes.
+- `server/data/sde-server.sqlite3-wal` skal ikke committes.
+- `server/data/sde-server.sqlite3-shm` skal ikke committes.
 
 ## Endepunkter i denne fasen
 
@@ -48,10 +81,10 @@ Det finnes ingen operative write-endepunkter ennå.
 
 ## Neste fase
 
-Neste tekniske fase er å la serveren returnere et read-only autoritativt state
-snapshot som klienten kan lese bak en kontrollert integrasjon. Før operative
-handlinger flyttes, må action-format, revision-konflikter og audit-logg verifiseres
-med små, avgrensede server-writes.
+Dette er fortsatt servergrunnmur/read-only-fasen, og PWA-en er ikke koblet til
+serveren. Før operative handlinger flyttes, må action-format,
+`expectedRevision`, `409 Conflict` ved revision-konflikter og audit-logg
+verifiseres med små, avgrensede server-writes.
 
 Planlagte write-endepunkter senere:
 
