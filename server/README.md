@@ -711,6 +711,42 @@ ingen schemaendring i B9D, ingen migration i B9D, ingen packageendring, ingen
 DB-write, ingen POST, ingen serverstart, ingen testserverstart, ingen SDE-motor,
 score, sortering, DROPS, Tursatt, Vaktplan eller localStorage.
 
+## B10B test-only actions migration
+
+B10B er test-only schema/migration mot separat SQLite-fil. Den er ikke koblet
+til normal serveroppstart, `openDatabase()` eller PWA, og den skal ikke kjøres
+mot produksjonsdatabasen.
+
+Test-only helperen ligger i `server/src/actionsMigration.js`, og eksplisitt
+testscript ligger i `server/scripts/test-actions-migration.js`. Kjøring skal
+bare gjøres som en avgrenset test:
+
+```bash
+cd /Users/solglottsr/balise_logistikk_kopi/server
+node scripts/test-actions-migration.js
+```
+
+Scriptet bruker separat testdatabase:
+`/tmp/sde-server-b10-actions-migration.sqlite3`, og en egen feil-schema-DB for
+hard-stop-test. Det har guard mot produksjonsdatabasen:
+`/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`.
+
+B10B-testen skal bevise:
+
+- fresh test-DB får `actions`-tabell
+- `PRAGMA user_version` går til `1`
+- `PRAGMA integrity_check` gir `ok`
+- ny kjøring mot korrekt eksisterende `actions`-tabell er OK/no-op
+- feil eksisterende `actions`-tabell stopper hardt og repareres ikke
+- unique `action_id` virker
+- `PRAGMA table_info(actions)` og `PRAGMA index_list(actions)` matcher
+  forventet schema
+
+Røde soner for B10B: ingen produksjonsDB, ingen serverstart, ingen
+testserverstart, ingen POST, ingen PWA, ingen `index.html`, ingen ekte
+SDE-action, ingen `operationalState`, ingen packageendring og ingen
+produksjonsrestart.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
