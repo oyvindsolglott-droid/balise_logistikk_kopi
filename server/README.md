@@ -95,6 +95,76 @@ finnes ingen operative write-endepunkter ennå.
 `GET /api/server/status` er et read-only drift/status-endepunkt. Det er ikke en
 PWA-kontrakt.
 
+## Drift, restart og backup
+
+All serverdrift skal gjøres fra repoet `/Users/solglottsr/balise_logistikk_kopi`
+og servermappen `/Users/solglottsr/balise_logistikk_kopi/server`. Ikke bruk
+klonen i `/Users/solglottsr/Downloads/balise_logistikk_kopi` til drift, patch,
+commit, push, backup eller restore.
+
+Produksjonsruntime kjører foreløpig i en detached `screen`-sesjon:
+`sde-server-8787`. Dette er ikke et permanent serviceoppsett.
+
+Trygg statuskontroll:
+
+```bash
+cd /Users/solglottsr/balise_logistikk_kopi
+git status -sb
+git log --oneline --decorate -8
+screen -ls
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+lsof -a -p <PID> -d cwd
+curl --max-time 5 -sS http://localhost:8787/api/health
+curl --max-time 5 -sS http://localhost:8787/api/server/status
+curl --max-time 5 -sS http://localhost:8787/api/state/revision
+```
+
+Stopp, start og restart skal bare gjøres etter at riktig PID, port og cwd er
+bekreftet. Stopp kun bekreftet riktig PID eller riktig `screen`-sesjon. Start
+alltid fra riktig servermappe, uten test-writes, og med produksjonsdatabasen:
+
+```bash
+cd /Users/solglottsr/balise_logistikk_kopi/server
+unset SDE_ENABLE_TEST_WRITES
+PORT=8787 SDE_SERVER_DB_PATH=/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3 \
+  screen -dmS sde-server-8787 /bin/zsh -lc 'cd /Users/solglottsr/balise_logistikk_kopi/server || exit; unset SDE_ENABLE_TEST_WRITES; PORT=8787 SDE_SERVER_DB_PATH=/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3 /opt/homebrew/bin/node src/index.js >>/tmp/sde-server-8787.log 2>&1'
+```
+
+Etter start eller restart skal `health`, `server/status` og `state/revision`
+verifiseres read-only. `testWritesEnabled` skal være `false`,
+`pwaConnected` skal være `false`, og `operationalWritesEnabled` skal være
+`false`.
+
+SQLite-backup skal tas med SQLite sin `.backup`, ikke ved vanlig shell-kopi av
+`.sqlite3`, `-wal` og `-shm` som hovedmetode. Backup legges utenfor repo, for
+eksempel i `/Users/solglottsr/sde-server-backups/`, og skal ikke committes.
+Bruk timestamp og revision i filnavnet, for eksempel:
+`sde-server-rev-1-YYYYMMDD-HHMMSS.sqlite3`.
+
+Prinsipp:
+
+```bash
+sqlite3 /Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3 \
+  ".backup '/Users/solglottsr/sde-server-backups/sde-server-rev-1-YYYYMMDD-HHMMSS.sqlite3'"
+sqlite3 /Users/solglottsr/sde-server-backups/sde-server-rev-1-YYYYMMDD-HHMMSS.sqlite3 \
+  "PRAGMA integrity_check;"
+sqlite3 /Users/solglottsr/sde-server-backups/sde-server-rev-1-YYYYMMDD-HHMMSS.sqlite3 \
+  "SELECT revision, updated_at FROM app_state WHERE id = 'main';"
+```
+
+Restore skal ikke gjøres som del av vanlig drift eller B4. Restore krever egen
+eksplisitt godkjenning. Før restore skal serveren stoppes kontrollert, og det
+skal tas en ekstra pre-restore backup av nåværende database. Etter restore skal
+serveren startes igjen og verifiseres read-only med `health`, `server/status`
+og `state/revision`. Rollback er å stoppe serveren og sette tilbake
+pre-restore-backupen.
+
+Stopp prosessen hvis repo eller cwd er feil, `HEAD` ikke er forventet,
+arbeidstreet ikke er rent, PID/cwd ikke matcher riktig servermappe,
+`/api/server/status` viser `testWritesEnabled: true`, revision er uventet,
+backup-path peker inn i feil klon eller repo, eller restore forsøkes uten egen
+godkjenning.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
