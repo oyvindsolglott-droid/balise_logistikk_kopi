@@ -13608,6 +13608,11 @@ function scoreSdeArrivalParkingCandidate(need, slot){
 
     score += 8;
     reasons.push(`${candidate} kan være egnet dersom tilgang videre ikke blokkeres.`);
+
+    if(track === "1"){
+      score -= 12;
+      reasons.push("Spor 1 vurderes restriktivt som nattparkering/restkapasitet.");
+    }
   }
 
   if(["6N","6S"].includes(candidate)){
