@@ -2416,11 +2416,11 @@ button{padding:12px 12px}
 }
 
 .sde-shift-changes{
-  margin:-8px 0 20px;
-  border:1px solid rgba(155,220,255,.20);
-  border-radius:18px;
-  padding:14px 16px;
-  background:rgba(255,255,255,.055);
+  margin:-6px 0 16px;
+  border:1px solid rgba(155,220,255,.16);
+  border-radius:14px;
+  padding:11px 12px;
+  background:rgba(255,255,255,.04);
   color:#dbeafe;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
 }
@@ -2428,31 +2428,38 @@ button{padding:12px 12px}
 .sde-shift-changes-head{
   display:flex;
   justify-content:space-between;
-  gap:12px;
+  gap:10px;
   align-items:flex-start;
-  margin-bottom:10px;
+  margin-bottom:7px;
 }
 
 .sde-shift-changes-actions{
   display:flex;
   flex-wrap:wrap;
   justify-content:flex-end;
-  gap:8px;
+  gap:6px;
   align-items:center;
 }
 
 .sde-shift-changes-title{
   display:block;
   color:#9bdcff;
-  font-size:12px;
+  font-size:11px;
   font-weight:900;
-  letter-spacing:.16em;
+  letter-spacing:.12em;
   text-transform:uppercase;
+}
+
+.sde-shift-changes-help{
+  margin:0 0 8px;
+  color:#bfd0e4;
+  font-size:12px;
+  line-height:1.35;
 }
 
 .sde-shift-changes-time{
   color:#bfd0e4;
-  font-size:12px;
+  font-size:11px;
   line-height:1.35;
   text-align:right;
 }
@@ -2460,7 +2467,7 @@ button{padding:12px 12px}
 .sde-shift-changes-baseline-btn{
   border:1px solid rgba(155,220,255,.24);
   border-radius:999px;
-  padding:5px 9px;
+  padding:4px 8px;
   background:rgba(255,255,255,.06);
   color:#dbeafe;
   font-size:11px;
@@ -2480,17 +2487,17 @@ button{padding:12px 12px}
 .sde-shift-changes-summary{
   display:flex;
   flex-wrap:wrap;
-  gap:8px;
-  margin-bottom:10px;
+  gap:6px;
+  margin-bottom:8px;
 }
 
 .sde-shift-changes-pill{
   border:1px solid rgba(255,255,255,.14);
   border-radius:999px;
-  padding:5px 9px;
+  padding:4px 8px;
   background:rgba(255,255,255,.06);
   color:#eff6ff;
-  font-size:12px;
+  font-size:11px;
   font-weight:800;
 }
 
@@ -15978,6 +15985,7 @@ function buildSdeShiftChangesSinceLastHtml(diff){
         <button class="sde-shift-changes-baseline-btn" type="button" data-sde-shift-baseline title="Setter nåværende SDE-bilde som nytt sammenligningsgrunnlag. Dette påvirker ikke SDE-forslag, score eller registrerte handlinger.">Sett som ny baseline</button>
       </div>
     </div>
+    <p class="sde-shift-changes-help">Lokal sammenligning mot forrige SDE-bilde. Sett som ny baseline påvirker ikke SDE-forslag, score eller registrerte handlinger.</p>
     ${summaryHtml}
     <div class="sde-shift-changes-list">
       ${buildSdeShiftChangeGroupHtml("Nye skifteforslag", diff.newMoves, formatSdeShiftSnapshotMoveText)}
