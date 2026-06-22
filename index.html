@@ -13514,9 +13514,14 @@ function scoreSdeArrivalParkingCandidate(need, slot){
     score += 25;
     reasons.push("Tidlig avgang krever lett tilgjengelig nattplassering.");
 
-    if(/^[145]/.test(candidate)){
+    if(["1","4","5"].includes(track)){
       score += 18;
       reasons.push(`${candidate} prioriteres fordi sporet normalt gir enkel tilgjengelighet.`);
+    }
+
+    if(["11","12"].includes(track)){
+      score += 18;
+      reasons.push(`${candidate} prioriteres som tilgjengelig buttspor for tidlig avgang.`);
     }
 
     if(/^(10|11|12)N$/.test(candidate)){
