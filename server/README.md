@@ -165,6 +165,92 @@ arbeidstreet ikke er rent, PID/cwd ikke matcher riktig servermappe,
 backup-path peker inn i feil klon eller repo, eller restore forsøkes uten egen
 godkjenning.
 
+## Fremtidig action-kontrakt
+
+Dette er design for fremtidige server-writes. Det er ikke implementert som
+operativ SDE-funksjon, PWA-write er ikke koblet, og
+`operationalWritesEnabled` skal fortsatt være `false`.
+
+Alle fremtidige operative actions skal sendes som en action envelope:
+
+```json
+{
+  "actionId": "uuid-or-stable-client-id",
+  "actionType": "sde.example-action",
+  "actor": "operator-or-role",
+  "deviceId": "client-device-id",
+  "expectedRevision": 1,
+  "createdAt": "client-timestamp-if-useful",
+  "payload": {},
+  "clientContext": {}
+}
+```
+
+`serverTimestamp` skal settes av serveren og være autoritativ tid i eventlogg
+og audit. `createdAt` fra klient kan beholdes som klientkontekst, men skal ikke
+erstatte serverens tidspunkt.
+
+`actionId` er idempotency key. Samme `actionId` skal ikke kunne skrive samme
+handling dobbelt. Retry med samme `actionId` skal gi en trygg respons, mens en
+ny handling skal ha ny `actionId`.
+
+`actor` identifiserer hvem eller hvilken rolle som utfører handlingen.
+`deviceId` identifiserer klienten eller enheten. Ingen anonym operativ write
+skal innføres senere. Auth og roller implementeres ikke nå, men kontrakten skal
+være forberedt på at de kommer.
+
+Alle operative writes skal kreve `expectedRevision`. Hvis klientens revision
+ikke matcher serverens nåværende revision, skal serveren returnere
+`409 Conflict`. Klienten må da lese ny state før retry eller ny vurdering. Det
+skal ikke finnes blind overskriving av serverstate.
+
+Responsprinsipp:
+
+- `400 Bad Request` ved ugyldig payload eller manglende påkrevde felt.
+- `403 Forbidden` hvis write-flaten ikke er aktivert.
+- `409 Conflict` ved revision-konflikt.
+- `200 OK` ved idempotent retry av allerede utført action.
+- `201 Created` eller `200 OK` ved ny vellykket handling, avklares før første
+  ekte action.
+- `500 Internal Server Error` kun ved faktisk serverfeil.
+
+Alle vellykkede fremtidige actions skal gi audit/event. Eventen skal knyttes
+til revision, `actionId`, `actionType`, `actor`, `deviceId`, server timestamp
+og et relevant payload-sammendrag. Eventloggen skal kunne brukes for senere
+feilsøking.
+
+State update, revision-økning og eventlogg skal skje i samme SQLite-transaksjon.
+Revision skal økes atomisk. Det skal ikke finnes halvveis action der state er
+oppdatert uten event, eller event finnes uten state update.
+
+Retry-regler:
+
+- Retry med samme `actionId` skal være trygg.
+- Retry etter `409 Conflict` krever ny state-lesing.
+- Klienten skal ikke automatisk presse gjennom konflikt.
+
+Rollback for ekte action skal være en eksplisitt ny handling, ikke usynlig
+databasesletting. Database-restore er et driftstiltak, ikke normal operativ
+undo, og krever egen godkjenning.
+
+Før første ekte action skal testmodellen verifiseres på separat testdatabase og
+testserver:
+
+- stale `expectedRevision`
+- idempotent retry med samme `actionId`
+- ugyldig payload
+- eventlogg/audit
+- revision-økning
+- ingen produksjonsrevision endres før eksplisitt godkjenning
+
+Første fremtidige action bør fortsatt analyseres separat. En ufarlig
+server-action på separat testdatabase kan være første kandidat, men endelig
+endpoint og payload skal ikke låses før egen designrunde.
+
+Røde soner for denne fasen: PWA-read og PWA-write er ikke koblet, ekte SDE
+Utført/Annullert er ikke implementert, og manuell overstyring, DROPS-order, TXP
+unavailable, reset-day og import-data er ikke implementert.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
