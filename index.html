@@ -13749,13 +13749,241 @@ function isSdeCorrectButtDoubleSetPair(candidateSlot, need, pairedSlot, pairedNe
   );
 }
 
+function normalizeSdeDepartureGroupKey(row){
+  return normalizeTognr(
+    row?.nextDepartureTrain ||
+    row?.departureTrain ||
+    row?.toTrain ||
+    row?.train ||
+    ""
+  );
+}
+
+
+function getSdeDeparturePartSortValue(row){
+  const part = String(
+    row?.nextDeparturePart ||
+    row?.departurePart ||
+    row?.part ||
+    ""
+  ).trim();
+  if(part === "1") return 1;
+  if(part === "2") return 2;
+  return null;
+}
+
+
+function isSdeSameDeparturePartner(row, otherRow){
+  const train = normalizeSdeDepartureGroupKey(row);
+  const otherTrain = normalizeSdeDepartureGroupKey(otherRow);
+  if(!train || train !== otherTrain) return false;
+
+  const part = getSdeDeparturePartSortValue(row);
+  const otherPart = getSdeDeparturePartSortValue(otherRow);
+  if(!part || !otherPart || part === otherPart) return false;
+
+  const vehicle = normalizeVehicleToken(row?.vehicle);
+  const otherVehicle = normalizeVehicleToken(otherRow?.vehicle);
+  return !vehicle || !otherVehicle || vehicle !== otherVehicle;
+}
+
+
+function getSdeSlotTrackGroup(slot){
+  const normalized = normalizeSlot(slot);
+  const match = normalized.match(/^(\d+)(SS|[SMN])?$/);
+  return match ? match[1] : "";
+}
+
+
+function getSdeLinearPartnerOrderAssessment(row, slot, partnerRow, partnerSlot){
+  const candidateInfo = getSdeLinearTrackPositionOrder(slot);
+  const partnerInfo = getSdeLinearTrackPositionOrder(partnerSlot);
+  if(!candidateInfo || !partnerInfo || candidateInfo.track !== partnerInfo.track){
+    return {known:false, correctOrder:null, adjacent:false};
+  }
+
+  const part = getSdeDeparturePartSortValue(row);
+  const partnerPart = getSdeDeparturePartSortValue(partnerRow);
+  const adjacent = Math.abs(candidateInfo.order - partnerInfo.order) === 1;
+  if(!part || !partnerPart){
+    return {known:false, correctOrder:null, adjacent};
+  }
+
+  const part1Order = part === 1 ? candidateInfo.order : partnerInfo.order;
+  const part2Order = part === 2 ? candidateInfo.order : partnerInfo.order;
+
+  return {
+    known:true,
+    correctOrder:part1Order > part2Order,
+    adjacent
+  };
+}
+
+
+function hasSafeSdeDeparturePartnerSlotInGroup(row, partnerRow, partnerSlot, reservedSlots, currentSlot){
+  const partnerGroup = getSdeSlotTrackGroup(partnerSlot);
+  if(!partnerGroup) return false;
+
+  if(/^(10|11|12)$/.test(partnerGroup) && !isSdeBratsbergMove(row)){
+    return false;
+  }
+
+  const reserved = reservedSlots instanceof Map ? reservedSlots : new Map();
+  return inputSlots
+    .map(normalizeSlot)
+    .filter(slot => slot && slot !== normalizeSlot(partnerSlot) && slot !== normalizeSlot(currentSlot))
+    .filter(slot => getSdeSlotTrackGroup(slot) === partnerGroup)
+    .some(slot => {
+      if(reserved.has(slot)) return false;
+      const candidate = scoreSdeArrivalParkingCandidate(row, slot);
+      if(candidate.status === "rejected") return false;
+
+      const linearInfo = getSdeLinearTrackPositionOrder(slot);
+      if(linearInfo){
+        const orderAssessment = getSdeLinearPartnerOrderAssessment(row, slot, partnerRow, partnerSlot);
+        return orderAssessment.known && orderAssessment.correctOrder;
+      }
+
+      return partnerGroup === "6";
+    });
+}
+
+
+function buildSdeDeparturePartnerAssessment(row, slot, context={}){
+  const candidateSlot = normalizeSlot(slot);
+  const result = {
+    applies:false,
+    partnerVehicle:"",
+    departureTrain:normalizeSdeDepartureGroupKey(row),
+    departurePart:getSdeDeparturePartSortValue(row),
+    slot:candidateSlot,
+    sameTrackGroup:false,
+    correctOrder:null,
+    penalty:0,
+    bonus:0,
+    reasonCode:"departure_partner_not_relevant",
+    text:""
+  };
+
+  const reservedSlots = context?.reservedSlots instanceof Map ? context.reservedSlots : new Map();
+  const partners = [];
+  reservedSlots.forEach((entry, reservedSlotRaw)=>{
+    const partnerRow = entry?.need || null;
+    const partnerSlot = normalizeSlot(reservedSlotRaw);
+    if(!partnerRow || !partnerSlot) return;
+    if(!isSdeSameDeparturePartner(row, partnerRow)) return;
+    partners.push({row:partnerRow, slot:partnerSlot});
+  });
+
+  if(!partners.length) return result;
+
+  const candidateGroup = getSdeSlotTrackGroup(candidateSlot);
+  const sameGroupPartner = partners.find(partner => getSdeSlotTrackGroup(partner.slot) === candidateGroup);
+  const partner = sameGroupPartner || partners[0];
+  const partnerGroup = getSdeSlotTrackGroup(partner.slot);
+  const sameTrackGroup = Boolean(candidateGroup && partnerGroup && candidateGroup === partnerGroup);
+  const partnerVehicle = sanitizeVehicleValue(partner.row?.vehicle);
+  const partnerPart = getSdeDeparturePartSortValue(partner.row);
+  const train = normalizeSdeDepartureGroupKey(row);
+  const part = getSdeDeparturePartSortValue(row);
+  const partText = part ? `/${part}` : "";
+  const partnerPartText = partnerPart ? `/${partnerPart}` : "";
+
+  if(sameTrackGroup){
+    if(/^(10|11|12)$/.test(candidateGroup)){
+      return result;
+    }
+
+    if(candidateGroup === "4" || candidateGroup === "5"){
+      const orderAssessment = getSdeLinearPartnerOrderAssessment(row, candidateSlot, partner.row, partner.slot);
+      if(orderAssessment.known && orderAssessment.correctOrder && orderAssessment.adjacent){
+        return {
+          ...result,
+          applies:true,
+          partnerVehicle,
+          sameTrackGroup:true,
+          correctOrder:true,
+          bonus:34,
+          reasonCode:"departure_partner_same_linear_group_safe",
+          text:`${candidateSlot} belønnes: ${train}${partText} holdes samlet med partner ${partnerVehicle} ${train}${partnerPartText} i spor ${candidateGroup}, med trygg /1-/2-rekkefølge.`
+        };
+      }
+
+      if(orderAssessment.known && orderAssessment.correctOrder){
+        return {
+          ...result,
+          applies:true,
+          partnerVehicle,
+          sameTrackGroup:true,
+          correctOrder:true,
+          bonus:16,
+          reasonCode:"departure_partner_same_linear_group_not_adjacent",
+          text:`${candidateSlot} får moderat partnerbonus: ${train}${partText} holdes i samme sporgruppe som ${partnerVehicle} ${train}${partnerPartText}, men posisjonene er ikke tilstøtende.`
+        };
+      }
+
+      if(orderAssessment.known && orderAssessment.correctOrder === false){
+        return {
+          ...result,
+          applies:true,
+          partnerVehicle,
+          sameTrackGroup:true,
+          correctOrder:false,
+          penalty:20,
+          reasonCode:"departure_partner_wrong_linear_order",
+          text:`${candidateSlot} straffes: partner ${partnerVehicle} ${train}${partnerPartText} står i ${partner.slot}, men /1-/2-rekkefølgen i spor ${candidateGroup} kan gi blokkering.`
+        };
+      }
+    }
+
+    if(candidateGroup === "6"){
+      return {
+        ...result,
+        applies:true,
+        partnerVehicle,
+        sameTrackGroup:true,
+        correctOrder:null,
+        bonus:16,
+        reasonCode:"departure_partner_same_service_group",
+        text:`${candidateSlot} får moderat partnerbonus: ${train}${partText} holdes i sporgruppe 6 sammen med partner ${partnerVehicle} ${train}${partnerPartText}. Rekkefølge må kontrolleres operativt.`
+      };
+    }
+
+    return {
+      ...result,
+      applies:true,
+      partnerVehicle,
+      sameTrackGroup:true,
+      correctOrder:null,
+      bonus:12,
+      reasonCode:"departure_partner_same_group_uncertain",
+      text:`${candidateSlot} får moderat partnerbonus fordi ${train}${partText} holdes i samme sporgruppe som partner ${partnerVehicle} ${train}${partnerPartText}.`
+    };
+  }
+
+  const safePartnerSlotExists = hasSafeSdeDeparturePartnerSlotInGroup(row, partner.row, partner.slot, reservedSlots, candidateSlot);
+  if(!safePartnerSlotExists) return result;
+
+  return {
+    ...result,
+    applies:true,
+    partnerVehicle,
+    sameTrackGroup:false,
+    correctOrder:false,
+    penalty:16,
+    reasonCode:"departure_partner_split_with_safe_group_available",
+    text:`${candidateSlot} straffes: ${train}${partText} splittes fra partner ${partnerVehicle} ${train}${partnerPartText}, selv om trygg plassering i samme sporgruppe ${partnerGroup} finnes.`
+  };
+}
+
 
 function evaluateSdeParkingDecision(need, candidate, reservedSlots){
   const result = {
     reward:0,
     penalty:0,
     benefits:[],
-    violations:[]
+    violations:[],
+    partnerAssessment:null
   };
 
   const candidateSlot = normalizeSlot(candidate?.slot);
@@ -13780,6 +14008,18 @@ function evaluateSdeParkingDecision(need, candidate, reservedSlots){
         result.violations.push(`${candidateSlot} straffes: ${candidateSlot} ligger nord for ${reservedSlot}, men har senere avgang/behov. Normal uttaksvei fra spor ${linearCandidate.track} er nordover via vaskemaskinen, og ${candidateSlot} kan sperre tidligere uttak fra ${reservedSlot}.`);
       }
     });
+  }
+
+  const partnerAssessment = buildSdeDeparturePartnerAssessment(need, candidateSlot, {reservedSlots});
+  if(partnerAssessment.applies){
+    result.partnerAssessment = partnerAssessment;
+    result.reward += partnerAssessment.bonus || 0;
+    result.penalty += partnerAssessment.penalty || 0;
+    if(partnerAssessment.bonus && partnerAssessment.text){
+      result.benefits.push(partnerAssessment.text);
+    }else if(partnerAssessment.penalty && partnerAssessment.text){
+      result.violations.push(partnerAssessment.text);
+    }
   }
 
   const position = getSdeButtPosition(candidateSlot);
@@ -13928,6 +14168,10 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
   const adjustedScore = Math.max(0, Math.min(100, best.score + (washTrackFlexAssessment.bonus || 0) - (washTrackFlexAssessment.penalty || 0)));
   const confidence = adjustedScore >= 85 ? "high" : adjustedScore >= 60 ? "medium" : "low";
   const reasonParts = best.reasons.slice(0, 4);
+  const departurePartnerAssessment = best.evaluation?.partnerAssessment || null;
+  if(departurePartnerAssessment?.applies && departurePartnerAssessment.text && !reasonParts.includes(departurePartnerAssessment.text)){
+    reasonParts.push(departurePartnerAssessment.text);
+  }
   if(washTrackFlexAssessment.applies && washTrackFlexAssessment.text){
     reasonParts.push(washTrackFlexAssessment.text);
   }
@@ -13938,6 +14182,7 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
     score:adjustedScore,
     confidence,
     reason,
+    departurePartnerAssessment,
     washTrackFlexAssessment,
     alternatives:scored.slice(1, 4).map(candidate => ({
       slot:candidate.slot,
