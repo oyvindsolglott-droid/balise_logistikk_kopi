@@ -485,6 +485,112 @@ ingen ekte SDE Utført/Annullert, ingen manuell overstyring, ingen DROPS-order,
 ingen TXP unavailable, ingen reset-day, ingen import-data, ingen produksjonsDB,
 ingen schemaendring og ingen packageendring.
 
+## B9B produksjonsklar idempotency-design
+
+B9B er README-only design. Det implementeres ingen kode, schemaendring,
+migration, produksjonswrite eller produksjonsrestart i denne fasen.
+
+B8B er fortsatt test-only fordi idempotency sjekkes via `events.payload_json`.
+Det er akseptabelt på separat testserver og separat testdatabase, men er ikke
+produksjonsklar under parallell samtidighet. Produksjonsmodellen skal ikke
+avhenge av parsing av eventlogg, og B8B-modellen skal ikke gjenbrukes som
+produksjonsmodell.
+
+Foreslått produksjonsklar action-tabell:
+
+```sql
+CREATE TABLE actions (
+  action_id TEXT PRIMARY KEY,
+  action_type TEXT NOT NULL,
+  actor_id TEXT,
+  actor_role TEXT,
+  device_id TEXT,
+  expected_revision INTEGER,
+  request_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  status TEXT NOT NULL,
+  resulting_revision INTEGER,
+  event_id INTEGER,
+  server_created_at TEXT NOT NULL,
+  completed_at TEXT
+);
+```
+
+Dette er design, ikke implementert schema. `action_id` må være unik. Samme
+`action_id` med samme canonical request skal gi idempotent replay. Samme
+`action_id` med annen request eller annen hash skal gi
+`409 action_id_conflict`. Idempotency skal ikke kreve søk eller parsing i
+`events.payload_json`.
+
+Requesten må canonicaliseres stabilt før hash beregnes. `payload_hash` bør
+beregnes av canonical request. Node sin innebygde `node:crypto` kan trolig
+brukes senere, så hashing bør ikke kreve packageendring. Ustabil
+canonicalisering er en risiko og må testes separat før produksjonswrite.
+
+`expectedRevision`-regler:
+
+- ny action skal sjekke `expectedRevision` mot nåværende revision
+- stale revision skal gi `409 revision_conflict`
+- idempotent replay av samme action skal returnere tidligere resultat, ikke
+  feile fordi current revision senere har økt
+- samme `actionId` med endret `expectedRevision` regnes som annen request og
+  skal gi `409 action_id_conflict`
+
+Ønsket atomisk transaksjonsmodell:
+
+1. `BEGIN IMMEDIATE`
+2. sjekk eksisterende `action_id`
+3. ved samme request: returner tidligere resultat uten ny write
+4. ved samme `action_id` med annen request/hash: returner
+   `409 action_id_conflict`
+5. sjekk `expectedRevision`
+6. oppdater state og revision
+7. insert event
+8. insert/update action-record med `resulting_revision` og `event_id`
+9. `COMMIT`
+10. rollback ved feil
+
+Action-record, eventlogg og state-revision må holdes atomisk sammen. Det skal
+ikke finnes vellykket action uten event, event uten state update, eller revision
+uten action-record.
+
+Responsmodell for produksjonsklar actionflate:
+
+- `201 Created` ved ny action/write
+- `200 OK` ved idempotent replay uten ny revision
+- `400 Bad Request` med `invalid_payload`
+- `403 Forbidden` med `forbidden` eller `disabled`
+- `409 Conflict` med `revision_conflict`
+- `409 Conflict` med `action_id_conflict`
+- `500 Internal Server Error` med `server_error`, kun ved reell serverfeil
+
+Migrasjon og rollback:
+
+- første schemaendring krever egen fase
+- før schemaendring må backup tas og verifiseres
+- migration må testes på separat database først
+- rollback må være definert før produksjon berøres
+- restore skal ikke skje automatisk
+- B5-backup skal ikke brukes uten egen eksplisitt restore-godkjenning
+
+Testplan for senere B9C/B10 på separat testdatabase:
+
+- opprett `actions`-tabell på separat testdatabase
+- verifiser unik `action_id`
+- verifiser canonical hash
+- verifiser idempotent replay
+- verifiser `action_id_conflict`
+- verifiser `revision_conflict`
+- verifiser at action, event og state er atomiske sammen
+- verifiser rollback ved feil
+- produksjon `8787` sjekkes kun read-only før og etter
+
+Røde soner for B9B: ingen PWA, ingen `index.html`, ingen ekte SDE-action,
+ingen operational writes, ingen produksjonswrite, ingen produksjonsrestart,
+ingen SDE-motor, ingen DROPS/Tursatt/Vaktplan/localStorage, ikke bruk B8B
+eventpayload-idempotency som produksjonsmodell, ingen schemaendring og ingen
+packageendring.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
