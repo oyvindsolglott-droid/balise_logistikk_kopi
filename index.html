@@ -2433,6 +2433,14 @@ button{padding:12px 12px}
   margin-bottom:10px;
 }
 
+.sde-shift-changes-actions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:8px;
+  align-items:center;
+}
+
 .sde-shift-changes-title{
   display:block;
   color:#9bdcff;
@@ -2447,6 +2455,26 @@ button{padding:12px 12px}
   font-size:12px;
   line-height:1.35;
   text-align:right;
+}
+
+.sde-shift-changes-baseline-btn{
+  border:1px solid rgba(155,220,255,.24);
+  border-radius:999px;
+  padding:5px 9px;
+  background:rgba(255,255,255,.06);
+  color:#dbeafe;
+  font-size:11px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+.sde-shift-changes-baseline-btn:hover{
+  border-color:rgba(155,220,255,.42);
+  background:rgba(155,220,255,.10);
+}
+
+.sde-shift-changes-baseline-btn:active{
+  transform:translateY(1px);
 }
 
 .sde-shift-changes-summary{
@@ -15670,6 +15698,23 @@ function clearSdeShiftLastSnapshot(){
   sdeShiftChangesCache = null;
 }
 
+function setCurrentSdeShiftSnapshotBaseline(){
+  try{
+    if(!isSdeTomorrowJsonReadyForScore()) return false;
+    const data = getSdeShiftShowcaseData();
+    const snapshot = buildSdeShiftSnapshot(data);
+    if(!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot) || !snapshot.signature) return false;
+    writeSdeShiftLastSnapshot(snapshot);
+    const storedSnapshot = readSdeShiftLastSnapshot();
+    if(storedSnapshot?.signature !== snapshot.signature) return false;
+    sdeShiftChangesCache = null;
+    renderSdeSkiftebevegelser();
+    return true;
+  }catch(_error){
+    return false;
+  }
+}
+
 function getSdeShiftSnapshotDataContext(){
   const today = state.baliseMetaToday || {};
   const tomorrow = state.baliseMetaTomorrow || {};
@@ -15928,7 +15973,10 @@ function buildSdeShiftChangesSinceLastHtml(diff){
   return `<section class="sde-shift-changes" aria-label="Endringer siden sist">
     <div class="sde-shift-changes-head">
       <span class="sde-shift-changes-title">Endringer siden sist</span>
-      ${timeText ? `<span class="sde-shift-changes-time">${escapeHtml(timeText)}</span>` : ""}
+      <div class="sde-shift-changes-actions">
+        ${timeText ? `<span class="sde-shift-changes-time">${escapeHtml(timeText)}</span>` : ""}
+        <button class="sde-shift-changes-baseline-btn" type="button" data-sde-shift-baseline title="Setter nåværende SDE-bilde som nytt sammenligningsgrunnlag. Dette påvirker ikke SDE-forslag, score eller registrerte handlinger.">Sett som ny baseline</button>
+      </div>
     </div>
     ${summaryHtml}
     <div class="sde-shift-changes-list">
@@ -20234,6 +20282,12 @@ function renderSdeSkiftebevegelser(){
     const unresolvedToggle = event.target.closest("[data-sde-unresolved-kpi]");
     if(unresolvedToggle && root.contains(unresolvedToggle)){
       toggleSdeUnresolvedDetails(unresolvedToggle.dataset.sdeUnresolvedCount);
+      return;
+    }
+
+    const baselineAction = event.target.closest("[data-sde-shift-baseline]");
+    if(baselineAction && root.contains(baselineAction)){
+      setCurrentSdeShiftSnapshotBaseline();
       return;
     }
 
