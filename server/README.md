@@ -48,6 +48,7 @@ Ikke stopp en riktig serverprosess blindt.
 
 ```bash
 curl http://localhost:8787/api/health
+curl http://localhost:8787/api/server/status
 curl http://localhost:8787/api/state
 curl http://localhost:8787/api/state/revision
 curl http://localhost:8787/api/events
@@ -76,6 +77,7 @@ curl http://<mac-mini-lan-ip>:8787/api/health
 ## Endepunkter i denne fasen
 
 - `GET /api/health`
+- `GET /api/server/status`
 - `GET /api/state`
 - `GET /api/state/revision`
 - `GET /api/events?sinceRevision=N`
@@ -89,6 +91,9 @@ bør kjøres mot separat testdatabase, for eksempel med
 `SDE_SERVER_DB_PATH=/tmp/sde-server-b1-test.sqlite3`. Produksjonsserveren skal
 ikke bruke test-writes med mindre dette er en bevisst kontrollert test. Det
 finnes ingen operative write-endepunkter ennå.
+
+`GET /api/server/status` er et read-only drift/status-endepunkt. Det er ikke en
+PWA-kontrakt.
 
 ## Neste fase
 

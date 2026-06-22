@@ -1,3 +1,5 @@
+const fs = require("node:fs");
+const path = require("node:path");
 const express = require("express");
 const { openDatabase } = require("./db");
 const { getEventsSinceRevision, parseSinceRevision, writeSseEvent } = require("./events");
@@ -7,6 +9,8 @@ const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
 const TEST_NOTE_MAX_LENGTH = 500;
 const TEST_WRITES_ENABLED = process.env.SDE_ENABLE_TEST_WRITES === "1";
+const STARTED_AT = new Date();
+const SERVER_MODE = process.env.SDE_SERVER_MODE || "server-groundwork";
 
 const { db, databasePath } = openDatabase();
 const app = express();
@@ -21,6 +25,26 @@ app.get("/api/health", (_req, res) => {
     service: "sde-server",
     time: new Date().toISOString(),
     revision
+  });
+});
+
+app.get("/api/server/status", (_req, res) => {
+  const revision = getCurrentRevision(db);
+  res.json({
+    ok: true,
+    service: "sde-server",
+    mode: SERVER_MODE,
+    port: PORT,
+    revision,
+    uptimeSeconds: Math.floor((Date.now() - STARTED_AT.getTime()) / 1000),
+    startedAt: STARTED_AT.toISOString(),
+    serverTime: new Date().toISOString(),
+    databaseExists: fs.existsSync(databasePath),
+    databasePathConfigured: Boolean(process.env.SDE_SERVER_DB_PATH),
+    databaseFile: path.basename(databasePath),
+    testWritesEnabled: TEST_WRITES_ENABLED,
+    pwaConnected: false,
+    operationalWritesEnabled: false
   });
 });
 
