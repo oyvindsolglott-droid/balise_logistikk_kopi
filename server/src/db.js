@@ -33,5 +33,6 @@ function ensureMainState(db){
 }
 
 module.exports = {
+  getDatabasePath,
   openDatabase
 };

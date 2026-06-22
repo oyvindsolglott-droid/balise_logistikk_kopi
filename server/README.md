@@ -83,6 +83,7 @@ curl http://<mac-mini-lan-ip>:8787/api/health
 - `GET /api/events?sinceRevision=N`
 - `GET /api/stream`
 - `POST /api/actions/test-note`
+- `POST /api/actions/action-contract-test`
 
 `POST /api/actions/test-note` er kun en server-write-test og er deaktivert som
 standard. Den krever `SDE_ENABLE_TEST_WRITES=1`, `expectedRevision`, returnerer
@@ -91,6 +92,14 @@ bør kjøres mot separat testdatabase, for eksempel med
 `SDE_SERVER_DB_PATH=/tmp/sde-server-b1-test.sqlite3`. Produksjonsserveren skal
 ikke bruke test-writes med mindre dette er en bevisst kontrollert test. Det
 finnes ingen operative write-endepunkter ennå.
+
+`POST /api/actions/action-contract-test` er kun en B8B test-only
+kontraktstest. Den er deaktivert uten `SDE_ENABLE_ACTION_CONTRACT_TESTS=1` og
+skal bare kjøres på separat testserver og separat testdatabase. Endpointet
+avviser produksjonsport `8787`, manglende `SDE_SERVER_DB_PATH` og
+produksjonsdatabasen. Den skriver bare testfeltet `actionContractTest` og
+eventtype `action_contract.test`; den skal aldri skrive `operationalState`,
+aldri kobles til PWA og aldri brukes som ekte SDE-action.
 
 `GET /api/server/status` er et read-only drift/status-endepunkt. Det er ikke en
 PWA-kontrakt.
@@ -436,6 +445,45 @@ Rollback-prinsipp:
 - produksjonsserver `8787` skal ikke restartes i B8B uten egen godkjenning
 - testserver stoppes, og `/tmp`-testdatabase slettes eller beholdes etter
   eksplisitt avklaring
+
+## B8B test-only action-kontrakt
+
+B8B er server-only testkode for action-kontrakten. Det er ikke PWA-kobling,
+ikke produksjonswrite og ikke ekte SDE-action. Produksjonsserver `8787` skal
+ikke restartes som del av B8B uten egen godkjenning.
+
+Endpointet `POST /api/actions/action-contract-test` krever
+`SDE_ENABLE_ACTION_CONTRACT_TESTS=1`. Når flagget er satt, skal serveren nekte
+oppstart hvis `PORT=8787`, hvis `SDE_SERVER_DB_PATH` mangler, eller hvis
+databasepath peker på produksjonsdatabasen:
+`/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`.
+Endpointet har samme guard internt og returnerer `403 Forbidden` hvis miljøet
+ikke er trygt.
+
+B8B bruker eksisterende `app_state` og `events`. Den endrer ikke schema og
+legger ikke til dependencies. Idempotency sjekkes via `actionId` i eksisterende
+event-payload, og er bare akseptabelt på separat testserver og testdatabase.
+Dette er ikke produksjonsklar idempotency under parallell samtidighet.
+
+Vellykket ny test-action gir `201 Created`, øker revision og skriver
+`actionContractTest` samt eventtype `action_contract.test`. Idempotent retry
+med samme `actionId` og samme payload gir `200 OK` uten ny revision. Samme
+`actionId` med annen payload gir `409 Conflict`. Stale `expectedRevision` gir
+`409 Conflict`.
+
+Testkjøring skal bruke separat port og testdatabase, for eksempel:
+
+```bash
+PORT=8795 \
+SDE_SERVER_DB_PATH=/tmp/sde-server-b8-action-contract.sqlite3 \
+SDE_ENABLE_ACTION_CONTRACT_TESTS=1 \
+npm start
+```
+
+Røde soner for B8B: ingen `index.html`, ingen PWA, ingen `operationalState`,
+ingen ekte SDE Utført/Annullert, ingen manuell overstyring, ingen DROPS-order,
+ingen TXP unavailable, ingen reset-day, ingen import-data, ingen produksjonsDB,
+ingen schemaendring og ingen packageendring.
 
 ## Neste fase
 

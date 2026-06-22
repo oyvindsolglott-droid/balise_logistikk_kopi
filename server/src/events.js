@@ -30,6 +30,41 @@ function getEventsSinceRevision(db, sinceRevision){
   }));
 }
 
+function findEventByPayloadActionId(db, { type, actionId }){
+  const rows = db.prepare(`
+    SELECT
+      id,
+      revision,
+      type,
+      payload_json AS payloadJson,
+      actor,
+      device_id AS deviceId,
+      created_at AS createdAt,
+      previous_revision AS previousRevision
+    FROM events
+    WHERE type = ?
+    ORDER BY revision ASC, id ASC
+  `).all(type);
+
+  for(const row of rows){
+    const payload = safeParseJson(row.payloadJson, {});
+    if(payload.actionId !== actionId) continue;
+
+    return {
+      id: row.id,
+      revision: row.revision,
+      type: row.type,
+      payload,
+      actor: row.actor || "",
+      deviceId: row.deviceId || "",
+      createdAt: row.createdAt,
+      previousRevision: row.previousRevision
+    };
+  }
+
+  return null;
+}
+
 function insertEvent(db, { revision, type, payload, actor = "", deviceId = "", createdAt, previousRevision }){
   const result = db.prepare(`
     INSERT INTO events (
@@ -78,6 +113,7 @@ function writeSseEvent(res, eventName, payload){
 }
 
 module.exports = {
+  findEventByPayloadActionId,
   getEventsSinceRevision,
   insertEvent,
   parseSinceRevision,
