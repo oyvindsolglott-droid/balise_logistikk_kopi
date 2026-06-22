@@ -13369,6 +13369,70 @@ function getSdeSpor3ProductionReason(need, slot){
   return `${candidate} vurderes som del av 802/852-sekvensen. Dette er produksjonsoppsett i spor 3, ikke generell nattparkering.`;
 }
 
+function isSdeBratsbergTrainNumber(trainNumber){
+  const digits = String(trainNumber ?? "").replace(/\D/g, "");
+  if(!digits) return false;
+
+  const fourDigitCandidate = digits.length === 4
+    ? digits
+    : digits.length === 5
+      ? digits.slice(-4)
+      : "";
+  if(!fourDigitCandidate) return false;
+
+  const value = Number(fourDigitCandidate);
+  return Number.isFinite(value) && value >= 2400 && value <= 2499;
+}
+
+function isSdeBratsbergMove(row){
+  return [
+    row?.nextDepartureTrain,
+    row?.departureTrain,
+    row?.toTrain
+  ].some(isSdeBratsbergTrainNumber);
+}
+
+function buildSdeTrack10ReservationAssessment(row, slot, context={}){
+  const candidate = normalizeSlot(slot);
+  const result = {
+    applies:false,
+    slot:candidate,
+    reservedFor:"Bratsberg/24xx",
+    isBratsberg:false,
+    severity:"none",
+    penalty:0,
+    bonus:0,
+    reasonCode:"track10_not_relevant",
+    text:""
+  };
+
+  if(candidate !== "10N" && candidate !== "10S"){
+    return result;
+  }
+
+  const isBratsberg = isSdeBratsbergMove(row);
+  if(isBratsberg){
+    return {
+      ...result,
+      applies:true,
+      isBratsberg:true,
+      severity:"low",
+      bonus:2,
+      reasonCode:"track10_bratsberg_priority",
+      text:"Spor 10 prioriteres for Bratsberg/24xx, og dette behovet er koblet mot Bratsberg-avgang."
+    };
+  }
+
+  return {
+    ...result,
+    applies:true,
+    severity:"moderate",
+    penalty:45,
+    reasonCode:"track10_non_bratsberg_penalty",
+    text:"Spor 10 er primært forbeholdt Bratsberg/24xx; ikke-Bratsberg i spor 10 vurderes som mindre ønskelig, men beholdes som fallback."
+  };
+}
+
 
 function scoreSdeArrivalParkingCandidate(need, slot){
   const candidate = normalizeSlot(slot);
@@ -13609,6 +13673,17 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   }else{
     reasons.push("Ankomstspor mangler; anbefalingen har lavere sikkerhet.");
     score -= 10;
+  }
+
+  const track10Assessment = buildSdeTrack10ReservationAssessment(need, candidate);
+  if(track10Assessment.applies){
+    const adjustedScore = score + (track10Assessment.bonus || 0) - (track10Assessment.penalty || 0);
+    score = track10Assessment.penalty
+      ? Math.max(45, adjustedScore)
+      : adjustedScore;
+    if(track10Assessment.text){
+      reasons.unshift(track10Assessment.text);
+    }
   }
 
   return {
