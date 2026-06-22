@@ -319,6 +319,124 @@ B7 kan bare lukkes som testplan når README tydelig sier at ingen kode er
 implementert, B8 krever egen analyse og godkjenning, og prod-guards, testcases,
 stoppsignaler og røde soner er definert.
 
+## B8A test-only action-kontrakt
+
+B8A er design-only dokumentasjon. Det implementeres ingen kode, ingen endpoint
+legges til, ingen writeflate åpnes, og produksjonsserveren restartes ikke. En
+eventuell B8B med test-only kode krever egen analyse og eksplisitt godkjenning.
+
+Foreslått test-only endpoint for en senere B8B:
+
+- `POST /api/actions/action-contract-test`
+- endpointet skal kun være test-only
+- `test-note` skal ikke gjenbrukes
+- endpointet skal aldri brukes som ekte SDE-action
+
+Foreslått testflagg:
+
+- `SDE_ENABLE_ACTION_CONTRACT_TESTS=1`
+- flagget skal være separat fra `SDE_ENABLE_TEST_WRITES`
+
+Absolutte prod-guards for en eventuell B8B:
+
+- serveren skal nekte testflagg sammen med `PORT=8787`
+- serveren skal nekte testflagg sammen med produksjonsdatabasen
+  `/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`
+- serveren skal nekte testflagg hvis `SDE_SERVER_DB_PATH` mangler
+- endpointet skal også returnere `403 Forbidden` hvis guardene ikke er oppfylt
+- test-action skal aldri skrive til `operationalState`
+- test-action skal aldri sette `operationalWritesEnabled: true`
+- test-action skal aldri være tilgjengelig for PWA
+
+Foreslått minimumspayload:
+
+```json
+{
+  "actionId": "b8b-test-001",
+  "actionType": "action_contract.test",
+  "actor": {
+    "id": "local-test-operator",
+    "role": "developer"
+  },
+  "deviceId": "mac-mini-b8b-test",
+  "expectedRevision": 1,
+  "payload": {
+    "testNote": "contract test write"
+  },
+  "clientContext": {
+    "source": "b8b-testserver"
+  }
+}
+```
+
+Responsmodell:
+
+- `201 Created` ved ny vellykket test-action
+- `200 OK` ved idempotent retry med samme `actionId`, uten ny revision
+- `400 Bad Request` ved ugyldig payload
+- `403 Forbidden` når testflagg mangler eller prod-guard stopper
+- `409 Conflict` ved `expectedRevision`-mismatch
+- `500 Internal Server Error` kun ved reell serverfeil
+
+Idempotency uten schemaendring:
+
+- `actionId` kan i B8B-test sjekkes via eksisterende events/event-payload
+- dette er akseptabelt kun på separat testserver og separat testdatabase
+- dette er ikke produksjonsklar idempotency under parallell samtidighet
+- hvis B8B krever unik indeks, ny tabell eller schemaendring, skal B8B stoppes
+  og erstattes av egen schemaanalyse
+
+Foreslått statefelt og eventtype:
+
+- statefelt: `actionContractTest`
+- eventtype: `action_contract.test`
+- aldri `operationalState`
+- aldri SDE Utført/Annullert
+- aldri manuell overstyring, DROPS-order, TXP unavailable, reset-day eller
+  import-data
+
+Testplan for en eventuell senere B8B:
+
+- read-only produksjonsprecheck på `8787` med `/api/server/status` og
+  `/api/state/revision`
+- produksjonsrevision skal være uendret før og etter
+- separat testserver, for eksempel `PORT=8795`
+- separat testdatabase, for eksempel
+  `/tmp/sde-server-b8-action-contract.sqlite3`
+- testflagg kun på testserver: `SDE_ENABLE_ACTION_CONTRACT_TESTS=1`
+- endpoint uten testflagg skal gi `403 Forbidden`
+- invalid payload skal gi `400 Bad Request`
+- ny success-action skal gi `201 Created` og revision `1 -> 2`
+- duplicate `actionId` skal gi `200 OK` og ingen ny revision
+- stale `expectedRevision` skal gi `409 Conflict`
+- `/api/events?sinceRevision=1` skal vise `action_contract.test`
+- testserver skal stoppes etterpå
+
+Stoppsignaler for B8B:
+
+- test-action kan kjøres på `8787`
+- test-action kan peke på produksjonsdatabasen
+- test-action virker uten eksplisitt testflagg
+- `operationalState` røres
+- schemaendring kreves
+- packageendring kreves
+- produksjonsrevision endres
+- PWA eller `index.html` blandes inn
+- duplicate `actionId` lager ny revision
+- stale revision gir noe annet enn `409 Conflict`
+- endpoint gir `200 OK` eller `201 Created` der `403`, `400` eller `409`
+  forventes
+
+Rollback-prinsipp:
+
+- for B8A README-only er rollback å reverte dokumentasjonscommit hvis designet
+  er feil
+- for eventuell senere B8B-kode er rollback å reverte commit før
+  produksjonsrestart
+- produksjonsserver `8787` skal ikke restartes i B8B uten egen godkjenning
+- testserver stoppes, og `/tmp`-testdatabase slettes eller beholdes etter
+  eksplisitt avklaring
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
