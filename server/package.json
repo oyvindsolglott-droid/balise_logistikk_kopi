@@ -1,0 +1,17 @@
+{
+  "name": "sde-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Read-only server skeleton for SDE / Skien sporplan.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "express": "^4.18.3"
+  }
+}
