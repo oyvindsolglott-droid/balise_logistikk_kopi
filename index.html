@@ -14955,6 +14955,35 @@ function isSdeNightArrivalPlatformClearanceNeed(arrival){
   return train === "839" && ["1N","1S","2N","2S","3N","3M","3S"].includes(slot);
 }
 
+function isSdeOperationalSingleSetFixedNeed(need){
+  return Boolean(normalizeSlot(getSdeOperationalSingleSetSlot(need)));
+}
+
+function getSdeArrivalParkingNeedProcessingPriority(need){
+  if(need?.serviceRequired) return 0;
+  if(need?.parkingStrategy === "839 nattankomst – plattform må ryddes") return 1;
+  const minutes = getSdeTimeMinutes(need?.nextDepartureTime);
+  if(minutes !== null && minutes < (9 * 60)) return 2;
+  if(need?.nextDepartureTrain) return 3;
+  return 4;
+}
+
+function compareSdeArrivalParkingNeedProcessingOrder(a, b){
+  const pa = getSdeArrivalParkingNeedProcessingPriority(a);
+  const pb = getSdeArrivalParkingNeedProcessingPriority(b);
+  if(pa !== pb) return pa - pb;
+
+  const fixedA = isSdeOperationalSingleSetFixedNeed(a);
+  const fixedB = isSdeOperationalSingleSetFixedNeed(b);
+  if(fixedA !== fixedB) return fixedA ? -1 : 1;
+
+  const ta = getSdeOperationalSequenceMinutes(a?.arrivalTime, "plannedMove") ?? 99999;
+  const tb = getSdeOperationalSequenceMinutes(b?.arrivalTime, "plannedMove") ?? 99999;
+  if(ta !== tb) return ta - tb;
+
+  return String(a?.vehicle || "").localeCompare(String(b?.vehicle || ""), "nb");
+}
+
 
 function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
   const bindings = buildSdeTursattVehicleBindings();
@@ -15130,7 +15159,8 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
 
   const sortedNeeds = sortedArrivals
     .map(buildArrivalParkingNeed)
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort(compareSdeArrivalParkingNeedProcessingOrder);
 
   const manualOverrideReservations = buildSdeManualOverridePreseedReservations([
     ...(Array.isArray(manualOverridePreseedNeeds) ? manualOverridePreseedNeeds : []),
