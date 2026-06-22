@@ -251,6 +251,74 @@ Røde soner for denne fasen: PWA-read og PWA-write er ikke koblet, ekte SDE
 Utført/Annullert er ikke implementert, og manuell overstyring, DROPS-order, TXP
 unavailable, reset-day og import-data er ikke implementert.
 
+## Fremtidig kontraktstest
+
+Dette er testplan/design for en senere action-kontraktstest. Det er ingen
+kodeimplementering i denne fasen, ingen endpoint legges til, og ingen writeflate
+åpnes. En eventuell B8-implementering må vurderes og godkjennes separat.
+
+En senere test skal kjøres på separat testserver og separat SQLite-fil, for
+eksempel:
+
+- `PORT=8795`
+- `SDE_SERVER_DB_PATH=/tmp/sde-server-b7-action-contract.sqlite3`
+- eksplisitt testflagg for action-kontraktstest
+- aldri port `8787`
+- aldri produksjonsdatabasen
+- aldri PWA
+
+Harde prod-guards for en eventuell senere test-action:
+
+- avvis `PORT=8787`
+- avvis databasepath som peker på
+  `/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`
+- krev eksplisitt testflagg
+- avvis hvis separat `SDE_SERVER_DB_PATH` mangler
+- aldri sett `operationalWritesEnabled: true` på produksjon
+- aldri endre `operationalState`
+- aldri bruk endpointet fra PWA
+
+En senere B8 må bevise disse testcasene på testserver/testdatabase:
+
+- `health` og `server/status` svarer på testserveren
+- initial revision er `1`
+- vellykket test-action gir revision `1 -> 2`
+- duplicate `actionId` gir idempotent respons uten ny revision
+- stale `expectedRevision` gir `409 Conflict`
+- ugyldig payload gir `400 Bad Request`
+- endpoint uten testflagg gir `403 Forbidden`
+- eventlogg/audit inneholder action
+- state update og eventlogg er atomiske og konsistente
+- ingen halvveis write finnes
+- produksjon `8787` sjekkes read-only før og etter, og revision forblir `1`
+
+Produksjonschecks for en senere B8 skal bare være read-only:
+
+```bash
+curl --max-time 5 -sS http://localhost:8787/api/server/status
+curl --max-time 5 -sS http://localhost:8787/api/state/revision
+```
+
+Status skal fortsatt vise `testWritesEnabled: false`,
+`operationalWritesEnabled: false` og `pwaConnected: false`, og produksjonsrevision
+skal være uendret.
+
+Stopp en senere B8 hvis test-action kan kjøres på `8787`, kan peke på
+produksjonsdatabasen, virker uten eksplisitt testflagg, endrer
+produksjonsrevision, blander inn PWA, berører `index.html`, endrer
+`operationalState`, eller krever schema/package-endring uten separat
+godkjenning.
+
+Røde soner: ingen PWA-read, ingen PWA-write, ingen ekte SDE Utført/Annullert,
+ingen manuell overstyring mot server, ingen DROPS-order mot server, ingen TXP
+unavailable mot server, ingen reset-day mot server, ingen import-data mot
+server, ingen produksjonswrite og ingen schema/package-endring uten egen
+analyse.
+
+B7 kan bare lukkes som testplan når README tydelig sier at ingen kode er
+implementert, B8 krever egen analyse og godkjenning, og prod-guards, testcases,
+stoppsignaler og røde soner er definert.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
