@@ -17963,6 +17963,61 @@ function buildSdePastDepartureDiagnostics(moves=[]){
     });
 }
 
+function buildSdeFilteredReservationImpactDiagnostics(filteredRows=[], unresolvedRows=[]){
+  const filtered = Array.isArray(filteredRows) ? filteredRows : [];
+  const unresolved = Array.isArray(unresolvedRows) ? unresolvedRows : [];
+  if(!filtered.length || !unresolved.length) return [];
+
+  const filteredReservations = filtered
+    .map(row=>{
+      const slot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+      const vehicle = sanitizeVehicleValue(row?.vehicle);
+      if(!slot || !vehicle) return null;
+
+      const train = normalizeTognr(row?.nextDepartureTrain);
+      const part = String(row?.nextDeparturePart || "").trim();
+      const departureText = train
+        ? `${train}${part ? `/${part}` : ""}${row?.nextDepartureTime ? ` kl. ${row.nextDepartureTime}` : ""}`
+        : "ukjent avgang";
+      const arrivalPart = String(row?.arrivalPart || "").trim();
+      const arrivalText = row?.arrivalTrain
+        ? `${row.arrivalTrain}${arrivalPart ? `/${arrivalPart}` : ""}${row?.arrivalTime ? ` kl. ${row.arrivalTime}` : ""}`
+        : "ukjent ankomst";
+
+      return {slot, vehicle, departureText, arrivalText};
+    })
+    .filter(Boolean);
+
+  if(!filteredReservations.length) return [];
+
+  const seen = new Set();
+  return filteredReservations.flatMap(reservation =>
+    unresolved.map(row=>{
+      const reason = String(row?.recommendationReason || row?.reason || row?.message || "").trim();
+      const vehiclePattern = reservation.vehicle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const reservationPattern = new RegExp(`${reservation.slot}\\s+er allerede reservert(?:\\s+til\\s+${vehiclePattern}|\\s+av tidligere SDE-behov)`, "i");
+      if(!reason || !reservationPattern.test(reason)) return null;
+
+      const unresolvedVehicle = sanitizeVehicleValue(row?.vehicle) || "ukjent kjøretøy";
+      const train = normalizeTognr(row?.nextDepartureTrain);
+      const part = String(row?.nextDeparturePart || "").trim();
+      const unresolvedDeparture = train
+        ? `${train}${part ? `/${part}` : ""}${row?.nextDepartureTime ? ` kl. ${row.nextDepartureTime}` : ""}`
+        : "ukjent avgang";
+      const key = `${reservation.slot}|${reservation.vehicle}|${unresolvedVehicle}|${unresolvedDeparture}`;
+      if(seen.has(key)) return null;
+      seen.add(key);
+
+      return {
+        slot:reservation.slot,
+        vehicle:reservation.vehicle,
+        affectedVehicle:unresolvedVehicle,
+        text:`${reservation.slot} ble reservert av filtrert behov ${reservation.vehicle} (${reservation.departureText}, ankomst ${reservation.arrivalText}). Aktiv uløst sak ${unresolvedVehicle} (${unresolvedDeparture}) viser samme reservasjon i begrunnelsen. Observasjon: dette forklarer mulig reservasjonseffekt fra filtrert behov, men endrer ikke forslag, score eller reservasjon.`
+      };
+    }).filter(Boolean)
+  );
+}
+
 
 function buildSdeSpor3PlatformClearanceDiagnostics(){
   const spor3ProductionNeeds = buildSdeSpor3ProductionDepartureNeeds([]);
@@ -20792,6 +20847,18 @@ function renderSdeSkiftebevegelser(){
       })
     : "";
 
+  const filteredReservationImpactDiagnostics = buildSdeFilteredReservationImpactDiagnostics(data.filteredPastDepartureNeeds || [], data.unresolved || []);
+  const filteredReservationImpactDiagnosticsHtml = filteredReservationImpactDiagnostics.length
+    ? buildSdeDiagnosticSectionHtml({
+        id:"filtered-reservation-impact",
+        title:"Filtrerte behov – mulig reservasjonseffekt",
+        count:filteredReservationImpactDiagnostics.length,
+        bodyHtml:filteredReservationImpactDiagnostics.map(item =>
+            `<div class="sde-shift-observation-item"><strong>${escapeHtml(`${item.slot} reservert av ${item.vehicle}`)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")
+      })
+    : "";
+
   const spor3PlatformClearanceDiagnostics = buildSdeSpor3PlatformClearanceDiagnostics();
   const spor3PlatformClearanceDiagnosticsHtml = spor3PlatformClearanceDiagnostics.length
     ? buildSdeDiagnosticSectionHtml({
@@ -20836,6 +20903,7 @@ function renderSdeSkiftebevegelser(){
     ${nightPlacementOverviewHtml}
     <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
     ${pastDepartureDiagnosticsHtml}
+    ${filteredReservationImpactDiagnosticsHtml}
     ${linearTrackDiagnosticsHtml}
     ${pairDiagnosticsHtml}
     ${packageDiagnosticsHtml}
