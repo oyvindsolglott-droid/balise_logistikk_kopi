@@ -15662,6 +15662,14 @@ function writeSdeShiftLastSnapshot(snapshot){
   }
 }
 
+function clearSdeShiftLastSnapshot(){
+  try{
+    localStorage.removeItem(SDE_SHIFT_LAST_SNAPSHOT_KEY);
+  }catch(_error){
+  }
+  sdeShiftChangesCache = null;
+}
+
 function getSdeShiftSnapshotDataContext(){
   const today = state.baliseMetaToday || {};
   const tomorrow = state.baliseMetaTomorrow || {};
@@ -22358,6 +22366,7 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
 
   const activeTabBeforeReset = getActiveTabName() || getRememberedActiveTab();
   localStorage.removeItem(STORAGE_KEY);
+  clearSdeShiftLastSnapshot();
   state=makeDefaultState();
 
 
