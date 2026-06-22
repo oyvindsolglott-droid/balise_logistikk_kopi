@@ -18018,6 +18018,65 @@ function buildSdeFilteredReservationImpactDiagnostics(filteredRows=[], unresolve
   );
 }
 
+function buildSdeActiveReservationBlockingFixedSlotDiagnostics(moves=[], unresolvedRows=[]){
+  const activeMoves = Array.isArray(moves) ? moves : [];
+  const unresolved = Array.isArray(unresolvedRows) ? unresolvedRows : [];
+  if(!activeMoves.length || !unresolved.length) return [];
+
+  const seen = new Set();
+  return unresolved.map(row=>{
+    const fixedSlot = normalizeSlot(getSdeOperationalSingleSetSlot(row));
+    if(!fixedSlot) return null;
+
+    const reason = String(row?.recommendationReason || row?.reason || row?.message || "").trim();
+    const fixedSlotPattern = fixedSlot.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const reservedMatch = reason.match(new RegExp(`${fixedSlotPattern}\\s+er allerede reservert til\\s+([^\\.]+)`, "i"));
+    const reservedVehicle = sanitizeVehicleValue(reservedMatch?.[1]);
+    if(!reservedVehicle) return null;
+
+    const blocker = activeMoves.find(move =>
+      normalizeSlot(move?.recommendedSlot || move?.toSlot) === fixedSlot &&
+      haveSameSdeVehicleTokens(move?.vehicle, reservedVehicle)
+    );
+    if(!blocker) return null;
+
+    const train = normalizeTognr(row?.nextDepartureTrain);
+    const part = String(row?.nextDeparturePart || "").trim();
+    const unresolvedVehicle = sanitizeVehicleValue(row?.vehicle) || "ukjent kjøretøy";
+    const unresolvedDeparture = train
+      ? `${train}${part ? `/${part}` : ""}${row?.nextDepartureTime ? ` kl. ${row.nextDepartureTime}` : ""}`
+      : "ukjent avgang";
+    const blockerTrain = normalizeTognr(blocker?.nextDepartureTrain);
+    const blockerPart = String(blocker?.nextDeparturePart || "").trim();
+    const blockerDeparture = blockerTrain
+      ? `${blockerTrain}${blockerPart ? `/${blockerPart}` : ""}${blocker?.nextDepartureTime ? ` kl. ${blocker.nextDepartureTime}` : ""}`
+      : "ukjent avgang";
+    const alternatives = Array.isArray(blocker?.recommendationAlternatives)
+      ? blocker.recommendationAlternatives
+          .map(alt => ({
+            slot:normalizeSlot(alt?.slot),
+            score:Number(alt?.score)
+          }))
+          .filter(alt => alt.slot && alt.slot !== fixedSlot && Number.isFinite(alt.score))
+          .slice(0, 3)
+      : [];
+    const alternativesText = alternatives.length
+      ? `${reservedVehicle} har alternative kandidater i eksisterende vurdering: ${alternatives.map(alt => `${alt.slot} score ${alt.score}`).join(", ")}.`
+      : `${reservedVehicle} har ingen strukturerte alternative kandidater vist i dette SDE-bildet.`;
+    const key = `${unresolvedVehicle}|${train}|${fixedSlot}|${reservedVehicle}`;
+    if(seen.has(key)) return null;
+    seen.add(key);
+
+    return {
+      slot:fixedSlot,
+      vehicle:unresolvedVehicle,
+      train,
+      blockerVehicle:reservedVehicle,
+      text:`${unresolvedVehicle} / ${unresolvedDeparture} krever ${fixedSlot}, men ${fixedSlot} er reservert av aktivt SDE-forslag ${reservedVehicle} (${blockerDeparture}). ${alternativesText} Observasjon: SDE endrer ikke forslag automatisk her, og dette påvirker ikke score, sortering eller motor.`
+    };
+  }).filter(Boolean);
+}
+
 
 function buildSdeSpor3PlatformClearanceDiagnostics(){
   const spor3ProductionNeeds = buildSdeSpor3ProductionDepartureNeeds([]);
@@ -20556,6 +20615,17 @@ function renderSdeSkiftebevegelser(){
   const unresolvedDetailsHtml = sdeUnresolvedDetailsVisible
     ? buildSdeUnresolvedDetailsHtml(data.unresolved)
     : "";
+  const activeReservationBlockingFixedSlotDiagnostics = buildSdeActiveReservationBlockingFixedSlotDiagnostics(data.moves || [], data.unresolved || []);
+  const activeReservationBlockingFixedSlotDiagnosticsHtml = activeReservationBlockingFixedSlotDiagnostics.length
+    ? buildSdeDiagnosticSectionHtml({
+        id:"active-reservation-fixed-slot",
+        title:"Fast operativ plassering blokkert – observasjon",
+        count:activeReservationBlockingFixedSlotDiagnostics.length,
+        bodyHtml:activeReservationBlockingFixedSlotDiagnostics.map(item =>
+            `<div class="sde-shift-observation-item"><strong>${escapeHtml(`${item.vehicle} krever ${item.slot}`)}</strong><br>${escapeHtml(item.text)}</div>`
+          ).join("")
+      })
+    : "";
   const unresolvedKpiExpanded = Boolean(sdeUnresolvedDetailsVisible && unresolvedCount > 0);
   const learningDiagnosticsHtml = "";
   const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 20);
@@ -20889,6 +20959,7 @@ function renderSdeSkiftebevegelser(){
       </div>
     </div>
     ${unresolvedDetailsHtml}
+    ${activeReservationBlockingFixedSlotDiagnosticsHtml}
     ${scoreExplanationHtml}
     ${sdeChangesSinceLastHtml}
     ${learningDiagnosticsHtml}
