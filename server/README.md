@@ -591,6 +591,126 @@ ingen SDE-motor, ingen DROPS/Tursatt/Vaktplan/localStorage, ikke bruk B8B
 eventpayload-idempotency som produksjonsmodell, ingen schemaendring og ingen
 packageendring.
 
+## B9D migration-plan for actions-schema
+
+B9D er plan, ikke implementering. Det gjøres ingen kodeendring, schemaendring,
+migration, serverstart, databasewrite eller produksjonsrestart i denne fasen.
+Målet er å gjøre en senere B10A test-only schema/migration på separat
+testdatabase nesten mekanisk. B10A krever egen eksplisitt godkjenning.
+
+B10A starter ikke ennå fordi første schemaendring er et større driftsmessig
+steg. B9B låste idempotency-retningen, men ikke konkret migration. Migration
+må ha precheck, idempotent oppførsel, rollback og testkriterier før kode.
+
+Schema-versjonering:
+
+- `schemaVersion` inne i state JSON er ikke nok som DB-migrasjonsstyring.
+- B10A må vite nøyaktig hvilken schema-versjon den starter fra og ender på.
+- `PRAGMA user_version` bør brukes som enkel SQLite-native versjonering.
+- En senere `schema_migrations`-tabell kan vurderes hvis vi trenger detaljert
+  historikk over flere migrations.
+- B10A bør ikke blande flere versjoneringsmekanismer uten egen begrunnelse.
+
+Foreslått actions-DDL for senere testfase:
+
+```sql
+CREATE TABLE actions (
+  action_id TEXT PRIMARY KEY,
+  action_type TEXT NOT NULL,
+  actor_id TEXT,
+  actor_role TEXT,
+  device_id TEXT,
+  expected_revision INTEGER,
+  request_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  status TEXT NOT NULL,
+  resulting_revision INTEGER,
+  event_id INTEGER,
+  server_created_at TEXT NOT NULL,
+  completed_at TEXT
+);
+```
+
+Dette er design, ikke implementert schema. `event_id` bør i første runde være
+et auditfelt uten foreign key. SQLite foreign keys krever bevisst
+`PRAGMA foreign_keys=ON`; FK kan gi falsk trygghet hvis den ikke er aktivert
+konsekvent. Foreign key-policy bør tas som egen analyse før FK innføres.
+
+Idempotent migration-regel:
+
+- hvis `actions` ikke finnes: opprett den
+- hvis `actions` finnes med forventet schema: migration er OK/no-op
+- hvis `actions` finnes med uventet schema: stopp hardt og ikke reparer
+  automatisk
+- `CREATE TABLE IF NOT EXISTS` alene er ikke nok, fordi det kan skjule feil
+  tabellform
+
+Precheck før migration:
+
+- bekreft riktig DB-path
+- avvis produksjonsDB i testfase
+- `PRAGMA integrity_check`
+- `PRAGMA user_version`
+- list eksisterende tabeller
+- `PRAGMA table_info(actions)` hvis tabellen finnes
+- `PRAGMA index_list(actions)` hvis tabellen finnes
+- les `app_state` revision/status
+- les events-status uten å skrive
+
+Verifisering etter migration:
+
+- `PRAGMA integrity_check` skal gi `ok`
+- `PRAGMA user_version` skal være forventet ny versjon
+- `PRAGMA table_info(actions)` skal matche forventet kolonneliste
+- `PRAGMA index_list(actions)` skal vise unik primary key på `action_id`
+- test av unik `action_id`
+- test av at feil duplicate avvises
+- bekreft at eksisterende `app_state` og `events` ikke er skadet
+
+Index-strategi:
+
+- `PRIMARY KEY(action_id)` er minimum
+- indexer på `event_id`, `resulting_revision` eller `action_type` kan vurderes
+  senere
+- ikke overindekser før faktisk querybehov er kjent
+
+Rollbackstrategi:
+
+- i test skal feil gi transaksjonsrollback
+- før eventuell produksjonsmigration skal backup tas og verifiseres
+- restore skal ikke skje automatisk
+- etter produksjonsmigration krever rollback egen eksplisitt godkjenning
+- forward-fix kan være tryggere enn restore hvis produksjon har gått videre
+- B5-backup skal ikke brukes uten separat restore-godkjenning
+
+Separat testdatabase-plan for senere B10A:
+
+- B10A skal bare bruke separat testdatabase
+- produksjon `8787` skal kun sjekkes read-only før og etter
+- testdatabase kan ligge i `/tmp`, for eksempel
+  `/tmp/sde-server-b10-actions-migration.sqlite3`
+- test må dekke fresh DB
+- test må dekke DB som allerede har forventet `actions`-tabell
+- test må dekke DB med feil `actions`-tabell og bekrefte hard stopp
+
+Stoppsignaler for B10A:
+
+- schema/packageendring blir bredere enn planlagt
+- migration kan treffe produksjonsDB
+- migration skjuler feil eksisterende `actions`-tabell
+- `PRAGMA integrity_check` er ikke `ok`
+- unik `action_id` kan ikke verifiseres
+- `user_version` oppdateres eller valideres ikke riktig
+- `app_state` eller `events` påvirkes utilsiktet
+- produksjonsrevision endres
+- produksjonsserver må restartes uten egen godkjenning
+
+Røde soner for B9D: ingen PWA, ingen `index.html`, ingen ekte SDE-action,
+ingen operational writes, ingen produksjonswrite, ingen produksjonsrestart,
+ingen schemaendring i B9D, ingen migration i B9D, ingen packageendring, ingen
+DB-write, ingen POST, ingen serverstart, ingen testserverstart, ingen SDE-motor,
+score, sortering, DROPS, Tursatt, Vaktplan eller localStorage.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
