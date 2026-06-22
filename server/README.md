@@ -5,7 +5,8 @@ sporplan.
 
 Serveren er ikke koblet til PWA-en ennå. `index.html`, SDE-motor, score,
 dataflyt og klientens `localStorage` er urørt. I denne fasen eksponerer serveren
-kun read-only endepunkter og en enkel Server-Sent Events-stream.
+read-only endepunkter, et test-only write-endepunkt og en enkel Server-Sent
+Events-stream.
 
 ## Krav
 
@@ -51,6 +52,9 @@ curl http://localhost:8787/api/state
 curl http://localhost:8787/api/state/revision
 curl http://localhost:8787/api/events
 curl -N http://localhost:8787/api/stream
+curl -X POST http://localhost:8787/api/actions/test-note \
+  -H 'Content-Type: application/json' \
+  -d '{"expectedRevision":1,"note":"test fra curl"}'
 ```
 
 For LAN-test, bruk Mac mini sin aktuelle LAN-IP:
@@ -76,13 +80,16 @@ curl http://<mac-mini-lan-ip>:8787/api/health
 - `GET /api/state/revision`
 - `GET /api/events?sinceRevision=N`
 - `GET /api/stream`
+- `POST /api/actions/test-note`
 
-Det finnes ingen operative write-endepunkter ennå.
+`POST /api/actions/test-note` er kun en server-write-test. Den krever
+`expectedRevision`, returnerer `409 Conflict` ved revision-konflikt og skal ikke
+kobles til PWA-en. Det finnes ingen operative write-endepunkter ennå.
 
 ## Neste fase
 
-Dette er fortsatt servergrunnmur/read-only-fasen, og PWA-en er ikke koblet til
-serveren. Før operative handlinger flyttes, må action-format,
+Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
+Før operative handlinger flyttes, må action-format,
 `expectedRevision`, `409 Conflict` ved revision-konflikter og audit-logg
 verifiseres med små, avgrensede server-writes.
 

@@ -30,6 +30,40 @@ function getEventsSinceRevision(db, sinceRevision){
   }));
 }
 
+function insertEvent(db, { revision, type, payload, actor = "", deviceId = "", createdAt, previousRevision }){
+  const result = db.prepare(`
+    INSERT INTO events (
+      revision,
+      type,
+      payload_json,
+      actor,
+      device_id,
+      created_at,
+      previous_revision
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    revision,
+    type,
+    JSON.stringify(payload),
+    actor,
+    deviceId,
+    createdAt,
+    previousRevision
+  );
+
+  return {
+    id: Number(result.lastInsertRowid),
+    revision,
+    type,
+    payload,
+    actor,
+    deviceId,
+    createdAt,
+    previousRevision
+  };
+}
+
 function safeParseJson(value, fallback){
   try{
     return JSON.parse(value);
@@ -45,6 +79,7 @@ function writeSseEvent(res, eventName, payload){
 
 module.exports = {
   getEventsSinceRevision,
+  insertEvent,
   parseSinceRevision,
   writeSseEvent
 };
