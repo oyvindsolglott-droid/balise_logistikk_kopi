@@ -2617,6 +2617,47 @@ button{padding:12px 12px}
   line-height:1.42;
 }
 
+.sde-unresolved-reason-list{
+  display:grid;
+  gap:6px;
+  margin-top:8px;
+}
+
+.sde-unresolved-reason-line{
+  display:grid;
+  grid-template-columns:minmax(116px, .36fr) 1fr;
+  gap:10px;
+  align-items:start;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:10px;
+  padding:6px 8px;
+  background:rgba(255,255,255,.045);
+}
+
+.sde-unresolved-reason-label{
+  color:#e4c979;
+  font-weight:900;
+}
+
+.sde-unresolved-reason-value{
+  color:#fff7d9;
+}
+
+.sde-unresolved-reason-source{
+  margin-top:8px;
+  color:#ead9a7;
+}
+
+.sde-unresolved-reason-source summary{
+  cursor:pointer;
+  font-weight:800;
+}
+
+.sde-unresolved-reason-source p{
+  margin:6px 0 0;
+  color:#f8e9bf;
+}
+
 .sde-shift-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
@@ -19896,6 +19937,126 @@ function buildSdeUnresolvedDetailLine(label, value){
   return `<div><dt>${escapeHtml(cleanLabel)}</dt><dd>${escapeHtml(cleanValue)}</dd></div>`;
 }
 
+function normalizeSdeUnresolvedReasonText(value){
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function getSdeUnresolvedReasonSegment(reason, startPattern, stopPatterns){
+  const startMatch = reason.match(startPattern);
+  if(!startMatch || typeof startMatch.index !== "number") return "";
+
+  const startIndex = startMatch.index;
+  const searchStart = startIndex + Math.max(startMatch[0].length, 1);
+  let endIndex = reason.length;
+
+  stopPatterns.forEach(pattern => {
+    const nextMatch = reason.slice(searchStart).match(pattern);
+    if(nextMatch && typeof nextMatch.index === "number"){
+      endIndex = Math.min(endIndex, searchStart + nextMatch.index);
+    }
+  });
+
+  return reason.slice(startIndex, endIndex).replace(/\s*\.$/, "").trim();
+}
+
+function getSdeUnresolvedReasonExample(segment){
+  const match = String(segment || "").match(/Eksempel:\s*(.+)$/i);
+  if(!match) return "";
+
+  return match[1].split(";").map(part => part.trim()).filter(Boolean)[0] || match[1].trim();
+}
+
+function buildSdeUnresolvedReasonLineHtml(label, value){
+  const cleanLabel = String(label || "").trim();
+  const cleanValue = String(value || "").trim();
+  if(!cleanLabel || !cleanValue) return "";
+
+  return `<div class="sde-unresolved-reason-line">
+    <span class="sde-unresolved-reason-label">${escapeHtml(cleanLabel)}</span>
+    <span class="sde-unresolved-reason-value">${escapeHtml(cleanValue)}</span>
+  </div>`;
+}
+
+function buildSdeUnresolvedReasonHtml(reason, targetText){
+  const cleanReason = normalizeSdeUnresolvedReasonText(reason);
+  if(!cleanReason) return "";
+
+  const reasonMarkers = [
+    /SDE fant ingen kandidat over akseptgrensen/i,
+    /Beste svake alternativ var/i,
+    /\d+\s+kandidat\(er\) var allerede reservert av tidligere SDE-behov/i,
+    /\d+\s+kandidat\(er\) ble avvist av faste regler/i,
+    /\d+\s+kandidat\(er\) ble vurdert som for svake etter evaluering/i
+  ];
+  const lines = [];
+  const cleanTargetText = String(targetText || "").trim();
+
+  if(cleanTargetText && /mangler/i.test(cleanTargetText)){
+    lines.push(buildSdeUnresolvedReasonLineHtml("Status", cleanTargetText));
+  }
+
+  const thresholdSegment = getSdeUnresolvedReasonSegment(cleanReason, reasonMarkers[0], reasonMarkers);
+  if(thresholdSegment){
+    lines.push(buildSdeUnresolvedReasonLineHtml(
+      "Kandidatsett",
+      thresholdSegment.replace(/^SDE fant ingen/i, "Ingen")
+    ));
+  }
+
+  const weakSegment = getSdeUnresolvedReasonSegment(cleanReason, reasonMarkers[1], reasonMarkers);
+  const weakMatch = weakSegment.match(/Beste svake alternativ var\s+(.+)$/i);
+  if(weakMatch){
+    lines.push(buildSdeUnresolvedReasonLineHtml("Beste svake kandidat", weakMatch[1]));
+  }
+
+  const reservedSegment = getSdeUnresolvedReasonSegment(cleanReason, reasonMarkers[2], reasonMarkers);
+  const reservedMatch = reservedSegment.match(/^(\d+)\s+kandidat\(er\) var allerede reservert av tidligere SDE-behov/i);
+  if(reservedMatch){
+    const example = getSdeUnresolvedReasonExample(reservedSegment);
+    lines.push(buildSdeUnresolvedReasonLineHtml(
+      "Reserverte spor",
+      `${reservedMatch[1]} reservert av tidligere SDE-behov${example ? `. Eksempel: ${example}` : ""}`
+    ));
+  }
+
+  const rejectedSegment = getSdeUnresolvedReasonSegment(cleanReason, reasonMarkers[3], reasonMarkers);
+  const rejectedMatch = rejectedSegment.match(/^(\d+)\s+kandidat\(er\) ble avvist av faste regler/i);
+  if(rejectedMatch){
+    const example = getSdeUnresolvedReasonExample(rejectedSegment);
+    lines.push(buildSdeUnresolvedReasonLineHtml(
+      "Faste regler",
+      `${rejectedMatch[1]} avvist av faste regler${example ? `. Eksempel: ${example}` : ""}`
+    ));
+  }
+
+  const weakCountSegment = getSdeUnresolvedReasonSegment(cleanReason, reasonMarkers[4], reasonMarkers);
+  const weakCountMatch = weakCountSegment.match(/^(\d+)\s+kandidat\(er\) ble vurdert som for svake etter evaluering/i);
+  if(weakCountMatch){
+    lines.push(buildSdeUnresolvedReasonLineHtml(
+      "For svake",
+      `${weakCountMatch[1]} vurdert som for svake etter evaluering`
+    ));
+  }
+
+  if(lines.length){
+    lines.push(buildSdeUnresolvedReasonLineHtml(
+      "Operativ avklaring",
+      "Vurder manuelt om svakt målspor, reserverte spor eller regelavslag kan håndteres."
+    ));
+
+    return `<div class="sde-unresolved-detail-why">
+      <strong>Hvorfor må dette avklares:</strong>
+      <div class="sde-unresolved-reason-list">${lines.join("")}</div>
+      <details class="sde-unresolved-reason-source">
+        <summary>Original forklaring</summary>
+        <p>${escapeHtml(cleanReason)}</p>
+      </details>
+    </div>`;
+  }
+
+  return `<div class="sde-unresolved-detail-why"><strong>Hvorfor må dette avklares:</strong> ${escapeHtml(cleanReason)}</div>`;
+}
+
 function buildSdeUnresolvedItemHtml(row, index){
   const vehicle = sanitizeVehicleValue(row?.vehicle) || "Ukjent kjøretøy";
   const arrivalPartText = row?.arrivalPart ? `/${row.arrivalPart}` : "";
@@ -19911,7 +20072,7 @@ function buildSdeUnresolvedItemHtml(row, index){
   const statusText = row?.recommendationConfidence
     ? `${String(row.recommendationConfidence).toUpperCase()}${row.recommendationScore !== undefined ? `, score ${row.recommendationScore}` : ""}`
     : (row?.status || row?.confidence || "");
-  const targetText = targetSlot || "Mangler tryggt målspor";
+  const targetText = targetSlot || "Mangler trygt målspor";
   const reason = row?.recommendationReason ||
     row?.reason ||
     row?.message ||
@@ -19932,7 +20093,7 @@ function buildSdeUnresolvedItemHtml(row, index){
   return `<article class="sde-unresolved-detail-card">
     <div class="sde-unresolved-detail-title">${escapeHtml(title)}</div>
     <dl class="sde-unresolved-detail-lines">${lines}</dl>
-    <div class="sde-unresolved-detail-why"><strong>Hvorfor må dette avklares:</strong> ${escapeHtml(reason)}</div>
+    ${buildSdeUnresolvedReasonHtml(reason, targetText)}
   </article>`;
 }
 
