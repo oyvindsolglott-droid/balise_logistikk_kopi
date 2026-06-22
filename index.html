@@ -20665,7 +20665,7 @@ function renderSdeSkiftebevegelser(){
   const activeReservationBlockingFixedSlotDiagnosticsHtml = (activeReservationBlockingFixedSlotDiagnostics.length || fixedSlotPriorityShadowDiagnostics.length)
     ? buildSdeDiagnosticSectionHtml({
         id:"active-reservation-fixed-slot",
-        title:"Fast operativ plassering blokkert – observasjon",
+        title:"Fast operativ plassering blokkert – Shadow-observasjon",
         count:Math.max(activeReservationBlockingFixedSlotDiagnostics.length, fixedSlotPriorityShadowDiagnostics.length),
         bodyHtml:[
           activeReservationBlockingFixedSlotDiagnostics.map(item =>
