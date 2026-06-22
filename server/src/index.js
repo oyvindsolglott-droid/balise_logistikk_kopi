@@ -6,6 +6,7 @@ const { getCurrentRevision, getMainState, writeTestNote } = require("./state");
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
 const TEST_NOTE_MAX_LENGTH = 500;
+const TEST_WRITES_ENABLED = process.env.SDE_ENABLE_TEST_WRITES === "1";
 
 const { db, databasePath } = openDatabase();
 const app = express();
@@ -51,6 +52,14 @@ app.get("/api/events", (req, res) => {
 });
 
 app.post("/api/actions/test-note", (req, res) => {
+  if(!TEST_WRITES_ENABLED){
+    return res.status(403).json({
+      ok: false,
+      error: "test_writes_disabled",
+      message: "Test writes are disabled. Set SDE_ENABLE_TEST_WRITES=1 to enable this endpoint."
+    });
+  }
+
   const validation = validateTestNotePayload(req.body);
   if(!validation.ok){
     return res.status(400).json({

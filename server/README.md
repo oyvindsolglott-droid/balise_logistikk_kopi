@@ -82,9 +82,13 @@ curl http://<mac-mini-lan-ip>:8787/api/health
 - `GET /api/stream`
 - `POST /api/actions/test-note`
 
-`POST /api/actions/test-note` er kun en server-write-test. Den krever
-`expectedRevision`, returnerer `409 Conflict` ved revision-konflikt og skal ikke
-kobles til PWA-en. Det finnes ingen operative write-endepunkter ennå.
+`POST /api/actions/test-note` er kun en server-write-test og er deaktivert som
+standard. Den krever `SDE_ENABLE_TEST_WRITES=1`, `expectedRevision`, returnerer
+`409 Conflict` ved revision-konflikt og skal ikke kobles til PWA-en. Test-write
+bør kjøres mot separat testdatabase, for eksempel med
+`SDE_SERVER_DB_PATH=/tmp/sde-server-b1-test.sqlite3`. Produksjonsserveren skal
+ikke bruke test-writes med mindre dette er en bevisst kontrollert test. Det
+finnes ingen operative write-endepunkter ennå.
 
 ## Neste fase
 
