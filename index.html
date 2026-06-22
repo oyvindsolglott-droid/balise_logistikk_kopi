@@ -2415,6 +2415,87 @@ button{padding:12px 12px}
   line-height:1.45;
 }
 
+.sde-shift-changes{
+  margin:-8px 0 20px;
+  border:1px solid rgba(155,220,255,.20);
+  border-radius:18px;
+  padding:14px 16px;
+  background:rgba(255,255,255,.055);
+  color:#dbeafe;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+.sde-shift-changes-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  margin-bottom:10px;
+}
+
+.sde-shift-changes-title{
+  display:block;
+  color:#9bdcff;
+  font-size:12px;
+  font-weight:900;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+}
+
+.sde-shift-changes-time{
+  color:#bfd0e4;
+  font-size:12px;
+  line-height:1.35;
+  text-align:right;
+}
+
+.sde-shift-changes-summary{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:10px;
+}
+
+.sde-shift-changes-pill{
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:999px;
+  padding:5px 9px;
+  background:rgba(255,255,255,.06);
+  color:#eff6ff;
+  font-size:12px;
+  font-weight:800;
+}
+
+.sde-shift-changes-list{
+  display:grid;
+  gap:9px;
+}
+
+.sde-shift-changes-group strong{
+  display:block;
+  margin-bottom:5px;
+  color:#e0f2fe;
+  font-size:13px;
+}
+
+.sde-shift-changes-group ul{
+  display:grid;
+  gap:4px;
+  margin:0;
+  padding:0;
+  list-style:none;
+}
+
+.sde-shift-changes-group li{
+  color:#dbeafe;
+  font-size:13px;
+  line-height:1.38;
+}
+
+.sde-shift-changes-more{
+  color:#bfd0e4;
+}
+
 .sde-unresolved-details-panel{
   margin:-6px 0 20px;
   border:1px solid rgba(255,209,102,.32);
@@ -15559,6 +15640,332 @@ function getSdeMoveNeedKey(row){
   ].join("|");
 }
 
+const SDE_SHIFT_LAST_SNAPSHOT_KEY = "sde_shift_last_snapshot_v1";
+let sdeShiftChangesCache = null;
+
+function readSdeShiftLastSnapshot(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem(SDE_SHIFT_LAST_SNAPSHOT_KEY) || "null");
+    if(!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    if(parsed.version !== 1 || !parsed.signature) return null;
+    return parsed;
+  }catch(_error){
+    return null;
+  }
+}
+
+function writeSdeShiftLastSnapshot(snapshot){
+  try{
+    if(!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) return;
+    localStorage.setItem(SDE_SHIFT_LAST_SNAPSHOT_KEY, JSON.stringify(snapshot));
+  }catch(_error){
+  }
+}
+
+function getSdeShiftSnapshotDataContext(){
+  const today = state.baliseMetaToday || {};
+  const tomorrow = state.baliseMetaTomorrow || {};
+  return {
+    todayDate:String(today.date || ""),
+    tomorrowDate:String(tomorrow.date || ""),
+    todayGeneratedAt:String(today.generated_at || today.updatedAt || ""),
+    tomorrowGeneratedAt:String(tomorrow.generated_at || tomorrow.updatedAt || "")
+  };
+}
+
+function getSdeShiftSnapshotContextKey(snapshot){
+  return [
+    String(snapshot?.todayDate || ""),
+    String(snapshot?.tomorrowDate || "")
+  ].join("|");
+}
+
+function getSdeShiftSnapshotHash(value){
+  const text = String(value || "");
+  let hash = 0;
+  for(let i = 0; i < text.length; i += 1){
+    hash = (Math.imul(31, hash) + text.charCodeAt(i)) | 0;
+  }
+  return `h${(hash >>> 0).toString(16)}`;
+}
+
+function hasSdeShiftSnapshotKeyContent(key){
+  return String(key || "").replaceAll("|", "").trim().length > 0;
+}
+
+function getSdeShiftSnapshotItemKey(row, index, prefix){
+  const key = getSdeMoveNeedKey(row);
+  if(hasSdeShiftSnapshotKeyContent(key)) return key;
+  return `${prefix}|${index}`;
+}
+
+function compareSdeShiftSnapshotItems(a, b){
+  return String(a?.key || "").localeCompare(String(b?.key || ""), "nb") ||
+    String(a?.vehicle || "").localeCompare(String(b?.vehicle || ""), "nb");
+}
+
+function buildSdeShiftSnapshotMove(row, index, prefix="move"){
+  return {
+    key:getSdeShiftSnapshotItemKey(row, index, prefix),
+    vehicle:sanitizeVehicleValue(row?.vehicle) || "Ukjent",
+    fromSlot:normalizeSlot(row?.fromSlot || row?.arrivalSlot),
+    toSlot:normalizeSlot(row?.toSlot || row?.recommendedSlot),
+    arrivalTrain:normalizeTognr(row?.arrivalTrain),
+    arrivalPart:String(row?.arrivalPart || "").trim(),
+    arrivalTime:normalizeTimeString(row?.arrivalTime) || String(row?.arrivalTime || "").trim(),
+    arrivalTrainText:String(row?.arrivalTrainText || "").trim(),
+    nextDepartureTrain:normalizeTognr(row?.nextDepartureTrain),
+    nextDeparturePart:String(row?.nextDeparturePart || "").trim(),
+    nextDepartureTime:normalizeTimeString(row?.nextDepartureTime) || String(row?.nextDepartureTime || "").trim(),
+    nextDepartureText:String(row?.nextDepartureText || row?.departureTrainText || "").trim()
+  };
+}
+
+function buildSdeShiftSnapshotUnresolved(row, index){
+  return {
+    ...buildSdeShiftSnapshotMove(row, index, "unresolved"),
+    reason:String(
+      row?.recommendationReason ||
+      row?.reason ||
+      row?.message ||
+      row?.parkingInstruction ||
+      ""
+    ).trim()
+  };
+}
+
+function buildSdeShiftSnapshotSignature(snapshot){
+  const payload = {
+    score:snapshot.score,
+    movesCount:snapshot.movesCount,
+    unresolvedCount:snapshot.unresolvedCount,
+    moves:snapshot.moves.map(item => ({
+      key:item.key,
+      vehicle:item.vehicle,
+      fromSlot:item.fromSlot,
+      toSlot:item.toSlot,
+      arrivalTrain:item.arrivalTrain,
+      arrivalPart:item.arrivalPart,
+      arrivalTime:item.arrivalTime,
+      nextDepartureTrain:item.nextDepartureTrain,
+      nextDeparturePart:item.nextDeparturePart,
+      nextDepartureTime:item.nextDepartureTime
+    })),
+    unresolved:snapshot.unresolved.map(item => ({
+      key:item.key,
+      vehicle:item.vehicle,
+      fromSlot:item.fromSlot,
+      arrivalTrain:item.arrivalTrain,
+      arrivalPart:item.arrivalPart,
+      arrivalTime:item.arrivalTime,
+      nextDepartureTrain:item.nextDepartureTrain,
+      nextDeparturePart:item.nextDeparturePart,
+      reason:item.reason
+    }))
+  };
+  return getSdeShiftSnapshotHash(JSON.stringify(payload));
+}
+
+function buildSdeShiftSnapshot(data){
+  const context = getSdeShiftSnapshotDataContext();
+  const moves = (Array.isArray(data?.moves) ? data.moves : [])
+    .map((row, index) => buildSdeShiftSnapshotMove(row, index))
+    .sort(compareSdeShiftSnapshotItems);
+  const unresolved = (Array.isArray(data?.unresolved) ? data.unresolved : [])
+    .map((row, index) => buildSdeShiftSnapshotUnresolved(row, index))
+    .sort(compareSdeShiftSnapshotItems);
+  const snapshot = {
+    version:1,
+    timestamp:new Date().toISOString(),
+    ...context,
+    score:Number(data?.score) || 0,
+    movesCount:Number(data?.baseMoveCount ?? data?.moves?.length) || 0,
+    unresolvedCount:Number(data?.unresolvedCount) || 0,
+    moves,
+    unresolved,
+    signature:""
+  };
+
+  snapshot.signature = buildSdeShiftSnapshotSignature(snapshot);
+  return snapshot;
+}
+
+function buildSdeShiftSnapshotItemMap(items=[]){
+  const map = new Map();
+  (Array.isArray(items) ? items : []).forEach(item=>{
+    const key = String(item?.key || "");
+    if(key && !map.has(key)) map.set(key, item);
+  });
+  return map;
+}
+
+function buildSdeShiftChangesDiff(previous, current){
+  const summary = [];
+  if(Number(previous.score) !== Number(current.score)){
+    summary.push({label:"Score", from:previous.score, to:current.score});
+  }
+  if(Number(previous.movesCount) !== Number(current.movesCount)){
+    summary.push({label:"Skifteforslag", from:previous.movesCount, to:current.movesCount});
+  }
+  if(Number(previous.unresolvedCount) !== Number(current.unresolvedCount)){
+    summary.push({label:"Uløste saker", from:previous.unresolvedCount, to:current.unresolvedCount});
+  }
+
+  const previousMoves = buildSdeShiftSnapshotItemMap(previous.moves);
+  const currentMoves = buildSdeShiftSnapshotItemMap(current.moves);
+  const previousUnresolved = buildSdeShiftSnapshotItemMap(previous.unresolved);
+  const currentUnresolved = buildSdeShiftSnapshotItemMap(current.unresolved);
+  const newMoves = current.moves.filter(item => !previousMoves.has(item.key));
+  const removedMoves = previous.moves.filter(item => !currentMoves.has(item.key));
+  const changedTargets = current.moves
+    .map(item => {
+      const before = previousMoves.get(item.key);
+      if(!before) return null;
+      if(normalizeSlot(before.toSlot) === normalizeSlot(item.toSlot)) return null;
+      return {before, after:item};
+    })
+    .filter(Boolean);
+  const newUnresolved = current.unresolved.filter(item => !previousUnresolved.has(item.key));
+  const removedUnresolved = previous.unresolved.filter(item => !currentUnresolved.has(item.key));
+  const hasChanges = Boolean(
+    summary.length ||
+    newMoves.length ||
+    removedMoves.length ||
+    changedTargets.length ||
+    newUnresolved.length ||
+    removedUnresolved.length
+  );
+
+  return {
+    previousTimestamp:previous.timestamp || "",
+    currentTimestamp:current.timestamp || "",
+    summary,
+    newMoves,
+    removedMoves,
+    changedTargets,
+    newUnresolved,
+    removedUnresolved,
+    hasChanges
+  };
+}
+
+function formatSdeShiftSnapshotTrain(train, part, time){
+  const cleanTrain = normalizeTognr(train);
+  const cleanPart = String(part || "").trim();
+  const cleanTime = String(time || "").trim();
+  if(!cleanTrain) return "";
+  return `${cleanTrain}${cleanPart ? `/${cleanPart}` : ""}${cleanTime ? ` kl. ${cleanTime}` : ""}`;
+}
+
+function formatSdeShiftSnapshotMoveText(item){
+  const vehicle = item?.vehicle || "Ukjent";
+  const fromSlot = normalizeSlot(item?.fromSlot) || "?";
+  const toSlot = normalizeSlot(item?.toSlot) || "?";
+  const arrival = item?.arrivalTrainText ||
+    formatSdeShiftSnapshotTrain(item?.arrivalTrain, item?.arrivalPart, item?.arrivalTime);
+  const departure = item?.nextDepartureText ||
+    formatSdeShiftSnapshotTrain(item?.nextDepartureTrain, item?.nextDeparturePart, item?.nextDepartureTime);
+  return [
+    vehicle,
+    `${fromSlot} → ${toSlot}`,
+    arrival ? `Ankomst ${arrival}` : "",
+    departure ? `Neste avgang ${departure}` : ""
+  ].filter(Boolean).join(" · ");
+}
+
+function formatSdeShiftSnapshotUnresolvedText(item){
+  const vehicle = item?.vehicle || "Ukjent";
+  const fromSlot = normalizeSlot(item?.fromSlot);
+  const arrival = item?.arrivalTrainText ||
+    formatSdeShiftSnapshotTrain(item?.arrivalTrain, item?.arrivalPart, item?.arrivalTime);
+  const departure = item?.nextDepartureText ||
+    formatSdeShiftSnapshotTrain(item?.nextDepartureTrain, item?.nextDeparturePart, item?.nextDepartureTime);
+  return [
+    vehicle,
+    fromSlot ? `Fra ${fromSlot}` : "",
+    arrival ? `Ankomst ${arrival}` : "",
+    departure ? `Neste avgang ${departure}` : "",
+    item?.reason || ""
+  ].filter(Boolean).join(" · ");
+}
+
+function buildSdeShiftChangeGroupHtml(title, items, formatter){
+  const rows = Array.isArray(items) ? items : [];
+  if(!rows.length) return "";
+  const visible = rows.slice(0, 6);
+  const moreCount = rows.length - visible.length;
+  return `<div class="sde-shift-changes-group">
+    <strong>${escapeHtml(title)}</strong>
+    <ul>
+      ${visible.map(item => `<li>${escapeHtml(formatter(item))}</li>`).join("")}
+      ${moreCount > 0 ? `<li class="sde-shift-changes-more">+${moreCount} flere</li>` : ""}
+    </ul>
+  </div>`;
+}
+
+function buildSdeShiftChangesSinceLastHtml(diff){
+  if(!diff?.hasChanges) return "";
+  const summaryHtml = diff.summary.length
+    ? `<div class="sde-shift-changes-summary">
+        ${diff.summary.map(item => `<span class="sde-shift-changes-pill">${escapeHtml(item.label)} ${escapeHtml(String(item.from))} → ${escapeHtml(String(item.to))}</span>`).join("")}
+      </div>`
+    : "";
+  const targetChanges = diff.changedTargets.map(item =>
+    `${item.after.vehicle || "Ukjent"}: ${normalizeSlot(item.before.fromSlot) || "?"} → ${normalizeSlot(item.before.toSlot) || "?"} ble ${normalizeSlot(item.after.toSlot) || "?"}`
+  );
+  const previousTime = diff.previousTimestamp ? formatSdeMoveActionClock(diff.previousTimestamp) : "";
+  const currentTime = diff.currentTimestamp ? formatSdeMoveActionClock(diff.currentTimestamp) : "";
+  const timeText = [previousTime, currentTime].filter(Boolean).join(" → ");
+
+  return `<section class="sde-shift-changes" aria-label="Endringer siden sist">
+    <div class="sde-shift-changes-head">
+      <span class="sde-shift-changes-title">Endringer siden sist</span>
+      ${timeText ? `<span class="sde-shift-changes-time">${escapeHtml(timeText)}</span>` : ""}
+    </div>
+    ${summaryHtml}
+    <div class="sde-shift-changes-list">
+      ${buildSdeShiftChangeGroupHtml("Nye skifteforslag", diff.newMoves, formatSdeShiftSnapshotMoveText)}
+      ${buildSdeShiftChangeGroupHtml("Fjernede skifteforslag", diff.removedMoves, formatSdeShiftSnapshotMoveText)}
+      ${buildSdeShiftChangeGroupHtml("Endret målspor", targetChanges, item => item)}
+      ${buildSdeShiftChangeGroupHtml("Nye uløste saker", diff.newUnresolved, formatSdeShiftSnapshotUnresolvedText)}
+      ${buildSdeShiftChangeGroupHtml("Fjernede uløste saker", diff.removedUnresolved, formatSdeShiftSnapshotUnresolvedText)}
+    </div>
+  </section>`;
+}
+
+function prepareSdeShiftChangesSinceLast(currentSnapshot){
+  if(!currentSnapshot) return {html:"", snapshotToWrite:null};
+  const previousSnapshot = readSdeShiftLastSnapshot();
+  if(!previousSnapshot){
+    sdeShiftChangesCache = null;
+    return {html:"", snapshotToWrite:currentSnapshot};
+  }
+
+  if(getSdeShiftSnapshotContextKey(previousSnapshot) !== getSdeShiftSnapshotContextKey(currentSnapshot)){
+    sdeShiftChangesCache = null;
+    return {html:"", snapshotToWrite:currentSnapshot};
+  }
+
+  if(previousSnapshot.signature === currentSnapshot.signature){
+    if(sdeShiftChangesCache?.signature === currentSnapshot.signature){
+      return {
+        html:buildSdeShiftChangesSinceLastHtml(sdeShiftChangesCache.diff),
+        snapshotToWrite:null
+      };
+    }
+    return {html:"", snapshotToWrite:null};
+  }
+
+  const diff = buildSdeShiftChangesDiff(previousSnapshot, currentSnapshot);
+  sdeShiftChangesCache = diff.hasChanges
+    ? {signature:currentSnapshot.signature, previousSignature:previousSnapshot.signature, diff}
+    : null;
+  return {
+    html:buildSdeShiftChangesSinceLastHtml(diff),
+    snapshotToWrite:currentSnapshot
+  };
+}
+
 function isSdeManualOverrideEligibleRow(row){
   return Boolean(
     row &&
@@ -19857,6 +20264,9 @@ function renderSdeSkiftebevegelser(){
   if(unresolvedCount <= 0) sdeUnresolvedDetailsVisible = false;
   const scoreClass = getSdeShiftScoreClass(data.score);
   const scoreExplanationHtml = buildSdeShiftScoreExplanationHtml(data);
+  const sdeCurrentShiftSnapshot = buildSdeShiftSnapshot(data);
+  const sdeChangesSinceLast = prepareSdeShiftChangesSinceLast(sdeCurrentShiftSnapshot);
+  const sdeChangesSinceLastHtml = sdeChangesSinceLast.html;
   const unresolvedDetailsHtml = sdeUnresolvedDetailsVisible
     ? buildSdeUnresolvedDetailsHtml(data.unresolved)
     : "";
@@ -20182,6 +20592,7 @@ function renderSdeSkiftebevegelser(){
     </div>
     ${unresolvedDetailsHtml}
     ${scoreExplanationHtml}
+    ${sdeChangesSinceLastHtml}
     ${learningDiagnosticsHtml}
 
     <div class="sde-shift-section-title">
@@ -20212,6 +20623,10 @@ function renderSdeSkiftebevegelser(){
     ${spor3PlatformClearanceDiagnosticsHtml}
     ${unresolvedHtml}${flexibleUnknownHtml}
   `;
+
+  if(sdeChangesSinceLast.snapshotToWrite){
+    writeSdeShiftLastSnapshot(sdeChangesSinceLast.snapshotToWrite);
+  }
 
   const detailsToggle = document.getElementById("sdeShiftDetailsToggle");
   if(detailsToggle){
