@@ -20084,6 +20084,28 @@ function buildSdeDiagnosticSectionHtml({id, title, count, bodyHtml}){
   </div>`;
 }
 
+function buildSdeLazyDiagnosticSectionHtml({id, title, count, bodyBuilder, emptyText}){
+  const key = String(id || "").trim();
+  const collapsed = isSdeDiagnosticSectionCollapsed(key);
+  if(collapsed){
+    return buildSdeDiagnosticSectionHtml({id:key, title, count});
+  }
+
+  const result = typeof bodyBuilder === "function" ? bodyBuilder() : {};
+  const resolvedCount = result && Object.prototype.hasOwnProperty.call(result, "count")
+    ? result.count
+    : count;
+  const bodyHtml = result?.bodyHtml ||
+    `<div class="sde-shift-unresolved-item">${escapeHtml(emptyText || "Ingen aktive funn i denne diagnosen.")}</div>`;
+
+  return buildSdeDiagnosticSectionHtml({
+    id:key,
+    title,
+    count:resolvedCount,
+    bodyHtml
+  });
+}
+
 function toggleSdeShiftDetails(){
   sdeShiftDetailsExpanded = !sdeShiftDetailsExpanded;
 
@@ -20848,146 +20870,215 @@ function renderSdeSkiftebevegelser(){
       })
     : "";
 
-  const packageConflictDiagnostics = buildSdePackageConflictDiagnostics(data.moves, data.unresolved);
-  const packageConflictDiagnosticsHtml = packageConflictDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const lazyDiagnosticCount = "Åpnes ved behov";
+  const hasPackagePrioritySignals = pairDiagnostics.length ||
+    packageDiagnostics.some(item => item?.severity === "warning" || item?.severity === "split");
+
+  const packageConflictDiagnosticsHtml = hasPackagePrioritySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"package-conflict",
         title:"Pakke-/parkonflikt",
-        count:packageConflictDiagnostics.length,
-        bodyHtml:packageConflictDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdePackageConflictDiagnostics(data.moves, data.unresolved);
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const washTrackRelevanceDiagnostics = buildSdeWashTrackRelevanceDiagnostics({
-    linearTrackDiagnostics,
-    pairDiagnostics,
-    packageDiagnostics,
-    packageConflictDiagnostics
-  });
-  const washTrackRelevanceDiagnosticsHtml = washTrackRelevanceDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const hasWashTrackRelevanceSignals = linearTrackDiagnostics.length ||
+    pairDiagnostics.length ||
+    packageDiagnostics.some(item => item?.severity === "warning" || item?.severity === "split") ||
+    hasPackagePrioritySignals;
+  const washTrackRelevanceDiagnosticsHtml = hasWashTrackRelevanceSignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"wash-track-relevance",
         title:"Vaskesporet – teoretisk relevans",
-        count:washTrackRelevanceDiagnostics.length,
-        bodyHtml:washTrackRelevanceDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const packageConflictDiagnostics = buildSdePackageConflictDiagnostics(data.moves, data.unresolved);
+          const rows = buildSdeWashTrackRelevanceDiagnostics({
+            linearTrackDiagnostics,
+            pairDiagnostics,
+            packageDiagnostics,
+            packageConflictDiagnostics
+          });
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-observation-item"><strong>${escapeHtml(item.title)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const washTrackElasticityNeedDiagnostics = buildSdeWashTrackElasticityNeedDiagnostics({
-    data,
-    linearTrackDiagnostics,
-    pairDiagnostics,
-    packageDiagnostics,
-    packageConflictDiagnostics
-  });
-  const washTrackElasticityNeedDiagnosticsHtml = washTrackElasticityNeedDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const hasWashTrackElasticitySignals = data.unresolved?.length ||
+    data.flexibleUnknownParking?.length ||
+    (Math.max(0, (Number(data.totalArrivals) || 0) - (Number(data.solvedArrivals) || 0)) > 0) ||
+    hasWashTrackRelevanceSignals;
+  const washTrackElasticityNeedDiagnosticsHtml = hasWashTrackElasticitySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"wash-track-elasticity-need",
         title:"Vaskesporet – elastisitetsbehov",
-        count:washTrackElasticityNeedDiagnostics.length,
-        bodyHtml:washTrackElasticityNeedDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const packageConflictDiagnostics = buildSdePackageConflictDiagnostics(data.moves, data.unresolved);
+          const rows = buildSdeWashTrackElasticityNeedDiagnostics({
+            data,
+            linearTrackDiagnostics,
+            pairDiagnostics,
+            packageDiagnostics,
+            packageConflictDiagnostics
+          });
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-observation-item"><strong>${escapeHtml(item.title)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const packageRescueDiagnostics = buildSdePackageRescueDiagnostics(data.moves, data.unresolved);
-  const packageRescueDiagnosticsHtml = packageRescueDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const packageRescueDiagnosticsHtml = hasPackagePrioritySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"package-rescue",
         title:"Mulig pakkeredning",
-        count:packageRescueDiagnostics.length,
-        bodyHtml:packageRescueDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdePackageRescueDiagnostics(data.moves, data.unresolved);
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const packagePriorityDiagnostics = buildSdePackagePriorityDiagnostics(data.moves, data.unresolved);
-  const packagePriorityDiagnosticsHtml = packagePriorityDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const packagePriorityDiagnosticsHtml = hasPackagePrioritySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"package-priority",
         title:"Pakkeprioritet – tidlig beskyttelse",
-        count:packagePriorityDiagnostics.length,
-        bodyHtml:packagePriorityDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdePackagePriorityDiagnostics(data.moves, data.unresolved);
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const packagePrioritySimulationDiagnostics = buildSdePackagePrioritySimulationDiagnostics(data.moves, data.unresolved);
-  const packagePrioritySimulationDiagnosticsHtml = packagePrioritySimulationDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const packagePrioritySimulationDiagnosticsHtml = hasPackagePrioritySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"package-priority-simulation",
         title:"Pakkeprioritet – simulert effekt",
-        count:packagePrioritySimulationDiagnostics.length,
-        bodyHtml:packagePrioritySimulationDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdePackagePrioritySimulationDiagnostics(data.moves, data.unresolved);
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const packagePriorityCandidateMotorDiagnostics = buildSdePackagePriorityCandidateMotorDiagnostics(data.moves, data.unresolved);
-  const packagePriorityCandidateMotorDiagnosticsHtml = packagePriorityCandidateMotorDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const packagePriorityCandidateMotorDiagnosticsHtml = hasPackagePrioritySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"package-priority-candidate-motor",
         title:"Pakkeprioritet – kandidatmotor",
-        count:packagePriorityCandidateMotorDiagnostics.length,
-        bodyHtml:packagePriorityCandidateMotorDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdePackagePriorityCandidateMotorDiagnostics(data.moves, data.unresolved);
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const packagePriorityActiveTestModeDiagnostics = buildSdePackagePriorityActiveTestModeDiagnostics(data.moves, data.unresolved);
-  const packagePriorityActiveTestModeDiagnosticsHtml = packagePriorityActiveTestModeDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const packagePriorityActiveTestModeDiagnosticsHtml = hasPackagePrioritySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"package-priority-active-test",
         title:"Pakkeprioritet – aktiv testmodus",
-        count:packagePriorityActiveTestModeDiagnostics.length,
-        bodyHtml:packagePriorityActiveTestModeDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdePackagePriorityActiveTestModeDiagnostics(data.moves, data.unresolved);
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const packagePriorityLimitedActiveMotorDiagnostics = buildSdePackagePriorityLimitedActiveMotorDiagnostics(data.moves, data.unresolved);
-  const packagePriorityLimitedActiveMotorDiagnosticsHtml = packagePriorityLimitedActiveMotorDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const packagePriorityLimitedActiveMotorDiagnosticsHtml = hasPackagePrioritySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"package-priority-limited-active",
         title:"Pakkeprioritet – aktiv motor, konsekvens",
-        count:packagePriorityLimitedActiveMotorDiagnostics.length,
-        bodyHtml:packagePriorityLimitedActiveMotorDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdePackagePriorityLimitedActiveMotorDiagnostics(data.moves, data.unresolved);
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const packagePrioritySafeActiveMotorDiagnostics = buildSdePackagePrioritySafeActiveMotorDiagnostics(data.moves, data.unresolved);
-  const packagePrioritySafeActiveMotorDiagnosticsHtml = packagePrioritySafeActiveMotorDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const packagePrioritySafeActiveMotorDiagnosticsHtml = hasPackagePrioritySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"package-priority-safe-active",
         title:"Pakkeprioritet – trygg aktiv motor",
-        count:packagePrioritySafeActiveMotorDiagnostics.length,
-        bodyHtml:packagePrioritySafeActiveMotorDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdePackagePrioritySafeActiveMotorDiagnostics(data.moves, data.unresolved);
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
-  const blockerRescueRejectionDiagnostics = buildSdeBlockerRescueRejectionDiagnostics(data.moves, data.unresolved);
-  const blockerRescueRejectionDiagnosticsHtml = blockerRescueRejectionDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const blockerRescueRejectionDiagnosticsHtml = hasPackagePrioritySignals
+    ? buildSdeLazyDiagnosticSectionHtml({
         id:"blocker-rescue-rejection",
         title:"Blokkerredning – forklar avslag",
-        count:blockerRescueRejectionDiagnostics.length,
-        bodyHtml:blockerRescueRejectionDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdeBlockerRescueRejectionDiagnostics(data.moves, data.unresolved);
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
+          };
+        }
       })
     : "";
 
@@ -21015,17 +21106,20 @@ function renderSdeSkiftebevegelser(){
       })
     : "";
 
-  const spor3PlatformClearanceDiagnostics = buildSdeSpor3PlatformClearanceDiagnostics();
-  const spor3PlatformClearanceDiagnosticsHtml = spor3PlatformClearanceDiagnostics.length
-    ? buildSdeDiagnosticSectionHtml({
+  const spor3PlatformClearanceDiagnosticsHtml = buildSdeLazyDiagnosticSectionHtml({
         id:"spor3-platform-clearance",
         title:"Spor 3-forberedelse – plattformrydding, test",
-        count:spor3PlatformClearanceDiagnostics.length,
-        bodyHtml:spor3PlatformClearanceDiagnostics.map(item =>
+        count:lazyDiagnosticCount,
+        bodyBuilder:()=>{
+          const rows = buildSdeSpor3PlatformClearanceDiagnostics();
+          return {
+            count:rows.length,
+            bodyHtml:rows.map(item =>
             `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.vehicle)}</strong><br>${escapeHtml(item.text)}</div>`
           ).join("")
-      })
-    : "";
+          };
+        }
+      });
   const nightPlacementOverviewHtml = sdeNightPlacementVisible
     ? renderSdeNightPlacementOverview(data)
     : "";
