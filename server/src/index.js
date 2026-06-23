@@ -3,6 +3,7 @@ const path = require("node:path");
 const express = require("express");
 const { getDatabasePath, openDatabase } = require("./db");
 const { getEventsSinceRevision, parseSinceRevision, writeSseEvent } = require("./events");
+const { getSchemaStatus } = require("./schemaStatus");
 const { getCurrentRevision, getMainState, writeActionContractTest, writeTestNote } = require("./state");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
@@ -45,6 +46,7 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/server/status", (_req, res) => {
   const revision = getCurrentRevision(db);
+  const schemaStatus = getSchemaStatus(db);
   res.json({
     ok: true,
     service: "sde-server",
@@ -58,6 +60,7 @@ app.get("/api/server/status", (_req, res) => {
     databasePathConfigured: Boolean(process.env.SDE_SERVER_DB_PATH),
     databaseFile: path.basename(databasePath),
     testWritesEnabled: TEST_WRITES_ENABLED,
+    ...schemaStatus,
     pwaConnected: false,
     operationalWritesEnabled: false
   });

@@ -798,6 +798,29 @@ Filer som fortsatt ikke skal røres i B10D: `server/src/*.js`,
 `server/scripts/*.js`, `server/package.json`, `server/package-lock.json`,
 `index.html`, runtime databasefiler og `node_modules`.
 
+## B11 read-only schema/status
+
+B11 utvider `GET /api/server/status` med read-only schema/readiness-felter. Det
+gjøres ingen migration, ingen schema-write, ingen state/revision-endring og ingen
+PWA-kobling.
+
+Statusfeltene er:
+
+- `schemaUserVersion`
+- `actionsTablePresent`
+- `actionsSchemaReady`
+- `migrationRequired`
+- `migrationsEnabled`
+
+`migrationsEnabled` skal være `false` i B11. `actionsSchemaReady` er bare `true`
+hvis `actions`-tabellen finnes og matcher forventet read-only struktur. Hvis
+produksjonsdatabasen ikke har `actions`-tabell ennå, er forventet status
+`actionsTablePresent: false`, `actionsSchemaReady: false` og
+`migrationRequired: true`. Det er readiness-informasjon, ikke en runtime-feil.
+
+B11 skal ikke koble `actionsMigration` til `openDatabase()` eller serverruntime,
+og normal serverstart skal fortsatt ikke auto-migrere schema.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
