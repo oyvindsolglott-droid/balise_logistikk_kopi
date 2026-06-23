@@ -20047,6 +20047,9 @@ let sdeNightPlacementVisible = false;
 let sdeUnresolvedDetailsVisible = false;
 let sdeLearningDiagnosticsVisible = false;
 const sdeDiagnosticSectionExpanded = {};
+const SDE_LAZY_DIAGNOSTIC_COUNT_TEXT = "Åpnes ved behov";
+let sdeShiftLastRenderedData = null;
+let sdeShiftLastDiagnosticContext = null;
 
 function isSdeDiagnosticSectionCollapsed(id){
   const key = String(id || "").trim();
@@ -20063,6 +20066,7 @@ function toggleSdeDiagnosticSection(id){
     sdeDiagnosticSectionExpanded[key] = true;
   }
 
+  if(renderSdeDiagnosticSectionOnly(key)) return;
   renderSdeSkiftebevegelser();
 }
 
@@ -20108,6 +20112,181 @@ function buildSdeLazyDiagnosticSectionHtml({id, title, count, bodyBuilder, empty
     count:resolvedCount,
     bodyHtml
   });
+}
+
+function getSdeLazyDiagnosticSectionDefinition(id, data, context={}){
+  const key = String(id || "").trim();
+  if(!key || !data) return null;
+
+  const linearTrackDiagnostics = Array.isArray(context.linearTrackDiagnostics) ? context.linearTrackDiagnostics : [];
+  const pairDiagnostics = Array.isArray(context.pairDiagnostics) ? context.pairDiagnostics : [];
+  const packageDiagnostics = Array.isArray(context.packageDiagnostics) ? context.packageDiagnostics : [];
+  const packageRows = () => buildSdePackageConflictDiagnostics(data.moves, data.unresolved);
+  const unresolvedItem = item =>
+    `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.train)}</strong><br>${escapeHtml(item.text)}</div>`;
+  const observationItem = item =>
+    `<div class="sde-shift-observation-item"><strong>${escapeHtml(item.title)}</strong><br>${escapeHtml(item.text)}</div>`;
+  const definition = (title, bodyBuilder) => ({
+    id:key,
+    title,
+    count:SDE_LAZY_DIAGNOSTIC_COUNT_TEXT,
+    bodyBuilder
+  });
+
+  if(key === "package-conflict"){
+    return definition("Pakke-/parkonflikt", ()=>{
+      const rows = packageRows();
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(unresolvedItem).join("")
+      };
+    });
+  }
+
+  if(key === "wash-track-relevance"){
+    return definition("Vaskesporet – teoretisk relevans", ()=>{
+      const rows = buildSdeWashTrackRelevanceDiagnostics({
+        linearTrackDiagnostics,
+        pairDiagnostics,
+        packageDiagnostics,
+        packageConflictDiagnostics:packageRows()
+      });
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(observationItem).join("")
+      };
+    });
+  }
+
+  if(key === "wash-track-elasticity-need"){
+    return definition("Vaskesporet – elastisitetsbehov", ()=>{
+      const rows = buildSdeWashTrackElasticityNeedDiagnostics({
+        data,
+        linearTrackDiagnostics,
+        pairDiagnostics,
+        packageDiagnostics,
+        packageConflictDiagnostics:packageRows()
+      });
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(observationItem).join("")
+      };
+    });
+  }
+
+  if(key === "package-rescue"){
+    return definition("Mulig pakkeredning", ()=>{
+      const rows = buildSdePackageRescueDiagnostics(data.moves, data.unresolved);
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(unresolvedItem).join("")
+      };
+    });
+  }
+
+  if(key === "package-priority"){
+    return definition("Pakkeprioritet – tidlig beskyttelse", ()=>{
+      const rows = buildSdePackagePriorityDiagnostics(data.moves, data.unresolved);
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(unresolvedItem).join("")
+      };
+    });
+  }
+
+  if(key === "package-priority-simulation"){
+    return definition("Pakkeprioritet – simulert effekt", ()=>{
+      const rows = buildSdePackagePrioritySimulationDiagnostics(data.moves, data.unresolved);
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(unresolvedItem).join("")
+      };
+    });
+  }
+
+  if(key === "package-priority-candidate-motor"){
+    return definition("Pakkeprioritet – kandidatmotor", ()=>{
+      const rows = buildSdePackagePriorityCandidateMotorDiagnostics(data.moves, data.unresolved);
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(unresolvedItem).join("")
+      };
+    });
+  }
+
+  if(key === "package-priority-active-test"){
+    return definition("Pakkeprioritet – aktiv testmodus", ()=>{
+      const rows = buildSdePackagePriorityActiveTestModeDiagnostics(data.moves, data.unresolved);
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(unresolvedItem).join("")
+      };
+    });
+  }
+
+  if(key === "package-priority-limited-active"){
+    return definition("Pakkeprioritet – aktiv motor, konsekvens", ()=>{
+      const rows = buildSdePackagePriorityLimitedActiveMotorDiagnostics(data.moves, data.unresolved);
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(unresolvedItem).join("")
+      };
+    });
+  }
+
+  if(key === "package-priority-safe-active"){
+    return definition("Pakkeprioritet – trygg aktiv motor", ()=>{
+      const rows = buildSdePackagePrioritySafeActiveMotorDiagnostics(data.moves, data.unresolved);
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(unresolvedItem).join("")
+      };
+    });
+  }
+
+  if(key === "blocker-rescue-rejection"){
+    return definition("Blokkerredning – forklar avslag", ()=>{
+      const rows = buildSdeBlockerRescueRejectionDiagnostics(data.moves, data.unresolved);
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(unresolvedItem).join("")
+      };
+    });
+  }
+
+  if(key === "spor3-platform-clearance"){
+    return definition("Spor 3-forberedelse – plattformrydding, test", ()=>{
+      const rows = buildSdeSpor3PlatformClearanceDiagnostics();
+      return {
+        count:rows.length,
+        bodyHtml:rows.map(item =>
+          `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(item.vehicle)}</strong><br>${escapeHtml(item.text)}</div>`
+        ).join("")
+      };
+    });
+  }
+
+  return null;
+}
+
+function renderSdeDiagnosticSectionOnly(id){
+  const key = String(id || "").trim();
+  const root = document.getElementById("sdeSkiftebevegelserDashboard");
+  if(!key || !root || !sdeShiftLastRenderedData) return false;
+
+  const section = Array.from(root.querySelectorAll("[data-sde-diagnostic-section]"))
+    .find(el => el.dataset.sdeDiagnosticSection === key);
+  if(!section) return false;
+
+  const definition = getSdeLazyDiagnosticSectionDefinition(
+    key,
+    sdeShiftLastRenderedData,
+    sdeShiftLastDiagnosticContext || {}
+  );
+  if(!definition) return false;
+
+  section.outerHTML = buildSdeLazyDiagnosticSectionHtml(definition);
+  return true;
 }
 
 function toggleSdeShiftDetails(){
@@ -20686,6 +20865,8 @@ function renderSdeSkiftebevegelser(){
   };
 
   if(!isSdeTomorrowJsonReadyForScore()){
+    sdeShiftLastRenderedData = null;
+    sdeShiftLastDiagnosticContext = null;
     root.innerHTML = `
       <div class="sde-shift-hero">
         <div class="sde-shift-score warn">
@@ -20874,7 +21055,7 @@ function renderSdeSkiftebevegelser(){
       })
     : "";
 
-  const lazyDiagnosticCount = "Åpnes ved behov";
+  const lazyDiagnosticCount = SDE_LAZY_DIAGNOSTIC_COUNT_TEXT;
   const hasPackagePrioritySignals = pairDiagnostics.length ||
     packageDiagnostics.some(item => item?.severity === "warning" || item?.severity === "split");
 
@@ -21127,6 +21308,12 @@ function renderSdeSkiftebevegelser(){
   const nightPlacementOverviewHtml = sdeNightPlacementVisible
     ? renderSdeNightPlacementOverview(data)
     : "";
+  sdeShiftLastRenderedData = data;
+  sdeShiftLastDiagnosticContext = {
+    linearTrackDiagnostics,
+    pairDiagnostics,
+    packageDiagnostics
+  };
 
   root.innerHTML = `
     <div class="sde-shift-hero">
