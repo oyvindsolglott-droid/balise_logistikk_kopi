@@ -1037,6 +1037,173 @@ B13H endrer ikke `openDatabase()`, `npm start`, runtime migration-mode eller
 production-runnerens production-guards. Production migration krever fortsatt en
 egen eksplisitt go/no-go og skal ikke regnes som utført av B13H-testen.
 
+## B13J production actions-schema migration runbook
+
+B13J dokumenterer bare prosedyren for en mulig senere production
+actions-schema migration. B13J kjører ikke migration, skriver ikke production DB,
+stopper ikke serveren og endrer ikke runtime. Production migration er fortsatt
+ikke gjort.
+
+Actions-schema migration skal kun kjøres som eksplisitt one-shot production
+migration. Normal runtime skal ikke migrere schema, `openDatabase()` skal ikke
+migrere, og `npm start` skal ikke migrere. PWA, POST, operational write,
+state-write, revision-endring og events-endring er ikke del av migrationen.
+
+Røde soner for execution-fasen:
+
+- ingen manuell SQL mot production
+- ingen runtime escape hatch
+- ingen PWA-kobling
+- ingen POST
+- ingen ekte SDE-action
+- ingen operational write
+- ingen state-write
+- ingen revision- eller events-endring
+- ingen `index.html`-endring
+- ingen packageendring i execution-fasen
+- ingen production migration uten fersk validert backup
+- ingen production migration uten eksplisitt go/no-go
+- ingen restore uten egen eksplisitt godkjenning
+
+Read-only precheck før en senere migration skal bekrefte:
+
+- riktig repo: `/Users/solglottsr/balise_logistikk_kopi`
+- rent Git og forventet HEAD
+- production health OK
+- production PID og cwd peker på riktig servermappe
+- production `/api/state/revision` viser `revision: 1`
+- production `/api/events` viser `events: []`
+- `/api/server/status` viser `schemaUserVersion: 0`
+- `/api/server/status` viser `actionsTablePresent: false`
+- `/api/server/status` viser `actionsSchemaReady: false`
+- `/api/server/status` viser `migrationRequired: true`
+- `/api/server/status` viser `migrationsEnabled: false`
+- production SQLite `PRAGMA user_version` er `0`
+- production SQLite har ingen `actions`-tabell
+
+Backupkrav før runneren kjøres:
+
+- ta fersk SQLite `.backup` rett før migration
+- bruk `.backup`, ikke vanlig shell-kopi av sqlite3/-wal/-shm som hovedmetode
+- legg backupfilen utenfor repo
+- bruk backupnavn med timestamp
+- kjør `PRAGMA integrity_check` på backupfilen
+- dokumenter backup-path i sluttrapporten
+- ikke commit backupfilen
+
+SQLite `.backup` er tryggere enn vanlig `cp`. Hvis production uansett skal
+stoppes for migration, kan siste backup tas rett før stopp eller etter stopp,
+men valget skal være eksplisitt i execution-prompten. Minimumskravet er at
+backupen er fersk, validert og utenfor repo før runneren kjøres.
+
+Production server skal stoppes kontrollert før migration-runneren kjøres:
+
+- identifiser PID på port `8787`
+- bekreft cwd:
+  `/Users/solglottsr/balise_logistikk_kopi/server`
+- stopp kun bekreftet riktig PID/prosess
+- verifiser at port `8787` ikke lytter
+- ikke stopp ukjent prosess
+- ikke start ny serverprosess før migration og direkte DB-postcheck er ferdig
+
+Runneren skal kjøres med clean/eksplisitt miljø. Før runneren kjøres:
+
+```bash
+unset PORT
+unset SDE_ENABLE_SCHEMA_MIGRATIONS
+unset SDE_ENABLE_TEST_WRITES
+unset SDE_ENABLE_ACTION_CONTRACT_TESTS
+
+export SDE_ALLOW_PRODUCTION_SCHEMA_MIGRATION_ONCE=1
+export SDE_SERVER_DB_PATH=/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3
+export SDE_CONFIRM_PRODUCTION_DB_PATH=/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3
+export SDE_PRODUCTION_SCHEMA_BACKUP_PATH=<fersk-validert-backupfil-utenfor-repo>
+```
+
+`SDE_PRODUCTION_SCHEMA_BACKUP_PATH` er det faktiske flaggnavnet i koden. Disse
+flaggene skal ikke ligge igjen i normal runtime etter migration.
+
+Runnerkommando for en senere eksplisitt execution-fase:
+
+```bash
+cd /Users/solglottsr/balise_logistikk_kopi/server
+npm run migrate:production:actions
+```
+
+Kommandoen skal bare kjøres etter egen godkjent execution-prompt. Den skal ikke
+kjøres i B13J, ikke kjøres mens `8787` lytter, og ikke brukes til PWA, POST eller
+action-write.
+
+Direkte SQLite-postcheck skal gjøres etter migration og før normal restart:
+
+```bash
+sqlite3 -readonly /Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3 "PRAGMA user_version;"
+sqlite3 -readonly /Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3 "SELECT name FROM sqlite_master WHERE type='table' AND name='actions';"
+```
+
+Forventet etter vellykket migration er `PRAGMA user_version: 1` og at
+`actions`-tabellen finnes.
+
+Etter migration skal production startes normalt, uten migrationflagg:
+
+- `SDE_ALLOW_PRODUCTION_SCHEMA_MIGRATION_ONCE` ikke satt
+- `SDE_PRODUCTION_SCHEMA_BACKUP_PATH` ikke satt
+- `SDE_ENABLE_SCHEMA_MIGRATIONS` ikke satt
+- `SDE_ENABLE_TEST_WRITES` ikke satt
+- `SDE_ENABLE_ACTION_CONTRACT_TESTS` ikke satt
+- `PORT=8787`
+- `SDE_SERVER_DB_PATH=/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`
+
+Normal runtime skal fortsatt vise `migrationsEnabled: false`.
+
+GET-postcheck etter normal restart skal bekrefte:
+
+- `/api/health` OK
+- `/api/server/status` OK
+- `schemaUserVersion: 1`
+- `actionsTablePresent: true`
+- `actionsSchemaReady: true`
+- `migrationRequired: false`
+- `migrationsEnabled: false`
+- `testWritesEnabled: false`
+- `pwaConnected: false`
+- `operationalWritesEnabled: false`
+- `/api/state/revision` viser fortsatt `revision: 1`
+- `/api/events` viser fortsatt `events: []`
+- Git er fortsatt rent
+
+Rollback og forward-fix-policy:
+
+- restore fra backup er ikke automatisk
+- restore krever egen eksplisitt godkjenning
+- rollback-beslutning skal være definert før migration
+- hvis server har kjørt etter migration, skal forward-fix vurderes før restore
+- backupfilen skal bevares til migration er verifisert og senere fase er lukket
+
+Stoppkriterier:
+
+- feil repo
+- dirty Git
+- uventet HEAD
+- production health feiler
+- revision er ikke `1` før migration
+- events er ikke `[]`
+- schemaUserVersion er ikke `0` før migration
+- `actions`-tabell finnes allerede før migration
+- backup feiler
+- backup integrity er ikke `ok`
+- production server lytter fortsatt på `8787`
+- env-flagg avviker
+- runner feiler
+- direkte DB-postcheck feiler
+- normal restart feiler
+- `/api/server/status` viser uventede verdier
+- revision eller events endres
+- Git blir dirty
+
+Etter B13J kan neste fase være separat B13K/B13R go/no-go eller
+execution-prompt. Production migration krever egen eksplisitt godkjenning.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
