@@ -957,6 +957,59 @@ runner. Den fasen skal fortsatt ikke kjøre production migration. Production
 migration kommer først i en senere egen fase etter at runneren er designet,
 implementert, testet på kopi og eksplisitt godkjent.
 
+## B13F one-shot production migration-runner
+
+B13F legger til selve runner-verktøyet, men kjører det ikke mot production.
+Runneren er et separat CLI-verktøy og er ikke del av normal driftserver,
+`openDatabase()`, PWA eller `/api/*`.
+
+Runnerfil:
+
+```bash
+server/scripts/runProductionActionsMigration.js
+```
+
+Scriptkommando:
+
+```bash
+npm run migrate:production:actions
+```
+
+Runneren skal ikke kjøres uten en senere eksplisitt production migration-fase.
+Den krever alle disse miljøvariablene:
+
+```bash
+SDE_ALLOW_PRODUCTION_SCHEMA_MIGRATION_ONCE=1
+SDE_SERVER_DB_PATH=/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3
+SDE_CONFIRM_PRODUCTION_DB_PATH=/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3
+SDE_PRODUCTION_SCHEMA_BACKUP_PATH=<fersk-backupfil-utenfor-repo>
+```
+
+Runneren nekter å kjøre hvis:
+
+- cwd ikke er `/Users/solglottsr/balise_logistikk_kopi/server`
+- production server fortsatt lytter på port `8787`
+- `PORT` er satt
+- `SDE_ENABLE_SCHEMA_MIGRATIONS=1` er satt
+- `SDE_ENABLE_TEST_WRITES=1` er satt
+- `SDE_ENABLE_ACTION_CONTRACT_TESTS=1` er satt
+- production DB-path ikke matcher eksakt forventet path
+- backupfil mangler, ligger inne i repo eller ikke har `PRAGMA integrity_check`
+  lik `ok`
+- backup ikke representerer pre-migration-state
+- production DB ikke har `schemaUserVersion: 0`
+- production DB allerede har `actions`-tabell
+
+Runneren bruker eksisterende actions-migration-logikk med en eksplisitt intern
+`allowProductionDatabase`-opsjon. Default for eksisterende test/runtime-kall er
+fortsatt å blokkere production DB. Runtime migration-mode blokkerer fortsatt
+production DB og port `8787`, og normal serverstart kan fortsatt ikke migrere
+production.
+
+B13F er ikke production migration. Før runneren noen gang brukes mot production
+må det komme en separat go/no-go med fersk backup, stoppet production server,
+eksakt rollback-plan og etterkontroll.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.

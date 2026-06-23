@@ -48,14 +48,14 @@ class MigrationError extends Error{
   }
 }
 
-function openMigrationDatabase(databasePath){
-  assertSafeMigrationDatabasePath(databasePath);
+function openMigrationDatabase(databasePath, options = {}){
+  assertSafeMigrationDatabasePath(databasePath, options);
   fs.mkdirSync(path.dirname(path.resolve(databasePath)), { recursive: true });
   return new DatabaseSync(databasePath);
 }
 
-function migrateActionsSchema(db, { databasePath }){
-  assertSafeMigrationDatabasePath(databasePath);
+function migrateActionsSchema(db, { databasePath, allowProductionDatabase = false } = {}){
+  assertSafeMigrationDatabasePath(databasePath, { allowProductionDatabase });
 
   const precheck = inspectDatabase(db);
   ensureIntegrityOk(precheck);
@@ -190,7 +190,7 @@ function validateActionsSchema(inspection){
   };
 }
 
-function assertSafeMigrationDatabasePath(databasePath){
+function assertSafeMigrationDatabasePath(databasePath, { allowProductionDatabase = false } = {}){
   if(!databasePath || typeof databasePath !== "string"){
     throw new MigrationError(
       "database_path_required",
@@ -198,7 +198,7 @@ function assertSafeMigrationDatabasePath(databasePath){
     );
   }
 
-  if(isProductionDatabasePath(databasePath)){
+  if(!allowProductionDatabase && isProductionDatabasePath(databasePath)){
     throw new MigrationError(
       "production_database_blocked",
       "Actions migration cannot run against the production database.",
