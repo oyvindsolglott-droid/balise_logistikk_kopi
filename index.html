@@ -7330,7 +7330,27 @@ function applyFinishedPlanSkifteRows(result,map){
 }
 
 
+let computeInndataCacheDepth = 0;
+let computeInndataCachedRows = null;
+
+function withComputeInndataCache(fn){
+  computeInndataCacheDepth += 1;
+  try{
+    return fn();
+  }finally{
+    computeInndataCacheDepth -= 1;
+    if(computeInndataCacheDepth <= 0){
+      computeInndataCacheDepth = 0;
+      computeInndataCachedRows = null;
+    }
+  }
+}
+
 function computeInndata(){
+  if(computeInndataCacheDepth > 0 && computeInndataCachedRows){
+    return computeInndataCachedRows;
+  }
+
   syncInputSporplanFromFinishedPlanSkifteRows();
 
   const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
@@ -7349,6 +7369,9 @@ function computeInndata(){
   mergeRowsIntoResult(state.turneringKveld,result,map);
   mergeRowsIntoResult(state.turneringNatt,result,map);
   applyFinishedPlanSkifteRows(result,map);
+  if(computeInndataCacheDepth > 0){
+    computeInndataCachedRows = result;
+  }
   return result;
 }
 
@@ -20843,6 +20866,10 @@ function renderSdeNightPlacementOverview(data){
 
 
 function renderSdeSkiftebevegelser(){
+  return withComputeInndataCache(renderSdeSkiftebevegelserInner);
+}
+
+function renderSdeSkiftebevegelserInner(){
   const root = document.getElementById("sdeSkiftebevegelserDashboard");
   if(!root) return;
 
