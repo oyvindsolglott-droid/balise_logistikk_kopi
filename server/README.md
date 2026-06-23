@@ -850,6 +850,113 @@ status `schemaUserVersion:1`, `actionsTablePresent:true`,
 B12 skal aldri kjøres mot port `8787` eller produksjonsdatabasen:
 `/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`.
 
+## B13E production migration-runner-design
+
+B13E dokumenterer bare design og policy for en mulig senere one-shot
+production migration-runner. Det implementeres ingen runner, det kjøres ingen
+production migration, og produksjonsdatabasen endres ikke i B13E.
+
+Nåværende status:
+
+- production migration er ikke gjort
+- production `schemaUserVersion` er fortsatt `0`
+- production `actionsTablePresent` er fortsatt `false`
+- B13B har bare bevist migration på en SQLite `.backup`-kopi i `/tmp`
+- B13C ga NO-GO til production migration med dagens tooling
+- B13D anbefaler one-shot runner som fremtidig metode
+
+Dagens tooling skal ikke brukes direkte for production migration:
+
+- runtime migration-mode blokkerer port `8787`
+- runtime migration-mode blokkerer produksjonsdatabasen
+- `actionsMigration` blokkerer produksjonsdatabasen
+- dette er ønskede guards, ikke feil
+- manuell SQL mot produksjonsdatabasen er NO-GO fordi det omgår testet
+  migrasjonskode og guard-disiplin
+
+Anbefalt fremtidig metode er en one-shot production migration-runner:
+
+- runneren skal ikke starte driftserver
+- runneren skal ikke binde port
+- runneren skal bare kjøre actions schema-migration
+- runneren skal avslutte etter migration
+- runneren skal aldri være del av normal `openDatabase()`
+- normal serverstart skal fortsatt ikke auto-migrere schema
+
+Flagg-policy for en eventuell senere runner:
+
+- `SDE_ENABLE_SCHEMA_MIGRATIONS=1` er ikke nok for production
+- det må kreves et eget eksplisitt production-only flagg, for eksempel
+  `SDE_ALLOW_PRODUCTION_SCHEMA_MIGRATION_ONCE=1`
+- production DB-path må være eksakt:
+  `/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`
+- cwd må være bekreftet:
+  `/Users/solglottsr/balise_logistikk_kopi/server`
+- runneren skal nekte samtidige test-write/action-contract-test-flagg
+- runneren skal ikke åpne PWA, POST eller operational write
+- production-migration-flagg skal bare brukes i én eksplisitt migrationfase
+  og skal ikke ligge igjen i normal runtime
+
+Backupkrav før eventuell production migration:
+
+- production server skal stoppes før migration, med mindre en senere fase
+  eksplisitt begrunner noe annet
+- ta fersk SQLite `.backup` rett før migration
+- legg backupfil utenfor repo
+- kjør `PRAGMA integrity_check` på backupfilen
+- logg backupfilnavnet
+- restore-plan må være bestemt før migration
+- forward-fix skal vurderes før restore dersom serveren har kjørt videre etter
+  migration
+
+Stoppkriterier før migration:
+
+- feil repo
+- dirty Git
+- uventet HEAD
+- production health feiler
+- production revision er ikke `1`
+- production events er ikke `[]`
+- production `schemaUserVersion` er ikke `0`
+- `actions`-tabell finnes allerede
+- backup feiler
+- backup integrity er ikke `ok`
+- production server er ikke stoppet
+- miljøflagg er uklare
+- PWA, POST eller operational write blandes inn
+
+Etterkontroll etter eventuell production migration:
+
+- `/api/health` er OK
+- `/api/server/status` er OK
+- `schemaUserVersion: 1`
+- `actionsTablePresent: true`
+- `actionsSchemaReady: true`
+- `migrationRequired: false`
+- normal runtime etterpå viser `migrationsEnabled: false`
+- `/api/state/revision` viser fortsatt `revision: 1`
+- `/api/events` viser fortsatt `events: []`
+- production `PRAGMA user_version` er `1`
+- `actions`-tabell finnes
+- Git er fortsatt rent
+
+Røde soner:
+
+- ingen production migration uten egen eksplisitt go/no-go
+- ingen manuell SQL mot production
+- ingen runtime escape hatch i B13E
+- ingen PWA
+- ingen POST
+- ingen ekte SDE-action
+- ingen operational write
+- ingen revision- eller events-endring
+- ingen package- eller `index.html`-endring i B13E
+
+Neste steg etter B13E skal være en separat vurdering av kodepatch for one-shot
+runner. Den fasen skal fortsatt ikke kjøre production migration. Production
+migration kommer først i en senere egen fase etter at runneren er designet,
+implementert, testet på kopi og eksplisitt godkjent.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
