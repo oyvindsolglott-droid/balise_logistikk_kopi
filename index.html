@@ -20066,6 +20066,10 @@ function toggleSdeDiagnosticSection(id){
   renderSdeSkiftebevegelser();
 }
 
+function isSdeSkiftebevegelserActive(){
+  return document.getElementById("sdeSkiftebevegelser")?.classList.contains("active");
+}
+
 function buildSdeDiagnosticSectionHtml({id, title, count, bodyHtml}){
   const key = String(id || "").trim();
   const collapsed = isSdeDiagnosticSectionCollapsed(key);
@@ -21479,7 +21483,9 @@ function buildSdeVaktplan(){
     renderSdeReportTextWithTurneringTargets(report, reportText);
   }
 
-  renderSdeSkiftebevegelser();
+  if(isSdeSkiftebevegelserActive()){
+    renderSdeSkiftebevegelser();
+  }
 
   table.style.display = "table";
   table.innerHTML = "<thead><tr><th>Dag</th><th>Vaktfase</th><th>Fra tog</th><th>Ankomst</th><th>Kjøretøy</th><th>Nåværende spor</th><th>Foreslått spor</th><th>Kilde</th><th>Prioritet</th><th>Anbefalt handling</th><th>Til tog</th><th>Del</th><th>Avgang</th><th>Operasjon</th><th>Status</th><th>Kommentar</th></tr></thead>";
@@ -21567,6 +21573,10 @@ function activateTab(name){
 
   if(name === "sdeVaktplan"){
     buildSdeVaktplan();
+  }
+
+  if(name === "sdeSkiftebevegelser"){
+    renderSdeSkiftebevegelser();
   }
 }
 
