@@ -747,6 +747,57 @@ testserverstart, ingen POST, ingen PWA, ingen `index.html`, ingen ekte
 SDE-action, ingen `operationalState`, ingen packageendring og ingen
 produksjonsrestart.
 
+## B10D runtime-migration-design
+
+B10D er runtime-/deploy-design, ikke implementering. Det gjøres ingen
+kodeendring, schemaendring, migration, serverstart, databasewrite eller
+produksjonsrestart i denne fasen.
+
+`actionsMigration` er fortsatt ikke koblet til `openDatabase()` eller
+serverruntime. Normal serverstart skal ikke auto-migrere schema, og en vanlig
+produksjonsrestart skal aldri kunne gi utilsiktet schemaendring.
+
+En eventuell senere runtime-migration må kreve eksplisitt deploy- eller
+testflagg. Testserver-runtime skal bare kunne brukes med separat testdatabase,
+separat port og egne guards mot port `8787` og produksjonsdatabasen:
+`/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`.
+
+Produksjonsmigration må være en egen senere fase med eksplisitt godkjenning.
+Før produksjon berøres må det foreligge verifisert backup, read-only precheck,
+klart rollback-prinsipp og postcheck. Restore skal ikke skje automatisk og
+krever egen eksplisitt godkjenning.
+
+Fremtidig `/api/server/status` kan utvides med read-only schemafelter, for
+eksempel:
+
+- `schemaUserVersion`
+- `actionsSchemaReady`
+- `migrationRequired`
+- `migrationsEnabled`
+
+Disse feltene skal i første omgang være status/readiness, ikke et signal om at
+serveren kan skrive schema ved normal oppstart.
+
+Stoppsignaler for senere runtime-migration:
+
+- migration kan kjøres ved vanlig serverstart uten eksplisitt flagg
+- produksjonsrestart kan endre schema automatisk
+- testserver-runtime kan bruke port `8787`
+- testserver-runtime kan peke på produksjonsdatabasen
+- `openDatabase()` kobles til write-migration uten egen godkjenning
+- `/api/server/status` skjuler at migration mangler eller er deaktivert
+- rollback-plan mangler før produksjon vurderes
+- produksjonsrevision, `app_state` eller `events` påvirkes utilsiktet
+
+Røde soner for B10D: ingen kodeendring, ingen schemaendring, ingen migration,
+ingen serverstart, ingen testserverstart, ingen produksjonsrestart, ingen POST,
+ingen DB-write, ingen PWA, ingen `index.html`, ingen packageendring, ingen ekte
+SDE-action og ingen operational writes.
+
+Filer som fortsatt ikke skal røres i B10D: `server/src/*.js`,
+`server/scripts/*.js`, `server/package.json`, `server/package-lock.json`,
+`index.html`, runtime databasefiler og `node_modules`.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
