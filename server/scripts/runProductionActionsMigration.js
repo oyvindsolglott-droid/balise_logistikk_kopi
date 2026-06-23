@@ -3,14 +3,14 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-const { DatabaseSync } = require("node:sqlite");
 const {
-  ACTIONS_SCHEMA_VERSION,
   PRODUCTION_DB_PATH,
-  inspectDatabase,
-  migrateActionsSchema,
-  validateActionsSchema
 } = require("../src/actionsMigration");
+const {
+  inspectReadOnlyDatabase,
+  isPathInside,
+  runVerifiedActionsMigration
+} = require("./productionActionsMigrationRunnerCore");
 
 const REPO_ROOT = "/Users/solglottsr/balise_logistikk_kopi";
 const SERVER_CWD = "/Users/solglottsr/balise_logistikk_kopi/server";
@@ -36,41 +36,24 @@ function runProductionActionsMigration({ env = process.env, cwd = process.cwd() 
   console.log(`currentUserVersion=${preflight.targetInspection.userVersion}`);
   console.log(`actionsTablePresent=${preflight.targetInspection.actionsExists}`);
 
-  const db = new DatabaseSync(preflight.targetDb);
-  try{
-    const migration = migrateActionsSchema(db, {
-      databasePath: preflight.targetDb,
-      allowProductionDatabase: true
-    });
-    const finalInspection = inspectDatabase(db);
-    const schemaCheck = validateActionsSchema(finalInspection);
+  const migration = runVerifiedActionsMigration({
+    targetDb: preflight.targetDb,
+    allowProductionDatabase: true,
+    label: "production actions migration"
+  });
 
-    if(finalInspection.userVersion !== ACTIONS_SCHEMA_VERSION || !schemaCheck.ok){
-      throw new ProductionMigrationRunnerError(
-        "postcheck_failed",
-        "Production actions migration postcheck failed.",
-        {
-          userVersion: finalInspection.userVersion,
-          actionsSchemaProblems: schemaCheck.problems
-        }
-      );
-    }
+  console.log("production actions migration completed");
+  console.log(`changed=${migration.changed}`);
+  console.log(`finalUserVersion=${migration.after.userVersion}`);
+  console.log(`actionsTablePresent=${migration.after.actionsExists}`);
+  console.log(`actionsSchemaReady=${migration.actionsSchemaReady}`);
 
-    console.log("production actions migration completed");
-    console.log(`changed=${migration.changed}`);
-    console.log(`finalUserVersion=${finalInspection.userVersion}`);
-    console.log(`actionsTablePresent=${finalInspection.actionsExists}`);
-    console.log(`actionsSchemaReady=${schemaCheck.ok}`);
-
-    return {
-      ok: true,
-      changed: migration.changed,
-      preflight,
-      finalInspection
-    };
-  }finally{
-    db.close();
-  }
+  return {
+    ok: true,
+    changed: migration.changed,
+    preflight,
+    finalInspection: migration.after
+  };
 }
 
 function runPreflight({ env = process.env, cwd = process.cwd() } = {}){
@@ -269,20 +252,6 @@ function getProductionListener(){
       { message: error.message }
     );
   }
-}
-
-function inspectReadOnlyDatabase(databasePath){
-  const db = new DatabaseSync(databasePath, { readOnly: true });
-  try{
-    return inspectDatabase(db);
-  }finally{
-    db.close();
-  }
-}
-
-function isPathInside(childPath, parentPath){
-  const relative = path.relative(path.resolve(parentPath), path.resolve(childPath));
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function main(){

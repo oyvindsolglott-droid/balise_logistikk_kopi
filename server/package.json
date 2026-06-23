@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "migrate:production:actions": "node scripts/runProductionActionsMigration.js",
+    "test:production-actions-migration-runner": "node scripts/test-production-actions-migration-runner.js",
     "dev": "node src/index.js"
   },
   "engines": {

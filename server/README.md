@@ -1010,6 +1010,33 @@ B13F er ikke production migration. Før runneren noen gang brukes mot production
 må det komme en separat go/no-go med fersk backup, stoppet production server,
 eksakt rollback-plan og etterkontroll.
 
+## B13H production migration-runner-test
+
+B13H legger til et smalt testscript for runner-verifikasjon på en SQLite
+`.backup`-kopi i `/tmp`. Testen er ikke production migration og skal ikke bruke
+production DB som target.
+
+Testscript:
+
+```bash
+npm run test:production-actions-migration-runner
+```
+
+Testscriptet:
+
+- lager en `/tmp`-kopi av production DB med SQLite `.backup`
+- verifiserer at kopien har `PRAGMA integrity_check = ok`
+- verifiserer at kopien starter med `PRAGMA user_version = 0`
+- verifiserer at `actions`-tabell mangler før migration
+- kjører delt runner-/migration-logikk kun mot `/tmp`-kopien
+- verifiserer `PRAGMA user_version = 1` og `actions`-schema etter første run
+- kjører en andre gang mot samme `/tmp`-kopi og verifiserer idempotens
+- avviser production DB som test-target
+
+B13H endrer ikke `openDatabase()`, `npm start`, runtime migration-mode eller
+production-runnerens production-guards. Production migration krever fortsatt en
+egen eksplisitt go/no-go og skal ikke regnes som utført av B13H-testen.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
