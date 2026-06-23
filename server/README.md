@@ -821,6 +821,35 @@ produksjonsdatabasen ikke har `actions`-tabell ennå, er forventet status
 B11 skal ikke koble `actionsMigration` til `openDatabase()` eller serverruntime,
 og normal serverstart skal fortsatt ikke auto-migrere schema.
 
+## B12 test-only runtime-migration
+
+B12 legger til test-only runtime-migration for `actions`-schema. Dette er ikke
+produksjonsmigration, ikke PWA og ikke ekte SDE-action. Normal serverstart uten
+eksplisitt flagg skal fortsatt ikke migrere schema.
+
+Runtime-migration krever:
+
+- `SDE_ENABLE_SCHEMA_MIGRATIONS=1`
+- port forskjellig fra `8787`
+- eksplisitt `SDE_SERVER_DB_PATH`
+- databasefil under `/tmp/`
+- databasepath som ikke er produksjonsdatabasen
+- kjøring fra `/Users/solglottsr/balise_logistikk_kopi/server`
+
+Hvis flagget mangler, starter serveren normalt uten migration og
+`migrationsEnabled:false`. Hvis flagget er aktivt og guardene er oppfylt,
+kjøres actions-migration mot testdatabasen, og `/api/server/status` skal vise
+`migrationsEnabled:true`.
+
+Forventet status på fresh testdatabase før migration er
+`schemaUserVersion:0`, `actionsTablePresent:false`, `actionsSchemaReady:false`
+og `migrationRequired:true`. Etter vellykket test-only migration er forventet
+status `schemaUserVersion:1`, `actionsTablePresent:true`,
+`actionsSchemaReady:true` og `migrationRequired:false`.
+
+B12 skal aldri kjøres mot port `8787` eller produksjonsdatabasen:
+`/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.

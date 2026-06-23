@@ -16,7 +16,7 @@ const EXPECTED_ACTIONS_COLUMNS = [
   { name: "completed_at", type: "TEXT", notnull: 0, pk: 0 }
 ];
 
-function getSchemaStatus(db){
+function getSchemaStatus(db, { migrationsEnabled = false } = {}){
   try{
     const schemaUserVersion = getUserVersion(db);
     const actionsColumns = getActionsTableInfo(db);
@@ -29,7 +29,7 @@ function getSchemaStatus(db){
       actionsTablePresent,
       actionsSchemaReady,
       migrationRequired: !actionsSchemaReady,
-      migrationsEnabled: false
+      migrationsEnabled: Boolean(migrationsEnabled)
     };
   }catch(_error){
     return {
@@ -37,7 +37,7 @@ function getSchemaStatus(db){
       actionsTablePresent: false,
       actionsSchemaReady: false,
       migrationRequired: true,
-      migrationsEnabled: false,
+      migrationsEnabled: Boolean(migrationsEnabled),
       schemaStatusError: "schema_status_unavailable"
     };
   }

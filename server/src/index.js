@@ -3,6 +3,7 @@ const path = require("node:path");
 const express = require("express");
 const { getDatabasePath, openDatabase } = require("./db");
 const { getEventsSinceRevision, parseSinceRevision, writeSseEvent } = require("./events");
+const { prepareRuntimeMigrationMode, runRuntimeMigrationIfEnabled } = require("./runtimeMigrationMode");
 const { getSchemaStatus } = require("./schemaStatus");
 const { getCurrentRevision, getMainState, writeActionContractTest, writeTestNote } = require("./state");
 
@@ -20,6 +21,18 @@ const ACTION_CONTRACT_TEST_EVENT_TYPE = "action_contract.test";
 const PRODUCTION_DB_PATH = "/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3";
 
 const configuredDatabasePath = getDatabasePath();
+let runtimeMigrationMode;
+try{
+  runtimeMigrationMode = prepareRuntimeMigrationMode({
+    port: PORT,
+    rawPort: process.env.PORT,
+    databasePath: configuredDatabasePath
+  });
+}catch(error){
+  console.error(`schema migration startup blocked: ${error.message}`);
+  process.exit(1);
+}
+
 if(ACTION_CONTRACT_TESTS_ENABLED){
   const guardFailure = getActionContractTestEnvironmentGuardFailure(configuredDatabasePath);
   if(guardFailure){
@@ -29,6 +42,17 @@ if(ACTION_CONTRACT_TESTS_ENABLED){
 }
 
 const { db, databasePath } = openDatabase();
+let runtimeMigrationStatus = runtimeMigrationMode;
+try{
+  runtimeMigrationStatus = runRuntimeMigrationIfEnabled(db, {
+    mode: runtimeMigrationMode,
+    databasePath
+  });
+}catch(error){
+  console.error("schema migration failed", error);
+  process.exit(1);
+}
+
 const app = express();
 const sseClients = new Set();
 
@@ -46,7 +70,9 @@ app.get("/api/health", (_req, res) => {
 
 app.get("/api/server/status", (_req, res) => {
   const revision = getCurrentRevision(db);
-  const schemaStatus = getSchemaStatus(db);
+  const schemaStatus = getSchemaStatus(db, {
+    migrationsEnabled: runtimeMigrationStatus.migrationsEnabled
+  });
   res.json({
     ok: true,
     service: "sde-server",
