@@ -1204,6 +1204,51 @@ Stoppkriterier:
 Etter B13J kan neste fase være separat B13K/B13R go/no-go eller
 execution-prompt. Production migration krever egen eksplisitt godkjenning.
 
+## B14C test-only actions-table action
+
+B14C legger til kodegrunnlag for en senere test-only write som faktisk bruker
+`actions`-tabellen som idempotency-kilde. B14C kjører ikke testen, starter ikke
+testserver, gjør ingen POST og skriver ikke production DB.
+
+Ny test-only route:
+
+```text
+POST /api/actions/actions-table-test
+```
+
+Ruten er bare tilgjengelig med eksplisitt testflagg:
+
+```text
+SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES=1
+```
+
+Ruten skal aldri brukes på production. Den blokkerer port `8787`, krever
+eksplisitt `SDE_SERVER_DB_PATH`, og blokkerer production DB:
+
+```text
+/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3
+```
+
+B14C-testaction bruker:
+
+- `actions.action_id` som idempotency-kilde
+- canonical JSON av requesten
+- SHA-256 `payload_hash`
+- `409 action_id_conflict` ved samme `action_id` med annen request/hash
+- `409 revision_conflict` ved stale `expectedRevision`
+- én SQLite-transaksjon for action-record, state/revision update og eventlogg
+- ufarlig testfelt i state: `serverTestActionsTable`
+- eventtype: `actions_table.test`
+
+Ny action gir `201 Created` og `mode: "created"`. Idempotent replay av samme
+canonical request gir `200 OK` og `mode: "replayed"` uten ny revision, state eller
+event.
+
+B14C er fortsatt ikke PWA, ikke ekte SDE-action og ikke operational write. Neste
+fase må være en separat B14D go/no-go/execution-prompt på separat testserver og
+separat testdatabase i `/tmp`. Production skal bare sjekkes read-only før og
+etter, og production revision/events skal forbli uendret.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
