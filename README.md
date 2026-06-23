@@ -20,6 +20,9 @@ Dette repoet inneholder den fungerende nettversjonen av Skien sporplan.
 
 Ikke gjør store arkitekturendringer uten god grunn.
 
+Frontend og server skal holdes som to parallelle spor inntil serverløsningen er komplett og eksplisitt godkjent for kobling. Se:
+- `docs/ARBEIDSKONTRAKT_PARALLELLE_SPOR.md`
+
 Ikke rør disse filene uten å vite nøyaktig hvorfor:
 - `index.html`
 - `data/api_idag.json`
