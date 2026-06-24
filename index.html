@@ -22019,6 +22019,15 @@ function renderServerStatus(status, base){
   const writesAllowed = contract.writesAllowed === true;
   const operationalWritesAllowed = contract.operationalWritesAllowed === true || contract.operationalAuthority === true;
   const dataSource = typeof contract.dataSourceForOperations === "string" ? contract.dataSourceForOperations : "lokal/statisk data";
+  const operationalContract = status?.operationalDataContract || {};
+  const operationalDataMode = typeof operationalContract.mode === "string" ? operationalContract.mode : dataSource;
+  const serverStateUsedForOperations = operationalContract.serverStateUsedForOperations === true;
+  const sdeEngineRunsClientSide = operationalContract.sdeEngineRunsClientSide !== false;
+  const operationalDataWritesAllowed = operationalContract.writesAllowed === true;
+  const operationalDataOperationalWritesAllowed = operationalContract.operationalWritesAllowed === true;
+  const hostedDataFiles = Array.isArray(operationalContract.serverHostedDataFiles)
+    ? operationalContract.serverHostedDataFiles.map(path => String(path).split("/").pop()).filter(Boolean).join(", ")
+    : "";
   const flagTone = value => value ? "warn" : "off";
   renderServerStatusItems([
     createServerStatusPill("Serverstatus", ""),
@@ -22036,7 +22045,13 @@ function renderServerStatus(status, base){
     createServerStatusPill(`op-write ${operationalWritesAllowed ? "på" : "av"}`, flagTone(operationalWritesAllowed)),
     createServerStatusPill(`migration ${status?.migrationsEnabled ? "på" : "av"}`, flagTone(status?.migrationsEnabled)),
     createServerStatusPill(`PWA ${status?.pwaConnected ? "koblet" : "ikke koblet"}`, flagTone(status?.pwaConnected)),
-    createServerStatusPill(`data ${dataSource === "local_frontend_data" ? "lokal" : dataSource}`, dataSource === "local_frontend_data" ? "off" : "warn")
+    createServerStatusPill(`data ${dataSource === "local_frontend_data" ? "lokal" : dataSource}`, dataSource === "local_frontend_data" ? "off" : "warn"),
+    createServerStatusPill(`operativ data ${operationalDataMode === "local_frontend_data" ? "lokal/statisk" : operationalDataMode}`, operationalDataMode === "local_frontend_data" ? "off" : "warn"),
+    createServerStatusPill(`serverstate operativt ${serverStateUsedForOperations ? "ja" : "nei"}`, flagTone(serverStateUsedForOperations)),
+    createServerStatusPill(`SDE-motor ${sdeEngineRunsClientSide ? "klient" : "server"}`, sdeEngineRunsClientSide ? "off" : "warn"),
+    createServerStatusPill(`op-data write ${operationalDataWritesAllowed ? "på" : "av"}`, flagTone(operationalDataWritesAllowed)),
+    createServerStatusPill(`op-data op-write ${operationalDataOperationalWritesAllowed ? "på" : "av"}`, flagTone(operationalDataOperationalWritesAllowed)),
+    createServerStatusPill(`datafiler ${hostedDataFiles || "ikke oppgitt"}`, hostedDataFiles ? "off" : "warn")
   ]);
 }
 

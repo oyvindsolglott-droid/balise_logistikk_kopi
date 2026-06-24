@@ -60,6 +60,19 @@ const CLIENT_READ_CONTRACT = Object.freeze({
   dataSourceForOperations: "local_frontend_data",
   notes: "Serverstatus is observational only. The SDE engine and operational views still use local/static frontend data."
 });
+const OPERATIONAL_DATA_CONTRACT = Object.freeze({
+  mode: "local_frontend_data",
+  serverHostedDataFiles: [
+    "/data/api_idag.json",
+    "/data/api_imorgen.json"
+  ],
+  serverStateUsedForOperations: false,
+  sdeEngineRunsClientSide: true,
+  writesAllowed: false,
+  operationalWritesAllowed: false,
+  dataSourceForOperations: "local_frontend_data",
+  statusAndDiagnosticsOnly: true
+});
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const FRONTEND_INDEX_FILE = path.join(REPO_ROOT, "index.html");
 const FRONTEND_DATA_FILES = new Map([
@@ -191,6 +204,7 @@ app.get("/api/server/status", (_req, res) => {
     serverNoteProductionActionsEnabled: SERVER_NOTE_STATUS.serverNoteProductionActionsEnabled,
     ...schemaStatus,
     clientReadContract: CLIENT_READ_CONTRACT,
+    operationalDataContract: OPERATIONAL_DATA_CONTRACT,
     pwaConnected: false,
     operationalWritesEnabled: false
   });
