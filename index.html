@@ -184,6 +184,38 @@ font-size:12px;
 line-height:1.4;
 color:#64748b;
 }
+.server-note-readback-summary{
+font-size:12px;
+line-height:1.4;
+color:#334155;
+font-weight:800;
+}
+.server-note-readback-list{
+display:grid;
+grid-template-columns:1fr;
+gap:8px;
+}
+.server-note-readback-item{
+border:1px solid #dbe3ec;
+border-radius:10px;
+background:#fff;
+padding:8px 9px;
+font-size:12px;
+line-height:1.35;
+color:#334155;
+}
+.server-note-readback-meta{
+display:flex;
+flex-wrap:wrap;
+gap:6px;
+margin-bottom:5px;
+color:#64748b;
+font-weight:800;
+}
+.server-note-readback-note{
+color:#0f172a;
+font-weight:700;
+}
 .server-note-controls{
 display:grid;
 grid-template-columns:minmax(180px,1fr) minmax(112px,140px) minmax(112px,140px) auto;
@@ -5420,6 +5452,15 @@ button{padding:12px 12px}
     <button class="server-note-send-btn" id="serverNoteSendBtn" type="button" disabled>Send note</button>
   </div>
   <div class="server-note-result" id="serverNoteResult">Avventer verifisert serverstatus.</div>
+</div>
+<div class="server-note-panel" id="serverNoteReadbackPanel" aria-live="polite">
+  <div class="server-note-header">
+    <span class="server-note-title">Server-note readback</span>
+    <span class="server-status-pill off" id="serverNoteReadbackState">read-only</span>
+  </div>
+  <div class="server-note-description">Diagnostikk/readback av ikke-operative server-notater. Dette er ikke operativ sannhetskilde og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan.</div>
+  <div class="server-note-readback-summary" id="serverNoteReadbackSummary">Avventer serverstatus.</div>
+  <div class="server-note-readback-list" id="serverNoteReadbackList"></div>
 </div>
 <div id="sdeLearningTopPanel"></div>
 
@@ -22033,6 +22074,7 @@ const SDE_SERVER_STATUS_BASE_OPTIONS = Object.freeze([
   "http://192.168.10.151:8787"
 ]);
 const SDE_SERVER_NOTE_MAX_LENGTH = 500;
+const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
 let lastServerStatusForServerNote = null;
 let lastServerStatusBaseForServerNote = "";
 let serverNoteSubmitInFlight = false;
@@ -22125,6 +22167,157 @@ function renderServerNotePanelFromStatus(status, base, message){
     }else{
       controls.result.textContent = "Avventer verifisert serverstatus.";
     }
+  }
+}
+
+function getServerNoteReadbackElements(){
+  return {
+    state: document.getElementById("serverNoteReadbackState"),
+    summary: document.getElementById("serverNoteReadbackSummary"),
+    list: document.getElementById("serverNoteReadbackList")
+  };
+}
+
+function isServerNoteReadbackObject(value){
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function renderServerNoteReadbackMessage(stateText, tone, summaryText){
+  const elements = getServerNoteReadbackElements();
+  if(elements.state){
+    elements.state.className = `server-status-pill ${tone || "off"}`;
+    elements.state.textContent = stateText;
+  }
+  if(elements.summary){
+    elements.summary.textContent = summaryText;
+  }
+  if(elements.list){
+    elements.list.replaceChildren();
+  }
+}
+
+function getServerNotePayload(event){
+  return isServerNoteReadbackObject(event?.payload) ? event.payload : {};
+}
+
+function getServerNoteTextFromPayload(payload){
+  const summary = isServerNoteReadbackObject(payload?.payloadSummary) ? payload.payloadSummary : {};
+  const requestPayload = isServerNoteReadbackObject(payload?.request?.payload) ? payload.request.payload : {};
+  return summary.note || payload.note || requestPayload.note || "";
+}
+
+function createServerNoteReadbackItem(title, metaParts, noteText){
+  const item = document.createElement("div");
+  item.className = "server-note-readback-item";
+
+  const meta = document.createElement("div");
+  meta.className = "server-note-readback-meta";
+  [title, ...metaParts]
+    .filter(Boolean)
+    .forEach(part => {
+      const span = document.createElement("span");
+      span.textContent = String(part);
+      meta.appendChild(span);
+    });
+
+  const note = document.createElement("div");
+  note.className = "server-note-readback-note";
+  note.textContent = noteText ? String(noteText).slice(0, 220) : "Ingen note-tekst tilgjengelig.";
+
+  item.append(meta, note);
+  return item;
+}
+
+function renderServerNoteReadback(stateBody, eventsBody, base){
+  const elements = getServerNoteReadbackElements();
+  if(!elements.summary || !elements.list) return;
+
+  const serverNotes = isServerNoteReadbackObject(stateBody?.state?.serverNotes)
+    ? stateBody.state.serverNotes
+    : {};
+  const count = Number.isInteger(serverNotes.count) ? serverNotes.count : 0;
+  const lastNote = isServerNoteReadbackObject(serverNotes.lastNote) ? serverNotes.lastNote : null;
+  const events = Array.isArray(eventsBody?.events) ? eventsBody.events : [];
+  const noteEvents = events
+    .filter(event => event?.type === "server_note.created")
+    .slice(-SDE_SERVER_NOTE_READBACK_EVENT_LIMIT)
+    .reverse();
+  const revision = stateBody?.revision ?? eventsBody?.revision ?? "?";
+
+  if(elements.state){
+    elements.state.className = "server-status-pill ok";
+    elements.state.textContent = "readback ok";
+  }
+
+  elements.summary.textContent = `Read-only fra ${base || "verifisert server"}: revision ${revision}, serverNotes.count ${count}, server_note.created ${noteEvents.length}. Ikke operativ sannhetskilde.`;
+  elements.list.replaceChildren();
+
+  if(lastNote){
+    elements.list.appendChild(createServerNoteReadbackItem(
+      "serverNotes.lastNote",
+      [
+        `rev ${lastNote.revision ?? "?"}`,
+        lastNote.createdAt || "ukjent tid",
+        `category ${lastNote.category || "?"}`,
+        `severity ${lastNote.severity || "?"}`
+      ],
+      lastNote.note || ""
+    ));
+  }
+
+  if(noteEvents.length === 0){
+    elements.list.appendChild(createServerNoteReadbackItem(
+      "events",
+      ["ingen server_note.created"],
+      "Ingen server-note events tilgjengelig fra read-only eventlogg."
+    ));
+    return;
+  }
+
+  noteEvents.forEach(event => {
+    const payload = getServerNotePayload(event);
+    const createdAt = event.createdAt || payload.serverTimestamp || "ukjent tid";
+    const category = payload.category || payload.payloadSummary?.category || payload.request?.payload?.category || "?";
+    const severity = payload.severity || payload.payloadSummary?.severity || payload.request?.payload?.severity || "?";
+    elements.list.appendChild(createServerNoteReadbackItem(
+      `event ${event.id ?? "?"}`,
+      [
+        `rev ${event.revision ?? "?"}`,
+        event.type || "ukjent type",
+        createdAt,
+        `category ${category}`,
+        `severity ${severity}`
+      ],
+      getServerNoteTextFromPayload(payload)
+    ));
+  });
+}
+
+async function fetchServerNoteReadbackForDisplay(base){
+  const normalizedBase = normalizeServerStatusBase(base);
+  if(!normalizedBase){
+    renderServerNoteReadbackMessage("ikke lest", "warn", "Mangler verifisert serverbase. Readback er ikke hentet.");
+    return;
+  }
+
+  renderServerNoteReadbackMessage("leser", "warn", "Henter server-note readback med GET. Ingen POST sendes.");
+
+  try{
+    const [stateResponse, eventsResponse] = await Promise.all([
+      fetch(`${normalizedBase}/api/state`, {cache:"no-store"}),
+      fetch(`${normalizedBase}/api/events`, {cache:"no-store"})
+    ]);
+    if(!stateResponse.ok) throw new Error(`/api/state HTTP ${stateResponse.status}`);
+    if(!eventsResponse.ok) throw new Error(`/api/events HTTP ${eventsResponse.status}`);
+    const stateBody = await stateResponse.json();
+    const eventsBody = await eventsResponse.json();
+    renderServerNoteReadback(stateBody, eventsBody, normalizedBase);
+  }catch(error){
+    renderServerNoteReadbackMessage(
+      "readback feil",
+      "warn",
+      `Kunne ikke lese server-note readback: ${error?.message || "ukjent feil"}. Appen fortsetter lokalt.`
+    );
   }
 }
 
@@ -22263,6 +22456,7 @@ function renderServerStatusIdle(){
     createServerStatusPill("Read-only observasjon", "off")
   ]);
   renderServerNotePanelFromStatus(null, "");
+  renderServerNoteReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
 }
 
 function renderServerStatusUnavailable(message){
@@ -22273,6 +22467,7 @@ function renderServerStatusUnavailable(message){
     createServerStatusPill(String(message || "Kunne ikke lese serverstatus").slice(0, 90), "warn")
   ]);
   renderServerNotePanelFromStatus(null, "", "Serverstatus utilgjengelig. Ingen POST kan sendes.");
+  renderServerNoteReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Readback er ikke hentet.");
 }
 
 function renderServerStatus(status, base){
@@ -22333,6 +22528,7 @@ async function fetchServerStatusForDisplay(){
         const input = document.getElementById("serverStatusBaseInput");
         if(input) input.value = base;
         renderServerStatus(status, base);
+        await fetchServerNoteReadbackForDisplay(base);
         return {status, base};
       }catch(err){
         lastError = `${base}: ${err?.message || "ikke tilgjengelig"}`;
