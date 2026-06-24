@@ -21944,6 +21944,13 @@ const SDE_SERVER_STATUS_BASE_OPTIONS = Object.freeze([
   "http://192.168.10.151:8787"
 ]);
 
+function getSameOriginServerStatusBase(){
+  if(window.location.port === "8787"){
+    return window.location.origin;
+  }
+  return "";
+}
+
 function normalizeServerStatusBase(value){
   const raw = String(value || "").trim();
   if(!raw) return "";
@@ -21954,9 +21961,10 @@ function normalizeServerStatusBase(value){
 function getServerStatusBaseOptions(){
   const input = document.getElementById("serverStatusBaseInput");
   const manualBase = normalizeServerStatusBase(input?.value);
+  const sameOriginBase = normalizeServerStatusBase(getSameOriginServerStatusBase());
   const ordered = manualBase
-    ? [manualBase, ...SDE_SERVER_STATUS_BASE_OPTIONS]
-    : [...SDE_SERVER_STATUS_BASE_OPTIONS];
+    ? [sameOriginBase, manualBase, ...SDE_SERVER_STATUS_BASE_OPTIONS]
+    : [sameOriginBase, ...SDE_SERVER_STATUS_BASE_OPTIONS];
   return [...new Set(ordered.map(normalizeServerStatusBase).filter(Boolean))];
 }
 
@@ -23452,6 +23460,12 @@ document.getElementById("clearKjoretoyBtn").addEventListener("click",()=>{
 });
 
 document.getElementById("serverStatusCheckBtn")?.addEventListener("click", fetchServerStatusForDisplay);
+
+const sameOriginServerStatusBase = getSameOriginServerStatusBase();
+if(sameOriginServerStatusBase){
+  const serverStatusInput = document.getElementById("serverStatusBaseInput");
+  if(serverStatusInput) serverStatusInput.value = sameOriginServerStatusBase;
+}
 
 
 buildTurnering("turneringKveldTable","turneringKveld");

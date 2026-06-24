@@ -42,6 +42,16 @@ const READ_ONLY_CORS_PATHS = new Set([
   "/api/state/revision",
   "/api/events"
 ]);
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const FRONTEND_INDEX_FILE = path.join(REPO_ROOT, "index.html");
+const FRONTEND_DATA_FILES = new Map([
+  ["api_idag.json", path.join(REPO_ROOT, "data", "api_idag.json")],
+  ["api_imorgen.json", path.join(REPO_ROOT, "data", "api_imorgen.json")]
+]);
+const FRONTEND_ASSET_FILES = new Map([
+  ["slot_track_empty.png", path.join(REPO_ROOT, "assets", "slot_track_empty.png")],
+  ["motorvognsett_top.png", path.join(REPO_ROOT, "assets", "motorvognsett_top.png")]
+]);
 
 const configuredDatabasePath = getDatabasePath();
 let runtimeMigrationMode;
@@ -543,6 +553,34 @@ app.get("/api/stream", (req, res) => {
   });
 });
 
+app.get(["/", "/app"], (_req, res) => {
+  sendStaticFile(res, FRONTEND_INDEX_FILE, "text/html; charset=utf-8");
+});
+
+app.get("/data/:filename", (req, res) => {
+  const filePath = FRONTEND_DATA_FILES.get(req.params.filename);
+  if(!filePath){
+    return res.status(404).json({
+      ok: false,
+      error: "not_found"
+    });
+  }
+
+  return sendStaticFile(res, filePath, "application/json; charset=utf-8");
+});
+
+app.get("/assets/:filename", (req, res) => {
+  const filePath = FRONTEND_ASSET_FILES.get(req.params.filename);
+  if(!filePath){
+    return res.status(404).json({
+      ok: false,
+      error: "not_found"
+    });
+  }
+
+  return sendStaticFile(res, filePath, "image/png");
+});
+
 app.use((_req, res) => {
   res.status(404).json({
     ok: false,
@@ -557,6 +595,21 @@ app.listen(PORT, () => {
   console.log(`database path: ${databasePath}`);
   console.log(`current revision: ${revision}`);
 });
+
+function sendStaticFile(res, filePath, contentType){
+  fs.readFile(filePath, (error, data) => {
+    if(error){
+      return res.status(404).json({
+        ok: false,
+        error: "not_found"
+      });
+    }
+
+    res.set("Cache-Control", "no-store");
+    res.type(contentType);
+    return res.send(data);
+  });
+}
 
 function validateTestNotePayload(body){
   if(!body || typeof body !== "object" || Array.isArray(body)){
