@@ -42,6 +42,24 @@ const READ_ONLY_CORS_PATHS = new Set([
   "/api/state/revision",
   "/api/events"
 ]);
+const CLIENT_READ_CONTRACT = Object.freeze({
+  mode: "read_only_status",
+  serverStateAuthority: false,
+  operationalAuthority: false,
+  writesAllowed: false,
+  operationalWritesAllowed: false,
+  allowedReadEndpoints: [
+    "/api/health",
+    "/api/server/status",
+    "/api/state/revision",
+    "/api/events"
+  ],
+  disallowedWriteEndpoints: [
+    "/api/actions/server-note"
+  ],
+  dataSourceForOperations: "local_frontend_data",
+  notes: "Serverstatus is observational only. The SDE engine and operational views still use local/static frontend data."
+});
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const FRONTEND_INDEX_FILE = path.join(REPO_ROOT, "index.html");
 const FRONTEND_DATA_FILES = new Map([
@@ -172,6 +190,7 @@ app.get("/api/server/status", (_req, res) => {
     serverNoteActionsEnabled: SERVER_NOTE_STATUS.serverNoteActionsEnabled,
     serverNoteProductionActionsEnabled: SERVER_NOTE_STATUS.serverNoteProductionActionsEnabled,
     ...schemaStatus,
+    clientReadContract: CLIENT_READ_CONTRACT,
     pwaConnected: false,
     operationalWritesEnabled: false
   });

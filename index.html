@@ -21972,6 +21972,15 @@ function getServerStatusUrl(base){
   return `${base}/api/server/status`;
 }
 
+function getServerStatusTransportMode(base){
+  const normalizedBase = normalizeServerStatusBase(base);
+  const currentOrigin = normalizeServerStatusBase(window.location.origin);
+  if(normalizedBase && normalizedBase === currentOrigin && window.location.port === "8787"){
+    return "same-origin";
+  }
+  return "fallback";
+}
+
 function createServerStatusPill(text, tone){
   const pill = document.createElement("span");
   pill.className = `server-status-pill ${tone || ""}`.trim();
@@ -22004,18 +22013,30 @@ function renderServerStatusUnavailable(message){
 
 function renderServerStatus(status, base){
   const schemaReady = status?.actionsTablePresent === true && status?.actionsSchemaReady === true && status?.migrationRequired === false;
+  const contract = status?.clientReadContract || status?.clientContract || {};
+  const contractMode = typeof contract.mode === "string" ? contract.mode : "ukjent kontrakt";
+  const serverStateAuthority = contract.serverStateAuthority === true;
+  const writesAllowed = contract.writesAllowed === true;
+  const operationalWritesAllowed = contract.operationalWritesAllowed === true || contract.operationalAuthority === true;
+  const dataSource = typeof contract.dataSourceForOperations === "string" ? contract.dataSourceForOperations : "lokal/statisk data";
   const flagTone = value => value ? "warn" : "off";
   renderServerStatusItems([
     createServerStatusPill("Serverstatus", ""),
     createServerStatusPill("Reachable", "ok"),
+    createServerStatusPill(`mode ${getServerStatusTransportMode(base)}`, "ok"),
+    createServerStatusPill(`kontrakt ${contractMode}`, contractMode === "read_only_status" ? "ok" : "warn"),
     createServerStatusPill(base || "ukjent base", "off"),
     createServerStatusPill(`rev ${status?.revision ?? "?"}`, "ok"),
     createServerStatusPill(schemaReady ? "schema klar" : "schema ikke klar", schemaReady ? "ok" : "warn"),
+    createServerStatusPill(`serverstate sannhet ${serverStateAuthority ? "ja" : "nei"}`, flagTone(serverStateAuthority)),
+    createServerStatusPill(`writes ${writesAllowed ? "på" : "av"}`, flagTone(writesAllowed)),
     createServerStatusPill(`server-note ${status?.serverNoteActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteActionsEnabled)),
     createServerStatusPill(`prod-note ${status?.serverNoteProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteProductionActionsEnabled)),
     createServerStatusPill(`operational ${status?.operationalWritesEnabled ? "på" : "av"}`, flagTone(status?.operationalWritesEnabled)),
+    createServerStatusPill(`op-write ${operationalWritesAllowed ? "på" : "av"}`, flagTone(operationalWritesAllowed)),
     createServerStatusPill(`migration ${status?.migrationsEnabled ? "på" : "av"}`, flagTone(status?.migrationsEnabled)),
-    createServerStatusPill(`PWA ${status?.pwaConnected ? "koblet" : "ikke koblet"}`, flagTone(status?.pwaConnected))
+    createServerStatusPill(`PWA ${status?.pwaConnected ? "koblet" : "ikke koblet"}`, flagTone(status?.pwaConnected)),
+    createServerStatusPill(`data ${dataSource === "local_frontend_data" ? "lokal" : dataSource}`, dataSource === "local_frontend_data" ? "off" : "warn")
   ]);
 }
 
