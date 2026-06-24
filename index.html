@@ -5499,10 +5499,10 @@ button{padding:12px 12px}
 </div>
 <div class="server-note-panel" id="sdeRecommendationAckPanel" aria-live="polite">
   <div class="server-note-header">
-    <span class="server-note-title">SDE-anbefaling – test/ack</span>
+    <span class="server-note-title">SDE-anbefaling – ack/diagnose</span>
     <span class="server-status-pill off" id="sdeRecommendationAckWriteState">ack-write av</span>
   </div>
-  <div class="server-note-description">Test-only acknowledgement av SDE-anbefaling. Dette er ikke skifteordre, ikke Utført/Annullert og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan.</div>
+  <div class="server-note-description">Kontrollert test-/diagnose-acknowledgement av SDE-anbefaling. Dette er ikke skifteordre, ikke Utført/Annullert og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan.</div>
   <div class="sde-ack-controls">
     <input class="sde-ack-input" id="sdeRecommendationAckServiceDate" type="date" aria-label="SDE-ack servicedato" disabled>
     <input class="sde-ack-input" id="sdeRecommendationAckRecommendationKey" type="text" value="b26e-ui-recommendation-001" maxlength="200" aria-label="SDE-ack recommendation key" autocomplete="off" spellcheck="false" disabled>
@@ -22620,11 +22620,65 @@ function isSdeRecommendationAckFormComplete(){
   );
 }
 
+function getSdeAckLocationPort(locationLike = window.location){
+  const fallbackHref = window.location?.href || "http://localhost";
+  const raw = typeof locationLike === "string" ? locationLike : (locationLike?.href || fallbackHref);
+  try{
+    const url = new URL(raw, fallbackHref);
+    return url.port || (url.protocol === "http:" ? "80" : (url.protocol === "https:" ? "443" : ""));
+  }catch(_error){
+    return "";
+  }
+}
+
+function isSdeAckProductionOrigin(locationLike = window.location){
+  return getSdeAckLocationPort(locationLike) === "8787";
+}
+
+function getSdeAckSubmitPermission(status, locationLike = window.location, formValid = true, sameOrigin = true){
+  const actionsEnabled = status?.sdeRecommendationAckActionsEnabled === true;
+  const productionActionsEnabled = status?.sdeRecommendationAckProductionActionsEnabled === true;
+  const productionOrigin = isSdeAckProductionOrigin(locationLike);
+
+  if(!status){
+    return {allowed:false, reason:"Avventer verifisert serverstatus.", mode:"unknown"};
+  }
+  if(!sameOrigin){
+    return {allowed:false, reason:"SDE-ack write krever serverhostet same-origin. Ingen POST kan sendes.", mode:"not-same-origin"};
+  }
+  if(!actionsEnabled){
+    return {allowed:false, reason:"SDE-ack write er av. Ingen POST kan sendes.", mode:productionOrigin ? "production-disabled" : "test-disabled"};
+  }
+  if(productionOrigin && !productionActionsEnabled){
+    return {allowed:false, reason:"Production SDE-ack krever eksplisitt production-flagg. Ingen POST kan sendes.", mode:"production-missing-flag"};
+  }
+  if(!formValid){
+    return {allowed:false, reason:"Fyll ut alle SDE-ack testfelt før sending.", mode:productionOrigin ? "production-invalid-form" : "test-invalid-form"};
+  }
+
+  return {
+    allowed:true,
+    reason:productionOrigin
+      ? "Production SDE-ack er eksplisitt aktivert. Kun kontrollert test/diagnose-ack, ikke skifteordre."
+      : "Klar for test-only SDE recommendation ack mot same-origin testserver.",
+    mode:productionOrigin ? "production-enabled" : "test-enabled"
+  };
+}
+
+function isSdeAckSubmitAllowed(status, locationLike = window.location, formValid = true, sameOrigin = true){
+  return getSdeAckSubmitPermission(status, locationLike, formValid, sameOrigin).allowed;
+}
+
+function getSdeAckSubmitDisabledReason(status, locationLike = window.location, formValid = true, sameOrigin = true){
+  return getSdeAckSubmitPermission(status, locationLike, formValid, sameOrigin).reason;
+}
+
 function refreshSdeRecommendationAckSubmitState(){
   const controls = getSdeRecommendationAckControls();
-  const enabled = lastServerStatusForSdeRecommendationAck?.sdeRecommendationAckActionsEnabled === true &&
-    lastServerStatusForSdeRecommendationAck?.sdeRecommendationAckProductionActionsEnabled !== true;
-  const disabled = !enabled || sdeRecommendationAckSubmitInFlight;
+  const formValid = isSdeRecommendationAckFormComplete();
+  const sameOrigin = Boolean(getSdeRecommendationAckSameOriginBase());
+  const permission = getSdeAckSubmitPermission(lastServerStatusForSdeRecommendationAck, window.location, formValid, sameOrigin);
+  const controlsDisabled = !lastServerStatusForSdeRecommendationAck || !sameOrigin || !isSdeAckSubmitAllowed(lastServerStatusForSdeRecommendationAck, window.location, true, sameOrigin) || sdeRecommendationAckSubmitInFlight;
   [
     controls.serviceDate,
     controls.recommendationKey,
@@ -22633,42 +22687,36 @@ function refreshSdeRecommendationAckSubmitState(){
     controls.actorRole,
     controls.deviceId,
     controls.note
-  ].filter(Boolean).forEach(control => { control.disabled = disabled; });
+  ].filter(Boolean).forEach(control => { control.disabled = controlsDisabled; });
   if(controls.send){
-    controls.send.disabled = disabled || !isSdeRecommendationAckFormComplete();
+    controls.send.disabled = !permission.allowed || sdeRecommendationAckSubmitInFlight;
   }
 }
 
 function renderSdeRecommendationAckPanelFromStatus(status, base, message){
   const controls = getSdeRecommendationAckControls();
-  const enabled = status?.sdeRecommendationAckActionsEnabled === true &&
-    status?.sdeRecommendationAckProductionActionsEnabled !== true;
-  const productionEnabled = status?.sdeRecommendationAckProductionActionsEnabled === true;
   lastServerStatusForSdeRecommendationAck = status || null;
   lastServerStatusBaseForSdeRecommendationAck = status ? normalizeServerStatusBase(base) : "";
   initializeSdeRecommendationAckDefaults();
 
+  const formValid = isSdeRecommendationAckFormComplete();
+  const sameOrigin = Boolean(getSdeRecommendationAckSameOriginBase());
+  const permission = getSdeAckSubmitPermission(status, window.location, formValid, sameOrigin);
+  const productionOrigin = isSdeAckProductionOrigin(window.location);
+  const actionsEnabled = status?.sdeRecommendationAckActionsEnabled === true;
+  const productionActionsEnabled = status?.sdeRecommendationAckProductionActionsEnabled === true;
+
   if(controls.state){
-    controls.state.className = `server-status-pill ${enabled || productionEnabled ? "warn" : "off"}`;
-    controls.state.textContent = enabled
-      ? "ack-write på / test"
-      : (productionEnabled ? "prod-ack sperret i UI" : "ack-write av");
+    controls.state.className = `server-status-pill ${actionsEnabled ? "warn" : "off"}`;
+    controls.state.textContent = permission.allowed
+      ? (productionOrigin ? "ack-write på / prod" : "ack-write på / test")
+      : (actionsEnabled && productionOrigin && !productionActionsEnabled ? "prod-ack mangler flagg" : "ack-write av");
   }
 
   refreshSdeRecommendationAckSubmitState();
 
   if(controls.result){
-    if(message){
-      controls.result.textContent = message;
-    }else if(enabled){
-      controls.result.textContent = "Klar for test-only SDE recommendation ack mot same-origin testserver.";
-    }else if(productionEnabled){
-      controls.result.textContent = "Production ack-write er ikke tilgjengelig fra denne testflaten.";
-    }else if(status){
-      controls.result.textContent = "SDE-ack write er av. Ingen POST kan sendes.";
-    }else{
-      controls.result.textContent = "Avventer verifisert serverstatus.";
-    }
+    controls.result.textContent = message || permission.reason;
   }
 }
 
@@ -22761,27 +22809,18 @@ async function submitSdeRecommendationAckFromUi(){
   const controls = getSdeRecommendationAckControls();
   if(sdeRecommendationAckSubmitInFlight) return;
 
-  if(lastServerStatusForSdeRecommendationAck?.sdeRecommendationAckActionsEnabled !== true ||
-      lastServerStatusForSdeRecommendationAck?.sdeRecommendationAckProductionActionsEnabled === true){
-    if(controls.result) controls.result.textContent = "SDE-ack write er av for denne testflaten. Ingen POST sendt.";
-    refreshSdeRecommendationAckSubmitState();
-    return;
-  }
-
   const base = getSdeRecommendationAckSameOriginBase();
-  if(!base){
-    if(controls.result) controls.result.textContent = "SDE-ack write krever serverhostet same-origin testserver. Ingen POST sendt.";
-    return;
-  }
-
-  if(!isSdeRecommendationAckFormComplete()){
-    if(controls.result) controls.result.textContent = "Fyll ut alle SDE-ack testfelt før sending.";
+  const formValid = isSdeRecommendationAckFormComplete();
+  const permission = getSdeAckSubmitPermission(lastServerStatusForSdeRecommendationAck, window.location, formValid, Boolean(base));
+  if(!permission.allowed){
+    if(controls.result) controls.result.textContent = permission.reason;
+    refreshSdeRecommendationAckSubmitState();
     return;
   }
 
   sdeRecommendationAckSubmitInFlight = true;
   refreshSdeRecommendationAckSubmitState();
-  if(controls.result) controls.result.textContent = "Sender test-only SDE recommendation ack...";
+  if(controls.result) controls.result.textContent = "Sender kontrollert SDE recommendation ack...";
 
   try{
     const expectedRevision = await fetchSdeRecommendationAckExpectedRevision(base);
@@ -22791,7 +22830,7 @@ async function submitSdeRecommendationAckFromUi(){
       return;
     }
 
-    const response = await fetch(`${base}/api/actions/sde-recommendation-ack`, {
+    const response = await fetch("/api/actions/sde-recommendation-ack", {
       method: "POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify(built.action)
