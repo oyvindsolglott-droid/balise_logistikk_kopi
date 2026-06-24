@@ -7,17 +7,22 @@ const { prepareRuntimeMigrationMode, runRuntimeMigrationIfEnabled } = require(".
 const { getSchemaStatus } = require("./schemaStatus");
 const { getCurrentRevision, getMainState, writeActionContractTest, writeTestNote } = require("./state");
 const { ACTIONS_TABLE_TEST_EVENT_TYPE, writeActionsTableTestAction } = require("./actionsTableTestAction");
+const { SERVER_NOTE_ACTION_TYPE, SERVER_NOTE_EVENT_TYPE, writeServerNoteAction } = require("./serverNoteAction");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
 const TEST_NOTE_MAX_LENGTH = 500;
 const ACTION_CONTRACT_TEST_NOTE_MAX_LENGTH = 500;
 const ACTIONS_TABLE_TEST_NOTE_MAX_LENGTH = 500;
+const SERVER_NOTE_MAX_LENGTH = 500;
 const ACTION_CONTRACT_FIELD_MAX_LENGTH = 200;
 const ACTION_CONTRACT_CLIENT_CONTEXT_MAX_LENGTH = 4000;
+const SERVER_NOTE_CATEGORIES = new Set(["ops", "test", "maintenance"]);
+const SERVER_NOTE_SEVERITIES = new Set(["info", "warning"]);
 const TEST_WRITES_ENABLED = process.env.SDE_ENABLE_TEST_WRITES === "1";
 const ACTION_CONTRACT_TESTS_ENABLED = process.env.SDE_ENABLE_ACTION_CONTRACT_TESTS === "1";
 const ACTIONS_TABLE_TESTS_ENABLED = process.env.SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES === "1";
+const SERVER_NOTE_ACTIONS_ENABLED = process.env.SDE_ENABLE_SERVER_NOTE_ACTIONS === "1";
 const STARTED_AT = new Date();
 const SERVER_MODE = process.env.SDE_SERVER_MODE || "server-groundwork";
 const ACTION_CONTRACT_TEST_EVENT_TYPE = "action_contract.test";
@@ -48,6 +53,14 @@ if(ACTIONS_TABLE_TESTS_ENABLED){
   const guardFailure = getActionsTableTestEnvironmentGuardFailure(configuredDatabasePath);
   if(guardFailure){
     console.error(`actions table test startup blocked: ${guardFailure.message}`);
+    process.exit(1);
+  }
+}
+
+if(SERVER_NOTE_ACTIONS_ENABLED){
+  const guardFailure = getServerNoteEnvironmentGuardFailure(configuredDatabasePath);
+  if(guardFailure){
+    console.error(`server note action startup blocked: ${guardFailure.message}`);
     process.exit(1);
   }
 }
@@ -98,6 +111,7 @@ app.get("/api/server/status", (_req, res) => {
     databaseFile: path.basename(databasePath),
     testWritesEnabled: TEST_WRITES_ENABLED,
     actionsTableTestWritesEnabled: ACTIONS_TABLE_TESTS_ENABLED,
+    serverNoteActionsEnabled: SERVER_NOTE_ACTIONS_ENABLED,
     ...schemaStatus,
     pwaConnected: false,
     operationalWritesEnabled: false
@@ -353,6 +367,101 @@ app.post("/api/actions/actions-table-test", (req, res) => {
   });
 });
 
+app.post("/api/actions/server-note", (req, res) => {
+  const guardFailure = getServerNoteGuardFailure(databasePath);
+  if(guardFailure){
+    return res.status(403).json({
+      ok: false,
+      error: guardFailure.error,
+      message: guardFailure.message
+    });
+  }
+
+  const validation = validateServerNotePayload(req.body);
+  if(!validation.ok){
+    return res.status(400).json({
+      ok: false,
+      error: "invalid_payload",
+      message: validation.message
+    });
+  }
+
+  let result;
+  try{
+    result = writeServerNoteAction(db, validation.value);
+  }catch(error){
+    console.error("server note action failed", error);
+    return res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: "Internal server error."
+    });
+  }
+
+  if(!result.ok && result.error === "actions_schema_not_ready"){
+    return res.status(500).json({
+      ok: false,
+      error: "actions_schema_not_ready",
+      problems: result.problems
+    });
+  }
+
+  if(!result.ok && result.error === "action_id_conflict"){
+    return res.status(409).json({
+      ok: false,
+      error: "action_id_conflict",
+      actionId: result.actionId,
+      currentRevision: result.currentRevision,
+      message: "actionId already exists with a different request."
+    });
+  }
+
+  if(!result.ok && result.error === "revision_conflict"){
+    return res.status(409).json({
+      ok: false,
+      error: "revision_conflict",
+      expectedRevision: result.expectedRevision,
+      currentRevision: result.currentRevision
+    });
+  }
+
+  const event = formatServerNoteEvent(result.event);
+
+  if(result.idempotent){
+    return res.status(200).json({
+      ok: true,
+      action: "server-note",
+      mode: "replayed",
+      idempotent: true,
+      actionId: result.actionId,
+      noteId: result.noteId,
+      payloadHash: result.payloadHash,
+      resultingRevision: result.resultingRevision,
+      currentRevision: result.currentRevision,
+      event
+    });
+  }
+
+  broadcastSseEvent("state_changed", {
+    revision: result.resultingRevision,
+    previousRevision: result.previousRevision,
+    event
+  });
+
+  return res.status(201).json({
+    ok: true,
+    action: "server-note",
+    mode: "created",
+    idempotent: false,
+    actionId: result.actionId,
+    noteId: result.noteId,
+    payloadHash: result.payloadHash,
+    previousRevision: result.previousRevision,
+    resultingRevision: result.resultingRevision,
+    event
+  });
+});
+
 app.get("/api/stream", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -570,6 +679,82 @@ function validateActionsTableTestPayload(body){
   };
 }
 
+function validateServerNotePayload(body){
+  if(!body || typeof body !== "object" || Array.isArray(body)){
+    return invalidPayload("JSON body must be an object.");
+  }
+
+  const actionId = normalizeRequiredString(body.actionId, "actionId", ACTION_CONTRACT_FIELD_MAX_LENGTH);
+  if(!actionId.ok) return actionId;
+
+  if(body.actionType !== SERVER_NOTE_ACTION_TYPE){
+    return invalidPayload("actionType must be server_note.create.");
+  }
+
+  if(!body.actor || typeof body.actor !== "object" || Array.isArray(body.actor)){
+    return invalidPayload("actor must be an object.");
+  }
+
+  const actorId = normalizeRequiredString(body.actor.id, "actor.id", ACTION_CONTRACT_FIELD_MAX_LENGTH);
+  if(!actorId.ok) return actorId;
+
+  const actorRole = normalizeRequiredString(body.actor.role, "actor.role", ACTION_CONTRACT_FIELD_MAX_LENGTH);
+  if(!actorRole.ok) return actorRole;
+
+  const deviceId = normalizeRequiredString(body.deviceId, "deviceId", ACTION_CONTRACT_FIELD_MAX_LENGTH);
+  if(!deviceId.ok) return deviceId;
+
+  if(!Number.isInteger(body.expectedRevision) || body.expectedRevision < 1){
+    return invalidPayload("expectedRevision must be an integer >= 1.");
+  }
+
+  if(!body.payload || typeof body.payload !== "object" || Array.isArray(body.payload)){
+    return invalidPayload("payload must be an object.");
+  }
+
+  const note = normalizeRequiredString(body.payload.note, "payload.note", SERVER_NOTE_MAX_LENGTH);
+  if(!note.ok) return note;
+
+  const category = normalizeAllowedString(body.payload.category, "payload.category", SERVER_NOTE_CATEGORIES);
+  if(!category.ok) return category;
+
+  const severity = normalizeAllowedString(body.payload.severity, "payload.severity", SERVER_NOTE_SEVERITIES);
+  if(!severity.ok) return severity;
+
+  let clientContext = null;
+  if(body.clientContext !== undefined){
+    if(!body.clientContext || typeof body.clientContext !== "object" || Array.isArray(body.clientContext)){
+      return invalidPayload("clientContext must be an object when provided.");
+    }
+
+    if(JSON.stringify(body.clientContext).length > ACTION_CONTRACT_CLIENT_CONTEXT_MAX_LENGTH){
+      return invalidPayload(`clientContext must be ${ACTION_CONTRACT_CLIENT_CONTEXT_MAX_LENGTH} characters or fewer when serialized.`);
+    }
+
+    clientContext = body.clientContext;
+  }
+
+  return {
+    ok: true,
+    value: {
+      actionId: actionId.value,
+      actionType: SERVER_NOTE_ACTION_TYPE,
+      actor: {
+        id: actorId.value,
+        role: actorRole.value
+      },
+      deviceId: deviceId.value,
+      expectedRevision: body.expectedRevision,
+      payload: {
+        note: note.value,
+        category: category.value,
+        severity: severity.value
+      },
+      clientContext
+    }
+  };
+}
+
 function normalizeRequiredString(value, fieldName, maxLength){
   if(typeof value !== "string"){
     return invalidPayload(`${fieldName} must be a string.`);
@@ -588,6 +773,17 @@ function normalizeRequiredString(value, fieldName, maxLength){
     ok: true,
     value: normalized
   };
+}
+
+function normalizeAllowedString(value, fieldName, allowedValues){
+  const normalized = normalizeRequiredString(value, fieldName, ACTION_CONTRACT_FIELD_MAX_LENGTH);
+  if(!normalized.ok) return normalized;
+
+  if(!allowedValues.has(normalized.value)){
+    return invalidPayload(`${fieldName} must be one of: ${Array.from(allowedValues).join(", ")}.`);
+  }
+
+  return normalized;
 }
 
 function getActionContractTestGuardFailure(activeDatabasePath){
@@ -610,6 +806,17 @@ function getActionsTableTestGuardFailure(activeDatabasePath){
   }
 
   return getActionsTableTestEnvironmentGuardFailure(activeDatabasePath);
+}
+
+function getServerNoteGuardFailure(activeDatabasePath){
+  if(!SERVER_NOTE_ACTIONS_ENABLED){
+    return {
+      error: "server_note_actions_disabled",
+      message: "Server note actions are disabled. Set SDE_ENABLE_SERVER_NOTE_ACTIONS=1 to enable this endpoint."
+    };
+  }
+
+  return getServerNoteEnvironmentGuardFailure(activeDatabasePath);
 }
 
 function getActionContractTestEnvironmentGuardFailure(activeDatabasePath){
@@ -662,6 +869,38 @@ function getActionsTableTestEnvironmentGuardFailure(activeDatabasePath){
   return null;
 }
 
+function getServerNoteEnvironmentGuardFailure(activeDatabasePath){
+  if(PORT === 8787){
+    return {
+      error: "server_note_actions_production_port",
+      message: "Server note actions cannot run on production port 8787 in this phase."
+    };
+  }
+
+  if(!process.env.SDE_SERVER_DB_PATH){
+    return {
+      error: "server_note_actions_db_path_required",
+      message: "Server note actions require an explicit non-production SDE_SERVER_DB_PATH."
+    };
+  }
+
+  if(isProductionDatabasePath(activeDatabasePath)){
+    return {
+      error: "server_note_actions_production_database",
+      message: "Server note actions cannot use the production database in this phase."
+    };
+  }
+
+  if(!isTmpDatabasePath(activeDatabasePath)){
+    return {
+      error: "server_note_actions_tmp_database_required",
+      message: "Server note actions require a /tmp test database in this phase."
+    };
+  }
+
+  return null;
+}
+
 function isProductionDatabasePath(databasePath){
   const resolvedDatabasePath = path.resolve(databasePath);
   const resolvedProductionPath = path.resolve(PRODUCTION_DB_PATH);
@@ -680,6 +919,12 @@ function isProductionDatabasePath(databasePath){
   return false;
 }
 
+function isTmpDatabasePath(databasePath){
+  const resolvedDatabasePath = path.resolve(databasePath);
+  return resolvedDatabasePath.startsWith("/tmp/") ||
+    resolvedDatabasePath.startsWith("/private/tmp/");
+}
+
 function formatActionContractTestEvent(event){
   return {
     id: event.id,
@@ -694,6 +939,14 @@ function formatActionsTableTestEvent(event){
     id: event?.id ?? null,
     revision: event?.revision ?? null,
     type: event?.type || ACTIONS_TABLE_TEST_EVENT_TYPE
+  };
+}
+
+function formatServerNoteEvent(event){
+  return {
+    id: event?.id ?? null,
+    revision: event?.revision ?? null,
+    type: event?.type || SERVER_NOTE_EVENT_TYPE
   };
 }
 

@@ -1463,6 +1463,81 @@ ingen production restart uten egen godkjenning, ingen ekte SDE-action, ingen
 operational write, ingen `operationalState`, ingen packageendring og ingen bruk
 av `SDE_ENABLE_OPERATIONAL_WRITES=1`.
 
+## B16C-B server-note testimplementering
+
+B16C-B legger til en server-only, ikke-operativ `server-note` action som bruker
+`actions`-tabellen. Dette er fortsatt testserver/testdatabase-only: production
+på port `8787` skal ikke motta POST, og PWA-en er fortsatt ikke koblet til
+serveren.
+
+Ny route:
+
+```text
+POST /api/actions/server-note
+```
+
+Ruten krever eksplisitt flagg:
+
+```text
+SDE_ENABLE_SERVER_NOTE_ACTIONS=1
+```
+
+B16C-B skal ikke bruke `SDE_ENABLE_OPERATIONAL_WRITES=1`. Ruten blokkerer port
+`8787`, production DB, manglende eksplisitt `SDE_SERVER_DB_PATH` og DB-path som
+ikke ligger under `/tmp`.
+
+Payload-kontrakten er:
+
+```json
+{
+  "actionId": "b16c-server-note-001",
+  "actionType": "server_note.create",
+  "actor": {
+    "id": "b16c-regression",
+    "role": "test"
+  },
+  "deviceId": "b16c-test-device",
+  "expectedRevision": 1,
+  "payload": {
+    "note": "B16C server note created test",
+    "category": "ops",
+    "severity": "info"
+  },
+  "clientContext": {
+    "source": "test-server-note-action"
+  }
+}
+```
+
+`payload.category` er avgrenset til `ops`, `test` og `maintenance`.
+`payload.severity` er avgrenset til `info` og `warning`. `payload.note` kan være
+maks 500 tegn.
+
+Ny action gir `201 Created`, eventtype `server_note.created`, en rad i
+`actions`, en rad i `events`, og statefeltet `serverNotes` med bounded struktur:
+`count` og `lastNote`. Replay av samme canonical request gir `200 OK` og
+`mode: "replayed"` uten ny revision, state eller event. Samme `actionId` med
+annen request gir `409 action_id_conflict`. Stale `expectedRevision` gir
+`409 revision_conflict`.
+
+Regresjonstest:
+
+```bash
+cd /Users/solglottsr/balise_logistikk_kopi/server
+node scripts/test-server-note-action.js
+```
+
+Scriptet bruker en egen SQLite-fil under `/tmp`, bootstrapper actions-schema med
+`SDE_ENABLE_SCHEMA_MIGRATIONS=1`, stopper bootstrap-serveren, verifiserer at
+ruten gir `403` uten `SDE_ENABLE_SERVER_NOTE_ACTIONS`, starter deretter
+write-testserver med `SDE_ENABLE_SERVER_NOTE_ACTIONS=1`, og tester created,
+replay, `action_id_conflict`, `revision_conflict`, `serverNotes`, SQLite
+integrity, `user_version`, action count og event count.
+
+B16C-B beviser ikke production-write, PWA-read, PWA-write, ekte SDE-action,
+operational write eller auth/roller. Production skal bare sjekkes read-only før
+og etter, og production revision/events skal forbli uendret.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
