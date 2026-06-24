@@ -1249,6 +1249,79 @@ fase må være en separat B14D go/no-go/execution-prompt på separat testserver 
 separat testdatabase i `/tmp`. Production skal bare sjekkes read-only før og
 etter, og production revision/events skal forbli uendret.
 
+## B15B2B actions-table write-test
+
+B15B2B beviste `actions`-tabell-basert test-write i isolert testmiljø. Testen
+brukte separat testserver på port `8788` og separat SQLite-fil:
+
+```text
+/tmp/sde-server-b15b2-actions-table-test.sqlite3
+```
+
+Production på port `8787` ble bare lest med GET. Production PID og `startedAt`
+var uendret, revision var fortsatt `1`, og `/api/events` var fortsatt tom.
+
+Testen krever en todelt modell:
+
+1. Bootstrap actions-schema på testdatabasen med
+   `SDE_ENABLE_SCHEMA_MIGRATIONS=1`.
+2. Stopp bootstrap-serveren.
+3. Start write-testserveren mot samme `/tmp`-database med
+   `SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES=1`.
+
+Disse flaggene skal ikke blandes i samme serverprosess. Bootstrap viste
+`schemaUserVersion: 1`, `actionsTablePresent: true`,
+`actionsSchemaReady: true`, `migrationRequired: false` og
+`migrationsEnabled: true`. Write-testserveren viste
+`actionsTableTestWritesEnabled: true` og `migrationsEnabled: false`.
+
+Korrekt minimumspayload for test-ruten er:
+
+```json
+{
+  "actionId": "b15b2-action-001",
+  "actionType": "actions_table.test",
+  "actor": {
+    "id": "b15b-operator",
+    "role": "test"
+  },
+  "deviceId": "b15b-test-device",
+  "expectedRevision": 1,
+  "payload": {
+    "testNote": "B15B2 created test"
+  }
+}
+```
+
+`payload.testNote` er feltet som brukes av ruten. `payload.note` er ikke
+kontrakten for `POST /api/actions/actions-table-test`.
+
+B15B2B bekreftet response-matrisen:
+
+- ny action gir HTTP `201`, `mode: "created"`, `previousRevision: 1`,
+  `resultingRevision: 2`, `payloadHash` og eventtype `actions_table.test`
+- replay av samme canonical request gir HTTP `200`, `mode: "replayed"` og
+  uendret revision
+- samme `actionId` med annen canonical request gir HTTP `409` og
+  `error: "action_id_conflict"`
+- ny `actionId` med stale `expectedRevision` gir HTTP `409` og
+  `error: "revision_conflict"`
+
+SQLite-verifisering på testdatabasen viste `integrity_check: ok`,
+`user_version: 1`, en rad i `actions`, en rad i `events`, og action-raden:
+
+```text
+b15b2-action-001 | actions_table.test | 2 | completed
+```
+
+B15B2B beviser ikke production-write, ekte SDE-action, operational write,
+PWA-read, PWA-write, auth/roller eller en permanent automatisert test. Ruten er
+fortsatt test-only og skal ikke brukes på port `8787` eller mot production DB.
+
+Røde soner videre: ingen POST mot `8787`, ingen production-write, ingen
+production restart uten egen godkjenning, ingen PWA-kobling, ingen
+`index.html`-endring, ingen ekte SDE-action og ingen operational write.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
