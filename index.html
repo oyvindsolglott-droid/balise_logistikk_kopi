@@ -155,6 +155,68 @@ border-radius:10px;
 font-size:13px;
 font-weight:900;
 }
+.server-note-panel{
+display:flex;
+flex-direction:column;
+gap:9px;
+margin:0 0 12px;
+padding:10px 12px;
+background:#f8fafc;
+border:1px solid #cbd5e1;
+border-radius:14px;
+box-shadow:0 4px 14px rgba(15,23,42,.08);
+}
+.server-note-header{
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:10px;
+flex-wrap:wrap;
+}
+.server-note-title{
+font-size:13px;
+font-weight:900;
+color:#0f172a;
+}
+.server-note-description,
+.server-note-result{
+font-size:12px;
+line-height:1.4;
+color:#64748b;
+}
+.server-note-controls{
+display:grid;
+grid-template-columns:minmax(180px,1fr) minmax(112px,140px) minmax(112px,140px) auto;
+gap:8px;
+align-items:stretch;
+}
+.server-note-textarea,
+.server-note-select{
+border:1px solid #cbd5e1;
+border-radius:10px;
+padding:7px 9px;
+font:inherit;
+font-size:13px;
+color:#0f172a;
+background:#fff;
+}
+.server-note-textarea{
+min-height:42px;
+resize:vertical;
+}
+.server-note-send-btn{
+padding:8px 10px;
+min-height:36px;
+border-radius:10px;
+font-size:13px;
+font-weight:900;
+}
+.server-note-send-btn:disabled,
+.server-note-textarea:disabled,
+.server-note-select:disabled{
+opacity:.62;
+cursor:not-allowed;
+}
 .guide-top-btn{
 display:inline-flex;
 align-items:center;
@@ -407,6 +469,12 @@ box-shadow:
     width:100%;
   }
   .server-status-check-btn{
+    width:100%;
+  }
+  .server-note-controls{
+    grid-template-columns:1fr;
+  }
+  .server-note-send-btn{
     width:100%;
   }
   .segmented{grid-template-columns:repeat(2,minmax(160px,1fr));}
@@ -5331,6 +5399,27 @@ button{padding:12px 12px}
     <input class="server-status-base-input" id="serverStatusBaseInput" type="url" value="http://localhost:8787" aria-label="Serverbase for read-only status" spellcheck="false" autocomplete="off">
     <button class="server-status-check-btn" id="serverStatusCheckBtn" type="button">Sjekk serverstatus</button>
   </div>
+</div>
+<div class="server-note-panel" id="serverNotePanel" aria-live="polite">
+  <div class="server-note-header">
+    <span class="server-note-title">Ikke-operativ server-note</span>
+    <span class="server-status-pill off" id="serverNoteWriteState">write av</span>
+  </div>
+  <div class="server-note-description">Test/diagnose-notat til server. Ikke SDE-skifte, ikke operativ beslutning og ikke datakilde for motoren.</div>
+  <div class="server-note-controls">
+    <textarea class="server-note-textarea" id="serverNoteText" maxlength="500" rows="2" placeholder="Kort test-/diagnosenotat" disabled></textarea>
+    <select class="server-note-select" id="serverNoteCategory" aria-label="Server-note kategori" disabled>
+      <option value="ops">ops</option>
+      <option value="test" selected>test</option>
+      <option value="maintenance">maintenance</option>
+    </select>
+    <select class="server-note-select" id="serverNoteSeverity" aria-label="Server-note alvorlighet" disabled>
+      <option value="info" selected>info</option>
+      <option value="warning">warning</option>
+    </select>
+    <button class="server-note-send-btn" id="serverNoteSendBtn" type="button" disabled>Send note</button>
+  </div>
+  <div class="server-note-result" id="serverNoteResult">Avventer verifisert serverstatus.</div>
 </div>
 <div id="sdeLearningTopPanel"></div>
 
@@ -21943,9 +22032,13 @@ const SDE_SERVER_STATUS_BASE_OPTIONS = Object.freeze([
   "http://192.168.10.235:8787",
   "http://192.168.10.151:8787"
 ]);
+const SDE_SERVER_NOTE_MAX_LENGTH = 500;
+let lastServerStatusForServerNote = null;
+let lastServerStatusBaseForServerNote = "";
+let serverNoteSubmitInFlight = false;
 
 function getSameOriginServerStatusBase(){
-  if(window.location.port === "8787"){
+  if(/^https?:$/i.test(window.location.protocol) && window.location.port){
     return window.location.origin;
   }
   return "";
@@ -21975,7 +22068,7 @@ function getServerStatusUrl(base){
 function getServerStatusTransportMode(base){
   const normalizedBase = normalizeServerStatusBase(base);
   const currentOrigin = normalizeServerStatusBase(window.location.origin);
-  if(normalizedBase && normalizedBase === currentOrigin && window.location.port === "8787"){
+  if(normalizedBase && normalizedBase === currentOrigin){
     return "same-origin";
   }
   return "fallback";
@@ -21986,6 +22079,175 @@ function createServerStatusPill(text, tone){
   pill.className = `server-status-pill ${tone || ""}`.trim();
   pill.textContent = text;
   return pill;
+}
+
+function getServerNoteControls(){
+  return {
+    text: document.getElementById("serverNoteText"),
+    category: document.getElementById("serverNoteCategory"),
+    severity: document.getElementById("serverNoteSeverity"),
+    send: document.getElementById("serverNoteSendBtn"),
+    state: document.getElementById("serverNoteWriteState"),
+    result: document.getElementById("serverNoteResult")
+  };
+}
+
+function setServerNoteControlsDisabled(disabled){
+  const controls = getServerNoteControls();
+  [controls.text, controls.category, controls.severity, controls.send]
+    .filter(Boolean)
+    .forEach(control => { control.disabled = disabled; });
+}
+
+function renderServerNotePanelFromStatus(status, base, message){
+  const controls = getServerNoteControls();
+  const enabled = status?.serverNoteActionsEnabled === true;
+  const productionEnabled = status?.serverNoteProductionActionsEnabled === true;
+  lastServerStatusForServerNote = status || null;
+  lastServerStatusBaseForServerNote = status ? normalizeServerStatusBase(base) : "";
+
+  if(controls.state){
+    controls.state.className = `server-status-pill ${enabled ? "warn" : "off"}`;
+    controls.state.textContent = enabled
+      ? `write på${productionEnabled ? " / prod på" : ""}`
+      : "write av";
+  }
+
+  setServerNoteControlsDisabled(!enabled || serverNoteSubmitInFlight);
+
+  if(controls.result){
+    if(message){
+      controls.result.textContent = message;
+    }else if(enabled){
+      controls.result.textContent = "Klar for ikke-operativ testnote mot verifisert serverbase.";
+    }else if(status){
+      controls.result.textContent = "Server-note write er av. Ingen POST kan sendes.";
+    }else{
+      controls.result.textContent = "Avventer verifisert serverstatus.";
+    }
+  }
+}
+
+function generateServerNoteActionId(){
+  if(window.crypto?.randomUUID){
+    return `server-note-ui-${window.crypto.randomUUID()}`;
+  }
+  return `server-note-ui-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildServerNoteAction(){
+  const controls = getServerNoteControls();
+  const note = String(controls.text?.value || "").trim();
+  if(!note){
+    return {ok:false, message:"Server-note må ha tekst."};
+  }
+  if(note.length > SDE_SERVER_NOTE_MAX_LENGTH){
+    return {ok:false, message:`Server-note kan være maks ${SDE_SERVER_NOTE_MAX_LENGTH} tegn.`};
+  }
+
+  const expectedRevision = Number(lastServerStatusForServerNote?.revision);
+  if(!Number.isInteger(expectedRevision) || expectedRevision < 1){
+    return {ok:false, message:"Mangler gyldig expectedRevision fra serverstatus."};
+  }
+
+  return {
+    ok: true,
+    action: {
+      actionId: generateServerNoteActionId(),
+      actionType: "server_note.create",
+      actor: {
+        id: "serverhosted-ui",
+        role: "diagnostic-ui"
+      },
+      deviceId: "serverhosted-app",
+      expectedRevision,
+      payload: {
+        note,
+        category: controls.category?.value || "test",
+        severity: controls.severity?.value || "info"
+      },
+      clientContext: {
+        source: "serverhosted-app",
+        phase: "B24-C",
+        purpose: "non-operational-server-note-ui"
+      }
+    }
+  };
+}
+
+async function fetchServerNoteReadback(base){
+  try{
+    const [revisionResponse, eventsResponse] = await Promise.all([
+      fetch(`${base}/api/state/revision`, {cache:"no-store"}),
+      fetch(`${base}/api/events`, {cache:"no-store"})
+    ]);
+    const revision = revisionResponse.ok ? await revisionResponse.json() : null;
+    const events = eventsResponse.ok ? await eventsResponse.json() : null;
+    const eventCount = Array.isArray(events?.events) ? events.events.length : "?";
+    return ` Readback: rev ${revision?.revision ?? "?"}, events ${eventCount}.`;
+  }catch(_error){
+    return " Readback kunne ikke leses, men appen fortsetter lokalt.";
+  }
+}
+
+async function submitServerNoteFromUi(){
+  const controls = getServerNoteControls();
+  if(serverNoteSubmitInFlight) return;
+
+  if(lastServerStatusForServerNote?.serverNoteActionsEnabled !== true){
+    if(controls.result) controls.result.textContent = "Server-note write er av. Ingen POST sendt.";
+    return;
+  }
+
+  const base = normalizeServerStatusBase(lastServerStatusBaseForServerNote);
+  if(!base){
+    if(controls.result) controls.result.textContent = "Mangler verifisert serverbase. Kjør serverstatus først.";
+    return;
+  }
+
+  const built = buildServerNoteAction();
+  if(!built.ok){
+    if(controls.result) controls.result.textContent = built.message;
+    return;
+  }
+
+  serverNoteSubmitInFlight = true;
+  setServerNoteControlsDisabled(true);
+  if(controls.result) controls.result.textContent = "Sender ikke-operativ server-note...";
+
+  try{
+    const response = await fetch(`${base}/api/actions/server-note`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(built.action)
+    });
+    let body = null;
+    try{
+      body = await response.json();
+    }catch(_error){
+      body = null;
+    }
+
+    const readback = await fetchServerNoteReadback(base);
+    await fetchServerStatusForDisplay();
+
+    if(response.status === 201){
+      controls.text.value = "";
+      if(controls.result) controls.result.textContent = `Opprettet server-note. Revision ${body?.previousRevision ?? "?"} -> ${body?.resultingRevision ?? "?"}.${readback}`;
+    }else if(response.status === 200){
+      if(controls.result) controls.result.textContent = `Replay/allerede behandlet. Revision ${body?.resultingRevision ?? "?"}.${readback}`;
+    }else if(response.status === 409){
+      const label = body?.error === "action_id_conflict" ? "actionId-konflikt" : "revision conflict";
+      if(controls.result) controls.result.textContent = `${label}. ${body?.message || "Les ny status før nytt forsøk."}${readback}`;
+    }else{
+      if(controls.result) controls.result.textContent = `Server-note feilet: HTTP ${response.status} ${body?.error || ""}`.trim();
+    }
+  }catch(error){
+    if(controls.result) controls.result.textContent = `Server-note kunne ikke sendes: ${error?.message || "nettverksfeil"}`;
+  }finally{
+    serverNoteSubmitInFlight = false;
+    renderServerNotePanelFromStatus(lastServerStatusForServerNote, lastServerStatusBaseForServerNote, controls.result?.textContent);
+  }
 }
 
 function renderServerStatusItems(items){
@@ -22000,6 +22262,7 @@ function renderServerStatusIdle(){
     createServerStatusPill("Ikke sjekket", "warn"),
     createServerStatusPill("Read-only observasjon", "off")
   ]);
+  renderServerNotePanelFromStatus(null, "");
 }
 
 function renderServerStatusUnavailable(message){
@@ -22009,6 +22272,7 @@ function renderServerStatusUnavailable(message){
     createServerStatusPill("Appen fortsetter lokalt", "off"),
     createServerStatusPill(String(message || "Kunne ikke lese serverstatus").slice(0, 90), "warn")
   ]);
+  renderServerNotePanelFromStatus(null, "", "Serverstatus utilgjengelig. Ingen POST kan sendes.");
 }
 
 function renderServerStatus(status, base){
@@ -22053,6 +22317,7 @@ function renderServerStatus(status, base){
     createServerStatusPill(`op-data op-write ${operationalDataOperationalWritesAllowed ? "på" : "av"}`, flagTone(operationalDataOperationalWritesAllowed)),
     createServerStatusPill(`datafiler ${hostedDataFiles || "ikke oppgitt"}`, hostedDataFiles ? "off" : "warn")
   ]);
+  renderServerNotePanelFromStatus(status, base);
 }
 
 async function fetchServerStatusForDisplay(){
@@ -22068,7 +22333,7 @@ async function fetchServerStatusForDisplay(){
         const input = document.getElementById("serverStatusBaseInput");
         if(input) input.value = base;
         renderServerStatus(status, base);
-        return;
+        return {status, base};
       }catch(err){
         lastError = `${base}: ${err?.message || "ikke tilgjengelig"}`;
       }
@@ -22076,6 +22341,7 @@ async function fetchServerStatusForDisplay(){
     throw new Error(lastError || "Server ikke tilgjengelig fra denne klienten");
   }catch(err){
     renderServerStatusUnavailable(err?.message || "Server ikke tilgjengelig fra denne klienten");
+    return null;
   }finally{
     if(btn) btn.disabled = false;
   }
@@ -23496,12 +23762,14 @@ document.getElementById("clearKjoretoyBtn").addEventListener("click",()=>{
 });
 
 document.getElementById("serverStatusCheckBtn")?.addEventListener("click", fetchServerStatusForDisplay);
+document.getElementById("serverNoteSendBtn")?.addEventListener("click", submitServerNoteFromUi);
 
 const sameOriginServerStatusBase = getSameOriginServerStatusBase();
 if(sameOriginServerStatusBase){
   const serverStatusInput = document.getElementById("serverStatusBaseInput");
   if(serverStatusInput) serverStatusInput.value = sameOriginServerStatusBase;
 }
+renderServerNotePanelFromStatus(null, "");
 
 
 buildTurnering("turneringKveldTable","turneringKveld");
