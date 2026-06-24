@@ -131,6 +131,23 @@ color:#991b1b;
 .server-status-detail{
 color:#64748b;
 }
+.server-status-controls{
+display:flex;
+align-items:center;
+gap:8px;
+flex:0 0 auto;
+}
+.server-status-base-input{
+width:min(280px,38vw);
+min-height:36px;
+border:1px solid #cbd5e1;
+border-radius:10px;
+padding:7px 9px;
+font:inherit;
+font-size:13px;
+color:#0f172a;
+background:#fff;
+}
 .server-status-check-btn{
 padding:8px 10px;
 min-height:36px;
@@ -381,6 +398,13 @@ box-shadow:
   .server-status-panel{
     align-items:stretch;
     flex-direction:column;
+  }
+  .server-status-controls{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .server-status-base-input{
+    width:100%;
   }
   .server-status-check-btn{
     width:100%;
@@ -5303,7 +5327,10 @@ button{padding:12px 12px}
     <span class="server-status-pill warn">Ikke sjekket</span>
     <span class="server-status-detail">Read-only observasjon. Påvirker ikke SDE.</span>
   </div>
-  <button class="server-status-check-btn" id="serverStatusCheckBtn" type="button">Sjekk serverstatus</button>
+  <div class="server-status-controls">
+    <input class="server-status-base-input" id="serverStatusBaseInput" type="url" value="http://localhost:8787" aria-label="Serverbase for read-only status" spellcheck="false" autocomplete="off">
+    <button class="server-status-check-btn" id="serverStatusCheckBtn" type="button">Sjekk serverstatus</button>
+  </div>
 </div>
 <div id="sdeLearningTopPanel"></div>
 
@@ -21911,7 +21938,31 @@ function escapeHtml(s){
   return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
 }
 
-const SDE_SERVER_STATUS_URL = "http://localhost:8787/api/server/status";
+const SDE_SERVER_STATUS_BASE_OPTIONS = Object.freeze([
+  "http://localhost:8787",
+  "http://192.168.10.235:8787",
+  "http://192.168.10.151:8787"
+]);
+
+function normalizeServerStatusBase(value){
+  const raw = String(value || "").trim();
+  if(!raw) return "";
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+  return withProtocol.replace(/\/+$/,"");
+}
+
+function getServerStatusBaseOptions(){
+  const input = document.getElementById("serverStatusBaseInput");
+  const manualBase = normalizeServerStatusBase(input?.value);
+  const ordered = manualBase
+    ? [manualBase, ...SDE_SERVER_STATUS_BASE_OPTIONS]
+    : [...SDE_SERVER_STATUS_BASE_OPTIONS];
+  return [...new Set(ordered.map(normalizeServerStatusBase).filter(Boolean))];
+}
+
+function getServerStatusUrl(base){
+  return `${base}/api/server/status`;
+}
 
 function createServerStatusPill(text, tone){
   const pill = document.createElement("span");
@@ -21943,12 +21994,13 @@ function renderServerStatusUnavailable(message){
   ]);
 }
 
-function renderServerStatus(status){
+function renderServerStatus(status, base){
   const schemaReady = status?.actionsTablePresent === true && status?.actionsSchemaReady === true && status?.migrationRequired === false;
   const flagTone = value => value ? "warn" : "off";
   renderServerStatusItems([
     createServerStatusPill("Serverstatus", ""),
     createServerStatusPill("Reachable", "ok"),
+    createServerStatusPill(base || "ukjent base", "off"),
     createServerStatusPill(`rev ${status?.revision ?? "?"}`, "ok"),
     createServerStatusPill(schemaReady ? "schema klar" : "schema ikke klar", schemaReady ? "ok" : "warn"),
     createServerStatusPill(`server-note ${status?.serverNoteActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteActionsEnabled)),
@@ -21962,11 +22014,22 @@ function renderServerStatus(status){
 async function fetchServerStatusForDisplay(){
   const btn = document.getElementById("serverStatusCheckBtn");
   if(btn) btn.disabled = true;
+  let lastError = "";
   try{
-    const response = await fetch(SDE_SERVER_STATUS_URL, {cache:"no-store"});
-    if(!response.ok) throw new Error(`HTTP ${response.status}`);
-    const status = await response.json();
-    renderServerStatus(status);
+    for(const base of getServerStatusBaseOptions()){
+      try{
+        const response = await fetch(getServerStatusUrl(base), {cache:"no-store"});
+        if(!response.ok) throw new Error(`HTTP ${response.status}`);
+        const status = await response.json();
+        const input = document.getElementById("serverStatusBaseInput");
+        if(input) input.value = base;
+        renderServerStatus(status, base);
+        return;
+      }catch(err){
+        lastError = `${base}: ${err?.message || "ikke tilgjengelig"}`;
+      }
+    }
+    throw new Error(lastError || "Server ikke tilgjengelig fra denne klienten");
   }catch(err){
     renderServerStatusUnavailable(err?.message || "Server ikke tilgjengelig fra denne klienten");
   }finally{

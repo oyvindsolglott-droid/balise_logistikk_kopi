@@ -33,6 +33,15 @@ const STARTED_AT = new Date();
 const SERVER_MODE = process.env.SDE_SERVER_MODE || "server-groundwork";
 const ACTION_CONTRACT_TEST_EVENT_TYPE = "action_contract.test";
 const PRODUCTION_DB_PATH = "/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3";
+const READ_ONLY_CORS_ALLOWED_ORIGINS = new Set([
+  "https://oyvindsolglott-droid.github.io"
+]);
+const READ_ONLY_CORS_PATHS = new Set([
+  "/api/health",
+  "/api/server/status",
+  "/api/state/revision",
+  "/api/events"
+]);
 
 const configuredDatabasePath = getDatabasePath();
 let runtimeMigrationMode;
@@ -91,6 +100,35 @@ const app = express();
 const sseClients = new Set();
 
 app.use(express.json({ limit: "1mb" }));
+
+app.use((req, res, next) => {
+  if(!READ_ONLY_CORS_PATHS.has(req.path)){
+    return next();
+  }
+
+  const origin = req.get("Origin");
+  const originAllowed = READ_ONLY_CORS_ALLOWED_ORIGINS.has(origin);
+  if(originAllowed){
+    res.set("Access-Control-Allow-Origin", origin);
+    res.set("Vary", "Origin");
+    res.set("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+    res.set("Access-Control-Max-Age", "600");
+  }
+
+  if(req.method === "OPTIONS"){
+    if(!originAllowed){
+      return res.status(403).json({
+        ok: false,
+        error: "cors_origin_forbidden"
+      });
+    }
+
+    return res.status(204).end();
+  }
+
+  return next();
+});
 
 app.get("/api/health", (_req, res) => {
   const revision = getCurrentRevision(db);
