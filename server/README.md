@@ -1341,6 +1341,128 @@ Scriptet skal printe `PASS_B15D_ACTIONS_TABLE_REGRESSION` ved grønn test. Det e
 ikke production-write, ikke PWA, ikke ekte SDE-action og ikke operational write.
 Det skal ikke sende request til port `8787` eller bruke production DB.
 
+## B16-B første ekte action-kontrakt
+
+B16-B dokumenterer kontrakten for første ekte action uten å implementere kode.
+Dette er README-only: ingen endpoint legges til, ingen POST kjøres, ingen
+production-write åpnes, og PWA-en kobles ikke til serveren.
+
+Valgt første action er en ikke-operativ server-note/annotation action. Den skal
+bevise produksjonsklar action-kontrakt uten å påvirke SDE-motor, score,
+sortering, kandidatgeneratorer, DROPS, Tursatt, SDE Vaktplan, localStorage eller
+`operationalState`.
+
+Foreslått endpoint for en senere fase:
+
+```text
+POST /api/actions/server-note
+```
+
+Kontrakten skal bruke:
+
+- `actionType: "server_note.create"`
+- `eventType: "server_note.created"`
+- statefelt: `serverNotes`
+- `actions`-tabellen som idempotency-kilde
+- canonical JSON av validert request
+- SHA-256 `payload_hash`
+- `expectedRevision`
+- atomisk action/event/state-transaksjon
+
+Minimumspayload:
+
+```json
+{
+  "actionId": "server-note-uuid",
+  "actionType": "server_note.create",
+  "actor": {
+    "id": "operator-id",
+    "role": "operator"
+  },
+  "deviceId": "device-id",
+  "expectedRevision": 1,
+  "payload": {
+    "note": "Kort ikke-operativt servernotat",
+    "category": "ops",
+    "severity": "info"
+  },
+  "clientContext": {
+    "source": "manual-server-test"
+  }
+}
+```
+
+Validering bør minst kreve `actionId`, `actionType`, `actor.id`,
+`actor.role`, `deviceId`, `expectedRevision` og `payload.note`.
+`payload.category`, `payload.severity` og `clientContext` kan være avgrensede
+eller valgfrie felt. `payload.note` bør ha en tydelig maksgrense før eventuell
+kode implementeres.
+
+Idempotency-regler:
+
+- ny `actionId` og korrekt `expectedRevision` gir ny action
+- samme `actionId` og samme canonical request gir idempotent replay
+- samme `actionId` med endret request/hash gir `409 action_id_conflict`
+- idempotent replay skal returnere tidligere resultat uten ny revision, state
+  eller event
+- idempotency skal ikke avhenge av parsing av `events.payload_json`
+
+`expectedRevision`-regler:
+
+- ny action skal kreve match mot nåværende serverrevision
+- stale revision skal gi `409 revision_conflict`
+- idempotent replay av samme request skal ikke feile bare fordi current revision
+  senere har økt
+- samme `actionId` med endret `expectedRevision` er en annen request og skal gi
+  `409 action_id_conflict`
+
+Responsmodell:
+
+- `201 Created` ved ny server-note action
+- `200 OK` ved idempotent replay
+- `400 invalid_payload`
+- `403 disabled` eller `forbidden`
+- `409 revision_conflict`
+- `409 action_id_conflict`
+- `500 server_error` bare ved reell serverfeil
+
+Transaksjonsmodellen skal holde action-record, eventlogg og state/revision
+atomisk sammen. En senere implementering bør bruke samme prinsipp som
+B15D-testen: sjekk eksisterende `actions.action_id`, sjekk revision, skriv
+state, skriv event, oppdater action-record med `resulting_revision` og
+`event_id`, og commit alt samlet. Ingen halvveis action skal være akseptabel.
+
+Sikkerhetsflagg for en senere implementering skal være smalt og ikke-operativt,
+for eksempel:
+
+```text
+SDE_ENABLE_SERVER_NOTE_ACTIONS=1
+```
+
+`SDE_ENABLE_OPERATIONAL_WRITES=1` skal ikke brukes i denne fasen. Det flagget
+reserveres til en senere operational-write fase.
+
+Første test av en senere implementering skal skje på separat testserver og
+separat testdatabase i `/tmp`, ikke på port `8787` og ikke mot production DB.
+Testplanen skal minst dekke:
+
+- production read-only precheck: `/api/server/status`, `/api/state/revision`,
+  `/api/events`
+- schema/status på testserver
+- ny action gir `201` og revision `1 -> 2`
+- replay av samme request gir `200` og uendret revision
+- samme `actionId` med annen request gir `409 action_id_conflict`
+- stale `expectedRevision` gir `409 revision_conflict`
+- eventtype `server_note.created` finnes i testeventlogg
+- `serverNotes` finnes i teststate
+- production read-only postcheck viser fortsatt revision `1` og tom eventlogg
+
+Røde soner for B16-B og første senere implementering: ingen PWA-read, ingen
+PWA-write, ingen `index.html`, ingen POST mot `8787`, ingen production-write,
+ingen production restart uten egen godkjenning, ingen ekte SDE-action, ingen
+operational write, ingen `operationalState`, ingen packageendring og ingen bruk
+av `SDE_ENABLE_OPERATIONAL_WRITES=1`.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
