@@ -8,6 +8,11 @@ const { getSchemaStatus } = require("./schemaStatus");
 const { getCurrentRevision, getMainState, writeActionContractTest, writeTestNote } = require("./state");
 const { ACTIONS_TABLE_TEST_EVENT_TYPE, writeActionsTableTestAction } = require("./actionsTableTestAction");
 const { SERVER_NOTE_ACTION_TYPE, SERVER_NOTE_EVENT_TYPE, writeServerNoteAction } = require("./serverNoteAction");
+const {
+  getServerNoteEnvironmentGuardFailure,
+  getServerNoteGuardFailure,
+  getServerNoteStatus
+} = require("./serverNoteGuards");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
@@ -23,6 +28,7 @@ const TEST_WRITES_ENABLED = process.env.SDE_ENABLE_TEST_WRITES === "1";
 const ACTION_CONTRACT_TESTS_ENABLED = process.env.SDE_ENABLE_ACTION_CONTRACT_TESTS === "1";
 const ACTIONS_TABLE_TESTS_ENABLED = process.env.SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES === "1";
 const SERVER_NOTE_ACTIONS_ENABLED = process.env.SDE_ENABLE_SERVER_NOTE_ACTIONS === "1";
+const SERVER_NOTE_STATUS = getServerNoteStatus(process.env);
 const STARTED_AT = new Date();
 const SERVER_MODE = process.env.SDE_SERVER_MODE || "server-groundwork";
 const ACTION_CONTRACT_TEST_EVENT_TYPE = "action_contract.test";
@@ -58,7 +64,11 @@ if(ACTIONS_TABLE_TESTS_ENABLED){
 }
 
 if(SERVER_NOTE_ACTIONS_ENABLED){
-  const guardFailure = getServerNoteEnvironmentGuardFailure(configuredDatabasePath);
+  const guardFailure = getServerNoteEnvironmentGuardFailure({
+    env: process.env,
+    port: PORT,
+    databasePath: configuredDatabasePath
+  });
   if(guardFailure){
     console.error(`server note action startup blocked: ${guardFailure.message}`);
     process.exit(1);
@@ -111,7 +121,8 @@ app.get("/api/server/status", (_req, res) => {
     databaseFile: path.basename(databasePath),
     testWritesEnabled: TEST_WRITES_ENABLED,
     actionsTableTestWritesEnabled: ACTIONS_TABLE_TESTS_ENABLED,
-    serverNoteActionsEnabled: SERVER_NOTE_ACTIONS_ENABLED,
+    serverNoteActionsEnabled: SERVER_NOTE_STATUS.serverNoteActionsEnabled,
+    serverNoteProductionActionsEnabled: SERVER_NOTE_STATUS.serverNoteProductionActionsEnabled,
     ...schemaStatus,
     pwaConnected: false,
     operationalWritesEnabled: false
@@ -368,7 +379,11 @@ app.post("/api/actions/actions-table-test", (req, res) => {
 });
 
 app.post("/api/actions/server-note", (req, res) => {
-  const guardFailure = getServerNoteGuardFailure(databasePath);
+  const guardFailure = getServerNoteGuardFailure({
+    env: process.env,
+    port: PORT,
+    databasePath
+  });
   if(guardFailure){
     return res.status(403).json({
       ok: false,
@@ -808,17 +823,6 @@ function getActionsTableTestGuardFailure(activeDatabasePath){
   return getActionsTableTestEnvironmentGuardFailure(activeDatabasePath);
 }
 
-function getServerNoteGuardFailure(activeDatabasePath){
-  if(!SERVER_NOTE_ACTIONS_ENABLED){
-    return {
-      error: "server_note_actions_disabled",
-      message: "Server note actions are disabled. Set SDE_ENABLE_SERVER_NOTE_ACTIONS=1 to enable this endpoint."
-    };
-  }
-
-  return getServerNoteEnvironmentGuardFailure(activeDatabasePath);
-}
-
 function getActionContractTestEnvironmentGuardFailure(activeDatabasePath){
   if(PORT === 8787){
     return {
@@ -863,38 +867,6 @@ function getActionsTableTestEnvironmentGuardFailure(activeDatabasePath){
     return {
       error: "actions_table_test_production_database",
       message: "Actions table test writes cannot use the production database."
-    };
-  }
-
-  return null;
-}
-
-function getServerNoteEnvironmentGuardFailure(activeDatabasePath){
-  if(PORT === 8787){
-    return {
-      error: "server_note_actions_production_port",
-      message: "Server note actions cannot run on production port 8787 in this phase."
-    };
-  }
-
-  if(!process.env.SDE_SERVER_DB_PATH){
-    return {
-      error: "server_note_actions_db_path_required",
-      message: "Server note actions require an explicit non-production SDE_SERVER_DB_PATH."
-    };
-  }
-
-  if(isProductionDatabasePath(activeDatabasePath)){
-    return {
-      error: "server_note_actions_production_database",
-      message: "Server note actions cannot use the production database in this phase."
-    };
-  }
-
-  if(!isTmpDatabasePath(activeDatabasePath)){
-    return {
-      error: "server_note_actions_tmp_database_required",
-      message: "Server note actions require a /tmp test database in this phase."
     };
   }
 

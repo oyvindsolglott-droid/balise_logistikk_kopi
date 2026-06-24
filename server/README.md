@@ -1530,7 +1530,8 @@ SDE_ENABLE_SERVER_NOTE_ACTIONS=1
 
 B16C-B skal ikke bruke `SDE_ENABLE_OPERATIONAL_WRITES=1`. Ruten blokkerer port
 `8787`, production DB, manglende eksplisitt `SDE_SERVER_DB_PATH` og DB-path som
-ikke ligger under `/tmp`.
+ikke ligger under `/tmp` i test/dev-modus. Senere production-bruk krever et
+ekstra smalt production-flagg og er ikke operational write.
 
 Payload-kontrakten er:
 
@@ -1638,6 +1639,10 @@ Runtime- og screenkrav:
 Flagg og miljo:
 
 - `SDE_ENABLE_SERVER_NOTE_ACTIONS=1` er det smale flagget for server-note
+- production server-note krever i tillegg
+  `SDE_ENABLE_PRODUCTION_SERVER_NOTE_ACTIONS=1`
+- `/api/server/status` skal vise både `serverNoteActionsEnabled` og
+  `serverNoteProductionActionsEnabled`
 - ikke bruk `SDE_ENABLE_OPERATIONAL_WRITES=1`
 - ikke bruk `SDE_ENABLE_SCHEMA_MIGRATIONS=1`
 - ikke aktiver testflagg i production

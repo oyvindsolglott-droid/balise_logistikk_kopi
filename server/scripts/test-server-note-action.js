@@ -268,6 +268,7 @@ function createServerEnv(overrides){
   delete env.SDE_SERVER_DB_PATH;
   delete env.SDE_ENABLE_SCHEMA_MIGRATIONS;
   delete env.SDE_ENABLE_SERVER_NOTE_ACTIONS;
+  delete env.SDE_ENABLE_PRODUCTION_SERVER_NOTE_ACTIONS;
   delete env.SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES;
   delete env.SDE_ENABLE_ACTION_CONTRACT_TESTS;
   delete env.SDE_ENABLE_TEST_WRITES;
@@ -455,6 +456,7 @@ function assertBootstrapStatus(status){
   assertEqual(status.actionsSchemaReady, true, "bootstrap actionsSchemaReady");
   assertEqual(status.migrationRequired, false, "bootstrap migrationRequired");
   assertEqual(status.serverNoteActionsEnabled, false, "bootstrap serverNoteActionsEnabled");
+  assertEqual(status.serverNoteProductionActionsEnabled, false, "bootstrap serverNoteProductionActionsEnabled");
 }
 
 function assertDisabledStatus(status){
@@ -466,12 +468,14 @@ function assertDisabledStatus(status){
   assertEqual(status.actionsTablePresent, true, "disabled actionsTablePresent");
   assertEqual(status.actionsSchemaReady, true, "disabled actionsSchemaReady");
   assertEqual(status.migrationRequired, false, "disabled migrationRequired");
+  assertEqual(status.serverNoteProductionActionsEnabled, false, "disabled serverNoteProductionActionsEnabled");
 }
 
 function assertWriteStatus(status){
   assertEqual(status.port, TEST_PORT, "write port");
   assertEqual(status.databaseFile, path.basename(TEST_DB), "write databaseFile");
   assertEqual(status.serverNoteActionsEnabled, true, "write serverNoteActionsEnabled");
+  assertEqual(status.serverNoteProductionActionsEnabled, false, "write serverNoteProductionActionsEnabled");
   assertEqual(status.migrationsEnabled, false, "write migrationsEnabled");
   assertEqual(status.schemaUserVersion, 1, "write schemaUserVersion");
   assertEqual(status.actionsTablePresent, true, "write actionsTablePresent");
