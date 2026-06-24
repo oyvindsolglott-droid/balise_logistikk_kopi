@@ -5505,14 +5505,14 @@ button{padding:12px 12px}
   <div class="server-note-description">Kontrollert test-/diagnose-acknowledgement av SDE-anbefaling. Dette er ikke skifteordre, ikke Utført/Annullert og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan.</div>
   <div class="sde-ack-controls">
     <input class="sde-ack-input" id="sdeRecommendationAckServiceDate" type="date" aria-label="SDE-ack servicedato" disabled>
-    <input class="sde-ack-input" id="sdeRecommendationAckRecommendationKey" type="text" value="b26e-ui-recommendation-001" maxlength="200" aria-label="SDE-ack recommendation key" autocomplete="off" spellcheck="false" disabled>
+    <input class="sde-ack-input" id="sdeRecommendationAckRecommendationKey" type="text" value="sde-ack-ui-recommendation-001" maxlength="200" aria-label="SDE-ack recommendation key" autocomplete="off" spellcheck="false" disabled>
     <select class="sde-ack-input" id="sdeRecommendationAckStatus" aria-label="SDE-ack status" disabled>
       <option value="seen">seen</option>
       <option value="assessed" selected>assessed</option>
       <option value="not_relevant">not_relevant</option>
       <option value="needs_manual_review">needs_manual_review</option>
     </select>
-    <input class="sde-ack-input" id="sdeRecommendationAckActorId" type="text" value="b26e-ui-test-operator" maxlength="120" aria-label="SDE-ack actor id" autocomplete="off" spellcheck="false" disabled>
+    <input class="sde-ack-input" id="sdeRecommendationAckActorId" type="text" value="sde-ack-ui-operator" maxlength="120" aria-label="SDE-ack actor id" autocomplete="off" spellcheck="false" disabled>
     <select class="sde-ack-input" id="sdeRecommendationAckActorRole" aria-label="SDE-ack actor role" disabled>
       <option value="test" selected>test</option>
       <option value="txp">txp</option>
@@ -5521,8 +5521,8 @@ button{padding:12px 12px}
       <option value="lokomotivforer">lokomotivforer</option>
       <option value="unknown">unknown</option>
     </select>
-    <input class="sde-ack-input" id="sdeRecommendationAckDeviceId" type="text" value="serverhosted-test-ui" maxlength="120" aria-label="SDE-ack device id" autocomplete="off" spellcheck="false" disabled>
-    <textarea class="sde-ack-input sde-ack-note" id="sdeRecommendationAckNote" maxlength="500" rows="2" placeholder="Kort test-/diagnosenotat" disabled>B26-E test-only UI ack</textarea>
+    <input class="sde-ack-input" id="sdeRecommendationAckDeviceId" type="text" value="serverhosted-sde-ack-ui" maxlength="120" aria-label="SDE-ack device id" autocomplete="off" spellcheck="false" disabled>
+    <textarea class="sde-ack-input sde-ack-note" id="sdeRecommendationAckNote" maxlength="500" rows="2" placeholder="Kort test-/diagnosenotat" disabled>Kontrollert test/diagnose-ack via serverhostet UI. Ikke skifteordre, ikke Utført/Annullert, ikke operativ beslutning.</textarea>
     <button class="sde-ack-send-btn" id="sdeRecommendationAckSendBtn" type="button" disabled>Send test-ack</button>
   </div>
   <div class="server-note-result" id="sdeRecommendationAckResult">Avventer verifisert serverstatus.</div>
@@ -22798,7 +22798,7 @@ function buildSdeRecommendationAckAction(expectedRevision){
       },
       clientContext: {
         source: "serverhosted-app",
-        phase: "B26-E",
+        phase: "sde-ack-ui",
         purpose: "test-only-sde-recommendation-ack-ui-flow"
       }
     }
