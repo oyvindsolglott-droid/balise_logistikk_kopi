@@ -6,24 +6,44 @@ const net = require("node:net");
 const path = require("node:path");
 const { spawn, execFileSync } = require("node:child_process");
 
-const EXPECTED_CWD = "/Users/solglottsr/balise_logistikk_kopi/server";
+const EXPECTED_REPO_CWD = "/Users/solglottsr/balise_logistikk_kopi";
+const EXPECTED_SERVER_CWD = "/Users/solglottsr/balise_logistikk_kopi/server";
 const PRODUCTION_DB_PATH = "/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3";
 const TEST_PORT = 8789;
+const GUARD_TEST_PORT = 8790;
 const TEST_HOST = "127.0.0.1";
 const STAMP = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
-const TEST_DB = `/tmp/sde-b16c-server-note-action-${STAMP}.sqlite3`;
-const BOOTSTRAP_LOG = `/tmp/sde-b16c-server-note-action-bootstrap-${STAMP}.log`;
-const DISABLED_LOG = `/tmp/sde-b16c-server-note-action-disabled-${STAMP}.log`;
-const WRITE_LOG = `/tmp/sde-b16c-server-note-action-write-${STAMP}.log`;
+const TEST_DB = `/tmp/sde-b18b-server-note-edgecases-${STAMP}.sqlite3`;
+const BOOTSTRAP_LOG = `/tmp/sde-b18b-server-note-edgecases-bootstrap-${STAMP}.log`;
+const DISABLED_LOG = `/tmp/sde-b18b-server-note-edgecases-disabled-${STAMP}.log`;
+const WRITE_LOG = `/tmp/sde-b18b-server-note-edgecases-write-${STAMP}.log`;
+const PORT_GUARD_LOG = `/tmp/sde-b18b-server-note-edgecases-port-guard-${STAMP}.log`;
+const DB_GUARD_LOG = `/tmp/sde-b18b-server-note-edgecases-db-guard-${STAMP}.log`;
+const DB_PATH_GUARD_LOG = `/tmp/sde-b18b-server-note-edgecases-db-path-guard-${STAMP}.log`;
 
 let bootstrapServer = null;
 let disabledServer = null;
 let writeServer = null;
 
 async function main(){
-  assertServerCwd();
+  normalizeServerCwd();
   assertSafeTestTarget(TEST_PORT, TEST_DB);
   await assertPortFree(TEST_PORT);
+  await assertPortFree(GUARD_TEST_PORT);
+  await assertServerNoteStartupBlocked("production port guard", {
+    PORT: "8787",
+    SDE_SERVER_DB_PATH: TEST_DB,
+    SDE_ENABLE_SERVER_NOTE_ACTIONS: "1"
+  }, "Server note actions cannot run on production port 8787 in this phase.", PORT_GUARD_LOG);
+  await assertServerNoteStartupBlocked("production database guard", {
+    PORT: String(GUARD_TEST_PORT),
+    SDE_SERVER_DB_PATH: PRODUCTION_DB_PATH,
+    SDE_ENABLE_SERVER_NOTE_ACTIONS: "1"
+  }, "Server note actions cannot use the production database in this phase.", DB_GUARD_LOG);
+  await assertServerNoteStartupBlocked("missing db path guard", {
+    PORT: String(GUARD_TEST_PORT),
+    SDE_ENABLE_SERVER_NOTE_ACTIONS: "1"
+  }, "Server note actions require an explicit non-production SDE_SERVER_DB_PATH.", DB_PATH_GUARD_LOG);
   removeTestDatabaseFiles(TEST_DB);
 
   bootstrapServer = startServer("bootstrap", {
@@ -79,6 +99,8 @@ async function main(){
 
   const initialRevision = await getRevision();
   const action = createServerNoteAction("b16c-server-note-001", initialRevision);
+
+  await assertInvalidPayloadCases(action, initialRevision);
 
   const created = await postJson("/api/actions/server-note", action);
   assertStatus(created, 201, "created");
@@ -144,14 +166,19 @@ async function main(){
   console.log(`bootstrapLog: ${BOOTSTRAP_LOG}`);
   console.log(`disabledLog: ${DISABLED_LOG}`);
   console.log(`writeLog: ${WRITE_LOG}`);
+  console.log(`portGuardLog: ${PORT_GUARD_LOG}`);
+  console.log(`dbGuardLog: ${DB_GUARD_LOG}`);
+  console.log(`dbPathGuardLog: ${DB_PATH_GUARD_LOG}`);
+  console.log("startupGuards: ok");
   console.log(`disabled: ok`);
+  console.log("invalidPayloadEdgecases: ok");
   console.log(`created: ok revision ${initialRevision} -> ${resultingRevision}`);
   console.log("replayed: ok");
   console.log("action_id_conflict: ok");
   console.log("revision_conflict: ok");
   console.log("serverNotes: ok");
   console.log("sqlite: ok");
-  console.log("result: PASS_B16C_SERVER_NOTE_ACTION");
+  console.log("result: PASS_B18B_SERVER_NOTE_EDGECASES");
 }
 
 function createServerNoteAction(actionId, expectedRevision){
@@ -175,10 +202,15 @@ function createServerNoteAction(actionId, expectedRevision){
   };
 }
 
-function assertServerCwd(){
-  if(path.resolve(process.cwd()) !== EXPECTED_CWD){
-    throw new Error(`Must run from ${EXPECTED_CWD}; cwd=${process.cwd()}`);
+function normalizeServerCwd(){
+  const cwd = path.resolve(process.cwd());
+  if(cwd === EXPECTED_SERVER_CWD) return;
+  if(cwd === EXPECTED_REPO_CWD){
+    process.chdir(EXPECTED_SERVER_CWD);
+    return;
   }
+
+  throw new Error(`Must run from ${EXPECTED_SERVER_CWD} or ${EXPECTED_REPO_CWD}; cwd=${process.cwd()}`);
 }
 
 function assertSafeTestTarget(port, databasePath){
@@ -210,11 +242,12 @@ function startServer(label, envOverrides, logPath){
   const env = createServerEnv(envOverrides);
   const output = fs.openSync(logPath, "w");
   const child = spawn(process.execPath, ["src/index.js"], {
-    cwd: EXPECTED_CWD,
+    cwd: EXPECTED_SERVER_CWD,
     env,
     detached: false,
     stdio: ["ignore", output, output]
   });
+  fs.closeSync(output);
 
   child.once("exit", (code, signal) => {
     if(child.expectedExit) return;
@@ -231,6 +264,8 @@ function startServer(label, envOverrides, logPath){
 
 function createServerEnv(overrides){
   const env = { ...process.env };
+  delete env.PORT;
+  delete env.SDE_SERVER_DB_PATH;
   delete env.SDE_ENABLE_SCHEMA_MIGRATIONS;
   delete env.SDE_ENABLE_SERVER_NOTE_ACTIONS;
   delete env.SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES;
@@ -242,6 +277,46 @@ function createServerEnv(overrides){
     ...env,
     ...overrides
   };
+}
+
+async function assertServerNoteStartupBlocked(label, envOverrides, expectedLogText, logPath){
+  const port = Number(envOverrides.PORT || 8787);
+  if(port !== 8787){
+    await assertPortFree(port);
+  }
+
+  const env = createServerEnv(envOverrides);
+  const output = fs.openSync(logPath, "w");
+  const child = spawn(process.execPath, ["src/index.js"], {
+    cwd: EXPECTED_SERVER_CWD,
+    env,
+    detached: false,
+    stdio: ["ignore", output, output]
+  });
+  fs.closeSync(output);
+
+  const result = await waitForChildExitDetails(child, 3000);
+  if(!result.exited){
+    child.kill("SIGTERM");
+    const stopped = await waitForChildExit(child, 1500);
+    if(!stopped){
+      child.kill("SIGKILL");
+    }
+    throw new Error(`${label} did not block startup quickly. Log:\n${readTail(logPath)}`);
+  }
+
+  if(result.code === 0){
+    throw new Error(`${label} exited successfully, expected startup block. Log:\n${readTail(logPath)}`);
+  }
+
+  const log = readTail(logPath);
+  if(!log.includes(expectedLogText)){
+    throw new Error(`${label} log did not include ${JSON.stringify(expectedLogText)}. Log:\n${log}`);
+  }
+
+  if(port !== 8787){
+    await assertPortFree(port);
+  }
 }
 
 async function stopServer(child, label){
@@ -266,6 +341,34 @@ function waitForChildExit(child, timeoutMs){
       clearTimeout(timer);
       resolve(true);
     }
+    child.once("exit", onExit);
+  });
+}
+
+function waitForChildExitDetails(child, timeoutMs){
+  return new Promise(resolve => {
+    if(child.exitCode !== null){
+      return resolve({
+        exited: true,
+        code: child.exitCode,
+        signal: child.signalCode
+      });
+    }
+
+    const timer = setTimeout(() => {
+      child.off("exit", onExit);
+      resolve({ exited: false });
+    }, timeoutMs);
+
+    function onExit(code, signal){
+      clearTimeout(timer);
+      resolve({
+        exited: true,
+        code,
+        signal
+      });
+    }
+
     child.once("exit", onExit);
   });
 }
@@ -413,6 +516,126 @@ async function assertServerNotesState(resultingRevision, action){
   assertEqual(serverNotes.lastNote?.revision, resultingRevision, "serverNotes lastNote revision");
 }
 
+async function assertInvalidPayloadCases(validAction, expectedRevision){
+  const cases = [
+    {
+      label: "missing actionId",
+      body: withoutKey(validAction, "actionId")
+    },
+    {
+      label: "wrong actionType",
+      body: {
+        ...validAction,
+        actionType: "server_note.update"
+      }
+    },
+    {
+      label: "missing actor",
+      body: withoutKey(validAction, "actor")
+    },
+    {
+      label: "missing actor.id",
+      body: {
+        ...validAction,
+        actor: withoutKey(validAction.actor, "id")
+      }
+    },
+    {
+      label: "missing actor.role",
+      body: {
+        ...validAction,
+        actor: withoutKey(validAction.actor, "role")
+      }
+    },
+    {
+      label: "missing deviceId",
+      body: withoutKey(validAction, "deviceId")
+    },
+    {
+      label: "missing expectedRevision",
+      body: withoutKey(validAction, "expectedRevision")
+    },
+    {
+      label: "invalid expectedRevision type",
+      body: {
+        ...validAction,
+        expectedRevision: "1"
+      }
+    },
+    {
+      label: "missing payload",
+      body: withoutKey(validAction, "payload")
+    },
+    {
+      label: "missing payload.note",
+      body: {
+        ...validAction,
+        payload: withoutKey(validAction.payload, "note")
+      }
+    },
+    {
+      label: "empty note",
+      body: {
+        ...validAction,
+        payload: {
+          ...validAction.payload,
+          note: "   "
+        }
+      }
+    },
+    {
+      label: "note too long",
+      body: {
+        ...validAction,
+        payload: {
+          ...validAction.payload,
+          note: "x".repeat(501)
+        }
+      }
+    },
+    {
+      label: "invalid category",
+      body: {
+        ...validAction,
+        payload: {
+          ...validAction.payload,
+          category: "security"
+        }
+      }
+    },
+    {
+      label: "invalid severity",
+      body: {
+        ...validAction,
+        payload: {
+          ...validAction.payload,
+          severity: "critical"
+        }
+      }
+    },
+    {
+      label: "invalid clientContext type",
+      body: {
+        ...validAction,
+        clientContext: "not-an-object"
+      }
+    }
+  ];
+
+  for(const testCase of cases){
+    const response = await postJson("/api/actions/server-note", testCase.body);
+    assertStatus(response, 400, testCase.label);
+    assertEqual(response.body.error, "invalid_payload", `${testCase.label} error`);
+    assertEqual(await getRevision(), expectedRevision, `revision after ${testCase.label}`);
+  }
+}
+
+function withoutKey(object, key){
+  const copy = { ...object };
+  delete copy[key];
+  return copy;
+}
+
 function assertStatus(response, expectedStatus, label){
   if(response.status !== expectedStatus){
     throw new Error(`${label} expected HTTP ${expectedStatus}, got ${response.status}: ${JSON.stringify(response.body)}`);
@@ -486,5 +709,8 @@ main()
     console.error(`bootstrapLog: ${BOOTSTRAP_LOG}`);
     console.error(`disabledLog: ${DISABLED_LOG}`);
     console.error(`writeLog: ${WRITE_LOG}`);
+    console.error(`portGuardLog: ${PORT_GUARD_LOG}`);
+    console.error(`dbGuardLog: ${DB_GUARD_LOG}`);
+    console.error(`dbPathGuardLog: ${DB_PATH_GUARD_LOG}`);
     process.exitCode = 1;
   });
