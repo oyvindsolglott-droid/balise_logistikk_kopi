@@ -245,9 +245,39 @@ font-weight:900;
 }
 .server-note-send-btn:disabled,
 .server-note-textarea:disabled,
-.server-note-select:disabled{
+.server-note-select:disabled,
+.sde-ack-input:disabled,
+.sde-ack-send-btn:disabled{
 opacity:.62;
 cursor:not-allowed;
+}
+.sde-ack-controls{
+display:grid;
+grid-template-columns:minmax(130px,160px) minmax(180px,1fr) minmax(140px,180px) minmax(140px,180px);
+gap:8px;
+align-items:stretch;
+}
+.sde-ack-input{
+border:1px solid #cbd5e1;
+border-radius:10px;
+padding:7px 9px;
+font:inherit;
+font-size:13px;
+color:#0f172a;
+background:#fff;
+min-height:36px;
+}
+.sde-ack-note{
+grid-column:1 / span 3;
+min-height:42px;
+resize:vertical;
+}
+.sde-ack-send-btn{
+padding:8px 10px;
+min-height:36px;
+border-radius:10px;
+font-size:13px;
+font-weight:900;
 }
 .guide-top-btn{
 display:inline-flex;
@@ -503,10 +533,15 @@ box-shadow:
   .server-status-check-btn{
     width:100%;
   }
-  .server-note-controls{
+  .server-note-controls,
+  .sde-ack-controls{
     grid-template-columns:1fr;
   }
-  .server-note-send-btn{
+  .sde-ack-note{
+    grid-column:auto;
+  }
+  .server-note-send-btn,
+  .sde-ack-send-btn{
     width:100%;
   }
   .segmented{grid-template-columns:repeat(2,minmax(160px,1fr));}
@@ -5461,6 +5496,36 @@ button{padding:12px 12px}
   <div class="server-note-description">Diagnostikk/readback av ikke-operative server-notater. Dette er ikke operativ sannhetskilde og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan.</div>
   <div class="server-note-readback-summary" id="serverNoteReadbackSummary">Avventer serverstatus.</div>
   <div class="server-note-readback-list" id="serverNoteReadbackList"></div>
+</div>
+<div class="server-note-panel" id="sdeRecommendationAckPanel" aria-live="polite">
+  <div class="server-note-header">
+    <span class="server-note-title">SDE-anbefaling – test/ack</span>
+    <span class="server-status-pill off" id="sdeRecommendationAckWriteState">ack-write av</span>
+  </div>
+  <div class="server-note-description">Test-only acknowledgement av SDE-anbefaling. Dette er ikke skifteordre, ikke Utført/Annullert og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan.</div>
+  <div class="sde-ack-controls">
+    <input class="sde-ack-input" id="sdeRecommendationAckServiceDate" type="date" aria-label="SDE-ack servicedato" disabled>
+    <input class="sde-ack-input" id="sdeRecommendationAckRecommendationKey" type="text" value="b26e-ui-recommendation-001" maxlength="200" aria-label="SDE-ack recommendation key" autocomplete="off" spellcheck="false" disabled>
+    <select class="sde-ack-input" id="sdeRecommendationAckStatus" aria-label="SDE-ack status" disabled>
+      <option value="seen">seen</option>
+      <option value="assessed" selected>assessed</option>
+      <option value="not_relevant">not_relevant</option>
+      <option value="needs_manual_review">needs_manual_review</option>
+    </select>
+    <input class="sde-ack-input" id="sdeRecommendationAckActorId" type="text" value="b26e-ui-test-operator" maxlength="120" aria-label="SDE-ack actor id" autocomplete="off" spellcheck="false" disabled>
+    <select class="sde-ack-input" id="sdeRecommendationAckActorRole" aria-label="SDE-ack actor role" disabled>
+      <option value="test" selected>test</option>
+      <option value="txp">txp</option>
+      <option value="skifter">skifter</option>
+      <option value="materiellstyrer">materiellstyrer</option>
+      <option value="lokomotivforer">lokomotivforer</option>
+      <option value="unknown">unknown</option>
+    </select>
+    <input class="sde-ack-input" id="sdeRecommendationAckDeviceId" type="text" value="serverhosted-test-ui" maxlength="120" aria-label="SDE-ack device id" autocomplete="off" spellcheck="false" disabled>
+    <textarea class="sde-ack-input sde-ack-note" id="sdeRecommendationAckNote" maxlength="500" rows="2" placeholder="Kort test-/diagnosenotat" disabled>B26-E test-only UI ack</textarea>
+    <button class="sde-ack-send-btn" id="sdeRecommendationAckSendBtn" type="button" disabled>Send test-ack</button>
+  </div>
+  <div class="server-note-result" id="sdeRecommendationAckResult">Avventer verifisert serverstatus.</div>
 </div>
 <div class="server-note-panel" id="sdeRecommendationAckReadbackPanel" aria-live="polite">
   <div class="server-note-header">
@@ -22086,9 +22151,15 @@ const SDE_SERVER_NOTE_MAX_LENGTH = 500;
 const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_READBACK_EVENT_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_RECENT_DISPLAY_LIMIT = 5;
+const SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH = 500;
+const SDE_RECOMMENDATION_ACK_ALLOWED_STATUSES = Object.freeze(["seen", "assessed", "not_relevant", "needs_manual_review"]);
+const SDE_RECOMMENDATION_ACK_ALLOWED_ROLES = Object.freeze(["txp", "skifter", "materiellstyrer", "lokomotivforer", "test", "unknown"]);
 let lastServerStatusForServerNote = null;
 let lastServerStatusBaseForServerNote = "";
 let serverNoteSubmitInFlight = false;
+let lastServerStatusForSdeRecommendationAck = null;
+let lastServerStatusBaseForSdeRecommendationAck = "";
+let sdeRecommendationAckSubmitInFlight = false;
 
 function getSameOriginServerStatusBase(){
   if(/^https?:$/i.test(window.location.protocol) && window.location.port){
@@ -22499,6 +22570,265 @@ async function fetchSdeRecommendationAckReadbackForDisplay(base, status){
   }
 }
 
+function getSdeRecommendationAckControls(){
+  return {
+    serviceDate: document.getElementById("sdeRecommendationAckServiceDate"),
+    recommendationKey: document.getElementById("sdeRecommendationAckRecommendationKey"),
+    ackStatus: document.getElementById("sdeRecommendationAckStatus"),
+    actorId: document.getElementById("sdeRecommendationAckActorId"),
+    actorRole: document.getElementById("sdeRecommendationAckActorRole"),
+    deviceId: document.getElementById("sdeRecommendationAckDeviceId"),
+    note: document.getElementById("sdeRecommendationAckNote"),
+    send: document.getElementById("sdeRecommendationAckSendBtn"),
+    state: document.getElementById("sdeRecommendationAckWriteState"),
+    result: document.getElementById("sdeRecommendationAckResult")
+  };
+}
+
+function getDefaultSdeRecommendationAckServiceDate(){
+  if(typeof getTodayOsloIsoDate === "function"){
+    return getTodayOsloIsoDate();
+  }
+  return new Date().toISOString().slice(0, 10);
+}
+
+function initializeSdeRecommendationAckDefaults(){
+  const controls = getSdeRecommendationAckControls();
+  if(controls.serviceDate && !controls.serviceDate.value){
+    controls.serviceDate.value = getDefaultSdeRecommendationAckServiceDate();
+  }
+}
+
+function isSdeRecommendationAckFormComplete(){
+  const controls = getSdeRecommendationAckControls();
+  const serviceDate = String(controls.serviceDate?.value || "").trim();
+  const recommendationKey = String(controls.recommendationKey?.value || "").trim();
+  const ackStatus = String(controls.ackStatus?.value || "").trim();
+  const actorId = String(controls.actorId?.value || "").trim();
+  const actorRole = String(controls.actorRole?.value || "").trim();
+  const deviceId = String(controls.deviceId?.value || "").trim();
+  const note = String(controls.note?.value || "").trim();
+  return Boolean(
+    serviceDate &&
+    recommendationKey &&
+    SDE_RECOMMENDATION_ACK_ALLOWED_STATUSES.includes(ackStatus) &&
+    actorId &&
+    SDE_RECOMMENDATION_ACK_ALLOWED_ROLES.includes(actorRole) &&
+    deviceId &&
+    note &&
+    note.length <= SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH
+  );
+}
+
+function refreshSdeRecommendationAckSubmitState(){
+  const controls = getSdeRecommendationAckControls();
+  const enabled = lastServerStatusForSdeRecommendationAck?.sdeRecommendationAckActionsEnabled === true &&
+    lastServerStatusForSdeRecommendationAck?.sdeRecommendationAckProductionActionsEnabled !== true;
+  const disabled = !enabled || sdeRecommendationAckSubmitInFlight;
+  [
+    controls.serviceDate,
+    controls.recommendationKey,
+    controls.ackStatus,
+    controls.actorId,
+    controls.actorRole,
+    controls.deviceId,
+    controls.note
+  ].filter(Boolean).forEach(control => { control.disabled = disabled; });
+  if(controls.send){
+    controls.send.disabled = disabled || !isSdeRecommendationAckFormComplete();
+  }
+}
+
+function renderSdeRecommendationAckPanelFromStatus(status, base, message){
+  const controls = getSdeRecommendationAckControls();
+  const enabled = status?.sdeRecommendationAckActionsEnabled === true &&
+    status?.sdeRecommendationAckProductionActionsEnabled !== true;
+  const productionEnabled = status?.sdeRecommendationAckProductionActionsEnabled === true;
+  lastServerStatusForSdeRecommendationAck = status || null;
+  lastServerStatusBaseForSdeRecommendationAck = status ? normalizeServerStatusBase(base) : "";
+  initializeSdeRecommendationAckDefaults();
+
+  if(controls.state){
+    controls.state.className = `server-status-pill ${enabled || productionEnabled ? "warn" : "off"}`;
+    controls.state.textContent = enabled
+      ? "ack-write på / test"
+      : (productionEnabled ? "prod-ack sperret i UI" : "ack-write av");
+  }
+
+  refreshSdeRecommendationAckSubmitState();
+
+  if(controls.result){
+    if(message){
+      controls.result.textContent = message;
+    }else if(enabled){
+      controls.result.textContent = "Klar for test-only SDE recommendation ack mot same-origin testserver.";
+    }else if(productionEnabled){
+      controls.result.textContent = "Production ack-write er ikke tilgjengelig fra denne testflaten.";
+    }else if(status){
+      controls.result.textContent = "SDE-ack write er av. Ingen POST kan sendes.";
+    }else{
+      controls.result.textContent = "Avventer verifisert serverstatus.";
+    }
+  }
+}
+
+function generateSdeRecommendationAckActionId(){
+  if(window.crypto?.randomUUID){
+    return `sde-ack-ui-${window.crypto.randomUUID()}`;
+  }
+  return `sde-ack-ui-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function getSdeRecommendationAckSameOriginBase(){
+  const base = normalizeServerStatusBase(lastServerStatusBaseForSdeRecommendationAck);
+  const sameOriginBase = normalizeServerStatusBase(getSameOriginServerStatusBase());
+  if(!base || !sameOriginBase || base !== sameOriginBase){
+    return "";
+  }
+  return base;
+}
+
+async function fetchSdeRecommendationAckExpectedRevision(base){
+  const response = await fetch(`${base}/api/state/revision`, {cache:"no-store"});
+  if(!response.ok) throw new Error(`/api/state/revision HTTP ${response.status}`);
+  const body = await response.json();
+  const revision = Number(body?.revision);
+  if(!Number.isInteger(revision) || revision < 1){
+    throw new Error("Server returnerte ugyldig revision.");
+  }
+  return revision;
+}
+
+function buildSdeRecommendationAckAction(expectedRevision){
+  const controls = getSdeRecommendationAckControls();
+  const serviceDate = String(controls.serviceDate?.value || "").trim();
+  const recommendationKey = String(controls.recommendationKey?.value || "").trim();
+  const ackStatus = String(controls.ackStatus?.value || "").trim();
+  const actorId = String(controls.actorId?.value || "").trim();
+  const actorRole = String(controls.actorRole?.value || "").trim();
+  const deviceId = String(controls.deviceId?.value || "").trim();
+  const note = String(controls.note?.value || "").trim();
+
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)){
+    return {ok:false, message:"SDE-ack servicedato må være YYYY-MM-DD."};
+  }
+  if(!recommendationKey){
+    return {ok:false, message:"SDE-ack må ha recommendation key."};
+  }
+  if(!SDE_RECOMMENDATION_ACK_ALLOWED_STATUSES.includes(ackStatus)){
+    return {ok:false, message:"Ugyldig SDE-ack status."};
+  }
+  if(!actorId || !SDE_RECOMMENDATION_ACK_ALLOWED_ROLES.includes(actorRole) || !deviceId){
+    return {ok:false, message:"SDE-ack mangler actor/device-felt."};
+  }
+  if(!note){
+    return {ok:false, message:"SDE-ack må ha note for denne testflaten."};
+  }
+  if(note.length > SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH){
+    return {ok:false, message:`SDE-ack note kan være maks ${SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH} tegn.`};
+  }
+  if(!Number.isInteger(expectedRevision) || expectedRevision < 1){
+    return {ok:false, message:"Mangler gyldig expectedRevision fra server."};
+  }
+
+  return {
+    ok: true,
+    action: {
+      actionId: generateSdeRecommendationAckActionId(),
+      actionType: "sde_recommendation_ack.create",
+      actor: {
+        id: actorId,
+        role: actorRole
+      },
+      deviceId,
+      expectedRevision,
+      payload: {
+        serviceDate,
+        recommendationKey,
+        ackStatus,
+        note
+      },
+      clientContext: {
+        source: "serverhosted-app",
+        phase: "B26-E",
+        purpose: "test-only-sde-recommendation-ack-ui-flow"
+      }
+    }
+  };
+}
+
+async function submitSdeRecommendationAckFromUi(){
+  const controls = getSdeRecommendationAckControls();
+  if(sdeRecommendationAckSubmitInFlight) return;
+
+  if(lastServerStatusForSdeRecommendationAck?.sdeRecommendationAckActionsEnabled !== true ||
+      lastServerStatusForSdeRecommendationAck?.sdeRecommendationAckProductionActionsEnabled === true){
+    if(controls.result) controls.result.textContent = "SDE-ack write er av for denne testflaten. Ingen POST sendt.";
+    refreshSdeRecommendationAckSubmitState();
+    return;
+  }
+
+  const base = getSdeRecommendationAckSameOriginBase();
+  if(!base){
+    if(controls.result) controls.result.textContent = "SDE-ack write krever serverhostet same-origin testserver. Ingen POST sendt.";
+    return;
+  }
+
+  if(!isSdeRecommendationAckFormComplete()){
+    if(controls.result) controls.result.textContent = "Fyll ut alle SDE-ack testfelt før sending.";
+    return;
+  }
+
+  sdeRecommendationAckSubmitInFlight = true;
+  refreshSdeRecommendationAckSubmitState();
+  if(controls.result) controls.result.textContent = "Sender test-only SDE recommendation ack...";
+
+  try{
+    const expectedRevision = await fetchSdeRecommendationAckExpectedRevision(base);
+    const built = buildSdeRecommendationAckAction(expectedRevision);
+    if(!built.ok){
+      if(controls.result) controls.result.textContent = built.message;
+      return;
+    }
+
+    const response = await fetch(`${base}/api/actions/sde-recommendation-ack`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(built.action)
+    });
+    let body = null;
+    try{
+      body = await response.json();
+    }catch(_error){
+      body = null;
+    }
+
+    await fetchServerStatusForDisplay();
+
+    if(response.status === 201){
+      if(controls.result) controls.result.textContent = `Opprettet SDE-ack testwrite. Revision ${body?.previousRevision ?? expectedRevision} -> ${body?.resultingRevision ?? "?"}.`;
+    }else if(response.status === 200){
+      if(controls.result) controls.result.textContent = `Replay/allerede behandlet SDE-ack. Revision ${body?.resultingRevision ?? "?"}.`;
+    }else if(response.status === 409){
+      const label = body?.error === "action_id_conflict" ? "actionId-konflikt" : "revision conflict";
+      if(controls.result) controls.result.textContent = `${label}. ${body?.message || "Les ny status før nytt forsøk."}`;
+    }else if(response.status === 400 || response.status === 403){
+      if(controls.result) controls.result.textContent = `SDE-ack avvist: HTTP ${response.status} ${body?.error || ""}`.trim();
+    }else{
+      if(controls.result) controls.result.textContent = `SDE-ack feilet: HTTP ${response.status} ${body?.error || ""}`.trim();
+    }
+  }catch(error){
+    if(controls.result) controls.result.textContent = `SDE-ack kunne ikke sendes: ${error?.message || "nettverksfeil"}`;
+  }finally{
+    sdeRecommendationAckSubmitInFlight = false;
+    renderSdeRecommendationAckPanelFromStatus(
+      lastServerStatusForSdeRecommendationAck,
+      lastServerStatusBaseForSdeRecommendationAck,
+      controls.result?.textContent
+    );
+  }
+}
+
 function generateServerNoteActionId(){
   if(window.crypto?.randomUUID){
     return `server-note-ui-${window.crypto.randomUUID()}`;
@@ -22634,6 +22964,7 @@ function renderServerStatusIdle(){
     createServerStatusPill("Read-only observasjon", "off")
   ]);
   renderServerNotePanelFromStatus(null, "");
+  renderSdeRecommendationAckPanelFromStatus(null, "");
   renderServerNoteReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
   renderSdeRecommendationAckReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
 }
@@ -22646,6 +22977,7 @@ function renderServerStatusUnavailable(message){
     createServerStatusPill(String(message || "Kunne ikke lese serverstatus").slice(0, 90), "warn")
   ]);
   renderServerNotePanelFromStatus(null, "", "Serverstatus utilgjengelig. Ingen POST kan sendes.");
+  renderSdeRecommendationAckPanelFromStatus(null, "", "Serverstatus utilgjengelig. Ingen SDE-ack POST kan sendes.");
   renderServerNoteReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Readback er ikke hentet.");
   renderSdeRecommendationAckReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. SDE-ack readback er ikke hentet.");
 }
@@ -22695,6 +23027,7 @@ function renderServerStatus(status, base){
     createServerStatusPill(`datafiler ${hostedDataFiles || "ikke oppgitt"}`, hostedDataFiles ? "off" : "warn")
   ]);
   renderServerNotePanelFromStatus(status, base);
+  renderSdeRecommendationAckPanelFromStatus(status, base);
 }
 
 async function fetchServerStatusForDisplay(){
@@ -24144,6 +24477,20 @@ document.getElementById("clearKjoretoyBtn").addEventListener("click",()=>{
 
 document.getElementById("serverStatusCheckBtn")?.addEventListener("click", fetchServerStatusForDisplay);
 document.getElementById("serverNoteSendBtn")?.addEventListener("click", submitServerNoteFromUi);
+document.getElementById("sdeRecommendationAckSendBtn")?.addEventListener("click", submitSdeRecommendationAckFromUi);
+[
+  "sdeRecommendationAckServiceDate",
+  "sdeRecommendationAckRecommendationKey",
+  "sdeRecommendationAckStatus",
+  "sdeRecommendationAckActorId",
+  "sdeRecommendationAckActorRole",
+  "sdeRecommendationAckDeviceId",
+  "sdeRecommendationAckNote"
+].forEach(id => {
+  const element = document.getElementById(id);
+  element?.addEventListener("input", refreshSdeRecommendationAckSubmitState);
+  element?.addEventListener("change", refreshSdeRecommendationAckSubmitState);
+});
 
 const sameOriginServerStatusBase = getSameOriginServerStatusBase();
 if(sameOriginServerStatusBase){
@@ -24151,6 +24498,8 @@ if(sameOriginServerStatusBase){
   if(serverStatusInput) serverStatusInput.value = sameOriginServerStatusBase;
 }
 renderServerNotePanelFromStatus(null, "");
+initializeSdeRecommendationAckDefaults();
+renderSdeRecommendationAckPanelFromStatus(null, "");
 
 
 buildTurnering("turneringKveldTable","turneringKveld");
