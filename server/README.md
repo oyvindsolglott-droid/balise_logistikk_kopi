@@ -1322,6 +1322,25 @@ Røde soner videre: ingen POST mot `8787`, ingen production-write, ingen
 production restart uten egen godkjenning, ingen PWA-kobling, ingen
 `index.html`-endring, ingen ekte SDE-action og ingen operational write.
 
+## B15D actions-table regression script
+
+B15D legger til et test-only regressjonsscript for B15B2B-flyten:
+
+```bash
+cd /Users/solglottsr/balise_logistikk_kopi/server
+node scripts/test-actions-table-regression.js
+```
+
+Scriptet bruker en egen SQLite-fil under `/tmp`, starter en bootstrap-server med
+`SDE_ENABLE_SCHEMA_MIGRATIONS=1`, stopper den, starter deretter en write-testserver
+med `SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES=1`, og verifiserer created/replayed,
+`action_id_conflict`, `revision_conflict`, SQLite integrity, `user_version`,
+action count og event count.
+
+Scriptet skal printe `PASS_B15D_ACTIONS_TABLE_REGRESSION` ved grønn test. Det er
+ikke production-write, ikke PWA, ikke ekte SDE-action og ikke operational write.
+Det skal ikke sende request til port `8787` eller bruke production DB.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
