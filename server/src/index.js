@@ -9,10 +9,20 @@ const { getCurrentRevision, getMainState, writeActionContractTest, writeTestNote
 const { ACTIONS_TABLE_TEST_EVENT_TYPE, writeActionsTableTestAction } = require("./actionsTableTestAction");
 const { SERVER_NOTE_ACTION_TYPE, SERVER_NOTE_EVENT_TYPE, writeServerNoteAction } = require("./serverNoteAction");
 const {
+  SDE_RECOMMENDATION_ACK_ACTION_TYPE,
+  SDE_RECOMMENDATION_ACK_EVENT_TYPE,
+  writeSdeRecommendationAckAction
+} = require("./sdeRecommendationAckAction");
+const {
   getServerNoteEnvironmentGuardFailure,
   getServerNoteGuardFailure,
   getServerNoteStatus
 } = require("./serverNoteGuards");
+const {
+  getSdeRecommendationAckEnvironmentGuardFailure,
+  getSdeRecommendationAckGuardFailure,
+  getSdeRecommendationAckStatus
+} = require("./sdeRecommendationAckGuards");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
@@ -20,15 +30,35 @@ const TEST_NOTE_MAX_LENGTH = 500;
 const ACTION_CONTRACT_TEST_NOTE_MAX_LENGTH = 500;
 const ACTIONS_TABLE_TEST_NOTE_MAX_LENGTH = 500;
 const SERVER_NOTE_MAX_LENGTH = 500;
+const SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH = 500;
+const SDE_RECOMMENDATION_ACK_ID_MAX_LENGTH = 120;
+const SDE_RECOMMENDATION_ACK_ROLE_MAX_LENGTH = 60;
+const SDE_RECOMMENDATION_ACK_RECOMMENDATION_KEY_MAX_LENGTH = 200;
 const ACTION_CONTRACT_FIELD_MAX_LENGTH = 200;
 const ACTION_CONTRACT_CLIENT_CONTEXT_MAX_LENGTH = 4000;
 const SERVER_NOTE_CATEGORIES = new Set(["ops", "test", "maintenance"]);
 const SERVER_NOTE_SEVERITIES = new Set(["info", "warning"]);
+const SDE_RECOMMENDATION_ACK_STATUSES = new Set([
+  "seen",
+  "assessed",
+  "not_relevant",
+  "needs_manual_review"
+]);
+const SDE_RECOMMENDATION_ACK_ACTOR_ROLES = new Set([
+  "txp",
+  "skifter",
+  "materiellstyrer",
+  "lokomotivforer",
+  "test",
+  "unknown"
+]);
 const TEST_WRITES_ENABLED = process.env.SDE_ENABLE_TEST_WRITES === "1";
 const ACTION_CONTRACT_TESTS_ENABLED = process.env.SDE_ENABLE_ACTION_CONTRACT_TESTS === "1";
 const ACTIONS_TABLE_TESTS_ENABLED = process.env.SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES === "1";
 const SERVER_NOTE_ACTIONS_ENABLED = process.env.SDE_ENABLE_SERVER_NOTE_ACTIONS === "1";
+const SDE_RECOMMENDATION_ACK_ACTIONS_ENABLED = process.env.SDE_ENABLE_SDE_RECOMMENDATION_ACK_ACTIONS === "1";
 const SERVER_NOTE_STATUS = getServerNoteStatus(process.env);
+const SDE_RECOMMENDATION_ACK_STATUS = getSdeRecommendationAckStatus(process.env);
 const STARTED_AT = new Date();
 const SERVER_MODE = process.env.SDE_SERVER_MODE || "server-groundwork";
 const ACTION_CONTRACT_TEST_EVENT_TYPE = "action_contract.test";
@@ -55,7 +85,8 @@ const CLIENT_READ_CONTRACT = Object.freeze({
     "/api/events"
   ],
   disallowedWriteEndpoints: [
-    "/api/actions/server-note"
+    "/api/actions/server-note",
+    "/api/actions/sde-recommendation-ack"
   ],
   dataSourceForOperations: "local_frontend_data",
   notes: "Serverstatus is observational only. The SDE engine and operational views still use local/static frontend data."
@@ -121,6 +152,18 @@ if(SERVER_NOTE_ACTIONS_ENABLED){
   });
   if(guardFailure){
     console.error(`server note action startup blocked: ${guardFailure.message}`);
+    process.exit(1);
+  }
+}
+
+if(SDE_RECOMMENDATION_ACK_ACTIONS_ENABLED){
+  const guardFailure = getSdeRecommendationAckEnvironmentGuardFailure({
+    env: process.env,
+    port: PORT,
+    databasePath: configuredDatabasePath
+  });
+  if(guardFailure){
+    console.error(`sde recommendation ack action startup blocked: ${guardFailure.message}`);
     process.exit(1);
   }
 }
@@ -202,6 +245,8 @@ app.get("/api/server/status", (_req, res) => {
     actionsTableTestWritesEnabled: ACTIONS_TABLE_TESTS_ENABLED,
     serverNoteActionsEnabled: SERVER_NOTE_STATUS.serverNoteActionsEnabled,
     serverNoteProductionActionsEnabled: SERVER_NOTE_STATUS.serverNoteProductionActionsEnabled,
+    sdeRecommendationAckActionsEnabled: SDE_RECOMMENDATION_ACK_STATUS.sdeRecommendationAckActionsEnabled,
+    sdeRecommendationAckProductionActionsEnabled: SDE_RECOMMENDATION_ACK_STATUS.sdeRecommendationAckProductionActionsEnabled,
     ...schemaStatus,
     clientReadContract: CLIENT_READ_CONTRACT,
     operationalDataContract: OPERATIONAL_DATA_CONTRACT,
@@ -558,6 +603,106 @@ app.post("/api/actions/server-note", (req, res) => {
   });
 });
 
+
+app.post("/api/actions/sde-recommendation-ack", (req, res) => {
+  const guardFailure = getSdeRecommendationAckGuardFailure({
+    env: process.env,
+    port: PORT,
+    databasePath
+  });
+  if(guardFailure){
+    return res.status(403).json({
+      ok: false,
+      error: guardFailure.error,
+      message: guardFailure.message
+    });
+  }
+
+  const validation = validateSdeRecommendationAckPayload(req.body);
+  if(!validation.ok){
+    return res.status(400).json({
+      ok: false,
+      error: "invalid_payload",
+      message: validation.message
+    });
+  }
+
+  let result;
+  try{
+    result = writeSdeRecommendationAckAction(db, validation.value);
+  }catch(error){
+    console.error("sde recommendation ack action failed", error);
+    return res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: "Internal server error."
+    });
+  }
+
+  if(!result.ok && result.error === "actions_schema_not_ready"){
+    return res.status(500).json({
+      ok: false,
+      error: "actions_schema_not_ready",
+      problems: result.problems
+    });
+  }
+
+  if(!result.ok && result.error === "action_id_conflict"){
+    return res.status(409).json({
+      ok: false,
+      error: "action_id_conflict",
+      actionId: result.actionId,
+      currentRevision: result.currentRevision,
+      message: "actionId already exists with a different request."
+    });
+  }
+
+  if(!result.ok && result.error === "revision_conflict"){
+    return res.status(409).json({
+      ok: false,
+      error: "revision_conflict",
+      expectedRevision: result.expectedRevision,
+      currentRevision: result.currentRevision
+    });
+  }
+
+  const event = formatSdeRecommendationAckEvent(result.event);
+
+  if(result.idempotent){
+    return res.status(200).json({
+      ok: true,
+      action: "sde-recommendation-ack",
+      mode: "replayed",
+      idempotent: true,
+      actionId: result.actionId,
+      ackId: result.ackId,
+      payloadHash: result.payloadHash,
+      resultingRevision: result.resultingRevision,
+      currentRevision: result.currentRevision,
+      event
+    });
+  }
+
+  broadcastSseEvent("state_changed", {
+    revision: result.resultingRevision,
+    previousRevision: result.previousRevision,
+    event
+  });
+
+  return res.status(201).json({
+    ok: true,
+    action: "sde-recommendation-ack",
+    mode: "created",
+    idempotent: false,
+    actionId: result.actionId,
+    ackId: result.ackId,
+    payloadHash: result.payloadHash,
+    previousRevision: result.previousRevision,
+    resultingRevision: result.resultingRevision,
+    event
+  });
+});
+
 app.get("/api/stream", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -894,6 +1039,103 @@ function validateServerNotePayload(body){
   };
 }
 
+
+function validateSdeRecommendationAckPayload(body){
+  if(!body || typeof body !== "object" || Array.isArray(body)){
+    return invalidPayload("JSON body must be an object.");
+  }
+
+  const actionId = normalizeRequiredString(body.actionId, "actionId", SDE_RECOMMENDATION_ACK_ID_MAX_LENGTH);
+  if(!actionId.ok) return actionId;
+
+  if(body.actionType !== SDE_RECOMMENDATION_ACK_ACTION_TYPE){
+    return invalidPayload("actionType must be sde_recommendation_ack.create.");
+  }
+
+  if(!body.actor || typeof body.actor !== "object" || Array.isArray(body.actor)){
+    return invalidPayload("actor must be an object.");
+  }
+
+  const actorId = normalizeRequiredString(body.actor.id, "actor.id", SDE_RECOMMENDATION_ACK_ID_MAX_LENGTH);
+  if(!actorId.ok) return actorId;
+
+  const actorRole = normalizeAllowedString(body.actor.role, "actor.role", SDE_RECOMMENDATION_ACK_ACTOR_ROLES, SDE_RECOMMENDATION_ACK_ROLE_MAX_LENGTH);
+  if(!actorRole.ok) return actorRole;
+
+  const deviceId = normalizeRequiredString(body.deviceId, "deviceId", SDE_RECOMMENDATION_ACK_ID_MAX_LENGTH);
+  if(!deviceId.ok) return deviceId;
+
+  if(!Number.isInteger(body.expectedRevision) || body.expectedRevision < 1){
+    return invalidPayload("expectedRevision must be an integer >= 1.");
+  }
+
+  if(!body.payload || typeof body.payload !== "object" || Array.isArray(body.payload)){
+    return invalidPayload("payload must be an object.");
+  }
+
+  const serviceDate = normalizeRequiredString(body.payload.serviceDate, "payload.serviceDate", 10);
+  if(!serviceDate.ok) return serviceDate;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate.value)){
+    return invalidPayload("payload.serviceDate must use YYYY-MM-DD format.");
+  }
+
+  const recommendationKey = normalizeRequiredString(
+    body.payload.recommendationKey,
+    "payload.recommendationKey",
+    SDE_RECOMMENDATION_ACK_RECOMMENDATION_KEY_MAX_LENGTH
+  );
+  if(!recommendationKey.ok) return recommendationKey;
+
+  const ackStatus = normalizeAllowedString(body.payload.ackStatus, "payload.ackStatus", SDE_RECOMMENDATION_ACK_STATUSES);
+  if(!ackStatus.ok) return ackStatus;
+
+  let note = null;
+  if(body.payload.note !== undefined){
+    if(typeof body.payload.note !== "string"){
+      return invalidPayload("payload.note must be a string when provided.");
+    }
+
+    note = body.payload.note.trim();
+    if(note.length > SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH){
+      return invalidPayload(`payload.note must be ${SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH} characters or fewer.`);
+    }
+  }
+
+  let clientContext = null;
+  if(body.clientContext !== undefined){
+    if(!body.clientContext || typeof body.clientContext !== "object" || Array.isArray(body.clientContext)){
+      return invalidPayload("clientContext must be an object when provided.");
+    }
+
+    if(JSON.stringify(body.clientContext).length > ACTION_CONTRACT_CLIENT_CONTEXT_MAX_LENGTH){
+      return invalidPayload(`clientContext must be ${ACTION_CONTRACT_CLIENT_CONTEXT_MAX_LENGTH} characters or fewer when serialized.`);
+    }
+
+    clientContext = body.clientContext;
+  }
+
+  return {
+    ok: true,
+    value: {
+      actionId: actionId.value,
+      actionType: SDE_RECOMMENDATION_ACK_ACTION_TYPE,
+      actor: {
+        id: actorId.value,
+        role: actorRole.value
+      },
+      deviceId: deviceId.value,
+      expectedRevision: body.expectedRevision,
+      payload: {
+        serviceDate: serviceDate.value,
+        recommendationKey: recommendationKey.value,
+        ackStatus: ackStatus.value,
+        note
+      },
+      clientContext
+    }
+  };
+}
+
 function normalizeRequiredString(value, fieldName, maxLength){
   if(typeof value !== "string"){
     return invalidPayload(`${fieldName} must be a string.`);
@@ -914,8 +1156,8 @@ function normalizeRequiredString(value, fieldName, maxLength){
   };
 }
 
-function normalizeAllowedString(value, fieldName, allowedValues){
-  const normalized = normalizeRequiredString(value, fieldName, ACTION_CONTRACT_FIELD_MAX_LENGTH);
+function normalizeAllowedString(value, fieldName, allowedValues, maxLength = ACTION_CONTRACT_FIELD_MAX_LENGTH){
+  const normalized = normalizeRequiredString(value, fieldName, maxLength);
   if(!normalized.ok) return normalized;
 
   if(!allowedValues.has(normalized.value)){
@@ -1043,6 +1285,14 @@ function formatServerNoteEvent(event){
     id: event?.id ?? null,
     revision: event?.revision ?? null,
     type: event?.type || SERVER_NOTE_EVENT_TYPE
+  };
+}
+
+function formatSdeRecommendationAckEvent(event){
+  return {
+    id: event?.id ?? null,
+    revision: event?.revision ?? null,
+    type: event?.type || SDE_RECOMMENDATION_ACK_EVENT_TYPE
   };
 }
 

@@ -1754,6 +1754,100 @@ Rode soner: dette åpner fortsatt ikke for PWA/serverkobling, ekte SDE-action,
 operational write, frontendendring, migration, runner, packageendring,
 launchd/service-oppsett eller generelle writes.
 
+
+## B26-B SDE recommendation acknowledgement test action
+
+B26-B legger til en server-only, test-only operational-action-design for
+`POST /api/actions/sde-recommendation-ack`. Dette er ikke Utført/Annullert,
+ikke en SDE-skifteaction, ikke PWA-kobling og ikke serverstate som operativ
+sannhetskilde. Actionen skal bare bevise at en smal SDE-anbefaling kan
+acknowledges via `actions`-tabellen på testserver og `/tmp`-database.
+
+Kontrakt:
+
+- endpoint: `POST /api/actions/sde-recommendation-ack`
+- actionType: `sde_recommendation_ack.create`
+- eventType: `sde_recommendation_ack.created`
+- statefelt: `sdeRecommendationAcks`
+- statusfelt: `sdeRecommendationAckActionsEnabled`
+- production-statusfelt: `sdeRecommendationAckProductionActionsEnabled`
+
+Tillatte `ackStatus`-verdier er bare ikke-utførende ord:
+
+- `seen`
+- `assessed`
+- `not_relevant`
+- `needs_manual_review`
+
+Ord som `executed`, `annulled`, `followed`, `completed`, `cancelled`, `utført`
+og `annullert` skal avvises. Actionen skal ikke påvirke SDE-motor, score,
+sortering, kandidatgeneratorer, DROPS, Tursatt, Vaktplan, localStorage eller
+operativ dataflyt.
+
+Payload minimum:
+
+```json
+{
+  "actionId": "b26b-sde-ack-001",
+  "actionType": "sde_recommendation_ack.create",
+  "actor": {
+    "id": "operator-or-test-id",
+    "role": "test"
+  },
+  "deviceId": "test-device",
+  "expectedRevision": 1,
+  "payload": {
+    "serviceDate": "2026-06-24",
+    "recommendationKey": "sde-card-or-need-key",
+    "ackStatus": "assessed",
+    "note": "Valgfri kort tekst"
+  },
+  "clientContext": {
+    "source": "test"
+  }
+}
+```
+
+Idempotency og transaksjon følger samme production-klare prinsipp som
+server-note:
+
+- `actions.action_id` er idempotency-kilde
+- canonical request gir SHA-256 `payload_hash`
+- identisk replay gir `200` og `mode: "replayed"`
+- samme `actionId` med annen request gir `409 action_id_conflict`
+- stale `expectedRevision` gir `409 revision_conflict`
+- ny action gir `201` og `mode: "created"`
+- action-record, state, event og action-completion skjer atomisk i samme SQLite-
+  transaksjon
+
+Guards:
+
+- testmodus krever `SDE_ENABLE_SDE_RECOMMENDATION_ACK_ACTIONS=1`
+- testmodus krever eksplisitt `/tmp`-database og ikke-production port
+- production DB og port `8787` er blokkert i testmodus
+- senere production-modus krever i tillegg
+  `SDE_ENABLE_PRODUCTION_SDE_RECOMMENDATION_ACK_ACTIONS=1`
+- `SDE_ENABLE_OPERATIONAL_WRITES=1` skal fortsatt blokkeres i denne første ack-
+  fasen
+- actionen skal ikke kombineres med migration/test/server-note-flagg
+
+Regresjonstest:
+
+```bash
+cd /Users/solglottsr/balise_logistikk_kopi/server
+node scripts/test-sde-recommendation-ack-action.js
+```
+
+Scriptet bootstrapper actions-schema på en `/tmp`-database, tester disabled
+`403`, `201 created`, `200 replayed`, `409 action_id_conflict`,
+`409 revision_conflict`, valideringsfeil, bounded `recent`, statusfelt og SQLite
+integrity. Production `8787` sjekkes bare med GET før/etter, og production
+revision/events/serverNotes skal forbli uendret.
+
+Rode soner etter B26-B: ingen POST mot production `8787`, ingen production-write,
+ingen PWA/serverkobling, ingen operational write, ingen `operationalState`, ingen
+migration/runner, ingen packageendring og ingen SDE-motor/score/dataflytendring.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
