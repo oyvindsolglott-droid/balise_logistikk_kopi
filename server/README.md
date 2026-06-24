@@ -1584,6 +1584,171 @@ B16C-B beviser ikke production-write, PWA-read, PWA-write, ekte SDE-action,
 operational write eller auth/roller. Production skal bare sjekkes read-only før
 og etter, og production revision/events skal forbli uendret.
 
+## B19-B production server-note write-runbook
+
+B19-B er kun dokumentasjon. Denne runbooken er ikke en godkjenning til å kjøre
+production write. En eventuell execution må ha egen separat go/no-go etter at
+dokumentasjonen er committet og pushet.
+
+Formålet med en senere production server-note write er å teste første smale,
+ikke-operative production write. `server-note` er ikke en SDE-skifteaction, ikke
+operational write, skal ikke påvirke frontend/PWA og skal ikke brukes som
+snarvei til PWA/serverkobling.
+
+Absolutte forutsetninger før en senere execution:
+
+- egen separat execution-go/no-go foreligger
+- repo er rent og synkronisert med `origin/main`
+- production kjører i detached `screen`-sesjon `sde-server-8787`
+- production revision er kjent rett før write
+- `events` er `[]` før første write dersom det fortsatt er baselinekravet
+- `schemaUserVersion: 1`
+- `actionsTablePresent: true`
+- `actionsSchemaReady: true`
+- `migrationRequired: false`
+- `migrationsEnabled: false`
+- `pwaConnected: false`
+- `operationalWritesEnabled: false`
+- `serverNoteActionsEnabled: false` før eventuell kontrollert aktivering
+- ingen PWA/frontendendring gjøres i samme fase
+
+Backupkrav før en eventuell write:
+
+- ta fersk SQLite-backup utenfor repo før server-note write
+- navngi backup med revision og timestamp, for eksempel
+  `sde-server-rev-1-YYYYMMDD-HHMMSS.sqlite3`
+- verifiser backup read-only med `PRAGMA integrity_check;`
+- les `app_state` revision fra backup
+- les `events` count fra backup
+- les `actions` count fra backup
+- ta hensyn til SQLite WAL/SHM ved å bruke `.backup`, ikke vanlig shell-kopi som
+  hovedmetode
+- ikke gjør restore som del av write uten egen rollback-go/no-go
+
+Runtime- og screenkrav:
+
+- production skal fortsatt kjøres i detached `screen`
+- ikke bruk direkte background-start fra Codex-shell som varig runtime
+- en eventuell write krever ikke restart dersom `serverNoteActionsEnabled`
+  allerede er aktivert i en kontrollert executionfase
+- dersom aktivering av `SDE_ENABLE_SERVER_NOTE_ACTIONS=1` krever restart, må det
+  være en egen eksplisitt restartfase/go-no-go
+- B19-B skal ikke stoppe, starte eller restarte production
+
+Flagg og miljo:
+
+- `SDE_ENABLE_SERVER_NOTE_ACTIONS=1` er det smale flagget for server-note
+- ikke bruk `SDE_ENABLE_OPERATIONAL_WRITES=1`
+- ikke bruk `SDE_ENABLE_SCHEMA_MIGRATIONS=1`
+- ikke aktiver testflagg i production
+- ikke bland server-note write med migration, runner eller operational writes
+
+GET-only precheck for en senere execution:
+
+```bash
+git status -sb
+git log --oneline -8
+screen -ls
+lsof -nP -iTCP:8787 -sTCP:LISTEN
+curl --max-time 5 -sS http://localhost:8787/api/health
+curl --max-time 5 -sS http://localhost:8787/api/state/revision
+curl --max-time 5 -sS http://localhost:8787/api/events
+curl --max-time 5 -sS http://localhost:8787/api/server/status
+```
+
+`expectedRevision` skal hentes rett før write. Hvis revision har endret seg fra
+precheck til write, stopp. Ved `409 revision_conflict` skal man ikke retrye
+blindt; det krever ny go/no-go eller ny vurdering.
+
+Payloadkrav:
+
+- `actionId` må være unik og stabil idempotency key
+- `actionType` skal være `server_note.create`
+- `actor.id` kreves
+- `actor.role` kreves
+- `deviceId` kreves
+- `expectedRevision` kreves
+- `payload.note` kreves og kan være maks 500 tegn
+- `payload.category` kan være `ops`, `test` eller `maintenance`
+- `payload.severity` kan være `info` eller `warning`
+- `clientContext` er valgfritt, men må være gyldig type etter kodekontrakten
+
+FREMTIDIG EKSEMPEL - IKKE KJOR I B19-B:
+
+```bash
+curl -i -sS -X POST http://localhost:8787/api/actions/server-note \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "actionId": "server-note-YYYYMMDD-HHMMSS-operator",
+    "actionType": "server_note.create",
+    "actor": {
+      "id": "operator-id",
+      "role": "operator"
+    },
+    "deviceId": "mac-mini-production",
+    "expectedRevision": 1,
+    "payload": {
+      "note": "Kort ikke-operativt production server-notat",
+      "category": "ops",
+      "severity": "info"
+    },
+    "clientContext": {
+      "source": "manual-production-runbook"
+    }
+  }'
+```
+
+Forventede responser ved en senere write:
+
+- `201 Created` ved ny action
+- `200 OK` og `mode: "replayed"` ved identisk replay
+- `409 action_id_conflict` ved samme `actionId` med endret canonical request
+- `409 revision_conflict` ved stale `expectedRevision`
+- `400 invalid_payload` ved ugyldig payload
+- `403` ved disabled flagg eller guard
+
+Postcheck etter en eventuell future execution:
+
+- `GET /api/state/revision`
+- `GET /api/events`
+- `GET /api/server/status`
+- verifiser at revision oker nøyaktig som forventet
+- verifiser eventtype `server_note.created`
+- verifiser `serverNotes` i state
+- verifiser `pwaConnected: false`
+- verifiser `operationalWritesEnabled: false`
+- verifiser at ingen frontend/PWA-endring er gjort
+
+Rollback/forward-fix-prinsipp:
+
+- etter en committed production write skal rollback ikke improviseres
+- restore fra backup er egen separat rollback-go/no-go
+- ved gyldig, men uonsket testnote kan foretrukket vei være forward-fix eller
+  ny korrigerende action dersom kontrakten tillater det senere
+- hvis DB-integritet feiler eller uventet write skjer: stopp og ikke gjør flere
+  writes
+
+Stoppkriterier:
+
+- repo er ikke rent
+- remote har nye commits uten vurdering
+- production svarer ikke
+- revision er ikke forventet
+- events er ikke forventet
+- schema er ikke klart
+- `migrationsEnabled: true`
+- `pwaConnected: true`
+- `operationalWritesEnabled: true`
+- feil port eller DB
+- backup er ikke tatt og verifisert
+- `expectedRevision` matcher ikke
+- POST gir annet enn forventet respons
+- production events/revision endres uventet
+
+Rode soner: dette åpner fortsatt ikke for PWA/serverkobling, ekte SDE-action,
+operational write, frontendendring, migration, runner, packageendring,
+launchd/service-oppsett eller generelle writes.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
