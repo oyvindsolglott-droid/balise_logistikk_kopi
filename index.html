@@ -5462,6 +5462,15 @@ button{padding:12px 12px}
   <div class="server-note-readback-summary" id="serverNoteReadbackSummary">Avventer serverstatus.</div>
   <div class="server-note-readback-list" id="serverNoteReadbackList"></div>
 </div>
+<div class="server-note-panel" id="sdeRecommendationAckReadbackPanel" aria-live="polite">
+  <div class="server-note-header">
+    <span class="server-note-title">SDE-anbefaling – readback</span>
+    <span class="server-status-pill off" id="sdeRecommendationAckReadbackState">read-only</span>
+  </div>
+  <div class="server-note-description">Readback/diagnostikk. Dette er ikke skifteordre, ikke Utført/Annullert og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan. Serverstate er fortsatt ikke operativ sannhetskilde.</div>
+  <div class="server-note-readback-summary" id="sdeRecommendationAckReadbackSummary">Avventer serverstatus.</div>
+  <div class="server-note-readback-list" id="sdeRecommendationAckReadbackList"></div>
+</div>
 <div id="sdeLearningTopPanel"></div>
 
 
@@ -22075,6 +22084,8 @@ const SDE_SERVER_STATUS_BASE_OPTIONS = Object.freeze([
 ]);
 const SDE_SERVER_NOTE_MAX_LENGTH = 500;
 const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
+const SDE_RECOMMENDATION_ACK_READBACK_EVENT_LIMIT = 5;
+const SDE_RECOMMENDATION_ACK_RECENT_DISPLAY_LIMIT = 5;
 let lastServerStatusForServerNote = null;
 let lastServerStatusBaseForServerNote = "";
 let serverNoteSubmitInFlight = false;
@@ -22321,6 +22332,173 @@ async function fetchServerNoteReadbackForDisplay(base){
   }
 }
 
+function getSdeRecommendationAckReadbackElements(){
+  return {
+    state: document.getElementById("sdeRecommendationAckReadbackState"),
+    summary: document.getElementById("sdeRecommendationAckReadbackSummary"),
+    list: document.getElementById("sdeRecommendationAckReadbackList")
+  };
+}
+
+function renderSdeRecommendationAckReadbackMessage(stateText, tone, summaryText){
+  const elements = getSdeRecommendationAckReadbackElements();
+  if(elements.state){
+    elements.state.className = `server-status-pill ${tone || "off"}`;
+    elements.state.textContent = stateText;
+  }
+  if(elements.summary){
+    elements.summary.textContent = summaryText;
+  }
+  if(elements.list){
+    elements.list.replaceChildren();
+  }
+}
+
+function getSdeRecommendationAckPayload(event){
+  return isServerNoteReadbackObject(event?.payload) ? event.payload : {};
+}
+
+function getSdeRecommendationAckNoteFromPayload(payload){
+  const summary = isServerNoteReadbackObject(payload?.payloadSummary) ? payload.payloadSummary : {};
+  const requestPayload = isServerNoteReadbackObject(payload?.request?.payload) ? payload.request.payload : {};
+  return summary.note || payload.note || requestPayload.note || "";
+}
+
+function getSdeRecommendationAckMetaFromPayload(payload){
+  const summary = isServerNoteReadbackObject(payload?.payloadSummary) ? payload.payloadSummary : {};
+  const requestPayload = isServerNoteReadbackObject(payload?.request?.payload) ? payload.request.payload : {};
+  return {
+    serviceDate: summary.serviceDate || payload.serviceDate || requestPayload.serviceDate || "?",
+    recommendationKey: summary.recommendationKey || payload.recommendationKey || requestPayload.recommendationKey || "?",
+    ackStatus: summary.ackStatus || payload.ackStatus || requestPayload.ackStatus || "?"
+  };
+}
+
+function createSdeRecommendationAckReadbackItem(title, metaParts, noteText){
+  return createServerNoteReadbackItem(title, metaParts, noteText || "Ingen ack-note. Readback er diagnostikk, ikke skifteordre.");
+}
+
+function renderSdeRecommendationAckReadback(stateBody, eventsBody, status, base){
+  const elements = getSdeRecommendationAckReadbackElements();
+  if(!elements.summary || !elements.list) return;
+
+  const acks = isServerNoteReadbackObject(stateBody?.state?.sdeRecommendationAcks)
+    ? stateBody.state.sdeRecommendationAcks
+    : {};
+  const count = Number.isInteger(acks.count) ? acks.count : 0;
+  const lastAck = isServerNoteReadbackObject(acks.lastAck) ? acks.lastAck : null;
+  const recent = Array.isArray(acks.recent) ? acks.recent.slice(0, SDE_RECOMMENDATION_ACK_RECENT_DISPLAY_LIMIT) : [];
+  const events = Array.isArray(eventsBody?.events) ? eventsBody.events : [];
+  const ackEvents = events
+    .filter(event => event?.type === "sde_recommendation_ack.created")
+    .slice(-SDE_RECOMMENDATION_ACK_READBACK_EVENT_LIMIT)
+    .reverse();
+  const revision = stateBody?.revision ?? eventsBody?.revision ?? status?.revision ?? "?";
+  const ackEnabled = status?.sdeRecommendationAckActionsEnabled === true;
+  const productionAckEnabled = status?.sdeRecommendationAckProductionActionsEnabled === true;
+
+  if(elements.state){
+    elements.state.className = `server-status-pill ${ackEnabled || productionAckEnabled ? "warn" : "off"}`;
+    elements.state.textContent = ackEnabled
+      ? `ack-write på${productionAckEnabled ? " / prod på" : ""}`
+      : "ack-write av";
+  }
+
+  elements.summary.textContent = `Read-only fra ${base || "verifisert server"}: revision ${revision}, sdeRecommendationAcks.count ${count}, sde_recommendation_ack.created ${ackEvents.length}, sdeRecommendationAckActionsEnabled:${ackEnabled}, sdeRecommendationAckProductionActionsEnabled:${productionAckEnabled}. Ikke skifteordre, ikke Utført/Annullert og ikke operativ sannhetskilde.`;
+  elements.list.replaceChildren();
+
+  if(count === 0 && !lastAck && recent.length === 0 && ackEvents.length === 0){
+    elements.list.appendChild(createSdeRecommendationAckReadbackItem(
+      "ingen ack registrert",
+      ["sdeRecommendationAcks.count 0", "sde_recommendation_ack.created 0"],
+      "Ingen SDE recommendation acknowledgement er registrert i serverstate eller eventlogg. Dette er forventet i normal production nå."
+    ));
+    return;
+  }
+
+  if(lastAck){
+    elements.list.appendChild(createSdeRecommendationAckReadbackItem(
+      "sdeRecommendationAcks.lastAck",
+      [
+        `rev ${lastAck.revision ?? "?"}`,
+        lastAck.createdAt || "ukjent tid",
+        `serviceDate ${lastAck.serviceDate || "?"}`,
+        `key ${lastAck.recommendationKey || "?"}`,
+        `ackStatus ${lastAck.ackStatus || "?"}`
+      ],
+      lastAck.note || ""
+    ));
+  }
+
+  recent.forEach((ack, index) => {
+    if(!isServerNoteReadbackObject(ack)) return;
+    elements.list.appendChild(createSdeRecommendationAckReadbackItem(
+      `recent ${index + 1}`,
+      [
+        `rev ${ack.revision ?? "?"}`,
+        ack.createdAt || "ukjent tid",
+        `key ${ack.recommendationKey || "?"}`,
+        `ackStatus ${ack.ackStatus || "?"}`
+      ],
+      ack.note || ""
+    ));
+  });
+
+  if(ackEvents.length === 0){
+    elements.list.appendChild(createSdeRecommendationAckReadbackItem(
+      "events",
+      ["ingen sde_recommendation_ack.created"],
+      "Ingen SDE recommendation ack-events tilgjengelig fra read-only eventlogg."
+    ));
+    return;
+  }
+
+  ackEvents.forEach(event => {
+    const payload = getSdeRecommendationAckPayload(event);
+    const meta = getSdeRecommendationAckMetaFromPayload(payload);
+    const createdAt = event.createdAt || payload.serverTimestamp || "ukjent tid";
+    elements.list.appendChild(createSdeRecommendationAckReadbackItem(
+      `event ${event.id ?? "?"}`,
+      [
+        `rev ${event.revision ?? "?"}`,
+        event.type || "ukjent type",
+        createdAt,
+        `key ${meta.recommendationKey}`,
+        `ackStatus ${meta.ackStatus}`
+      ],
+      getSdeRecommendationAckNoteFromPayload(payload)
+    ));
+  });
+}
+
+async function fetchSdeRecommendationAckReadbackForDisplay(base, status){
+  const normalizedBase = normalizeServerStatusBase(base);
+  if(!normalizedBase){
+    renderSdeRecommendationAckReadbackMessage("ikke lest", "warn", "Mangler verifisert serverbase. SDE-ack readback er ikke hentet.");
+    return;
+  }
+
+  renderSdeRecommendationAckReadbackMessage("leser", "warn", "Henter SDE-anbefaling readback med GET. Ingen POST sendes.");
+
+  try{
+    const [stateResponse, eventsResponse] = await Promise.all([
+      fetch(`${normalizedBase}/api/state`, {cache:"no-store"}),
+      fetch(`${normalizedBase}/api/events`, {cache:"no-store"})
+    ]);
+    if(!stateResponse.ok) throw new Error(`/api/state HTTP ${stateResponse.status}`);
+    if(!eventsResponse.ok) throw new Error(`/api/events HTTP ${eventsResponse.status}`);
+    const stateBody = await stateResponse.json();
+    const eventsBody = await eventsResponse.json();
+    renderSdeRecommendationAckReadback(stateBody, eventsBody, status, normalizedBase);
+  }catch(error){
+    renderSdeRecommendationAckReadbackMessage(
+      "readback feil",
+      "warn",
+      `Kunne ikke lese SDE-anbefaling readback: ${error?.message || "ukjent feil"}. Appen fortsetter lokalt.`
+    );
+  }
+}
+
 function generateServerNoteActionId(){
   if(window.crypto?.randomUUID){
     return `server-note-ui-${window.crypto.randomUUID()}`;
@@ -22457,6 +22635,7 @@ function renderServerStatusIdle(){
   ]);
   renderServerNotePanelFromStatus(null, "");
   renderServerNoteReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
+  renderSdeRecommendationAckReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
 }
 
 function renderServerStatusUnavailable(message){
@@ -22468,6 +22647,7 @@ function renderServerStatusUnavailable(message){
   ]);
   renderServerNotePanelFromStatus(null, "", "Serverstatus utilgjengelig. Ingen POST kan sendes.");
   renderServerNoteReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Readback er ikke hentet.");
+  renderSdeRecommendationAckReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. SDE-ack readback er ikke hentet.");
 }
 
 function renderServerStatus(status, base){
@@ -22500,6 +22680,8 @@ function renderServerStatus(status, base){
     createServerStatusPill(`writes ${writesAllowed ? "på" : "av"}`, flagTone(writesAllowed)),
     createServerStatusPill(`server-note ${status?.serverNoteActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteActionsEnabled)),
     createServerStatusPill(`prod-note ${status?.serverNoteProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteProductionActionsEnabled)),
+    createServerStatusPill(`sde-ack ${status?.sdeRecommendationAckActionsEnabled ? "på" : "av"}`, flagTone(status?.sdeRecommendationAckActionsEnabled)),
+    createServerStatusPill(`prod-ack ${status?.sdeRecommendationAckProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.sdeRecommendationAckProductionActionsEnabled)),
     createServerStatusPill(`operational ${status?.operationalWritesEnabled ? "på" : "av"}`, flagTone(status?.operationalWritesEnabled)),
     createServerStatusPill(`op-write ${operationalWritesAllowed ? "på" : "av"}`, flagTone(operationalWritesAllowed)),
     createServerStatusPill(`migration ${status?.migrationsEnabled ? "på" : "av"}`, flagTone(status?.migrationsEnabled)),
@@ -22528,7 +22710,10 @@ async function fetchServerStatusForDisplay(){
         const input = document.getElementById("serverStatusBaseInput");
         if(input) input.value = base;
         renderServerStatus(status, base);
-        await fetchServerNoteReadbackForDisplay(base);
+        await Promise.all([
+          fetchServerNoteReadbackForDisplay(base),
+          fetchSdeRecommendationAckReadbackForDisplay(base, status)
+        ]);
         return {status, base};
       }catch(err){
         lastError = `${base}: ${err?.message || "ikke tilgjengelig"}`;
