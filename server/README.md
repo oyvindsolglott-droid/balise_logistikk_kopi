@@ -114,6 +114,12 @@ commit, push, backup eller restore.
 Produksjonsruntime kjører foreløpig i en detached `screen`-sesjon:
 `sde-server-8787`. Dette er ikke et permanent serviceoppsett.
 
+B16D-B viste at direkte background-start fra Codex-shell ikke skal brukes som
+varig runtime: prosessen startet, men ble ikke stående etter shell-blokken.
+B16D-B-R gjenopprettet runtime korrekt med detached `screen`. Inntil en egen
+launchd/service-fase eventuelt godkjennes, er `screen` den dokumenterte
+runtime-metoden for port `8787`.
+
 Trygg statuskontroll:
 
 ```bash
@@ -130,19 +136,59 @@ curl --max-time 5 -sS http://localhost:8787/api/state/revision
 
 Stopp, start og restart skal bare gjøres etter at riktig PID, port og cwd er
 bekreftet. Stopp kun bekreftet riktig PID eller riktig `screen`-sesjon. Start
-alltid fra riktig servermappe, uten test-writes, og med produksjonsdatabasen:
+alltid fra riktig servermappe, i detached `screen`, uten write-/migrationflagg,
+og med production-port `8787`.
+
+Startkommandoen skal bruke ren env og fjerne kjente write-/migrationflagg:
 
 ```bash
 cd /Users/solglottsr/balise_logistikk_kopi/server
-unset SDE_ENABLE_TEST_WRITES
-PORT=8787 SDE_SERVER_DB_PATH=/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3 \
-  screen -dmS sde-server-8787 /bin/zsh -lc 'cd /Users/solglottsr/balise_logistikk_kopi/server || exit; unset SDE_ENABLE_TEST_WRITES; PORT=8787 SDE_SERVER_DB_PATH=/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3 /opt/homebrew/bin/node src/index.js >>/tmp/sde-server-8787.log 2>&1'
+screen -dmS sde-server-8787 bash -lc '
+cd /Users/solglottsr/balise_logistikk_kopi/server || exit 1
+exec env \
+  -u SDE_ENABLE_SERVER_NOTE_ACTIONS \
+  -u SDE_ENABLE_SCHEMA_MIGRATIONS \
+  -u SDE_ENABLE_OPERATIONAL_WRITES \
+  -u SDE_ENABLE_TEST_WRITES \
+  -u SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES \
+  PORT=8787 \
+  /opt/homebrew/bin/node src/index.js
+'
 ```
 
-Etter start eller restart skal `health`, `server/status` og `state/revision`
-verifiseres read-only. `testWritesEnabled` skal være `false`,
-`pwaConnected` skal være `false`, og `operationalWritesEnabled` skal være
-`false`.
+Etter start eller restart skal postcheck kun bruke GET:
+
+```bash
+curl --max-time 5 -sS http://localhost:8787/api/health
+curl --max-time 5 -sS http://localhost:8787/api/server/status
+curl --max-time 5 -sS http://localhost:8787/api/state/revision
+curl --max-time 5 -sS http://localhost:8787/api/events
+```
+
+`server/status` skal vise at ny kode er lastet uten å åpne writeflater:
+
+- `serverNoteActionsEnabled: false`
+- `migrationsEnabled: false`
+- `testWritesEnabled: false`
+- `actionsTableTestWritesEnabled: false`
+- `pwaConnected: false`
+- `operationalWritesEnabled: false`
+- `actionsSchemaReady: true`
+- `migrationRequired: false`
+
+Revision skal fortsatt være forventet revision, og events skal ikke endres av
+start/restart alene. For nå er forventet production-baseline `revision: 1` og
+`events: []`.
+
+Stopp restart/recovery hvis repo ikke er rent, HEAD ikke er forventet, port/cwd
+eller PID er uklar, port `8787` ikke lytter etter start, GET-postcheck feiler,
+`serverNoteActionsEnabled` blir `true`, `migrationsEnabled` blir `true`, revision
+eller events endres, eller loggen viser uventet serverfeil.
+
+Røde soner for runtime-drift: ingen POST mot `8787`, ingen production-write,
+ingen migration/runner, ingen PWA/serverkobling, ingen operational write, ingen
+ekte SDE-action, ingen packageendring, ingen frontend/`index.html`, og ingen
+launchd/service-oppsett uten egen fase.
 
 SQLite-backup skal tas med SQLite sin `.backup`, ikke ved vanlig shell-kopi av
 `.sqlite3`, `-wal` og `-shm` som hovedmetode. Backup legges utenfor repo, for
