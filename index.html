@@ -77,6 +77,67 @@ margin:0 0 12px;
   padding:8px 10px;
   font-weight:800;
 }
+.server-status-panel{
+display:flex;
+align-items:center;
+justify-content:space-between;
+gap:12px;
+margin:0 0 12px;
+padding:10px 12px;
+background:#f8fafc;
+border:1px solid #cbd5e1;
+border-radius:14px;
+box-shadow:0 4px 14px rgba(15,23,42,.08);
+}
+.server-status-main{
+display:flex;
+align-items:center;
+gap:10px;
+flex-wrap:wrap;
+font-size:13px;
+color:#334155;
+}
+.server-status-title{
+font-weight:900;
+color:#0f172a;
+}
+.server-status-pill{
+display:inline-flex;
+align-items:center;
+gap:5px;
+min-height:26px;
+padding:4px 8px;
+border-radius:999px;
+background:#e2e8f0;
+color:#334155;
+font-weight:800;
+}
+.server-status-pill.ok{
+background:#dcfce7;
+color:#166534;
+}
+.server-status-pill.warn{
+background:#fef3c7;
+color:#92400e;
+}
+.server-status-pill.off{
+background:#e0f2fe;
+color:#075985;
+}
+.server-status-pill.error{
+background:#fee2e2;
+color:#991b1b;
+}
+.server-status-detail{
+color:#64748b;
+}
+.server-status-check-btn{
+padding:8px 10px;
+min-height:36px;
+border-radius:10px;
+font-size:13px;
+font-weight:900;
+}
 .guide-top-btn{
 display:inline-flex;
 align-items:center;
@@ -317,6 +378,13 @@ box-shadow:
   0 6px 14px rgba(30,64,175,.36) !important;
 }
 @media(max-width:900px){
+  .server-status-panel{
+    align-items:stretch;
+    flex-direction:column;
+  }
+  .server-status-check-btn{
+    width:100%;
+  }
   .segmented{grid-template-columns:repeat(2,minmax(160px,1fr));}
   .segmented button,
   .segmented button:nth-child(-n+4){grid-column:auto;}
@@ -5228,6 +5296,14 @@ button{padding:12px 12px}
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
 <button class="guide-top-btn" id="guideTopBtn" type="button">Brukerveiledning</button>
 <button class="guide-top-btn" id="sdeLearningTopBtn" type="button" aria-pressed="false">SDE-selvlæring</button>
+</div>
+<div class="server-status-panel" id="serverStatusPanel" aria-live="polite">
+  <div class="server-status-main" id="serverStatusSummary">
+    <span class="server-status-title">Serverstatus</span>
+    <span class="server-status-pill warn">Ikke sjekket</span>
+    <span class="server-status-detail">Read-only observasjon. Påvirker ikke SDE.</span>
+  </div>
+  <button class="server-status-check-btn" id="serverStatusCheckBtn" type="button">Sjekk serverstatus</button>
 </div>
 <div id="sdeLearningTopPanel"></div>
 
@@ -21835,6 +21911,69 @@ function escapeHtml(s){
   return String(s||"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;");
 }
 
+const SDE_SERVER_STATUS_URL = "http://localhost:8787/api/server/status";
+
+function createServerStatusPill(text, tone){
+  const pill = document.createElement("span");
+  pill.className = `server-status-pill ${tone || ""}`.trim();
+  pill.textContent = text;
+  return pill;
+}
+
+function renderServerStatusItems(items){
+  const summary = document.getElementById("serverStatusSummary");
+  if(!summary) return;
+  summary.replaceChildren(...items);
+}
+
+function renderServerStatusIdle(){
+  renderServerStatusItems([
+    createServerStatusPill("Serverstatus", ""),
+    createServerStatusPill("Ikke sjekket", "warn"),
+    createServerStatusPill("Read-only observasjon", "off")
+  ]);
+}
+
+function renderServerStatusUnavailable(message){
+  renderServerStatusItems([
+    createServerStatusPill("Serverstatus", ""),
+    createServerStatusPill("Utilgjengelig", "error"),
+    createServerStatusPill("Appen fortsetter lokalt", "off"),
+    createServerStatusPill(String(message || "Kunne ikke lese serverstatus").slice(0, 90), "warn")
+  ]);
+}
+
+function renderServerStatus(status){
+  const schemaReady = status?.actionsTablePresent === true && status?.actionsSchemaReady === true && status?.migrationRequired === false;
+  const flagTone = value => value ? "warn" : "off";
+  renderServerStatusItems([
+    createServerStatusPill("Serverstatus", ""),
+    createServerStatusPill("Reachable", "ok"),
+    createServerStatusPill(`rev ${status?.revision ?? "?"}`, "ok"),
+    createServerStatusPill(schemaReady ? "schema klar" : "schema ikke klar", schemaReady ? "ok" : "warn"),
+    createServerStatusPill(`server-note ${status?.serverNoteActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteActionsEnabled)),
+    createServerStatusPill(`prod-note ${status?.serverNoteProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteProductionActionsEnabled)),
+    createServerStatusPill(`operational ${status?.operationalWritesEnabled ? "på" : "av"}`, flagTone(status?.operationalWritesEnabled)),
+    createServerStatusPill(`migration ${status?.migrationsEnabled ? "på" : "av"}`, flagTone(status?.migrationsEnabled)),
+    createServerStatusPill(`PWA ${status?.pwaConnected ? "koblet" : "ikke koblet"}`, flagTone(status?.pwaConnected))
+  ]);
+}
+
+async function fetchServerStatusForDisplay(){
+  const btn = document.getElementById("serverStatusCheckBtn");
+  if(btn) btn.disabled = true;
+  try{
+    const response = await fetch(SDE_SERVER_STATUS_URL, {cache:"no-store"});
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const status = await response.json();
+    renderServerStatus(status);
+  }catch(err){
+    renderServerStatusUnavailable(err?.message || "Server ikke tilgjengelig fra denne klienten");
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
 
 function getDefaultScaleForTarget(targetId){
   const w = window.innerWidth || 1280;
@@ -23249,6 +23388,8 @@ document.getElementById("clearKjoretoyBtn").addEventListener("click",()=>{
   buildOppstilling();
 });
 
+document.getElementById("serverStatusCheckBtn")?.addEventListener("click", fetchServerStatusForDisplay);
+
 
 buildTurnering("turneringKveldTable","turneringKveld");
 buildTurnering("turneringNattTable","turneringNatt");
@@ -23264,6 +23405,8 @@ initDesktopWheelPassThrough();
 const rememberedStartupTab = startupTabFromUrl || getRememberedActiveTab() || "oppstilling";
 activateTab(rememberedStartupTab);
 markSaved("Klar");
+renderServerStatusIdle();
+fetchServerStatusForDisplay();
 fetchBaliseApi();
 ensureTodayStaticDataLoaded();
 ensureTomorrowStaticDataLoaded();
