@@ -155,8 +155,12 @@ border-radius:10px;
 font-size:13px;
 font-weight:900;
 }
-body.server-diagnostics-secondary .server-status-panel,
+body.server-diagnostics-hidden .server-status-panel,
+body.server-diagnostics-hidden .server-note-panel,
 body.server-diagnostics-secondary .server-note-panel{
+display:none;
+}
+body.server-diagnostics-secondary .server-status-detail-chip{
 display:none;
 }
 .server-note-panel{
@@ -22166,6 +22170,10 @@ let serverNoteSubmitInFlight = false;
 let lastServerStatusForSdeRecommendationAck = null;
 let lastServerStatusBaseForSdeRecommendationAck = "";
 let sdeRecommendationAckSubmitInFlight = false;
+let lastServerStatusForDisplay = null;
+let lastServerStatusBaseForDisplay = "";
+let serverNoteReadbackOkForDisplay = false;
+let sdeRecommendationAckReadbackOkForDisplay = false;
 
 function getSameOriginServerStatusBase(){
   if(isSdeHostedHttpsOrigin()){
@@ -22239,23 +22247,38 @@ function getServerStatusTransportMode(base){
   return "fallback";
 }
 
-function shouldShowServerDiagnosticsByDefault(){
+function shouldExposeServerDiagnosticsByDefault(){
   return Boolean(getSameOriginServerStatusBase());
+}
+
+function shouldExpandServerDiagnosticsByDefault(){
+  return false;
+}
+
+function setServerDiagnosticsHidden(hidden){
+  document.body?.classList.toggle("server-diagnostics-hidden", hidden === true);
+}
+
+function isServerDiagnosticsExpanded(){
+  return document.body?.classList.contains("server-diagnostics-secondary") !== true;
 }
 
 function setServerDiagnosticsExpanded(expanded){
   const isExpanded = expanded === true;
   document.body?.classList.toggle("server-diagnostics-secondary", !isExpanded);
+  if(isExpanded){
+    setServerDiagnosticsHidden(false);
+  }
   const toggle = document.getElementById("serverDiagnosticsToggleBtn");
   if(toggle){
-    toggle.textContent = isExpanded ? "Skjul serverpanel" : "Vis serverpanel";
+    toggle.textContent = isExpanded ? "Skjul serverdiagnostikk" : "Vis serverdiagnostikk";
     toggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
   }
 }
 
-function createServerStatusPill(text, tone){
+function createServerStatusPill(text, tone, isDetail){
   const pill = document.createElement("span");
-  pill.className = `server-status-pill ${tone || ""}`.trim();
+  pill.className = `server-status-pill ${tone || ""}${isDetail ? " server-status-detail-chip" : ""}`.trim();
   pill.textContent = text;
   return pill;
 }
@@ -22433,10 +22456,12 @@ function renderServerNoteReadback(stateBody, eventsBody, base){
 async function fetchServerNoteReadbackForDisplay(base){
   const normalizedBase = normalizeServerStatusBase(base);
   if(!normalizedBase){
+    serverNoteReadbackOkForDisplay = false;
     renderServerNoteReadbackMessage("ikke lest", "warn", "Mangler verifisert serverbase. Readback er ikke hentet.");
     return;
   }
 
+  serverNoteReadbackOkForDisplay = false;
   renderServerNoteReadbackMessage("leser", "warn", "Henter server-note readback med GET. Ingen POST sendes.");
 
   try{
@@ -22449,7 +22474,9 @@ async function fetchServerNoteReadbackForDisplay(base){
     const stateBody = await stateResponse.json();
     const eventsBody = await eventsResponse.json();
     renderServerNoteReadback(stateBody, eventsBody, normalizedBase);
+    serverNoteReadbackOkForDisplay = true;
   }catch(error){
+    serverNoteReadbackOkForDisplay = false;
     renderServerNoteReadbackMessage(
       "readback feil",
       "warn",
@@ -22600,10 +22627,12 @@ function renderSdeRecommendationAckReadback(stateBody, eventsBody, status, base)
 async function fetchSdeRecommendationAckReadbackForDisplay(base, status){
   const normalizedBase = normalizeServerStatusBase(base);
   if(!normalizedBase){
+    sdeRecommendationAckReadbackOkForDisplay = false;
     renderSdeRecommendationAckReadbackMessage("ikke lest", "warn", "Mangler verifisert serverbase. SDE-ack readback er ikke hentet.");
     return;
   }
 
+  sdeRecommendationAckReadbackOkForDisplay = false;
   renderSdeRecommendationAckReadbackMessage("leser", "warn", "Henter SDE-anbefaling readback med GET. Ingen POST sendes.");
 
   try{
@@ -22616,7 +22645,9 @@ async function fetchSdeRecommendationAckReadbackForDisplay(base, status){
     const stateBody = await stateResponse.json();
     const eventsBody = await eventsResponse.json();
     renderSdeRecommendationAckReadback(stateBody, eventsBody, status, normalizedBase);
+    sdeRecommendationAckReadbackOkForDisplay = true;
   }catch(error){
+    sdeRecommendationAckReadbackOkForDisplay = false;
     renderSdeRecommendationAckReadbackMessage(
       "readback feil",
       "warn",
@@ -23052,6 +23083,10 @@ function renderServerStatusItems(items){
 }
 
 function renderServerStatusIdle(){
+  lastServerStatusForDisplay = null;
+  lastServerStatusBaseForDisplay = "";
+  serverNoteReadbackOkForDisplay = false;
+  sdeRecommendationAckReadbackOkForDisplay = false;
   renderServerStatusItems([
     createServerStatusPill("Serverstatus", ""),
     createServerStatusPill("Ikke sjekket", "warn"),
@@ -23064,8 +23099,14 @@ function renderServerStatusIdle(){
 }
 
 function renderServerStatusUnavailable(message){
-  if(!shouldShowServerDiagnosticsByDefault()){
-    setServerDiagnosticsExpanded(false);
+  lastServerStatusForDisplay = null;
+  lastServerStatusBaseForDisplay = "";
+  serverNoteReadbackOkForDisplay = false;
+  sdeRecommendationAckReadbackOkForDisplay = false;
+  if(!shouldExposeServerDiagnosticsByDefault()){
+    setServerDiagnosticsHidden(true);
+  }else{
+    setServerDiagnosticsHidden(false);
   }
   renderServerStatusItems([
     createServerStatusPill("Serverstatus", ""),
@@ -23080,7 +23121,9 @@ function renderServerStatusUnavailable(message){
 }
 
 function renderServerStatus(status, base){
-  setServerDiagnosticsExpanded(true);
+  lastServerStatusForDisplay = status || null;
+  lastServerStatusBaseForDisplay = normalizeServerStatusBase(base);
+  setServerDiagnosticsHidden(false);
   const schemaReady = status?.actionsTablePresent === true && status?.actionsSchemaReady === true && status?.migrationRequired === false;
   const contract = status?.clientReadContract || status?.clientContract || {};
   const contractMode = typeof contract.mode === "string" ? contract.mode : "ukjent kontrakt";
@@ -23098,31 +23141,34 @@ function renderServerStatus(status, base){
     ? operationalContract.serverHostedDataFiles.map(path => String(path).split("/").pop()).filter(Boolean).join(", ")
     : "";
   const flagTone = value => value ? "warn" : "off";
+  const writesOff = !writesAllowed && status?.serverNoteActionsEnabled !== true && status?.sdeRecommendationAckActionsEnabled !== true;
+  const readbackOk = serverNoteReadbackOkForDisplay === true && sdeRecommendationAckReadbackOkForDisplay === true;
   renderServerStatusItems([
     createServerStatusPill("Serverstatus", ""),
     createServerStatusPill("Reachable", "ok"),
-    createServerStatusPill(`mode ${getServerStatusTransportMode(base)}`, "ok"),
-    createServerStatusPill(`kontrakt ${contractMode}`, contractMode === "read_only_status" ? "ok" : "warn"),
-    createServerStatusPill(base || "ukjent base", "off"),
     createServerStatusPill(`rev ${status?.revision ?? "?"}`, "ok"),
-    createServerStatusPill(schemaReady ? "schema klar" : "schema ikke klar", schemaReady ? "ok" : "warn"),
-    createServerStatusPill(`serverstate sannhet ${serverStateAuthority ? "ja" : "nei"}`, flagTone(serverStateAuthority)),
-    createServerStatusPill(`writes ${writesAllowed ? "på" : "av"}`, flagTone(writesAllowed)),
-    createServerStatusPill(`server-note ${status?.serverNoteActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteActionsEnabled)),
-    createServerStatusPill(`prod-note ${status?.serverNoteProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteProductionActionsEnabled)),
-    createServerStatusPill(`sde-ack ${status?.sdeRecommendationAckActionsEnabled ? "på" : "av"}`, flagTone(status?.sdeRecommendationAckActionsEnabled)),
-    createServerStatusPill(`prod-ack ${status?.sdeRecommendationAckProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.sdeRecommendationAckProductionActionsEnabled)),
+    createServerStatusPill(`writes ${writesOff ? "av" : "på"}`, writesOff ? "off" : "warn"),
     createServerStatusPill(`operational ${status?.operationalWritesEnabled ? "på" : "av"}`, flagTone(status?.operationalWritesEnabled)),
-    createServerStatusPill(`op-write ${operationalWritesAllowed ? "på" : "av"}`, flagTone(operationalWritesAllowed)),
-    createServerStatusPill(`migration ${status?.migrationsEnabled ? "på" : "av"}`, flagTone(status?.migrationsEnabled)),
-    createServerStatusPill(`PWA ${status?.pwaConnected ? "koblet" : "ikke koblet"}`, flagTone(status?.pwaConnected)),
-    createServerStatusPill(`data ${dataSource === "local_frontend_data" ? "lokal" : dataSource}`, dataSource === "local_frontend_data" ? "off" : "warn"),
-    createServerStatusPill(`operativ data ${operationalDataMode === "local_frontend_data" ? "lokal/statisk" : operationalDataMode}`, operationalDataMode === "local_frontend_data" ? "off" : "warn"),
-    createServerStatusPill(`serverstate operativt ${serverStateUsedForOperations ? "ja" : "nei"}`, flagTone(serverStateUsedForOperations)),
-    createServerStatusPill(`SDE-motor ${sdeEngineRunsClientSide ? "klient" : "server"}`, sdeEngineRunsClientSide ? "off" : "warn"),
-    createServerStatusPill(`op-data write ${operationalDataWritesAllowed ? "på" : "av"}`, flagTone(operationalDataWritesAllowed)),
-    createServerStatusPill(`op-data op-write ${operationalDataOperationalWritesAllowed ? "på" : "av"}`, flagTone(operationalDataOperationalWritesAllowed)),
-    createServerStatusPill(`datafiler ${hostedDataFiles || "ikke oppgitt"}`, hostedDataFiles ? "off" : "warn")
+    createServerStatusPill(readbackOk ? "readback ok" : "readback hentes", readbackOk ? "ok" : "warn"),
+    createServerStatusPill(`mode ${getServerStatusTransportMode(base)}`, "ok", true),
+    createServerStatusPill(`kontrakt ${contractMode}`, contractMode === "read_only_status" ? "ok" : "warn", true),
+    createServerStatusPill(base || "ukjent base", "off", true),
+    createServerStatusPill(schemaReady ? "schema klar" : "schema ikke klar", schemaReady ? "ok" : "warn", true),
+    createServerStatusPill(`serverstate sannhet ${serverStateAuthority ? "ja" : "nei"}`, flagTone(serverStateAuthority), true),
+    createServerStatusPill(`server-note ${status?.serverNoteActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteActionsEnabled), true),
+    createServerStatusPill(`prod-note ${status?.serverNoteProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteProductionActionsEnabled), true),
+    createServerStatusPill(`sde-ack ${status?.sdeRecommendationAckActionsEnabled ? "på" : "av"}`, flagTone(status?.sdeRecommendationAckActionsEnabled), true),
+    createServerStatusPill(`prod-ack ${status?.sdeRecommendationAckProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.sdeRecommendationAckProductionActionsEnabled), true),
+    createServerStatusPill(`op-write ${operationalWritesAllowed ? "på" : "av"}`, flagTone(operationalWritesAllowed), true),
+    createServerStatusPill(`migration ${status?.migrationsEnabled ? "på" : "av"}`, flagTone(status?.migrationsEnabled), true),
+    createServerStatusPill(`PWA ${status?.pwaConnected ? "koblet" : "ikke koblet"}`, flagTone(status?.pwaConnected), true),
+    createServerStatusPill(`data ${dataSource === "local_frontend_data" ? "lokal" : dataSource}`, dataSource === "local_frontend_data" ? "off" : "warn", true),
+    createServerStatusPill(`operativ data ${operationalDataMode === "local_frontend_data" ? "lokal/statisk" : operationalDataMode}`, operationalDataMode === "local_frontend_data" ? "off" : "warn", true),
+    createServerStatusPill(`serverstate operativt ${serverStateUsedForOperations ? "ja" : "nei"}`, flagTone(serverStateUsedForOperations), true),
+    createServerStatusPill(`SDE-motor ${sdeEngineRunsClientSide ? "klient" : "server"}`, sdeEngineRunsClientSide ? "off" : "warn", true),
+    createServerStatusPill(`op-data write ${operationalDataWritesAllowed ? "på" : "av"}`, flagTone(operationalDataWritesAllowed), true),
+    createServerStatusPill(`op-data op-write ${operationalDataOperationalWritesAllowed ? "på" : "av"}`, flagTone(operationalDataOperationalWritesAllowed), true),
+    createServerStatusPill(`datafiler ${hostedDataFiles || "ikke oppgitt"}`, hostedDataFiles ? "off" : "warn", true)
   ]);
   renderServerNotePanelFromStatus(status, base);
   renderSdeRecommendationAckPanelFromStatus(status, base);
@@ -23140,11 +23186,14 @@ async function fetchServerStatusForDisplay(){
         const status = await response.json();
         const input = document.getElementById("serverStatusBaseInput");
         if(input) input.value = base;
+        serverNoteReadbackOkForDisplay = false;
+        sdeRecommendationAckReadbackOkForDisplay = false;
         renderServerStatus(status, base);
         await Promise.all([
           fetchServerNoteReadbackForDisplay(base),
           fetchSdeRecommendationAckReadbackForDisplay(base, status)
         ]);
+        renderServerStatus(status, base);
         return {status, base};
       }catch(err){
         lastError = `${base}: ${err?.message || "ikke tilgjengelig"}`;
@@ -24594,7 +24643,8 @@ document.getElementById("sdeRecommendationAckSendBtn")?.addEventListener("click"
 });
 
 const sameOriginServerStatusBase = getSameOriginServerStatusBase();
-setServerDiagnosticsExpanded(shouldShowServerDiagnosticsByDefault());
+setServerDiagnosticsHidden(!shouldExposeServerDiagnosticsByDefault());
+setServerDiagnosticsExpanded(shouldExpandServerDiagnosticsByDefault());
 if(sameOriginServerStatusBase){
   const serverStatusInput = document.getElementById("serverStatusBaseInput");
   if(serverStatusInput) serverStatusInput.value = sameOriginServerStatusBase;
