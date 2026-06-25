@@ -155,6 +155,10 @@ border-radius:10px;
 font-size:13px;
 font-weight:900;
 }
+body.server-diagnostics-secondary .server-status-panel,
+body.server-diagnostics-secondary .server-note-panel{
+display:none;
+}
 .server-note-panel{
 display:flex;
 flex-direction:column;
@@ -5446,7 +5450,7 @@ button{padding:12px 12px}
 </style>
 
 </head>
-<body>
+<body class="server-diagnostics-secondary">
 <div class="app">
 <h1>Skien sporplan</h1>
 <p class="sub">Siste revisjon: 21. juni 2026</p>
@@ -5465,6 +5469,7 @@ button{padding:12px 12px}
   <div class="server-status-controls">
     <input class="server-status-base-input" id="serverStatusBaseInput" type="url" value="http://localhost:8787" aria-label="Serverbase for read-only status" spellcheck="false" autocomplete="off">
     <button class="server-status-check-btn" id="serverStatusCheckBtn" type="button">Sjekk serverstatus</button>
+    <button class="server-status-check-btn" id="serverDiagnosticsToggleBtn" type="button" aria-expanded="false">Vis serverpanel</button>
   </div>
 </div>
 <div class="server-note-panel" id="serverNotePanel" aria-live="polite">
@@ -22234,6 +22239,20 @@ function getServerStatusTransportMode(base){
   return "fallback";
 }
 
+function shouldShowServerDiagnosticsByDefault(){
+  return Boolean(getSameOriginServerStatusBase());
+}
+
+function setServerDiagnosticsExpanded(expanded){
+  const isExpanded = expanded === true;
+  document.body?.classList.toggle("server-diagnostics-secondary", !isExpanded);
+  const toggle = document.getElementById("serverDiagnosticsToggleBtn");
+  if(toggle){
+    toggle.textContent = isExpanded ? "Skjul serverpanel" : "Vis serverpanel";
+    toggle.setAttribute("aria-expanded", isExpanded ? "true" : "false");
+  }
+}
+
 function createServerStatusPill(text, tone){
   const pill = document.createElement("span");
   pill.className = `server-status-pill ${tone || ""}`.trim();
@@ -23045,6 +23064,9 @@ function renderServerStatusIdle(){
 }
 
 function renderServerStatusUnavailable(message){
+  if(!shouldShowServerDiagnosticsByDefault()){
+    setServerDiagnosticsExpanded(false);
+  }
   renderServerStatusItems([
     createServerStatusPill("Serverstatus", ""),
     createServerStatusPill("Utilgjengelig", "error"),
@@ -23058,6 +23080,7 @@ function renderServerStatusUnavailable(message){
 }
 
 function renderServerStatus(status, base){
+  setServerDiagnosticsExpanded(true);
   const schemaReady = status?.actionsTablePresent === true && status?.actionsSchemaReady === true && status?.migrationRequired === false;
   const contract = status?.clientReadContract || status?.clientContract || {};
   const contractMode = typeof contract.mode === "string" ? contract.mode : "ukjent kontrakt";
@@ -24551,6 +24574,9 @@ document.getElementById("clearKjoretoyBtn").addEventListener("click",()=>{
 });
 
 document.getElementById("serverStatusCheckBtn")?.addEventListener("click", fetchServerStatusForDisplay);
+document.getElementById("serverDiagnosticsToggleBtn")?.addEventListener("click", () => {
+  setServerDiagnosticsExpanded(document.body?.classList.contains("server-diagnostics-secondary") === true);
+});
 document.getElementById("serverNoteSendBtn")?.addEventListener("click", submitServerNoteFromUi);
 document.getElementById("sdeRecommendationAckSendBtn")?.addEventListener("click", submitSdeRecommendationAckFromUi);
 [
@@ -24568,6 +24594,7 @@ document.getElementById("sdeRecommendationAckSendBtn")?.addEventListener("click"
 });
 
 const sameOriginServerStatusBase = getSameOriginServerStatusBase();
+setServerDiagnosticsExpanded(shouldShowServerDiagnosticsByDefault());
 if(sameOriginServerStatusBase){
   const serverStatusInput = document.getElementById("serverStatusBaseInput");
   if(serverStatusInput) serverStatusInput.value = sameOriginServerStatusBase;
