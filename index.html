@@ -22147,6 +22147,7 @@ const SDE_SERVER_STATUS_BASE_OPTIONS = Object.freeze([
   "http://192.168.10.235:8787",
   "http://192.168.10.151:8787"
 ]);
+const SDE_HOSTED_HTTPS_ORIGIN = "https://sde.oyvind-solglott.no";
 const SDE_SERVER_NOTE_MAX_LENGTH = 500;
 const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_READBACK_EVENT_LIMIT = 5;
@@ -22162,6 +22163,9 @@ let lastServerStatusBaseForSdeRecommendationAck = "";
 let sdeRecommendationAckSubmitInFlight = false;
 
 function getSameOriginServerStatusBase(){
+  if(isSdeHostedHttpsOrigin()){
+    return window.location.origin;
+  }
   if(/^https?:$/i.test(window.location.protocol) && window.location.port){
     return window.location.origin;
   }
@@ -22175,13 +22179,45 @@ function normalizeServerStatusBase(value){
   return withProtocol.replace(/\/+$/,"");
 }
 
+function isSdeHostedHttpsOrigin(){
+  return normalizeServerStatusBase(window.location.origin) === SDE_HOSTED_HTTPS_ORIGIN;
+}
+
+function isLocalOrLanServerStatusBase(value){
+  const normalized = normalizeServerStatusBase(value);
+  if(!normalized) return false;
+  try{
+    const url = new URL(normalized);
+    const host = url.hostname.toLowerCase();
+    return url.protocol === "http:" || host === "localhost" || host === "127.0.0.1" || host === "::1" || host.startsWith("192.168.");
+  }catch(_err){
+    return false;
+  }
+}
+
+function sanitizeSdeStoredServerBaseForOrigin(value){
+  const normalized = normalizeServerStatusBase(value);
+  if(!isSdeHostedHttpsOrigin()) return normalized;
+  if(!normalized) return "";
+  if(normalized === SDE_HOSTED_HTTPS_ORIGIN) return normalized;
+  return isLocalOrLanServerStatusBase(normalized) ? "" : normalized;
+}
+
+function getSdePreferredServerStatusBase(){
+  if(isSdeHostedHttpsOrigin()){
+    return SDE_HOSTED_HTTPS_ORIGIN;
+  }
+  return normalizeServerStatusBase(getSameOriginServerStatusBase());
+}
+
 function getServerStatusBaseOptions(){
   const input = document.getElementById("serverStatusBaseInput");
-  const manualBase = normalizeServerStatusBase(input?.value);
-  const sameOriginBase = normalizeServerStatusBase(getSameOriginServerStatusBase());
+  const manualBase = sanitizeSdeStoredServerBaseForOrigin(input?.value);
+  const sameOriginBase = getSdePreferredServerStatusBase();
+  const fallbackBases = SDE_SERVER_STATUS_BASE_OPTIONS.map(sanitizeSdeStoredServerBaseForOrigin).filter(Boolean);
   const ordered = manualBase
-    ? [sameOriginBase, manualBase, ...SDE_SERVER_STATUS_BASE_OPTIONS]
-    : [sameOriginBase, ...SDE_SERVER_STATUS_BASE_OPTIONS];
+    ? [sameOriginBase, manualBase, ...fallbackBases]
+    : [sameOriginBase, ...fallbackBases];
   return [...new Set(ordered.map(normalizeServerStatusBase).filter(Boolean))];
 }
 
