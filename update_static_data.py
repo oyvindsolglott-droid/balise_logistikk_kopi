@@ -217,6 +217,14 @@ def has_arrival_route_to_skien_or_porsgrunn(text: str) -> bool:
     return False
 
 
+def has_balise_train_content(text: str) -> bool:
+    """Sjekk om Balise-siden finnes for tog/dato selv om materiell mangler."""
+    if not text or "Fant ingen tog på denne datoen" in text:
+        return False
+
+    return bool(re.search(r"\b(Skien|Porsgrunn|Eidsvoll|Notodden)\b", text))
+
+
 def extract_vehicle_hits_from_balise_text(text: str) -> Tuple[List[str], List[str], List[str]]:
     general_route_hits = (
         find_first_material_line(text, ["Skien - Eidsvoll:"])
@@ -247,17 +255,27 @@ def extract_vehicle_hits_from_balise_text(text: str) -> Tuple[List[str], List[st
     return general_hits, departure_hits, arrival_hits
 
 
-def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) -> Tuple[Dict[str, str], Dict[str, str], Dict[str, str], Dict[str, str]]:
+def fetch_vehicle_maps_for_trains(
+    train_numbers: Iterable[str],
+    run_date: date,
+) -> Tuple[
+    Dict[str, str],
+    Dict[str, str],
+    Dict[str, str],
+    Dict[str, str],
+    Dict[str, str],
+]:
     vehicles: Dict[str, str] = {}
     departure_vehicles: Dict[str, str] = {}
     arrival_vehicles: Dict[str, str] = {}
     errors: Dict[str, str] = {}
+    display_train_numbers: Dict[str, str] = {}
 
     train_list = [normalize_train_no(train) for train in train_numbers]
     train_list = [train for train in train_list if train]
 
     if not train_list:
-        return vehicles, departure_vehicles, arrival_vehicles, errors
+        return vehicles, departure_vehicles, arrival_vehicles, errors, display_train_numbers
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -275,14 +293,16 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
                     text = page.locator("body").inner_text()
 
                     general_hits, departure_hits, arrival_hits = extract_vehicle_hits_from_balise_text(text)
+                    has_train_content = has_balise_train_content(text)
 
-                    if general_hits or departure_hits or arrival_hits:
+                    if general_hits or departure_hits or arrival_hits or has_train_content:
                         candidate_results.append(
                             {
                                 "lookup_train_no": lookup_train_no,
                                 "general_hits": general_hits,
                                 "departure_hits": departure_hits,
                                 "arrival_hits": arrival_hits,
+                                "has_train_content": has_train_content,
                                 "is_arrival_route_to_base": has_arrival_route_to_skien_or_porsgrunn(text),
                             }
                         )
@@ -318,6 +338,17 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
                     None,
                 )
 
+                if selected is None:
+                    selected = next(
+                        (
+                            result
+                            for result in candidate_results
+                            if result["lookup_train_no"] != train_no
+                            and result["has_train_content"]
+                        ),
+                        None,
+                    )
+
             if selected is None and should_prefer_alternate_arrival:
                 selected = next(
                     (
@@ -333,6 +364,10 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
                 selected = candidate_results[0]
 
             if selected is not None:
+                lookup_train_no = selected["lookup_train_no"]
+                if lookup_train_no != train_no:
+                    display_train_numbers[train_no] = lookup_train_no
+
                 if selected["general_hits"]:
                     vehicles[train_no] = ", ".join(selected["general_hits"])
 
@@ -343,11 +378,23 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
                     arrival_vehicles[train_no] = ", ".join(selected["arrival_hits"])
 
             if train_no not in vehicles and train_no not in departure_vehicles and train_no not in arrival_vehicles:
-                errors[train_no] = last_error or "Fant ingen kjøretøy i siden"
+                lookup_train_no = selected["lookup_train_no"] if selected is not None else ""
+                errors[train_no] = (
+                    f"Fant ingen kjøretøy i siden {lookup_train_no}"
+                    if lookup_train_no
+                    else last_error or "Fant ingen kjøretøy i siden"
+                )
 
         browser.close()
 
-    return vehicles, departure_vehicles, arrival_vehicles, errors
+    return vehicles, departure_vehicles, arrival_vehicles, errors, display_train_numbers
+
+
+def remap_train_keys(data: Dict[str, str], display_train_numbers: Dict[str, str]) -> Dict[str, str]:
+    return {
+        display_train_numbers.get(train_no, train_no): value
+        for train_no, value in data.items()
+    }
 
 
 def all_relevant_trains() -> List[str]:
@@ -361,7 +408,22 @@ def build_payload(mode: str) -> Dict[str, object]:
     operational_dates = get_operational_tursatt_dates()
     run_date = operational_dates["departure_date"] if mode == "imorgen" else operational_dates["arrival_date"]
     trains = all_relevant_trains()
-    vehicles, departure_vehicles, arrival_vehicles, vehicle_errors = fetch_vehicle_maps_for_trains(trains, run_date)
+    (
+        vehicles,
+        departure_vehicles,
+        arrival_vehicles,
+        vehicle_errors,
+        display_train_numbers,
+    ) = fetch_vehicle_maps_for_trains(trains, run_date)
+    departure_display_map = (
+        {
+            train_no: display_train
+            for train_no, display_train in display_train_numbers.items()
+            if train_no in HARDCODED_DEPARTURES
+        }
+        if mode == "imorgen"
+        else {}
+    )
 
     return {
         "ok": True,
@@ -370,11 +432,11 @@ def build_payload(mode: str) -> Dict[str, object]:
         "date": run_date.isoformat(),
         "source": "balise.no",
         "requestedTrains": trains,
-        "vehicles": vehicles,
-        "departureVehicles": departure_vehicles,
-        "arrivalVehicles": arrival_vehicles,
-        "vehicleErrors": vehicle_errors,
-        "departures": HARDCODED_DEPARTURES,
+        "vehicles": remap_train_keys(vehicles, departure_display_map),
+        "departureVehicles": remap_train_keys(departure_vehicles, departure_display_map),
+        "arrivalVehicles": remap_train_keys(arrival_vehicles, departure_display_map),
+        "vehicleErrors": remap_train_keys(vehicle_errors, departure_display_map),
+        "departures": remap_train_keys(HARDCODED_DEPARTURES, departure_display_map),
         "arrivals": HARDCODED_ARRIVALS,
         "allowedMaterialPrefixes": ALLOWED_MATERIAL_PREFIXES,
         "materialFormat": ["69-xx", "70-xx", "74-xx", "75-xx"],

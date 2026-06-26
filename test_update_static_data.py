@@ -16,6 +16,15 @@ class BaliseTrainLookupCandidateTest(unittest.TestCase):
             ["2472"],
         )
 
+    def test_remap_train_keys_uses_actual_balise_train_number(self):
+        self.assertEqual(
+            static_data.remap_train_keys(
+                {"804": "74-44", "2472": "74-01"},
+                {"804": "80804"},
+            ),
+            {"80804": "74-44", "2472": "74-01"},
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
