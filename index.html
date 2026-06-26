@@ -3288,6 +3288,32 @@ button{padding:12px 12px}
   background:rgba(15,23,42,.68);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
 }
+.sde-night-placement-slot.occupied{
+  cursor:grab;
+}
+.sde-night-placement-slot.dragging{
+  opacity:.58;
+  cursor:grabbing;
+}
+.sde-night-placement-slot.drag-over{
+  outline:3px solid rgba(34,197,94,.72);
+  outline-offset:2px;
+}
+.sde-night-placement-slot.drop-rejected{
+  outline:3px solid rgba(248,113,113,.88);
+  outline-offset:2px;
+}
+.sde-night-placement-slot.simulated{
+  border-color:rgba(45,212,191,.78);
+  box-shadow:inset 0 0 0 1px rgba(45,212,191,.34), 0 0 0 2px rgba(45,212,191,.12);
+}
+.sde-night-placement-time-status{
+  margin-top:3px;
+  color:#bae6fd;
+  font-size:10px;
+  font-weight:850;
+  line-height:1.2;
+}
 .sde-night-placement-slot.blue{border-color:rgba(96,165,250,.36);}
 .sde-night-placement-slot.yellow{border-color:rgba(250,204,21,.40);}
 .sde-night-placement-slot.orange{border-color:rgba(251,146,60,.40);}
@@ -3376,6 +3402,32 @@ button{padding:12px 12px}
   border:1px solid rgba(251,191,36,.28);
   background:rgba(251,191,36,.10);
   color:#ffedd5;
+}
+.sde-night-placement-warning.error{
+  border-color:rgba(248,113,113,.42);
+  background:rgba(248,113,113,.14);
+  color:#fee2e2;
+}
+.sde-night-placement-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:12px 20px 0;
+}
+.sde-night-placement-action-btn{
+  border:1px solid rgba(226,232,240,.28);
+  border-radius:12px;
+  background:rgba(226,232,240,.12);
+  color:#f8fafc;
+  font-family:inherit;
+  font-size:12px;
+  font-weight:950;
+  padding:8px 11px;
+  cursor:pointer;
+}
+.sde-night-placement-action-btn:disabled{
+  opacity:.48;
+  cursor:not-allowed;
 }
 
 .sde-manual-override{
@@ -6418,6 +6470,7 @@ if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.isArray(state.sdeMoveActions)) state.sdeMoveActions={};
 if(!Array.isArray(state.sdeMoveLearningLog)) state.sdeMoveLearningLog=[];
 if(!state.sdeManualMoveOverrides || typeof state.sdeManualMoveOverrides !== "object" || Array.isArray(state.sdeManualMoveOverrides)) state.sdeManualMoveOverrides = {};
+if(!state.sdeNightPlacementManualOverrides || typeof state.sdeNightPlacementManualOverrides !== "object" || Array.isArray(state.sdeNightPlacementManualOverrides)) state.sdeNightPlacementManualOverrides = {};
 
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
@@ -20463,6 +20516,8 @@ let sdeShiftDetailsExpanded = false;
 let sdeNightPlacementVisible = false;
 let sdeUnresolvedDetailsVisible = false;
 let sdeLearningDiagnosticsVisible = false;
+let sdeNightPlacementDropMessage = null;
+let sdeNightPlacementDragPayload = null;
 const sdeDiagnosticSectionExpanded = {};
 const SDE_LAZY_DIAGNOSTIC_COUNT_TEXT = "Åpnes ved behov";
 let sdeShiftLastRenderedData = null;
@@ -20984,6 +21039,7 @@ function getSdeNightPlacementTrainLabel(vehicle, row=null){
 function getSdeNightPlacementSourceLabel(row, source){
   if(source === "standing") return "Fysisk grunnlag";
   if(row?.sdeNightPlacementStale) return "Uavklart";
+  if(row?.sdeNightPlacementDragOverrideActive) return "Simulert manuell";
   if(row?.manualPlanOverrideActive) return "Manuell plan";
   if(row?.manualOverrideActive) return "Manuell overstyring";
   if(row?.isWrongTrackReplacementMove) return "Adaptiv SDE";
@@ -20992,8 +21048,88 @@ function getSdeNightPlacementSourceLabel(row, source){
   return "SDE-forslag";
 }
 
+function getSdeNightPlacementManualOverrides(){
+  if(!state.sdeNightPlacementManualOverrides || typeof state.sdeNightPlacementManualOverrides !== "object" || Array.isArray(state.sdeNightPlacementManualOverrides)){
+    state.sdeNightPlacementManualOverrides = {};
+  }
+  return state.sdeNightPlacementManualOverrides;
+}
+
+function getSdeNightPlacementOverrideKeyFromParts(vehicle, fromSlot, needKey=""){
+  const token = normalizeVehicleToken(vehicle);
+  const from = normalizeSlot(fromSlot);
+  const key = String(needKey || "").trim();
+  return key || `${token}|${from}`;
+}
+
+function getSdeNightPlacementOverrideKeyForRow(row){
+  return getSdeNightPlacementOverrideKeyFromParts(
+    row?.vehicle,
+    row?.fromSlot || row?.arrivalSlot,
+    getSdeMoveNeedKey(row)
+  );
+}
+
+function getSdeNightPlacementTimeAssessment(row, fromSlot, toSlot){
+  const earliestMinutes = getSdeTimeMinutes(row?.arrivalTime);
+  const latestMinutes = getSdeTimeMinutes(row?.nextDepartureTime);
+  const earliestMoveMinutes = earliestMinutes === null ? null : earliestMinutes + 2;
+  const latestMoveMinutes = latestMinutes === null ? null : latestMinutes - 5;
+  const conflicts = [];
+  let timeStatus = "UNKNOWN_TIME_MANUAL_REVIEW";
+
+  if(earliestMoveMinutes !== null && latestMoveMinutes !== null){
+    timeStatus = earliestMoveMinutes <= latestMoveMinutes ? "OK_TIME_KNOWN" : "CONFLICT_ORDER_DEPENDENCY";
+    if(earliestMoveMinutes > latestMoveMinutes){
+      conflicts.push("Tidsvinduet ser negativt ut: kjøretøyet blir tilgjengelig etter siste trygge flyttetid.");
+    }
+  }else if(earliestMoveMinutes !== null || latestMoveMinutes !== null){
+    timeStatus = "OK_TIME_ASSUMED";
+    conflicts.push("Bare én side av tidsvinduet er kjent. Kontroller rekkefølge manuelt.");
+  }else{
+    conflicts.push("Ankomsttid og neste bruk mangler. Tidsrekkefølge må vurderes manuelt.");
+  }
+
+  const routeAssessment = typeof getSdeRouteAssessmentForPlanSkifte === "function"
+    ? getSdeRouteAssessmentForPlanSkifte(fromSlot, toSlot)
+    : "";
+  if(routeAssessment && /kontroller|rute blokkert|blokk/i.test(routeAssessment)){
+    conflicts.push(routeAssessment);
+    if(timeStatus === "OK_TIME_KNOWN" || timeStatus === "OK_TIME_ASSUMED"){
+      timeStatus = "CONFLICT_ROUTE_BLOCKED";
+    }
+  }
+
+  return {
+    earliestMoveTime:earliestMoveMinutes === null ? "" : formatSdeClockMinutes(earliestMoveMinutes),
+    latestMoveTime:latestMoveMinutes === null ? "" : formatSdeClockMinutes(latestMoveMinutes),
+    sourceEvent:row?.arrivalTime ? "ankomst" : (row ? "SDE-forslag" : "eksisterende plassering"),
+    nextRequiredUse:row?.nextDepartureTime || "",
+    timeStatus,
+    conflicts
+  };
+}
+
+function getSdeNightPlacementTimeStatusText(row){
+  const status = String(row?.timeStatus || "").trim();
+  const earliest = String(row?.earliestMoveTime || "").trim();
+  const latest = String(row?.latestMoveTime || "").trim();
+  if(status === "OK_TIME_KNOWN"){
+    return `Tid kjent: ${earliest}–${latest}`;
+  }
+  if(status === "OK_TIME_ASSUMED"){
+    return `Simulert – delvis tidsvurdering${earliest ? ` fra ${earliest}` : ""}${latest ? ` til ${latest}` : ""}`;
+  }
+  if(status === "CONFLICT_TARGET_OCCUPIED") return "Avvist – plass opptatt";
+  if(status === "CONFLICT_ROUTE_BLOCKED") return "Mulig blokkering – manuell vurdering";
+  if(status === "CONFLICT_ORDER_DEPENDENCY") return "Rekkefølgekonflikt – manuell vurdering";
+  if(status === "UNKNOWN_TIME_MANUAL_REVIEW") return "Simulert – tidsvurdering nødvendig";
+  return "";
+}
+
 function getSdeNightPlacementMovePriority(row){
   if(row?.sdeNightPlacementStale) return 60;
+  if(row?.sdeNightPlacementDragOverrideActive) return 55;
   if(row?.manualOverrideActive || row?.manualPlanOverrideActive) return 50;
   if(row?.isWrongTrackReplacementMove) return 40;
   if(row?.isWorkshopMoveNeed) return 30;
@@ -21080,11 +21216,260 @@ function buildSdeNightPlacementManualPlanMoves(baseRows){
     .filter(Boolean);
 }
 
+function buildSdeNightPlacementDragOverrideMoves(baseRows){
+  const rows = Array.isArray(baseRows) ? baseRows : [];
+  const overrides = Object.values(getSdeNightPlacementManualOverrides()).filter(Boolean);
+
+  return overrides.map(override=>{
+    const vehicle = sanitizeVehicleValue(override.vehicle);
+    const fromSlot = normalizeSlot(override.fromSlot);
+    const toSlot = normalizeSlot(override.toSlot);
+    if(!vehicle || !toSlot) return null;
+
+    const needKey = String(override.needKey || "").trim();
+    const moveKey = String(override.moveKey || "").trim();
+    const token = normalizeVehicleToken(vehicle);
+    const match = rows.find(row =>
+      (needKey && getSdeMoveNeedKey(row) === needKey) ||
+      (moveKey && getSdeMoveActionKey(row) === moveKey) ||
+      (normalizeVehicleToken(row?.vehicle) === token && (!fromSlot || normalizeSlot(row?.fromSlot || row?.arrivalSlot) === fromSlot))
+    );
+    const timeAssessment = {
+      earliestMoveTime:String(override.earliestMoveTime || ""),
+      latestMoveTime:String(override.latestMoveTime || ""),
+      timeStatus:String(override.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"),
+      conflicts:Array.isArray(override.conflicts) ? override.conflicts : [],
+      affectedVehicles:Array.isArray(override.affectedVehicles) ? override.affectedVehicles : []
+    };
+
+    return {
+      ...(match || {}),
+      vehicle,
+      fromSlot:fromSlot || normalizeSlot(match?.fromSlot || match?.arrivalSlot) || "",
+      arrivalSlot:fromSlot || normalizeSlot(match?.arrivalSlot || match?.fromSlot) || "",
+      recommendedSlot:toSlot,
+      toSlot,
+      needKey,
+      moveKey,
+      sdeNightPlacementDragOverrideActive:true,
+      sdeNightPlacementOverrideId:String(override.id || ""),
+      sdeNightPlacementOverrideCreatedAt:String(override.createdAt || ""),
+      source:"SDE Nattplassering drag/drop",
+      recommendationReason:"Simulert ønsket sluttplassering fra SDE Nattplassering. Dette er ikke utført skiftebevegelse.",
+      parkingStrategy:"Simulert manuell plassering",
+      parkingInstruction:"Simulert ønsket sluttplassering. Tidsstatus og konflikter må kontrolleres operativt.",
+      ...timeAssessment
+    };
+  }).filter(Boolean);
+}
+
+function getSdeNightPlacementPhysicalOccupants(){
+  const occupants = {};
+  computeInndata().forEach(row=>{
+    const slot = normalizeSlot(row?.slot);
+    const vehicle = sanitizeVehicleValue(row?.mat);
+    if(slot && vehicle){
+      occupants[slot] = {
+        slot,
+        vehicle,
+        source:"physical"
+      };
+    }
+  });
+  return occupants;
+}
+
+function buildSdeNightPlacementAffectedVehicles(fromSlot, toSlot){
+  const affected = [];
+  const routeText = typeof getSdeRouteAssessmentForPlanSkifte === "function"
+    ? getSdeRouteAssessmentForPlanSkifte(fromSlot, toSlot)
+    : "";
+  const internalBlockers = typeof getSdeInternalBlockersBetweenSlots === "function"
+    ? getSdeInternalBlockersBetweenSlots(fromSlot, toSlot)
+    : [];
+
+  internalBlockers.forEach(slot=>{
+    const vehicle = sanitizeVehicleValue(getSdeVehicleInSlot(slot));
+    if(vehicle) affected.push({slot, vehicle, reason:"intern blokkering"});
+  });
+
+  if(routeText && /blokk/i.test(routeText)){
+    affected.push({slot:"", vehicle:"", reason:routeText});
+  }
+
+  return affected;
+}
+
+function findSdeNightPlacementMoveForPayload(payload, data){
+  const rows = Array.isArray(data?.moves) ? data.moves : [];
+  const vehicleToken = normalizeVehicleToken(payload?.vehicle);
+  const needKey = String(payload?.needKey || "").trim();
+  const moveKey = String(payload?.moveKey || "").trim();
+
+  return rows.find(row =>
+    (needKey && getSdeMoveNeedKey(row) === needKey) ||
+    (moveKey && getSdeMoveActionKey(row) === moveKey) ||
+    (vehicleToken && normalizeVehicleToken(row?.vehicle) === vehicleToken)
+  ) || null;
+}
+
+function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLastRenderedData || getSdeShiftShowcaseData()){
+  const vehicle = sanitizeVehicleValue(payload?.vehicle);
+  const targetSlot = normalizeSlot(toSlot);
+  const fromSlot = normalizeSlot(payload?.slot || payload?.fromSlot);
+
+  if(!vehicle || !targetSlot){
+    return {
+      ok:false,
+      timeStatus:"UNKNOWN_TIME_MANUAL_REVIEW",
+      message:"Flyttingen mangler kjøretøy eller målspor. Manuell vurdering nødvendig.",
+      conflicts:["Mangler kjøretøy eller målspor."],
+      affectedVehicles:[]
+    };
+  }
+
+  if(fromSlot && fromSlot === targetSlot){
+    return {
+      ok:false,
+      timeStatus:"UNKNOWN_TIME_MANUAL_REVIEW",
+      message:`${vehicle} står allerede i ${targetSlot}.`,
+      conflicts:["Samme fra- og tilspor."],
+      affectedVehicles:[]
+    };
+  }
+
+  if(!isSdeNightPlacementOrdinarySlot(targetSlot)){
+    return {
+      ok:false,
+      timeStatus:"UNKNOWN_TIME_MANUAL_REVIEW",
+      message:"Plassen kan være belagt – manuell vurdering nødvendig.",
+      conflicts:["Målspor er ikke ordinær nattplassering."],
+      affectedVehicles:[]
+    };
+  }
+
+  const physicalOccupants = getSdeNightPlacementPhysicalOccupants();
+  const physicalOccupant = physicalOccupants[targetSlot] || null;
+  if(physicalOccupant?.vehicle && normalizeVehicleToken(physicalOccupant.vehicle) !== normalizeVehicleToken(vehicle)){
+    return {
+      ok:false,
+      timeStatus:"CONFLICT_TARGET_OCCUPIED",
+      targetSlotOccupant:physicalOccupant.vehicle,
+      message:`Plassen er allerede belagt av ${physicalOccupant.vehicle}. Velg en ledig plass eller flytt eksisterende kjøretøy først.`,
+      conflicts:[`Målspor ${targetSlot} er fysisk belagt av ${physicalOccupant.vehicle}.`],
+      affectedVehicles:[{slot:targetSlot, vehicle:physicalOccupant.vehicle, reason:"fysisk occupant"}]
+    };
+  }
+
+  const currentOverview = buildSdeNightPlacementOverviewData(data);
+  const projectedOccupant = currentOverview.slots?.[targetSlot]?.vehicle || "";
+  if(projectedOccupant && normalizeVehicleToken(projectedOccupant) !== normalizeVehicleToken(vehicle)){
+    return {
+      ok:false,
+      timeStatus:"UNKNOWN_TIME_MANUAL_REVIEW",
+      targetSlotOccupant:projectedOccupant,
+      message:"Plassen kan være belagt – manuell vurdering nødvendig.",
+      conflicts:[`Målspor ${targetSlot} er allerede projisert med ${projectedOccupant}.`],
+      affectedVehicles:[{slot:targetSlot, vehicle:projectedOccupant, reason:"projisert occupant"}]
+    };
+  }
+
+  const row = findSdeNightPlacementMoveForPayload(payload, data);
+  const timeAssessment = getSdeNightPlacementTimeAssessment(row, fromSlot || row?.fromSlot || row?.arrivalSlot, targetSlot);
+  const affectedVehicles = buildSdeNightPlacementAffectedVehicles(fromSlot || row?.fromSlot || row?.arrivalSlot, targetSlot);
+  const conflicts = [
+    ...timeAssessment.conflicts,
+    ...affectedVehicles.map(item => item.reason).filter(Boolean)
+  ];
+  let timeStatus = timeAssessment.timeStatus;
+  if(affectedVehicles.length && (timeStatus === "OK_TIME_KNOWN" || timeStatus === "OK_TIME_ASSUMED")){
+    timeStatus = "CONFLICT_ROUTE_BLOCKED";
+  }
+
+  return {
+    ok:true,
+    vehicle,
+    fromSlot:fromSlot || normalizeSlot(row?.fromSlot || row?.arrivalSlot),
+    toSlot:targetSlot,
+    row,
+    sourceEvent:timeAssessment.sourceEvent,
+    nextRequiredUse:timeAssessment.nextRequiredUse,
+    earliestMoveTime:timeAssessment.earliestMoveTime,
+    latestMoveTime:timeAssessment.latestMoveTime,
+    timeStatus,
+    conflicts,
+    affectedVehicles,
+    message:timeStatus === "OK_TIME_KNOWN"
+      ? `Simulert manuell plassering: ${vehicle} → ${targetSlot}.`
+      : `Simulert – tidsvurdering nødvendig for ${vehicle} → ${targetSlot}.`
+  };
+}
+
+function applySdeNightPlacementDragOverride(payload, toSlot){
+  const data = sdeShiftLastRenderedData || getSdeShiftShowcaseData();
+  const assessment = buildSdeNightPlacementDropAssessment(payload, toSlot, data);
+  const targetSlot = normalizeSlot(toSlot);
+
+  if(!assessment.ok){
+    sdeNightPlacementDropMessage = {
+      type:"error",
+      slot:targetSlot,
+      text:assessment.message,
+      timeStatus:assessment.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"
+    };
+    renderSdeSkiftebevegelser();
+    return false;
+  }
+
+  const row = assessment.row || {};
+  const needKey = getSdeMoveNeedKey(row) || String(payload?.needKey || "");
+  const moveKey = getSdeMoveActionKey(row) || String(payload?.moveKey || "");
+  const key = getSdeNightPlacementOverrideKeyFromParts(assessment.vehicle, assessment.fromSlot, needKey);
+  const override = {
+    id:`night-drag-${Date.now()}`,
+    vehicle:assessment.vehicle,
+    fromSlot:assessment.fromSlot,
+    toSlot:assessment.toSlot,
+    createdAt:new Date().toISOString(),
+    source:"night-placement-drag",
+    needKey,
+    moveKey,
+    earliestMoveTime:assessment.earliestMoveTime,
+    latestMoveTime:assessment.latestMoveTime,
+    sourceEvent:assessment.sourceEvent,
+    nextRequiredUse:assessment.nextRequiredUse,
+    targetSlotOccupant:assessment.targetSlotOccupant || "",
+    timeStatus:assessment.timeStatus,
+    conflicts:assessment.conflicts,
+    affectedVehicles:assessment.affectedVehicles,
+    note:"simulert ønsket sluttplassering"
+  };
+
+  getSdeNightPlacementManualOverrides()[key] = override;
+  sdeNightPlacementDropMessage = {
+    type:assessment.timeStatus === "OK_TIME_KNOWN" ? "info" : "warning",
+    slot:assessment.toSlot,
+    text:assessment.message,
+    timeStatus:assessment.timeStatus
+  };
+  persist(true);
+  renderSdeSkiftebevegelser();
+  return true;
+}
+
+function clearSdeNightPlacementDragOverrides(){
+  state.sdeNightPlacementManualOverrides = {};
+  sdeNightPlacementDropMessage = null;
+  persist(true);
+  renderSdeSkiftebevegelser();
+}
+
 function buildSdeNightPlacementEffectiveMoves(data){
   const baseRows = (Array.isArray(data?.moves) ? data.moves : [])
     .filter(row => row && !isSdeMoveActioned(row));
+  const dragOverrideMoves = buildSdeNightPlacementDragOverrideMoves(baseRows);
   const manualPlanMoves = buildSdeNightPlacementManualPlanMoves(baseRows);
-  const sourceRows = [...manualPlanMoves, ...baseRows]
+  const sourceRows = [...dragOverrideMoves, ...manualPlanMoves, ...baseRows]
     .sort((a,b) => getSdeNightPlacementMovePriority(b) - getSdeNightPlacementMovePriority(a));
 
   const manualOverrideNeedKeys = getSdeNightPlacementManualOverrideNeedKeys();
@@ -21096,9 +21481,19 @@ function buildSdeNightPlacementEffectiveMoves(data){
       .filter(Boolean)
   );
   const manualPlanKeys = new Set(
-    manualPlanMoves
+    [...dragOverrideMoves, ...manualPlanMoves]
       .map(row => `${normalizeVehicleToken(row?.vehicle)}|${normalizeSlot(row?.fromSlot || row?.arrivalSlot)}`)
       .filter(key => key !== "|")
+  );
+  const dragOverrideNeedKeys = new Set(
+    dragOverrideMoves
+      .map(row => getSdeMoveNeedKey(row) || row?.needKey)
+      .filter(Boolean)
+  );
+  const dragOverrideVehicleTokens = new Set(
+    dragOverrideMoves
+      .map(row => normalizeVehicleToken(row?.vehicle))
+      .filter(Boolean)
   );
 
   const usedNeedKeys = new Set();
@@ -21127,10 +21522,16 @@ function buildSdeNightPlacementEffectiveMoves(data){
     const targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
     const isManualPlan = Boolean(row?.manualPlanOverrideActive);
     const isManualOverride = Boolean(row?.manualOverrideActive);
+    const isDragOverride = Boolean(row?.sdeNightPlacementDragOverrideActive);
     const isAdaptive = Boolean(row?.isWrongTrackReplacementMove);
     const hasStoredManualOverride = needKey && manualOverrideNeedKeys.has(needKey);
 
-    if(!isManualPlan && manualPlanKeys.has(vehicleFromKey)){
+    if(!isDragOverride && ((needKey && dragOverrideNeedKeys.has(needKey)) || dragOverrideVehicleTokens.has(normalizeVehicleToken(row?.vehicle)))){
+      markStale(row, "Simulert manuell nattplassering finnes for samme kjøretøy/behov. Opprinnelig SDE-forslag brukes ikke.");
+      return;
+    }
+
+    if(!isManualPlan && !isDragOverride && manualPlanKeys.has(vehicleFromKey)){
       if(!isManualOverride && !isAdaptive){
         markStale(row, "Manuell planrad finnes for samme kjøretøy/fra-spor. Opprinnelig SDE-forslag brukes ikke i nattplassering.");
       }
@@ -21197,6 +21598,7 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
 
   const warnings = [];
   let reservePlacements = [];
+  const physicalOccupants = {};
 
   const addWarning = (code, text, meta={}) => {
     warnings.push({
@@ -21292,6 +21694,7 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     const slot = normalizeSlot(row?.slot);
     const vehicle = sanitizeVehicleValue(row?.mat);
     if(!vehicle || !slot) return;
+    physicalOccupants[slot] = {slot, vehicle, source:"physical"};
     placeVehicle(slot, vehicle, null, "standing");
   });
 
@@ -21325,6 +21728,18 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     placeVehicle(targetSlot, vehicle, row, "move");
   });
 
+  if(sdeNightPlacementDropMessage?.text){
+    addWarning(
+      "night_drag_drop_message",
+      sdeNightPlacementDropMessage.text,
+      {
+        severity:sdeNightPlacementDropMessage.type === "error" ? "error" : "warning",
+        slot:normalizeSlot(sdeNightPlacementDropMessage.slot),
+        timeStatus:sdeNightPlacementDropMessage.timeStatus || ""
+      }
+    );
+  }
+
   const finalVehicleSlots = new Map();
   Object.values(slots).forEach(entry=>{
     const vehicles = entry.collisionVehicles?.length ? entry.collisionVehicles : [entry.vehicle];
@@ -21356,8 +21771,10 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
   return {
     layoutRows,
     slots,
+    physicalOccupants,
     reservePlacements,
     warnings,
+    rejectedSlot:sdeNightPlacementDropMessage?.type === "error" ? normalizeSlot(sdeNightPlacementDropMessage.slot) : "",
     counts:{
       ordinarySlots:ordinarySlots.size,
       occupied:occupiedCount,
@@ -21385,20 +21802,29 @@ function renderSdeNightPlacementOverview(data){
     const hasCollision = Array.isArray(entry.collisionVehicles) && entry.collisionVehicles.length > 1;
     const hasVehicle = Boolean(entry.vehicle || hasCollision);
     const vehicleText = hasCollision ? entry.collisionVehicles.join(" / ") : entry.vehicle;
+    const row = entry.row || {};
+    const timeStatusText = !hasCollision ? getSdeNightPlacementTimeStatusText(row) : "";
+    const isSimulated = Boolean(row?.sdeNightPlacementDragOverrideActive);
+    const draggableAttr = hasVehicle && !hasCollision
+      ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-from-slot="${escapeHtml(normalizeSlot(row?.fromSlot || row?.arrivalSlot || slot))}" data-sde-night-placement-need-key="${escapeHtml(getSdeMoveNeedKey(row) || row?.needKey || "")}" data-sde-night-placement-move-key="${escapeHtml(getSdeMoveActionKey(row) || row?.moveKey || "")}"`
+      : "";
     const classes = [
       "sde-night-placement-slot",
       slotKind(slot),
       hasVehicle ? "occupied" : "empty",
-      hasCollision ? "collision" : ""
+      hasCollision ? "collision" : "",
+      isSimulated ? "simulated" : "",
+      overview.rejectedSlot === slot ? "drop-rejected" : ""
     ].filter(Boolean).join(" ");
 
-    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}">
+    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}"${draggableAttr}>
       <div class="sde-night-placement-address">${escapeHtml(slot)}</div>
       ${hasVehicle
         ? `<div class="sde-night-placement-vehicle">${escapeHtml(vehicleText)}</div>
            <div>
              <div class="sde-night-placement-train">${escapeHtml(hasCollision ? "Slot-kollisjon" : entry.trainLabel || "Ingen kjent avgang")}</div>
              <div class="sde-night-placement-source">${escapeHtml(hasCollision ? "Varsel" : entry.source || "SDE")}</div>
+             ${timeStatusText ? `<div class="sde-night-placement-time-status">${escapeHtml(timeStatusText)}</div>` : ""}
            </div>`
         : `<div class="sde-night-placement-empty-text">Tom</div><div class="sde-night-placement-source">Ledig</div>`}
     </div>`;
@@ -21420,9 +21846,10 @@ function renderSdeNightPlacementOverview(data){
   const warningsHtml = overview.warnings.length
     ? `<div class="sde-night-placement-warnings">
         <div class="sde-night-placement-warnings-title">Varsler i nattplassering</div>
-        ${overview.warnings.map(item => `<div class="sde-night-placement-warning">${escapeHtml(item.text)}</div>`).join("")}
+        ${overview.warnings.map(item => `<div class="sde-night-placement-warning ${item.severity === "error" ? "error" : ""}">${escapeHtml(item.text)}</div>`).join("")}
       </div>`
     : "";
+  const hasManualDragOverrides = Object.keys(getSdeNightPlacementManualOverrides()).length > 0;
 
   return `<section class="sde-night-placement-panel" id="sdeNightPlacementPanel" aria-label="SDE Nattplassering">
     <div class="sde-night-placement-header">
@@ -21438,6 +21865,9 @@ function renderSdeNightPlacementOverview(data){
       <span class="sde-night-placement-pill">${escapeHtml(String(overview.counts.activeMoves))} aktive SDE-forslag brukt</span>
       <span class="sde-night-placement-pill">${escapeHtml(String(overview.warnings.length))} varsler</span>
     </div>
+    <div class="sde-night-placement-actions">
+      <button class="sde-night-placement-action-btn" type="button" data-sde-night-placement-clear-overrides ${hasManualDragOverrides ? "" : "disabled"}>Nullstill manuelle nattplasseringer</button>
+    </div>
     <div class="sde-night-placement-yard-wrap">
       <div class="sde-night-placement-grid">
         ${headerHtml}
@@ -21447,6 +21877,83 @@ function renderSdeNightPlacementOverview(data){
     ${reserveHtml}
     ${warningsHtml}
   </section>`;
+}
+
+function setupSdeNightPlacementDragAndDrop(){
+  const panel = document.getElementById("sdeNightPlacementPanel");
+  if(!panel || panel.dataset.sdeNightPlacementDragReady === "1") return;
+  panel.dataset.sdeNightPlacementDragReady = "1";
+
+  const clearDragClasses = () => {
+    panel.querySelectorAll(".sde-night-placement-slot.drag-over,.sde-night-placement-slot.dragging").forEach(el=>{
+      el.classList.remove("drag-over", "dragging");
+    });
+  };
+
+  panel.addEventListener("dragstart", event=>{
+    const slotEl = event.target.closest("[data-sde-night-placement-draggable]");
+    if(!slotEl || !panel.contains(slotEl)) return;
+
+    sdeNightPlacementDragPayload = {
+      vehicle:slotEl.dataset.sdeNightPlacementVehicle || "",
+      slot:slotEl.dataset.sdeNightPlacementSlot || "",
+      fromSlot:slotEl.dataset.sdeNightPlacementFromSlot || "",
+      needKey:slotEl.dataset.sdeNightPlacementNeedKey || "",
+      moveKey:slotEl.dataset.sdeNightPlacementMoveKey || ""
+    };
+    slotEl.classList.add("dragging");
+    if(event.dataTransfer){
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", JSON.stringify(sdeNightPlacementDragPayload));
+    }
+  });
+
+  panel.addEventListener("dragover", event=>{
+    const target = event.target.closest("[data-sde-night-placement-slot]");
+    if(!target || !panel.contains(target) || !sdeNightPlacementDragPayload) return;
+    event.preventDefault();
+    if(event.dataTransfer){
+      event.dataTransfer.dropEffect = "move";
+    }
+    panel.querySelectorAll(".sde-night-placement-slot.drag-over").forEach(el=>{
+      if(el !== target) el.classList.remove("drag-over");
+    });
+    target.classList.add("drag-over");
+  });
+
+  panel.addEventListener("dragleave", event=>{
+    const target = event.target.closest("[data-sde-night-placement-slot]");
+    if(target && !target.contains(event.relatedTarget)){
+      target.classList.remove("drag-over");
+    }
+  });
+
+  panel.addEventListener("drop", event=>{
+    const target = event.target.closest("[data-sde-night-placement-slot]");
+    if(!target || !panel.contains(target)) return;
+    event.preventDefault();
+
+    let payload = sdeNightPlacementDragPayload;
+    if(!payload && event.dataTransfer){
+      try{
+        payload = JSON.parse(event.dataTransfer.getData("text/plain") || "null");
+      }catch(_error){
+        payload = null;
+      }
+    }
+    clearDragClasses();
+    sdeNightPlacementDragPayload = null;
+    applySdeNightPlacementDragOverride(payload, target.dataset.sdeNightPlacementSlot);
+  });
+
+  panel.addEventListener("dragend", ()=>{
+    clearDragClasses();
+    sdeNightPlacementDragPayload = null;
+  });
+
+  panel.querySelector("[data-sde-night-placement-clear-overrides]")?.addEventListener("click", ()=>{
+    clearSdeNightPlacementDragOverrides();
+  });
 }
 
 
@@ -21998,6 +22505,10 @@ function renderSdeSkiftebevegelserInner(){
   const nightPlacementClose = document.querySelector("[data-sde-night-placement-close]");
   if(nightPlacementClose){
     nightPlacementClose.addEventListener("click", ()=>toggleSdeNightPlacement(false));
+  }
+
+  if(sdeNightPlacementVisible){
+    setupSdeNightPlacementDragAndDrop();
   }
 
   document.querySelectorAll(".sde-shift-details").forEach(el=>{
