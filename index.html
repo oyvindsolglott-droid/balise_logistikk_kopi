@@ -20905,11 +20905,192 @@ function getSdeNightPlacementTrainLabel(vehicle, row=null){
 
 function getSdeNightPlacementSourceLabel(row, source){
   if(source === "standing") return "Fysisk grunnlag";
+  if(row?.sdeNightPlacementStale) return "Uavklart";
+  if(row?.manualPlanOverrideActive) return "Manuell plan";
   if(row?.manualOverrideActive) return "Manuell overstyring";
   if(row?.isWrongTrackReplacementMove) return "Adaptiv SDE";
   if(row?.isWorkshopMoveNeed) return "Verkstedflytting";
   if(row?.isSpor3ProductionNeed) return "Spor 3 SDE";
   return "SDE-forslag";
+}
+
+function getSdeNightPlacementMovePriority(row){
+  if(row?.sdeNightPlacementStale) return 60;
+  if(row?.manualOverrideActive || row?.manualPlanOverrideActive) return 50;
+  if(row?.isWrongTrackReplacementMove) return 40;
+  if(row?.isWorkshopMoveNeed) return 30;
+  if(row?.isSpor3ProductionNeed) return 20;
+  return 10;
+}
+
+function getSdeNightPlacementManualOverrideNeedKeys(){
+  const keys = new Set();
+  Object.keys(getSdeManualMoveOverrides()).forEach(key=>{
+    if(key) keys.add(key);
+  });
+
+  if(Array.isArray(state.sdeMoveLearningLog)){
+    state.sdeMoveLearningLog.forEach(event=>{
+      if(event?.action !== "overridden" && event?.status !== "overridden") return;
+      const key = String(event?.key || event?.needKey || "").trim();
+      if(key) keys.add(key);
+    });
+  }
+
+  return keys;
+}
+
+function getSdeNightPlacementActionedWrongTrackNeedKeys(){
+  const keys = new Set();
+  if(Array.isArray(state.sdeMoveLearningLog)){
+    state.sdeMoveLearningLog.forEach(event=>{
+      if(event?.action !== "cancelled" && event?.action !== "completed") return;
+      const key = getSdeWrongTrackReplacementNeedKeyFromEvent(event);
+      if(key) keys.add(key);
+    });
+  }
+
+  Object.values(state.sdeMoveActions || {}).forEach(action=>{
+    if(action?.action !== "cancelled" && action?.action !== "completed") return;
+    const snapshot = action?.snapshot || {};
+    const key = getSdeWrongTrackReplacementNeedKeyFromParts(
+      snapshot.vehicle || action.vehicle,
+      snapshot.fromSlot || action.fromSlot,
+      snapshot.arrivalTrainText,
+      snapshot.departureTrainText,
+      snapshot.arrivalTime
+    );
+    if(key) keys.add(key);
+  });
+
+  return keys;
+}
+
+function buildSdeNightPlacementManualPlanMoves(baseRows){
+  const rows = Array.isArray(baseRows) ? baseRows : [];
+  if(!Array.isArray(state.planSkifteRows)) return [];
+
+  return state.planSkifteRows
+    .filter(row => row && !isPlanSkifteUtfort(row.utfort) && !isPlanSkifteFerdig(row.utfort))
+    .map(row => ({
+      planRow:row,
+      vehicle:sanitizeVehicleValue(row.vehicle),
+      fromSlot:normalizeSlot(row.fromSpor),
+      toSlot:normalizeSlot(row.toSpor)
+    }))
+    .filter(row => row.vehicle && row.fromSlot && row.toSlot)
+    .map(row => {
+      const vehicleToken = normalizeVehicleToken(row.vehicle);
+      const match = rows.find(move =>
+        normalizeVehicleToken(move?.vehicle) === vehicleToken &&
+        normalizeSlot(move?.fromSlot || move?.arrivalSlot) === row.fromSlot
+      );
+      if(!match) return null;
+      return {
+        ...match,
+        vehicle:row.vehicle,
+        fromSlot:row.fromSlot,
+        arrivalSlot:row.fromSlot,
+        recommendedSlot:row.toSlot,
+        toSlot:row.toSlot,
+        manualPlanOverrideActive:true,
+        recommendationReason:"Manuell planrad overstyrer projisert nattplassering.",
+        parkingStrategy:"Manuell planrad",
+        parkingInstruction:"Manuell planrad overstyrer projisert nattplassering."
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildSdeNightPlacementEffectiveMoves(data){
+  const baseRows = (Array.isArray(data?.moves) ? data.moves : [])
+    .filter(row => row && !isSdeMoveActioned(row));
+  const manualPlanMoves = buildSdeNightPlacementManualPlanMoves(baseRows);
+  const sourceRows = [...manualPlanMoves, ...baseRows]
+    .sort((a,b) => getSdeNightPlacementMovePriority(b) - getSdeNightPlacementMovePriority(a));
+
+  const manualOverrideNeedKeys = getSdeNightPlacementManualOverrideNeedKeys();
+  const actionedWrongTrackNeedKeys = getSdeNightPlacementActionedWrongTrackNeedKeys();
+  const replacementWrongTrackNeedKeys = new Set(
+    sourceRows
+      .filter(row => row?.isWrongTrackReplacementMove)
+      .map(row => getSdeWrongTrackReplacementNeedKeyFromMove(row))
+      .filter(Boolean)
+  );
+  const manualPlanKeys = new Set(
+    manualPlanMoves
+      .map(row => `${normalizeVehicleToken(row?.vehicle)}|${normalizeSlot(row?.fromSlot || row?.arrivalSlot)}`)
+      .filter(key => key !== "|")
+  );
+
+  const usedNeedKeys = new Set();
+  const usedWrongTrackNeedKeys = new Set();
+  const usedVehicleFromKeys = new Set();
+  const moves = [];
+  const stale = [];
+
+  const markStale = (row, reason) => {
+    const vehicle = sanitizeVehicleValue(row?.vehicle);
+    const targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+    stale.push({
+      ...row,
+      vehicle,
+      recommendedSlot:targetSlot,
+      toSlot:targetSlot,
+      sdeNightPlacementStale:true,
+      sdeNightPlacementStaleReason:reason
+    });
+  };
+
+  sourceRows.forEach(row=>{
+    const needKey = getSdeMoveNeedKey(row);
+    const wrongTrackNeedKey = getSdeWrongTrackReplacementNeedKeyFromMove(row);
+    const vehicleFromKey = `${normalizeVehicleToken(row?.vehicle)}|${normalizeSlot(row?.fromSlot || row?.arrivalSlot)}`;
+    const targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+    const isManualPlan = Boolean(row?.manualPlanOverrideActive);
+    const isManualOverride = Boolean(row?.manualOverrideActive);
+    const isAdaptive = Boolean(row?.isWrongTrackReplacementMove);
+    const hasStoredManualOverride = needKey && manualOverrideNeedKeys.has(needKey);
+
+    if(!isManualPlan && manualPlanKeys.has(vehicleFromKey)){
+      if(!isManualOverride && !isAdaptive){
+        markStale(row, "Manuell planrad finnes for samme kjøretøy/fra-spor. Opprinnelig SDE-forslag brukes ikke i nattplassering.");
+      }
+      return;
+    }
+
+    if(!isManualOverride && hasStoredManualOverride){
+      markStale(row, "Lagret manuell overstyring finnes, men raden er ikke en aktiv manuell nattplassering. Opprinnelig SDE-forslag brukes ikke.");
+      return;
+    }
+
+    if(!isAdaptive && wrongTrackNeedKey && replacementWrongTrackNeedKeys.has(wrongTrackNeedKey)){
+      markStale(row, "Adaptiv Feil-spor-erstatning finnes for samme behov. Opprinnelig SDE-forslag brukes ikke.");
+      return;
+    }
+
+    if(!isAdaptive && wrongTrackNeedKey && actionedWrongTrackNeedKeys.has(wrongTrackNeedKey)){
+      markStale(row, "SDE-forslaget er overprøvd/kvittert for samme behov. Opprinnelig SDE-forslag brukes ikke.");
+      return;
+    }
+
+    if((needKey && usedNeedKeys.has(needKey)) || (wrongTrackNeedKey && usedWrongTrackNeedKeys.has(wrongTrackNeedKey)) || usedVehicleFromKeys.has(vehicleFromKey)){
+      markStale(row, "En høyere prioritert manuell/adaptiv rad finnes for samme behov. Opprinnelig SDE-forslag brukes ikke.");
+      return;
+    }
+
+    if(!targetSlot){
+      markStale(row, "Overprøvd eller aktiv SDE-rad mangler tydelig sluttspor.");
+      return;
+    }
+
+    moves.push(row);
+    if(needKey) usedNeedKeys.add(needKey);
+    if(wrongTrackNeedKey) usedWrongTrackNeedKeys.add(wrongTrackNeedKey);
+    if(vehicleFromKey !== "|") usedVehicleFromKeys.add(vehicleFromKey);
+  });
+
+  return {moves, stale};
 }
 
 function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
@@ -21036,8 +21217,18 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     placeVehicle(slot, vehicle, null, "standing");
   });
 
-  const activeMoves = (Array.isArray(data?.moves) ? data.moves : [])
-    .filter(row => !isSdeMoveActioned(row));
+  const effectiveMoves = buildSdeNightPlacementEffectiveMoves(data);
+  const activeMoves = effectiveMoves.moves;
+
+  effectiveMoves.stale.forEach(row=>{
+    const vehicle = sanitizeVehicleValue(row?.vehicle);
+    const reason = String(row?.sdeNightPlacementStaleReason || "Overprøvd SDE-rad kan ikke tolkes sikkert.").trim();
+    addWarning(
+      "stale_sde_move",
+      `${vehicle || "Ukjent kjøretøy"}: ${reason}`,
+      {vehicle}
+    );
+  });
 
   activeMoves.forEach(row=>{
     const vehicle = sanitizeVehicleValue(row?.vehicle);
