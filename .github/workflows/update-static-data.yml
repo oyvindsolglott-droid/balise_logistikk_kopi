@@ -98,6 +98,17 @@ jobs:
 
           dates_are_stale = idag_date != expected_idag or imorgen_date != expected_imorgen
 
+          imorgen_departure_count = len(imorgen.get("departures") or {})
+          imorgen_vehicle_count = len(imorgen.get("vehicles") or {})
+          imorgen_departure_vehicle_count = len(imorgen.get("departureVehicles") or {})
+          imorgen_missing_published_vehicles = (
+              window == "after_15"
+              and imorgen_date == expected_imorgen
+              and imorgen_departure_count > 0
+              and imorgen_vehicle_count == 0
+              and imorgen_departure_vehicle_count == 0
+          )
+
           operational_hour = f"{now.hour:02d}" in {"04", "07", "15"}
 
           updated_values = [
@@ -115,6 +126,7 @@ jobs:
           should_run = (
               event_name == "workflow_dispatch"
               or dates_are_stale
+              or imorgen_missing_published_vehicles
               or (operational_hour and not already_updated_this_hour)
           )
 
@@ -125,6 +137,13 @@ jobs:
               reason_parts.append(
                   f"stale_dates api_idag={idag_date}/expected={expected_idag} "
                   f"api_imorgen={imorgen_date}/expected={expected_imorgen}"
+              )
+          if imorgen_missing_published_vehicles:
+              reason_parts.append(
+                  "api_imorgen_missing_vehicles_after_15 "
+                  f"departures={imorgen_departure_count} "
+                  f"vehicles={imorgen_vehicle_count} "
+                  f"departureVehicles={imorgen_departure_vehicle_count}"
               )
           if operational_hour and not already_updated_this_hour:
               reason_parts.append(f"operational_hour_{now.hour:02d}_not_updated_this_hour")
