@@ -3291,6 +3291,10 @@ button{padding:12px 12px}
 .sde-night-placement-slot.occupied{
   cursor:grab;
 }
+.sde-night-placement-slot[data-sde-night-placement-draggable="1"]{
+  touch-action:none;
+  user-select:none;
+}
 .sde-night-placement-slot.dragging{
   opacity:.58;
   cursor:grabbing;
@@ -21883,6 +21887,7 @@ function setupSdeNightPlacementDragAndDrop(){
   const panel = document.getElementById("sdeNightPlacementPanel");
   if(!panel || panel.dataset.sdeNightPlacementDragReady === "1") return;
   panel.dataset.sdeNightPlacementDragReady = "1";
+  let coordinateDrag = null;
 
   const clearDragClasses = () => {
     panel.querySelectorAll(".sde-night-placement-slot.drag-over,.sde-night-placement-slot.dragging").forEach(el=>{
@@ -21890,17 +21895,107 @@ function setupSdeNightPlacementDragAndDrop(){
     });
   };
 
+  const getSlotFromEvent = event => {
+    const target = event?.target?.closest?.("[data-sde-night-placement-slot]");
+    return target && panel.contains(target) ? target : null;
+  };
+
+  const getSlotFromPoint = (clientX, clientY) => {
+    if(clientX === undefined || clientY === undefined) return null;
+    const target = document.elementFromPoint(clientX, clientY)?.closest?.("[data-sde-night-placement-slot]");
+    return target && panel.contains(target) ? target : null;
+  };
+
+  const buildDragPayloadFromSlot = slotEl => ({
+    vehicle:slotEl.dataset.sdeNightPlacementVehicle || "",
+    slot:slotEl.dataset.sdeNightPlacementSlot || "",
+    fromSlot:slotEl.dataset.sdeNightPlacementFromSlot || "",
+    needKey:slotEl.dataset.sdeNightPlacementNeedKey || "",
+    moveKey:slotEl.dataset.sdeNightPlacementMoveKey || ""
+  });
+
+  const markDragTarget = target => {
+    panel.querySelectorAll(".sde-night-placement-slot.drag-over").forEach(el=>{
+      if(el !== target) el.classList.remove("drag-over");
+    });
+    if(target) target.classList.add("drag-over");
+  };
+
+  const startCoordinateDrag = (event, source) => {
+    if(coordinateDrag) return;
+    if(source === "mouse" && event.button !== 0) return;
+    const slotEl = event.target.closest("[data-sde-night-placement-draggable]");
+    if(!slotEl || !panel.contains(slotEl)) return;
+    event.preventDefault();
+    if(source === "pointer" && typeof slotEl.setPointerCapture === "function"){
+      try{ slotEl.setPointerCapture(event.pointerId); }catch(_error){}
+    }
+    coordinateDrag = {
+      source,
+      pointerId:source === "pointer" ? event.pointerId : null,
+      slotEl,
+      payload:buildDragPayloadFromSlot(slotEl),
+      startX:event.clientX,
+      startY:event.clientY,
+      active:false
+    };
+  };
+
+  const shouldHandleCoordinateEvent = (event, source) => {
+    if(!coordinateDrag || coordinateDrag.source !== source) return false;
+    return source !== "pointer" || coordinateDrag.pointerId === event.pointerId;
+  };
+
+  const moveCoordinateDrag = (event, source) => {
+    if(!shouldHandleCoordinateEvent(event, source)) return;
+    const dx = Math.abs(event.clientX - coordinateDrag.startX);
+    const dy = Math.abs(event.clientY - coordinateDrag.startY);
+    if(!coordinateDrag.active && Math.max(dx, dy) < 6) return;
+    if(!coordinateDrag.active){
+      coordinateDrag.active = true;
+      sdeNightPlacementDragPayload = coordinateDrag.payload;
+      coordinateDrag.slotEl.classList.add("dragging");
+    }
+    event.preventDefault();
+    markDragTarget(getSlotFromPoint(event.clientX, event.clientY));
+  };
+
+  const endCoordinateDrag = (event, source) => {
+    if(!shouldHandleCoordinateEvent(event, source)) return;
+    const drag = coordinateDrag;
+    coordinateDrag = null;
+    if(source === "pointer" && typeof drag.slotEl.releasePointerCapture === "function"){
+      try{ drag.slotEl.releasePointerCapture(event.pointerId); }catch(_error){}
+    }
+    if(!drag.active){
+      clearDragClasses();
+      return;
+    }
+    event.preventDefault();
+    const target = getSlotFromPoint(event.clientX, event.clientY);
+    clearDragClasses();
+    sdeNightPlacementDragPayload = null;
+    if(target){
+      applySdeNightPlacementDragOverride(drag.payload, target.dataset.sdeNightPlacementSlot);
+    }
+  };
+
+  const cancelCoordinateDrag = (event, source) => {
+    if(!shouldHandleCoordinateEvent(event, source)) return;
+    const drag = coordinateDrag;
+    coordinateDrag = null;
+    if(source === "pointer" && typeof drag.slotEl.releasePointerCapture === "function"){
+      try{ drag.slotEl.releasePointerCapture(event.pointerId); }catch(_error){}
+    }
+    clearDragClasses();
+    sdeNightPlacementDragPayload = null;
+  };
+
   panel.addEventListener("dragstart", event=>{
     const slotEl = event.target.closest("[data-sde-night-placement-draggable]");
     if(!slotEl || !panel.contains(slotEl)) return;
 
-    sdeNightPlacementDragPayload = {
-      vehicle:slotEl.dataset.sdeNightPlacementVehicle || "",
-      slot:slotEl.dataset.sdeNightPlacementSlot || "",
-      fromSlot:slotEl.dataset.sdeNightPlacementFromSlot || "",
-      needKey:slotEl.dataset.sdeNightPlacementNeedKey || "",
-      moveKey:slotEl.dataset.sdeNightPlacementMoveKey || ""
-    };
+    sdeNightPlacementDragPayload = buildDragPayloadFromSlot(slotEl);
     slotEl.classList.add("dragging");
     if(event.dataTransfer){
       event.dataTransfer.effectAllowed = "move";
@@ -21909,27 +22004,24 @@ function setupSdeNightPlacementDragAndDrop(){
   });
 
   panel.addEventListener("dragover", event=>{
-    const target = event.target.closest("[data-sde-night-placement-slot]");
+    const target = getSlotFromEvent(event);
     if(!target || !panel.contains(target) || !sdeNightPlacementDragPayload) return;
     event.preventDefault();
     if(event.dataTransfer){
       event.dataTransfer.dropEffect = "move";
     }
-    panel.querySelectorAll(".sde-night-placement-slot.drag-over").forEach(el=>{
-      if(el !== target) el.classList.remove("drag-over");
-    });
-    target.classList.add("drag-over");
+    markDragTarget(target);
   });
 
   panel.addEventListener("dragleave", event=>{
-    const target = event.target.closest("[data-sde-night-placement-slot]");
+    const target = getSlotFromEvent(event);
     if(target && !target.contains(event.relatedTarget)){
       target.classList.remove("drag-over");
     }
   });
 
   panel.addEventListener("drop", event=>{
-    const target = event.target.closest("[data-sde-night-placement-slot]");
+    const target = getSlotFromEvent(event);
     if(!target || !panel.contains(target)) return;
     event.preventDefault();
 
@@ -21950,6 +22042,14 @@ function setupSdeNightPlacementDragAndDrop(){
     clearDragClasses();
     sdeNightPlacementDragPayload = null;
   });
+
+  panel.addEventListener("pointerdown", event=>startCoordinateDrag(event, "pointer"));
+  panel.addEventListener("pointermove", event=>moveCoordinateDrag(event, "pointer"));
+  panel.addEventListener("pointerup", event=>endCoordinateDrag(event, "pointer"));
+  panel.addEventListener("pointercancel", event=>cancelCoordinateDrag(event, "pointer"));
+  panel.addEventListener("mousedown", event=>startCoordinateDrag(event, "mouse"));
+  panel.addEventListener("mousemove", event=>moveCoordinateDrag(event, "mouse"));
+  panel.addEventListener("mouseup", event=>endCoordinateDrag(event, "mouse"));
 
   panel.querySelector("[data-sde-night-placement-clear-overrides]")?.addEventListener("click", ()=>{
     clearSdeNightPlacementDragOverrides();
