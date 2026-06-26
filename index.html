@@ -616,6 +616,13 @@ margin-bottom:10px
 font-size:13px;
 color:var(--muted)
 }
+.tursatt-filter-tools{
+display:flex;
+gap:8px;
+flex-wrap:wrap;
+align-items:center;
+margin-bottom:10px
+}
 .reset-tools{
 display:flex;
 justify-content:flex-end;
@@ -6023,6 +6030,10 @@ Rep-/verkstedstatus er lagt inn med ulik tekst i stedet for standardkode</pre>
 <section class="panel" id="oppstilling">
 <div class="api-box">
   <div class="note" id="oppstillingDateStatus">Tursatt viser: dato ikke lest ennå</div>
+  <div class="tursatt-filter-tools">
+    <button class="compact" type="button" id="toggleUntursattRowsBtn">Vis ikke-tursatte</button>
+    <span id="tursattFilterStatus" class="save-indicator">Skjuler ikke-tursatte rader</span>
+  </div>
   <div class="mobile-table-label">Tursatt – Tognr. | Tid | Kjøretøy 1 | Spor | ⇄ | Kjøretøy 2 | Spor</div>
   <div class="oppstilling-mobile-real-header" id="oppstillingMobileHeader" aria-hidden="true">
     <table id="oppstillingMobileHeaderTable"></table>
@@ -6434,6 +6445,9 @@ if(!("migrationClearKveldColE_v1" in state)) state.migrationClearKveldColE_v1=fa
 
 applyKveldColumnEMigration();
 setResponsiveDefaultViews();
+
+
+let tursattShowUntursattRows = false;
 
 
 function markSaved(t){
@@ -9507,6 +9521,67 @@ function appendOppstillingSideCells(tr, rowData, side){
   appendOppstillingSlotCell(tr, train, side, 1, vehicles);
 }
 
+function isTursattVehicleValue(value){
+  const clean = sanitizeVehicleValue(value);
+  if(!clean) return false;
+
+  const normalized = clean.trim().toLowerCase();
+  if(normalized === "ikke tursatt" || normalized === "enkeltsett") return false;
+
+  return /^(69|70|72|74|75)-\d{2}$/i.test(clean);
+}
+
+function hasTursattVehicle(rowData, side){
+  const train = normalizeTognr(rowData?.train);
+  if(!train) return false;
+
+  const vehicles = createOppstillingVehicleCells(train, side);
+  return isTursattVehicleValue(vehicles.vehicle1) || isTursattVehicleValue(vehicles.vehicle2);
+}
+
+function shouldShowTursattRow(rowData, side){
+  if(tursattShowUntursattRows) return true;
+  return hasTursattVehicle(rowData, side);
+}
+
+function filterTursattRowsForDisplay(rows, side){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  if(tursattShowUntursattRows){
+    return {
+      rows:sourceRows,
+      hidden:0
+    };
+  }
+
+  const visibleRows = sourceRows.filter(row => shouldShowTursattRow(row, side));
+  return {
+    rows:visibleRows,
+    hidden:sourceRows.length - visibleRows.length
+  };
+}
+
+function updateTursattFilterUi(hiddenArrivalRows=0, hiddenDepartureRows=0){
+  const btn = document.getElementById("toggleUntursattRowsBtn");
+  const status = document.getElementById("tursattFilterStatus");
+  const hiddenTotal = Number(hiddenArrivalRows || 0) + Number(hiddenDepartureRows || 0);
+
+  if(btn){
+    btn.textContent = tursattShowUntursattRows ? "Skjul ikke-tursatte" : "Vis ikke-tursatte";
+    btn.setAttribute("aria-pressed", tursattShowUntursattRows ? "true" : "false");
+  }
+
+  if(status){
+    status.textContent = tursattShowUntursattRows
+      ? "Viser alle Tursatt-rader"
+      : `Skjuler ${hiddenTotal} ikke-tursatte rader`;
+  }
+}
+
+function toggleUntursattRows(){
+  tursattShowUntursattRows = !tursattShowUntursattRows;
+  buildOppstilling();
+}
+
 function buildOppstillingMobileHeader(){
   const sourceTable = document.getElementById("oppstillingTable");
   const headerTable = document.getElementById("oppstillingMobileHeaderTable");
@@ -9635,8 +9710,10 @@ function buildOppstilling(){
   thead.appendChild(trHead);
   table.appendChild(thead);
 
-  const departureRows = buildDepartureRowsForOppstilling();
-  const arrivalRows = buildArrivalRowsForOppstilling();
+  const departureFilter = filterTursattRowsForDisplay(buildDepartureRowsForOppstilling(), "departure");
+  const arrivalFilter = filterTursattRowsForDisplay(buildArrivalRowsForOppstilling(), "arrival");
+  const departureRows = departureFilter.rows;
+  const arrivalRows = arrivalFilter.rows;
   const totalRows = Math.max(departureRows.length, arrivalRows.length, 1);
 
   const body=document.createElement("tbody");
@@ -9654,6 +9731,7 @@ function buildOppstilling(){
   }
 
   table.appendChild(body);
+  updateTursattFilterUi(arrivalFilter.hidden, departureFilter.hidden);
   buildOppstillingMobileHeader();
 }
 
@@ -24722,6 +24800,9 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
 document.getElementById("refreshApiBtn").addEventListener("click",()=>{
   fetchBaliseApi();
 });
+
+
+document.getElementById("toggleUntursattRowsBtn")?.addEventListener("click", toggleUntursattRows);
 
 
 document.getElementById("showTodayBtn").addEventListener("click", ()=>{
