@@ -195,9 +195,10 @@ def get_balise_train_lookup_candidates(train_no: str) -> List[str]:
     if train.isdigit():
         number = int(train)
         if 800 <= number <= 899:
+            candidates.append(f"80{train}")
             candidates.append(f"90{train}")
 
-    return candidates
+    return list(dict.fromkeys(candidates))
 
 
 def has_arrival_route_to_skien_or_porsgrunn(text: str) -> bool:
@@ -294,19 +295,19 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
             selected = None
 
             train_number = int(train_no) if train_no.isdigit() else None
-            should_prefer_90_departure = (
+            should_prefer_alternate_departure = (
                 train_number is not None
                 and 800 <= train_number <= 899
                 and train_no in HARDCODED_DEPARTURES
             )
 
-            should_prefer_90_arrival = (
+            should_prefer_alternate_arrival = (
                 train_number is not None
                 and 800 <= train_number <= 899
                 and train_no in HARDCODED_ARRIVALS
             )
 
-            if should_prefer_90_departure:
+            if should_prefer_alternate_departure:
                 selected = next(
                     (
                         result
@@ -317,7 +318,7 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
                     None,
                 )
 
-            if selected is None and should_prefer_90_arrival:
+            if selected is None and should_prefer_alternate_arrival:
                 selected = next(
                     (
                         result
@@ -340,9 +341,6 @@ def fetch_vehicle_maps_for_trains(train_numbers: Iterable[str], run_date: date) 
 
                 if selected["arrival_hits"]:
                     arrival_vehicles[train_no] = ", ".join(selected["arrival_hits"])
-
-                if selected["lookup_train_no"] != train_no:
-                    errors[train_no] = f"Brukte avvikstognummer {selected['lookup_train_no']}"
 
             if train_no not in vehicles and train_no not in departure_vehicles and train_no not in arrival_vehicles:
                 errors[train_no] = last_error or "Fant ingen kjøretøy i siden"
