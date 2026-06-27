@@ -3024,6 +3024,41 @@ button{padding:12px 12px}
   background:linear-gradient(180deg, rgba(35,255,183,.16), rgba(255,255,255,.07));
 }
 
+.sde-night-card-override{
+  margin:0 0 12px;
+  padding:10px 12px;
+  border-radius:8px;
+  border:1px solid rgba(45,212,191,.38);
+  background:rgba(13,148,136,.16);
+  color:#dffdfa;
+  font-size:13px;
+  line-height:1.45;
+}
+
+.sde-night-card-override strong{
+  display:block;
+  color:#99f6e4;
+  font-size:12px;
+  letter-spacing:0;
+  text-transform:uppercase;
+  margin-bottom:4px;
+}
+
+.sde-night-card-override span{
+  display:block;
+  color:#dffdfa;
+}
+
+.sde-night-card-override .warning{
+  color:#fde68a;
+}
+
+.sde-night-card-override-badge{
+  border-color:rgba(45,212,191,.45);
+  color:#99f6e4;
+  background:rgba(13,148,136,.22);
+}
+
 .sde-shift-arrow{
   font-size:38px;
   color:#9bdcff;
@@ -17032,6 +17067,19 @@ function isSdeMoveActioned(row){
   return Boolean(getSdeMoveActionRecord(getSdeMoveActionKey(row)));
 }
 
+function getSdeMoveActionLookupKeys(row){
+  const keys = [];
+  const actionKey = getSdeMoveActionKey(row);
+  const originalKey = String(row?.sdeNightPlacementOriginalActionKey || "").trim();
+  if(actionKey) keys.push(actionKey);
+  if(originalKey && !keys.includes(originalKey)) keys.push(originalKey);
+  return keys;
+}
+
+function isSdeMoveCardActioned(row){
+  return getSdeMoveActionLookupKeys(row).some(key => Boolean(getSdeMoveActionRecord(key)));
+}
+
 function addSdeCompletedMoveToPlanSkifte(row){
   if(!row) return false;
 
@@ -17830,7 +17878,14 @@ async function handleSdeShiftMoveAction(encodedKey, action){
   const actionType = String(action || "").trim();
 
   const data = getSdeShiftShowcaseData();
-  const row = data.moves.find(candidate => getSdeMoveActionKey(candidate) === key);
+  let row = data.moves.find(candidate => getSdeMoveActionKey(candidate) === key);
+  if(row){
+    row = getSdeEffectiveMoveForCard(row, data.moves);
+  }else{
+    row = data.moves
+      .map(candidate => getSdeEffectiveMoveForCard(candidate, data.moves))
+      .find(candidate => getSdeMoveActionKey(candidate) === key);
+  }
 
   if(!row){
     alert("SDE-forslaget finnes ikke lenger i aktivt datagrunnlag. Oppdater siden og kontroller Sporplan før du kvitterer.");
@@ -21131,6 +21186,116 @@ function getSdeNightPlacementTimeStatusText(row){
   return "";
 }
 
+function getSdeNightPlacementOverrideForMove(row, allRows=[]){
+  if(!row || row.manualOverrideActive || row.manualPlanOverrideActive) return null;
+
+  const overrides = Object.values(getSdeNightPlacementManualOverrides()).filter(Boolean);
+  if(!overrides.length) return null;
+
+  const rowActionKey = getSdeMoveActionKey(row);
+  const rowNeedKey = getSdeMoveNeedKey(row);
+  const rowVehicleToken = normalizeVehicleToken(row.vehicle);
+  const rowFromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot);
+  const rows = Array.isArray(allRows) ? allRows : [];
+
+  for(const override of overrides){
+    const overrideToSlot = normalizeSlot(override?.toSlot);
+    if(!overrideToSlot) continue;
+
+    const overrideMoveKey = String(override?.moveKey || "").trim();
+    if(overrideMoveKey){
+      const moveKeyStillExists = rows.some(candidate => getSdeMoveActionKey(candidate) === overrideMoveKey);
+      if(moveKeyStillExists){
+        if(rowActionKey === overrideMoveKey) return override;
+        continue;
+      }
+    }
+
+    const overrideNeedKey = String(override?.needKey || "").trim();
+    if(overrideNeedKey && rowNeedKey && overrideNeedKey === rowNeedKey) return override;
+
+    const overrideVehicleToken = normalizeVehicleToken(override?.vehicle);
+    const overrideFromSlot = normalizeSlot(override?.fromSlot);
+    if(!overrideVehicleToken || overrideVehicleToken !== rowVehicleToken) continue;
+    if(overrideFromSlot && overrideFromSlot !== rowFromSlot) continue;
+
+    const fallbackMatches = rows.filter(candidate =>
+      normalizeVehicleToken(candidate?.vehicle) === overrideVehicleToken &&
+      (!overrideFromSlot || normalizeSlot(candidate?.fromSlot || candidate?.arrivalSlot) === overrideFromSlot)
+    );
+    if(fallbackMatches.length === 1 && getSdeMoveActionKey(fallbackMatches[0]) === rowActionKey){
+      return override;
+    }
+  }
+
+  return null;
+}
+
+function buildSdeNightPlacementCardOverrideMove(row, override){
+  const toSlot = normalizeSlot(override?.toSlot);
+  if(!row || !toSlot) return row;
+
+  const originalTargetSlot = normalizeSlot(row.originalRecommendedSlot || row.recommendedSlot || row.toSlot);
+  const originalActionKey = getSdeMoveActionKey(row);
+  const originalReason = String(row.recommendationReason || row.parkingInstruction || "").trim();
+
+  return {
+    ...row,
+    recommendedSlot:toSlot,
+    toSlot,
+    sdeNightPlacementCardOverrideActive:true,
+    sdeNightPlacementOriginalActionKey:originalActionKey,
+    sdeNightPlacementOriginalRecommendedSlot:originalTargetSlot,
+    sdeNightPlacementOriginalRecommendationReason:originalReason,
+    sdeNightPlacementOverrideId:String(override.id || ""),
+    sdeNightPlacementOverrideCreatedAt:String(override.createdAt || ""),
+    earliestMoveTime:String(override.earliestMoveTime || ""),
+    latestMoveTime:String(override.latestMoveTime || ""),
+    timeStatus:String(override.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"),
+    sdeNightPlacementOverrideConflicts:Array.isArray(override.conflicts) ? override.conflicts : [],
+    sdeNightPlacementOverrideAffectedVehicles:Array.isArray(override.affectedVehicles) ? override.affectedVehicles : [],
+    recommendationReason:`Overstyrt i SDE Nattplassering: opprinnelig SDE-forslag ${originalTargetSlot || "ukjent"} er erstattet av simulert manuell plassering ${toSlot}.`,
+    parkingStrategy:"Simulert manuell plassering",
+    parkingInstruction:"Simulert ønsket sluttplassering. Tidsstatus og konflikter må kontrolleres operativt."
+  };
+}
+
+function getSdeEffectiveMoveForCard(row, allRows=[]){
+  if(!row) return row;
+  const nightPlacementOverride = getSdeNightPlacementOverrideForMove(row, allRows);
+  if(nightPlacementOverride){
+    return buildSdeNightPlacementCardOverrideMove(row, nightPlacementOverride);
+  }
+  return row;
+}
+
+function buildSdeNightPlacementCardOverrideHtml(row){
+  if(!row?.sdeNightPlacementCardOverrideActive) return "";
+
+  const originalSlot = normalizeSlot(row.sdeNightPlacementOriginalRecommendedSlot);
+  const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+  const timeText = getSdeNightPlacementTimeStatusText(row);
+  const originalReason = String(row.sdeNightPlacementOriginalRecommendationReason || "").trim();
+  const conflicts = Array.isArray(row.sdeNightPlacementOverrideConflicts)
+    ? row.sdeNightPlacementOverrideConflicts.map(item => String(item || "").trim()).filter(Boolean)
+    : [];
+  const conflictHtml = conflicts.length
+    ? `<span class="warning">Manuell vurdering: ${escapeHtml(conflicts.slice(0, 2).join(" · "))}</span>`
+    : "";
+  const originalReasonHtml = originalReason
+    ? `<span>Historikk: ${escapeHtml(originalReason)}</span>`
+    : "";
+
+  return `<div class="sde-night-card-override">
+    <strong>Overstyrt / Simulert manuell</strong>
+    <span>Gjeldende planintensjon: ${escapeHtml(targetSlot || "ukjent målslot")}</span>
+    <span>Opprinnelig SDE-forslag: ${escapeHtml(originalSlot || "ukjent")}</span>
+    ${timeText ? `<span>${escapeHtml(timeText)}</span>` : ""}
+    ${originalReasonHtml}
+    ${conflictHtml}
+  </div>`;
+}
+
 function getSdeNightPlacementMovePriority(row){
   if(row?.sdeNightPlacementStale) return 60;
   if(row?.sdeNightPlacementDragOverrideActive) return 55;
@@ -22140,7 +22305,9 @@ function renderSdeSkiftebevegelserInner(){
     : "";
   const unresolvedKpiExpanded = Boolean(sdeUnresolvedDetailsVisible && unresolvedCount > 0);
   const learningDiagnosticsHtml = "";
-  const topMoves = data.moves.filter(row => !isSdeMoveActioned(row)).slice(0, 20);
+  const cardMoves = data.moves.map(row => getSdeEffectiveMoveForCard(row, data.moves));
+  const topMoves = cardMoves.filter(row => !isSdeMoveCardActioned(row)).slice(0, 20);
+  const nightPlacementOverriddenCardCount = topMoves.filter(row => row?.sdeNightPlacementCardOverrideActive).length;
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
   const sdeResetSummary = getSdeResettableSummary();
   const hasSdeResetSnapshot = Boolean(state.sdeResetSnapshot && typeof state.sdeResetSnapshot === "object" && !Array.isArray(state.sdeResetSnapshot));
@@ -22160,9 +22327,10 @@ function renderSdeSkiftebevegelserInner(){
         const alternativesText = Array.isArray(row.recommendationAlternatives) && row.recommendationAlternatives.length
           ? `Alternativer: ${row.recommendationAlternatives.map(alt=>`${alt.slot} (${alt.score})`).join(", ")}`
           : "Ingen alternative spor i første kandidatsett.";
-        const actionKey = encodeURIComponent(getSdeMoveActionKey(row));
+        const actionKey = encodeURIComponent(row.sdeNightPlacementOriginalActionKey || getSdeMoveActionKey(row));
         const trackClearanceWindowHtml = buildSdeTrackClearanceWindowHtml(row);
         const manualOverrideControlHtml = buildSdeManualOverrideControlHtml(row, data, index);
+        const nightPlacementOverrideHtml = buildSdeNightPlacementCardOverrideHtml(row);
 
         return `<article class="sde-shift-card ${priorityClass}" style="--delay:${index * 55}ms">
           <div class="sde-shift-card-top">
@@ -22187,8 +22355,10 @@ function renderSdeSkiftebevegelserInner(){
             <span class="sde-shift-badge ${confidenceClass}">${escapeHtml(String(row.recommendationConfidence || "low").toUpperCase())}</span>
             <span class="sde-shift-badge">Score ${escapeHtml(String(row.recommendationScore ?? ""))}</span>
             <span class="sde-shift-badge">${escapeHtml(row.parkingStrategy || "SDE-anbefaling")}</span>
+            ${row.sdeNightPlacementCardOverrideActive ? `<span class="sde-shift-badge sde-night-card-override-badge">OVERSTYRT</span>` : ""}
           </div>
 
+          ${nightPlacementOverrideHtml}
           ${trackClearanceWindowHtml}
           <div class="sde-shift-details">
             <div class="sde-shift-reason">${escapeHtml(row.recommendationReason || row.parkingInstruction || "SDE har ikke begrunnelse for denne anbefalingen ennå.")}</div>
@@ -22560,6 +22730,7 @@ function renderSdeSkiftebevegelserInner(){
       <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="false" title="Vis eller skjul SDE Nattplassering">SDE Nattplassering</button>
       <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
       <span class="sde-shift-section-title-count">${data.baseMoveCount ?? data.moves.length} forslag</span>
+      ${nightPlacementOverriddenCardCount ? `<span class="sde-shift-section-title-count">${nightPlacementOverriddenCardCount} simulert manuell</span>` : ""}
     </div>
     ${nightPlacementOverviewHtml}
     <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
