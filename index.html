@@ -3326,6 +3326,16 @@ button{padding:12px 12px}
 .sde-night-placement-slot.occupied{
   cursor:grab;
 }
+.sde-night-placement-slot.physical{
+  border-color:rgba(148,163,184,.64);
+  background:linear-gradient(180deg, rgba(51,65,85,.86), rgba(30,41,59,.82));
+  box-shadow:inset 0 0 0 1px rgba(226,232,240,.16);
+}
+.sde-night-placement-slot.completed-locked{
+  border-color:rgba(34,197,94,.76);
+  background:linear-gradient(180deg, rgba(20,83,45,.82), rgba(21,94,117,.58));
+  box-shadow:inset 0 0 0 1px rgba(134,239,172,.25), 0 0 0 2px rgba(34,197,94,.12);
+}
 .sde-night-placement-slot[data-sde-night-placement-draggable="1"]{
   touch-action:none;
   user-select:none;
@@ -16235,6 +16245,8 @@ function getSdeMoveActionKey(row){
   if(!row) return "";
   const generatedKey = String(row.sdeNightPlacementGeneratedActionKey || "").trim();
   if(generatedKey) return generatedKey;
+  const stableActionKey = String(row.stableActionKey || "").trim();
+  if(stableActionKey) return stableActionKey;
   return [
     sanitizeVehicleValue(row.vehicle),
     normalizeSlot(row.fromSlot || row.arrivalSlot),
@@ -16251,6 +16263,10 @@ function getSdeMoveNeedKey(row){
   if(!row) return "";
   const generatedKey = String(row.sdeNightPlacementGeneratedNeedKey || "").trim();
   if(generatedKey) return generatedKey;
+  if(row.sdeNightPlacementDragOverrideActive || row.isNightPlacementGenerated){
+    const stableNeedKey = String(row.needKey || "").trim();
+    if(stableNeedKey) return stableNeedKey;
+  }
   const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot);
   return [
     "arrival",
@@ -21099,6 +21115,7 @@ function getSdeNightPlacementTrainLabel(vehicle, row=null){
 }
 
 function getSdeNightPlacementSourceLabel(row, source){
+  if(source === "completedLocked") return "Utført / belagt";
   if(source === "standing") return "Fysisk grunnlag";
   if(row?.sdeNightPlacementStale) return "Uavklart";
   if(row?.sdeNightPlacementDragOverrideActive) return "Simulert manuell";
@@ -21115,6 +21132,73 @@ function getSdeNightPlacementManualOverrides(){
     state.sdeNightPlacementManualOverrides = {};
   }
   return state.sdeNightPlacementManualOverrides;
+}
+
+function getSdeNightPlacementManualVehicleKey(vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  return token ? `night-placement-manual|${token}` : "";
+}
+
+function getSdeNightPlacementOriginalFromSlot(vehicle, fallback=""){
+  return normalizeSlot(getSdeCurrentSlotForVehicle(vehicle)) || normalizeSlot(fallback);
+}
+
+function getSdeNightPlacementOverrideActionKey(override){
+  return String(
+    override?.stableActionKey ||
+    override?.moveKey ||
+    getSdeNightPlacementGeneratedMoveKey(override) ||
+    ""
+  ).trim();
+}
+
+function isSdeNightPlacementOverrideActioned(override){
+  const actionKey = getSdeNightPlacementOverrideActionKey(override);
+  return Boolean(actionKey && getSdeMoveActionRecord(actionKey));
+}
+
+function getSdeNightPlacementOverrideTimeValue(override){
+  const value = String(override?.updatedAt || override?.createdAt || "").trim();
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getSdeNightPlacementActiveManualOverrides(){
+  const byVehicle = new Map();
+  Object.values(getSdeNightPlacementManualOverrides()).filter(Boolean).forEach(override=>{
+    if(isSdeNightPlacementOverrideActioned(override)) return;
+    const token = normalizeVehicleToken(override.vehicle);
+    if(!token) return;
+
+    const existing = byVehicle.get(token);
+    if(!existing || getSdeNightPlacementOverrideTimeValue(override) >= getSdeNightPlacementOverrideTimeValue(existing)){
+      byVehicle.set(token, override);
+    }
+  });
+  return Array.from(byVehicle.values());
+}
+
+function removeSdeNightPlacementOverridesForVehicle(vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token) return;
+  const overrides = getSdeNightPlacementManualOverrides();
+  Object.keys(overrides).forEach(key=>{
+    if(normalizeVehicleToken(overrides[key]?.vehicle) === token){
+      delete overrides[key];
+    }
+  });
+}
+
+function getSdeNightPlacementCompletedLockedSlots(){
+  const locked = {};
+  Object.values(state.sdeMoveActions || {}).forEach(action=>{
+    if(action?.action !== "completed") return;
+    const slot = normalizeSlot(action.toSlot || action?.snapshot?.toSlot);
+    const vehicle = sanitizeVehicleValue(action.vehicle || action?.snapshot?.vehicle);
+    if(!slot || !vehicle) return;
+    locked[slot] = {slot, vehicle, source:"completedLocked", time:String(action.time || "")};
+  });
+  return locked;
 }
 
 function getSdeNightPlacementOverrideKeyFromParts(vehicle, fromSlot, needKey=""){
@@ -21276,6 +21360,9 @@ function getSdeEffectiveMoveForCard(row, allRows=[]){
 }
 
 function getSdeNightPlacementGeneratedMoveKey(override){
+  const stableActionKey = String(override?.stableActionKey || "").trim();
+  if(stableActionKey) return stableActionKey;
+
   const id = String(override?.id || "").trim();
   if(id) return `night-placement-drag|${id}`;
 
@@ -21305,7 +21392,7 @@ function getSdeNightPlacementMatchedSdeRow(row){
 
 function buildSdeNightPlacementGeneratedMove(override){
   const vehicle = sanitizeVehicleValue(override?.vehicle);
-  const fromSlot = normalizeSlot(override?.fromSlot || override?.payloadFromSlot || override?.payloadSlot);
+  const fromSlot = normalizeSlot(override?.originalFromSlot || override?.fromSlot || override?.payloadFromSlot || override?.payloadSlot);
   const toSlot = normalizeSlot(override?.toSlot);
   const actionKey = getSdeNightPlacementGeneratedMoveKey(override);
   if(!vehicle || !fromSlot || !toSlot || !actionKey) return null;
@@ -21323,15 +21410,19 @@ function buildSdeNightPlacementGeneratedMove(override){
     arrivalSlot:fromSlot,
     recommendedSlot:toSlot,
     toSlot,
+    originalFromSlot:fromSlot,
+    currentFromSlot:normalizeSlot(override?.currentFromSlot || override?.payloadSlot || override?.fromSlot),
     source:"night-placement-drag",
     originalSource:"SDE Nattplassering",
     isNightPlacementGenerated:true,
     isManualSimulated:true,
     isManualOnly:true,
+    stableActionKey:actionKey,
     sdeNightPlacementGeneratedActionKey:actionKey,
-    sdeNightPlacementGeneratedNeedKey:`night-placement-drag-need|${actionKey}`,
+    sdeNightPlacementGeneratedNeedKey:String(override?.needKey || "").trim() || `night-placement-drag-need|${actionKey}`,
     sdeNightPlacementOverrideId:String(override.id || ""),
     sdeNightPlacementOverrideCreatedAt:String(override.createdAt || ""),
+    sdeNightPlacementOverrideUpdatedAt:String(override.updatedAt || override.createdAt || ""),
     earliestMoveTime:String(override.earliestMoveTime || ""),
     latestMoveTime:String(override.latestMoveTime || ""),
     sourceEvent:String(override.sourceEvent || "SDE Nattplassering"),
@@ -21359,7 +21450,7 @@ function buildSdeNightPlacementGeneratedMoves(baseRows=[]){
   const generated = [];
   const usedActionKeys = new Set(rows.map(row => getSdeMoveActionKey(row)).filter(Boolean));
 
-  Object.values(getSdeNightPlacementManualOverrides()).filter(Boolean).forEach(override => {
+  getSdeNightPlacementActiveManualOverrides().forEach(override => {
     if(getSdeNightPlacementMatchedMoveForOverride(override, rows)) return;
 
     const generatedMove = buildSdeNightPlacementGeneratedMove(override);
@@ -21521,13 +21612,14 @@ function buildSdeNightPlacementManualPlanMoves(baseRows){
 
 function buildSdeNightPlacementDragOverrideMoves(baseRows){
   const rows = Array.isArray(baseRows) ? baseRows : [];
-  const overrides = Object.values(getSdeNightPlacementManualOverrides()).filter(Boolean);
+  const overrides = getSdeNightPlacementActiveManualOverrides();
 
   return overrides.map(override=>{
     const vehicle = sanitizeVehicleValue(override.vehicle);
-    const fromSlot = normalizeSlot(override.fromSlot);
+    const fromSlot = normalizeSlot(override.originalFromSlot || override.fromSlot);
     const toSlot = normalizeSlot(override.toSlot);
     if(!vehicle || !toSlot) return null;
+    if(isSdeNightPlacementOverrideActioned(override)) return null;
 
     const needKey = String(override.needKey || "").trim();
     const moveKey = String(override.moveKey || "").trim();
@@ -21552,11 +21644,15 @@ function buildSdeNightPlacementDragOverrideMoves(baseRows){
       arrivalSlot:fromSlot || normalizeSlot(match?.arrivalSlot || match?.fromSlot) || "",
       recommendedSlot:toSlot,
       toSlot,
+      originalFromSlot:fromSlot || normalizeSlot(match?.fromSlot || match?.arrivalSlot) || "",
+      currentFromSlot:normalizeSlot(override.currentFromSlot || override.payloadSlot || override.fromSlot),
       needKey,
       moveKey,
+      stableActionKey:String(override.stableActionKey || ""),
       sdeNightPlacementDragOverrideActive:true,
       sdeNightPlacementOverrideId:String(override.id || ""),
       sdeNightPlacementOverrideCreatedAt:String(override.createdAt || ""),
+      sdeNightPlacementOverrideUpdatedAt:String(override.updatedAt || override.createdAt || ""),
       source:"SDE Nattplassering drag/drop",
       recommendationReason:"Simulert ønsket sluttplassering fra SDE Nattplassering. Dette er ikke utført skiftebevegelse.",
       parkingStrategy:"Simulert manuell plassering",
@@ -21568,14 +21664,18 @@ function buildSdeNightPlacementDragOverrideMoves(baseRows){
 
 function getSdeNightPlacementPhysicalOccupants(){
   const occupants = {};
+  const completedLockedSlots = getSdeNightPlacementCompletedLockedSlots();
   computeInndata().forEach(row=>{
     const slot = normalizeSlot(row?.slot);
     const vehicle = sanitizeVehicleValue(row?.mat);
     if(slot && vehicle){
+      const completedLocked = completedLockedSlots[slot];
       occupants[slot] = {
         slot,
         vehicle,
-        source:"physical"
+        source:completedLocked && normalizeVehicleToken(completedLocked.vehicle) === normalizeVehicleToken(vehicle)
+          ? "completedLocked"
+          : "physical"
       };
     }
   });
@@ -21619,7 +21719,7 @@ function findSdeNightPlacementMoveForPayload(payload, data){
 function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLastRenderedData || getSdeShiftShowcaseData()){
   const vehicle = sanitizeVehicleValue(payload?.vehicle);
   const targetSlot = normalizeSlot(toSlot);
-  const fromSlot = normalizeSlot(payload?.slot || payload?.fromSlot);
+  const fromSlot = normalizeSlot(payload?.fromSlot || payload?.slot);
 
   if(!vehicle || !targetSlot){
     return {
@@ -21678,8 +21778,10 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
   }
 
   const row = findSdeNightPlacementMoveForPayload(payload, data);
-  const timeAssessment = getSdeNightPlacementTimeAssessment(row, fromSlot || row?.fromSlot || row?.arrivalSlot, targetSlot);
-  const affectedVehicles = buildSdeNightPlacementAffectedVehicles(fromSlot || row?.fromSlot || row?.arrivalSlot, targetSlot);
+  const originalFromSlot = getSdeNightPlacementOriginalFromSlot(vehicle, fromSlot || row?.fromSlot || row?.arrivalSlot);
+  const assessmentFromSlot = originalFromSlot || fromSlot || normalizeSlot(row?.fromSlot || row?.arrivalSlot);
+  const timeAssessment = getSdeNightPlacementTimeAssessment(row, assessmentFromSlot, targetSlot);
+  const affectedVehicles = buildSdeNightPlacementAffectedVehicles(assessmentFromSlot, targetSlot);
   const conflicts = [
     ...timeAssessment.conflicts,
     ...affectedVehicles.map(item => item.reason).filter(Boolean)
@@ -21692,7 +21794,8 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
   return {
     ok:true,
     vehicle,
-    fromSlot:fromSlot || normalizeSlot(row?.fromSlot || row?.arrivalSlot),
+    fromSlot:assessmentFromSlot,
+    currentFromSlot:fromSlot,
     toSlot:targetSlot,
     row,
     sourceEvent:timeAssessment.sourceEvent,
@@ -21727,8 +21830,22 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   const row = getSdeNightPlacementMatchedSdeRow(assessment.row);
   const payloadNeedKey = String(payload?.needKey || "").trim();
   const payloadMoveKey = String(payload?.moveKey || "").trim();
+  const now = new Date().toISOString();
+  const vehicleToken = normalizeVehicleToken(assessment.vehicle);
+  const existingOverride = getSdeNightPlacementActiveManualOverrides()
+    .find(override => normalizeVehicleToken(override?.vehicle) === vehicleToken) || null;
+  const originalFromSlot = normalizeSlot(
+    existingOverride?.originalFromSlot ||
+    assessment.fromSlot ||
+    getSdeNightPlacementOriginalFromSlot(assessment.vehicle, payload?.fromSlot || payload?.slot)
+  );
   const generatedId = `night-drag-${Date.now()}`;
-  const generatedActionKey = `night-placement-drag|${generatedId}`;
+  let generatedActionKey = existingOverride?.stableActionKey || "";
+  if(!generatedActionKey || getSdeMoveActionRecord(generatedActionKey)){
+    generatedActionKey = row
+      ? getSdeMoveActionKey(row)
+      : `${getSdeNightPlacementManualVehicleKey(assessment.vehicle)}|${generatedId}`;
+  }
   const needKey = row
     ? getSdeMoveNeedKey(row)
     : isSdeNightPlacementUsableOverrideKey(payloadNeedKey)
@@ -21741,16 +21858,20 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
       : generatedActionKey;
   const key = getSdeNightPlacementOverrideKeyFromParts(
     assessment.vehicle,
-    assessment.fromSlot,
-    row ? needKey : ""
+    originalFromSlot,
+    row ? needKey : getSdeNightPlacementManualVehicleKey(assessment.vehicle)
   );
   const override = {
-    id:generatedId,
+    id:existingOverride?.id || generatedId,
     vehicle:assessment.vehicle,
-    fromSlot:assessment.fromSlot,
+    originalFromSlot,
+    fromSlot:originalFromSlot,
+    currentFromSlot:assessment.currentFromSlot || normalizeSlot(payload?.slot || payload?.fromSlot),
     toSlot:assessment.toSlot,
-    createdAt:new Date().toISOString(),
+    createdAt:existingOverride?.createdAt || now,
+    updatedAt:now,
     source:"night-placement-drag",
+    stableActionKey:generatedActionKey,
     needKey,
     moveKey,
     hasMatchedSdeMove:Boolean(row),
@@ -21768,6 +21889,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     note:"simulert ønsket sluttplassering"
   };
 
+  removeSdeNightPlacementOverridesForVehicle(assessment.vehicle);
   getSdeNightPlacementManualOverrides()[key] = override;
   sdeNightPlacementDropMessage = {
     type:assessment.timeStatus === "OK_TIME_KNOWN" ? "info" : "warning",
@@ -21914,6 +22036,7 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       vehicle:"",
       trainLabel:"",
       source:"Tom",
+      sourceKind:"empty",
       row:null,
       collisionVehicles:[]
     };
@@ -21940,6 +22063,7 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       entry.vehicle = "";
       entry.trainLabel = "";
       entry.source = "Tom";
+      entry.sourceKind = "empty";
       entry.row = null;
       entry.collisionVehicles = [];
     });
@@ -22009,16 +22133,22 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     entry.vehicle = cleanVehicle;
     entry.trainLabel = getSdeNightPlacementTrainLabel(cleanVehicle, row);
     entry.source = getSdeNightPlacementSourceLabel(row, source);
+    entry.sourceKind = source || "move";
     entry.row = row || null;
     entry.collisionVehicles = [];
   };
 
+  const completedLockedSlots = getSdeNightPlacementCompletedLockedSlots();
   computeInndata().forEach(row=>{
     const slot = normalizeSlot(row?.slot);
     const vehicle = sanitizeVehicleValue(row?.mat);
     if(!vehicle || !slot) return;
-    physicalOccupants[slot] = {slot, vehicle, source:"physical"};
-    placeVehicle(slot, vehicle, null, "standing");
+    const completedLocked = completedLockedSlots[slot];
+    const source = completedLocked && normalizeVehicleToken(completedLocked.vehicle) === normalizeVehicleToken(vehicle)
+      ? "completedLocked"
+      : "standing";
+    physicalOccupants[slot] = {slot, vehicle, source};
+    placeVehicle(slot, vehicle, null, source);
   });
 
   const effectiveMoves = buildSdeNightPlacementEffectiveMoves(data);
@@ -22128,6 +22258,8 @@ function renderSdeNightPlacementOverview(data){
     const row = entry.row || null;
     const timeStatusText = !hasCollision ? getSdeNightPlacementTimeStatusText(row) : "";
     const isSimulated = Boolean(row?.sdeNightPlacementDragOverrideActive);
+    const isPhysical = entry.sourceKind === "standing";
+    const isCompletedLocked = entry.sourceKind === "completedLocked";
     const dragFromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || slot);
     const dragNeedKey = row ? getSdeMoveNeedKey(row) || row?.needKey || "" : "";
     const dragMoveKey = row ? getSdeMoveActionKey(row) || row?.moveKey || "" : "";
@@ -22139,6 +22271,8 @@ function renderSdeNightPlacementOverview(data){
       slotKind(slot),
       hasVehicle ? "occupied" : "empty",
       hasCollision ? "collision" : "",
+      isPhysical ? "physical" : "",
+      isCompletedLocked ? "completed-locked" : "",
       isSimulated ? "simulated" : "",
       overview.rejectedSlot === slot ? "drop-rejected" : ""
     ].filter(Boolean).join(" ");
