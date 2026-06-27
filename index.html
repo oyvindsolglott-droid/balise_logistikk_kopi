@@ -3317,24 +3317,42 @@ button{padding:12px 12px}
   padding:10px;
 }
 .sde-night-placement-slot{
+  position:relative;
   display:grid;
   grid-template-rows:auto 1fr auto;
   gap:6px;
   background:rgba(15,23,42,.68);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+  overflow:hidden;
 }
 .sde-night-placement-slot.occupied{
   cursor:grab;
 }
 .sde-night-placement-slot.physical{
-  border-color:rgba(148,163,184,.64);
-  background:linear-gradient(180deg, rgba(51,65,85,.86), rgba(30,41,59,.82));
-  box-shadow:inset 0 0 0 1px rgba(226,232,240,.16);
+  border-color:rgba(127,29,29,.88);
+  background:linear-gradient(180deg, rgba(24,10,12,.94), rgba(69,10,10,.82));
+  box-shadow:inset 0 0 0 1px rgba(248,113,113,.20), 0 0 0 2px rgba(127,29,29,.18);
 }
 .sde-night-placement-slot.completed-locked{
-  border-color:rgba(34,197,94,.76);
-  background:linear-gradient(180deg, rgba(20,83,45,.82), rgba(21,94,117,.58));
-  box-shadow:inset 0 0 0 1px rgba(134,239,172,.25), 0 0 0 2px rgba(34,197,94,.12);
+  border-color:rgba(153,27,27,.95);
+  background:linear-gradient(180deg, rgba(12,10,12,.96), rgba(69,10,10,.90));
+  box-shadow:inset 0 0 0 1px rgba(252,165,165,.24), 0 0 0 2px rgba(153,27,27,.22);
+}
+.sde-night-placement-slot.physical::after,
+.sde-night-placement-slot.completed-locked::after{
+  content:"";
+  position:absolute;
+  inset:10px;
+  pointer-events:none;
+  background:
+    linear-gradient(45deg, transparent calc(50% - 1.5px), rgba(254,202,202,.76) calc(50% - 1.5px), rgba(254,202,202,.76) calc(50% + 1.5px), transparent calc(50% + 1.5px)),
+    linear-gradient(-45deg, transparent calc(50% - 1.5px), rgba(254,202,202,.76) calc(50% - 1.5px), rgba(254,202,202,.76) calc(50% + 1.5px), transparent calc(50% + 1.5px));
+  opacity:.62;
+}
+.sde-night-placement-slot.physical > *,
+.sde-night-placement-slot.completed-locked > *{
+  position:relative;
+  z-index:1;
 }
 .sde-night-placement-slot[data-sde-night-placement-draggable="1"]{
   touch-action:none;
@@ -3356,6 +3374,10 @@ button{padding:12px 12px}
   border-color:rgba(45,212,191,.78);
   box-shadow:inset 0 0 0 1px rgba(45,212,191,.34), 0 0 0 2px rgba(45,212,191,.12);
 }
+.sde-night-placement-slot.planned{
+  border-color:rgba(45,212,191,.68);
+  background:linear-gradient(180deg, rgba(20,83,45,.54), rgba(8,47,73,.62));
+}
 .sde-night-placement-time-status{
   margin-top:3px;
   color:#bae6fd;
@@ -3366,6 +3388,20 @@ button{padding:12px 12px}
 .sde-night-placement-slot.blue{border-color:rgba(96,165,250,.36);}
 .sde-night-placement-slot.yellow{border-color:rgba(250,204,21,.40);}
 .sde-night-placement-slot.orange{border-color:rgba(251,146,60,.40);}
+.sde-night-placement-slot.physical{
+  border-color:rgba(127,29,29,.88);
+  background:linear-gradient(180deg, rgba(24,10,12,.94), rgba(69,10,10,.82));
+  box-shadow:inset 0 0 0 1px rgba(248,113,113,.20), 0 0 0 2px rgba(127,29,29,.18);
+}
+.sde-night-placement-slot.completed-locked{
+  border-color:rgba(153,27,27,.95);
+  background:linear-gradient(180deg, rgba(12,10,12,.96), rgba(69,10,10,.90));
+  box-shadow:inset 0 0 0 1px rgba(252,165,165,.24), 0 0 0 2px rgba(153,27,27,.22);
+}
+.sde-night-placement-slot.planned{
+  border-color:rgba(45,212,191,.68);
+  background:linear-gradient(180deg, rgba(20,83,45,.54), rgba(8,47,73,.62));
+}
 .sde-night-placement-slot.empty{
   background:rgba(30,41,59,.34);
   color:#8ea7c4;
@@ -3400,6 +3436,13 @@ button{padding:12px 12px}
   line-height:1.2;
   text-transform:uppercase;
 }
+.sde-night-placement-layer-note{
+  margin-top:3px;
+  color:#fecaca;
+  font-size:10px;
+  font-weight:900;
+  line-height:1.2;
+}
 .sde-night-placement-empty-text{
   align-self:center;
   color:#7b92ad;
@@ -3423,7 +3466,8 @@ button{padding:12px 12px}
   box-shadow:none;
 }
 .sde-night-placement-reserve,
-.sde-night-placement-warnings{
+.sde-night-placement-warnings,
+.sde-night-placement-slot-info{
   margin:0 20px 18px;
   display:grid;
   gap:8px;
@@ -3456,6 +3500,41 @@ button{padding:12px 12px}
   border-color:rgba(248,113,113,.42);
   background:rgba(248,113,113,.14);
   color:#fee2e2;
+}
+.sde-night-placement-slot-info{
+  padding:12px 14px;
+  border:1px solid rgba(248,113,113,.34);
+  border-radius:12px;
+  background:rgba(15,23,42,.88);
+  color:#e5eef8;
+  box-shadow:0 18px 42px rgba(0,0,0,.22);
+}
+.sde-night-placement-slot-info-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:flex-start;
+  font-weight:950;
+}
+.sde-night-placement-slot-info-close{
+  border:0;
+  border-radius:8px;
+  background:rgba(148,163,184,.18);
+  color:#f8fafc;
+  cursor:pointer;
+  font-size:12px;
+  font-weight:900;
+  padding:5px 8px;
+}
+.sde-night-placement-slot-info-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));
+  gap:7px 12px;
+  font-size:12px;
+  line-height:1.35;
+}
+.sde-night-placement-slot-info-grid strong{
+  color:#f8fafc;
 }
 .sde-night-placement-actions{
   display:flex;
@@ -20596,6 +20675,7 @@ let sdeUnresolvedDetailsVisible = false;
 let sdeLearningDiagnosticsVisible = false;
 let sdeNightPlacementDropMessage = null;
 let sdeNightPlacementDragPayload = null;
+let sdeNightPlacementSelectedSlot = "";
 const sdeDiagnosticSectionExpanded = {};
 const SDE_LAZY_DIAGNOSTIC_COUNT_TEXT = "Åpnes ved behov";
 let sdeShiftLastRenderedData = null;
@@ -21143,6 +21223,10 @@ function getSdeNightPlacementOriginalFromSlot(vehicle, fallback=""){
   return normalizeSlot(getSdeCurrentSlotForVehicle(vehicle)) || normalizeSlot(fallback);
 }
 
+function getSdePhysicalSlotForVehicle(vehicle){
+  return normalizeSlot(getSdeCurrentSlotForVehicle(vehicle));
+}
+
 function getSdeNightPlacementOverrideActionKey(override){
   return String(
     override?.stableActionKey ||
@@ -21199,6 +21283,69 @@ function getSdeNightPlacementCompletedLockedSlots(){
     locked[slot] = {slot, vehicle, source:"completedLocked", time:String(action.time || "")};
   });
   return locked;
+}
+
+function getSdeNightPlacementVehicleStatusInfo(vehicle, slot){
+  const token = normalizeVehicleToken(vehicle);
+  const normalizedSlot = normalizeSlot(slot);
+  const repMarker = String(state.grunnoppstillingRep?.[normalizedSlot] || "").trim();
+  let status = "ukjent";
+  if(isDreiMarker(repMarker)) status = "Drei";
+  else if(isRepMarker(repMarker)) status = "Rep";
+
+  let tursattText = "";
+  try{
+    const bindings = typeof buildSdeTursattVehicleBindings === "function"
+      ? buildSdeTursattVehicleBindings()
+      : [];
+    const match = (Array.isArray(bindings) ? bindings : [])
+      .find(binding => normalizeVehicleToken(binding?.vehicle) === token && binding?.role === "departure");
+    if(match){
+      const train = normalizeTognr(match.train);
+      const part = String(match.part || "").trim();
+      const time = String(match.displayTime || match.time || "").trim();
+      tursattText = [train ? `${train}${part ? `/${part}` : ""}` : "", time ? `kl. ${time}` : ""].filter(Boolean).join(" ");
+      status = "Tursatt";
+    }
+  }catch(_error){
+  }
+
+  return {status, tursattText};
+}
+
+function getSdeNightPlacementSlotSourceText(entry){
+  if(entry?.sourceKind === "completedLocked") return "lokal Utført";
+  if(entry?.sourceKind === "standing") return "fysisk grunnlag / TXP Input / Grunnoppstilling";
+  if(entry?.sourceKind === "move") return "planlagt/simulert nattplassering";
+  return entry?.source || "ukjent";
+}
+
+function buildSdeOccupiedSlotInfoHtml(slot, entry){
+  const normalizedSlot = normalizeSlot(slot);
+  const vehicle = sanitizeVehicleValue(entry?.vehicle);
+  if(!normalizedSlot || !vehicle) return "";
+  if(entry?.sourceKind !== "standing" && entry?.sourceKind !== "completedLocked") return "";
+
+  const {status, tursattText} = getSdeNightPlacementVehicleStatusInfo(vehicle, normalizedSlot);
+  const occupancyText = entry.sourceKind === "completedLocked"
+    ? "Utført / belagt / låst"
+    : "Fysisk belagt nå";
+  const plannedSlot = normalizeSlot(entry.plannedSlot);
+
+  return `<div class="sde-night-placement-slot-info" data-sde-night-placement-slot-info="${escapeHtml(normalizedSlot)}">
+    <div class="sde-night-placement-slot-info-head">
+      <div>${escapeHtml(normalizedSlot)} · ${escapeHtml(vehicle)}</div>
+      <button class="sde-night-placement-slot-info-close" type="button" data-sde-night-placement-info-close>Lukk</button>
+    </div>
+    <div class="sde-night-placement-slot-info-grid">
+      <div><strong>Status</strong><br>${escapeHtml(status)}</div>
+      <div><strong>Kilde</strong><br>${escapeHtml(getSdeNightPlacementSlotSourceText(entry))}</div>
+      <div><strong>Belegg</strong><br>${escapeHtml(occupancyText)}</div>
+      <div><strong>Tilgjengelighet</strong><br>Ikke tilgjengelig for nytt kjøretøy</div>
+      ${tursattText ? `<div><strong>Tursatt / koblet avgang</strong><br>${escapeHtml(tursattText)}</div>` : ""}
+      ${plannedSlot ? `<div><strong>Planlagt mål</strong><br>${escapeHtml(plannedSlot)}</div>` : ""}
+    </div>
+  </div>`;
 }
 
 function getSdeNightPlacementOverrideKeyFromParts(vehicle, fromSlot, needKey=""){
@@ -21765,8 +21912,19 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
   }
 
   const currentOverview = buildSdeNightPlacementOverviewData(data);
-  const projectedOccupant = currentOverview.slots?.[targetSlot]?.vehicle || "";
+  const projectedEntry = currentOverview.slots?.[targetSlot] || null;
+  const projectedOccupant = projectedEntry?.vehicle || "";
   if(projectedOccupant && normalizeVehicleToken(projectedOccupant) !== normalizeVehicleToken(vehicle)){
+    if(projectedEntry?.sourceKind === "move"){
+      return {
+        ok:false,
+        timeStatus:"UNKNOWN_TIME_MANUAL_REVIEW",
+        targetSlotOccupant:projectedOccupant,
+        message:`Plassen er allerede planlagt brukt av ${projectedOccupant}. Velg en ledig plass eller flytt eksisterende plan først.`,
+        conflicts:[`Målspor ${targetSlot} er allerede planlagt/reservert av ${projectedOccupant}.`],
+        affectedVehicles:[{slot:targetSlot, vehicle:projectedOccupant, reason:"planlagt occupant"}]
+      };
+    }
     return {
       ok:false,
       timeStatus:"UNKNOWN_TIME_MANUAL_REVIEW",
@@ -22037,6 +22195,9 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       trainLabel:"",
       source:"Tom",
       sourceKind:"empty",
+      plannedSlot:"",
+      plannedVehicle:"",
+      physicalSlot:"",
       row:null,
       collisionVehicles:[]
     };
@@ -22064,6 +22225,9 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       entry.trainLabel = "";
       entry.source = "Tom";
       entry.sourceKind = "empty";
+      entry.plannedSlot = "";
+      entry.plannedVehicle = "";
+      entry.physicalSlot = "";
       entry.row = null;
       entry.collisionVehicles = [];
     });
@@ -22115,6 +22279,18 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     const entry = slots[targetSlot];
     const existingToken = normalizeVehicleToken(entry.vehicle);
     const vehicleToken = normalizeVehicleToken(cleanVehicle);
+    if(
+      source === "move" &&
+      entry.vehicle &&
+      existingToken &&
+      existingToken === vehicleToken &&
+      (entry.sourceKind === "standing" || entry.sourceKind === "completedLocked")
+    ){
+      entry.plannedSlot = targetSlot;
+      entry.plannedVehicle = cleanVehicle;
+      entry.plannedRow = row || null;
+      return;
+    }
     if(entry.vehicle && existingToken && existingToken !== vehicleToken){
       const collisionVehicles = new Set([
         entry.vehicle,
@@ -22134,6 +22310,9 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     entry.trainLabel = getSdeNightPlacementTrainLabel(cleanVehicle, row);
     entry.source = getSdeNightPlacementSourceLabel(row, source);
     entry.sourceKind = source || "move";
+    entry.plannedSlot = "";
+    entry.plannedVehicle = "";
+    entry.physicalSlot = "";
     entry.row = row || null;
     entry.collisionVehicles = [];
   };
@@ -22177,8 +22356,29 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       return;
     }
 
-    removeVehicleFromPlacement(vehicle);
+    const physicalSlot = getSdePhysicalSlotForVehicle(vehicle);
+    const physicalOccupant = physicalSlot ? physicalOccupants[physicalSlot] : null;
+    const hasPhysicalLayer = Boolean(
+      physicalOccupant?.vehicle &&
+      normalizeVehicleToken(physicalOccupant.vehicle) === normalizeVehicleToken(vehicle) &&
+      physicalSlot !== targetSlot
+    );
+
+    if(hasPhysicalLayer){
+      const physicalEntry = slots[physicalSlot];
+      if(physicalEntry){
+        physicalEntry.plannedSlot = targetSlot;
+        physicalEntry.plannedVehicle = vehicle;
+        physicalEntry.plannedRow = row;
+      }
+    }else{
+      removeVehicleFromPlacement(vehicle);
+    }
+
     placeVehicle(targetSlot, vehicle, row, "move");
+    if(hasPhysicalLayer && slots[targetSlot]){
+      slots[targetSlot].physicalSlot = physicalSlot;
+    }
   });
 
   if(sdeNightPlacementDropMessage?.text){
@@ -22213,6 +22413,12 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
   finalVehicleSlots.forEach((vehicleSlots, token)=>{
     const uniqueSlots = Array.from(new Set(vehicleSlots));
     if(uniqueSlots.length <= 1) return;
+    const entries = uniqueSlots
+      .map(slot => slots[slot])
+      .filter(entry => entry && normalizeVehicleToken(entry.vehicle) === token);
+    const hasHardLayer = entries.some(entry => entry.sourceKind === "standing" || entry.sourceKind === "completedLocked");
+    const hasPlannedLayer = entries.some(entry => entry.sourceKind === "move");
+    if(hasHardLayer && hasPlannedLayer) return;
     addWarning(
       "duplicate_vehicle",
       `${token} finnes i flere sluttposisjoner: ${uniqueSlots.join(", ")}.`,
@@ -22251,7 +22457,7 @@ function renderSdeNightPlacementOverview(data){
     }
 
     const slot = normalizeSlot(cell);
-    const entry = overview.slots[slot] || {slot, vehicle:"", trainLabel:"", source:"Tom", collisionVehicles:[]};
+    const entry = overview.slots[slot] || {slot, vehicle:"", trainLabel:"", source:"Tom", sourceKind:"empty", collisionVehicles:[]};
     const hasCollision = Array.isArray(entry.collisionVehicles) && entry.collisionVehicles.length > 1;
     const hasVehicle = Boolean(entry.vehicle || hasCollision);
     const vehicleText = hasCollision ? entry.collisionVehicles.join(" / ") : entry.vehicle;
@@ -22260,11 +22466,31 @@ function renderSdeNightPlacementOverview(data){
     const isSimulated = Boolean(row?.sdeNightPlacementDragOverrideActive);
     const isPhysical = entry.sourceKind === "standing";
     const isCompletedLocked = entry.sourceKind === "completedLocked";
+    const isPlanned = entry.sourceKind === "move" && Boolean(
+      isSimulated ||
+      row?.sdeNightPlacementCardOverrideActive ||
+      row?.manualPlanOverrideActive ||
+      row?.manualOverrideActive ||
+      row?.isNightPlacementGenerated
+    );
+    const isHardOccupied = isPhysical || isCompletedLocked;
+    const plannedSlot = normalizeSlot(entry.plannedSlot);
+    const physicalSlot = normalizeSlot(entry.physicalSlot);
+    const layerNote = isPhysical && plannedSlot
+      ? `Fysisk nå · planlagt til ${plannedSlot}`
+      : isCompletedLocked
+        ? "Ikke tilgjengelig · utført plassering"
+        : isPlanned && physicalSlot
+          ? `Planlagt mål · fysisk nå ${physicalSlot}`
+          : "";
     const dragFromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || slot);
     const dragNeedKey = row ? getSdeMoveNeedKey(row) || row?.needKey || "" : "";
     const dragMoveKey = row ? getSdeMoveActionKey(row) || row?.moveKey || "" : "";
-    const draggableAttr = hasVehicle && !hasCollision
+    const draggableAttr = hasVehicle && !hasCollision && !isCompletedLocked
       ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-from-slot="${escapeHtml(dragFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(dragNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(dragMoveKey)}"`
+      : "";
+    const lockedInfoAttr = isHardOccupied && hasVehicle && !hasCollision
+      ? ` data-sde-night-placement-locked-info="1" title="Ikke tilgjengelig for nytt kjøretøy"`
       : "";
     const classes = [
       "sde-night-placement-slot",
@@ -22273,17 +22499,19 @@ function renderSdeNightPlacementOverview(data){
       hasCollision ? "collision" : "",
       isPhysical ? "physical" : "",
       isCompletedLocked ? "completed-locked" : "",
+      isPlanned ? "planned" : "",
       isSimulated ? "simulated" : "",
       overview.rejectedSlot === slot ? "drop-rejected" : ""
     ].filter(Boolean).join(" ");
 
-    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}"${draggableAttr}>
+    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}"${lockedInfoAttr}${draggableAttr}>
       <div class="sde-night-placement-address">${escapeHtml(slot)}</div>
       ${hasVehicle
         ? `<div class="sde-night-placement-vehicle">${escapeHtml(vehicleText)}</div>
            <div>
              <div class="sde-night-placement-train">${escapeHtml(hasCollision ? "Slot-kollisjon" : entry.trainLabel || "Ingen kjent avgang")}</div>
              <div class="sde-night-placement-source">${escapeHtml(hasCollision ? "Varsel" : entry.source || "SDE")}</div>
+             ${layerNote ? `<div class="sde-night-placement-layer-note">${escapeHtml(layerNote)}</div>` : ""}
              ${timeStatusText ? `<div class="sde-night-placement-time-status">${escapeHtml(timeStatusText)}</div>` : ""}
            </div>`
         : `<div class="sde-night-placement-empty-text">Tom</div><div class="sde-night-placement-source">Ledig</div>`}
@@ -22309,6 +22537,10 @@ function renderSdeNightPlacementOverview(data){
         ${overview.warnings.map(item => `<div class="sde-night-placement-warning ${item.severity === "error" ? "error" : ""}">${escapeHtml(item.text)}</div>`).join("")}
       </div>`
     : "";
+  const selectedSlot = normalizeSlot(sdeNightPlacementSelectedSlot);
+  const selectedInfoHtml = selectedSlot
+    ? buildSdeOccupiedSlotInfoHtml(selectedSlot, overview.slots[selectedSlot])
+    : "";
   const hasManualDragOverrides = Object.keys(getSdeNightPlacementManualOverrides()).length > 0;
 
   return `<section class="sde-night-placement-panel" id="sdeNightPlacementPanel" aria-label="SDE Nattplassering">
@@ -22328,6 +22560,7 @@ function renderSdeNightPlacementOverview(data){
     <div class="sde-night-placement-actions">
       <button class="sde-night-placement-action-btn" type="button" data-sde-night-placement-clear-overrides ${hasManualDragOverrides ? "" : "disabled"}>Nullstill manuelle nattplasseringer</button>
     </div>
+    ${selectedInfoHtml}
     <div class="sde-night-placement-yard-wrap">
       <div class="sde-night-placement-grid">
         ${headerHtml}
@@ -22497,6 +22730,20 @@ function setupSdeNightPlacementDragAndDrop(){
   panel.addEventListener("dragend", ()=>{
     clearDragClasses();
     sdeNightPlacementDragPayload = null;
+  });
+
+  panel.addEventListener("click", event=>{
+    const closeButton = event.target.closest("[data-sde-night-placement-info-close]");
+    if(closeButton && panel.contains(closeButton)){
+      sdeNightPlacementSelectedSlot = "";
+      renderSdeSkiftebevegelser();
+      return;
+    }
+
+    const lockedSlot = event.target.closest("[data-sde-night-placement-locked-info]");
+    if(!lockedSlot || !panel.contains(lockedSlot)) return;
+    sdeNightPlacementSelectedSlot = normalizeSlot(lockedSlot.dataset.sdeNightPlacementSlot);
+    renderSdeSkiftebevegelser();
   });
 
   panel.addEventListener("pointerdown", event=>startCoordinateDrag(event, "pointer"));
