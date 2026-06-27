@@ -21287,9 +21287,25 @@ function getSdeNightPlacementGeneratedMoveKey(override){
   return `night-placement-drag|${vehicle}|${fromSlot}|${toSlot}|${createdAt || "stable"}`;
 }
 
+function isSdeNightPlacementUsableOverrideKey(value){
+  const key = String(value || "").trim();
+  if(!key) return false;
+  if(/^\|+$/.test(key)) return false;
+  if(/^arrival\|+$/.test(key)) return false;
+  return true;
+}
+
+function getSdeNightPlacementMatchedSdeRow(row){
+  if(!row || typeof row !== "object") return null;
+  if(!sanitizeVehicleValue(row.vehicle)) return null;
+  if(!normalizeSlot(row.fromSlot || row.arrivalSlot)) return null;
+  if(!normalizeSlot(row.recommendedSlot || row.toSlot)) return null;
+  return row;
+}
+
 function buildSdeNightPlacementGeneratedMove(override){
   const vehicle = sanitizeVehicleValue(override?.vehicle);
-  const fromSlot = normalizeSlot(override?.fromSlot);
+  const fromSlot = normalizeSlot(override?.fromSlot || override?.payloadFromSlot || override?.payloadSlot);
   const toSlot = normalizeSlot(override?.toSlot);
   const actionKey = getSdeNightPlacementGeneratedMoveKey(override);
   if(!vehicle || !fromSlot || !toSlot || !actionKey) return null;
@@ -21311,6 +21327,7 @@ function buildSdeNightPlacementGeneratedMove(override){
     originalSource:"SDE Nattplassering",
     isNightPlacementGenerated:true,
     isManualSimulated:true,
+    isManualOnly:true,
     sdeNightPlacementGeneratedActionKey:actionKey,
     sdeNightPlacementGeneratedNeedKey:`night-placement-drag-need|${actionKey}`,
     sdeNightPlacementOverrideId:String(override.id || ""),
@@ -21323,15 +21340,15 @@ function buildSdeNightPlacementGeneratedMove(override){
     sdeNightPlacementOverrideConflicts:conflicts,
     sdeNightPlacementOverrideAffectedVehicles:affectedVehicles,
     arrivalTrainText:"SDE Nattplassering",
-    departureTrainText:"Ikke skifteordre",
+    departureTrainText:"Ingen kjent avgang",
     arrivalTime:String(override.earliestMoveTime || ""),
-    nextDepartureText:"Ikke skifteordre",
+    nextDepartureText:"Ingen kjent avgang",
     nextDepartureTrain:"",
     nextDeparturePart:"",
     recommendationConfidence:"manuell",
     recommendationScore:"Ikke scoret",
     recommendationAlternatives:[],
-    recommendationReason:"Manuelt simulert SDE-kort opprettet fra SDE Nattplassering. Dette er lokal planintensjon, ikke operativ skifteordre og ikke server-write.",
+    recommendationReason:"Manuell simulert nattplassering. Ingen kjent SDE-avgang/behov. Manuell vurdering nødvendig. Dette er lokal planintensjon, ikke operativ skifteordre og ikke server-write.",
     parkingStrategy:"Opprettet fra nattplassering",
     parkingInstruction:"Manuell simulering fra nattplassering. Kontroller tidsstatus og eventuelle konflikter før lokal kvittering."
   };
@@ -21707,12 +21724,28 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     return false;
   }
 
-  const row = assessment.row || {};
-  const needKey = getSdeMoveNeedKey(row) || String(payload?.needKey || "");
-  const moveKey = getSdeMoveActionKey(row) || String(payload?.moveKey || "");
-  const key = getSdeNightPlacementOverrideKeyFromParts(assessment.vehicle, assessment.fromSlot, needKey);
+  const row = getSdeNightPlacementMatchedSdeRow(assessment.row);
+  const payloadNeedKey = String(payload?.needKey || "").trim();
+  const payloadMoveKey = String(payload?.moveKey || "").trim();
+  const generatedId = `night-drag-${Date.now()}`;
+  const generatedActionKey = `night-placement-drag|${generatedId}`;
+  const needKey = row
+    ? getSdeMoveNeedKey(row)
+    : isSdeNightPlacementUsableOverrideKey(payloadNeedKey)
+      ? payloadNeedKey
+      : `night-placement-drag-need|${generatedActionKey}`;
+  const moveKey = row
+    ? getSdeMoveActionKey(row)
+    : isSdeNightPlacementUsableOverrideKey(payloadMoveKey)
+      ? payloadMoveKey
+      : generatedActionKey;
+  const key = getSdeNightPlacementOverrideKeyFromParts(
+    assessment.vehicle,
+    assessment.fromSlot,
+    row ? needKey : ""
+  );
   const override = {
-    id:`night-drag-${Date.now()}`,
+    id:generatedId,
     vehicle:assessment.vehicle,
     fromSlot:assessment.fromSlot,
     toSlot:assessment.toSlot,
@@ -21720,6 +21753,10 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     source:"night-placement-drag",
     needKey,
     moveKey,
+    hasMatchedSdeMove:Boolean(row),
+    isManualOnly:!row,
+    payloadFromSlot:normalizeSlot(payload?.fromSlot || payload?.slot),
+    payloadSlot:normalizeSlot(payload?.slot),
     earliestMoveTime:assessment.earliestMoveTime,
     latestMoveTime:assessment.latestMoveTime,
     sourceEvent:assessment.sourceEvent,
@@ -22088,11 +22125,14 @@ function renderSdeNightPlacementOverview(data){
     const hasCollision = Array.isArray(entry.collisionVehicles) && entry.collisionVehicles.length > 1;
     const hasVehicle = Boolean(entry.vehicle || hasCollision);
     const vehicleText = hasCollision ? entry.collisionVehicles.join(" / ") : entry.vehicle;
-    const row = entry.row || {};
+    const row = entry.row || null;
     const timeStatusText = !hasCollision ? getSdeNightPlacementTimeStatusText(row) : "";
     const isSimulated = Boolean(row?.sdeNightPlacementDragOverrideActive);
+    const dragFromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || slot);
+    const dragNeedKey = row ? getSdeMoveNeedKey(row) || row?.needKey || "" : "";
+    const dragMoveKey = row ? getSdeMoveActionKey(row) || row?.moveKey || "" : "";
     const draggableAttr = hasVehicle && !hasCollision
-      ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-from-slot="${escapeHtml(normalizeSlot(row?.fromSlot || row?.arrivalSlot || slot))}" data-sde-night-placement-need-key="${escapeHtml(getSdeMoveNeedKey(row) || row?.needKey || "")}" data-sde-night-placement-move-key="${escapeHtml(getSdeMoveActionKey(row) || row?.moveKey || "")}"`
+      ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-from-slot="${escapeHtml(dragFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(dragNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(dragMoveKey)}"`
       : "";
     const classes = [
       "sde-night-placement-slot",
