@@ -6661,6 +6661,8 @@ function makeDefaultState(){
     baliseTomorrowDepartures:{},
     baliseTodayVehicleErrors:{},
     baliseTomorrowVehicleErrors:{},
+    baliseTodayArrivalDisplayTrainNumbers:{},
+    baliseTomorrowArrivalDisplayTrainNumbers:{},
     baliseMetaToday:null,
     baliseMetaTomorrow:null,
     baliseSelectedMode:"idag",
@@ -6670,6 +6672,7 @@ function makeDefaultState(){
       updatedAt:"",
       departures:{},
       arrivals:{},
+      arrivalDisplayTrainNumbers:{},
       allowedMaterialPrefixes:[],
       materialFormat:"",
       error:""
@@ -6720,6 +6723,8 @@ if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
 if(!state.baliseTodayVehicleErrors || typeof state.baliseTodayVehicleErrors !== "object" || Array.isArray(state.baliseTodayVehicleErrors)) state.baliseTodayVehicleErrors={};
 if(!state.baliseTomorrowVehicleErrors || typeof state.baliseTomorrowVehicleErrors !== "object" || Array.isArray(state.baliseTomorrowVehicleErrors)) state.baliseTomorrowVehicleErrors={};
+if(!state.baliseTodayArrivalDisplayTrainNumbers || typeof state.baliseTodayArrivalDisplayTrainNumbers !== "object" || Array.isArray(state.baliseTodayArrivalDisplayTrainNumbers)) state.baliseTodayArrivalDisplayTrainNumbers={};
+if(!state.baliseTomorrowArrivalDisplayTrainNumbers || typeof state.baliseTomorrowArrivalDisplayTrainNumbers !== "object" || Array.isArray(state.baliseTomorrowArrivalDisplayTrainNumbers)) state.baliseTomorrowArrivalDisplayTrainNumbers={};
 if(typeof state.demoMode !== "string") state.demoMode="";
 if(!("preDemoSnapshot" in state)) state.preDemoSnapshot=null;
 if(!state.baliseTodayArrivals) state.baliseTodayArrivals={};
@@ -6746,11 +6751,13 @@ if(!state.apiBalise){
     updatedAt:"",
     departures:{},
     arrivals:{},
+    arrivalDisplayTrainNumbers:{},
     allowedMaterialPrefixes:[],
     materialFormat:"",
     error:""
   };
 }
+if(!state.apiBalise.arrivalDisplayTrainNumbers || typeof state.apiBalise.arrivalDisplayTrainNumbers !== "object" || Array.isArray(state.apiBalise.arrivalDisplayTrainNumbers)) state.apiBalise.arrivalDisplayTrainNumbers={};
 if(!state.views){
   state.views={
     yardZoom:{scale:1,compact:false},
@@ -6896,6 +6903,17 @@ function normalizeVehicleErrorMap(errors){
     Object.entries(errors)
       .map(([train,message]) => [normalizeTognr(train), String(message || "").trim()])
       .filter(([train,message]) => train && message)
+  );
+}
+
+
+function normalizeTrainDisplayMap(map){
+  if(!map || typeof map !== "object" || Array.isArray(map)) return {};
+
+  return Object.fromEntries(
+    Object.entries(map)
+      .map(([train,displayTrain]) => [normalizeTognr(train), normalizeTognr(displayTrain)])
+      .filter(([train,displayTrain]) => train && displayTrain && displayTrain !== train)
   );
 }
 
@@ -10287,6 +10305,14 @@ function getVehicleErrorMapByMode(mode){
   return getVehicleErrorMapByMode(selectedMode);
 }
 
+function getArrivalDisplayTrainNumberMapByMode(mode){
+  if(mode === "idag") return state.baliseTodayArrivalDisplayTrainNumbers || {};
+  if(mode === "imorgen") return state.baliseTomorrowArrivalDisplayTrainNumbers || {};
+
+  const selectedMode = state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag";
+  return getArrivalDisplayTrainNumberMapByMode(selectedMode);
+}
+
 function getDisplayTrainNumberFromVehicleError(train, vehicleError){
   const key = normalizeTognr(train);
   if(!key) return "";
@@ -10320,6 +10346,12 @@ function getDisplayTrainNumberForOppstilling(train, side="", mode=""){
   const effectiveMode = mode === "idag" || mode === "imorgen"
     ? mode
     : (side === "departure" ? "imorgen" : "idag");
+  const key = normalizeTognr(train);
+  if(side === "arrival"){
+    const arrivalDisplayTrain = getArrivalDisplayTrainNumberMapByMode(effectiveMode)?.[key] || "";
+    if(arrivalDisplayTrain) return arrivalDisplayTrain;
+  }
+
   return getDisplayTrainNumberForMode(train, effectiveMode);
 }
 
@@ -26300,6 +26332,7 @@ async function ensureTodayStaticDataLoaded(){
     const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
     const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
     const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
+    const normalizedArrivalDisplayTrainNumbers = normalizeTrainDisplayMap(payload.arrivalDisplayTrainNumbers);
     const vehicleErrorCount = payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0;
 
     state.baliseToday = normalizedVehicles;
@@ -26308,6 +26341,7 @@ async function ensureTodayStaticDataLoaded(){
     state.baliseTodayDepartureVehicles = normalizedDepartureVehicles;
     state.baliseTodayArrivalVehicles = normalizedArrivalVehicles;
     state.baliseTodayVehicleErrors = normalizedVehicleErrors;
+    state.baliseTodayArrivalDisplayTrainNumbers = normalizedArrivalDisplayTrainNumbers;
     state.baliseMetaToday = {
       source: payload.source || "statisk data",
       mode: payload.mode || "idag",
@@ -26343,6 +26377,7 @@ async function ensureTomorrowStaticDataLoaded(){
     const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
     const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
     const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
+    const normalizedArrivalDisplayTrainNumbers = normalizeTrainDisplayMap(payload.arrivalDisplayTrainNumbers);
 
     state.baliseTomorrow = normalizedVehicles;
     state.baliseTomorrowDepartures = normalizedDepartures;
@@ -26350,6 +26385,7 @@ async function ensureTomorrowStaticDataLoaded(){
     state.baliseTomorrowDepartureVehicles = normalizedDepartureVehicles;
     state.baliseTomorrowArrivalVehicles = normalizedArrivalVehicles;
     state.baliseTomorrowVehicleErrors = normalizedVehicleErrors;
+    state.baliseTomorrowArrivalDisplayTrainNumbers = normalizedArrivalDisplayTrainNumbers;
     state.baliseMetaTomorrow = {
       source: payload.source || "statisk data",
       mode: payload.mode || "imorgen",
@@ -26435,6 +26471,7 @@ async function fetchBaliseApi(){
     const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
     const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
     const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
+    const normalizedArrivalDisplayTrainNumbers = normalizeTrainDisplayMap(payload.arrivalDisplayTrainNumbers);
     const vehicleErrorCount = payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0;
 
     state.apiBalise = {
@@ -26448,6 +26485,7 @@ async function fetchBaliseApi(){
       departureVehicles:normalizedDepartureVehicles,
       arrivalVehicles:normalizedArrivalVehicles,
       vehicleErrors:normalizedVehicleErrors,
+      arrivalDisplayTrainNumbers:normalizedArrivalDisplayTrainNumbers,
       allowedMaterialPrefixes:Array.isArray(payload.allowedMaterialPrefixes) ? payload.allowedMaterialPrefixes.map(v=>String(v)) : [],
       materialFormat:Array.isArray(payload.materialFormat) ? payload.materialFormat.join(", ") : String(payload.materialFormat || ""),
       error:""
@@ -26472,6 +26510,7 @@ async function fetchBaliseApi(){
       state.baliseTomorrowDepartureVehicles = normalizedDepartureVehicles;
       state.baliseTomorrowArrivalVehicles = normalizedArrivalVehicles;
       state.baliseTomorrowVehicleErrors = normalizedVehicleErrors;
+      state.baliseTomorrowArrivalDisplayTrainNumbers = normalizedArrivalDisplayTrainNumbers;
       state.baliseMetaTomorrow = meta;
     }else{
       state.baliseToday = normalizedVehicles;
@@ -26480,6 +26519,7 @@ async function fetchBaliseApi(){
       state.baliseTodayDepartureVehicles = normalizedDepartureVehicles;
       state.baliseTodayArrivalVehicles = normalizedArrivalVehicles;
       state.baliseTodayVehicleErrors = normalizedVehicleErrors;
+      state.baliseTodayArrivalDisplayTrainNumbers = normalizedArrivalDisplayTrainNumbers;
       state.baliseMetaToday = meta;
     }
 
@@ -26501,6 +26541,7 @@ async function fetchBaliseApi(){
       departureVehicles:{},
       arrivalVehicles:{},
       vehicleErrors:{},
+      arrivalDisplayTrainNumbers:{},
       allowedMaterialPrefixes:[],
       materialFormat:"",
       error:`API-feil: ${err.message}`
@@ -27476,6 +27517,8 @@ document.getElementById("clearBaliseJsonBtn").addEventListener("click",()=>{
     state.baliseTomorrowArrivals = {};
     state.baliseTomorrowDepartureVehicles = {};
     state.baliseTomorrowArrivalVehicles = {};
+    state.baliseTomorrowVehicleErrors = {};
+    state.baliseTomorrowArrivalDisplayTrainNumbers = {};
     state.baliseMetaTomorrow = null;
   }else{
     state.baliseToday = {};
@@ -27483,6 +27526,8 @@ document.getElementById("clearBaliseJsonBtn").addEventListener("click",()=>{
     state.baliseTodayArrivals = {};
     state.baliseTodayDepartureVehicles = {};
     state.baliseTodayArrivalVehicles = {};
+    state.baliseTodayVehicleErrors = {};
+    state.baliseTodayArrivalDisplayTrainNumbers = {};
     state.baliseMetaToday = null;
   }
 
