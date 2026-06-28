@@ -3398,6 +3398,11 @@ button{padding:12px 12px}
   border-color:rgba(45,212,191,.68);
   background:linear-gradient(180deg, rgba(20,83,45,.54), rgba(8,47,73,.62));
 }
+.sde-night-placement-slot.temporary{
+  border-color:rgba(234,179,8,.72);
+  background:linear-gradient(180deg, rgba(113,63,18,.74), rgba(24,20,12,.82));
+  box-shadow:inset 0 0 0 1px rgba(250,204,21,.20), 0 0 0 2px rgba(113,63,18,.18);
+}
 .sde-night-placement-slot.empty{
   background:rgba(30,41,59,.34);
   color:#8ea7c4;
@@ -21505,6 +21510,7 @@ function getSdeNightPlacementVehicleStatusInfo(vehicle, slot){
 function getSdeNightPlacementSlotSourceText(entry){
   if(entry?.sourceKind === "completedLocked") return "lokal Utført";
   if(entry?.sourceKind === "standing") return "fysisk grunnlag / TXP Input / Grunnoppstilling";
+  if(entry?.stepRole === "temporary_parking") return "midlertidig planlagt nattplassering";
   if(entry?.sourceKind === "move") return "planlagt/simulert nattplassering";
   return entry?.source || "ukjent";
 }
@@ -21513,10 +21519,13 @@ function buildSdeOccupiedSlotInfoHtml(slot, entry){
   const normalizedSlot = normalizeSlot(slot);
   const vehicle = sanitizeVehicleValue(entry?.vehicle);
   if(!normalizedSlot || !vehicle) return "";
-  if(entry?.sourceKind !== "standing" && entry?.sourceKind !== "completedLocked") return "";
+  const isTemporary = entry?.stepRole === "temporary_parking";
+  if(entry?.sourceKind !== "standing" && entry?.sourceKind !== "completedLocked" && !isTemporary) return "";
 
   const {status, tursattText} = getSdeNightPlacementVehicleStatusInfo(vehicle, normalizedSlot);
-  const occupancyText = entry.sourceKind === "completedLocked"
+  const occupancyText = isTemporary
+    ? `Midlertidig parkering før videre flytting${entry.nextSlot ? ` til ${entry.nextSlot}` : ""}`
+    : entry.sourceKind === "completedLocked"
     ? "Utført / belagt / låst"
     : "Fysisk belagt nå";
   const plannedSlot = normalizeSlot(entry.plannedSlot);
@@ -21530,7 +21539,8 @@ function buildSdeOccupiedSlotInfoHtml(slot, entry){
       <div><strong>Status</strong><br>${escapeHtml(status)}</div>
       <div><strong>Kilde</strong><br>${escapeHtml(getSdeNightPlacementSlotSourceText(entry))}</div>
       <div><strong>Belegg</strong><br>${escapeHtml(occupancyText)}</div>
-      <div><strong>Tilgjengelighet</strong><br>Ikke tilgjengelig for nytt kjøretøy</div>
+      <div><strong>Tilgjengelighet</strong><br>${isTemporary ? "Reservert som mellomsteg for samme kjøretøy" : "Ikke tilgjengelig for nytt kjøretøy"}</div>
+      ${isTemporary && entry.nextSlot ? `<div><strong>Videre flytting</strong><br>${escapeHtml(normalizedSlot)} → ${escapeHtml(entry.nextSlot)}</div>` : ""}
       ${tursattText ? `<div><strong>Tursatt / koblet avgang</strong><br>${escapeHtml(tursattText)}</div>` : ""}
       ${plannedSlot ? `<div><strong>Planlagt mål</strong><br>${escapeHtml(plannedSlot)}</div>` : ""}
     </div>
@@ -21816,13 +21826,154 @@ function buildSdeNightPlacementGeneratedMoves(baseRows=[]){
   return generated;
 }
 
+function getSdeNightPlacementStepKey(row){
+  const token = normalizeVehicleToken(row?.vehicle);
+  const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || row?.originalFromSlot);
+  const toSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+  if(!token || !fromSlot || !toSlot) return "";
+  const actionKey = String(
+    row?.sdeNightPlacementGeneratedActionKey ||
+    row?.stableActionKey ||
+    row?.moveKey ||
+    getSdeMoveActionKey(row) ||
+    ""
+  ).trim();
+  return `${token}|${fromSlot}|${toSlot}|${actionKey}`;
+}
+
+function getSdeNightPlacementStepTimeValue(row){
+  const value = String(
+    row?.sdeNightPlacementOverrideUpdatedAt ||
+    row?.sdeNightPlacementOverrideCreatedAt ||
+    row?.updatedAt ||
+    row?.createdAt ||
+    ""
+  ).trim();
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function buildSdeNightPlacementStepRoleContext(rows=[]){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const stepsByVehicle = new Map();
+
+  sourceRows.forEach((row, index)=>{
+    const vehicle = sanitizeVehicleValue(row?.vehicle);
+    const token = normalizeVehicleToken(vehicle);
+    const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || row?.originalFromSlot);
+    const toSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+    if(!vehicle || !token || !fromSlot || !toSlot) return;
+    if(isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot)) return;
+
+    const step = {
+      row,
+      index,
+      vehicle,
+      token,
+      fromSlot,
+      toSlot,
+      key:getSdeNightPlacementStepKey(row),
+      order:getSdeNightPlacementStepTimeValue(row) || index + 1
+    };
+    if(!stepsByVehicle.has(token)) stepsByVehicle.set(token, []);
+    stepsByVehicle.get(token).push(step);
+  });
+
+  const stepRoles = new Map();
+  const slotRoles = new Map();
+
+  stepsByVehicle.forEach((steps, token)=>{
+    const sorted = [...steps].sort((a,b) => (a.order - b.order) || (a.index - b.index));
+    const byFrom = new Map();
+    sorted.forEach(step=>{
+      if(!byFrom.has(step.fromSlot)) byFrom.set(step.fromSlot, []);
+      byFrom.get(step.fromSlot).push(step);
+    });
+    byFrom.forEach(list=>list.sort((a,b) => (a.order - b.order) || (a.index - b.index)));
+
+    const toSlots = new Set(sorted.map(step => step.toSlot).filter(Boolean));
+    const physicalSlot = getSdePhysicalSlotForVehicle(sorted[0]?.vehicle);
+    let startSlot = physicalSlot && byFrom.has(physicalSlot)
+      ? physicalSlot
+      : "";
+    if(!startSlot){
+      const rootStep = sorted.find(step => !toSlots.has(step.fromSlot));
+      startSlot = rootStep?.fromSlot || sorted[0]?.fromSlot || "";
+    }
+
+    const ordered = [];
+    const used = new Set();
+    let currentSlot = startSlot;
+    while(currentSlot && byFrom.has(currentSlot)){
+      const nextStep = byFrom.get(currentSlot).find(step => !used.has(step));
+      if(!nextStep) break;
+      ordered.push(nextStep);
+      used.add(nextStep);
+      currentSlot = nextStep.toSlot;
+    }
+    sorted.forEach(step=>{
+      if(!used.has(step)){
+        ordered.push(step);
+        used.add(step);
+      }
+    });
+
+    const total = ordered.length;
+    ordered.forEach((step, routeIndex)=>{
+      const role = total > 1 && routeIndex < total - 1
+        ? "temporary_parking"
+        : "final_planned";
+      const roleInfo = {
+        role,
+        routeIndex,
+        routeCount:total,
+        nextSlot:ordered[routeIndex + 1]?.toSlot || ""
+      };
+      if(step.key) stepRoles.set(step.key, roleInfo);
+      slotRoles.set(`${token}|${step.toSlot}`, {
+        ...roleInfo,
+        vehicle:step.vehicle,
+        fromSlot:step.fromSlot,
+        toSlot:step.toSlot,
+        row:step.row
+      });
+    });
+  });
+
+  return {stepRoles, slotRoles};
+}
+
+function applySdeNightPlacementStepRoles(rows=[]){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const context = buildSdeNightPlacementStepRoleContext(sourceRows);
+  return sourceRows.map(row=>{
+    const key = getSdeNightPlacementStepKey(row);
+    const roleInfo = key ? context.stepRoles.get(key) : null;
+    if(!roleInfo) return row;
+    return {
+      ...row,
+      sdeNightPlacementStepRole:roleInfo.role,
+      sdeNightPlacementStepIndex:roleInfo.routeIndex,
+      sdeNightPlacementStepCount:roleInfo.routeCount,
+      sdeNightPlacementNextSlot:roleInfo.nextSlot
+    };
+  });
+}
+
+function getSdeNightPlacementStepRoleLabel(row){
+  const role = String(row?.sdeNightPlacementStepRole || "").trim();
+  if(role === "temporary_parking") return "MIDLERTIDIG PARKERING";
+  if(role === "final_planned" && Number(row?.sdeNightPlacementStepCount || 0) > 1) return "ENDELIG PLASSERING";
+  return "";
+}
+
 function buildSdeShiftCardMoves(data){
   const baseRows = Array.isArray(data?.moves) ? data.moves : [];
   const effectiveMoves = baseRows
     .map(row => getSdeEffectiveMoveForCard(row, baseRows))
     .filter(row => !isSdeNightPlacementMoveAlreadySatisfied(row));
   const generatedMoves = buildSdeNightPlacementGeneratedMoves(baseRows);
-  return [...effectiveMoves, ...generatedMoves];
+  return applySdeNightPlacementStepRoles([...effectiveMoves, ...generatedMoves]);
 }
 
 function buildSdeNightPlacementCardOverrideHtml(row){
@@ -21831,6 +21982,12 @@ function buildSdeNightPlacementCardOverrideHtml(row){
   const originalSlot = normalizeSlot(row.sdeNightPlacementOriginalRecommendedSlot);
   const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
   const timeText = getSdeNightPlacementTimeStatusText(row);
+  const roleLabel = getSdeNightPlacementStepRoleLabel(row);
+  const roleText = roleLabel === "MIDLERTIDIG PARKERING"
+    ? `Mellomsteg før videre flytting${row.sdeNightPlacementNextSlot ? ` til ${row.sdeNightPlacementNextSlot}` : ""}.`
+    : roleLabel === "ENDELIG PLASSERING"
+      ? "Siste aktive steg i nattplassering-sekvensen."
+      : "";
   const originalReason = String(row.sdeNightPlacementOriginalRecommendationReason || "").trim();
   const conflicts = Array.isArray(row.sdeNightPlacementOverrideConflicts)
     ? row.sdeNightPlacementOverrideConflicts.map(item => String(item || "").trim()).filter(Boolean)
@@ -21843,9 +22000,10 @@ function buildSdeNightPlacementCardOverrideHtml(row){
     : "";
 
   return `<div class="sde-night-card-override">
-    <strong>Overstyrt / Simulert manuell</strong>
+    <strong>${escapeHtml(roleLabel || "Overstyrt / Simulert manuell")}</strong>
     <span>Gjeldende planintensjon: ${escapeHtml(targetSlot || "ukjent målslot")}</span>
     <span>Opprinnelig SDE-forslag: ${escapeHtml(originalSlot || "ukjent")}</span>
+    ${roleText ? `<span>${escapeHtml(roleText)}</span>` : ""}
     ${timeText ? `<span>${escapeHtml(timeText)}</span>` : ""}
     ${originalReasonHtml}
     ${conflictHtml}
@@ -21858,6 +22016,12 @@ function buildSdeNightPlacementGeneratedCardHtml(row){
   const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot);
   const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
   const timeText = getSdeNightPlacementTimeStatusText(row);
+  const roleLabel = getSdeNightPlacementStepRoleLabel(row);
+  const roleText = roleLabel === "MIDLERTIDIG PARKERING"
+    ? `Mellomsteg før videre flytting${row.sdeNightPlacementNextSlot ? ` til ${row.sdeNightPlacementNextSlot}` : ""}.`
+    : roleLabel === "ENDELIG PLASSERING"
+      ? "Siste aktive steg i nattplassering-sekvensen."
+      : "";
   const conflicts = Array.isArray(row.sdeNightPlacementOverrideConflicts)
     ? row.sdeNightPlacementOverrideConflicts.map(item => String(item || "").trim()).filter(Boolean)
     : [];
@@ -21866,11 +22030,27 @@ function buildSdeNightPlacementGeneratedCardHtml(row){
     : "";
 
   return `<div class="sde-night-card-override">
-    <strong>Manuell / Simulert / Opprettet fra nattplassering</strong>
+    <strong>${escapeHtml(roleLabel || "Manuell / Simulert / Opprettet fra nattplassering")}</strong>
     <span>Lokal simulert skiftebevegelse: ${escapeHtml(fromSlot || "ukjent")} → ${escapeHtml(targetSlot || "ukjent")}</span>
+    ${roleText ? `<span>${escapeHtml(roleText)}</span>` : ""}
     ${timeText ? `<span>${escapeHtml(timeText)}</span>` : ""}
     <span>Ikke operativ skifteordre. Ingen server-write.</span>
     ${conflictHtml}
+  </div>`;
+}
+
+function buildSdeNightPlacementStepRoleHtml(row){
+  const roleLabel = getSdeNightPlacementStepRoleLabel(row);
+  if(!roleLabel) return "";
+  const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot);
+  const targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+  const roleText = roleLabel === "MIDLERTIDIG PARKERING"
+    ? `Mellomsteg: ${fromSlot || "ukjent"} → ${targetSlot || "ukjent"} før videre flytting${row?.sdeNightPlacementNextSlot ? ` til ${row.sdeNightPlacementNextSlot}` : ""}.`
+    : `Endelig plassering: ${fromSlot || "ukjent"} → ${targetSlot || "ukjent"}.`;
+
+  return `<div class="sde-night-card-override">
+    <strong>${escapeHtml(roleLabel)}</strong>
+    <span>${escapeHtml(roleText)}</span>
   </div>`;
 }
 
@@ -22190,13 +22370,18 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
   const projectedOccupant = sanitizeVehicleValue(projectedEntry?.vehicle);
   if(projectedOccupant && normalizeVehicleToken(projectedOccupant) !== normalizeVehicleToken(vehicle)){
     if(projectedEntry?.sourceKind === "move"){
+      const isTemporaryTarget = projectedEntry?.stepRole === "temporary_parking";
       return {
         ok:false,
         timeStatus:"CONFLICT_TARGET_OCCUPIED",
         targetSlotOccupant:projectedOccupant,
-        message:`Plassen er allerede brukt av ${projectedOccupant}. Velg en ledig plass eller flytt eksisterende kjøretøy først.`,
-        conflicts:[`Målspor ${targetSlot} er allerede planlagt/reservert av ${projectedOccupant}.`],
-        affectedVehicles:[{slot:targetSlot, vehicle:projectedOccupant, reason:"planlagt occupant"}]
+        message:isTemporaryTarget
+          ? `Plassen er planlagt brukt midlertidig av ${projectedOccupant}. Velg en ledig plass eller endre eksisterende plan først.`
+          : `Plassen er allerede brukt av ${projectedOccupant}. Velg en ledig plass eller flytt eksisterende kjøretøy først.`,
+        conflicts:[isTemporaryTarget
+          ? `Målspor ${targetSlot} er midlertidig reservert av ${projectedOccupant}.`
+          : `Målspor ${targetSlot} er allerede planlagt/reservert av ${projectedOccupant}.`],
+        affectedVehicles:[{slot:targetSlot, vehicle:projectedOccupant, reason:isTemporaryTarget ? "midlertidig reservert occupant" : "planlagt occupant"}]
       };
     }
     return {
@@ -22410,6 +22595,16 @@ function buildSdeNightPlacementEffectiveMoves(data){
       .map(row => normalizeVehicleToken(row?.vehicle))
       .filter(Boolean)
   );
+  const dragOverrideFromSlotsByVehicle = new Map();
+  dragOverrideMoves.forEach(row=>{
+    const token = normalizeVehicleToken(row?.vehicle);
+    const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot);
+    if(!token || !fromSlot) return;
+    if(!dragOverrideFromSlotsByVehicle.has(token)){
+      dragOverrideFromSlotsByVehicle.set(token, new Set());
+    }
+    dragOverrideFromSlotsByVehicle.get(token).add(fromSlot);
+  });
 
   const usedNeedKeys = new Set();
   const usedWrongTrackNeedKeys = new Set();
@@ -22440,12 +22635,19 @@ function buildSdeNightPlacementEffectiveMoves(data){
     const isDragOverride = Boolean(row?.sdeNightPlacementDragOverrideActive);
     const isAdaptive = Boolean(row?.isWrongTrackReplacementMove);
     const hasStoredManualOverride = needKey && manualOverrideNeedKeys.has(needKey);
+    const vehicleToken = normalizeVehicleToken(row?.vehicle);
+    const feedsDragOverride = Boolean(
+      !isDragOverride &&
+      vehicleToken &&
+      targetSlot &&
+      dragOverrideFromSlotsByVehicle.get(vehicleToken)?.has(targetSlot)
+    );
 
     if(isSdeNightPlacementMoveAlreadySatisfied(row)){
       return;
     }
 
-    if(!isDragOverride && ((needKey && dragOverrideNeedKeys.has(needKey)) || dragOverrideVehicleTokens.has(normalizeVehicleToken(row?.vehicle)))){
+    if(!isDragOverride && ((needKey && dragOverrideNeedKeys.has(needKey)) || (!feedsDragOverride && dragOverrideVehicleTokens.has(vehicleToken)))){
       markStale(row, "Simulert manuell nattplassering finnes for samme kjøretøy/behov. Opprinnelig SDE-forslag brukes ikke.");
       return;
     }
@@ -22488,7 +22690,7 @@ function buildSdeNightPlacementEffectiveMoves(data){
     if(vehicleFromKey !== "|") usedVehicleFromKeys.add(vehicleFromKey);
   });
 
-  return {moves, stale};
+  return {moves:applySdeNightPlacementStepRoles(moves), stale};
 }
 
 function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
@@ -22515,7 +22717,11 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       plannedVehicle:"",
       physicalSlot:"",
       row:null,
-      collisionVehicles:[]
+      collisionVehicles:[],
+      stepRole:"",
+      nextSlot:"",
+      routeStepIndex:null,
+      routeStepCount:0
     };
   });
 
@@ -22546,6 +22752,10 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       entry.physicalSlot = "";
       entry.row = null;
       entry.collisionVehicles = [];
+      entry.stepRole = "";
+      entry.nextSlot = "";
+      entry.routeStepIndex = null;
+      entry.routeStepCount = 0;
     });
 
     reservePlacements = reservePlacements.filter(item => normalizeVehicleToken(item.vehicle) !== token);
@@ -22631,6 +22841,14 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     entry.physicalSlot = "";
     entry.row = row || null;
     entry.collisionVehicles = [];
+    entry.stepRole = source === "standing"
+      ? "physical_current"
+      : source === "completedLocked"
+        ? "completed_locked"
+        : String(row?.sdeNightPlacementStepRole || "final_planned").trim();
+    entry.nextSlot = String(row?.sdeNightPlacementNextSlot || "").trim();
+    entry.routeStepIndex = Number.isFinite(Number(row?.sdeNightPlacementStepIndex)) ? Number(row.sdeNightPlacementStepIndex) : null;
+    entry.routeStepCount = Number(row?.sdeNightPlacementStepCount || 0);
   };
 
   const completedLockedSlots = getSdeNightPlacementCompletedLockedSlots();
@@ -22673,6 +22891,7 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     }
 
     const physicalSlot = getSdePhysicalSlotForVehicle(vehicle);
+    const preserveSequenceLayers = Number(row?.sdeNightPlacementStepCount || 0) > 1;
     const physicalOccupant = physicalSlot ? physicalOccupants[physicalSlot] : null;
     const hasPhysicalLayer = Boolean(
       physicalOccupant?.vehicle &&
@@ -22688,7 +22907,9 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
         physicalEntry.plannedRow = row;
       }
     }else{
-      removeVehicleFromPlacement(vehicle);
+      if(!preserveSequenceLayers){
+        removeVehicleFromPlacement(vehicle);
+      }
     }
 
     placeVehicle(targetSlot, vehicle, row, "move");
@@ -22732,9 +22953,14 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     const entries = uniqueSlots
       .map(slot => slots[slot])
       .filter(entry => entry && normalizeVehicleToken(entry.vehicle) === token);
-    const hasHardLayer = entries.some(entry => entry.sourceKind === "standing" || entry.sourceKind === "completedLocked");
-    const hasPlannedLayer = entries.some(entry => entry.sourceKind === "move");
-    if(hasHardLayer && hasPlannedLayer) return;
+    const routeRoles = entries
+      .map(entry => String(entry.stepRole || "").trim())
+      .filter(Boolean);
+    const allowedRouteRoles = new Set(["physical_current", "temporary_parking", "final_planned", "completed_locked"]);
+    const hasDistinctRouteRoles = routeRoles.length === uniqueSlots.length &&
+      new Set(routeRoles).size === routeRoles.length &&
+      routeRoles.every(role => allowedRouteRoles.has(role));
+    if(hasDistinctRouteRoles) return;
     addWarning(
       "duplicate_vehicle",
       `${token} finnes i flere sluttposisjoner: ${uniqueSlots.join(", ")}.`,
@@ -22798,13 +23024,16 @@ function getSdeNightPlacementCompactBadges(entry, row, context={}){
   const vehicle = sanitizeVehicleValue(entry?.vehicle);
   const hasCollision = Boolean(context.hasCollision);
   const timeStatus = String(row?.timeStatus || "").trim();
+  const stepRole = String(entry?.stepRole || row?.sdeNightPlacementStepRole || "").trim();
   const statusInfo = vehicle ? getSdeNightPlacementVehicleStatusInfo(vehicle, slot) : null;
   const status = String(statusInfo?.status || "").trim().toLowerCase();
 
   if(sourceKind === "completedLocked"){
     badges.push({text:"UTF"});
   }else if(sourceKind === "standing"){
-    badges.push({text:"RES"});
+    badges.push({text:"FYS"});
+  }else if(stepRole === "temporary_parking"){
+    badges.push({text:"MIDL", warning:true});
   }else if(!hasCollision && (row?.sdeNightPlacementDragOverrideActive || row?.sdeNightPlacementCardOverrideActive || row?.manualPlanOverrideActive || row?.manualOverrideActive || row?.isNightPlacementGenerated)){
     badges.push({text:"MAN"});
   }else if(!hasCollision && sourceKind === "move"){
@@ -22815,6 +23044,7 @@ function getSdeNightPlacementCompactBadges(entry, row, context={}){
   else if(status === "rep") badges.push({text:"REP"});
 
   if(hasCollision){
+    badges.push({text:"KOLL", warning:true});
     badges.push({text:"VARSEL", warning:true});
   }
 
@@ -22840,6 +23070,11 @@ function buildSdeNightPlacementSlotTitle(slot, entry, context={}){
   if(hasCollision) lines.push("Varsel: Slot-kollisjon");
   if(entry?.trainLabel) lines.push(`Tog: ${entry.trainLabel}`);
   if(entry?.source) lines.push(`Status: ${entry.source}`);
+  if(entry?.stepRole === "temporary_parking"){
+    lines.push(`Midlertidig parkering før videre flytting${entry.nextSlot ? ` til ${entry.nextSlot}` : ""}`);
+  }else if(entry?.stepRole === "final_planned" && Number(entry?.routeStepCount || 0) > 1){
+    lines.push("Endelig planlagt plassering i sekvens");
+  }
   if(context.layerNote) lines.push(context.layerNote);
   if(context.timeStatusText) lines.push(context.timeStatusText);
   if(row?.conflicts?.length) lines.push(`Vurdering: ${row.conflicts.slice(0, 3).join(" · ")}`);
@@ -22870,6 +23105,7 @@ function renderSdeNightPlacementOverview(data){
     const collisionVehicles = getSdeNightPlacementCollisionVehicles(entry);
     const hasCollision = collisionVehicles.length > 1;
     const hasVehicle = Boolean(entry.vehicle || hasCollision);
+    const isTemporary = entry.stepRole === "temporary_parking" && !isHardOccupied && !hasCollision;
     const vehicleText = hasCollision
       ? isHardOccupied
         ? sanitizeVehicleValue(entry.vehicle)
@@ -22877,14 +23113,16 @@ function renderSdeNightPlacementOverview(data){
       : entry.vehicle;
     const timeStatusText = !hasCollision ? getSdeNightPlacementTimeStatusText(row) : "";
     const isSimulated = Boolean(row?.sdeNightPlacementDragOverrideActive);
-    const isPlanned = entry.sourceKind === "move" && hasVehicle && !hasCollision;
+    const isPlanned = entry.sourceKind === "move" && hasVehicle && !hasCollision && !isTemporary;
     const plannedSlot = normalizeSlot(entry.plannedSlot);
     const physicalSlot = normalizeSlot(entry.physicalSlot);
     const layerNote = isPhysical && plannedSlot
       ? `Fysisk nå · planlagt til ${plannedSlot}`
       : isCompletedLocked
         ? "Ikke tilgjengelig · utført plassering"
-        : isPlanned && physicalSlot
+        : isTemporary
+          ? `Midlertidig parkering${entry.nextSlot ? ` · videre til ${entry.nextSlot}` : ""}`
+          : isPlanned && physicalSlot
           ? `Planlagt mål · fysisk nå ${physicalSlot}`
           : "";
     const dragFromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || slot);
@@ -22894,8 +23132,8 @@ function renderSdeNightPlacementOverview(data){
     const draggableAttr = canDragVehicle
       ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-from-slot="${escapeHtml(dragFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(dragNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(dragMoveKey)}" data-sde-night-placement-source-kind="${escapeHtml(entry.sourceKind || "")}"`
       : "";
-    const lockedInfoAttr = isHardOccupied && hasVehicle && !hasCollision
-      ? ` data-sde-night-placement-locked-info="1"`
+    const slotInfoAttr = (isHardOccupied || isTemporary) && hasVehicle && !hasCollision
+      ? ` data-sde-night-placement-info="1"${isHardOccupied ? ` data-sde-night-placement-locked-info="1"` : ""}`
       : "";
     const compactTrainText = getSdeNightPlacementCompactTrainText(entry, hasCollision);
     const compactBadges = getSdeNightPlacementCompactBadges(entry, row, {hasCollision});
@@ -22916,12 +23154,13 @@ function renderSdeNightPlacementOverview(data){
       hasCollision ? "collision" : "",
       isPhysical ? "physical" : "",
       isCompletedLocked ? "completed-locked" : "",
+      isTemporary ? "temporary" : "",
       isPlanned ? "planned" : "",
       isSimulated ? "simulated" : "",
       overview.rejectedSlot === slot ? "drop-rejected" : ""
     ].filter(Boolean).join(" ");
 
-    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}"${lockedInfoAttr}${draggableAttr}${titleAttr}>
+    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}"${slotInfoAttr}${draggableAttr}${titleAttr}>
       <div class="sde-night-placement-address">${escapeHtml(slot)}</div>
       ${hasVehicle
         ? `<div class="sde-night-placement-vehicle">${escapeHtml(vehicleText)}</div>
@@ -23156,9 +23395,9 @@ function setupSdeNightPlacementDragAndDrop(){
       return;
     }
 
-    const lockedSlot = event.target.closest("[data-sde-night-placement-locked-info]");
-    if(!lockedSlot || !panel.contains(lockedSlot)) return;
-    sdeNightPlacementSelectedSlot = normalizeSlot(lockedSlot.dataset.sdeNightPlacementSlot);
+    const infoSlot = event.target.closest("[data-sde-night-placement-info],[data-sde-night-placement-locked-info]");
+    if(!infoSlot || !panel.contains(infoSlot)) return;
+    sdeNightPlacementSelectedSlot = normalizeSlot(infoSlot.dataset.sdeNightPlacementSlot);
     renderSdeSkiftebevegelser();
   });
 
@@ -23287,7 +23526,8 @@ function renderSdeSkiftebevegelserInner(){
         const actionKey = encodeURIComponent(row.sdeNightPlacementOriginalActionKey || getSdeMoveActionKey(row));
         const trackClearanceWindowHtml = buildSdeTrackClearanceWindowHtml(row);
         const manualOverrideControlHtml = buildSdeManualOverrideControlHtml(row, data, index);
-        const nightPlacementOverrideHtml = buildSdeNightPlacementCardOverrideHtml(row) || buildSdeNightPlacementGeneratedCardHtml(row);
+        const nightPlacementStepRoleLabel = getSdeNightPlacementStepRoleLabel(row);
+        const nightPlacementOverrideHtml = buildSdeNightPlacementCardOverrideHtml(row) || buildSdeNightPlacementGeneratedCardHtml(row) || buildSdeNightPlacementStepRoleHtml(row);
 
         return `<article class="sde-shift-card ${priorityClass}" style="--delay:${index * 55}ms">
           <div class="sde-shift-card-top">
@@ -23312,6 +23552,7 @@ function renderSdeSkiftebevegelserInner(){
             <span class="sde-shift-badge ${confidenceClass}">${escapeHtml(String(row.recommendationConfidence || "low").toUpperCase())}</span>
             <span class="sde-shift-badge">Score ${escapeHtml(String(row.recommendationScore ?? ""))}</span>
             <span class="sde-shift-badge">${escapeHtml(row.parkingStrategy || "SDE-anbefaling")}</span>
+            ${nightPlacementStepRoleLabel ? `<span class="sde-shift-badge sde-night-card-override-badge">${escapeHtml(nightPlacementStepRoleLabel)}</span>` : ""}
             ${row.sdeNightPlacementCardOverrideActive ? `<span class="sde-shift-badge sde-night-card-override-badge">OVERSTYRT</span>` : ""}
             ${row.isNightPlacementGenerated ? `<span class="sde-shift-badge sde-night-card-override-badge">MANUELL</span><span class="sde-shift-badge sde-night-card-override-badge">SIMULERT</span><span class="sde-shift-badge sde-night-card-override-badge">OPPRETTET FRA NATTPLASSERING</span>` : ""}
           </div>
