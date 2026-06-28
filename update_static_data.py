@@ -424,6 +424,11 @@ def build_payload(mode: str) -> Dict[str, object]:
         if mode == "imorgen"
         else {}
     )
+    arrival_display_map = {
+        train_no: display_train
+        for train_no, display_train in display_train_numbers.items()
+        if train_no in HARDCODED_ARRIVALS
+    }
 
     return {
         "ok": True,
@@ -437,6 +442,7 @@ def build_payload(mode: str) -> Dict[str, object]:
         "arrivalVehicles": remap_train_keys(arrival_vehicles, departure_display_map),
         "vehicleErrors": remap_train_keys(vehicle_errors, departure_display_map),
         "departures": remap_train_keys(HARDCODED_DEPARTURES, departure_display_map),
+        "arrivalDisplayTrainNumbers": arrival_display_map,
         "arrivals": HARDCODED_ARRIVALS,
         "allowedMaterialPrefixes": ALLOWED_MATERIAL_PREFIXES,
         "materialFormat": ["69-xx", "70-xx", "74-xx", "75-xx"],
