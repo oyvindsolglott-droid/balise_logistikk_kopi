@@ -7268,6 +7268,10 @@ function updateOppstillingDateStatus(){
   const arrivalDate = formatDisplayDate(state.baliseMetaToday?.date);
   const departureDate = formatDisplayDate(state.baliseMetaTomorrow?.date);
   const operational = getOperationalTursattDateLabels();
+  if(operational.departureWindowLabel){
+    el.textContent = `Tursatt viser: ${operational.arrivalLabel} – ${arrivalDate} | ${operational.departureWindowLabel}`;
+    return;
+  }
 
   el.textContent = `Tursatt viser: ${operational.arrivalLabel} – ${arrivalDate} | ${operational.departureLabel} – ${departureDate}`;
 }
@@ -7376,7 +7380,8 @@ function getOperationalTursattDateLabels(now = new Date()){
 
   return {
     arrivalLabel:"Ankomst i dag",
-    departureLabel:"Avgang neste driftsdøgn"
+    departureLabel:"Avgang neste driftsdøgn",
+    departureWindowLabel:`Avgang kveld/natt – ${formatDisplayDate(dates.arrivalDate)} kl. 15:00 til ${formatDisplayDate(dates.departureDate)} kl. 09:00`
   };
 }
 
@@ -9470,22 +9475,99 @@ function sortTimeAndTrainEntries(a,b){
 }
 
 
-function buildDepartureRowsForOppstilling(){
-  return Object.entries(getDepartureMapByMode("imorgen"))
+function parseTursattTimeMinutes(value){
+  const cleanTime = normalizeTimeString(value);
+  const [hh, mm] = cleanTime.split(":").map(Number);
+  if(Number.isNaN(hh) || Number.isNaN(mm)) return null;
+  return hh * 60 + mm;
+}
+
+
+function getTursattDepartureDisplayWindow(now = new Date()){
+  const dates = getOperationalTursattDatesOslo(now);
+  if(dates.window !== "after_15"){
+    return {
+      mode:"existing",
+      sourceMode:"imorgen"
+    };
+  }
+
+  return {
+    mode:"evening_night",
+    todayMode:"idag",
+    tomorrowMode:"imorgen",
+    todayDate:dates.arrivalDate,
+    tomorrowDate:dates.departureDate,
+    todayStartMinutes:15 * 60,
+    tomorrowEndMinutes:9 * 60
+  };
+}
+
+
+function getTursattDepartureServiceDateForMode(mode){
+  return mode === "idag"
+    ? String(state.baliseMetaToday?.date || "")
+    : String(state.baliseMetaTomorrow?.date || "");
+}
+
+
+function buildDepartureRowsForMode(mode, options={}){
+  const cleanMode = mode === "idag" ? "idag" : "imorgen";
+  const departures = getDepartureMapByMode(cleanMode);
+  const serviceDate = options.serviceDate || getTursattDepartureServiceDateForMode(cleanMode);
+  const minMinutes = Number.isInteger(options.minMinutes) ? options.minMinutes : 0;
+  const maxMinutes = Number.isInteger(options.maxMinutes) ? options.maxMinutes : (24 * 60 - 1);
+  const sortOffset = Number.isInteger(options.sortOffset) ? options.sortOffset : 0;
+  const displaySuffix = options.displaySuffix || "";
+
+  return Object.entries(departures)
     .map(([train,time])=>{
       const cleanTime = normalizeTimeString(time);
-      const [hh,mm] = cleanTime.split(":").map(Number);
-      const sortMinutes = Number.isNaN(hh) || Number.isNaN(mm) ? 9999 : (hh * 60 + mm);
-
+      const minutes = parseTursattTimeMinutes(cleanTime);
+      if(minutes === null || minutes < minMinutes || minutes > maxMinutes) return null;
 
       return {
         train: normalizeTognr(train),
         time: cleanTime,
-        displayTime: cleanTime,
-        sortMinutes
+        displayTime: cleanTime ? `${cleanTime}${displaySuffix}` : "",
+        sortMinutes: minutes + sortOffset,
+        mode: cleanMode,
+        serviceDate,
+        dedupeKey:`${serviceDate || cleanMode}:${normalizeTognr(train)}:${cleanTime}`
       };
     })
-    .filter(row=>row.train)
+    .filter(row=>row?.train);
+}
+
+
+function buildDepartureRowsForOppstilling(){
+  const windowInfo = getTursattDepartureDisplayWindow();
+  if(windowInfo.mode !== "evening_night"){
+    return buildDepartureRowsForMode("imorgen")
+      .sort(sortTimeAndTrainEntries);
+  }
+
+  const rows = [
+    ...buildDepartureRowsForMode("idag", {
+      serviceDate:windowInfo.todayDate,
+      minMinutes:windowInfo.todayStartMinutes
+    }),
+    ...buildDepartureRowsForMode("imorgen", {
+      serviceDate:windowInfo.tomorrowDate,
+      maxMinutes:windowInfo.tomorrowEndMinutes,
+      sortOffset:24 * 60,
+      displaySuffix:" +1"
+    })
+  ];
+
+  const seen = new Set();
+  return rows
+    .filter(row=>{
+      const key = row.dedupeKey || `${row.serviceDate || row.mode}:${row.train}:${row.time}`;
+      if(seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .sort(sortTimeAndTrainEntries);
 }
 
@@ -9583,9 +9665,11 @@ function getTursattVehicleCellInfo(train, side, mode){
 }
 
 
-function createOppstillingVehicleCells(train, side){
+function createOppstillingVehicleCells(train, side, modeOverride=""){
   const key = normalizeTognr(train);
-  const mode = side === "departure" ? "imorgen" : "idag";
+  const mode = modeOverride === "idag" || modeOverride === "imorgen"
+    ? modeOverride
+    : (side === "departure" ? "imorgen" : "idag");
   const overrideInfo = getTursattVehicleCellInfo(key, side, mode);
 
   const [vehicle1, vehicle2] = splitVehicleNumbers(overrideInfo.effectiveValue || getVehicleForTrain(key, mode));
@@ -9607,7 +9691,7 @@ function buildSdeTursattVehicleBindings(){
     if(!train || !cleanVehicle) return;
 
     const fieldKey = partIndex === 1 ? "vehicle2" : "vehicle1";
-    const vehicles = createOppstillingVehicleCells(train, side);
+    const vehicles = createOppstillingVehicleCells(train, side, row?.mode);
     const slot = side === "arrival"
       ? getOppstillingSlotText(train, side, partIndex, vehicles)
       : "";
@@ -9630,13 +9714,13 @@ function buildSdeTursattVehicleBindings(){
   }
 
   buildArrivalRowsForOppstilling().forEach(row=>{
-    const vehicles = createOppstillingVehicleCells(row.train, "arrival");
+    const vehicles = createOppstillingVehicleCells(row.train, "arrival", row.mode);
     addBinding(row, "arrival", vehicles.vehicle1, 0);
     addBinding(row, "arrival", vehicles.vehicle2, 1);
   });
 
   buildDepartureRowsForOppstilling().forEach(row=>{
-    const vehicles = createOppstillingVehicleCells(row.train, "departure");
+    const vehicles = createOppstillingVehicleCells(row.train, "departure", row.mode);
     addBinding(row, "departure", vehicles.vehicle1, 0);
     addBinding(row, "departure", vehicles.vehicle2, 1);
   });
@@ -9653,8 +9737,8 @@ function buildSdeTursattVehicleBindings(){
   });
 }
 
-function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=true){
-  const current = createOppstillingVehicleCells(train, side);
+function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=true, modeOverride=""){
+  const current = createOppstillingVehicleCells(train, side, modeOverride);
   const next1 = fieldKey === "vehicle1" ? value : current.vehicle1;
   const next2 = fieldKey === "vehicle2" ? value : current.vehicle2;
 
@@ -9670,8 +9754,8 @@ function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=tr
   persist(true);
 }
 
-function handleOppstillingSwap(train, side){
-  const current = createOppstillingVehicleCells(train, side);
+function handleOppstillingSwap(train, side, modeOverride=""){
+  const current = createOppstillingVehicleCells(train, side, modeOverride);
   const vehicle1 = current.vehicle1;
   const vehicle2 = current.vehicle2;
   if(!vehicle1 || !vehicle2) return;
@@ -9684,7 +9768,7 @@ function handleOppstillingSwap(train, side){
   persist(true);
 }
 
-function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecondMissing){
+function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecondMissing, modeOverride=""){
   td.classList.add("opp-vehicle-cell");
   const input = document.createElement("input");
   input.type = "text";
@@ -9700,10 +9784,10 @@ function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecon
   updateVehicleNumberInputValidation(input, input.value);
   input.addEventListener("input", e=>{
     updateVehicleNumberInputValidation(input, e.target.value);
-    handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, false);
+    handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, false, modeOverride);
     buildSporplan();
   });
-  input.addEventListener("change", e=>handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, true));
+  input.addEventListener("change", e=>handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, true, modeOverride));
   td.appendChild(input);
   appendOppstillingTurneringTarget(td, train, fieldKey);
   if(isSingleSet){
@@ -9744,6 +9828,7 @@ function appendOppstillingSlotCell(tr, train, side, partIndex, vehicles){
 function appendOppstillingSideCells(tr, rowData, side){
   const train = rowData?.train || "";
   const time = rowData?.displayTime || rowData?.time || "";
+  const mode = rowData?.mode || "";
 
   const tdTrain = document.createElement("td");
   tdTrain.textContent = getDisplayTrainNumberForOppstilling(train);
@@ -9754,11 +9839,11 @@ function appendOppstillingSideCells(tr, rowData, side){
   tr.appendChild(tdTime);
 
   const vehicles = train
-    ? createOppstillingVehicleCells(train, side)
+    ? createOppstillingVehicleCells(train, side, mode)
     : {vehicle1:"", vehicle2:"", missingSecond:false};
 
   const tdVehicle1 = document.createElement("td");
-  appendOppstillingVehicleInput(tdVehicle1, train, side, "vehicle1", vehicles.vehicle1, false);
+  appendOppstillingVehicleInput(tdVehicle1, train, side, "vehicle1", vehicles.vehicle1, false, mode);
   tr.appendChild(tdVehicle1);
 
   appendOppstillingSlotCell(tr, train, side, 0, vehicles);
@@ -9771,14 +9856,14 @@ function appendOppstillingSideCells(tr, rowData, side){
     btn.className = "compact opp-swap-btn";
     btn.title = `Bytt rekkefølge for ${train}`;
     btn.textContent = "⇄";
-    btn.addEventListener("click", ()=>handleOppstillingSwap(train, side));
+    btn.addEventListener("click", ()=>handleOppstillingSwap(train, side, mode));
     tdSwap.appendChild(btn);
   }
   tr.appendChild(tdSwap);
 
   const tdVehicle2 = document.createElement("td");
   const showSingleSet = Boolean(vehicles.vehicle1 && vehicles.missingSecond);
-  appendOppstillingVehicleInput(tdVehicle2, train, side, "vehicle2", vehicles.vehicle2, showSingleSet);
+  appendOppstillingVehicleInput(tdVehicle2, train, side, "vehicle2", vehicles.vehicle2, showSingleSet, mode);
   tr.appendChild(tdVehicle2);
 
   appendOppstillingSlotCell(tr, train, side, 1, vehicles);
@@ -9798,7 +9883,7 @@ function hasTursattVehicle(rowData, side){
   const train = normalizeTognr(rowData?.train);
   if(!train) return false;
 
-  const vehicles = createOppstillingVehicleCells(train, side);
+  const vehicles = createOppstillingVehicleCells(train, side, rowData?.mode);
   return isTursattVehicleValue(vehicles.vehicle1) || isTursattVehicleValue(vehicles.vehicle2);
 }
 
@@ -9836,7 +9921,7 @@ function updateTursattFilterUi(hiddenArrivalRows=0, hiddenDepartureRows=0){
   if(status){
     status.textContent = tursattShowUntursattRows
       ? "Viser alle Tursatt-rader"
-      : `Skjuler ${hiddenTotal} ikke-tursatte rader`;
+      : `Skjuler ${hiddenTotal} ikke-tursatte rader i valgt tidsvindu`;
   }
 }
 
