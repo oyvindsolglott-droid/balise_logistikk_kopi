@@ -3311,16 +3311,16 @@ button{padding:12px 12px}
 .sde-night-placement-slot,
 .sde-night-placement-platform,
 .sde-night-placement-spacer{
-  min-height:112px;
+  height:112px;
   border-radius:14px;
   border:1px solid rgba(226,232,240,.14);
-  padding:10px;
+  padding:8px;
 }
 .sde-night-placement-slot{
   position:relative;
   display:grid;
-  grid-template-rows:auto 1fr auto;
-  gap:6px;
+  grid-template-rows:auto minmax(0,1fr) auto;
+  gap:4px;
   background:rgba(15,23,42,.68);
   box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
   overflow:hidden;
@@ -3407,30 +3407,46 @@ button{padding:12px 12px}
   box-shadow:inset 0 0 0 1px rgba(248,113,113,.24);
 }
 .sde-night-placement-address{
+  min-width:0;
   font-size:13px;
   font-weight:1000;
   color:#f8fafc;
+  line-height:1;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 .sde-night-placement-vehicle{
   align-self:center;
+  min-width:0;
   color:#f8fafc;
-  font-size:18px;
+  font-size:17px;
   font-weight:1000;
   line-height:1.05;
-  word-break:break-word;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 .sde-night-placement-train{
+  min-width:0;
   color:#fde68a;
   font-size:11px;
   font-weight:850;
-  line-height:1.25;
+  line-height:1.1;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 .sde-night-placement-source{
+  min-width:0;
   color:#a7f3d0;
   font-size:10px;
   font-weight:850;
-  line-height:1.2;
+  line-height:1.1;
   text-transform:uppercase;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
 }
 .sde-night-placement-layer-note{
   margin-top:3px;
@@ -3438,6 +3454,35 @@ button{padding:12px 12px}
   font-size:10px;
   font-weight:900;
   line-height:1.2;
+}
+.sde-night-placement-badges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:3px;
+  align-items:flex-end;
+  max-height:28px;
+  overflow:hidden;
+}
+.sde-night-placement-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:0;
+  border:1px solid rgba(226,232,240,.18);
+  border-radius:999px;
+  padding:2px 5px;
+  background:rgba(15,23,42,.58);
+  color:#dbeafe;
+  font-size:9px;
+  font-weight:950;
+  line-height:1;
+  letter-spacing:0;
+  white-space:nowrap;
+}
+.sde-night-placement-badge.warning{
+  border-color:rgba(251,191,36,.48);
+  color:#fde68a;
+  background:rgba(113,63,18,.42);
 }
 .sde-night-placement-empty-text{
   align-self:center;
@@ -22696,6 +22741,69 @@ function canDragSdeNightPlacementVehicle(entry, options={}){
   return Boolean(hasVehicle && !hasCollision && sanitizeVehicleValue(entry?.vehicle));
 }
 
+function getSdeNightPlacementCompactTrainText(entry, hasCollision=false){
+  if(hasCollision) return "";
+  const text = String(entry?.trainLabel || "").trim();
+  if(!text || /^Ingen kjent avgang$/i.test(text)) return "";
+  const match = text.match(/\b\d{2,5}(?:\/\d+)?\b/);
+  if(match) return match[0];
+  return text.replace(/\s+kl\.\s+\d{1,2}:\d{2}.*$/i, "").trim();
+}
+
+function getSdeNightPlacementCompactBadges(entry, row, context={}){
+  const badges = [];
+  const sourceKind = String(entry?.sourceKind || "").trim();
+  const slot = normalizeSlot(entry?.slot);
+  const vehicle = sanitizeVehicleValue(entry?.vehicle);
+  const hasCollision = Boolean(context.hasCollision);
+  const timeStatus = String(row?.timeStatus || "").trim();
+  const statusInfo = vehicle ? getSdeNightPlacementVehicleStatusInfo(vehicle, slot) : null;
+  const status = String(statusInfo?.status || "").trim().toLowerCase();
+
+  if(hasCollision){
+    badges.push({text:"VARSEL", warning:true});
+  }else if(sourceKind === "completedLocked"){
+    badges.push({text:"UTF"});
+  }else if(row?.sdeNightPlacementDragOverrideActive || row?.sdeNightPlacementCardOverrideActive || row?.manualPlanOverrideActive || row?.manualOverrideActive || row?.isNightPlacementGenerated){
+    badges.push({text:"MAN"});
+  }else if(sourceKind === "move"){
+    badges.push({text:"SDE"});
+  }else if(sourceKind === "standing"){
+    badges.push({text:"RES"});
+  }
+
+  if(status === "drei") badges.push({text:"DREI"});
+  else if(status === "rep") badges.push({text:"REP"});
+
+  if(timeStatus && !/^OK_TIME_/i.test(timeStatus)){
+    badges.push({text:"VARSEL", warning:true});
+  }
+
+  return badges.filter((badge, index, list) =>
+    list.findIndex(item => item.text === badge.text && Boolean(item.warning) === Boolean(badge.warning)) === index
+  );
+}
+
+function buildSdeNightPlacementSlotTitle(slot, entry, context={}){
+  const normalizedSlot = normalizeSlot(slot);
+  const hasCollision = Boolean(context.hasCollision);
+  const row = entry?.row || null;
+  const lines = [normalizedSlot || "Slot"];
+  const vehicleText = hasCollision
+    ? (Array.isArray(entry?.collisionVehicles) ? entry.collisionVehicles.join(" / ") : "")
+    : sanitizeVehicleValue(entry?.vehicle);
+  if(vehicleText) lines.push(`Kjøretøy: ${vehicleText}`);
+  if(hasCollision) lines.push("Varsel: Slot-kollisjon");
+  if(entry?.trainLabel) lines.push(`Tog: ${entry.trainLabel}`);
+  if(entry?.source) lines.push(`Status: ${entry.source}`);
+  if(context.layerNote) lines.push(context.layerNote);
+  if(context.timeStatusText) lines.push(context.timeStatusText);
+  if(row?.conflicts?.length) lines.push(`Vurdering: ${row.conflicts.slice(0, 3).join(" · ")}`);
+  if(context.lockedText) lines.push(context.lockedText);
+  if(!vehicleText && !entry?.source) lines.push("Ledig");
+  return lines.filter(Boolean).join("\n");
+}
+
 function renderSdeNightPlacementOverview(data){
   const overview = buildSdeNightPlacementOverviewData(data);
   const columnLabels = ["12","11","10","9","8","7","","6","5","4","3","","2","1"];
@@ -22738,8 +22846,20 @@ function renderSdeNightPlacementOverview(data){
       ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-from-slot="${escapeHtml(dragFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(dragNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(dragMoveKey)}" data-sde-night-placement-source-kind="${escapeHtml(entry.sourceKind || "")}"`
       : "";
     const lockedInfoAttr = isHardOccupied && hasVehicle && !hasCollision
-      ? ` data-sde-night-placement-locked-info="1" title="Ikke tilgjengelig for nytt kjøretøy"`
+      ? ` data-sde-night-placement-locked-info="1"`
       : "";
+    const compactTrainText = getSdeNightPlacementCompactTrainText(entry, hasCollision);
+    const compactBadges = getSdeNightPlacementCompactBadges(entry, row, {hasCollision});
+    const compactBadgesHtml = compactBadges.length
+      ? `<div class="sde-night-placement-badges">${compactBadges.map(badge => `<span class="sde-night-placement-badge ${badge.warning ? "warning" : ""}">${escapeHtml(badge.text)}</span>`).join("")}</div>`
+      : "";
+    const slotTitle = buildSdeNightPlacementSlotTitle(slot, entry, {
+      hasCollision,
+      layerNote,
+      timeStatusText,
+      lockedText:isHardOccupied ? "Ikke tilgjengelig for nytt kjøretøy" : ""
+    });
+    const titleAttr = slotTitle ? ` title="${escapeHtml(slotTitle)}"` : "";
     const classes = [
       "sde-night-placement-slot",
       slotKind(slot),
@@ -22752,15 +22872,13 @@ function renderSdeNightPlacementOverview(data){
       overview.rejectedSlot === slot ? "drop-rejected" : ""
     ].filter(Boolean).join(" ");
 
-    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}"${lockedInfoAttr}${draggableAttr}>
+    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}"${lockedInfoAttr}${draggableAttr}${titleAttr}>
       <div class="sde-night-placement-address">${escapeHtml(slot)}</div>
       ${hasVehicle
         ? `<div class="sde-night-placement-vehicle">${escapeHtml(vehicleText)}</div>
            <div>
-             <div class="sde-night-placement-train">${escapeHtml(hasCollision ? "Slot-kollisjon" : entry.trainLabel || "Ingen kjent avgang")}</div>
-             <div class="sde-night-placement-source">${escapeHtml(hasCollision ? "Varsel" : entry.source || "SDE")}</div>
-             ${layerNote ? `<div class="sde-night-placement-layer-note">${escapeHtml(layerNote)}</div>` : ""}
-             ${timeStatusText ? `<div class="sde-night-placement-time-status">${escapeHtml(timeStatusText)}</div>` : ""}
+             ${compactTrainText ? `<div class="sde-night-placement-train">${escapeHtml(compactTrainText)}</div>` : ""}
+             ${compactBadgesHtml}
            </div>`
         : `<div class="sde-night-placement-empty-text">Tom</div><div class="sde-night-placement-source">Ledig</div>`}
     </div>`;
