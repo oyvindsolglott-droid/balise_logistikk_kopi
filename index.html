@@ -1488,6 +1488,58 @@ font-size:14px;
 line-height:1;
 }
 
+#oppstillingTable .opp-split-remove-cell{
+background:#fff7ed;
+box-shadow:inset 0 0 0 2px rgba(194,65,12,.18);
+}
+
+#oppstillingTable .opp-split-remove-cell .opp-vehicle-input{
+font-weight:800;
+border-color:#c2410c;
+background:#fffaf5;
+color:#7c2d12;
+}
+
+.opp-split-remove-hint{
+margin-top:3px;
+font-size:10px;
+line-height:1;
+font-weight:800;
+letter-spacing:.02em;
+text-transform:uppercase;
+color:#9a3412;
+text-align:center;
+}
+
+.tursatt-flow-diagnostics{
+display:none;
+margin-top:12px;
+border:1px solid #fed7aa;
+border-radius:12px;
+background:#fff7ed;
+padding:12px;
+color:#7c2d12;
+}
+
+.tursatt-flow-diagnostics.is-active{
+display:block;
+}
+
+.tursatt-flow-diagnostics strong{
+display:block;
+margin-bottom:6px;
+color:#7c2d12;
+}
+
+.tursatt-flow-diagnostics ul{
+margin:0;
+padding-left:18px;
+}
+
+.tursatt-flow-diagnostics li{
+margin:5px 0;
+}
+
 /* Bredere og symmetrisk Tursatt-visning på laptop/desktop */
 @media (min-width:900px){
   #oppstilling.panel{
@@ -6299,6 +6351,7 @@ Rep-/verkstedstatus er lagt inn med ulik tekst i stedet for standardkode</pre>
       <table id="oppstillingTable"></table>
     </div>
   </div>
+  <div class="tursatt-flow-diagnostics" id="tursattFlowDiagnostics" aria-live="polite"></div>
 </div>
 
 
@@ -9572,6 +9625,406 @@ function buildDepartureRowsForOppstilling(){
 }
 
 
+let tursattFlowAnalysisCache = null;
+
+function normalizeTursattVehicle(value){
+  const clean = sanitizeVehicleValue(value);
+  if(!clean) return "";
+
+  const normalized = clean.toUpperCase().replace(/\s+/g, "");
+  const match = normalized.match(/^(69|70|72|74|75)-?(\d{2})$/);
+  if(!match) return "";
+
+  return `${match[1]}-${match[2]}`;
+}
+
+function getTursattVehiclePositionsFromCells(vehicles){
+  return [
+    {vehicle:normalizeTursattVehicle(vehicles?.vehicle1), position:"1"},
+    {vehicle:normalizeTursattVehicle(vehicles?.vehicle2), position:"2"}
+  ].filter(item => item.vehicle);
+}
+
+function getTursattFlowSequenceMinutes(row, role){
+  if(Number.isFinite(row?.sortMinutes)) return Number(row.sortMinutes);
+
+  const minutes = parseTursattTimeMinutes(row?.time || row?.displayTime);
+  if(minutes === null) return 99999;
+
+  if(role === "departure" && minutes < (12 * 60)) return minutes + 1440;
+  if(role === "arrival" && row?.nextDay) return minutes + 1440;
+  return minutes;
+}
+
+function buildTursattArrivalVehicleEvents(){
+  const serviceDate = String(state.baliseMetaToday?.date || "");
+  return buildArrivalRowsForOppstilling()
+    .map(row=>{
+      const vehicles = createOppstillingVehicleCells(row.train, "arrival", row.mode);
+      const positionedVehicles = getTursattVehiclePositionsFromCells(vehicles);
+      if(!positionedVehicles.length) return null;
+
+      return {
+        source:"arrival",
+        trainNumber:normalizeTognr(row.train),
+        time:String(row.time || "").trim(),
+        displayTime:String(row.displayTime || row.time || "").trim(),
+        serviceDate,
+        sequenceMinutes:getTursattFlowSequenceMinutes(row, "arrival"),
+        vehicles:positionedVehicles.map(item => item.vehicle),
+        vehiclePositions:Object.fromEntries(positionedVehicles.map(item => [item.vehicle, item.position])),
+        raw:row
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildTursattDepartureVehicleEvents(){
+  return buildDepartureRowsForOppstilling()
+    .map(row=>{
+      const vehicles = createOppstillingVehicleCells(row.train, "departure", row.mode);
+      const positionedVehicles = getTursattVehiclePositionsFromCells(vehicles);
+      if(!positionedVehicles.length) return null;
+
+      return {
+        source:"departure",
+        trainNumber:normalizeTognr(row.train),
+        time:String(row.time || "").trim(),
+        displayTime:String(row.displayTime || row.time || "").trim(),
+        serviceDate:String(row.serviceDate || getTursattDepartureServiceDateForMode(row.mode) || ""),
+        sequenceMinutes:getTursattFlowSequenceMinutes(row, "departure"),
+        vehicles:positionedVehicles.map(item => item.vehicle),
+        vehiclePositions:Object.fromEntries(positionedVehicles.map(item => [item.vehicle, item.position])),
+        raw:row
+      };
+    })
+    .filter(Boolean);
+}
+
+function getTursattSetPositionForVehicle(event, vehicle){
+  const token = normalizeTursattVehicle(vehicle);
+  return token ? String(event?.vehiclePositions?.[token] || "") : "";
+}
+
+function isTursattEightSeriesTrain(trainNumber){
+  const train = normalizeTognr(trainNumber);
+  return /^8\d{2}$/.test(train) || /^808\d{2}$/.test(train) || /^908\d{2}$/.test(train);
+}
+
+function getTursattTrainFamily(trainNumber){
+  const train = normalizeTognr(trainNumber);
+  if(/^808\d{2}$/.test(train)) return "808xx";
+  if(/^908\d{2}$/.test(train)) return "908xx";
+  if(/^8\d{2}$/.test(train)) return "8xx";
+  return "";
+}
+
+function getSdeSplitJoinRouteForEightSeries({actionType, position, trainNumber}={}){
+  const train = normalizeTognr(trainNumber);
+  const pos = String(position || "").trim();
+  const family = getTursattTrainFamily(train);
+
+  if(!family){
+    return {
+      route:"",
+      text:"Skiftevei ikke bestemt av 8xx-regelen; manuell vurdering nødvendig."
+    };
+  }
+
+  if(pos !== "1" && pos !== "2"){
+    return {
+      route:"",
+      text:"Skiftevei ukjent – /1 eller /2 kan ikke bestemmes sikkert. Manuell vurdering nødvendig."
+    };
+  }
+
+  if(actionType === "split_remove"){
+    if(pos === "1"){
+      return {
+        route:"nordenden/vaskemaskinen",
+        text:`Deling: ${train}/1 skal skiftes bort via nordenden/vaskemaskinen.`
+      };
+    }
+    return {
+      route:"brua/sørenden",
+      text:`Deling: ${train}/2 skal skiftes bort via brua/sørenden inn mot driftsbanegården.`
+    };
+  }
+
+  if(actionType === "join_add"){
+    if(pos === "1"){
+      return {
+        route:"brua/sørenden",
+        text:`Skjøting: ${train}/1 skal skjøtes på via brua og inn i sørenden av stasjonen.`
+      };
+    }
+    return {
+      route:"nordenden/vaskemaskinen",
+      text:`Skjøting: ${train}/2 skal skjøtes på via vaskemaskinen/nordenden.`
+    };
+  }
+
+  return {
+    route:"",
+    text:"Skiftevei krever manuell vurdering."
+  };
+}
+
+function tursattVehicleSet(values){
+  return new Set((Array.isArray(values) ? values : [])
+    .map(normalizeTursattVehicle)
+    .filter(Boolean));
+}
+
+function tursattIsSubset(a, b){
+  for(const value of a){
+    if(!b.has(value)) return false;
+  }
+  return true;
+}
+
+function findNextDepartureUsingVehicle(arrival, departures){
+  const arrivalVehicles = tursattVehicleSet(arrival?.vehicles);
+  if(!arrivalVehicles.size) return null;
+
+  const maxSequenceMinutes = (arrival?.sequenceMinutes ?? 0) + (16 * 60);
+
+  return (Array.isArray(departures) ? departures : [])
+    .filter(departure =>
+      Number.isFinite(departure?.sequenceMinutes) &&
+      departure.sequenceMinutes > arrival.sequenceMinutes &&
+      departure.sequenceMinutes <= maxSequenceMinutes
+    )
+    .map(departure=>{
+      const departureVehicles = tursattVehicleSet(departure.vehicles);
+      const overlap = [...arrivalVehicles].filter(vehicle => departureVehicles.has(vehicle));
+      return {departure, overlapCount:overlap.length};
+    })
+    .filter(item => item.overlapCount > 0)
+    .sort((a,b)=>{
+      if(b.overlapCount !== a.overlapCount) return b.overlapCount - a.overlapCount;
+      return a.departure.sequenceMinutes - b.departure.sequenceMinutes;
+    })[0]?.departure || null;
+}
+
+function formatTursattFlowEventVehicles(event){
+  const train = normalizeTognr(event?.trainNumber);
+  return (Array.isArray(event?.vehicles) ? event.vehicles : [])
+    .map(vehicle=>{
+      const position = getTursattSetPositionForVehicle(event, vehicle);
+      return `${train}${position ? `/${position}` : ""} ${vehicle}`;
+    })
+    .join(" + ");
+}
+
+function getTursattFlowSplitMarkKey(train, position, vehicle){
+  const normalizedTrain = normalizeTognr(train);
+  const normalizedPosition = String(position || "").trim();
+  const normalizedVehicle = normalizeTursattVehicle(vehicle);
+  if(!normalizedTrain || !normalizedPosition || !normalizedVehicle) return "";
+  return `${normalizedTrain}|${normalizedPosition}|${normalizedVehicle}`;
+}
+
+function buildTursattFlowDiagnostic(arrival, departure){
+  const arrivalSet = tursattVehicleSet(arrival?.vehicles);
+  const departureSet = tursattVehicleSet(departure?.vehicles);
+  if(!arrivalSet.size || !departureSet.size) return null;
+
+  const overlap = [...arrivalSet].filter(vehicle => departureSet.has(vehicle));
+  if(!overlap.length) return null;
+
+  const removed = [...arrivalSet].filter(vehicle => !departureSet.has(vehicle));
+  const added = [...departureSet].filter(vehicle => !arrivalSet.has(vehicle));
+  const sameSet = arrivalSet.size === departureSet.size && removed.length === 0 && added.length === 0;
+  const departureSubsetOfArrival = tursattIsSubset(departureSet, arrivalSet);
+  const arrivalSubsetOfDeparture = tursattIsSubset(arrivalSet, departureSet);
+
+  let type = "full";
+  if(sameSet){
+    type = "full";
+  }else if(departureSubsetOfArrival && removed.length){
+    type = "split";
+  }else if(arrivalSubsetOfDeparture && added.length){
+    type = "join";
+  }else if(removed.length || added.length){
+    type = "mixed";
+  }
+
+  const splitRemovals = removed.map(vehicle=>{
+    const position = getTursattSetPositionForVehicle(arrival, vehicle);
+    const route = getSdeSplitJoinRouteForEightSeries({
+      actionType:"split_remove",
+      position,
+      trainNumber:arrival.trainNumber
+    });
+    return {
+      vehicle,
+      position,
+      route,
+      markKey:getTursattFlowSplitMarkKey(arrival.trainNumber, position, vehicle)
+    };
+  });
+
+  const joinAdds = added.map(vehicle=>{
+    const position = getTursattSetPositionForVehicle(departure, vehicle);
+    const route = getSdeSplitJoinRouteForEightSeries({
+      actionType:"join_add",
+      position,
+      trainNumber:departure.trainNumber
+    });
+    const currentSlot = normalizeSlot(getSdeCurrentSlotForVehicle(vehicle));
+    return {
+      vehicle,
+      position,
+      route,
+      currentSlot
+    };
+  });
+
+  return {
+    key:`${type}:${arrival.trainNumber}:${arrival.time}:${departure.trainNumber}:${departure.time}:${[...arrivalSet].join(",")}:${[...departureSet].join(",")}`,
+    type,
+    arrival,
+    departure,
+    overlap,
+    removed,
+    added,
+    splitRemovals,
+    joinAdds
+  };
+}
+
+function analyzeTursattVehicleFlow(){
+  const arrivals = buildTursattArrivalVehicleEvents();
+  const departures = buildTursattDepartureVehicleEvents();
+  const diagnostics = [];
+  const splitRemoveMarks = new Map();
+  const seen = new Set();
+
+  arrivals.forEach(arrival=>{
+    const departure = findNextDepartureUsingVehicle(arrival, departures);
+    if(!departure) return;
+
+    const diagnostic = buildTursattFlowDiagnostic(arrival, departure);
+    if(!diagnostic || diagnostic.type === "full" || seen.has(diagnostic.key)) return;
+    seen.add(diagnostic.key);
+    diagnostics.push(diagnostic);
+
+    diagnostic.splitRemovals.forEach(item=>{
+      if(!item.markKey) return;
+      splitRemoveMarks.set(item.markKey, {
+        ...item,
+        diagnostic
+      });
+    });
+  });
+
+  return {
+    arrivals,
+    departures,
+    diagnostics,
+    splitRemoveMarks
+  };
+}
+
+function getTursattFlowAnalysis(){
+  if(!tursattFlowAnalysisCache){
+    tursattFlowAnalysisCache = analyzeTursattVehicleFlow();
+  }
+  return tursattFlowAnalysisCache;
+}
+
+function getTursattSplitRemovalMark(train, side, mode, fieldKey, vehicle){
+  if(side !== "arrival") return null;
+
+  const position = fieldKey === "vehicle2" ? "2" : "1";
+  const key = getTursattFlowSplitMarkKey(train, position, vehicle);
+  if(!key) return null;
+
+  return getTursattFlowAnalysis().splitRemoveMarks.get(key) || null;
+}
+
+function formatTursattFlowDiagnosticText(item){
+  if(!item) return "";
+
+  const arrivalText = `${item.arrival.trainNumber} kl. ${item.arrival.displayTime || item.arrival.time}: ${formatTursattFlowEventVehicles(item.arrival)}`;
+  const departureText = `${item.departure.trainNumber} kl. ${item.departure.displayTime || item.departure.time}: ${formatTursattFlowEventVehicles(item.departure)}`;
+
+  if(item.type === "split"){
+    const removedText = item.splitRemovals.map(removal =>
+      `${removal.vehicle} blir igjen. ${removal.route.text}`
+    ).join(" ");
+    return `Deling oppdaget: Ankomst ${arrivalText}. Avgang ${departureText}. ${removedText}`;
+  }
+
+  if(item.type === "join"){
+    const addedText = item.joinAdds.map(add =>
+      `${add.vehicle} må skjøtes på${add.currentSlot ? ` fra ${add.currentSlot}` : " fra ukjent spor"}. ${add.route.text}`
+    ).join(" ");
+    return `Skjøting oppdaget: Ankomst ${arrivalText}. Avgang ${departureText}. ${addedText}`;
+  }
+
+  const removedText = item.splitRemovals.length
+    ? `Blir igjen: ${item.splitRemovals.map(removal => `${removal.vehicle}${removal.position ? ` (${item.arrival.trainNumber}/${removal.position})` : ""}`).join(", ")}.`
+    : "";
+  const addedText = item.joinAdds.length
+    ? `Kommer til: ${item.joinAdds.map(add => `${add.vehicle}${add.position ? ` (${item.departure.trainNumber}/${add.position})` : ""}`).join(", ")}.`
+    : "";
+
+  return `Delvis bytte / manuell vurdering: Ankomst ${arrivalText}. Avgang ${departureText}. ${removedText} ${addedText}`.trim();
+}
+
+function renderTursattFlowDiagnostics(){
+  const container = document.getElementById("tursattFlowDiagnostics");
+  if(!container) return;
+
+  const diagnostics = getTursattFlowAnalysis().diagnostics || [];
+  if(!diagnostics.length){
+    container.classList.remove("is-active");
+    container.innerHTML = "";
+    return;
+  }
+
+  container.classList.add("is-active");
+  container.innerHTML = `
+    <strong>Tursatt/SDE-diagnose – deling og skjøting</strong>
+    <div>Analysegrunnlag. Dette er ikke Utført/Annullert og ikke operativ ordre.</div>
+    <ul>
+      ${diagnostics.slice(0, 8).map(item => `<li>${escapeHtml(formatTursattFlowDiagnosticText(item))}</li>`).join("")}
+    </ul>
+  `;
+}
+
+function buildTursattSplitJoinSdeDiagnosticHtml(){
+  const diagnostics = getTursattFlowAnalysis().diagnostics || [];
+  if(!diagnostics.length) return "";
+
+  return buildSdeDiagnosticSectionHtml({
+    id:"tursatt-split-join",
+    title:"Tursatt – deling/skjøting",
+    count:diagnostics.length,
+    bodyHtml:diagnostics.map(item => {
+      const title = item.type === "split"
+        ? "Deling / parkeres"
+        : item.type === "join"
+          ? "Skjøting / må hentes"
+          : "Delvis bytte / manuell vurdering";
+      const extra = item.type === "join"
+        ? item.joinAdds.map(add =>
+            add.currentSlot
+              ? `${add.vehicle}: kjent spor ${add.currentSlot}.`
+              : `${add.vehicle}: kjent spor mangler, ikke lag automatisk flyttekort.`
+          ).join(" ")
+        : item.type === "split"
+          ? "Kjøretøy som blir igjen er markert i Tursatt-tabellen. Målspor må vurderes mot SDE Nattplassering/Sporplan før eventuell handling."
+          : "Både deling og skjøting er indikert. Kontroller manuelt før eventuell skifteplan.";
+
+      return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(title)}</strong><br>${escapeHtml(formatTursattFlowDiagnosticText(item))}<br>${escapeHtml(extra)}</div>`;
+    }).join("")
+  });
+}
+
+
 function buildArrivalRowsForOppstilling(){
   return Object.entries(getArrivalMapByMode("idag"))
     .map(([train,info])=>{
@@ -9790,6 +10243,17 @@ function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecon
   input.addEventListener("change", e=>handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, true, modeOverride));
   td.appendChild(input);
   appendOppstillingTurneringTarget(td, train, fieldKey);
+
+  const splitRemovalMark = getTursattSplitRemovalMark(train, side, modeOverride, fieldKey, value);
+  if(splitRemovalMark){
+    td.classList.add("opp-split-remove-cell");
+    input.title = "Deling: kjøretøyet går ikke videre med neste avgang og må skiftes/parkeres.";
+    const hint = document.createElement("div");
+    hint.className = "opp-split-remove-hint";
+    hint.textContent = "deling";
+    td.appendChild(hint);
+  }
+
   if(isSingleSet){
     td.classList.add("opp-missing-second");
     td.title = "Enkeltsett – ingen kjøretøy 2";
@@ -10029,6 +10493,7 @@ function buildOppstillingMobileHeader(){
 }
 
 function buildOppstilling(){
+  tursattFlowAnalysisCache = null;
   const table=document.getElementById("oppstillingTable");
   table.innerHTML="";
 
@@ -10080,6 +10545,7 @@ function buildOppstilling(){
 
   table.appendChild(body);
   updateTursattFilterUi(arrivalFilter.hidden, departureFilter.hidden);
+  renderTursattFlowDiagnostics();
   buildOppstillingMobileHeader();
 }
 
@@ -23594,6 +24060,7 @@ function renderSdeSkiftebevegelserInner(){
         ].join("")
       })
     : "";
+  const tursattSplitJoinDiagnosticsHtml = buildTursattSplitJoinSdeDiagnosticHtml();
   const unresolvedKpiExpanded = Boolean(sdeUnresolvedDetailsVisible && unresolvedCount > 0);
   const learningDiagnosticsHtml = "";
   const cardMoves = buildSdeShiftCardMoves(data);
@@ -24034,6 +24501,7 @@ function renderSdeSkiftebevegelserInner(){
     <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
     ${pastDepartureDiagnosticsHtml}
     ${filteredReservationImpactDiagnosticsHtml}
+    ${tursattSplitJoinDiagnosticsHtml}
     ${linearTrackDiagnosticsHtml}
     ${pairDiagnosticsHtml}
     ${packageDiagnosticsHtml}
