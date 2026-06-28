@@ -24998,7 +24998,7 @@ function getActiveAccessLevel(){
 }
 
 function isTabAllowedAtCurrentLevel(tabName){
-  if(isLockedTxpEntry()) return tabName === getTxpTabId();
+  if(isLockedTxpEntry()) return isAllowedTxpRestrictedTab(tabName);
   const level = getActiveAccessLevel();
   const btn = document.querySelector(`.seg[data-tab="${tabName}"]`);
   if(!btn) return true;
@@ -25018,6 +25018,14 @@ function getDefaultTabForCurrentLevel(){
 const ACTIVE_TAB_SESSION_KEY = "sde_active_tab_session_v1";
 const TXP_RESTRICTED_ENTRY_TOKEN = "txp-n2-7f4c9a";
 const TXP_RESTRICTED_TAB_ID = "grunnoppstilling";
+const TXP_RESTRICTED_ALLOWED_TABS = Object.freeze([
+  "oppstilling",
+  "sdeSkiftebevegelser",
+  "sporplan",
+  "grunnoppstilling",
+  "turneringKveld",
+  "turneringNatt"
+]);
 
 function getLockedEntryFromUrl(){
   try{
@@ -25035,8 +25043,17 @@ function getTxpTabId(){
   return TXP_RESTRICTED_TAB_ID;
 }
 
+function getTxpRestrictedAllowedTabs(){
+  return TXP_RESTRICTED_ALLOWED_TABS;
+}
+
+function isAllowedTxpRestrictedTab(tabId){
+  return getTxpRestrictedAllowedTabs().includes(String(tabId || ""));
+}
+
 function enforceTxpRestrictedTabAccess(tabId){
-  return isLockedTxpEntry() ? getTxpTabId() : tabId;
+  if(!isLockedTxpEntry()) return tabId;
+  return isAllowedTxpRestrictedTab(tabId) ? tabId : getTxpTabId();
 }
 
 function updateTxpRestrictedEntryUi(){
@@ -25063,11 +25080,11 @@ function applyAccessLevel(){
   document.querySelectorAll(".seg").forEach(btn=>{
     if(btn.style.display === "none") return;
     const allowed = isLockedTxpEntry()
-      ? btn.dataset.tab === getTxpTabId()
+      ? isAllowedTxpRestrictedTab(btn.dataset.tab)
       : String(btn.dataset.levels || "0").split(/\s+/).includes(level);
     btn.classList.toggle("level-hidden", !allowed);
-    btn.disabled = isLockedTxpEntry() && btn.dataset.tab !== getTxpTabId();
-    btn.setAttribute("aria-hidden", isLockedTxpEntry() && btn.dataset.tab !== getTxpTabId() ? "true" : "false");
+    btn.disabled = isLockedTxpEntry() && !isAllowedTxpRestrictedTab(btn.dataset.tab);
+    btn.setAttribute("aria-hidden", isLockedTxpEntry() && !isAllowedTxpRestrictedTab(btn.dataset.tab) ? "true" : "false");
   });
 
   const activeBtn = document.querySelector(".seg.active");
@@ -25111,16 +25128,17 @@ function rememberActiveTab(name){
 }
 
 function getRememberedActiveTab(){
-  if(isLockedTxpEntry()) return getTxpTabId();
   const stored = String(sessionStorage.getItem(ACTIVE_TAB_SESSION_KEY) || "").trim();
   if(!stored) return "";
+  if(isLockedTxpEntry()){
+    return isAllowedTxpRestrictedTab(stored) ? stored : "";
+  }
   const exists = Array.from(document.querySelectorAll(".seg")).some(btn => btn.dataset.tab === stored);
   if(exists) return stored;
   return stored === "hjelp" ? stored : "";
 }
 
 function getStartupTabFromUrl(){
-  if(isLockedTxpEntry()) return getTxpTabId();
   const params = new URLSearchParams(window.location.search);
   const requestedTab = String(params.get("tab") || "").trim();
   if(!requestedTab) return "";
@@ -25128,6 +25146,9 @@ function getStartupTabFromUrl(){
   const exists = Array.from(document.querySelectorAll(".seg"))
     .some(btn => btn.dataset.tab === requestedTab);
 
+  if(isLockedTxpEntry()){
+    return exists && isAllowedTxpRestrictedTab(requestedTab) ? requestedTab : "";
+  }
   return exists ? requestedTab : "";
 }
 
@@ -27697,7 +27718,7 @@ updateTopDataStatus();
 updateBaliseViewState();
 renderApiTables();
 initDesktopWheelPassThrough();
-const rememberedStartupTab = startupTabFromUrl || getRememberedActiveTab() || "oppstilling";
+const rememberedStartupTab = startupTabFromUrl || getRememberedActiveTab() || getDefaultTabForCurrentLevel();
 activateTab(rememberedStartupTab);
 markSaved("Klar");
 renderServerStatusIdle();
