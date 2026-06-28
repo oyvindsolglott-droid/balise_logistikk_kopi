@@ -6659,6 +6659,8 @@ function makeDefaultState(){
     baliseTomorrow:{},
     baliseTodayDepartures:{},
     baliseTomorrowDepartures:{},
+    baliseTodayVehicleErrors:{},
+    baliseTomorrowVehicleErrors:{},
     baliseMetaToday:null,
     baliseMetaTomorrow:null,
     baliseSelectedMode:"idag",
@@ -6716,6 +6718,8 @@ if(!state.baliseToday) state.baliseToday={};
 if(!state.baliseTomorrow) state.baliseTomorrow={};
 if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
+if(!state.baliseTodayVehicleErrors || typeof state.baliseTodayVehicleErrors !== "object" || Array.isArray(state.baliseTodayVehicleErrors)) state.baliseTodayVehicleErrors={};
+if(!state.baliseTomorrowVehicleErrors || typeof state.baliseTomorrowVehicleErrors !== "object" || Array.isArray(state.baliseTomorrowVehicleErrors)) state.baliseTomorrowVehicleErrors={};
 if(typeof state.demoMode !== "string") state.demoMode="";
 if(!("preDemoSnapshot" in state)) state.preDemoSnapshot=null;
 if(!state.baliseTodayArrivals) state.baliseTodayArrivals={};
@@ -6883,6 +6887,16 @@ function getDepartureVehicleMapByMode(mode){
     ...(Object.keys(baliseMap).length ? baliseMap : fallbackMap),
     ...manualMap
   };
+}
+
+function normalizeVehicleErrorMap(errors){
+  if(!errors || typeof errors !== "object" || Array.isArray(errors)) return {};
+
+  return Object.fromEntries(
+    Object.entries(errors)
+      .map(([train,message]) => [normalizeTognr(train), String(message || "").trim()])
+      .filter(([train,message]) => train && message)
+  );
 }
 
 
@@ -8920,7 +8934,7 @@ function buildTurnering(tableId,key){
         inp.autocapitalize="off";
         inp.autocorrect="off";
         inp.spellcheck=false;
-        inp.value=(k==="b") ? getDisplayTrainNumber(row[k]) : (row[k]||"");
+        inp.value=(k==="b") ? getDisplayTrainNumberForMode(row[k], isKveld ? "idag" : "imorgen") : (row[k]||"");
 
         const isVehicleSourceLocked = (k==="c" || k==="g");
         const isLocked = (k==="a" || k==="b" || isVehicleSourceLocked);
@@ -9667,6 +9681,7 @@ function buildTursattArrivalVehicleEvents(){
       return {
         source:"arrival",
         trainNumber:normalizeTognr(row.train),
+        displayTrainNumber:getDisplayTrainNumberForOppstilling(row.train, "arrival", row.mode),
         time:String(row.time || "").trim(),
         displayTime:String(row.displayTime || row.time || "").trim(),
         serviceDate,
@@ -9689,6 +9704,7 @@ function buildTursattDepartureVehicleEvents(){
       return {
         source:"departure",
         trainNumber:normalizeTognr(row.train),
+        displayTrainNumber:getDisplayTrainNumberForOppstilling(row.train, "departure", row.mode),
         time:String(row.time || "").trim(),
         displayTime:String(row.displayTime || row.time || "").trim(),
         serviceDate:String(row.serviceDate || getTursattDepartureServiceDateForMode(row.mode) || ""),
@@ -9808,7 +9824,7 @@ function findNextDepartureUsingVehicle(arrival, departures){
 }
 
 function formatTursattFlowEventVehicles(event){
-  const train = normalizeTognr(event?.trainNumber);
+  const train = normalizeTognr(event?.displayTrainNumber || event?.trainNumber);
   return (Array.isArray(event?.vehicles) ? event.vehicles : [])
     .map(vehicle=>{
       const position = getTursattSetPositionForVehicle(event, vehicle);
@@ -9855,7 +9871,7 @@ function buildTursattFlowDiagnostic(arrival, departure){
     const route = getSdeSplitJoinRouteForEightSeries({
       actionType:"split_remove",
       position,
-      trainNumber:arrival.trainNumber
+      trainNumber:arrival.displayTrainNumber || arrival.trainNumber
     });
     return {
       vehicle,
@@ -9870,7 +9886,7 @@ function buildTursattFlowDiagnostic(arrival, departure){
     const route = getSdeSplitJoinRouteForEightSeries({
       actionType:"join_add",
       position,
-      trainNumber:departure.trainNumber
+      trainNumber:departure.displayTrainNumber || departure.trainNumber
     });
     const currentSlot = normalizeSlot(getSdeCurrentSlotForVehicle(vehicle));
     return {
@@ -9947,8 +9963,10 @@ function getTursattSplitRemovalMark(train, side, mode, fieldKey, vehicle){
 function formatTursattFlowDiagnosticText(item){
   if(!item) return "";
 
-  const arrivalText = `${item.arrival.trainNumber} kl. ${item.arrival.displayTime || item.arrival.time}: ${formatTursattFlowEventVehicles(item.arrival)}`;
-  const departureText = `${item.departure.trainNumber} kl. ${item.departure.displayTime || item.departure.time}: ${formatTursattFlowEventVehicles(item.departure)}`;
+  const arrivalTrain = item.arrival.displayTrainNumber || item.arrival.trainNumber;
+  const departureTrain = item.departure.displayTrainNumber || item.departure.trainNumber;
+  const arrivalText = `${arrivalTrain} kl. ${item.arrival.displayTime || item.arrival.time}: ${formatTursattFlowEventVehicles(item.arrival)}`;
+  const departureText = `${departureTrain} kl. ${item.departure.displayTime || item.departure.time}: ${formatTursattFlowEventVehicles(item.departure)}`;
 
   if(item.type === "split"){
     const removedText = item.splitRemovals.map(removal =>
@@ -9965,10 +9983,10 @@ function formatTursattFlowDiagnosticText(item){
   }
 
   const removedText = item.splitRemovals.length
-    ? `Blir igjen: ${item.splitRemovals.map(removal => `${removal.vehicle}${removal.position ? ` (${item.arrival.trainNumber}/${removal.position})` : ""}`).join(", ")}.`
+    ? `Blir igjen: ${item.splitRemovals.map(removal => `${removal.vehicle}${removal.position ? ` (${arrivalTrain}/${removal.position})` : ""}`).join(", ")}.`
     : "";
   const addedText = item.joinAdds.length
-    ? `Kommer til: ${item.joinAdds.map(add => `${add.vehicle}${add.position ? ` (${item.departure.trainNumber}/${add.position})` : ""}`).join(", ")}.`
+    ? `Kommer til: ${item.joinAdds.map(add => `${add.vehicle}${add.position ? ` (${departureTrain}/${add.position})` : ""}`).join(", ")}.`
     : "";
 
   return `Delvis bytte / manuell vurdering: Ankomst ${arrivalText}. Avgang ${departureText}. ${removedText} ${addedText}`.trim();
@@ -10153,6 +10171,7 @@ function buildSdeTursattVehicleBindings(){
       source:"Tursatt",
       role:side,
       train,
+      displayTrain:getDisplayTrainNumberForOppstilling(train, side, row?.mode),
       time:String(row?.time || "").trim(),
       displayTime:String(row?.displayTime || row?.time || "").trim(),
       sortMinutes:row?.sortMinutes ?? 9999,
@@ -10260,16 +10279,48 @@ function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecon
   }
 }
 
-function getDisplayTrainNumber(train){
-  const key = normalizeTognr(train);
-  if(!key) return "";
-  const vehicleError = state.apiBalise?.vehicleErrors?.[key] || "";
-  const match = String(vehicleError).match(/Brukte avvikstognummer\s+(\d+)/);
-  return match ? match[1] : key;
+function getVehicleErrorMapByMode(mode){
+  if(mode === "idag") return state.baliseTodayVehicleErrors || {};
+  if(mode === "imorgen") return state.baliseTomorrowVehicleErrors || {};
+
+  const selectedMode = state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag";
+  return getVehicleErrorMapByMode(selectedMode);
 }
 
-function getDisplayTrainNumberForOppstilling(train){
-  return getDisplayTrainNumber(train);
+function getDisplayTrainNumberFromVehicleError(train, vehicleError){
+  const key = normalizeTognr(train);
+  if(!key) return "";
+
+  const text = String(vehicleError || "");
+  const match = text.match(/Brukte avvikstognummer\s+(\d+)/i) ||
+    text.match(/Fant ingen kjøretøy i siden\s+(\d+)/i);
+  const candidate = match ? normalizeTognr(match[1]) : "";
+  if(candidate && candidate !== key) return candidate;
+
+  return "";
+}
+
+function getDisplayTrainNumberForMode(train, mode="selected"){
+  const key = normalizeTognr(train);
+  if(!key) return "";
+
+  const effectiveMode = mode === "idag" || mode === "imorgen"
+    ? mode
+    : (state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag");
+  const vehicleError = getVehicleErrorMapByMode(effectiveMode)?.[key] || "";
+  const displayTrain = getDisplayTrainNumberFromVehicleError(key, vehicleError);
+  return displayTrain || key;
+}
+
+function getDisplayTrainNumber(train){
+  return getDisplayTrainNumberForMode(train);
+}
+
+function getDisplayTrainNumberForOppstilling(train, side="", mode=""){
+  const effectiveMode = mode === "idag" || mode === "imorgen"
+    ? mode
+    : (side === "departure" ? "imorgen" : "idag");
+  return getDisplayTrainNumberForMode(train, effectiveMode);
 }
 
 function getOppstillingSlotText(train, side, partIndex, vehicles){
@@ -10295,7 +10346,7 @@ function appendOppstillingSideCells(tr, rowData, side){
   const mode = rowData?.mode || "";
 
   const tdTrain = document.createElement("td");
-  tdTrain.textContent = getDisplayTrainNumberForOppstilling(train);
+  tdTrain.textContent = getDisplayTrainNumberForOppstilling(train, side, mode);
   tr.appendChild(tdTrain);
 
   const tdTime = document.createElement("td");
@@ -16370,20 +16421,27 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
       nextDeparturePart:nextDeparture?.part
     });
     const departureText = nextDeparture
-      ? `${nextDeparture.train}${departurePartText ? `/${departurePartText}` : ""}${nextDeparture.displayTime ? ` kl. ${nextDeparture.displayTime}` : ""}`
+      ? `${nextDeparture.displayTrain || nextDeparture.train}${departurePartText ? `/${departurePartText}` : ""}${nextDeparture.displayTime ? ` kl. ${nextDeparture.displayTime}` : ""}`
       : "";
+    const arrivalDisplayTrain = arrival.displayTrain || getDisplayTrainNumberForOppstilling(arrival.train, "arrival", arrival.raw?.mode);
+    const arrivalPartText = arrival.part ? `/${arrival.part}` : "";
 
     return {
       source:"Ankomstbasert parkeringsbehov",
       arrivalTrain:arrival.train,
+      arrivalDisplayTrain,
       arrivalPart:arrival.part,
       arrivalTime:arrival.displayTime || arrival.time,
+      showcaseArrivalLabel:arrivalDisplayTrain
+        ? `${arrivalDisplayTrain}${arrivalPartText}`
+        : "",
       arrivalSequenceMinutes:normalizedArrivalSequenceMinutes,
       operationalSequenceMinutes:normalizedArrivalSequenceMinutes,
       vehicle,
       arrivalSlot:normalizeSlot(arrival.slot),
       turneringTarget:arrival.turneringTarget,
       nextDepartureTrain:nextDeparture?.train || "",
+      nextDepartureDisplayTrain:nextDeparture?.displayTrain || "",
       nextDeparturePart:nextDeparture?.part || "",
       nextDepartureTime:nextDeparture?.displayTime || nextDeparture?.time || "",
       nextDepartureText:departureText,
@@ -16498,7 +16556,8 @@ function getSdeArrivalParkingNeedsText(needs){
 
   rows.slice(0, 12).forEach(row=>{
     const arrivalPartText = row.arrivalPart ? `/${row.arrivalPart}` : "";
-    const arrivalText = `${row.arrivalTrain}${arrivalPartText}${row.arrivalTime ? ` kl. ${row.arrivalTime}` : ""}`;
+    const arrivalTrain = row.arrivalDisplayTrain || row.arrivalTrain;
+    const arrivalText = `${arrivalTrain}${arrivalPartText}${row.arrivalTime ? ` kl. ${row.arrivalTime}` : ""}`;
     const slotText = row.arrivalSlot ? ` fra ${row.arrivalSlot}` : "";
     const departureText = row.nextDepartureText
       ? ` Neste kjente avgang: ${row.nextDepartureText}.`
@@ -26240,6 +26299,7 @@ async function ensureTodayStaticDataLoaded(){
     const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
     const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
     const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
+    const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
     const vehicleErrorCount = payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0;
 
     state.baliseToday = normalizedVehicles;
@@ -26247,6 +26307,7 @@ async function ensureTodayStaticDataLoaded(){
     state.baliseTodayArrivals = normalizedArrivals;
     state.baliseTodayDepartureVehicles = normalizedDepartureVehicles;
     state.baliseTodayArrivalVehicles = normalizedArrivalVehicles;
+    state.baliseTodayVehicleErrors = normalizedVehicleErrors;
     state.baliseMetaToday = {
       source: payload.source || "statisk data",
       mode: payload.mode || "idag",
@@ -26281,12 +26342,14 @@ async function ensureTomorrowStaticDataLoaded(){
     const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
     const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
     const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
+    const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
 
     state.baliseTomorrow = normalizedVehicles;
     state.baliseTomorrowDepartures = normalizedDepartures;
     state.baliseTomorrowArrivals = normalizedArrivals;
     state.baliseTomorrowDepartureVehicles = normalizedDepartureVehicles;
     state.baliseTomorrowArrivalVehicles = normalizedArrivalVehicles;
+    state.baliseTomorrowVehicleErrors = normalizedVehicleErrors;
     state.baliseMetaTomorrow = {
       source: payload.source || "statisk data",
       mode: payload.mode || "imorgen",
@@ -26371,6 +26434,7 @@ async function fetchBaliseApi(){
     const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
     const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
     const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
+    const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
     const vehicleErrorCount = payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0;
 
     state.apiBalise = {
@@ -26383,7 +26447,7 @@ async function fetchBaliseApi(){
       arrivals:normalizedArrivals,
       departureVehicles:normalizedDepartureVehicles,
       arrivalVehicles:normalizedArrivalVehicles,
-      vehicleErrors:payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? payload.vehicleErrors : {},
+      vehicleErrors:normalizedVehicleErrors,
       allowedMaterialPrefixes:Array.isArray(payload.allowedMaterialPrefixes) ? payload.allowedMaterialPrefixes.map(v=>String(v)) : [],
       materialFormat:Array.isArray(payload.materialFormat) ? payload.materialFormat.join(", ") : String(payload.materialFormat || ""),
       error:""
@@ -26407,6 +26471,7 @@ async function fetchBaliseApi(){
       state.baliseTomorrowArrivals = normalizedArrivals;
       state.baliseTomorrowDepartureVehicles = normalizedDepartureVehicles;
       state.baliseTomorrowArrivalVehicles = normalizedArrivalVehicles;
+      state.baliseTomorrowVehicleErrors = normalizedVehicleErrors;
       state.baliseMetaTomorrow = meta;
     }else{
       state.baliseToday = normalizedVehicles;
@@ -26414,6 +26479,7 @@ async function fetchBaliseApi(){
       state.baliseTodayArrivals = normalizedArrivals;
       state.baliseTodayDepartureVehicles = normalizedDepartureVehicles;
       state.baliseTodayArrivalVehicles = normalizedArrivalVehicles;
+      state.baliseTodayVehicleErrors = normalizedVehicleErrors;
       state.baliseMetaToday = meta;
     }
 
