@@ -423,6 +423,37 @@ font-weight:800;
 background:#fff;
 color:#0f172a;
 }
+.txp-restricted-entry-badge{
+display:none;
+align-items:center;
+gap:8px;
+font-size:13px;
+font-weight:900;
+color:#075985;
+}
+.txp-restricted-entry-badge span{
+display:inline-flex;
+align-items:center;
+min-height:28px;
+padding:4px 10px;
+border-radius:999px;
+background:#e0f2fe;
+border:1px solid #7dd3fc;
+}
+body.txp-restricted-entry-active .access-level-bar label,
+body.txp-restricted-entry-active .access-level-select{
+display:none;
+}
+body.txp-restricted-entry-active .txp-restricted-entry-badge{
+display:flex;
+}
+body.txp-restricted-entry-active .server-status-panel,
+body.txp-restricted-entry-active .server-note-panel{
+display:none;
+}
+body.txp-restricted-entry-active .guide-top-btn{
+display:none;
+}
 .seg.level-hidden{
 display:none !important;
 }
@@ -5882,6 +5913,10 @@ button{padding:12px 12px}
 <option value="4">Nivå 4 – Verksted</option>
 <option value="5">Nivå 5 – Agila</option>
 </select>
+<div class="txp-restricted-entry-badge" id="txpRestrictedEntryBadge" hidden>
+<span>Nivå 2 – TXP</span>
+<span>Låst TXP-visning</span>
+</div>
 </div>
 
 <div class="segmented" aria-label="Hovedmeny">
@@ -24957,11 +24992,13 @@ function buildSdeVaktplan(){
 
 
 function getActiveAccessLevel(){
+  if(isLockedTxpEntry()) return "2";
   const select = document.getElementById("accessLevelSelect");
   return select ? String(select.value || "0") : "0";
 }
 
 function isTabAllowedAtCurrentLevel(tabName){
+  if(isLockedTxpEntry()) return tabName === getTxpTabId();
   const level = getActiveAccessLevel();
   const btn = document.querySelector(`.seg[data-tab="${tabName}"]`);
   if(!btn) return true;
@@ -24969,6 +25006,7 @@ function isTabAllowedAtCurrentLevel(tabName){
 }
 
 function getDefaultTabForCurrentLevel(){
+  if(isLockedTxpEntry()) return getTxpTabId();
   const level = getActiveAccessLevel();
   const visibleAllowed = Array.from(document.querySelectorAll(".seg")).find(btn=>{
     if(btn.style.display === "none") return false;
@@ -24978,15 +25016,58 @@ function getDefaultTabForCurrentLevel(){
 }
 
 const ACTIVE_TAB_SESSION_KEY = "sde_active_tab_session_v1";
+const TXP_RESTRICTED_ENTRY_TOKEN = "txp-n2-7f4c9a";
+const TXP_RESTRICTED_TAB_ID = "grunnoppstilling";
+
+function getLockedEntryFromUrl(){
+  try{
+    return String(new URLSearchParams(window.location.search).get("entry") || "").trim();
+  }catch(e){
+    return "";
+  }
+}
+
+function isLockedTxpEntry(){
+  return getLockedEntryFromUrl() === TXP_RESTRICTED_ENTRY_TOKEN;
+}
+
+function getTxpTabId(){
+  return TXP_RESTRICTED_TAB_ID;
+}
+
+function enforceTxpRestrictedTabAccess(tabId){
+  return isLockedTxpEntry() ? getTxpTabId() : tabId;
+}
+
+function updateTxpRestrictedEntryUi(){
+  const locked = isLockedTxpEntry();
+  document.body.classList.toggle("txp-restricted-entry-active", locked);
+
+  const badge = document.getElementById("txpRestrictedEntryBadge");
+  if(badge) badge.hidden = !locked;
+
+  const select = document.getElementById("accessLevelSelect");
+  if(select){
+    if(locked) select.value = "2";
+    select.disabled = locked;
+  }
+}
 
 function applyAccessLevel(){
+  updateTxpRestrictedEntryUi();
   const level = getActiveAccessLevel();
-  localStorage.setItem("sde_access_level_v1", level);
+  if(!isLockedTxpEntry()){
+    localStorage.setItem("sde_access_level_v1", level);
+  }
 
   document.querySelectorAll(".seg").forEach(btn=>{
     if(btn.style.display === "none") return;
-    const allowed = String(btn.dataset.levels || "0").split(/\s+/).includes(level);
+    const allowed = isLockedTxpEntry()
+      ? btn.dataset.tab === getTxpTabId()
+      : String(btn.dataset.levels || "0").split(/\s+/).includes(level);
     btn.classList.toggle("level-hidden", !allowed);
+    btn.disabled = isLockedTxpEntry() && btn.dataset.tab !== getTxpTabId();
+    btn.setAttribute("aria-hidden", isLockedTxpEntry() && btn.dataset.tab !== getTxpTabId() ? "true" : "false");
   });
 
   const activeBtn = document.querySelector(".seg.active");
@@ -24996,6 +25077,7 @@ function applyAccessLevel(){
 }
 
 function activateTab(name){
+  name = enforceTxpRestrictedTabAccess(name);
   if(!isTabAllowedAtCurrentLevel(name)) name = getDefaultTabForCurrentLevel();
   document.querySelectorAll(".seg").forEach(btn=>btn.classList.toggle("active",btn.dataset.tab===name));
   document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id===name));
@@ -25025,10 +25107,11 @@ function getActiveTabName(){
 
 function rememberActiveTab(name){
   if(!name) return;
-  sessionStorage.setItem(ACTIVE_TAB_SESSION_KEY, name);
+  sessionStorage.setItem(ACTIVE_TAB_SESSION_KEY, enforceTxpRestrictedTabAccess(name));
 }
 
 function getRememberedActiveTab(){
+  if(isLockedTxpEntry()) return getTxpTabId();
   const stored = String(sessionStorage.getItem(ACTIVE_TAB_SESSION_KEY) || "").trim();
   if(!stored) return "";
   const exists = Array.from(document.querySelectorAll(".seg")).some(btn => btn.dataset.tab === stored);
@@ -25037,6 +25120,7 @@ function getRememberedActiveTab(){
 }
 
 function getStartupTabFromUrl(){
+  if(isLockedTxpEntry()) return getTxpTabId();
   const params = new URLSearchParams(window.location.search);
   const requestedTab = String(params.get("tab") || "").trim();
   if(!requestedTab) return "";
@@ -26555,14 +26639,25 @@ async function fetchBaliseApi(){
 }
 
 document.querySelectorAll(".seg").forEach(btn=>btn.addEventListener("click",()=>{
-  rememberActiveTab(btn.dataset.tab);
-  activateTab(btn.dataset.tab);
+  const targetTab = enforceTxpRestrictedTabAccess(btn.dataset.tab);
+  rememberActiveTab(targetTab);
+  activateTab(targetTab);
 }));
 document.getElementById("guideTopBtn").addEventListener("click",()=>{
+  if(isLockedTxpEntry()){
+    rememberActiveTab(getTxpTabId());
+    activateTab(getTxpTabId());
+    return;
+  }
   rememberActiveTab("hjelp");
   activateTab("hjelp");
 });
 document.getElementById("sdeLearningTopBtn").addEventListener("click",()=>{
+  if(isLockedTxpEntry()){
+    rememberActiveTab(getTxpTabId());
+    activateTab(getTxpTabId());
+    return;
+  }
   sdeLearningDiagnosticsVisible = !sdeLearningDiagnosticsVisible;
   document.getElementById("sdeLearningTopBtn").setAttribute("aria-pressed", sdeLearningDiagnosticsVisible ? "true" : "false");
   const panel = document.getElementById("sdeLearningTopPanel");
@@ -26578,6 +26673,12 @@ if(accessLevelSelect){
   accessLevelSelect.addEventListener("change", applyAccessLevel);
   applyAccessLevel();
 }
+window.addEventListener("popstate", ()=>{
+  applyAccessLevel();
+  const nextTab = getStartupTabFromUrl() || getRememberedActiveTab() || getDefaultTabForCurrentLevel();
+  rememberActiveTab(nextTab);
+  activateTab(nextTab);
+});
 
 const startupTabFromUrl = getStartupTabFromUrl();
 
