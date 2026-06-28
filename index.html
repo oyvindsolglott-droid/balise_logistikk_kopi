@@ -11,6 +11,20 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=0.5, viewport-fit=cover, user-scalable=yes" />
 <title>Skien sporplan iPhone</title>
+<script>
+function isPublicGithubPagesApp(locationLike = window.location){
+  const hostname = String(locationLike.hostname || "").toLowerCase();
+  const pathname = String(locationLike.pathname || "");
+  return hostname === "oyvindsolglott-droid.github.io" && (
+    pathname === "/balise_logistikk_kopi" ||
+    pathname.startsWith("/balise_logistikk_kopi/")
+  );
+}
+
+if(isPublicGithubPagesApp()){
+  document.documentElement.classList.add("public-github-pages-holding");
+}
+</script>
 <style>
 :root{
 --bg:#f4f5f7;
@@ -58,6 +72,64 @@
 html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0}
 .app{max-width:1440px;margin:0 auto;padding:12px}
+html.public-github-pages-holding body{
+min-height:100vh;
+display:flex;
+align-items:center;
+justify-content:center;
+padding:28px;
+background:
+  radial-gradient(circle at 20% 0%, rgba(217,234,247,.82), transparent 34%),
+  linear-gradient(135deg,#f8fafc 0%,#eef2f7 52%,#f7fafc 100%);
+}
+html.public-github-pages-holding .app,
+html.public-github-pages-holding .rights-notice{
+display:none !important;
+}
+.public-holding-page{
+display:none;
+width:min(560px,100%);
+}
+html.public-github-pages-holding .public-holding-page{
+display:block;
+}
+.public-holding-card{
+padding:34px 36px;
+border:1px solid rgba(148,163,184,.42);
+border-radius:22px;
+background:rgba(255,255,255,.92);
+box-shadow:0 24px 70px rgba(15,23,42,.14);
+color:#0f172a;
+}
+.public-holding-kicker{
+margin:0 0 16px;
+font-size:13px;
+font-weight:900;
+letter-spacing:.08em;
+text-transform:uppercase;
+color:#2563eb;
+}
+.public-holding-card h1{
+margin:0 0 14px;
+font-size:clamp(28px,4vw,38px);
+line-height:1.08;
+}
+.public-holding-card p{
+margin:0;
+font-size:17px;
+line-height:1.62;
+color:#475569;
+}
+.public-holding-card p + p{
+margin-top:12px;
+}
+.public-holding-accent{
+width:54px;
+height:4px;
+margin:0 0 22px;
+border-radius:999px;
+background:#2563eb;
+}
 h1{font-size:22px;margin:0 0 6px}
 h3{margin:0 0 8px;font-size:16px}
 .sub{margin:0 0 12px;color:var(--muted);font-size:14px}
@@ -5801,6 +5873,15 @@ button{padding:12px 12px}
 
 </head>
 <body class="server-diagnostics-secondary">
+<main class="public-holding-page" aria-labelledby="publicHoldingTitle">
+<section class="public-holding-card">
+<p class="public-holding-kicker">Skien sporplan</p>
+<div class="public-holding-accent" aria-hidden="true"></div>
+<h1 id="publicHoldingTitle">Takk for besøket</h1>
+<p>Denne siden er ikke lenger i bruk. En ny løsning er under utvikling.</p>
+<p>Mer informasjon vil komme når løsningen er klar.</p>
+</section>
+</main>
 <div class="app">
 <h1>Skien sporplan</h1>
 <p class="sub">Siste revisjon: 21. juni 2026</p>
@@ -27695,37 +27776,39 @@ document.getElementById("sdeRecommendationAckSendBtn")?.addEventListener("click"
   element?.addEventListener("change", refreshSdeRecommendationAckSubmitState);
 });
 
-const sameOriginServerStatusBase = getSameOriginServerStatusBase();
-setServerDiagnosticsHidden(!shouldExposeServerDiagnosticsByDefault());
-setServerDiagnosticsExpanded(shouldExpandServerDiagnosticsByDefault());
-if(sameOriginServerStatusBase){
-  const serverStatusInput = document.getElementById("serverStatusBaseInput");
-  if(serverStatusInput) serverStatusInput.value = sameOriginServerStatusBase;
+if(!isPublicGithubPagesApp()){
+  const sameOriginServerStatusBase = getSameOriginServerStatusBase();
+  setServerDiagnosticsHidden(!shouldExposeServerDiagnosticsByDefault());
+  setServerDiagnosticsExpanded(shouldExpandServerDiagnosticsByDefault());
+  if(sameOriginServerStatusBase){
+    const serverStatusInput = document.getElementById("serverStatusBaseInput");
+    if(serverStatusInput) serverStatusInput.value = sameOriginServerStatusBase;
+  }
+  renderServerNotePanelFromStatus(null, "");
+  initializeSdeRecommendationAckDefaults();
+  renderSdeRecommendationAckPanelFromStatus(null, "");
+
+
+  buildTurnering("turneringKveldTable","turneringKveld");
+  buildTurnering("turneringNattTable","turneringNatt");
+  buildGrunnoppstilling();
+  buildInndata();
+  buildOppstilling();
+  initViewControls();
+  updateBaliseStatus();
+  updateTopDataStatus();
+  updateBaliseViewState();
+  renderApiTables();
+  initDesktopWheelPassThrough();
+  const rememberedStartupTab = startupTabFromUrl || getRememberedActiveTab() || getDefaultTabForCurrentLevel();
+  activateTab(rememberedStartupTab);
+  markSaved("Klar");
+  renderServerStatusIdle();
+  fetchServerStatusForDisplay();
+  fetchBaliseApi();
+  ensureTodayStaticDataLoaded();
+  ensureTomorrowStaticDataLoaded();
 }
-renderServerNotePanelFromStatus(null, "");
-initializeSdeRecommendationAckDefaults();
-renderSdeRecommendationAckPanelFromStatus(null, "");
-
-
-buildTurnering("turneringKveldTable","turneringKveld");
-buildTurnering("turneringNattTable","turneringNatt");
-buildGrunnoppstilling();
-buildInndata();
-buildOppstilling();
-initViewControls();
-updateBaliseStatus();
-updateTopDataStatus();
-updateBaliseViewState();
-renderApiTables();
-initDesktopWheelPassThrough();
-const rememberedStartupTab = startupTabFromUrl || getRememberedActiveTab() || getDefaultTabForCurrentLevel();
-activateTab(rememberedStartupTab);
-markSaved("Klar");
-renderServerStatusIdle();
-fetchServerStatusForDisplay();
-fetchBaliseApi();
-ensureTodayStaticDataLoaded();
-ensureTomorrowStaticDataLoaded();
 </script>
 
 <div class="rights-notice" id="rightsNotice">
