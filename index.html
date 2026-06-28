@@ -22034,8 +22034,10 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
   const targetSlot = normalizeSlot(toSlot);
   const payloadSlot = normalizeSlot(payload?.slot);
   const payloadFromSlot = normalizeSlot(payload?.fromSlot);
+  const payloadSourceKind = String(payload?.sourceKind || "").trim();
   const fromSlot = payloadSlot || payloadFromSlot;
   const isProjectedSource = Boolean(payloadSlot && payloadFromSlot && payloadSlot !== payloadFromSlot);
+  const isCompletedLockedSource = payloadSourceKind === "completedLocked";
 
   if(!vehicle || !targetSlot){
     return {
@@ -22144,6 +22146,8 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
     toSlot:targetSlot,
     row,
     isProjectedSource,
+    isCompletedLockedSource,
+    sourceKind:payloadSourceKind,
     sourceEvent:timeAssessment.sourceEvent,
     nextRequiredUse:timeAssessment.nextRequiredUse,
     earliestMoveTime:timeAssessment.earliestMoveTime,
@@ -22208,7 +22212,10 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     return true;
   }
 
-  const row = assessment.isProjectedSource ? null : getSdeNightPlacementMatchedSdeRow(assessment.row);
+  const matchedRow = getSdeNightPlacementMatchedSdeRow(assessment.row);
+  const row = (assessment.isProjectedSource || assessment.isCompletedLockedSource || isSdeMoveActioned(matchedRow))
+    ? null
+    : matchedRow;
   const payloadNeedKey = String(payload?.needKey || "").trim();
   const payloadMoveKey = String(payload?.moveKey || "").trim();
   const now = new Date().toISOString();
@@ -22668,6 +22675,12 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
   };
 }
 
+function canDragSdeNightPlacementVehicle(entry, options={}){
+  const hasVehicle = Boolean(options.hasVehicle ?? entry?.vehicle);
+  const hasCollision = Boolean(options.hasCollision);
+  return Boolean(hasVehicle && !hasCollision && sanitizeVehicleValue(entry?.vehicle));
+}
+
 function renderSdeNightPlacementOverview(data){
   const overview = buildSdeNightPlacementOverviewData(data);
   const columnLabels = ["12","11","10","9","8","7","","6","5","4","3","","2","1"];
@@ -22711,8 +22724,9 @@ function renderSdeNightPlacementOverview(data){
     const dragFromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || slot);
     const dragNeedKey = row ? getSdeMoveNeedKey(row) || row?.needKey || "" : "";
     const dragMoveKey = row ? getSdeMoveActionKey(row) || row?.moveKey || "" : "";
-    const draggableAttr = hasVehicle && !hasCollision && !isCompletedLocked
-      ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-from-slot="${escapeHtml(dragFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(dragNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(dragMoveKey)}"`
+    const canDragVehicle = canDragSdeNightPlacementVehicle(entry, {hasVehicle, hasCollision});
+    const draggableAttr = canDragVehicle
+      ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-from-slot="${escapeHtml(dragFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(dragNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(dragMoveKey)}" data-sde-night-placement-source-kind="${escapeHtml(entry.sourceKind || "")}"`
       : "";
     const lockedInfoAttr = isHardOccupied && hasVehicle && !hasCollision
       ? ` data-sde-night-placement-locked-info="1" title="Ikke tilgjengelig for nytt kjøretøy"`
@@ -22825,7 +22839,8 @@ function setupSdeNightPlacementDragAndDrop(){
     slot:slotEl.dataset.sdeNightPlacementSlot || "",
     fromSlot:slotEl.dataset.sdeNightPlacementFromSlot || "",
     needKey:slotEl.dataset.sdeNightPlacementNeedKey || "",
-    moveKey:slotEl.dataset.sdeNightPlacementMoveKey || ""
+    moveKey:slotEl.dataset.sdeNightPlacementMoveKey || "",
+    sourceKind:slotEl.dataset.sdeNightPlacementSourceKind || ""
   });
 
   const markDragTarget = target => {
