@@ -3370,10 +3370,6 @@ button{padding:12px 12px}
   outline:3px solid rgba(248,113,113,.88);
   outline-offset:2px;
 }
-.sde-night-placement-slot.simulated{
-  border-color:rgba(45,212,191,.78);
-  box-shadow:inset 0 0 0 1px rgba(45,212,191,.34), 0 0 0 2px rgba(45,212,191,.12);
-}
 .sde-night-placement-slot.planned{
   border-color:rgba(45,212,191,.68);
   background:linear-gradient(180deg, rgba(20,83,45,.54), rgba(8,47,73,.62));
@@ -22704,13 +22700,7 @@ function renderSdeNightPlacementOverview(data){
     const isSimulated = Boolean(row?.sdeNightPlacementDragOverrideActive);
     const isPhysical = entry.sourceKind === "standing";
     const isCompletedLocked = entry.sourceKind === "completedLocked";
-    const isPlanned = entry.sourceKind === "move" && Boolean(
-      isSimulated ||
-      row?.sdeNightPlacementCardOverrideActive ||
-      row?.manualPlanOverrideActive ||
-      row?.manualOverrideActive ||
-      row?.isNightPlacementGenerated
-    );
+    const isPlanned = entry.sourceKind === "move" && hasVehicle && !hasCollision;
     const isHardOccupied = isPhysical || isCompletedLocked;
     const plannedSlot = normalizeSlot(entry.plannedSlot);
     const physicalSlot = normalizeSlot(entry.physicalSlot);
