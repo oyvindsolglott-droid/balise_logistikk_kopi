@@ -6627,6 +6627,12 @@ function makeDefaultState(){
       grunnoppstillingZoom:{scale:1,compact:false},
       apiCombinedZoom:{scale:1,compact:false}
     },
+    sdeMoveActions:{},
+    sdeMoveLearningLog:[],
+    sdeManualMoveOverrides:{},
+    sdeNightPlacementManualOverrides:{},
+    sdeMoveActionDragOffsets:{},
+    sdeExpandedMoveActionKey:"",
     migrationClearKveldColE_v1:false,
     demoMode:"",
     preDemoSnapshot:null
@@ -17332,6 +17338,7 @@ function getSdeResettableSummary(){
     ? state.sdeMoveLearningLog.length
     : 0;
   const manualOverrides = Object.keys(getSdeManualMoveOverrides()).length;
+  const nightPlacementManualOverrides = Object.keys(getSdeNightPlacementManualOverrides()).length;
 
   return {
     actions:actions.length,
@@ -17340,7 +17347,8 @@ function getSdeResettableSummary(){
     sdePlanRows,
     learningEvents,
     manualOverrides,
-    total:actions.length + sdePlanRows + learningEvents + manualOverrides
+    nightPlacementManualOverrides,
+    total:actions.length + sdePlanRows + learningEvents + manualOverrides + nightPlacementManualOverrides
   };
 }
 
@@ -17365,7 +17373,7 @@ function handleSdeResetForDay(){
   const summary = getSdeResettableSummary();
 
   if(!summary.total){
-    alert("Ingen SDE-kvitteringer, SDE-genererte skifterader eller læringshendelser å nullstille.");
+    alert("Ingen SDE-kvitteringer, SDE-genererte skifterader, nattplasseringer eller læringshendelser å nullstille.");
     return;
   }
 
@@ -17388,6 +17396,7 @@ function handleSdeResetForDay(){
     `Utførte: ${summary.completed}\n` +
     `Annullerte: ${summary.cancelled}\n` +
     `Overstyringer: ${summary.manualOverrides}\n` +
+    `Nattplasseringer: ${summary.nightPlacementManualOverrides}\n` +
     `SDE-skifterader: ${summary.sdePlanRows}\n` +
     `Læringshendelser: ${summary.learningEvents}\n\n` +
     (resetNeedsSnapshot
@@ -17407,8 +17416,11 @@ function handleSdeResetForDay(){
   state.sdeMoveActions = {};
   state.sdeMoveLearningLog = [];
   state.sdeManualMoveOverrides = {};
+  state.sdeNightPlacementManualOverrides = {};
   state.sdeMoveActionDragOffsets = {};
   state.sdeExpandedMoveActionKey = "";
+  sdeNightPlacementDropMessage = null;
+  sdeNightPlacementSelectedSlot = "";
   delete state.sdeResetSnapshot;
   window.sdeMoveActionHistoryCollapsed = true;
 
@@ -17423,6 +17435,7 @@ function handleSdeResetForDay(){
     `Fjernet utførte kvitteringer: ${summary.completed}\n` +
     `Fjernet annullerte kvitteringer: ${summary.cancelled}\n` +
     `Fjernet overstyringer: ${summary.manualOverrides}\n` +
+    `Fjernet nattplasseringer: ${summary.nightPlacementManualOverrides}\n` +
     `Fjernet læringshendelser: ${summary.learningEvents}\n` +
     (resetNeedsSnapshot ? `SDE-skifterader er tilbakestilt til før-bildet.` : `SDE-læring er ryddet.`)
   );
@@ -23509,10 +23522,10 @@ function renderSdeSkiftebevegelserInner(){
   const canUseSdeReset = Boolean(sdeResetSummary.total && (!sdeResetNeedsSnapshot || hasSdeResetSnapshot));
   const sdeResetDisabled = canUseSdeReset ? "" : " disabled";
   const sdeResetTitle = canUseSdeReset
-    ? `Nullstill SDE: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.manualOverrides} overstyringer, ${sdeResetSummary.sdePlanRows} SDE-skifterader, ${sdeResetSummary.learningEvents} læringshendelser`
+    ? `Nullstill SDE: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.manualOverrides} overstyringer, ${sdeResetSummary.nightPlacementManualOverrides} nattplasseringer, ${sdeResetSummary.sdePlanRows} SDE-skifterader, ${sdeResetSummary.learningEvents} læringshendelser`
     : sdeResetNeedsSnapshot
       ? "Gammel SDE-skifterad finnes, men mangler før-bilde. Start ny SDE-test før reset brukes."
-      : "Ingen SDE-kvitteringer eller læringshendelser å nullstille";
+      : "Ingen SDE-kvitteringer, nattplasseringer eller læringshendelser å nullstille";
 
   const cardsHtml = topMoves.length
     ? topMoves.map((row,index)=>{
