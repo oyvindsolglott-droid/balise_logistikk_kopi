@@ -5926,6 +5926,7 @@ button{padding:12px 12px}
   <div class="server-note-description">Read-only payload preview for SDE Nattplassering manual overrides. Sendes ikke. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.</div>
   <div class="server-note-readback-summary" id="sdeNightPlacementPayloadPreviewSummary">Avventer lokal state.</div>
   <pre class="server-note-payload-preview" id="sdeNightPlacementPayloadPreview" aria-label="Read-only payload preview for SDE Nattplassering"></pre>
+  <div class="server-note-readback-summary" id="sdeNightPlacementReadbackCompareSummary">Read-only compare avventer lokal preview og serverreadback.</div>
 </div>
 <div class="server-note-panel" id="serverNotePanel" aria-live="polite">
   <div class="server-note-header">
@@ -25299,6 +25300,7 @@ const SDE_HOSTED_HTTPS_ORIGIN = "https://sde.oyvind-solglott.no";
 const SDE_SERVER_NOTE_MAX_LENGTH = 500;
 const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
 const SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT = 5;
+const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE = "sde-night-placement-manual-overrides";
 const SDE_RECOMMENDATION_ACK_READBACK_EVENT_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_RECENT_DISPLAY_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH = 500;
@@ -25314,6 +25316,7 @@ let lastServerStatusForDisplay = null;
 let lastServerStatusBaseForDisplay = "";
 let serverNoteReadbackOkForDisplay = false;
 let operationalStateReadbackStateForDisplay = "idle";
+let lastOperationalStateReadbackBodyForDisplay = null;
 let sdeRecommendationAckReadbackOkForDisplay = false;
 
 function getSameOriginServerStatusBase(){
@@ -25635,6 +25638,7 @@ function getOperationalStateReadbackElements(){
 }
 
 function renderOperationalStateReadbackMessage(stateText, tone, summaryText){
+  lastOperationalStateReadbackBodyForDisplay = null;
   const elements = getOperationalStateReadbackElements();
   if(elements.state){
     elements.state.className = `server-status-pill ${tone || "off"}`;
@@ -25718,6 +25722,116 @@ function buildSdeNightPlacementOperationalStatePayloadPreview(now = new Date()){
   };
 }
 
+function canonicalizeSdeNightPlacementOperationalStateValue(value){
+  if(Array.isArray(value)){
+    return value.map(canonicalizeSdeNightPlacementOperationalStateValue);
+  }
+  if(isServerNoteReadbackObject(value)){
+    return Object.keys(value).sort().reduce((acc, key) => {
+      acc[key] = canonicalizeSdeNightPlacementOperationalStateValue(value[key]);
+      return acc;
+    }, {});
+  }
+  return value;
+}
+
+function stringifySdeNightPlacementOperationalStateValue(value){
+  return JSON.stringify(canonicalizeSdeNightPlacementOperationalStateValue(value));
+}
+
+function getSdeNightPlacementOperationalStateSnapshotScope(snapshot){
+  return Array.isArray(snapshot?.stateScope)
+    ? snapshot.stateScope.map(scope => String(scope || "").trim()).filter(Boolean)
+    : [];
+}
+
+function hasSdeNightPlacementOperationalStateScope(snapshot){
+  return getSdeNightPlacementOperationalStateSnapshotScope(snapshot)
+    .includes(SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE);
+}
+
+function getOperationalStateReadbackSnapshotsForCompare(serverReadback){
+  const readback = isServerNoteReadbackObject(serverReadback?.state?.operationalStateReadback)
+    ? serverReadback.state.operationalStateReadback
+    : {};
+  const snapshots = [];
+  if(isServerNoteReadbackObject(readback.lastSnapshot)){
+    snapshots.push(readback.lastSnapshot);
+  }
+  if(Array.isArray(readback.recentSnapshots)){
+    readback.recentSnapshots.forEach(snapshot => {
+      if(isServerNoteReadbackObject(snapshot) && !snapshots.includes(snapshot)){
+        snapshots.push(snapshot);
+      }
+    });
+  }
+  return snapshots;
+}
+
+function buildSdeNightPlacementOperationalStateReadbackComparison(localPayload, serverReadback){
+  const localOverrides = isServerNoteReadbackObject(localPayload?.stateSnapshot?.sdeNightPlacementManualOverrides)
+    ? localPayload.stateSnapshot.sdeNightPlacementManualOverrides
+    : {};
+  const localCount = Object.keys(localOverrides).length;
+  const snapshots = getOperationalStateReadbackSnapshotsForCompare(serverReadback);
+
+  if(snapshots.length === 0){
+    return {
+      status:"no-server-readback",
+      text:"Compare-status: no-server-readback. Read-only compare. Sendes ikke. Serverreadback er ikke hentet eller mangler snapshot. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde."
+    };
+  }
+
+  const matchingSnapshot = snapshots.find(hasSdeNightPlacementOperationalStateScope);
+  if(!matchingSnapshot){
+    const scopes = Array.from(new Set(snapshots.flatMap(getSdeNightPlacementOperationalStateSnapshotScope)));
+    return {
+      status:"server-scope-different",
+      text:`Compare-status: server-scope-different. Read-only compare. Sendes ikke. Serverreadback finnes, men gjelder ikke nattplassering-scope; server-scope ${scopes.join(", ") || "ukjent"}. Lokal preview sendes ikke. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.`
+    };
+  }
+
+  const serverOverrides = isServerNoteReadbackObject(matchingSnapshot?.stateSnapshot?.sdeNightPlacementManualOverrides)
+    ? matchingSnapshot.stateSnapshot.sdeNightPlacementManualOverrides
+    : null;
+  if(!serverOverrides){
+    return {
+      status:"unknown",
+      text:"Compare-status: unknown. Read-only compare. Sendes ikke. Serverreadback har nattplassering-scope, men mangler sammenlignbar nattplassering-snapshot. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde."
+    };
+  }
+
+  const serverCount = Object.keys(serverOverrides).length;
+  if(localCount === 0){
+    return {
+      status:"no-local-overrides",
+      text:`Compare-status: no-local-overrides. Read-only compare. Sendes ikke. Lokal preview har ingen manuelle nattplasseringer; serverreadback har ${serverCount}. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.`
+    };
+  }
+
+  const localText = stringifySdeNightPlacementOperationalStateValue(localOverrides);
+  const serverText = stringifySdeNightPlacementOperationalStateValue(serverOverrides);
+  if(localText === serverText){
+    return {
+      status:"match",
+      text:`Compare-status: match. Read-only compare. Sendes ikke. Lokal preview og serverreadback matcher for ${localCount} manuelle nattplasseringer. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.`
+    };
+  }
+
+  return {
+    status:"diff",
+    text:`Compare-status: diff. Read-only compare. Sendes ikke. Lokal preview har ${localCount} manuelle nattplasseringer; serverreadback har ${serverCount}. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.`
+  };
+}
+
+function renderSdeNightPlacementOperationalStateReadbackComparison(localPayload, serverReadback){
+  const element = document.getElementById("sdeNightPlacementReadbackCompareSummary");
+  if(!element) return;
+  const comparison = buildSdeNightPlacementOperationalStateReadbackComparison(localPayload, serverReadback);
+  element.textContent = comparison.text;
+  element.dataset.compareStatus = comparison.status;
+}
+
 function renderSdeNightPlacementOperationalStatePayloadPreview(){
   const elements = getSdeNightPlacementOperationalStatePayloadPreviewElements();
   if(!elements.summary || !elements.code) return;
@@ -25731,6 +25845,7 @@ function renderSdeNightPlacementOperationalStatePayloadPreview(){
     : `Read-only payload preview. Sendes ikke. Ingen manuelle nattplasseringer å forhåndsvise; snapshot er tomt {}. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.`;
 
   elements.code.textContent = JSON.stringify(payload, null, 2);
+  renderSdeNightPlacementOperationalStateReadbackComparison(payload, lastOperationalStateReadbackBodyForDisplay);
 }
 
 function summarizeOperationalStateSnapshot(snapshot){
@@ -25746,6 +25861,7 @@ function renderOperationalStateReadback(readbackBody, eventsBody, status, base){
   const elements = getOperationalStateReadbackElements();
   if(!elements.summary || !elements.list) return;
 
+  lastOperationalStateReadbackBodyForDisplay = readbackBody;
   const readback = isServerNoteReadbackObject(readbackBody?.state?.operationalStateReadback)
     ? readbackBody.state.operationalStateReadback
     : {};
