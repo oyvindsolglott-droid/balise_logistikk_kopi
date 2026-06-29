@@ -2753,6 +2753,123 @@ Stoppunkt:
 - operational write er fortsatt ikke løpende åpnet
 - eventuell B38-H1C/H1 krever ny eksplisitt bruker-GO
 
+## B38-H1D production-pilot runbook
+
+B38-H1D er en runbook for en senere, ekstremt smal production-pilot. Dette
+er dokumentasjon, ikke execution. Ingen pilot skal kjøres i B38-H1D.
+
+Konklusjon fra B38-H1C:
+
+- `GO for B38-H1D runbook`
+- dette er ikke GO for write
+- production-pilot er fortsatt ikke utført
+- operational write er fortsatt ikke løpende åpnet
+
+Tillatt pilot:
+
+- eksakt én frontend-initiert production-write
+- endpoint: `POST /api/operational-state/snapshot`
+- tillatt payload scope: `["sde-night-placement-manual-overrides"]`
+- pilotkandidat fra preview: `74-54`, `5M -> 4M`
+- dette er ikke skifteordre
+- dette er ikke `Utført` eller `Annullert`
+- dette er ikke SDE-motor-kilde
+- serverstate blir fortsatt ikke operativ sannhetskilde
+- dette åpner ikke løpende operational write
+
+Midlertidig flaggvindu for senere pilot:
+
+- `SDE_ENABLE_OPERATIONAL_STATE_WRITES=1`
+- `SDE_ENABLE_OPERATIONAL_STATE_PRODUCTION_WRITES=1`
+
+Kun operational-state snapshot write åpnes midlertidig. Alle andre
+operational/action/production write-flagg holdes av.
+
+Flags som fortsatt skal være av:
+
+- migrations
+- server-note actions
+- SDE recommendation ack actions
+- alle andre production/action write-flagg
+
+Forventet DB-endring ved senere pilot:
+
+- nøyaktig én ny relevant `operational_state.snapshot.test` event
+- revision øker fra `6` til `7`
+- readback viser nattplassering-scope
+- ingen schemaendring
+- ingen migration
+- ingen ekstra events/actions
+- ingen writes til andre subsystemer
+
+Før-POST abortkriterier:
+
+- repo er ikke `## main...origin/main`
+- HEAD er ikke forventet H1B-DOC-baseline eller nyere eksplisitt godkjent
+- production er ikke revision `6`
+- events er ikke kun B37-H2 id `5`
+- backup finnes ikke eller integrity er ikke dokumentert OK
+- port `8791` lytter
+- payload scope er feil
+- payload inneholder drag/transient state
+- payload inneholder selected slot
+- payload inneholder `Utført` eller `Annullert`
+- payload inneholder SDE-motor, score eller sortering
+- payload har skifteordre-semantikk
+- submitknapp-count er større enn `1`
+- bruker gir ikke eksplisitt GO for selve write-vinduet
+
+Etter-POST abortkriterier:
+
+- HTTP er ikke forventet success
+- mer enn én POST observeres
+- revision blir ikke nøyaktig `7`
+- mer enn én ny relevant event dukker opp
+- event type, scope eller idempotency er feil
+- serverstatus viser operational authority på
+- migration/schema endres
+- console/network viser uventede writes
+- frontend ser ut til å auto-sende eller retrye
+
+Rollback/recovery:
+
+- korrigerende event er riktig når write er gyldig, men metadata/readback
+  trenger audit-korrigering
+- DB-restore vurderes bare ved feil write som ikke trygt kan korrigeres
+  auditmessig
+- DB-restore vurderes også ved flere uventede events/actions,
+  integrity/schema-skade eller inkonsistent idempotency/revision
+- rollback skal ikke gjøres bare fordi piloten lykkes
+- normal safe rollback etter vellykket pilot er å lukke runtime tilbake
+  read-only uten flags, ikke å slette pilot-event
+
+Dokumentasjonskrav etter eventuell senere pilot:
+
+- eksakt payload
+- endpoint
+- flags-vindu
+- HTTP-resultat
+- before/after revision
+- before/after events
+- readback
+- network POST count
+- backup brukt
+- at runtime ble lukket tilbake read-only
+- konklusjon GO/NO-GO for videre arbeid
+
+Forbud i B38-H1D:
+
+- ikke kjør pilot
+- ikke POST
+- ikke sett flags
+- ikke restart
+- ikke DB-write
+- ikke Cloudflare
+- ikke endre `index.html`
+- ikke endre serverkode
+- ikke lag ny backup/preflight i runbook-fasen
+- ikke bland runbook og execution
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
