@@ -5928,6 +5928,9 @@ button{padding:12px 12px}
   <pre class="server-note-payload-preview" id="sdeNightPlacementPayloadPreview" aria-label="Read-only payload preview for SDE Nattplassering"></pre>
   <div class="server-note-readback-summary" id="sdeNightPlacementReadbackCompareSummary">Read-only compare avventer lokal preview og serverreadback.</div>
   <div class="server-note-readback-summary" id="sdeNightPlacementWriteReadinessSummary">Write-readiness avventer lokal preview og serverstatus.</div>
+  <div class="server-note-readback-summary" id="sdeNightPlacementTestSubmitGateSummary">Test-only submit gate er ikke aktiv i production.</div>
+  <div class="server-note-result" id="sdeNightPlacementTestSubmitGateResult">write_not_available</div>
+  <div class="server-note-controls" id="sdeNightPlacementTestSubmitGateControls" aria-label="Test-only submit gate for SDE Nattplassering"></div>
 </div>
 <div class="server-note-panel" id="serverNotePanel" aria-live="polite">
   <div class="server-note-header">
@@ -25302,6 +25305,8 @@ const SDE_SERVER_NOTE_MAX_LENGTH = 500;
 const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
 const SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT = 5;
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE = "sde-night-placement-manual-overrides";
+const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_QUERY = "sdeOperationalStateTestSubmit";
+const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_PORT = "8791";
 const SDE_RECOMMENDATION_ACK_READBACK_EVENT_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_RECENT_DISPLAY_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH = 500;
@@ -25319,6 +25324,7 @@ let serverNoteReadbackOkForDisplay = false;
 let operationalStateReadbackStateForDisplay = "idle";
 let lastOperationalStateReadbackBodyForDisplay = null;
 let sdeRecommendationAckReadbackOkForDisplay = false;
+let sdeNightPlacementOperationalStateTestSubmitInFlight = false;
 
 function getSameOriginServerStatusBase(){
   if(isSdeHostedHttpsOrigin()){
@@ -25898,6 +25904,225 @@ function renderSdeNightPlacementOperationalStateWriteReadiness(localPayload, sta
   element.dataset.availability = readiness.availability;
 }
 
+function getSdeNightPlacementOperationalStateTestSubmitElements(){
+  return {
+    summary: document.getElementById("sdeNightPlacementTestSubmitGateSummary"),
+    result: document.getElementById("sdeNightPlacementTestSubmitGateResult"),
+    controls: document.getElementById("sdeNightPlacementTestSubmitGateControls")
+  };
+}
+
+function getSdeNightPlacementOperationalStateTestSubmitUrl(locationLike = window.location){
+  const fallbackHref = typeof window !== "undefined" && window.location ? window.location.href : "http://localhost/";
+  const href = locationLike?.href || String(locationLike || fallbackHref);
+  try{
+    return new URL(href, fallbackHref);
+  }catch(_error){
+    return null;
+  }
+}
+
+function isSdeNightPlacementOperationalStateTestSubmitOriginAllowed(locationLike = window.location){
+  const url = getSdeNightPlacementOperationalStateTestSubmitUrl(locationLike);
+  if(!url) return false;
+
+  const normalizedOrigin = normalizeServerStatusBase(url.origin);
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+  const host = url.hostname.toLowerCase();
+  const port = String(url.port || "");
+  const localTestPort = port === SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_PORT || /^879\d$/.test(port);
+
+  if(normalizedOrigin === SDE_HOSTED_HTTPS_ORIGIN) return false;
+  if(port === "8787") return false;
+  return url.protocol === "http:" && localHosts.has(host) && localTestPort;
+}
+
+function hasSdeNightPlacementOperationalStateTestSubmitParameter(locationLike = window.location){
+  const url = getSdeNightPlacementOperationalStateTestSubmitUrl(locationLike);
+  return url?.searchParams?.get(SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_QUERY) === "1";
+}
+
+function getSdeNightPlacementOperationalStateTestSubmitPayloadSafety(localPayload){
+  const payloadExists = isServerNoteReadbackObject(localPayload)
+    && isServerNoteReadbackObject(localPayload.stateSnapshot)
+    && isServerNoteReadbackObject(localPayload.stateSnapshot.sdeNightPlacementManualOverrides);
+  const scope = Array.isArray(localPayload?.stateScope)
+    ? localPayload.stateScope.map(item => String(item || "").trim()).filter(Boolean)
+    : [];
+  const exactScope = scope.length === 1 && scope[0] === SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE;
+  const payloadText = payloadExists ? JSON.stringify(localPayload) : "";
+  const noDragPayload = payloadExists && !payloadText.includes("sdeNightPlacementDragPayload");
+  const noSelectedSlot = payloadExists && !payloadText.includes("sdeNightPlacementSelectedSlot");
+  const notCompletedCancelled = localPayload?.clientContext?.notCompletedCancelled === true;
+  const notSdeMotorSource = localPayload?.clientContext?.notSdeMotorSource === true;
+  const notOperationalOrder = localPayload?.clientContext?.notOperationalOrder === true;
+
+  return {
+    payloadExists,
+    exactScope,
+    noDragPayload,
+    noSelectedSlot,
+    notCompletedCancelled,
+    notSdeMotorSource,
+    notOperationalOrder,
+    safe:payloadExists
+      && exactScope
+      && noDragPayload
+      && noSelectedSlot
+      && notCompletedCancelled
+      && notSdeMotorSource
+      && notOperationalOrder
+  };
+}
+
+function buildSdeNightPlacementOperationalStateTestSubmitReadiness(localPayload, status, locationLike = window.location){
+  const originAllowed = isSdeNightPlacementOperationalStateTestSubmitOriginAllowed(locationLike);
+  const testParameterPresent = hasSdeNightPlacementOperationalStateTestSubmitParameter(locationLike);
+  const writesAllowed = status?.operationalStateWritesAllowed === true;
+  const productionWritesEnabled = status?.operationalStateProductionWritesEnabled === true;
+  const payloadSafety = getSdeNightPlacementOperationalStateTestSubmitPayloadSafety(localPayload);
+  const allowed = originAllowed
+    && testParameterPresent
+    && writesAllowed
+    && !productionWritesEnabled
+    && payloadSafety.safe
+    && !sdeNightPlacementOperationalStateTestSubmitInFlight;
+  const statusText = allowed ? "test_submit_ready" : "test_submit_blocked";
+  const availability = allowed ? "test_submit_available" : "write_not_available";
+  const blockers = [];
+
+  if(!originAllowed){
+    blockers.push("Production kan ikke sende");
+    blockers.push("Krever lokal testserver på 8791/879x, ikke public URL og ikke port 8787");
+  }
+  if(!testParameterPresent){
+    blockers.push(`Krever eksplisitt testparameter ?${SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_QUERY}=1`);
+  }
+  if(!writesAllowed){
+    blockers.push("Krever server test-write-flagg operationalStateWritesAllowed:true");
+  }
+  if(productionWritesEnabled){
+    blockers.push("Production-write flagg må være av");
+  }
+  if(!payloadSafety.payloadExists){
+    blockers.push("Mangler payload-preview");
+  }
+  if(!payloadSafety.exactScope){
+    blockers.push(`Payload må ha eksakt scope ["${SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE}"]`);
+  }
+  if(!payloadSafety.noDragPayload){
+    blockers.push("Payload kan ikke inneholde sdeNightPlacementDragPayload");
+  }
+  if(!payloadSafety.noSelectedSlot){
+    blockers.push("Payload kan ikke inneholde sdeNightPlacementSelectedSlot");
+  }
+  if(!payloadSafety.notCompletedCancelled){
+    blockers.push("Payload må markere Ikke Utført/Annullert");
+  }
+  if(!payloadSafety.notSdeMotorSource){
+    blockers.push("Payload må markere ikke SDE-motor-kilde");
+  }
+  if(!payloadSafety.notOperationalOrder){
+    blockers.push("Payload må markere ikke skifteordre");
+  }
+  if(sdeNightPlacementOperationalStateTestSubmitInFlight){
+    blockers.push("Test-submit pågår");
+  }
+
+  const summary = blockers.length
+    ? blockers.join("; ")
+    : "Alle test-only submit-gates er grønne. Knappen finnes bare på lokal testserver med eksplisitt parameter.";
+  const checkpoints = [
+    `origin:${originAllowed ? "testserver" : "blocked"}`,
+    `testparameter:${testParameterPresent ? "ja" : "nei"}`,
+    `operationalStateWritesAllowed:${writesAllowed ? "true" : "false"}`,
+    `operationalStateProductionWritesEnabled:${productionWritesEnabled ? "true" : "false"}`,
+    `scope:${payloadSafety.exactScope ? SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE : "mismatch"}`,
+    `drag payload:${payloadSafety.noDragPayload ? "nei" : "ja"}`,
+    `selected slot:${payloadSafety.noSelectedSlot ? "nei" : "ja"}`,
+    `Utført/Annullert:${payloadSafety.notCompletedCancelled ? "nei" : "ukjent"}`,
+    `SDE-motor-kilde:${payloadSafety.notSdeMotorSource ? "nei" : "ukjent"}`,
+    `skifteordre:${payloadSafety.notOperationalOrder ? "nei" : "ukjent"}`,
+    "serverstate:ikke operativ sannhetskilde",
+    "automatisk sending:nei",
+    "neste fase:eksplisitt GO"
+  ];
+
+  return {
+    allowed,
+    status:statusText,
+    availability,
+    blockers,
+    text:`Test-only submit gate: ${statusText}. ${availability}. Ikke aktiv i production. Krever testserver, testparameter og server test-write-flagg. Preview only når blokkert. Ingen automatisk sending. ${summary}. ${checkpoints.join("; ")}.`
+  };
+}
+
+function isSdeNightPlacementOperationalStateTestSubmitGateEnabled(status, localPayload = buildSdeNightPlacementOperationalStatePayloadPreview(), locationLike = window.location){
+  return buildSdeNightPlacementOperationalStateTestSubmitReadiness(localPayload, status, locationLike).allowed === true;
+}
+
+function renderSdeNightPlacementOperationalStateTestSubmitGate(localPayload, status){
+  const elements = getSdeNightPlacementOperationalStateTestSubmitElements();
+  if(!elements.summary || !elements.result || !elements.controls) return;
+
+  const readiness = buildSdeNightPlacementOperationalStateTestSubmitReadiness(localPayload, status);
+  elements.summary.textContent = readiness.text;
+  elements.summary.dataset.testSubmitStatus = readiness.status;
+  elements.summary.dataset.availability = readiness.availability;
+  elements.result.textContent = `${readiness.availability} / ${readiness.status}`;
+  elements.result.dataset.testSubmitStatus = readiness.status;
+  elements.result.dataset.availability = readiness.availability;
+  elements.controls.replaceChildren();
+
+  if(!readiness.allowed) return;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "server-note-send-btn";
+  button.textContent = "Kjør test-submit";
+  button.title = "Kun lokal testserver med eksplisitt B38-F testparameter. Ikke production.";
+  button.disabled = sdeNightPlacementOperationalStateTestSubmitInFlight;
+  button.addEventListener("click", submitSdeNightPlacementOperationalStateTestSnapshot);
+  elements.controls.appendChild(button);
+}
+
+async function submitSdeNightPlacementOperationalStateTestSnapshot(){
+  if(sdeNightPlacementOperationalStateTestSubmitInFlight) return;
+
+  const payload = buildSdeNightPlacementOperationalStatePayloadPreview();
+  if(!isSdeNightPlacementOperationalStateTestSubmitGateEnabled(lastServerStatusForDisplay, payload)){
+    renderSdeNightPlacementOperationalStateTestSubmitGate(payload, lastServerStatusForDisplay);
+    return;
+  }
+
+  const elements = getSdeNightPlacementOperationalStateTestSubmitElements();
+  sdeNightPlacementOperationalStateTestSubmitInFlight = true;
+  renderSdeNightPlacementOperationalStateTestSubmitGate(payload, lastServerStatusForDisplay);
+  if(elements.result){
+    elements.result.textContent = "test_submit_in_flight";
+  }
+
+  let submitResultText = "test_submit_result ukjent";
+  try{
+    const response = await fetch("/api/operational-state/snapshot", {
+      method: "POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload)
+    });
+    const body = await response.json().catch(() => ({}));
+    submitResultText = `test_submit_result HTTP ${response.status}: ${body?.ok === true ? "ok" : body?.error || "ukjent"}`;
+  }catch(error){
+    submitResultText = `test_submit_error: ${error?.message || "ukjent feil"}`;
+  }finally{
+    sdeNightPlacementOperationalStateTestSubmitInFlight = false;
+    renderSdeNightPlacementOperationalStateTestSubmitGate(buildSdeNightPlacementOperationalStatePayloadPreview(), lastServerStatusForDisplay);
+    const updatedElements = getSdeNightPlacementOperationalStateTestSubmitElements();
+    if(updatedElements.result){
+      updatedElements.result.textContent = submitResultText;
+    }
+  }
+}
+
 function renderSdeNightPlacementOperationalStatePayloadPreview(){
   const elements = getSdeNightPlacementOperationalStatePayloadPreviewElements();
   if(!elements.summary || !elements.code) return;
@@ -25913,6 +26138,7 @@ function renderSdeNightPlacementOperationalStatePayloadPreview(){
   elements.code.textContent = JSON.stringify(payload, null, 2);
   renderSdeNightPlacementOperationalStateReadbackComparison(payload, lastOperationalStateReadbackBodyForDisplay);
   renderSdeNightPlacementOperationalStateWriteReadiness(payload, lastServerStatusForDisplay);
+  renderSdeNightPlacementOperationalStateTestSubmitGate(payload, lastServerStatusForDisplay);
 }
 
 function summarizeOperationalStateSnapshot(snapshot){
