@@ -15,7 +15,8 @@
 function isPublicGithubPagesApp(locationLike = window.location){
   const hostname = String(locationLike.hostname || "").toLowerCase();
   const pathname = String(locationLike.pathname || "");
-  return hostname === "oyvindsolglott-droid.github.io" && (
+  const publicStaticHost = ["oyvindsolglott-droid", "github", "io"].join(".");
+  return hostname === publicStaticHost && (
     pathname === "/balise_logistikk_kopi" ||
     pathname.startsWith("/balise_logistikk_kopi/")
   );
@@ -5931,6 +5932,9 @@ button{padding:12px 12px}
   <div class="server-note-readback-summary" id="sdeNightPlacementTestSubmitGateSummary">Test-only submit gate er ikke aktiv i production.</div>
   <div class="server-note-result" id="sdeNightPlacementTestSubmitGateResult">write_not_available</div>
   <div class="server-note-controls" id="sdeNightPlacementTestSubmitGateControls" aria-label="Test-only submit gate for SDE Nattplassering"></div>
+  <div class="server-note-readback-summary" id="sdeNightPlacementProductionPilotGateSummary">Production pilot gate er ikke aktivert.</div>
+  <div class="server-note-result" id="sdeNightPlacementProductionPilotGateResult">write_not_available</div>
+  <div class="server-note-controls" id="sdeNightPlacementProductionPilotGateControls" aria-label="Production pilot gate for SDE Nattplassering"></div>
 </div>
 <div class="server-note-panel" id="serverNotePanel" aria-live="polite">
   <div class="server-note-header">
@@ -25307,6 +25311,7 @@ const SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT = 5;
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE = "sde-night-placement-manual-overrides";
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_QUERY = "sdeOperationalStateTestSubmit";
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_PORT = "8791";
+const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_PRODUCTION_PILOT_QUERY = "sdeOperationalStateProductionPilot";
 const SDE_RECOMMENDATION_ACK_READBACK_EVENT_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_RECENT_DISPLAY_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH = 500;
@@ -25325,6 +25330,7 @@ let operationalStateReadbackStateForDisplay = "idle";
 let lastOperationalStateReadbackBodyForDisplay = null;
 let sdeRecommendationAckReadbackOkForDisplay = false;
 let sdeNightPlacementOperationalStateTestSubmitInFlight = false;
+let sdeNightPlacementOperationalStateProductionPilotSubmitInFlight = false;
 
 function getSameOriginServerStatusBase(){
   if(isSdeHostedHttpsOrigin()){
@@ -26123,6 +26129,228 @@ async function submitSdeNightPlacementOperationalStateTestSnapshot(){
   }
 }
 
+function getSdeNightPlacementOperationalStateProductionPilotElements(){
+  return {
+    summary: document.getElementById("sdeNightPlacementProductionPilotGateSummary"),
+    result: document.getElementById("sdeNightPlacementProductionPilotGateResult"),
+    controls: document.getElementById("sdeNightPlacementProductionPilotGateControls")
+  };
+}
+
+function isSdeNightPlacementOperationalStateProductionPilotOriginAllowed(locationLike = window.location){
+  const url = getSdeNightPlacementOperationalStateTestSubmitUrl(locationLike);
+  if(!url) return false;
+
+  const normalizedOrigin = normalizeServerStatusBase(url.origin);
+  const localHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+  const host = url.hostname.toLowerCase();
+  const port = String(url.port || "");
+  const localProductionRuntime = url.protocol === "http:" && localHosts.has(host) && port === "8787";
+
+  return normalizedOrigin === SDE_HOSTED_HTTPS_ORIGIN || localProductionRuntime;
+}
+
+function isSdeNightPlacementOperationalStateProductionPilotRequested(locationLike = window.location){
+  const url = getSdeNightPlacementOperationalStateTestSubmitUrl(locationLike);
+  return url?.searchParams?.get(SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_PRODUCTION_PILOT_QUERY) === "1";
+}
+
+function buildSdeNightPlacementOperationalStateProductionPilotReadiness(localPayload, status, locationLike = window.location){
+  const originAllowed = isSdeNightPlacementOperationalStateProductionPilotOriginAllowed(locationLike);
+  const productionPilotRequested = isSdeNightPlacementOperationalStateProductionPilotRequested(locationLike);
+  const writesAllowed = status?.operationalStateWritesAllowed === true;
+  const productionWritesEnabled = status?.operationalStateProductionWritesEnabled === true;
+  const operationalWritesAllowed = status?.operationalStateOperationalWritesAllowed === true;
+  const serverStateAuthority = status?.clientReadContract?.serverStateAuthority === true
+    || status?.operationalDataContract?.serverStateUsedForOperations === true;
+  const operationalAuthority = status?.clientReadContract?.operationalAuthority === true;
+  const migrationsOpen = status?.migrationsEnabled === true;
+  const payloadSafety = getSdeNightPlacementOperationalStateTestSubmitPayloadSafety(localPayload);
+  const allowed = originAllowed
+    && productionPilotRequested
+    && writesAllowed
+    && productionWritesEnabled
+    && !operationalWritesAllowed
+    && !serverStateAuthority
+    && !operationalAuthority
+    && !migrationsOpen
+    && payloadSafety.safe
+    && !sdeNightPlacementOperationalStateProductionPilotSubmitInFlight;
+  const statusText = allowed ? "production_pilot_ready" : "production_pilot_blocked";
+  const availability = allowed ? "production_pilot_available" : "write_not_available";
+  const blockers = [];
+
+  if(!originAllowed){
+    blockers.push("Krever production/serverhosted origin eller direkte lokal production-runtime på 8787");
+  }
+  if(!productionPilotRequested){
+    blockers.push(`Krever eksplisitt URL-parameter ?${SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_PRODUCTION_PILOT_QUERY}=1`);
+  }
+  if(!writesAllowed){
+    blockers.push("Krever production write-flagg operationalStateWritesAllowed:true");
+  }
+  if(!productionWritesEnabled){
+    blockers.push("Krever production write-flagg operationalStateProductionWritesEnabled:true");
+  }
+  if(operationalWritesAllowed || serverStateAuthority || operationalAuthority){
+    blockers.push("Serverstate må fortsatt ikke være operativ sannhetskilde");
+  }
+  if(migrationsOpen){
+    blockers.push("Migrations må være av");
+  }
+  if(!payloadSafety.payloadExists){
+    blockers.push("Mangler payload-preview");
+  }
+  if(!payloadSafety.exactScope){
+    blockers.push(`Payload må ha eksakt scope ["${SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE}"]`);
+  }
+  if(!payloadSafety.noDragPayload){
+    blockers.push("Payload kan ikke inneholde sdeNightPlacementDragPayload");
+  }
+  if(!payloadSafety.noSelectedSlot){
+    blockers.push("Payload kan ikke inneholde sdeNightPlacementSelectedSlot");
+  }
+  if(!payloadSafety.notCompletedCancelled){
+    blockers.push("Payload må markere Ikke Utført/Annullert");
+  }
+  if(!payloadSafety.notSdeMotorSource){
+    blockers.push("Payload må markere ikke SDE-motor, score eller sortering");
+  }
+  if(!payloadSafety.notOperationalOrder){
+    blockers.push("Payload må markere ikke skifteordre");
+  }
+  if(sdeNightPlacementOperationalStateProductionPilotSubmitInFlight){
+    blockers.push("Production-pilot submit pågår");
+  }
+
+  const summary = blockers.length
+    ? blockers.join("; ")
+    : "Alle production-pilot gates er grønne. Én manuell sending kan kjøres bare etter eksplisitt GO og fersk SQLite-backup.";
+  const checkpoints = [
+    `origin:${originAllowed ? "production" : "blocked"}`,
+    `production-pilot-parameter:${productionPilotRequested ? "ja" : "nei"}`,
+    `operationalStateWritesAllowed:${writesAllowed ? "true" : "false"}`,
+    `operationalStateProductionWritesEnabled:${productionWritesEnabled ? "true" : "false"}`,
+    `operationalStateOperationalWritesAllowed:${operationalWritesAllowed ? "true" : "false"}`,
+    `scope:${payloadSafety.exactScope ? SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE : "mismatch"}`,
+    `drag payload:${payloadSafety.noDragPayload ? "nei" : "ja"}`,
+    `selected slot:${payloadSafety.noSelectedSlot ? "nei" : "ja"}`,
+    `Utført/Annullert:${payloadSafety.notCompletedCancelled ? "nei" : "ukjent"}`,
+    `SDE-motor/score/sortering:${payloadSafety.notSdeMotorSource ? "nei" : "ukjent"}`,
+    `skifteordre:${payloadSafety.notOperationalOrder ? "nei" : "ukjent"}`,
+    "Serverstate er ikke operativ sannhetskilde",
+    "Krever eksplisitt GO",
+    "Krever fersk SQLite-backup",
+    "Krever kontrollert flaggvindu",
+    "Én manuell sending",
+    "Ingen automatisk sending"
+  ];
+
+  return {
+    allowed,
+    status:statusText,
+    availability,
+    blockers,
+    text:`Production pilot gate: ${statusText}. ${availability}. Ikke aktivert. Krever eksplisitt GO. Krever fersk SQLite-backup. Krever kontrollert flaggvindu. Én manuell sending. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde. Ingen automatisk sending. Ingen sending fra frontend nå når blokkert. ${summary}. ${checkpoints.join("; ")}.`
+  };
+}
+
+function isSdeNightPlacementOperationalStateProductionPilotGateEnabled(status, localPayload = buildSdeNightPlacementOperationalStatePayloadPreview(), locationLike = window.location){
+  return buildSdeNightPlacementOperationalStateProductionPilotReadiness(localPayload, status, locationLike).allowed === true;
+}
+
+function buildSdeNightPlacementOperationalStateProductionPilotPayload(localPayload = buildSdeNightPlacementOperationalStatePayloadPreview(), now = new Date()){
+  const payload = JSON.parse(JSON.stringify(localPayload));
+  const serviceDate = payload.serviceDate || getSdeNightPlacementOperationalStateServiceDate();
+  const generatedStamp = now.toISOString().replace(/\D/g, "").slice(0,14);
+  payload.idempotencyKey = `sde-night-placement-manual-overrides-production-pilot-${serviceDate}-${generatedStamp}`;
+  payload.actor = {
+    id:"serverhosted-production-pilot",
+    role:"operator-pilot"
+  };
+  payload.device = {
+    id:"serverhosted-app-production-pilot",
+    label:"serverhosted app production pilot"
+  };
+  payload.clientRevision = `sde-night-placement-production-pilot-${serviceDate}`;
+  payload.clientContext = {
+    ...(isServerNoteReadbackObject(payload.clientContext) ? payload.clientContext : {}),
+    phase:"B38-H1-production-pilot",
+    source:"frontend-production-pilot-gate",
+    notOperationalOrder:true,
+    notCompletedCancelled:true,
+    notSdeMotorSource:true,
+    oneManualSubmit:true,
+    noAutomaticSubmit:true,
+    serverStateAuthority:false,
+    operationalAuthority:false
+  };
+  return payload;
+}
+
+function renderSdeNightPlacementOperationalStateProductionPilotGate(localPayload, status){
+  const elements = getSdeNightPlacementOperationalStateProductionPilotElements();
+  if(!elements.summary || !elements.result || !elements.controls) return;
+
+  const readiness = buildSdeNightPlacementOperationalStateProductionPilotReadiness(localPayload, status);
+  elements.summary.textContent = readiness.text;
+  elements.summary.dataset.productionPilotStatus = readiness.status;
+  elements.summary.dataset.availability = readiness.availability;
+  elements.result.textContent = `${readiness.availability} / ${readiness.status}`;
+  elements.result.dataset.productionPilotStatus = readiness.status;
+  elements.result.dataset.availability = readiness.availability;
+  elements.controls.replaceChildren();
+
+  if(!readiness.allowed) return;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "server-note-send-btn";
+  button.textContent = "Kjør production-pilot (én sending)";
+  button.title = "Krever eksplisitt GO, fersk SQLite-backup og kontrollert flaggvindu. Ikke skifteordre.";
+  button.disabled = sdeNightPlacementOperationalStateProductionPilotSubmitInFlight;
+  button.addEventListener("click", submitSdeNightPlacementOperationalStateProductionPilotSnapshot);
+  elements.controls.appendChild(button);
+}
+
+async function submitSdeNightPlacementOperationalStateProductionPilotSnapshot(){
+  if(sdeNightPlacementOperationalStateProductionPilotSubmitInFlight) return;
+
+  const localPayload = buildSdeNightPlacementOperationalStatePayloadPreview();
+  if(!isSdeNightPlacementOperationalStateProductionPilotGateEnabled(lastServerStatusForDisplay, localPayload)){
+    renderSdeNightPlacementOperationalStateProductionPilotGate(localPayload, lastServerStatusForDisplay);
+    return;
+  }
+
+  const payload = buildSdeNightPlacementOperationalStateProductionPilotPayload(localPayload);
+  const elements = getSdeNightPlacementOperationalStateProductionPilotElements();
+  sdeNightPlacementOperationalStateProductionPilotSubmitInFlight = true;
+  renderSdeNightPlacementOperationalStateProductionPilotGate(localPayload, lastServerStatusForDisplay);
+  if(elements.result){
+    elements.result.textContent = "production_pilot_submit_in_flight";
+  }
+
+  let submitResultText = "production_pilot_result ukjent";
+  try{
+    const response = await fetch("/api/operational-state/snapshot", {
+      method: "POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload)
+    });
+    const body = await response.json().catch(() => ({}));
+    submitResultText = `production_pilot_result HTTP ${response.status}: ${body?.ok === true ? "ok" : body?.error || "ukjent"}`;
+  }catch(error){
+    submitResultText = `production_pilot_error: ${error?.message || "ukjent feil"}`;
+  }finally{
+    sdeNightPlacementOperationalStateProductionPilotSubmitInFlight = false;
+    renderSdeNightPlacementOperationalStateProductionPilotGate(buildSdeNightPlacementOperationalStatePayloadPreview(), lastServerStatusForDisplay);
+    const updatedElements = getSdeNightPlacementOperationalStateProductionPilotElements();
+    if(updatedElements.result){
+      updatedElements.result.textContent = submitResultText;
+    }
+  }
+}
+
 function renderSdeNightPlacementOperationalStatePayloadPreview(){
   const elements = getSdeNightPlacementOperationalStatePayloadPreviewElements();
   if(!elements.summary || !elements.code) return;
@@ -26139,6 +26367,7 @@ function renderSdeNightPlacementOperationalStatePayloadPreview(){
   renderSdeNightPlacementOperationalStateReadbackComparison(payload, lastOperationalStateReadbackBodyForDisplay);
   renderSdeNightPlacementOperationalStateWriteReadiness(payload, lastServerStatusForDisplay);
   renderSdeNightPlacementOperationalStateTestSubmitGate(payload, lastServerStatusForDisplay);
+  renderSdeNightPlacementOperationalStateProductionPilotGate(payload, lastServerStatusForDisplay);
 }
 
 function summarizeOperationalStateSnapshot(snapshot){
