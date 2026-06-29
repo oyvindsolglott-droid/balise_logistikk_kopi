@@ -23,6 +23,15 @@ const {
   getSdeRecommendationAckGuardFailure,
   getSdeRecommendationAckStatus
 } = require("./sdeRecommendationAckGuards");
+const {
+  buildOperationalStateEvents,
+  buildOperationalStateReadback,
+  getOperationalStateEnvironmentGuardFailure,
+  getOperationalStateRequestGuardFailure,
+  getOperationalStateStatus,
+  validateOperationalStateSnapshotPayload,
+  writeOperationalStateSnapshot
+} = require("./operationalState");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
@@ -168,6 +177,23 @@ if(SDE_RECOMMENDATION_ACK_ACTIONS_ENABLED){
   }
 }
 
+const OPERATIONAL_STATE_STATUS = getOperationalStateStatus({
+  env: process.env,
+  port: PORT,
+  databasePath: configuredDatabasePath
+});
+if(OPERATIONAL_STATE_STATUS.operationalStateWritesEnabled){
+  const guardFailure = getOperationalStateEnvironmentGuardFailure({
+    env: process.env,
+    port: PORT,
+    databasePath: configuredDatabasePath
+  });
+  if(guardFailure){
+    console.error(`operational state startup blocked: ${guardFailure.message}`);
+    process.exit(1);
+  }
+}
+
 const { db, databasePath } = openDatabase();
 let runtimeMigrationStatus = runtimeMigrationMode;
 try{
@@ -247,6 +273,10 @@ app.get("/api/server/status", (_req, res) => {
     serverNoteProductionActionsEnabled: SERVER_NOTE_STATUS.serverNoteProductionActionsEnabled,
     sdeRecommendationAckActionsEnabled: SDE_RECOMMENDATION_ACK_STATUS.sdeRecommendationAckActionsEnabled,
     sdeRecommendationAckProductionActionsEnabled: SDE_RECOMMENDATION_ACK_STATUS.sdeRecommendationAckProductionActionsEnabled,
+    operationalStateWritesEnabled: OPERATIONAL_STATE_STATUS.operationalStateWritesEnabled,
+    operationalStateProductionWritesEnabled: OPERATIONAL_STATE_STATUS.operationalStateProductionWritesEnabled,
+    operationalStateWritesAllowed: OPERATIONAL_STATE_STATUS.writesAllowed,
+    operationalStateOperationalWritesAllowed: OPERATIONAL_STATE_STATUS.operationalWritesAllowed,
     ...schemaStatus,
     clientReadContract: CLIENT_READ_CONTRACT,
     operationalDataContract: OPERATIONAL_DATA_CONTRACT,
@@ -279,6 +309,90 @@ app.get("/api/events", (req, res) => {
     revision: currentRevision,
     sinceRevision,
     events: getEventsSinceRevision(db, sinceRevision)
+  });
+});
+
+app.get("/api/operational-state", (_req, res) => {
+  res.json(buildOperationalStateReadback(db, OPERATIONAL_STATE_STATUS));
+});
+
+app.get("/api/operational-state/events", (req, res) => {
+  const sinceRevision = parseSinceRevision(req.query.sinceRevision);
+  res.json(buildOperationalStateEvents(db, OPERATIONAL_STATE_STATUS, sinceRevision));
+});
+
+app.post("/api/operational-state/snapshot", (req, res) => {
+  const guardFailure = getOperationalStateRequestGuardFailure({
+    env: process.env,
+    port: PORT,
+    databasePath
+  });
+  if(guardFailure){
+    return res.status(guardFailure.status || 403).json({
+      ok: false,
+      error: guardFailure.code,
+      message: guardFailure.message
+    });
+  }
+
+  const validation = validateOperationalStateSnapshotPayload(req.body);
+  if(!validation.ok){
+    return res.status(400).json({
+      ok: false,
+      error: validation.code,
+      message: validation.message
+    });
+  }
+
+  let result;
+  try{
+    result = writeOperationalStateSnapshot(db, validation.value);
+  }catch(error){
+    console.error("operational state snapshot failed", error);
+    return res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: "Internal server error."
+    });
+  }
+
+  if(!result.ok){
+    return res.status(result.status || 500).json({
+      ok: false,
+      error: result.code || "operational_state_snapshot_failed",
+      message: result.message || "Operational-state snapshot failed.",
+      expectedServerRevision: result.expectedServerRevision,
+      currentRevision: result.currentRevision,
+      event: result.event
+    });
+  }
+
+  if(result.idempotent){
+    return res.status(200).json({
+      ok: true,
+      action: "operational-state-snapshot",
+      mode: "replayed",
+      idempotent: true,
+      resultingRevision: result.resultingRevision,
+      previousRevision: result.previousRevision,
+      event: result.event
+    });
+  }
+
+  broadcastSseEvent("state_changed", {
+    revision: result.resultingRevision,
+    previousRevision: result.previousRevision,
+    event: result.event
+  });
+
+  return res.status(201).json({
+    ok: true,
+    action: "operational-state-snapshot",
+    mode: "created",
+    idempotent: false,
+    previousRevision: result.previousRevision,
+    resultingRevision: result.resultingRevision,
+    event: result.event
   });
 });
 

@@ -1983,6 +1983,62 @@ ingen packageendring, ingen migration, ingen restart, ingen POST, ingen DB-write
 ingen operational write, ingen production write, ingen Cloudflare-endring, ingen
 SDE-motor/score/sortering/kandidatmotor/DROPS/Tursatt-endring.
 
+## B37-B test-only operational-state endpoint skeleton
+
+B37-B implementerer kun en test-only server-skeleton for operational-state
+readback. Det er fortsatt ingen frontend-kobling, ingen PWA-write, ingen
+SDE-motorlesing fra serverstate, ingen operational truth/source-of-authority og
+ingen production write åpnet.
+
+Endepunkter:
+
+- `GET /api/operational-state`
+- `GET /api/operational-state/events`
+- `POST /api/operational-state/snapshot`
+
+`GET`-endepunktene er read-only og skal tydelig rapportere at dette er
+state-sync/readback, ikke skifteordre, ikke SDE-motor-kilde og ikke operativ
+sannhetskilde. `POST /api/operational-state/snapshot` er deaktivert som default
+og returnerer `403` uten eksplisitt flagg.
+
+Write-guard:
+
+- `SDE_ENABLE_OPERATIONAL_STATE_WRITES=1` kreves alltid for snapshot-write
+- production-port `8787` krever i tillegg
+  `SDE_ENABLE_OPERATIONAL_STATE_PRODUCTION_WRITES=1`
+- test/dev-write uten production-flagg krever eksplisitt `SDE_SERVER_DB_PATH`
+  under `/tmp`
+- test/dev-write avviser production-database
+- ingen CORS-write er lagt til
+
+Snapshot-payload validerer minimum `serviceDate`, `idempotencyKey`, `actor`,
+`device`, `stateScope` og `stateSnapshot`. `expectedServerRevision` er valgfri
+i test-skeleton, men hvis den sendes og ikke matcher serverrevision, returneres
+`409 Conflict`. Samme `idempotencyKey` med identisk payload er idempotent
+replay; samme key med annet payload returnerer `409`.
+
+State lagres kun som `operationalStateReadback` i `app_state` på testserveren og
+som audit-event `operational_state.snapshot.test`. Feltet er eksplisitt
+readback/test-data og skal ikke brukes av SDE-motor, score, sortering,
+kandidatmotor, DROPS, Tursatt eller Vaktplan.
+
+Test:
+
+```bash
+cd /Users/solglottsr/balise_logistikk_kopi
+node server/scripts/test-operational-state.js
+```
+
+Testskriptet bruker midlertidig `/tmp`-database og ikke-production-port. Det
+sjekker startup guards, disabled `403`, invalid `400`, created `201`, replay
+`200`, idempotency conflict `409`, readback, events og production `8787` med
+GET-only før/etter. Testen skal aldri POSTe mot production `8787`.
+
+Rode soner etter B37-B: ingen `index.html`, ingen `data/`, ingen
+packageendring, ingen migration, ingen serverrestart, ingen POST mot production
+`8787`, ingen production DB-write, ingen operational write, ingen Cloudflare,
+ingen SDE-motor/score/sortering/kandidatmotor/DROPS/Tursatt/Vaktplan-endring.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
