@@ -8607,9 +8607,14 @@ function isTursattFixedTrack3Arrival(train){
   return false;
 }
 
+function isTursattBratsbergTrain(trainNumber){
+  const train = normalizeTognr(trainNumber);
+  return /^24\d{2}$/.test(train) || /^924\d{2}$/.test(train);
+}
+
 function isTursattSkienArrivalTrain(train){
   const trainNumber = normalizeTognr(train);
-  return /^8\d{2}$/.test(trainNumber) || isTursattFixedTrack3Arrival(trainNumber);
+  return /^8\d{2}$/.test(trainNumber) || isTursattBratsbergTrain(trainNumber) || isTursattFixedTrack3Arrival(trainNumber);
 }
 
 function getTursattArrivalSlot(train, partIndex, hasTwoVehicles){
@@ -9866,15 +9871,16 @@ function getTursattTrainFamily(trainNumber){
   if(/^808\d{2}$/.test(train)) return "808xx";
   if(/^908\d{2}$/.test(train)) return "908xx";
   if(/^8\d{2}$/.test(train)) return "8xx";
+  if(/^924\d{2}$/.test(train)) return "924xx";
+  if(/^24\d{2}$/.test(train)) return "24xx";
   return "";
 }
 
 function getSdeSplitJoinRouteForEightSeries({actionType, position, trainNumber}={}){
   const train = normalizeTognr(trainNumber);
   const pos = String(position || "").trim();
-  const family = getTursattTrainFamily(train);
 
-  if(!family){
+  if(!isTursattEightSeriesTrain(train)){
     return {
       route:"",
       text:"Skiftevei ikke bestemt av 8xx-regelen; manuell vurdering nødvendig."
