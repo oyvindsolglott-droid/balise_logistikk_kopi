@@ -8612,6 +8612,13 @@ function isTursattBratsbergTrain(trainNumber){
   return /^24\d{2}$/.test(train) || /^924\d{2}$/.test(train);
 }
 
+function getTursattBratsbergAlternativeTrainNumbers(trainNumber){
+  const train = normalizeTognr(trainNumber);
+  if(/^24\d{2}$/.test(train)) return [train, `9${train}`];
+  if(/^924\d{2}$/.test(train)) return [train, train.slice(1)];
+  return train ? [train] : [];
+}
+
 function isTursattSkienArrivalTrain(train){
   const trainNumber = normalizeTognr(train);
   return /^8\d{2}$/.test(trainNumber) || isTursattBratsbergTrain(trainNumber) || isTursattFixedTrack3Arrival(trainNumber);
@@ -9625,7 +9632,7 @@ function getAllRelevantTursattTrains(){
     const t = normalizeTognr(tog);
     if(!t) return;
     if(t.toLowerCase() === "ikke tursatt") return;
-    trains.add(t);
+    getTursattBratsbergAlternativeTrainNumbers(t).forEach(train => trains.add(train));
   }
 
 
@@ -10254,12 +10261,15 @@ function getTursattBaseVehicleMapByMode(side, mode){
 
 function getTursattVehicleCellInfo(train, side, mode){
   const key = normalizeTognr(train);
+  const lookupKeys = getTursattBratsbergAlternativeTrainNumbers(key);
   const base = getTursattBaseVehicleMapByMode(side, mode);
   const manualMap = side === "departure"
     ? (state.manualTursattDepartureVehicles || {})
     : (state.manualTursattArrivalVehicles || {});
-  const baseValue = sanitizeVehicleValue(base.map?.[key] || "");
-  const manualValue = sanitizeVehicleValue(manualMap[key] || "");
+  const baseKey = lookupKeys.find(trainKey => sanitizeVehicleValue(base.map?.[trainKey] || ""));
+  const manualKey = lookupKeys.find(trainKey => sanitizeVehicleValue(manualMap[trainKey] || ""));
+  const baseValue = sanitizeVehicleValue(base.map?.[baseKey] || "");
+  const manualValue = sanitizeVehicleValue(manualMap[manualKey] || "");
   const effectiveValue = baseValue || manualValue;
 
   return {
@@ -10470,7 +10480,10 @@ function getDisplayTrainNumberForOppstilling(train, side="", mode=""){
     : (side === "departure" ? "imorgen" : "idag");
   const key = normalizeTognr(train);
   if(side === "arrival"){
-    const arrivalDisplayTrain = getArrivalDisplayTrainNumberMapByMode(effectiveMode)?.[key] || "";
+    const arrivalDisplayTrainMap = getArrivalDisplayTrainNumberMapByMode(effectiveMode);
+    const arrivalDisplayKey = getTursattBratsbergAlternativeTrainNumbers(key)
+      .find(trainKey => arrivalDisplayTrainMap?.[trainKey]);
+    const arrivalDisplayTrain = arrivalDisplayTrainMap?.[arrivalDisplayKey] || "";
     if(arrivalDisplayTrain) return arrivalDisplayTrain;
   }
 
