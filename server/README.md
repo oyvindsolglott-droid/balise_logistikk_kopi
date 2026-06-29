@@ -2445,6 +2445,119 @@ Stoppkriterier for senere faser:
 - hvis serverstate brukes som SDE-motor-kilde eller operativ sannhetskilde
 - hvis DROPS, Tursatt, Vaktplan, score, sortering eller kandidatmotor blandes inn
 
+## B38-E frontend-write pilot-runbook
+
+B38-E dokumenterer runbook og GO/NO-GO for en senere kontrollert
+frontend-write pilot for nattplassering-sync. Dette er documentation-only.
+Etter B38-E er frontend-write fortsatt ikke implementert.
+
+Formål:
+
+- forberede en senere kontrollert frontend-write pilot
+- scope er kun `["sde-night-placement-manual-overrides"]`
+- piloten gjelder bare readback/simulert arbeidsstate for SDE Nattplassering
+- payload er ikke skifteordre
+- payload er ikke `Utført` eller `Annullert`
+- payload er ikke SDE-motor, score eller sortering
+- serverstate skal ikke bli operativ sannhetskilde
+
+Ikke-mål:
+
+- ikke generell frontend sync
+- ikke TXP full state
+- ikke DROPS
+- ikke Tursatt
+- ikke Vaktplan
+- ikke `Utført` eller `Annullert`
+- ikke automatisk sync
+- ikke retry eller kø
+- ikke localStorage serverkø
+- ikke CORS-write
+- ikke GitHub Pages/static write
+- ikke operational authority
+
+GO-vilkår før en senere pilot:
+
+- egen eksplisitt bruker-GO for akkurat piloten
+- fersk git clean/sync
+- production health OK
+- revision kjent og notert
+- operational-state events før pilot dokumentert
+- fersk SQLite backup utenfor repo
+- backup integrity OK
+- flags åpnes bare i et kontrollert runtimevindu
+- nøyaktig en frontend-initiert POST
+- Network-panel verifiseres under piloten
+- events etter pilot verifiseres
+- server restartes tilbake read-only etter piloten
+- public app refresh viser `write_not_available` igjen etter piloten
+- ingen automatisk retry
+
+NO-GO:
+
+- remote ahead/behind
+- uren arbeidskopi
+- health-feil
+- uventede events
+- writeflagg allerede på før pilotvindu
+- payload scope mismatch
+- payload inkluderer drag payload, selected slot eller transient state
+- payload gjelder `Utført` eller `Annullert`
+- payload gjør serverstate til sannhetskilde
+- ingen backup
+- backup integrity feiler
+- uklar `idempotencyKey`
+- mer enn én POST er nødvendig
+- Network viser flere POST
+- console errors
+- Cloudflare/tunnel ustabil
+- bruker er usikker/trøtt og vil ikke eksplisitt godkjenne pilot
+
+Mulig pilotmodell senere:
+
+- B38-F kan eventuelt være test-only frontend submit bak hard dev/pilot-gate,
+  men ikke production
+- B38-G kan eventuelt være dry-run/review av payload og pilotprosedyre
+- B38-H kan eventuelt være en kontrollert frontend production pilot med
+  backup og flags, dersom eksplisitt GO
+- etter B38-H skal runtime tilbake read-only
+
+Idempotency:
+
+- hver pilot skal ha unik `idempotencyKey`
+- gjenbruk av nøkkel skal bare gi idempotent replay hvis payload er identisk
+- idempotency conflict skal stoppe piloten
+
+Rollback:
+
+- frontend rollback: revert commit som legger til writeknapp/submit hvis den
+  senere blir laget
+- runtime rollback: restart uten flags
+- DB rollback: restore backup kun ved dokumentert behov og etter eksplisitt GO
+- normal safe rollback etter vellykket pilot er å slå av flags og restarte
+  read-only, ikke å slette pilot-event
+
+UI-krav hvis writeknapp noen gang lages:
+
+- knappen må bare vises når readiness er eksplisitt pilot-enabled
+- knappen må aldri vises på GitHub Pages/static holding page
+- knappen må bare brukes på same-origin serverhosted `/app`
+- teksten må inneholde:
+  - "Pilot"
+  - "Én manuell sending"
+  - "Ikke skifteordre"
+  - "Ikke Utført/Annullert"
+  - "Serverstate er ikke operativ sannhetskilde"
+- drag/drop må aldri auto-sende
+- reload må aldri auto-sende
+- bakgrunnsjobb må aldri sende
+
+Stoppunkt:
+
+- etter B38-E er frontend-write fortsatt ikke implementert
+- operational write er fortsatt ikke løpende åpnet
+- production skal fortsatt være read-only
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
