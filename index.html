@@ -5927,6 +5927,7 @@ button{padding:12px 12px}
   <div class="server-note-readback-summary" id="sdeNightPlacementPayloadPreviewSummary">Avventer lokal state.</div>
   <pre class="server-note-payload-preview" id="sdeNightPlacementPayloadPreview" aria-label="Read-only payload preview for SDE Nattplassering"></pre>
   <div class="server-note-readback-summary" id="sdeNightPlacementReadbackCompareSummary">Read-only compare avventer lokal preview og serverreadback.</div>
+  <div class="server-note-readback-summary" id="sdeNightPlacementWriteReadinessSummary">Write-readiness avventer lokal preview og serverstatus.</div>
 </div>
 <div class="server-note-panel" id="serverNotePanel" aria-live="polite">
   <div class="server-note-header">
@@ -25832,6 +25833,71 @@ function renderSdeNightPlacementOperationalStateReadbackComparison(localPayload,
   element.dataset.compareStatus = comparison.status;
 }
 
+function buildSdeNightPlacementOperationalStateWriteReadiness(localPayload, status){
+  const payloadExists = isServerNoteReadbackObject(localPayload)
+    && isServerNoteReadbackObject(localPayload.stateSnapshot)
+    && isServerNoteReadbackObject(localPayload.stateSnapshot.sdeNightPlacementManualOverrides);
+  const scope = Array.isArray(localPayload?.stateScope)
+    ? localPayload.stateScope.map(item => String(item || "").trim()).filter(Boolean)
+    : [];
+  const scopeOk = scope.length === 1 && scope[0] === SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE;
+  const payloadText = payloadExists ? JSON.stringify(localPayload) : "";
+  const noDragPayload = payloadExists && !payloadText.includes("sdeNightPlacementDragPayload");
+  const noSelectedSlot = payloadExists && !payloadText.includes("sdeNightPlacementSelectedSlot");
+  const notCompletedCancelled = localPayload?.clientContext?.notCompletedCancelled === true;
+  const notSdeMotorSource = localPayload?.clientContext?.notSdeMotorSource === true;
+  const notOperationalOrder = localPayload?.clientContext?.notOperationalOrder === true;
+  const opStateWriteOpen = status?.operationalStateWritesAllowed === true;
+  const opStateAuthorityWriteOpen = status?.operationalStateOperationalWritesAllowed === true;
+  const opStateProductionFlagOpen = status?.operationalStateProductionWritesEnabled === true;
+  const migrationsOpen = status?.migrationsEnabled === true;
+  const statusKnown = isServerNoteReadbackObject(status);
+  const statusReadOnly = statusKnown
+    && !opStateWriteOpen
+    && !opStateAuthorityWriteOpen
+    && !opStateProductionFlagOpen
+    && !migrationsOpen;
+  let readinessStatus = "blocked_by_design";
+  if(!payloadExists){
+    readinessStatus = "blocked_missing_payload";
+  }else if(!scopeOk){
+    readinessStatus = "blocked_scope_mismatch";
+  }else if(statusReadOnly){
+    readinessStatus = "blocked_server_read_only";
+  }
+
+  const checkpoints = [
+    `scope riktig:${scopeOk ? "ja" : "nei"}`,
+    `payload:${payloadExists ? "ja" : "nei"}`,
+    `drag payload:${noDragPayload ? "nei" : "ja"}`,
+    `selected slot:${noSelectedSlot ? "nei" : "ja"}`,
+    `Utført/Annullert:${notCompletedCancelled ? "nei" : "ukjent"}`,
+    `SDE-motor/score/sortering:${notSdeMotorSource ? "nei" : "ukjent"}`,
+    `skifteordre:${notOperationalOrder ? "nei" : "ukjent"}`,
+    `read-only status:${statusReadOnly ? "ja" : "ukjent"}`,
+    `operationalStateWritesAllowed:${opStateWriteOpen ? "true" : "false"}`,
+    `operationalStateOperationalWritesAllowed:${opStateAuthorityWriteOpen ? "true" : "false"}`,
+    `operationalStateProductionWritesEnabled:${opStateProductionFlagOpen ? "true" : "false"}`,
+    "frontend-submit:nei",
+    "neste fase:eksplisitt GO + backup + separat pilot"
+  ];
+
+  return {
+    status:readinessStatus,
+    availability:"write_not_available",
+    text:`Write-readiness: ${readinessStatus}. Ikke aktivert. Preview only. Ingen sending fra frontend. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde. Neste fase krever eksplisitt GO. ${checkpoints.join("; ")}. write_not_available`
+  };
+}
+
+function renderSdeNightPlacementOperationalStateWriteReadiness(localPayload, status){
+  const element = document.getElementById("sdeNightPlacementWriteReadinessSummary");
+  if(!element) return;
+  const readiness = buildSdeNightPlacementOperationalStateWriteReadiness(localPayload, status);
+  element.textContent = readiness.text;
+  element.dataset.readinessStatus = readiness.status;
+  element.dataset.availability = readiness.availability;
+}
+
 function renderSdeNightPlacementOperationalStatePayloadPreview(){
   const elements = getSdeNightPlacementOperationalStatePayloadPreviewElements();
   if(!elements.summary || !elements.code) return;
@@ -25846,6 +25912,7 @@ function renderSdeNightPlacementOperationalStatePayloadPreview(){
 
   elements.code.textContent = JSON.stringify(payload, null, 2);
   renderSdeNightPlacementOperationalStateReadbackComparison(payload, lastOperationalStateReadbackBodyForDisplay);
+  renderSdeNightPlacementOperationalStateWriteReadiness(payload, lastServerStatusForDisplay);
 }
 
 function summarizeOperationalStateSnapshot(snapshot){
