@@ -2301,6 +2301,150 @@ Neste fase:
   plan, eller design for første ekte frontend-write
 - ingen automatisk åpning av operational write
 
+## B38-A first frontend sync scope
+
+B38-A låser første minimale frontend-state-scope for en senere syncfase. Dette
+er documentation-only og åpner ingen write, ingen frontend-submit og ingen
+serverstate som operativ sannhetskilde.
+
+Valgt første scope:
+
+```json
+["sde-night-placement-manual-overrides"]
+```
+
+Hvorfor dette scope er smalest:
+
+- SDE Nattplassering har én avgrenset persistent frontend-state:
+  `state.sdeNightPlacementManualOverrides`
+- feltet er allerede lokalt avgrenset til simulerte manuelle nattplasseringer
+- drag/drop-resultatet er arbeidsstate/readback, ikke skifteordre
+- scope berører ikke `Utført`, `Annullert`, SDE-score, sortering,
+  kandidatmotor, DROPS, Tursatt eller Vaktplan
+- serverstate skal fortsatt ikke bli operativ sannhetskilde
+
+Frontend-state som kan synkes senere:
+
+- nøkkel: `state.sdeNightPlacementManualOverrides`
+- struktur: object/map fra stabil override-key til override-objekt
+- key bygges normalt fra kjøretøy + originalt fra-spor, for eksempel
+  `night-placement-step|BM75-42|12`
+- eksempelverdi:
+
+```json
+{
+  "night-placement-step|BM75-42|12": {
+    "id": "night-drag-1782757173000",
+    "vehicle": "BM75-42",
+    "originalFromSlot": "12",
+    "fromSlot": "12",
+    "currentFromSlot": "12",
+    "toSlot": "15",
+    "createdAt": "2026-06-29T18:19:33.142Z",
+    "updatedAt": "2026-06-29T18:19:33.142Z",
+    "source": "night-placement-drag",
+    "stableActionKey": "night-placement-drag|bm75-42|12|15|night-drag-1782757173000",
+    "needKey": "night-placement-drag-need|night-placement-drag|bm75-42|12|15|night-drag-1782757173000",
+    "moveKey": "night-placement-drag|bm75-42|12|15|night-drag-1782757173000",
+    "hasMatchedSdeMove": false,
+    "isManualOnly": true,
+    "payloadFromSlot": "12",
+    "payloadSlot": "12",
+    "earliestMoveTime": "",
+    "latestMoveTime": "",
+    "sourceEvent": "",
+    "nextRequiredUse": "",
+    "targetSlotOccupant": "",
+    "timeStatus": "UNKNOWN_TIME_MANUAL_REVIEW",
+    "conflicts": [],
+    "affectedVehicles": [],
+    "note": "simulert ønsket sluttplassering"
+  }
+}
+```
+
+Transient UI-state som ikke skal synkes:
+
+- `sdeNightPlacementDragPayload`
+- `sdeNightPlacementSelectedSlot`
+- `sdeNightPlacementDropMessage`
+- hover/drag CSS-state som `drag-over`, `dragging` og `drop-rejected`
+- koordinatdrag internstate
+- åpne/lukkede infopaneler og annen visuell paneltilstand
+
+Første senere sync skal inkludere:
+
+- `serviceDate`
+- `stateScope:["sde-night-placement-manual-overrides"]`
+- `stateSnapshot.sdeNightPlacementManualOverrides`
+- unik `idempotencyKey`
+- actor/device
+- client context som sier readback-only og ikke operativ ordre
+- `clientRevision` som string hvis feltet skal bevares av nåværende endpoint
+
+Første senere sync skal ikke inkludere:
+
+- `Utført` eller `Annullert`
+- completed operational action
+- SDE-score
+- sortering eller kandidatmotor
+- TXP full state
+- DROPS, Tursatt eller Vaktplan
+- serverstate som sannhetskilde
+- drag payload, selected slot eller transient hover/drag state
+
+Eksempel på senere payload, ikke POST i B38-A:
+
+```json
+{
+  "serviceDate": "YYYY-MM-DD",
+  "idempotencyKey": "sde-night-placement-manual-overrides-YYYYMMDD-HHMMSS-device",
+  "actor": {
+    "id": "operator-id",
+    "role": "txp"
+  },
+  "device": {
+    "id": "device-id",
+    "label": "serverhosted app"
+  },
+  "stateScope": [
+    "sde-night-placement-manual-overrides"
+  ],
+  "stateSnapshot": {
+    "sdeNightPlacementManualOverrides": {}
+  },
+  "clientRevision": "sde-night-placement-local-1",
+  "clientContext": {
+    "phase": "B38-later-frontend-sync",
+    "notOperationalOrder": true,
+    "notCompletedCancelled": true,
+    "notSdeMotorSource": true
+  }
+}
+```
+
+Senere UI-tekst må være tydelig på:
+
+- "Synkroniserer arbeidsstate/readback"
+- "Ikke skifteordre"
+- "Ikke Utført/Annullert"
+- "Serverstate er ikke operativ sannhetskilde"
+
+Minste trygge neste kodefase:
+
+- B38-B bør være frontend read-only payload builder for dette scope, uten POST
+- payload-builderen kan lese `state.sdeNightPlacementManualOverrides` og vise
+  preview/readback-diff
+- ingen production submit, ingen writeknapp og ingen automatisk sync i B38-B
+
+Stoppkriterier for senere faser:
+
+- hvis scope utvides til "alt"
+- hvis `Utført`/`Annullert` foreslås
+- hvis frontend kobles til POST uten egen eksplisitt GO
+- hvis serverstate brukes som SDE-motor-kilde eller operativ sannhetskilde
+- hvis DROPS, Tursatt, Vaktplan, score, sortering eller kandidatmotor blandes inn
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
