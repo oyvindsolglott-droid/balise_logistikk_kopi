@@ -2630,6 +2630,73 @@ Konklusjon:
 - neste fase må være separat dry-run/GO for production pilot, ikke direkte
   ukontrollert write
 
+## B38-H0 production-pilot dry-run result
+
+B38-H0 var en production-pilot dry-run / GO-review for
+nattplassering-sync. Den gjennomførte ingen production-pilot og ingen write.
+
+Konklusjon:
+
+- `B38-H0 GREEN — production pilot may be prepared, but not executed`
+- ingen production-pilot ble kjørt
+- ingen POST, restart, DB-write, flags eller Cloudflare-endring
+
+Repo/runtime-status:
+
+- repo var clean/synced: `## main...origin/main`
+- HEAD var `b2de49e B38-G: Dokumenter test-only frontend-submit`
+- production health OK før og etter dry-run
+- production revision fortsatt `6`
+- port `8787` stabil og lyttende
+- testserver `8791` ikke lyttende
+- alle write/operational/production/migration-flagg av
+- events før og etter fortsatt kun B37-H2 pilot-event id `5`
+- readback fortsatt B37-H2 scope:
+  `["operational-state-production-pilot"]`
+
+Browser dry-run:
+
+- public app åpnet med `sdeOperationalStateTestSubmit=1`
+- lokal reset av manuelle nattplasseringer ble gjort i browseren
+- lokal nattplassering opprettet: `74-54` fra `5M` til `4M`
+- payload-preview viste ett override
+- scope var `["sde-night-placement-manual-overrides"]`
+- compare viste `server-scope-different`, som forventet
+- readiness viste `blocked_server_read_only`
+- availability var `write_not_available`
+- test-gate viste `test_submit_blocked`
+- gate-kontroller hadde `0` knapper
+- ingen production submit/sync/snapshot-knapp
+- ingen console errors
+- ingen Network POST
+- events var uendret etter dry-run
+
+Payload-sikkerhet:
+
+- ingen drag payload
+- ingen selected slot
+- ingen `Utført` eller `Annullert`
+- ikke SDE-motor, score eller sortering
+- ikke skifteordre
+- serverstate er fortsatt ikke operativ sannhetskilde
+
+Krav før eventuell B38-H1:
+
+- eksplisitt ny bruker-GO
+- fersk SQLite-backup utenfor repo
+- backup integrity OK
+- kontrollert flaggvindu
+- nøyaktig én frontend-initiert POST
+- Network-verifikasjon
+- events/readback før og etter
+- restart tilbake read-only etterpå
+- stopp hvis bruker er trøtt/usikker
+
+Stoppunkt:
+
+- etter B38-H0-DOC er production-write fortsatt ikke gjennomført
+- operational write er fortsatt ikke løpende åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
