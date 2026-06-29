@@ -5903,6 +5903,15 @@ button{padding:12px 12px}
     <button class="server-status-check-btn" id="serverDiagnosticsToggleBtn" type="button" aria-expanded="false">Vis serverpanel</button>
   </div>
 </div>
+<div class="server-note-panel" id="operationalStateReadbackPanel" aria-live="polite">
+  <div class="server-note-header">
+    <span class="server-note-title">Operational-state readback</span>
+    <span class="server-status-pill off" id="operationalStateReadbackState">read-only</span>
+  </div>
+  <div class="server-note-description">Read-only diagnostikk. Dette er ikke skifteordre, ikke Utført/Annullert og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan. Serverstate er fortsatt ikke operativ sannhetskilde.</div>
+  <div class="server-note-readback-summary" id="operationalStateReadbackSummary">Avventer serverstatus.</div>
+  <div class="server-note-readback-list" id="operationalStateReadbackList"></div>
+</div>
 <div class="server-note-panel" id="serverNotePanel" aria-live="polite">
   <div class="server-note-header">
     <span class="server-note-title">Ikke-operativ server-note</span>
@@ -25272,6 +25281,7 @@ const SDE_SERVER_STATUS_BASE_OPTIONS = Object.freeze([
 const SDE_HOSTED_HTTPS_ORIGIN = "https://sde.oyvind-solglott.no";
 const SDE_SERVER_NOTE_MAX_LENGTH = 500;
 const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
+const SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_READBACK_EVENT_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_RECENT_DISPLAY_LIMIT = 5;
 const SDE_RECOMMENDATION_ACK_NOTE_MAX_LENGTH = 500;
@@ -25286,6 +25296,7 @@ let sdeRecommendationAckSubmitInFlight = false;
 let lastServerStatusForDisplay = null;
 let lastServerStatusBaseForDisplay = "";
 let serverNoteReadbackOkForDisplay = false;
+let operationalStateReadbackStateForDisplay = "idle";
 let sdeRecommendationAckReadbackOkForDisplay = false;
 
 function getSameOriginServerStatusBase(){
@@ -25594,6 +25605,176 @@ async function fetchServerNoteReadbackForDisplay(base){
       "readback feil",
       "warn",
       `Kunne ikke lese server-note readback: ${error?.message || "ukjent feil"}. Appen fortsetter lokalt.`
+    );
+  }
+}
+
+function getOperationalStateReadbackElements(){
+  return {
+    state: document.getElementById("operationalStateReadbackState"),
+    summary: document.getElementById("operationalStateReadbackSummary"),
+    list: document.getElementById("operationalStateReadbackList")
+  };
+}
+
+function renderOperationalStateReadbackMessage(stateText, tone, summaryText){
+  const elements = getOperationalStateReadbackElements();
+  if(elements.state){
+    elements.state.className = `server-status-pill ${tone || "off"}`;
+    elements.state.textContent = stateText;
+  }
+  if(elements.summary){
+    elements.summary.textContent = summaryText;
+  }
+  if(elements.list){
+    elements.list.replaceChildren();
+  }
+}
+
+function createOperationalStateReadbackItem(title, metaParts, noteText){
+  return createServerNoteReadbackItem(
+    title,
+    metaParts,
+    noteText || "Operational-state readback er diagnostikk, ikke skifteordre."
+  );
+}
+
+function summarizeOperationalStateSnapshot(snapshot){
+  if(!isServerNoteReadbackObject(snapshot)) return "Ingen snapshot-detaljer tilgjengelig.";
+  const scope = Array.isArray(snapshot.stateScope) ? snapshot.stateScope.join(", ") : "ukjent scope";
+  const payload = isServerNoteReadbackObject(snapshot.stateSnapshot)
+    ? JSON.stringify(snapshot.stateSnapshot).slice(0, 220)
+    : "ingen stateSnapshot";
+  return `Scope: ${scope}. Snapshot: ${payload}`;
+}
+
+function renderOperationalStateReadback(readbackBody, eventsBody, status, base){
+  const elements = getOperationalStateReadbackElements();
+  if(!elements.summary || !elements.list) return;
+
+  const readback = isServerNoteReadbackObject(readbackBody?.state?.operationalStateReadback)
+    ? readbackBody.state.operationalStateReadback
+    : {};
+  const count = Number.isInteger(readback.count) ? readback.count : 0;
+  const lastSnapshot = isServerNoteReadbackObject(readback.lastSnapshot) ? readback.lastSnapshot : null;
+  const recent = Array.isArray(readback.recentSnapshots)
+    ? readback.recentSnapshots.slice(0, SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT)
+    : [];
+  const events = Array.isArray(eventsBody?.events) ? eventsBody.events : [];
+  const operationalStateEvents = events
+    .filter(event => event?.type === "operational_state.snapshot.test")
+    .slice(-SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT)
+    .reverse();
+  const revision = readbackBody?.revision ?? status?.revision ?? "?";
+  const writesAllowed = readbackBody?.writesAllowed === true || status?.operationalStateWritesAllowed === true;
+  const operationalWritesAllowed = readbackBody?.operationalWritesAllowed === true || status?.operationalStateOperationalWritesAllowed === true;
+  const serverStateAuthority = readbackBody?.serverStateAuthority === true;
+  const operationalAuthority = readbackBody?.operationalAuthority === true;
+  const unsafeFlag = writesAllowed || operationalWritesAllowed || serverStateAuthority || operationalAuthority;
+
+  operationalStateReadbackStateForDisplay = "ok";
+
+  if(elements.state){
+    elements.state.className = `server-status-pill ${unsafeFlag ? "warn" : "off"}`;
+    elements.state.textContent = writesAllowed
+      ? "write på / visning read-only"
+      : "write av";
+  }
+
+  elements.summary.textContent = `Read-only fra ${base || "verifisert server"}: mode ${readbackBody?.mode || "ukjent"}, revision ${revision}, count ${count}, events ${operationalStateEvents.length}, writesAllowed:${writesAllowed}, operationalWritesAllowed:${operationalWritesAllowed}, serverStateAuthority:${serverStateAuthority}, operationalAuthority:${operationalAuthority}. Ikke skifteordre, ikke Utført/Annullert og ikke operativ sannhetskilde.`;
+  elements.list.replaceChildren();
+
+  if(count === 0 && !lastSnapshot && recent.length === 0 && operationalStateEvents.length === 0){
+    elements.list.appendChild(createOperationalStateReadbackItem(
+      "ingen operational-state snapshot",
+      ["count 0", "events 0", "read-only"],
+      "Ingen operational-state readback er registrert. Dette er forventet når production write og operational write er av."
+    ));
+    return;
+  }
+
+  if(lastSnapshot){
+    elements.list.appendChild(createOperationalStateReadbackItem(
+      "operationalStateReadback.lastSnapshot",
+      [
+        `rev ${lastSnapshot.revision ?? "?"}`,
+        lastSnapshot.acceptedAt || lastSnapshot.createdAt || "ukjent tid",
+        `serviceDate ${lastSnapshot.serviceDate || "?"}`,
+        `key ${lastSnapshot.idempotencyKey || "?"}`
+      ],
+      summarizeOperationalStateSnapshot(lastSnapshot)
+    ));
+  }
+
+  recent.forEach((snapshot, index) => {
+    if(!isServerNoteReadbackObject(snapshot)) return;
+    elements.list.appendChild(createOperationalStateReadbackItem(
+      `recent ${index + 1}`,
+      [
+        `rev ${snapshot.revision ?? "?"}`,
+        snapshot.acceptedAt || snapshot.createdAt || "ukjent tid",
+        `serviceDate ${snapshot.serviceDate || "?"}`,
+        `key ${snapshot.idempotencyKey || "?"}`
+      ],
+      summarizeOperationalStateSnapshot(snapshot)
+    ));
+  });
+
+  operationalStateEvents.forEach(event => {
+    elements.list.appendChild(createOperationalStateReadbackItem(
+      `event ${event.id ?? "?"}`,
+      [
+        `rev ${event.revision ?? "?"}`,
+        event.type || "ukjent type",
+        event.createdAt || "ukjent tid",
+        `serviceDate ${event.serviceDate || "?"}`,
+        `key ${event.idempotencyKey || "?"}`
+      ],
+      "Operational-state eventlogg er readback/audit. Den brukes ikke som SDE-motor-kilde."
+    ));
+  });
+}
+
+async function fetchOperationalStateReadbackForDisplay(base, status){
+  const normalizedBase = normalizeServerStatusBase(base);
+  if(!normalizedBase){
+    operationalStateReadbackStateForDisplay = "idle";
+    renderOperationalStateReadbackMessage("ikke lest", "warn", "Mangler verifisert serverbase. Operational-state readback er ikke hentet.");
+    return;
+  }
+
+  operationalStateReadbackStateForDisplay = "loading";
+  renderOperationalStateReadbackMessage("leser", "warn", "Henter operational-state readback med GET. Ingen POST sendes.");
+
+  try{
+    const readbackResponse = await fetch(`${normalizedBase}/api/operational-state`, {cache:"no-store"});
+    if(readbackResponse.status === 404){
+      operationalStateReadbackStateForDisplay = "unavailable";
+      renderOperationalStateReadbackMessage(
+        "ikke tilgjengelig",
+        "off",
+        "Operational-state readback ikke tilgjengelig i kjørende serverruntime. Appen fortsetter lokalt/read-only."
+      );
+      return;
+    }
+    if(!readbackResponse.ok) throw new Error(`/api/operational-state HTTP ${readbackResponse.status}`);
+    const readbackBody = await readbackResponse.json();
+
+    let eventsBody = {events: []};
+    const eventsResponse = await fetch(`${normalizedBase}/api/operational-state/events`, {cache:"no-store"});
+    if(eventsResponse.ok){
+      eventsBody = await eventsResponse.json();
+    }else if(eventsResponse.status !== 404){
+      throw new Error(`/api/operational-state/events HTTP ${eventsResponse.status}`);
+    }
+
+    renderOperationalStateReadback(readbackBody, eventsBody, status, normalizedBase);
+  }catch(error){
+    operationalStateReadbackStateForDisplay = "error";
+    renderOperationalStateReadbackMessage(
+      "readback feil",
+      "warn",
+      `Kunne ikke lese operational-state readback: ${error?.message || "ukjent feil"}. Appen fortsetter lokalt/read-only.`
     );
   }
 }
@@ -26199,6 +26380,7 @@ function renderServerStatusIdle(){
   lastServerStatusForDisplay = null;
   lastServerStatusBaseForDisplay = "";
   serverNoteReadbackOkForDisplay = false;
+  operationalStateReadbackStateForDisplay = "idle";
   sdeRecommendationAckReadbackOkForDisplay = false;
   renderServerStatusItems([
     createServerStatusPill("Serverstatus", ""),
@@ -26208,6 +26390,7 @@ function renderServerStatusIdle(){
   renderServerNotePanelFromStatus(null, "");
   renderSdeRecommendationAckPanelFromStatus(null, "");
   renderServerNoteReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
+  renderOperationalStateReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
   renderSdeRecommendationAckReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
 }
 
@@ -26215,6 +26398,7 @@ function renderServerStatusUnavailable(message){
   lastServerStatusForDisplay = null;
   lastServerStatusBaseForDisplay = "";
   serverNoteReadbackOkForDisplay = false;
+  operationalStateReadbackStateForDisplay = "idle";
   sdeRecommendationAckReadbackOkForDisplay = false;
   if(!shouldExposeServerDiagnosticsByDefault()){
     setServerDiagnosticsHidden(true);
@@ -26230,6 +26414,7 @@ function renderServerStatusUnavailable(message){
   renderServerNotePanelFromStatus(null, "", "Serverstatus utilgjengelig. Ingen POST kan sendes.");
   renderSdeRecommendationAckPanelFromStatus(null, "", "Serverstatus utilgjengelig. Ingen SDE-ack POST kan sendes.");
   renderServerNoteReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Readback er ikke hentet.");
+  renderOperationalStateReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Operational-state readback er ikke hentet.");
   renderSdeRecommendationAckReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. SDE-ack readback er ikke hentet.");
 }
 
@@ -26256,6 +26441,24 @@ function renderServerStatus(status, base){
   const flagTone = value => value ? "warn" : "off";
   const writesOff = !writesAllowed && status?.serverNoteActionsEnabled !== true && status?.sdeRecommendationAckActionsEnabled !== true;
   const readbackOk = serverNoteReadbackOkForDisplay === true && sdeRecommendationAckReadbackOkForDisplay === true;
+  const operationalStateReadbackLabel = operationalStateReadbackStateForDisplay === "ok"
+    ? "op-state readback ok"
+    : operationalStateReadbackStateForDisplay === "unavailable"
+      ? "op-state runtime venter"
+      : operationalStateReadbackStateForDisplay === "error"
+        ? "op-state readback feil"
+        : operationalStateReadbackStateForDisplay === "loading"
+          ? "op-state hentes"
+          : "op-state ikke lest";
+  const operationalStateReadbackTone = operationalStateReadbackStateForDisplay === "ok"
+    ? "ok"
+    : operationalStateReadbackStateForDisplay === "unavailable"
+      ? "off"
+      : operationalStateReadbackStateForDisplay === "error"
+        ? "warn"
+        : "warn";
+  const operationalStateWritesAllowed = status?.operationalStateWritesAllowed === true;
+  const operationalStateOperationalWritesAllowed = status?.operationalStateOperationalWritesAllowed === true;
   renderServerStatusItems([
     createServerStatusPill("Serverstatus", ""),
     createServerStatusPill("Reachable", "ok"),
@@ -26272,6 +26475,9 @@ function renderServerStatus(status, base){
     createServerStatusPill(`prod-note ${status?.serverNoteProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.serverNoteProductionActionsEnabled), true),
     createServerStatusPill(`sde-ack ${status?.sdeRecommendationAckActionsEnabled ? "på" : "av"}`, flagTone(status?.sdeRecommendationAckActionsEnabled), true),
     createServerStatusPill(`prod-ack ${status?.sdeRecommendationAckProductionActionsEnabled ? "på" : "av"}`, flagTone(status?.sdeRecommendationAckProductionActionsEnabled), true),
+    createServerStatusPill(operationalStateReadbackLabel, operationalStateReadbackTone, true),
+    createServerStatusPill(`op-state write ${operationalStateWritesAllowed ? "på" : "av"}`, flagTone(operationalStateWritesAllowed), true),
+    createServerStatusPill(`op-state op-write ${operationalStateOperationalWritesAllowed ? "på" : "av"}`, flagTone(operationalStateOperationalWritesAllowed), true),
     createServerStatusPill(`op-write ${operationalWritesAllowed ? "på" : "av"}`, flagTone(operationalWritesAllowed), true),
     createServerStatusPill(`migration ${status?.migrationsEnabled ? "på" : "av"}`, flagTone(status?.migrationsEnabled), true),
     createServerStatusPill(`PWA ${status?.pwaConnected ? "koblet" : "ikke koblet"}`, flagTone(status?.pwaConnected), true),
@@ -26300,10 +26506,12 @@ async function fetchServerStatusForDisplay(){
         const input = document.getElementById("serverStatusBaseInput");
         if(input) input.value = base;
         serverNoteReadbackOkForDisplay = false;
+        operationalStateReadbackStateForDisplay = "loading";
         sdeRecommendationAckReadbackOkForDisplay = false;
         renderServerStatus(status, base);
         await Promise.all([
           fetchServerNoteReadbackForDisplay(base),
+          fetchOperationalStateReadbackForDisplay(base, status),
           fetchSdeRecommendationAckReadbackForDisplay(base, status)
         ]);
         renderServerStatus(status, base);
