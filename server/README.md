@@ -1848,6 +1848,141 @@ Rode soner etter B26-B: ingen POST mot production `8787`, ingen production-write
 ingen PWA/serverkobling, ingen operational write, ingen `operationalState`, ingen
 migration/runner, ingen packageendring og ingen SDE-motor/score/dataflytendring.
 
+## B37-A minimal operational state write-kontrakt
+
+B37-A er design-only. Det legges ikke til endpoint, serverkode, frontend-write,
+DB-write, operational write eller production write i denne fasen. Formålet er å
+dokumentere neste kontrollerte steg mot synkronisering av avgrenset lokal
+operativ frontend-state mellom enheter.
+
+Kontrakten er readback/auditbar state-sync først. Den er ikke en skifteordre, og
+serverstate skal ikke bli operativ sannhetskilde for SDE-motoren ennå. Dagens
+SDE-motor, score, sortering, kandidatmotor, DROPS og Tursatt-logikk skal fortsette
+å kjøre fra lokal/static frontend-data inntil en egen senere fase eksplisitt
+godkjenner noe annet.
+
+Ikke-mål:
+
+- ikke koble `Utført` eller `Annullert` til server som endelig operasjon
+- ikke la SDE-motoren lese operativ sannhet fra serverstate
+- ikke automatic write eller background sync
+- ikke CORS-write
+- ikke production write uten egen go/no-go
+- ikke operational truth/source-of-authority ennå
+- ikke silent retry etter konflikt
+
+Første minimale state-scope:
+
+- TXP Input Sporplan / `grunnoppstilling`
+- SDE Nattplassering manuelle overrides
+- SDE generated/overridden move actions som lokal intensjon/readback
+- completed/locked lokale SDE-plasseringer som frontend-state, ikke skifteordre
+- reset/clear events for samme avgrensede state
+
+Foreslåtte endepunktnavn for en senere kodefase, ikke implementert i B37-A:
+
+- `GET /api/operational-state`
+- `POST /api/operational-state/snapshot`
+- eventuelt `GET /api/operational-state/events`
+
+Payload-prinsipper for fremtidig snapshot-write:
+
+```json
+{
+  "serviceDate": "2026-06-29",
+  "actor": {
+    "id": "operator-or-test-id",
+    "role": "operator"
+  },
+  "device": {
+    "id": "mac-mini-or-ipad",
+    "label": "Kort enhetsnavn"
+  },
+  "clientRevision": "frontend-or-build-revision",
+  "expectedServerRevision": 1,
+  "idempotencyKey": "operational-state-YYYYMMDD-HHMMSS-device",
+  "stateScope": [
+    "txp-input-sporplan",
+    "sde-night-placement-manual-overrides"
+  ],
+  "stateSnapshot": {},
+  "clientContext": {
+    "source": "manual-pilot",
+    "note": "State-sync/readback, ikke skifteordre"
+  },
+  "createdAt": "2026-06-29T12:00:00.000Z"
+}
+```
+
+Concurrency og idempotency:
+
+- alle writes skal bruke optimistic concurrency med server revision
+- stale `expectedServerRevision` skal gi `409 Conflict`
+- alle writes skal ha idempotency key
+- identisk replay kan returnere tidligere resultat uten ny revision
+- samme idempotency key med annet payload skal gi konflikt
+- klienten skal ikke retrye silently etter `409`; ny readback og ny vurdering
+  kreves
+
+Feature flags:
+
+- `SDE_ENABLE_OPERATIONAL_STATE_WRITES=1`
+- `SDE_ENABLE_OPERATIONAL_STATE_PRODUCTION_WRITES=1`
+- begge skal kreves for production/port `8787`
+- default er alltid av
+
+Production guards:
+
+- production write er av som default
+- same-origin-only for write
+- ingen CORS write
+- ingen DB-mutasjon hvis flagg mangler
+- ingen production write hvis bare testflagg er satt
+- backup skal tas og verifiseres før eventuell production pilot
+- production pilot krever egen go/no-go og separat runbook
+
+Audit og readback:
+
+- hver vellykket write skal gi audit event
+- readback i UI skal merkes som state-sync/readback
+- UI-tekst må si tydelig at dette ikke er skifteordre
+- readback skal vise actor, device, serviceDate, stateScope, server revision og
+  createdAt der det er relevant
+- serverstatus/PWA-serverstate skal fortsatt ikke være operativ sannhetskilde
+  uten egen senere godkjenning
+
+Rollback-prinsipp:
+
+- disable writeflagg
+- restore verifisert DB-backup ved behov og bare etter egen rollback-go/no-go
+- revert endpoint/frontend-commit hvis kodefase introduserer feil
+- klient skal falle tilbake til lokal frontend-state
+- stopp videre writes hvis revision, events eller audit ikke matcher forventet
+
+Testplan for senere kodefase:
+
+- `403` uten nødvendige flagg
+- testserver write med testflagg og `/tmp`-database
+- production guard på port `8787`
+- idempotency replay og idempotency conflict
+- revision conflict
+- readback og audit event
+- ingen POST fra GitHub/static
+- ingen `Utført`/`Annullert`-kobling
+- ingen CORS-write
+- ingen SDE-motorlesing fra serverstate
+
+Faseinndeling etter B37-A:
+
+- B37-B: test-only server endpoint skeleton, ingen frontend
+- B37-C: readback i serverhostet app, ingen writeknapp
+- B37-D: controlled pilot senere, med backup og egen go/no-go
+
+Rode soner etter B37-A: ingen `index.html`, ingen `server/src`, ingen `data/`,
+ingen packageendring, ingen migration, ingen restart, ingen POST, ingen DB-write,
+ingen operational write, ingen production write, ingen Cloudflare-endring, ingen
+SDE-motor/score/sortering/kandidatmotor/DROPS/Tursatt-endring.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
