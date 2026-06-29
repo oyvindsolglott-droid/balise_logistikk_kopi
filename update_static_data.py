@@ -3,20 +3,52 @@ from __future__ import annotations
 
 import json
 import re
+import argparse
+import tempfile
+import time
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from playwright.sync_api import sync_playwright
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+PAYLOAD_FILENAMES = {
+    "idag": "api_idag.json",
+    "imorgen": "api_imorgen.json",
+}
+DEFAULT_PAGE_GOTO_TIMEOUT_MS = 30000
 
 OSLO_TZ = ZoneInfo("Europe/Oslo")
 ARRIVAL_DAY_CUTOFF_HOUR = 7
 DEPARTURE_NEXT_DAY_CUTOFF_HOUR = 15
+
+
+def deadline_from_seconds(deadline_seconds: Optional[float]) -> Optional[float]:
+    if deadline_seconds is None:
+        return None
+
+    if deadline_seconds <= 0:
+        raise ValueError("--deadline-seconds must be greater than 0")
+
+    return time.monotonic() + deadline_seconds
+
+
+def remaining_timeout_ms(
+    deadline_at: Optional[float],
+    default_timeout_ms: int = DEFAULT_PAGE_GOTO_TIMEOUT_MS,
+) -> int:
+    if deadline_at is None:
+        return default_timeout_ms
+
+    remaining_seconds = deadline_at - time.monotonic()
+    if remaining_seconds <= 0:
+        raise TimeoutError("Static data refresh deadline exceeded")
+
+    return max(1000, min(default_timeout_ms, int(remaining_seconds * 1000)))
 
 
 def get_operational_tursatt_dates(now=None):
@@ -258,6 +290,7 @@ def extract_vehicle_hits_from_balise_text(text: str) -> Tuple[List[str], List[st
 def fetch_vehicle_maps_for_trains(
     train_numbers: Iterable[str],
     run_date: date,
+    deadline_at: Optional[float] = None,
 ) -> Tuple[
     Dict[str, str],
     Dict[str, str],
@@ -282,14 +315,16 @@ def fetch_vehicle_maps_for_trains(
         page = browser.new_page()
 
         for train_no in train_list:
+            remaining_timeout_ms(deadline_at)
             last_error = ""
             candidate_results = []
 
             for lookup_train_no in get_balise_train_lookup_candidates(train_no):
+                timeout_ms = remaining_timeout_ms(deadline_at)
                 url = f"https://balise.no/tog/{lookup_train_no}/{run_date.isoformat()}"
 
                 try:
-                    page.goto(url, wait_until="networkidle", timeout=30000)
+                    page.goto(url, wait_until="networkidle", timeout=timeout_ms)
                     text = page.locator("body").inner_text()
 
                     general_hits, departure_hits, arrival_hits = extract_vehicle_hits_from_balise_text(text)
@@ -404,7 +439,7 @@ def all_relevant_trains() -> List[str]:
     )
 
 
-def build_payload(mode: str) -> Dict[str, object]:
+def build_payload(mode: str, deadline_at: Optional[float] = None) -> Dict[str, object]:
     operational_dates = get_operational_tursatt_dates()
     run_date = operational_dates["departure_date"] if mode == "imorgen" else operational_dates["arrival_date"]
     trains = all_relevant_trains()
@@ -414,7 +449,7 @@ def build_payload(mode: str) -> Dict[str, object]:
         arrival_vehicles,
         vehicle_errors,
         display_train_numbers,
-    ) = fetch_vehicle_maps_for_trains(trains, run_date)
+    ) = fetch_vehicle_maps_for_trains(trains, run_date, deadline_at=deadline_at)
     departure_display_map = (
         {
             train_no: display_train
@@ -449,15 +484,130 @@ def build_payload(mode: str) -> Dict[str, object]:
     }
 
 
-def write_payload(filename: str, payload: Dict[str, object]) -> None:
-    path = DATA_DIR / filename
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"Wrote {path}")
+def validate_payload(mode: str, payload: object) -> Dict[str, object]:
+    if mode not in PAYLOAD_FILENAMES:
+        raise ValueError(f"Unknown payload mode: {mode}")
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"{mode} payload must be a dict")
+
+    for key in ("date", "updatedAt"):
+        if not str(payload.get(key) or "").strip():
+            raise ValueError(f"{mode} payload is missing {key}")
+
+    return payload
 
 
-def main() -> None:
-    write_payload("api_idag.json", build_payload("idag"))
-    write_payload("api_imorgen.json", build_payload("imorgen"))
+def build_payloads(
+    build_func: Callable[..., Dict[str, object]] = build_payload,
+    deadline_at: Optional[float] = None,
+    log: Callable[[str], None] = print,
+) -> Dict[str, Dict[str, object]]:
+    payloads: Dict[str, Dict[str, object]] = {}
+
+    for mode in ("idag", "imorgen"):
+        log(f"Build start: {mode}")
+        payload = build_func(mode, deadline_at=deadline_at)
+        payloads[mode] = validate_payload(mode, payload)
+        log(f"Build complete: {mode} date={payloads[mode].get('date')}")
+
+    return payloads
+
+
+def write_temp_payload(path: Path, payload: Dict[str, object]) -> Path:
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=str(path.parent),
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as temp_file:
+        temp_file.write(json.dumps(payload, ensure_ascii=False, indent=2))
+        return Path(temp_file.name)
+
+
+def atomic_write_payloads(
+    payloads: Dict[str, Dict[str, object]],
+    output_dir: Path = DATA_DIR,
+    log: Callable[[str], None] = print,
+) -> None:
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    temp_paths: List[Path] = []
+    planned_replacements: List[Tuple[Path, Path]] = []
+
+    try:
+        for mode in ("idag", "imorgen"):
+            payload = validate_payload(mode, payloads.get(mode))
+            final_path = output_dir / PAYLOAD_FILENAMES[mode]
+            temp_path = write_temp_payload(final_path, payload)
+            temp_paths.append(temp_path)
+            planned_replacements.append((temp_path, final_path))
+
+        log("Write phase start")
+        for temp_path, final_path in planned_replacements:
+            temp_path.replace(final_path)
+            temp_paths.remove(temp_path)
+            log(f"Wrote {final_path}")
+        log("Write phase complete")
+
+    finally:
+        for temp_path in temp_paths:
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def refresh_static_data(
+    output_dir: Path = DATA_DIR,
+    dry_run: bool = False,
+    deadline_seconds: Optional[float] = None,
+    build_func: Callable[..., Dict[str, object]] = build_payload,
+    log: Callable[[str], None] = print,
+) -> Dict[str, Dict[str, object]]:
+    deadline_at = deadline_from_seconds(deadline_seconds)
+    payloads = build_payloads(build_func=build_func, deadline_at=deadline_at, log=log)
+
+    if dry_run:
+        log("Dry-run complete: no data files replaced")
+        return payloads
+
+    atomic_write_payloads(payloads, output_dir=Path(output_dir), log=log)
+    return payloads
+
+
+def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Refresh static Balise data files.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Build and validate payloads without replacing data files.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=DATA_DIR,
+        help="Directory to write api_idag.json and api_imorgen.json.",
+    )
+    parser.add_argument(
+        "--deadline-seconds",
+        type=float,
+        default=None,
+        help="Optional global deadline for the whole refresh.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    args = parse_args(argv)
+    refresh_static_data(
+        output_dir=args.output_dir,
+        dry_run=args.dry_run,
+        deadline_seconds=args.deadline_seconds,
+    )
 
 
 if __name__ == "__main__":
