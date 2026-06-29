@@ -2039,6 +2039,192 @@ packageendring, ingen migration, ingen serverrestart, ingen POST mot production
 `8787`, ingen production DB-write, ingen operational write, ingen Cloudflare,
 ingen SDE-motor/score/sortering/kandidatmotor/DROPS/Tursatt/Vaktplan-endring.
 
+## B37-F production pilot-readiness / runbook
+
+B37-F er documentation-only. Denne seksjonen åpner ingen flagg, kjører ingen
+pilot, sender ingen POST, restarter ikke production og skriver ikke til DB.
+
+Formål:
+
+- første senere production pilot skal kun skrive én avgrenset
+  operational-state snapshot
+- snapshotet er state-sync/readback, ikke skifteordre
+- snapshotet er ikke `Utført` eller `Annullert`
+- serverstate skal ikke bli SDE-motor-kilde
+- serverstate skal ikke bli operativ sannhetskilde
+- ingen frontend-write eller automatisk sync skal kobles inn i denne piloten
+
+Preconditions før en senere pilot:
+
+- repo er rent, på forventet HEAD, og `origin/main` er synket
+- production health er OK på port `8787`
+- `GET /api/operational-state` svarer OK
+- `GET /api/operational-state/events` er tom eller matcher eksplisitt forventet
+  pilot-baseline
+- `operationalStateWritesEnabled:false` før enable
+- `operationalStateProductionWritesEnabled:false` før enable
+- `operationalStateWritesAllowed:false` før enable
+- `operationalStateOperationalWritesAllowed:false` før enable
+- `operationalWritesEnabled:false`
+- `migrationsEnabled:false`
+- ingen uventet POST i browser/network
+- Cloudflare tunnel og Access er grønn uten policyendring
+- verifisert SQLite backup er tatt utenfor repo
+
+Backup før pilot:
+
+- finn production DB-path fra `/api/server/status`, process cwd/config og
+  dokumentert serveroppsett
+- ta SQLite `.backup` til mappe utenfor repo, for eksempel
+  `/Users/solglottsr/sde-server-backups/`
+- bruk timestamp og revision i filnavnet
+- verifiser at backupfil finnes og er større enn 0 bytes
+- kjør `PRAGMA integrity_check;` mot backupfilen
+- verifiser `app_state` revision i backupfilen
+- ikke fortsett hvis backup, integrity check eller revision-kontroll feiler
+
+Eksempelkommandoer for en senere pilot, ikke kjør som del av B37-F:
+
+```bash
+backup_dir="/Users/solglottsr/sde-server-backups"
+stamp="$(date +%Y%m%d-%H%M%S)"
+db="/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3"
+backup="$backup_dir/sde-server-rev-5-$stamp.sqlite3"
+mkdir -p "$backup_dir"
+sqlite3 "$db" ".backup '$backup'"
+test -s "$backup"
+sqlite3 "$backup" "PRAGMA integrity_check;"
+sqlite3 "$backup" "SELECT revision, updated_at FROM app_state WHERE id = 'main';"
+```
+
+Flagging for senere pilot:
+
+- production pilot krever begge flagg:
+  `SDE_ENABLE_OPERATIONAL_STATE_WRITES=1`
+- production pilot krever også:
+  `SDE_ENABLE_OPERATIONAL_STATE_PRODUCTION_WRITES=1`
+- begge flagg skal være av som default
+- testflagget alene skal aldri åpne production-write på port `8787`
+- production-flagget skal aldri brukes uten testflagget og egen go/no-go
+- `SDE_ENABLE_OPERATIONAL_WRITES` skal fortsatt ikke brukes for denne piloten
+
+Restart/enable-sekvens for senere pilot:
+
+- precheck repo, health, DB-path, backup og Cloudflare før stopp
+- stopp production kontrollert
+- start production i dokumentert runtime-metode med begge operational-state
+  flaggene eksplisitt satt
+- ikke sett migration-, server-note-, SDE-ack- eller andre writeflagg
+- verifiser `/api/server/status` viser operational-state writes tillatt
+- verifiser fortsatt `operationalWritesEnabled:false`
+- verifiser ingen frontend-write er koblet
+- kjør kun én manuell, kontrollert testpayload fra terminal eller godkjent
+  testverktøy
+
+Minimal pilotpayload:
+
+```json
+{
+  "serviceDate": "2026-06-29",
+  "idempotencyKey": "b37-production-pilot-YYYYMMDD-HHMMSS",
+  "actor": {
+    "id": "production-pilot-operator",
+    "role": "test"
+  },
+  "device": {
+    "id": "mac-mini-production-pilot",
+    "label": "Mac mini production pilot"
+  },
+  "stateScope": [
+    "operational-state-production-pilot-readback-only"
+  ],
+  "stateSnapshot": {
+    "note": "Production pilot snapshot. State-sync/readback only, not a switching order.",
+    "manualOverrides": {}
+  },
+  "clientRevision": "production-pilot-manual",
+  "clientContext": {
+    "phase": "B37-G-or-later",
+    "purpose": "controlled-production-operational-state-pilot",
+    "notSwitchingOrder": true
+  }
+}
+```
+
+Payload-regler:
+
+- `stateScope` skal være array
+- `idempotencyKey` skal være unik for første POST
+- payload skal tydelig si test/pilot/readback-only
+- payload skal ikke beskrive en operativ ordre
+- payload skal ikke representere `Utført`, `Annullert` eller skifteordre
+- payload skal ikke brukes av SDE-motor, score, sortering, DROPS, Tursatt eller
+  Vaktplan
+
+Pilot-testsekvens for en senere fase:
+
+- kjør GET `/api/operational-state` før POST
+- kjør GET `/api/operational-state/events` før POST
+- send nøyaktig én POST med unik `idempotencyKey`
+- forvent `201 Created`
+- kjør GET `/api/operational-state` etter POST og verifiser readback
+- kjør GET `/api/operational-state/events` etter POST og verifiser én
+  `operational_state.snapshot.test`
+- replay samme payload og forvent idempotent `200`
+- ikke test conflict i production med samme key og endret payload uten egen
+  eksplisitt GO
+- ikke koble frontend
+- ikke bruk browserknapp eller automatisk sync
+
+Stoppkriterier:
+
+- backup mangler, er tom, eller integrity check feiler
+- DB-path er feil eller uklar
+- health feiler før eller etter enable
+- writeflagg er uventet av eller på
+- migration blir aktiv
+- `operationalWritesEnabled` blir `true`
+- POST gir `500` eller uventet status
+- revision øker mer enn forventet
+- readback mangler etter `201`
+- event mangler etter `201`
+- browser/network viser uventet POST
+- Cloudflare eller Access endres
+- frontend prøver å bruke serverstate operativt
+- SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan leser serverstate
+  som sannhet
+
+Rollback:
+
+- slå av begge operational-state flagg
+- restart production tilbake til read-only
+- verifiser `operationalStateWritesEnabled:false`
+- verifiser `operationalStateProductionWritesEnabled:false`
+- verifiser `operationalStateWritesAllowed:false`
+- verifiser `operationalStateOperationalWritesAllowed:false`
+- verifiser `operationalWritesEnabled:false`
+- hvis nødvendig, stopp server og restore verifisert SQLite backup etter egen
+  rollback-go/no-go
+- revert eventuell pilot-kodecommit hvis en senere kodefase introduserer feil
+- public app skal falle tilbake til lokal/read-only state
+
+Etterpilot-status:
+
+- dokumenter timestamp, HEAD, revision før/etter, event-id og payload hash eller
+  idempotencyKey
+- dokumenter at det ikke ble bred brukeråpning
+- dokumenter at ingen iPad/iPhone-write ble åpnet
+- dokumenter at `Utført` og `Annullert` fortsatt ikke er koblet
+- dokumenter at SDE-motoren fortsatt ikke bruker serverstate som operativ
+  sannhetskilde
+
+Neste fase etter B37-F:
+
+- B37-G kan være dry-run pilot command review
+- B37-G kan alternativt være controlled production pilot
+- begge alternativer krever egen eksplisitt GO
+- B37-F i seg selv åpner ingenting
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
