@@ -18193,11 +18193,9 @@ function handleSdeResetForDay(){
   state.sdeMoveActions = {};
   state.sdeMoveLearningLog = [];
   state.sdeManualMoveOverrides = {};
-  state.sdeNightPlacementManualOverrides = {};
+  clearSdeNightPlacementDragOverrides({persist:false, render:false});
   state.sdeMoveActionDragOffsets = {};
   state.sdeExpandedMoveActionKey = "";
-  sdeNightPlacementDropMessage = null;
-  sdeNightPlacementSelectedSlot = "";
   delete state.sdeResetSnapshot;
   window.sdeMoveActionHistoryCollapsed = true;
 
@@ -23347,11 +23345,13 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   return true;
 }
 
-function clearSdeNightPlacementDragOverrides(){
+function clearSdeNightPlacementDragOverrides(options={}){
   state.sdeNightPlacementManualOverrides = {};
   sdeNightPlacementDropMessage = null;
-  persist(true);
-  renderSdeSkiftebevegelser();
+  sdeNightPlacementDragPayload = null;
+  sdeNightPlacementSelectedSlot = "";
+  if(options?.persist !== false) persist(true);
+  if(options?.render !== false) renderSdeSkiftebevegelser();
 }
 
 function buildSdeNightPlacementEffectiveMoves(data){
