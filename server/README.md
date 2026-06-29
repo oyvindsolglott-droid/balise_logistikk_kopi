@@ -2225,6 +2225,82 @@ Neste fase etter B37-F:
 - begge alternativer krever egen eksplisitt GO
 - B37-F i seg selv åpner ingenting
 
+## B37-I production pilot closure
+
+B37-H2 er gjennomført og grønn. Det ble skrevet én kontrollert production
+operational-state snapshot via terminal/runbook, og dette var en avgrenset
+pilot-write til readback/test-sync. Dette var ikke en skifteordre, ikke
+`Utført`/`Annullert`, ikke SDE-motor-kilde og ikke en åpning av løpende
+operational write.
+
+Resultat:
+
+- én kontrollert production operational-state snapshot ble skrevet
+- `POST /api/operational-state/snapshot` returnerte `201 Created`
+- revision gikk fra `5` til `6`
+- event id `5` ble opprettet
+- event type var `operational_state.snapshot.test`
+
+Backup:
+
+- backup path:
+  `/Users/solglottsr/sde_db_backups/20260629_201832_b37h2/sde-server.sqlite3`
+- integrity check: `ok`
+- backup ble tatt før flagged restart og før POST
+
+Payload/idempotency:
+
+- idempotency key: `b37h2-production-pilot-20260629201852`
+- payload var pilot/readback-only
+- payload var ikke skifteordre
+- payload var ikke `Utført` eller `Annullert`
+- payload var ikke SDE-motor-kilde
+
+Readback etter pilot:
+
+- readback count: `1`
+- revision: `6`
+- event viste:
+  - `readbackOnly:true`
+  - `serverStateAuthority:false`
+  - `operationalAuthority:false`
+  - `notSwitchingOrder:true`
+
+Final read-only status:
+
+- server ble restartet tilbake uten operational-state flags
+- final PID: `29596`
+- final health: OK
+- final revision: `6`
+- alle operational-state/write/production/migration flags var av
+- operational write er ikke løpende åpnet
+
+Browser/frontend:
+
+- public app åpnet
+- serverstatus viste `rev 6`, `writes av`, `operational av` og `readback ok`
+- ingen browser POST ble observert
+- ingen writeknapp ble koblet til operational-state snapshot
+- frontend er fortsatt read-only for operational-state
+
+Ikke gjort:
+
+- ingen Cloudflare-endring
+- ingen kodeendring
+- ingen git-endring under piloten
+- ingen data-refresh
+- ingen migration
+- ingen frontend-write
+- ingen `Utført`/`Annullert`-kobling
+- serverstate er ikke operativ sannhetskilde
+
+Neste fase:
+
+- B37-J eller senere må ha egen eksplisitt GO
+- mulige neste steg er frontend readback-polering, test av second pilot/replay
+  plan, eller design for første ekte frontend-write
+- ingen automatisk åpning av operational write
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
