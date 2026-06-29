@@ -2558,6 +2558,78 @@ Stoppunkt:
 - operational write er fortsatt ikke løpende åpnet
 - production skal fortsatt være read-only
 
+## B38-G test-only frontend-submit result
+
+B38-G verifiserte at B38-F sin test-only submit-gate kan sende én
+frontend-initiert operational-state snapshot til en lokal testserver med temp
+SQLite DB. Dette var ikke production, ikke production DB, ikke Cloudflare og
+ikke en kodeendring.
+
+Formål:
+
+- verifisere én frontend-initiert snapshot-submit fra test-gaten
+- bruke bare testserver og temp DB
+- holde production 8787 urørt
+- ikke endre kode, committe eller pushe i selve B38-G
+
+Testmiljø:
+
+- test root: `/tmp/sde-b38g-frontend-submit-4bkcvg`
+- test DB: `/tmp/sde-b38g-frontend-submit-4bkcvg/sde-test.sqlite3`
+- testserver PID: `39245`
+- browser origin:
+  `http://localhost:8791/app?sdeOperationalStateTestSubmit=1&b38g=1782762580326`
+
+Testserver før POST:
+
+- `operationalStateWritesAllowed:true`
+- `operationalStateProductionWritesEnabled:false`
+- `operationalStateOperationalWritesAllowed:false`
+- events: `[]`
+
+Frontend-test:
+
+- manuell nattplassering: `74-49` fra `10N` til `12N`
+- scope: `["sde-night-placement-manual-overrides"]`
+- submitknapper: nøyaktig `1`
+- klikk: nøyaktig én gang
+- UI-resultat: `test_submit_result HTTP 201: ok`
+- console errors: nei
+
+Etter POST:
+
+- testserver event id: `1`
+- testserver event type: `operational_state.snapshot.test`
+- testserver readback scope: `["sde-night-placement-manual-overrides"]`
+- temp DB: `PRAGMA integrity_check = ok`
+- DB eventrad:
+  `1|operational_state.snapshot.test|2026-06-29T19:51:53.113Z`
+
+Production etter test:
+
+- revision fortsatt `6`
+- events fortsatt kun B37-H2 pilot-event id `5`
+- alle write/operational/production/migration-flagg fortsatt av
+- ingen production POST
+- ingen production restart
+- ingen production DB-write
+
+Opprydding:
+
+- testserver stoppet
+- port `8791` ikke lenger lyttende
+- git final: `## main...origin/main`
+- ingen commit/push i selve B38-G
+- ingen Cloudflare-endring
+
+Konklusjon:
+
+- B38-G er grønn
+- test-only frontend submit virker mot temp DB
+- production er urørt
+- neste fase må være separat dry-run/GO for production pilot, ikke direkte
+  ukontrollert write
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
