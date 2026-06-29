@@ -2870,6 +2870,104 @@ Forbud i B38-H1D:
 - ikke lag ny backup/preflight i runbook-fasen
 - ikke bland runbook og execution
 
+## B38-H1E production-pilot write result
+
+B38-H1E gjennomførte første kontrollerte frontend-initierte
+production-pilot write for nattplassering-sync. Dette var én avgrenset
+production-write, ikke løpende operational write.
+
+Konklusjon:
+
+- `B38-H1E GREEN — first controlled production-pilot write executed`
+- production-pilot ble utført med nøyaktig én frontend-initiert POST
+- runtime ble lukket tilbake read-only umiddelbart etter POST
+- ingen schemaendring, migration, Cloudflare-endring, commit/push eller
+  filendring i selve execution-steget
+
+Før/etter:
+
+- revision: `6 -> 7`
+- før events: kun id `5` B37-H2
+- etter events: id `5` + ny id `6`
+- ny event: `6|operational_state.snapshot.test|previousRevision 6|revision 7`
+
+Endpoint og HTTP-resultat:
+
+- endpoint: `POST /api/operational-state/snapshot`
+- HTTP-resultat: `production_pilot_result HTTP 201: ok`
+
+Network:
+
+- `1` frontend-initiert POST
+- ingen retry
+- ingen ekstra events
+
+Runtime:
+
+- åpnet midlertidig med kun:
+  - `SDE_ENABLE_OPERATIONAL_STATE_WRITES=1`
+  - `SDE_ENABLE_OPERATIONAL_STATE_PRODUCTION_WRITES=1`
+- alle andre write/action/migration-flagg var av
+- runtime ble lukket tilbake read-only umiddelbart etter POST
+- read-only runtime startet igjen og svarte på port `8787`
+- alle write/operational/production/migration-flagg var av etterpå
+
+Payload/readback:
+
+- `serviceDate`: `2026-06-29`
+- `idempotencyKey`:
+  `sde-night-placement-manual-overrides-production-pilot-2026-06-29-20260629211129`
+- `actor.id`: `serverhosted-production-pilot`
+- `device.id`: `serverhosted-app-production-pilot`
+- `stateScope`: `["sde-night-placement-manual-overrides"]`
+- kandidat: `74-54`, `5M -> 4M`
+- `clientContext.phase`: `B38-H1-production-pilot`
+- `clientContext.notOperationalOrder`: `true`
+- `clientContext.notCompletedCancelled`: `true`
+- `clientContext.notSdeMotorSource`: `true`
+- `clientContext.source`: `frontend-production-pilot-gate`
+- `clientContext.oneManualSubmit`: `true`
+- `clientContext.noAutomaticSubmit`: `true`
+- `clientContext.serverStateAuthority`: `false`
+- `clientContext.operationalAuthority`: `false`
+
+Verifikasjon:
+
+- readback viste nattplassering-scope
+- DB integrity: `ok`
+- `user_version`: fortsatt `1`
+- schema hash matchet H1B-backup
+- actions count matchet H1B-backup: `4 -> 4`
+- event count: `5 -> 6`
+- port `8791`: ikke lyttende
+- git status: `## main...origin/main`
+- ingen filendringer, commit/push, Cloudflare, serverkode, `index.html`,
+  schemaendring eller migration
+
+Audit-note:
+
+Payloaden inneholdt drag-avledet intern metadata/navngiving:
+
+- `source: night-placement-drag`
+- `id: night-drag-...`
+- `stableActionKey`, `needKey` og `moveKey` med `night-placement-drag`
+
+Dette er ikke rollback-grunn for B38-H1E fordi:
+
+- writen var nøyaktig én POST
+- scope var riktig
+- readback var riktig
+- DB integrity var OK
+- schema og `user_version` var uendret
+- actions count var uendret
+- runtime ble lukket tilbake read-only
+
+Forbehold før eventuell videre pilot:
+
+- vurder payload-sanitizing/normalisering
+- skill tydeligere mellom manuell nattplassering og drag-avledet UI-metadata
+- ikke åpne løpende operational write basert på H1E alene
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
