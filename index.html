@@ -296,6 +296,18 @@ font-weight:800;
 color:#0f172a;
 font-weight:700;
 }
+.server-note-payload-preview{
+margin:0;
+padding:8px 9px;
+max-height:260px;
+overflow:auto;
+border:1px solid #dbe3ec;
+border-radius:10px;
+background:#fff;
+color:#0f172a;
+font:12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+white-space:pre-wrap;
+}
 .server-note-controls{
 display:grid;
 grid-template-columns:minmax(180px,1fr) minmax(112px,140px) minmax(112px,140px) auto;
@@ -5911,6 +5923,9 @@ button{padding:12px 12px}
   <div class="server-note-description">Read-only diagnostikk. Dette er ikke skifteordre, ikke Utført/Annullert og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan. Serverstate er fortsatt ikke operativ sannhetskilde.</div>
   <div class="server-note-readback-summary" id="operationalStateReadbackSummary">Avventer serverstatus.</div>
   <div class="server-note-readback-list" id="operationalStateReadbackList"></div>
+  <div class="server-note-description">Read-only payload preview for SDE Nattplassering manual overrides. Sendes ikke. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.</div>
+  <div class="server-note-readback-summary" id="sdeNightPlacementPayloadPreviewSummary">Avventer lokal state.</div>
+  <pre class="server-note-payload-preview" id="sdeNightPlacementPayloadPreview" aria-label="Read-only payload preview for SDE Nattplassering"></pre>
 </div>
 <div class="server-note-panel" id="serverNotePanel" aria-live="polite">
   <div class="server-note-header">
@@ -24786,6 +24801,8 @@ function renderSdeSkiftebevegelserInner(){
   document.querySelectorAll(".sde-shift-details").forEach(el=>{
     el.classList.toggle("show", sdeShiftDetailsExpanded);
   });
+
+  renderSdeNightPlacementOperationalStatePayloadPreview();
 }
 
 
@@ -25629,6 +25646,7 @@ function renderOperationalStateReadbackMessage(stateText, tone, summaryText){
   if(elements.list){
     elements.list.replaceChildren();
   }
+  renderSdeNightPlacementOperationalStatePayloadPreview();
 }
 
 function createOperationalStateReadbackItem(title, metaParts, noteText){
@@ -25637,6 +25655,82 @@ function createOperationalStateReadbackItem(title, metaParts, noteText){
     metaParts,
     noteText || "Operational-state readback er diagnostikk, ikke skifteordre."
   );
+}
+
+function getSdeNightPlacementOperationalStatePayloadPreviewElements(){
+  return {
+    summary: document.getElementById("sdeNightPlacementPayloadPreviewSummary"),
+    code: document.getElementById("sdeNightPlacementPayloadPreview")
+  };
+}
+
+function cloneSdeNightPlacementManualOverridesForPayloadPreview(){
+  const overrides = state?.sdeNightPlacementManualOverrides;
+  if(!isServerNoteReadbackObject(overrides)) return {};
+  try{
+    return JSON.parse(JSON.stringify(overrides));
+  }catch(_error){
+    return {};
+  }
+}
+
+function getSdeNightPlacementOperationalStateServiceDate(){
+  try{
+    if(typeof getOperationalTodayOsloIsoDate === "function"){
+      return getOperationalTodayOsloIsoDate();
+    }
+  }catch(_error){
+  }
+
+  const fallback = new Date().toISOString().slice(0,10);
+  return fallback;
+}
+
+function buildSdeNightPlacementOperationalStatePayloadPreview(now = new Date()){
+  const serviceDate = getSdeNightPlacementOperationalStateServiceDate();
+  const generatedAt = now.toISOString();
+  const generatedStamp = generatedAt.replace(/\D/g, "").slice(0,14);
+  const sdeNightPlacementManualOverrides = cloneSdeNightPlacementManualOverridesForPayloadPreview();
+  const overrideCount = Object.keys(sdeNightPlacementManualOverrides).length;
+
+  return {
+    serviceDate,
+    idempotencyKey:`sde-night-placement-manual-overrides-preview-${serviceDate}-${generatedStamp}`,
+    actor:{
+      id:"serverhosted-read-only-preview",
+      role:"preview"
+    },
+    device:{
+      id:"serverhosted-app",
+      label:"serverhosted app read-only preview"
+    },
+    stateScope:["sde-night-placement-manual-overrides"],
+    stateSnapshot:{
+      sdeNightPlacementManualOverrides
+    },
+    clientRevision:`sde-night-placement-local-preview-${serviceDate}-${overrideCount}`,
+    clientContext:{
+      phase:"B38-B-read-only-preview",
+      notOperationalOrder:true,
+      notCompletedCancelled:true,
+      notSdeMotorSource:true
+    }
+  };
+}
+
+function renderSdeNightPlacementOperationalStatePayloadPreview(){
+  const elements = getSdeNightPlacementOperationalStatePayloadPreviewElements();
+  if(!elements.summary || !elements.code) return;
+
+  const payload = buildSdeNightPlacementOperationalStatePayloadPreview();
+  const overrides = payload.stateSnapshot.sdeNightPlacementManualOverrides;
+  const overrideCount = Object.keys(overrides).length;
+
+  elements.summary.textContent = overrideCount
+    ? `Read-only payload preview. Sendes ikke. ${overrideCount} manuell${overrideCount === 1 ? "" : "e"} nattplassering${overrideCount === 1 ? "" : "er"} i scope ["sde-night-placement-manual-overrides"]. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.`
+    : `Read-only payload preview. Sendes ikke. Ingen manuelle nattplasseringer å forhåndsvise; snapshot er tomt {}. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.`;
+
+  elements.code.textContent = JSON.stringify(payload, null, 2);
 }
 
 function summarizeOperationalStateSnapshot(snapshot){
@@ -25683,6 +25777,7 @@ function renderOperationalStateReadback(readbackBody, eventsBody, status, base){
 
   elements.summary.textContent = `Read-only fra ${base || "verifisert server"}: mode ${readbackBody?.mode || "ukjent"}, revision ${revision}, count ${count}, events ${operationalStateEvents.length}, writesAllowed:${writesAllowed}, operationalWritesAllowed:${operationalWritesAllowed}, serverStateAuthority:${serverStateAuthority}, operationalAuthority:${operationalAuthority}. Ikke skifteordre, ikke Utført/Annullert og ikke operativ sannhetskilde.`;
   elements.list.replaceChildren();
+  renderSdeNightPlacementOperationalStatePayloadPreview();
 
   if(count === 0 && !lastSnapshot && recent.length === 0 && operationalStateEvents.length === 0){
     elements.list.appendChild(createOperationalStateReadbackItem(
