@@ -2697,6 +2697,62 @@ Stoppunkt:
 - etter B38-H0-DOC er production-write fortsatt ikke gjennomført
 - operational write er fortsatt ikke løpende åpnet
 
+## B38-H1B production-pilot preflight backup result
+
+B38-H1B var en production-pilot preflight med fersk SQLite-backup og
+browser dry-run av production-pilot gate. Den gjennomførte ingen
+production-pilot og ingen write.
+
+Konklusjon:
+
+- `B38-H1B GREEN — backup/preflight complete, production pilot still not executed`
+- ingen production-pilot ble kjørt
+- ingen POST, restart, DB-write, flags eller Cloudflare-endring
+
+Backup:
+
+- backup root:
+  `/Users/solglottsr/sde_db_backups/20260629_224312_b38h1b_preflight`
+- backup DB:
+  `/Users/solglottsr/sde_db_backups/20260629_224312_b38h1b_preflight/sde-server.sqlite3`
+- source DB resolved read-only via process/lsof:
+  `/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`
+- `PRAGMA integrity_check: ok`
+- `PRAGMA user_version: 1`
+- backup event snapshot:
+  - id `1`-`4` var historiske note/ack events
+  - id `5` var `operational_state.snapshot.test`
+  - id `5` timestamp var `2026-06-29T18:19:33.142Z`
+
+Production før/etter:
+
+- health OK
+- revision `6`
+- alle write/operational/production/migration-flagg fortsatt av
+- `/api/operational-state/events` fortsatt kun B37-H2 pilot-event id `5`
+- testserver port `8791` ikke lyttende
+- git final: `## main...origin/main`
+
+Browser dry-run:
+
+- public app åpnet med `sdeOperationalStateProductionPilot=1`
+- payload-preview viste scope:
+  `["sde-night-placement-manual-overrides"]`
+- lokal manuell nattplassering i preview: `74-54`, `5M -> 4M`
+- gate-status: `production_pilot_blocked`
+- availability: `write_not_available`
+- production-pilot submitknapper: `0`
+- operational test-submitknapper: `0`
+- console errors: nei
+- Network POST: nei
+- events uendret
+
+Stoppunkt:
+
+- etter B38-H1B-DOC er production-pilot fortsatt ikke kjørt
+- operational write er fortsatt ikke løpende åpnet
+- eventuell B38-H1C/H1 krever ny eksplisitt bruker-GO
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
