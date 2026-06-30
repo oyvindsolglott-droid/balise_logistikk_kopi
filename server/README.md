@@ -2968,6 +2968,246 @@ Forbehold før eventuell videre pilot:
 - skill tydeligere mellom manuell nattplassering og drag-avledet UI-metadata
 - ikke åpne løpende operational write basert på H1E alene
 
+## B39-B SDE Shared Workspace architecture
+
+B39-B etablerer SDE Shared Workspace som designkontrakt. Retningen er
+serverbasert shared readback/eventlogg først, ikke operativ sannhetskilde.
+H1E viser at write-mekanikken virker for ett smalt scope. Det viser ikke at
+semantikken er trygg for bred drift eller løpende operational write.
+
+Overordnet mål:
+
+- SDE Shared Workspace skal gi felles synkron serverbasert readback på tvers
+  av relevante funksjoner/moduler
+- serverstate er fortsatt ikke generell operativ sannhetskilde
+- operational-authority krever alltid egen senere GO
+- løpende operational write er fortsatt ikke åpnet
+
+Hovedprinsipp for tilgang og synk:
+
+- tilgangsnivå bestemmer hvilke funksjoner/moduler brukeren har
+- en funksjon/modul kan tildeles flere nivåer
+- alle nivåer som har samme funksjon/modul, skal se samme synkrone
+  serverbaserte informasjon i den funksjonen
+- rettigheter innen funksjonen kan variere: read-only, write-draft,
+  test-write, production-pilot-write, admin/pilot eller senere
+  operational-authority
+- samme modul + samme `serviceDate` + samme `scope` = samme synkrone
+  informasjon for alle nivåer som har modulen
+- samme informasjon betyr ikke samme mulighet til å endre
+
+Moduler/domener:
+
+- Sporplan
+- Input Sporplan
+- TXP uvirksom infrastruktur
+- SDE nattplassering
+- SDE Skiftebevegelser
+- SDE Vaktplan
+- DROPS materiellstyring
+- Verksted/materiellstatus
+- manuelle vurderinger/notater
+- audit/historikk
+
+Scope-katalog:
+
+- `sporplan-readback`
+- `input-sporplan-draft`
+- `txp-infrastructure-status`
+- `sde-night-placement-manual-overrides`
+- `sde-shift-movement-assessments`
+- `sde-vaktplan-coverage`
+- `drops-material-control`
+- `workshop-material-status`
+- `manual-assessments-notes`
+- `shared-workspace-audit-log`
+
+Scopes som krever særskilt senere GO:
+
+- `sde-shift-orders`
+- `sde-shift-completion-status`
+- `txp-operational-blocks`
+- `drops-dispatch-decisions`
+- `operational-authority-state`
+
+Disse må ikke smugles inn i generiske notes/scopes.
+
+Foreløpig nivå-/funksjonsmatrise:
+
+- `Agila`: Sporplan
+- `TXP`: Sporplan, Input Sporplan, TXP uvirksom infrastruktur
+- `DROPS`: Sporplan, SDE readback, DROPS materiellstyring,
+  verkstedstatus
+- `Verksted`: Sporplan, DROPS-relevante behov, verksted/materiellstatus
+- `SDE/skiftere`: Sporplan, Input Sporplan readback, SDE
+  Skiftebevegelser, SDE nattplassering, DROPS/verksted readback
+- `Vaktplan/ledelse`: Sporplan, SDE Vaktplan, relevant SDE/DROPS/verksted
+  readback
+- `Admin/pilot`: alle moduler som eksplisitt er tildelt, samt begrenset
+  pilotstyring
+
+Dette er en foreløpig modell. Faktiske nivånavn og modulrettigheter skal
+dokumenteres eksplisitt før implementering.
+
+Rettighetsregel for skriving:
+
+- skriving styres av nivå
+- skriving styres av funksjon
+- skriving styres av scope
+- skriving styres av miljøflagg
+- skriving styres av idempotency
+- skriving styres av `expectedRevision`/revision guard
+- skriving må audit-logges
+- skriving krever eksplisitt fase-GO
+
+Begreper som skal holdes adskilt:
+
+- funksjonstilgang
+- synkron state per funksjon
+- rettigheter innen funksjon
+- shared readback
+- input til vurdering
+- lokal UI-state
+- SDE-forslag
+- DROPS-status
+- verkstedstatus
+- skifteordre
+- `Utført`/`Annullert`
+- operativ sannhet
+
+Minste datakontrakt per scope-event/snapshot:
+
+- `serviceDate`
+- `scope`
+- `actor`
+- `device`
+- `updatedAt`
+- `revision`
+- `source`
+- `payload`
+- `clientContext`
+
+Tilleggskrav for production writes:
+
+- `idempotencyKey`
+- `expectedRevision`
+- `schemaVersion`
+- `scopeVersion`
+- `sourceModule`
+- `writeIntent`
+- `readbackOnly` eller eksplisitt authority-flagg
+
+Felter som må ekskluderes eller normaliseres:
+
+- drag/transient UI-state
+- `selectedSlot`
+- hover/focus/modal-state
+- scroll/filter/sort som UI-state
+- intern score som sannhet
+- midlertidige diagnoseobjekter
+- transient warnings uten normalisert vurdering
+- skifteordre-semantikk i ikke-skifteordre-scope
+- `Utført`/`Annullert`-semantikk uten egen godkjent modul
+
+Normaliseringskrav:
+
+- slot/track ids
+- vehicle ids
+- timestamps
+- source module
+- confidence/status som vurdering, ikke fakta
+- manuelle overrides med stabil nøkkel uten UI-event-navn som drag
+
+Synkmodell:
+
+- alle klienter bør kunne lese latest snapshot per scope
+- alle klienter bør kunne lese revision
+- alle klienter bør kunne lese eventlogg
+- alle klienter bør kunne lese actor/device
+- alle klienter bør kunne lese last-known-good
+- alle klienter bør kunne lese conflict status
+
+Konfliktregler:
+
+- `expectedRevision` mismatch gir `409 Conflict`
+- samme idempotency + identisk payload gir idempotent replay
+- samme idempotency + ulik payload gir conflict
+- to writes til samme scope må serialiseres eller gi conflict-readback
+- kryss-scope endringer skal ikke automatisk overskrive hverandre
+
+Read-only først:
+
+- alle scopes
+- audit-log
+- cross-module readback dashboard
+- function-level views
+- level/function-filtered views
+
+Test-only write senere:
+
+- `manual-assessments-notes`
+- `txp-infrastructure-status`
+- `workshop-material-status`
+- `sde-vaktplan-coverage`
+
+Production-pilot senere:
+
+- ett scope av gangen
+- `sde-night-placement-manual-overrides` kan videreføres etter
+  payload-sanitizing
+- `txp-infrastructure-status` og `workshop-material-status` kan være gode
+  kandidater fordi de er status/readback, ikke ordre
+
+Ikke write uten egen GO:
+
+- skifteordre
+- `Utført`/`Annullert`
+- DROPS dispatch-beslutninger
+- reset/import
+- operational authority
+- alt som styrer SDE-motor som sannhetskilde
+
+Hjemmebruk over nett krever senere:
+
+- autentisering
+- nivå-/funksjonstilgang
+- rolle/scope-filter
+- Cloudflare Access eller tilsvarende tilgangskontroll
+- audit på actor/device
+- session/device identity
+- LAN/VPN/tunnel-stabilitet
+- CSRF/rate limit
+- rollback/recovery-runbook
+- read-only unless explicitly opened runtime-policy
+- tydelig UI for stale/conflict/read-only/pilot mode
+
+Faseplan:
+
+- B39 shared architecture og scope-/tilgangskontrakt
+- B40 read-only shared workspace preview i serverapp
+- B41 modulvis test-write med temp DB/testserver
+- B42 modulvis production-pilot, ett scope av gangen
+- B43 access/auth/hjemmebruk med nivå-/funksjonsfilter
+- B44 gradvis operational-authority vurdering
+
+Risikotekst:
+
+- største risiko er at shared state glir over til operativ sannhet uten modne
+  nivåer, funksjonstilganger, konfliktregler og audit
+- nest største risiko er at UI-transient state og interne scorefelt deles og
+  senere tolkes som fakta
+- H1E viser at write-mekanikken virker, ikke at semantikken er trygg for bred
+  drift
+
+Fremdriftsrapportering etter push i Shared Workspace-løpet:
+
+- rapporter fase-status
+- rapporter fremdriftsindikator
+- rapporter hvor mye som gjenstår
+- rapporter neste trygge steg
+- skill mellom aktuell fase, Shared Workspace totalt og
+  operational-authority/løpende write
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
