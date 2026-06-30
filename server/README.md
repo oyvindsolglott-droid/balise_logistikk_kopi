@@ -3609,6 +3609,94 @@ DB. Derfor må testserver/temp DB, non-authority `clientContext`,
 idempotency, `expectedRevision` og abortkriterier være eksplisitte før noen
 write.
 
+## B41-F manual-assessments-notes test-resultat
+
+B41-F dokumenterer B41-D/B41-E-resultatet. Dette er dokumentasjon av en
+isolert test-only write og read-only verifisering. Det er ikke ny execution,
+ikke production-write og ikke operational authority.
+
+B41-D resultat:
+
+- status: GREEN
+- endpoint: `POST http://localhost:8791/api/operational-state/snapshot`
+- temp DB: `/tmp/sde-b41d-manual-notes-fLS24E/sde-test.sqlite3`
+- testserver port: `8791`
+- HTTP-resultat: `201 Created`
+- POST count: `1`
+- retry count: `0`
+- test DB revision: `1 -> 2`
+- event id: `1`
+- event type: `operational_state.snapshot.test`
+- scope: `manual-assessments-notes`
+
+Payload/readback-resultat:
+
+- `category: observation`
+- `assessmentStatus: observation`
+- `relatedScope: manual-assessments-notes`
+- `text: Delt readback-notat for isolert test.`
+- `relatedVehicle: 74-54`
+- `relatedSlot: 5M`
+- `readbackOnly:true`
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+
+B41-E read-only verifisering:
+
+- status: GREEN
+- production health OK
+- production revision fortsatt `7`
+- production events fortsatt kun id `5` og id `6`
+- alle production write/operational/production/migration-flagg av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- ingen production DB-write
+
+Temp DB read-only bevis:
+
+- `PRAGMA integrity_check: ok`
+- `PRAGMA user_version: 0`
+- `app_state revision: 2`
+- `events count: 1`
+- event:
+  `1|operational_state.snapshot.test|1|2|2026-06-30T08:51:04.832Z`
+- event/readback scope: `manual-assessments-notes`
+- readback inneholdt notatet som audit/readback
+- ingen andre scopes observert
+- actions-tabell var ikke nødvendig for denne operational-state-only testen
+
+Eksplisitte avgrensninger:
+
+B41-D/B41-E var ikke:
+
+- production-write
+- operational authority
+- løpende write/sync
+- skifteordre
+- Utført/Annullert
+- SDE-motor-source
+- TXP operational block
+- DROPS dispatch
+- verksted binding/frigjøring
+- Cloudflare-endring
+- migration/schemaendring
+- `index.html`-endring
+
+Ikke-testet i B41-D/B41-E:
+
+- idempotency replay er ikke testet
+- revision-conflict er ikke testet
+- disse skal ikke omtales som verifisert eller utført
+- idempotency/revision-conflict kan planlegges som egen senere B41-E2
+  test-only fase
+
+Videre faseplan:
+
+- B41-F dokumentasjon: denne fasen
+- eventuell B41-E2: idempotency/revision-conflict test-only, egen GO
+- eventuell production-pilot senere: egen GO
+- operational authority / løpende write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
