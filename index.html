@@ -5936,6 +5936,16 @@ button{padding:12px 12px}
   <div class="server-note-result" id="sdeNightPlacementProductionPilotGateResult">write_not_available</div>
   <div class="server-note-controls" id="sdeNightPlacementProductionPilotGateControls" aria-label="Production pilot gate for SDE Nattplassering"></div>
 </div>
+<div class="server-note-panel" id="sharedWorkspacePreviewPanel" aria-live="polite">
+  <div class="server-note-header">
+    <span class="server-note-title">SDE Shared Workspace preview</span>
+    <span class="server-status-pill off" id="sharedWorkspacePreviewState">read-only</span>
+  </div>
+  <div class="server-note-description">Read-only preview av felles serverbasert readback/eventlogg. Dette er ikke skifteordre, ikke Utført/Annullert og ikke operativ sannhetskilde. Ingen sync, submit eller write er åpnet.</div>
+  <div class="server-note-readback-summary" id="sharedWorkspacePreviewSummary">Avventer serverreadback.</div>
+  <div class="server-note-readback-list" id="sharedWorkspaceScopeCatalog"></div>
+  <div class="server-note-readback-summary" id="sharedWorkspaceAccessSummary">Tilgangsnivå bestemmer funksjoner og moduler. Samme modul, serviceDate og scope skal senere gi samme synlige informasjon, men ikke samme write-rettighet.</div>
+</div>
 <div class="server-note-panel" id="serverNotePanel" aria-live="polite">
   <div class="server-note-header">
     <span class="server-note-title">Ikke-operativ server-note</span>
@@ -25309,6 +25319,17 @@ const SDE_SERVER_NOTE_MAX_LENGTH = 500;
 const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
 const SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT = 5;
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE = "sde-night-placement-manual-overrides";
+const SDE_SHARED_WORKSPACE_SCOPE_CATALOG = Object.freeze([
+  {scope:"input-sporplan-shared-readback", module:"Input Sporplan"},
+  {scope:"txp-infrastructure-status", module:"TXP uvirksom infrastruktur"},
+  {scope:SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE, module:"SDE Nattplassering"},
+  {scope:"sde-shift-movements-shared-readback", module:"SDE Skiftebevegelser"},
+  {scope:"sde-vaktplan-shared-readback", module:"SDE Vaktplan"},
+  {scope:"drops-material-control-shared-readback", module:"DROPS"},
+  {scope:"workshop-status-shared-readback", module:"Verksted / materiellstatus"},
+  {scope:"manual-notes-shared-readback", module:"Manuelle vurderinger/notater"},
+  {scope:"audit-log-shared-readback", module:"Audit/readback/historikk"}
+]);
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_QUERY = "sdeOperationalStateTestSubmit";
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_PORT = "8791";
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_PRODUCTION_PILOT_QUERY = "sdeOperationalStateProductionPilot";
@@ -25328,6 +25349,7 @@ let lastServerStatusBaseForDisplay = "";
 let serverNoteReadbackOkForDisplay = false;
 let operationalStateReadbackStateForDisplay = "idle";
 let lastOperationalStateReadbackBodyForDisplay = null;
+let lastOperationalStateEventsBodyForDisplay = null;
 let sdeRecommendationAckReadbackOkForDisplay = false;
 let sdeNightPlacementOperationalStateTestSubmitInFlight = false;
 let sdeNightPlacementOperationalStateProductionPilotSubmitInFlight = false;
@@ -25652,6 +25674,7 @@ function getOperationalStateReadbackElements(){
 
 function renderOperationalStateReadbackMessage(stateText, tone, summaryText){
   lastOperationalStateReadbackBodyForDisplay = null;
+  lastOperationalStateEventsBodyForDisplay = null;
   const elements = getOperationalStateReadbackElements();
   if(elements.state){
     elements.state.className = `server-status-pill ${tone || "off"}`;
@@ -26384,6 +26407,7 @@ function renderOperationalStateReadback(readbackBody, eventsBody, status, base){
   if(!elements.summary || !elements.list) return;
 
   lastOperationalStateReadbackBodyForDisplay = readbackBody;
+  lastOperationalStateEventsBodyForDisplay = eventsBody;
   const readback = isServerNoteReadbackObject(readbackBody?.state?.operationalStateReadback)
     ? readbackBody.state.operationalStateReadback
     : {};
@@ -26468,16 +26492,141 @@ function renderOperationalStateReadback(readbackBody, eventsBody, status, base){
   });
 }
 
+function getSharedWorkspacePreviewElements(){
+  return {
+    state: document.getElementById("sharedWorkspacePreviewState"),
+    summary: document.getElementById("sharedWorkspacePreviewSummary"),
+    catalog: document.getElementById("sharedWorkspaceScopeCatalog"),
+    access: document.getElementById("sharedWorkspaceAccessSummary")
+  };
+}
+
+function renderSharedWorkspacePreviewMessage(stateText, tone, summaryText){
+  const elements = getSharedWorkspacePreviewElements();
+  if(elements.state){
+    elements.state.className = `server-status-pill ${tone || "off"}`;
+    elements.state.textContent = stateText;
+  }
+  if(elements.summary){
+    elements.summary.textContent = summaryText;
+  }
+  if(elements.catalog){
+    elements.catalog.replaceChildren();
+  }
+  if(elements.access){
+    elements.access.textContent = "Tilgangsnivå bestemmer funksjoner og moduler. Samme modul, serviceDate og scope skal senere gi samme synlige informasjon, men ikke samme write-rettighet. Auth/rollefilter er ikke implementert i denne previewen.";
+  }
+}
+
+function getSharedWorkspaceOperationalStateEvents(eventsBody){
+  const events = Array.isArray(eventsBody?.events) ? eventsBody.events : [];
+  return events.filter(event => event?.type === "operational_state.snapshot.test");
+}
+
+function getLatestSharedWorkspaceOperationalStateEvent(eventsBody){
+  return getSharedWorkspaceOperationalStateEvents(eventsBody).reduce((latest, event) => {
+    if(!latest) return event;
+    const latestId = Number(latest.id);
+    const eventId = Number(event.id);
+    if(Number.isFinite(eventId) && (!Number.isFinite(latestId) || eventId > latestId)){
+      return event;
+    }
+    return latest;
+  }, null);
+}
+
+function hasSharedWorkspaceNightPlacementPilotProof(readbackBody, eventsBody){
+  const snapshots = getOperationalStateReadbackSnapshotsForCompare(readbackBody);
+  const readbackHasScope = snapshots.some(hasSdeNightPlacementOperationalStateScope);
+  const eventsHaveH1ePilot = getSharedWorkspaceOperationalStateEvents(eventsBody)
+    .some(event => Number(event?.id) === 6 && Number(event?.revision) === 7);
+  return readbackHasScope || eventsHaveH1ePilot;
+}
+
+function getSharedWorkspaceStatusFlags(status, readbackBody){
+  const contract = status?.clientReadContract || status?.clientContract || {};
+  const operationalContract = status?.operationalDataContract || {};
+  const writesOpen = status?.operationalStateWritesAllowed === true
+    || status?.operationalStateProductionWritesEnabled === true
+    || status?.serverNoteActionsEnabled === true
+    || status?.serverNoteProductionActionsEnabled === true
+    || status?.sdeRecommendationAckActionsEnabled === true
+    || status?.sdeRecommendationAckProductionActionsEnabled === true
+    || status?.migrationsEnabled === true
+    || readbackBody?.writesAllowed === true;
+  const operationalAuthority = status?.operationalStateOperationalWritesAllowed === true
+    || status?.operationalWritesEnabled === true
+    || contract.operationalAuthority === true
+    || contract.serverStateAuthority === true
+    || operationalContract.serverStateUsedForOperations === true
+    || operationalContract.operationalWritesAllowed === true
+    || readbackBody?.operationalAuthority === true
+    || readbackBody?.serverStateAuthority === true;
+  return {
+    writesOpen,
+    operationalAuthority,
+    revision: status?.revision ?? readbackBody?.revision ?? "?"
+  };
+}
+
+function getSharedWorkspaceScopeStatuses(scopeEntry, readbackBody, eventsBody){
+  if(scopeEntry.scope === SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE
+    && hasSharedWorkspaceNightPlacementPilotProof(readbackBody, eventsBody)){
+    return ["pilot-proven", "read-only planned", "not writable", "requires later GO"];
+  }
+  return ["documented", "read-only planned", "not writable", "requires later GO"];
+}
+
+function createSharedWorkspaceScopeCatalogItem(scopeEntry, readbackBody, eventsBody){
+  const statuses = getSharedWorkspaceScopeStatuses(scopeEntry, readbackBody, eventsBody);
+  const note = statuses.includes("pilot-proven")
+    ? "H1E har bevist én kontrollert nattplassering-snapshot for dette scope. Dette er fortsatt readback/audit, ikke generell sync og ikke operativ sannhet."
+    : "Scope er katalogisert for senere Shared Workspace-readback. Ingen write, sync, skifteordre eller operativ sannhet er åpnet.";
+  return createServerNoteReadbackItem(
+    scopeEntry.scope,
+    [scopeEntry.module, ...statuses],
+    note
+  );
+}
+
+function renderSharedWorkspacePreview(status, readbackBody, eventsBody, base){
+  const elements = getSharedWorkspacePreviewElements();
+  if(!elements.summary || !elements.catalog) return;
+
+  const flags = getSharedWorkspaceStatusFlags(status, readbackBody);
+  const latestEvent = getLatestSharedWorkspaceOperationalStateEvent(eventsBody);
+  const latestEventText = latestEvent
+    ? `siste operational-state event id ${latestEvent.id ?? "?"}, rev ${latestEvent.revision ?? "?"}, type ${latestEvent.type || "ukjent"}`
+    : "ingen operational-state event i readback";
+  const stateOk = isServerNoteReadbackObject(status) && !flags.writesOpen && !flags.operationalAuthority;
+
+  if(elements.state){
+    elements.state.className = `server-status-pill ${stateOk ? "off" : "warn"}`;
+    elements.state.textContent = stateOk ? "read-only" : "kontroller status";
+  }
+
+  elements.summary.textContent = `Shared Workspace preview fra ${base || "serverstatus"}: GET /api/server/status, GET /api/operational-state og GET /api/operational-state/events. Revision ${flags.revision}. Writes ${flags.writesOpen ? "på" : "av"}. Operational authority ${flags.operationalAuthority ? "på" : "av"}. ${latestEventText}. Serverstate er readback/audit og ikke operativ sannhetskilde.`;
+  elements.catalog.replaceChildren();
+  SDE_SHARED_WORKSPACE_SCOPE_CATALOG.forEach(scopeEntry => {
+    elements.catalog.appendChild(createSharedWorkspaceScopeCatalogItem(scopeEntry, readbackBody, eventsBody));
+  });
+  if(elements.access){
+    elements.access.textContent = "Tilgangsmodell preview: tilgangsnivå styrer funksjoner/moduler, rolle styrer handlinger. Alle med samme modul, serviceDate og scope skal senere se samme synlige readback. Samme informasjon betyr ikke samme write-rettighet. Observer, pilot/adminskriver og operativ rolle holdes adskilt. Auth/rollefilter er ikke implementert i B40-A.";
+  }
+}
+
 async function fetchOperationalStateReadbackForDisplay(base, status){
   const normalizedBase = normalizeServerStatusBase(base);
   if(!normalizedBase){
     operationalStateReadbackStateForDisplay = "idle";
     renderOperationalStateReadbackMessage("ikke lest", "warn", "Mangler verifisert serverbase. Operational-state readback er ikke hentet.");
+    renderSharedWorkspacePreviewMessage("ikke lest", "warn", "Mangler verifisert serverbase. Shared Workspace preview er read-only og ikke hentet.");
     return;
   }
 
   operationalStateReadbackStateForDisplay = "loading";
   renderOperationalStateReadbackMessage("leser", "warn", "Henter operational-state readback med GET. Ingen POST sendes.");
+  renderSharedWorkspacePreviewMessage("leser", "warn", "Henter Shared Workspace readback med eksisterende GET-data. Ingen POST sendes.");
 
   try{
     const readbackResponse = await fetch(`${normalizedBase}/api/operational-state`, {cache:"no-store"});
@@ -26487,6 +26636,11 @@ async function fetchOperationalStateReadbackForDisplay(base, status){
         "ikke tilgjengelig",
         "off",
         "Operational-state readback ikke tilgjengelig i kjørende serverruntime. Appen fortsetter lokalt/read-only."
+      );
+      renderSharedWorkspacePreviewMessage(
+        "ikke tilgjengelig",
+        "off",
+        "Shared Workspace preview venter på operational-state readback i kjørende serverruntime. Appen fortsetter lokalt/read-only."
       );
       return;
     }
@@ -26502,12 +26656,18 @@ async function fetchOperationalStateReadbackForDisplay(base, status){
     }
 
     renderOperationalStateReadback(readbackBody, eventsBody, status, normalizedBase);
+    renderSharedWorkspacePreview(status, readbackBody, eventsBody, normalizedBase);
   }catch(error){
     operationalStateReadbackStateForDisplay = "error";
     renderOperationalStateReadbackMessage(
       "readback feil",
       "warn",
       `Kunne ikke lese operational-state readback: ${error?.message || "ukjent feil"}. Appen fortsetter lokalt/read-only.`
+    );
+    renderSharedWorkspacePreviewMessage(
+      "readback feil",
+      "warn",
+      `Kunne ikke lese Shared Workspace readback: ${error?.message || "ukjent feil"}. Appen fortsetter lokalt/read-only.`
     );
   }
 }
@@ -27124,6 +27284,7 @@ function renderServerStatusIdle(){
   renderSdeRecommendationAckPanelFromStatus(null, "");
   renderServerNoteReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
   renderOperationalStateReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
+  renderSharedWorkspacePreviewMessage("ikke lest", "warn", "Avventer serverstatus. Shared Workspace preview er read-only og inaktiv til serverreadback finnes.");
   renderSdeRecommendationAckReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
 }
 
@@ -27148,6 +27309,7 @@ function renderServerStatusUnavailable(message){
   renderSdeRecommendationAckPanelFromStatus(null, "", "Serverstatus utilgjengelig. Ingen SDE-ack POST kan sendes.");
   renderServerNoteReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Readback er ikke hentet.");
   renderOperationalStateReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Operational-state readback er ikke hentet.");
+  renderSharedWorkspacePreviewMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Shared Workspace preview er ikke hentet og gjør ingen write.");
   renderSdeRecommendationAckReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. SDE-ack readback er ikke hentet.");
 }
 
@@ -27223,6 +27385,7 @@ function renderServerStatus(status, base){
     createServerStatusPill(`datafiler ${hostedDataFiles || "ikke oppgitt"}`, hostedDataFiles ? "off" : "warn", true)
   ]);
   renderServerNotePanelFromStatus(status, base);
+  renderSharedWorkspacePreview(status, lastOperationalStateReadbackBodyForDisplay, lastOperationalStateEventsBodyForDisplay || {events: []}, base);
   renderSdeRecommendationAckPanelFromStatus(status, base);
 }
 
