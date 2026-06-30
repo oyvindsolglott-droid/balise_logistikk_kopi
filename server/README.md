@@ -3208,6 +3208,197 @@ Fremdriftsrapportering etter push i Shared Workspace-løpet:
 - skill mellom aktuell fase, Shared Workspace totalt og
   operational-authority/løpende write
 
+## B41-A manual-assessments-notes test-write contract
+
+Status: design-only kontrakt. Ingen endpoint, UI-knapp, POST, flagg,
+serverrestart, testserver, production-pilot, rollefilter, auth eller
+operational authority er implementert i B41-A.
+
+Scope: `manual-assessments-notes`.
+
+Første modus: senere test-only mot temp DB/testserver. Ikke production,
+ikke port 8787, ikke Cloudflare og ikke løpende operational write.
+
+Formål:
+
+- dele manuelle vurderinger/notater som shared readback
+- støtte felles situasjonsbilde
+- gi auditspor for vurderinger
+- ikke styre operativ handling
+
+`manual-assessments-notes` skal aldri i denne kontrakten være:
+
+- skifteordre
+- `Utfoert`/`Annullert`
+- SDE-motor-source
+- operational authority
+- DROPS dispatch
+- TXP operational block
+- verksted binding/frigjøring
+- automatisk sync/write
+
+Tillatt innhold:
+
+- kort notat
+- kategori
+- relatert modul/scope
+- `serviceDate`
+- `actor`
+- `device`
+- timestamp
+- optional related vehicle/slot/train når relevant
+- confidence/status som vurdering, ikke fakta
+- `clientContext` med ikke-operativ kontrakt
+
+Minimum payload-kontrakt:
+
+```json
+{
+  "serviceDate": "YYYY-MM-DD",
+  "scope": "manual-assessments-notes",
+  "idempotencyKey": "...",
+  "expectedRevision": 7,
+  "schemaVersion": 1,
+  "scopeVersion": 1,
+  "actor": {
+    "id": "...",
+    "role": "..."
+  },
+  "device": {
+    "id": "...",
+    "label": "..."
+  },
+  "sourceModule": "shared-workspace-manual-note",
+  "writeIntent": "test_manual_assessment_note",
+  "readbackOnly": true,
+  "payload": {
+    "category": "...",
+    "text": "...",
+    "relatedScope": "...",
+    "relatedVehicle": "",
+    "relatedSlot": "",
+    "relatedTrain": "",
+    "assessmentStatus": "observation|question|risk_note|manual_followup",
+    "validForServiceDate": "YYYY-MM-DD"
+  },
+  "clientContext": {
+    "notOperationalOrder": true,
+    "notCompletedCancelled": true,
+    "notSdeMotorSource": true,
+    "serverStateAuthority": false,
+    "operationalAuthority": false,
+    "noAutomaticSubmit": true,
+    "oneManualSubmit": true
+  }
+}
+```
+
+Eksplisitt ekskludert:
+
+- ordretekst som `utfoer`
+- `Utfoert`
+- `Annullert`
+- `godkjent skift`
+- `send tog`
+- `frigitt materiell`
+- `tursatt`
+- `operativ blokk`
+- drag/transient UI-state
+- `selectedSlot`
+- hover/focus/modal-state
+- intern score som sannhet
+- diagnoseobjekter dumpet rått
+- lokal UI filter/sort/scroll-state
+
+Normalisering:
+
+- `category` må være kontrollert enum
+- `assessmentStatus` må være kontrollert enum
+- tekstlengde må begrenses
+- vehicle/slot/train må normaliseres som strenger når brukt
+- `relatedScope` må være kjent scope fra Shared Workspace-katalogen
+- HTML/script er ikke tillatt
+- fritekst som kan tolkes som ordre er ikke tillatt uten kategori og
+  ikke-operativ kontrakt
+
+Foreslåtte enum-verdier:
+
+- `category`: `observation`, `question`, `risk`, `followup`,
+  `coordination`, `data_quality`
+- `assessmentStatus`: `observation`, `question`, `risk_note`,
+  `manual_followup`
+
+Idempotency/revision:
+
+- senere test-write må kreve `idempotencyKey`
+- senere test-write må kreve `expectedRevision`
+- samme idempotency + samme payload gir idempotent replay
+- samme idempotency + ulik payload gir conflict
+- `expectedRevision` mismatch gir `409 Conflict`
+- ingen auto-retry
+
+Foreløpig rolle/funksjon:
+
+- readback kan vises for nivåer som har relevant modul
+- skriveadgang senere gis bare til eksplisitt tildelte nivåer
+- Agila skal ikke kunne skrive notater hvis Agila kun har Sporplan
+- Admin/pilot kan eventuelt testskrive senere med eksplisitt flagg
+- faktisk rollemodell må låses før production-pilot
+
+Test-only senere:
+
+- bruk temp DB/testserver
+- ikke production
+- ikke port 8787
+- ikke Cloudflare
+- ikke operational authority
+- ikke direkte klientwrite til `shared-workspace-audit-log`
+- skap maksimalt en test-event/snapshot innen `manual-assessments-notes`
+- verifiser readback
+- verifiser conflict/idempotency hvis fasen tillater det
+
+Absolutt ikke del av B41-A:
+
+- endpoint-implementering
+- UI-knapp
+- POST
+- flaggsetting
+- serverrestart
+- production-pilot
+- auth-implementering
+- rollefilter-implementering
+- operational authority
+
+Foreløpige abortkriterier for senere test-write:
+
+- feil scope
+- payload inneholder ordre/`Utfoert`/`Annullert`
+- payload mangler non-authority context
+- `idempotencyKey` mangler
+- `expectedRevision` mangler
+- mer enn én write
+- uventet revision jump
+- event havner i feil scope
+- audit-log kan skrives direkte fra klient
+- retry/auto-submit oppdages
+
+Neste B41-faser:
+
+- B41-A: kontrakt/dokumentasjon
+- B41-B: test-only serverkontrakt/runbook
+- B41-C: test-only endpoint eller eksisterende endpoint-vurdering med temp DB
+- B41-D: test-only write
+- B41-E: readback/verifisering
+- production-pilot først senere, med egen GO
+
+Risikotekst:
+
+Største risiko er at manuelle notater brukes som skjult operativ ordre.
+Nest største risiko er at fritekst blir tolket som sannhet av SDE eller
+mennesker. Derfor må kontrakten være readback/audit først, med eksplisitte
+`notOperationalOrder`, `notCompletedCancelled`, `notSdeMotorSource`,
+`serverStateAuthority:false` og `operationalAuthority:false`.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
