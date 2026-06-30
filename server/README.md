@@ -3796,6 +3796,183 @@ Videre fase:
 - eventuell production-pilot krever egen senere GO
 - operational authority / løpende write: `0 %`, ikke åpnet
 
+## B42-A manual-assessments-notes production-pilot plan/runbook
+
+Status: README-only plan/runbook. B42-A dokumenterer en senere kontrollert
+production-pilot for `manual-assessments-notes`. Dette er ikke execution,
+ikke production-write, ikke flaggåpning og ikke operational authority.
+
+Formål:
+
+- gjennomføre én senere production-pilot for `manual-assessments-notes`
+- skrive delt readback/audit-only state, ikke operativ sannhetskilde
+- verifisere at production kan ta imot ett ikke-operativt manual-note snapshot
+  med `expectedRevision` og idempotency
+- fortsatt ikke skifteordre
+- fortsatt ikke Utført/Annullert
+- fortsatt ikke SDE-motor-source
+- fortsatt ikke TXP/DROPS/verksted-operativ beslutning
+- fortsatt ikke løpende write/sync
+
+Forutsetninger før senere B42 execution:
+
+- HEAD må være eksplisitt låst baseline for B42 execution
+- repo må være rent: `## main...origin/main`
+- production må svare på port `8787`
+- production revision må være `7`, eller nyere avvik må være låst og forklart
+  før pilot
+- production events må være id `5` og id `6`, eller nyere avvik må være låst
+  og forklart før pilot
+- alle write/operational/production/migration-flagg må være av før
+  pilotvinduet åpnes
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- ingen Cloudflare-endring
+- ingen migration/schemaendring
+
+Backup/preflight før senere execution:
+
+- ta fersk production DB backup utenfor repo
+- dokumenter backup path og kilde-DB path
+- kjør `PRAGMA integrity_check` på backup og forvent `ok`
+- dokumenter `PRAGMA user_version`
+- kjør production GET før pilot:
+  - `/api/health`
+  - `/api/server/status`
+  - `/api/operational-state/events`
+- hent `expectedRevision` fra production rett før POST
+- bekreft at port/DB-scope er production `8787` og production DB, ikke testserver
+- bekreft at ingen testserver på `8791` brukes i B42 execution
+
+Production-pilot write-vindu:
+
+Et senere B42 execution-steg kan bare åpne et kort, eksplisitt pilotvindu for:
+
+- nøyaktig én POST
+- endpoint: `POST /api/operational-state/snapshot`
+- scope: `manual-assessments-notes`
+- én idempotencyKey
+- `expectedRevision` hentet fra production rett før POST
+- ingen retry
+- ingen auto-submit
+- ingen løpende write/sync
+- production-write flagg bare hvis egen B42 execution-GO eksplisitt tillater
+  nøyaktig flaggvindu og rollbackplan
+- alle flags skal lukkes tilbake til read-only umiddelbart etter POST
+
+Payloadkrav:
+
+Production-pilot payload skal være konservativ og ikke-operativ:
+
+- scope eksakt `manual-assessments-notes`
+- `schemaVersion:1`
+- `scopeVersion:1`
+- `sourceModule:"shared-workspace-manual-note"`
+- `readbackOnly:true`
+- `expectedRevision`
+- `idempotencyKey`
+- actor/device
+- non-authority `clientContext`
+- tekst som er tydelig ikke-operativ
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `notOperationalOrder:true`
+- `notCompletedCancelled:true`
+- `notSdeMotorSource:true`
+- `noAutomaticSubmit:true`
+- `oneManualSubmit:true`
+
+Kodekontrakt som må avklares før B42 execution:
+
+- dagens guard tillater `writeIntent:"test_manual_assessment_note"`
+- `writeIntent:"production_pilot_manual_assessment_note"` er ikke tillatt av
+  dagens kode uten en separat godkjent patch
+- dagens eventtype er `operational_state.snapshot.test`
+- hvis B42 skal kreve eventtype `operational_state.snapshot.production_pilot`,
+  må dette avklares og eventuelt implementeres i en egen senere fase før
+  execution
+- B42-A åpner ikke for å endre kode for dette
+
+Innholdsforbud:
+
+B42 execution skal abortere hvis payload eller UI-kilde inneholder:
+
+- ordre
+- Utført
+- Annullert
+- skift som instruks
+- TXP operational block
+- DROPS dispatch
+- verksted binding/frigjøring
+- tursatt/operativ beslutning
+- SDE-motor-source
+- authority-termer
+- raw diagnose
+- drag/selected/hover/focus/modal/scroll/filter/sort/score/transient UI-state
+- skifteordre-semantikk i notatfelt, metadata eller clientContext
+
+Abortkriterier før senere B42 POST:
+
+- feil HEAD
+- urent repo
+- production revision/events avviker uten låst forklaring
+- production svarer ikke
+- writeflagg er allerede på før pilot
+- `migrationRequired:true` eller schemaavvik som ikke er forstått
+- `serverStateAuthority:true`
+- `operationalAuthority:true`
+- payload scope er ikke eksakt `manual-assessments-notes`
+- manglende `expectedRevision`
+- manglende idempotencyKey
+- payload har operativt språk
+- mer enn én POST-mulighet
+- retry/auto-submit
+- Cloudflare/port/DB-scope uklart
+- backup mangler
+- rollback/recovery-plan mangler
+- `writeIntent` eller eventtype er uavklart mot faktisk kodekontrakt
+
+Forventet senere pilotresultat:
+
+Hvis B42 execution senere godkjennes og alle prechecks er grønne, forventes:
+
+- HTTP `201 Created`
+- production revision øker nøyaktig `+1`
+- nøyaktig én ny event
+- event type følger faktisk kodekontrakt; dagens kode bruker
+  `operational_state.snapshot.test`
+- scope `manual-assessments-notes`
+- readback viser notatet som audit/readback
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- alle flags lukkes tilbake etter pilot
+- ingen writes til andre scopes
+- ingen migration/schemaendring
+- ingen Cloudflare-endring
+- ingen løpende write/sync
+
+Recovery/rollback:
+
+- ikke slett historisk event som standard
+- hvis feil production-write skjer: stopp videre write, lukk flags, behold DB for
+  audit og sammenlign mot backup
+- DB-restore vurderes bare etter eksplisitt incident-GO
+- korrigerende event vurderes bare hvis write er gyldig, men trenger auditmessig
+  oppfølging
+- recovery skal ikke improviseres i samme steg som pilot
+- normal safe close etter vellykket pilot er read-only runtime uten flags, ikke
+  sletting av pilot-event
+
+Videre faseplan:
+
+- B42-A: README-only plan/runbook
+- B42-B: read-only review av runbook og kodekontrakt
+- B42-C: production preflight/backup, egen GO
+- B42-D: eventuell én production-pilot write, egen GO
+- B42-E: readback/verifisering
+- B42-F: dokumentasjon
+- operational authority / løpende write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
