@@ -3882,16 +3882,17 @@ Production-pilot payload skal være konservativ og ikke-operativ:
 - `noAutomaticSubmit:true`
 - `oneManualSubmit:true`
 
-Kodekontrakt som må avklares før B42 execution:
+Kodekontrakt:
 
-- dagens guard tillater `writeIntent:"test_manual_assessment_note"`
-- `writeIntent:"production_pilot_manual_assessment_note"` er ikke tillatt av
-  dagens kode uten en separat godkjent patch
-- dagens eventtype er `operational_state.snapshot.test`
-- hvis B42 skal kreve eventtype `operational_state.snapshot.production_pilot`,
-  må dette avklares og eventuelt implementeres i en egen senere fase før
-  execution
-- B42-A åpner ikke for å endre kode for dette
+- testkontrakten bruker `writeIntent:"test_manual_assessment_note"` og
+  eventtype `operational_state.snapshot.test`
+- production-pilot-kontrakten bruker
+  `writeIntent:"production_pilot_manual_assessment_note"` og eventtype
+  `operational_state.snapshot.production_pilot`
+- eventtype velges server-side fra validert `writeIntent`
+- klienten kan ikke sende valgfri eventtype
+- begge kontrakter bruker samme scope-, revision-, idempotency-,
+  readbackOnly-, non-authority- og språk/feltguards
 
 Innholdsforbud:
 
@@ -3930,7 +3931,7 @@ Abortkriterier før senere B42 POST:
 - Cloudflare/port/DB-scope uklart
 - backup mangler
 - rollback/recovery-plan mangler
-- `writeIntent` eller eventtype er uavklart mot faktisk kodekontrakt
+- `writeIntent` eller eventtype avviker fra faktisk kodekontrakt
 
 Forventet senere pilotresultat:
 
@@ -3939,8 +3940,8 @@ Hvis B42 execution senere godkjennes og alle prechecks er grønne, forventes:
 - HTTP `201 Created`
 - production revision øker nøyaktig `+1`
 - nøyaktig én ny event
-- event type følger faktisk kodekontrakt; dagens kode bruker
-  `operational_state.snapshot.test`
+- event type følger faktisk kodekontrakt:
+  `operational_state.snapshot.production_pilot`
 - scope `manual-assessments-notes`
 - readback viser notatet som audit/readback
 - `serverStateAuthority:false`

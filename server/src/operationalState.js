@@ -8,7 +8,14 @@ const {
   isTmpDatabasePath
 } = require("./serverNoteGuards");
 
-const OPERATIONAL_STATE_EVENT_TYPE = "operational_state.snapshot.test";
+const OPERATIONAL_STATE_TEST_EVENT_TYPE = "operational_state.snapshot.test";
+const OPERATIONAL_STATE_PRODUCTION_PILOT_EVENT_TYPE =
+  "operational_state.snapshot.production_pilot";
+const OPERATIONAL_STATE_EVENT_TYPE = OPERATIONAL_STATE_TEST_EVENT_TYPE;
+const OPERATIONAL_STATE_EVENT_TYPES = new Set([
+  OPERATIONAL_STATE_TEST_EVENT_TYPE,
+  OPERATIONAL_STATE_PRODUCTION_PILOT_EVENT_TYPE,
+]);
 const MAX_SCOPE_ITEMS = 40;
 const MAX_STRING_LENGTH = 500;
 const RECENT_SNAPSHOT_LIMIT = 20;
@@ -17,8 +24,28 @@ const SHARED_WORKSPACE_AUDIT_LOG_SCOPE = "shared-workspace-audit-log";
 const MANUAL_ASSESSMENTS_SCHEMA_VERSION = 1;
 const MANUAL_ASSESSMENTS_SCOPE_VERSION = 1;
 const MANUAL_ASSESSMENTS_SOURCE_MODULE = "shared-workspace-manual-note";
-const MANUAL_ASSESSMENTS_WRITE_INTENT = "test_manual_assessment_note";
-const MANUAL_ASSESSMENTS_IDEMPOTENCY_PREFIX = "manual-assessments-notes-test-";
+const MANUAL_ASSESSMENTS_TEST_WRITE_INTENT = "test_manual_assessment_note";
+const MANUAL_ASSESSMENTS_PRODUCTION_PILOT_WRITE_INTENT =
+  "production_pilot_manual_assessment_note";
+const MANUAL_ASSESSMENTS_WRITE_INTENT = MANUAL_ASSESSMENTS_TEST_WRITE_INTENT;
+const MANUAL_ASSESSMENTS_WRITE_INTENTS = new Map([
+  [
+    MANUAL_ASSESSMENTS_TEST_WRITE_INTENT,
+    {
+      eventType: OPERATIONAL_STATE_TEST_EVENT_TYPE,
+      idempotencyPrefix: "manual-assessments-notes-test-",
+      updatedBy: "operational-state-test"
+    }
+  ],
+  [
+    MANUAL_ASSESSMENTS_PRODUCTION_PILOT_WRITE_INTENT,
+    {
+      eventType: OPERATIONAL_STATE_PRODUCTION_PILOT_EVENT_TYPE,
+      idempotencyPrefix: "manual-assessments-notes-production-pilot-",
+      updatedBy: "operational-state-production-pilot"
+    }
+  ]
+]);
 const MANUAL_ASSESSMENTS_ALLOWED_CATEGORIES = new Set([
   "observation",
   "question",
@@ -266,7 +293,7 @@ function buildOperationalStateReadback(db, status) {
 
 function buildOperationalStateEvents(db, status, sinceRevision = 0) {
   const events = getEventsSinceRevision(db, sinceRevision)
-    .filter((event) => event.type === OPERATIONAL_STATE_EVENT_TYPE)
+    .filter((event) => OPERATIONAL_STATE_EVENT_TYPES.has(event.type))
     .map(formatOperationalStateEvent);
 
   return {
@@ -414,7 +441,7 @@ function isManualAssessmentsNotesCandidate(payload, requestedScopes) {
   return (
     requestedScopes.includes(MANUAL_ASSESSMENTS_NOTES_SCOPE) ||
     payload.sourceModule === MANUAL_ASSESSMENTS_SOURCE_MODULE ||
-    payload.writeIntent === MANUAL_ASSESSMENTS_WRITE_INTENT
+    MANUAL_ASSESSMENTS_WRITE_INTENTS.has(payload.writeIntent)
   );
 }
 
@@ -463,10 +490,11 @@ function validateManualAssessmentsNotesSnapshotPayload(payload, requestedScopes)
     );
   }
 
-  if (payload.writeIntent !== MANUAL_ASSESSMENTS_WRITE_INTENT) {
+  const writeIntentContract = MANUAL_ASSESSMENTS_WRITE_INTENTS.get(payload.writeIntent);
+  if (!writeIntentContract) {
     return validationError(
       "invalid_writeIntent",
-      `writeIntent must be ${MANUAL_ASSESSMENTS_WRITE_INTENT}.`
+      `writeIntent must be one of ${[...MANUAL_ASSESSMENTS_WRITE_INTENTS.keys()].join(", ")}.`
     );
   }
 
@@ -484,12 +512,12 @@ function validateManualAssessmentsNotesSnapshotPayload(payload, requestedScopes)
   if (idempotencyKey.error) return idempotencyKey.error;
   if (
     !new RegExp(
-      `^${escapeRegExp(MANUAL_ASSESSMENTS_IDEMPOTENCY_PREFIX)}[A-Za-z0-9._:-]{8,160}$`
+      `^${escapeRegExp(writeIntentContract.idempotencyPrefix)}[A-Za-z0-9._:-]{8,160}$`
     ).test(idempotencyKey.value)
   ) {
     return validationError(
       "invalid_idempotencyKey",
-      `idempotencyKey must start with ${MANUAL_ASSESSMENTS_IDEMPOTENCY_PREFIX}.`
+      `idempotencyKey must start with ${writeIntentContract.idempotencyPrefix}.`
     );
   }
 
@@ -534,12 +562,14 @@ function validateManualAssessmentsNotesSnapshotPayload(payload, requestedScopes)
           scopeVersion: MANUAL_ASSESSMENTS_SCOPE_VERSION,
           scope: MANUAL_ASSESSMENTS_NOTES_SCOPE,
           sourceModule: MANUAL_ASSESSMENTS_SOURCE_MODULE,
-          writeIntent: MANUAL_ASSESSMENTS_WRITE_INTENT,
+          writeIntent: payload.writeIntent,
           readbackOnly: true,
           clientContext: clientContext.value,
           payload: note.value
         }
       },
+      eventType: writeIntentContract.eventType,
+      updatedBy: writeIntentContract.updatedBy,
       expectedServerRevision: expectedRevision.value,
       clientRevision:
         typeof payload.clientRevision === "string" && payload.clientRevision.trim()
@@ -858,8 +888,11 @@ function writeOperationalStateSnapshot(db, snapshot) {
   db.exec("BEGIN IMMEDIATE TRANSACTION;");
 
   try{
+  const eventType = snapshot.eventType || OPERATIONAL_STATE_EVENT_TYPE;
+  const updatedBy = snapshot.updatedBy || "operational-state-test";
+
   const existingEvent = findEventByPayloadActionId(db, {
-    type: OPERATIONAL_STATE_EVENT_TYPE,
+    type: eventType,
     actionId: snapshot.idempotencyKey
   });
 
@@ -952,7 +985,7 @@ function writeOperationalStateSnapshot(db, snapshot) {
   };
 
   const event = insertEvent(db, {
-    type: OPERATIONAL_STATE_EVENT_TYPE,
+    type: eventType,
     previousRevision,
     revision: nextRevision,
     payload: eventPayload,
@@ -967,7 +1000,7 @@ function writeOperationalStateSnapshot(db, snapshot) {
     nextRevision,
     JSON.stringify(nextPayload),
     serverTimestamp,
-    "operational-state-test",
+    updatedBy,
     "main"
   );
 
@@ -1088,6 +1121,10 @@ function rollbackQuietly(db) {
 
 module.exports = {
   OPERATIONAL_STATE_EVENT_TYPE,
+  OPERATIONAL_STATE_PRODUCTION_PILOT_EVENT_TYPE,
+  OPERATIONAL_STATE_TEST_EVENT_TYPE,
+  MANUAL_ASSESSMENTS_PRODUCTION_PILOT_WRITE_INTENT,
+  MANUAL_ASSESSMENTS_TEST_WRITE_INTENT,
   buildOperationalStateReadback,
   buildOperationalStateEvents,
   getOperationalStateEnvironmentGuardFailure,

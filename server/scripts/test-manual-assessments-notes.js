@@ -3,6 +3,10 @@
 const assert = require("node:assert/strict");
 
 const {
+  MANUAL_ASSESSMENTS_PRODUCTION_PILOT_WRITE_INTENT,
+  MANUAL_ASSESSMENTS_TEST_WRITE_INTENT,
+  OPERATIONAL_STATE_PRODUCTION_PILOT_EVENT_TYPE,
+  OPERATIONAL_STATE_TEST_EVENT_TYPE,
   validateOperationalStateSnapshotPayload
 } = require("../src/operationalState");
 
@@ -12,7 +16,7 @@ function basePayload(overrides = {}) {
     schemaVersion: 1,
     scopeVersion: 1,
     sourceModule: "shared-workspace-manual-note",
-    writeIntent: "test_manual_assessment_note",
+    writeIntent: MANUAL_ASSESSMENTS_TEST_WRITE_INTENT,
     readbackOnly: true,
     serviceDate: "2026-06-29",
     idempotencyKey: "manual-assessments-notes-test-20260629T215000Z",
@@ -67,11 +71,52 @@ function expectInvalid(name, payload, code) {
 
 const valid = expectValid("valid canonical B41 payload", basePayload());
 assert.deepEqual(valid.stateScope, ["manual-assessments-notes"]);
+assert.equal(valid.eventType, OPERATIONAL_STATE_TEST_EVENT_TYPE);
 assert.equal(valid.expectedServerRevision, 7);
 assert.equal(valid.clientContext.serverStateAuthority, false);
 assert.equal(valid.clientContext.operationalAuthority, false);
 assert.equal(valid.stateSnapshot.manualAssessmentNote.readbackOnly, true);
+assert.equal(
+  valid.stateSnapshot.manualAssessmentNote.writeIntent,
+  MANUAL_ASSESSMENTS_TEST_WRITE_INTENT
+);
 assert.equal(valid.stateSnapshot.manualAssessmentNote.payload.relatedVehicle, "74-54");
+
+const validProductionPilot = expectValid(
+  "valid B42 production-pilot payload",
+  basePayload({
+    writeIntent: MANUAL_ASSESSMENTS_PRODUCTION_PILOT_WRITE_INTENT,
+    idempotencyKey: "manual-assessments-notes-production-pilot-20260629T215000Z"
+  })
+);
+assert.deepEqual(validProductionPilot.stateScope, ["manual-assessments-notes"]);
+assert.equal(validProductionPilot.eventType, OPERATIONAL_STATE_PRODUCTION_PILOT_EVENT_TYPE);
+assert.equal(
+  validProductionPilot.stateSnapshot.manualAssessmentNote.writeIntent,
+  MANUAL_ASSESSMENTS_PRODUCTION_PILOT_WRITE_INTENT
+);
+assert.equal(validProductionPilot.clientContext.serverStateAuthority, false);
+assert.equal(validProductionPilot.clientContext.operationalAuthority, false);
+
+expectInvalid(
+  "production-pilot requires production-pilot idempotency prefix",
+  basePayload({
+    writeIntent: MANUAL_ASSESSMENTS_PRODUCTION_PILOT_WRITE_INTENT
+  }),
+  "invalid_idempotencyKey"
+);
+
+expectInvalid(
+  "unknown writeIntent blocked",
+  basePayload({ writeIntent: "production_manual_note" }),
+  "invalid_writeIntent"
+);
+
+expectInvalid(
+  "client supplied eventType blocked",
+  basePayload({ eventType: OPERATIONAL_STATE_PRODUCTION_PILOT_EVENT_TYPE }),
+  "forbidden_manual_assessment_field"
+);
 
 const validStateScopeAlias = basePayload({ stateScope: ["manual-assessments-notes"] });
 delete validStateScopeAlias.scope;
