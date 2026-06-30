@@ -4058,6 +4058,117 @@ Videre faseplan:
 - eventuell videre production-utvidelse krever egen GO
 - operational authority / løpende write: fortsatt `0 %`, ikke åpnet
 
+## B43-A manual-assessments-notes readback/UI plan
+
+Status: README-only plan. B43-A dokumenterer hvordan
+`manual-assessments-notes` senere kan vises som read-only Shared Workspace
+readback/audit. Dette er ikke UI-implementering, ikke `index.html`-endring,
+ikke serverkode, ikke write og ikke operational authority.
+
+Formål:
+
+- vise `manual-assessments-notes` som read-only Shared Workspace readback/audit
+- ikke operativ sannhetskilde
+- ikke ordre
+- ikke Utført/Annullert
+- ikke SDE-motor-source
+- ikke TXP/DROPS/verksted/tursatt-operativ beslutning
+- ikke påvirke operativ state
+- ikke åpne nye writes, auto-submit eller løpende sync
+
+Datakilder:
+
+- `GET /api/operational-state` brukes for siste snapshot og recent snapshots
+- `GET /api/operational-state/events` brukes for audit/eventliste
+- `GET /api/server/status` skal fortsatt primært vise status, flagg og
+  authority, ikke moduldata
+- serverstatus skal fortsatt være observasjon, ikke beslutningsgrunnlag for
+  SDE-motor, score, sortering eller operativ sannhet
+
+Eksisterende gap:
+
+- Shared Workspace-preview finnes allerede i frontend
+- scope-katalogen inneholder `manual-assessments-notes`
+- `getSharedWorkspaceOperationalStateEvents()` filtrerer foreløpig bare
+  `operational_state.snapshot.test`
+- B42 event id `7` med `operational_state.snapshot.production_pilot` blir
+  derfor ikke fullt behandlet som Shared Workspace event i previewet ennå
+- dette gapet skal planlegges her og eventuelt implementeres senere i egen
+  read-only UI-fase
+
+Senere UI-prinsipp:
+
+- vis `manual-assessments-notes` som read-only audit/readback
+- merk tydelig: ikke ordre
+- merk tydelig: ikke Utført/Annullert
+- merk tydelig: ikke SDE-motor-source
+- merk tydelig: ikke operativ sannhetskilde
+- vis en kompakt auditlinje med:
+  - event id
+  - revision
+  - serviceDate
+  - writeIntent
+  - actor/device
+- vis payloadtekst forkortet som standard
+- hold detaljer collapsed/utvidbare
+- la event id, revision, actor og device være tilgjengelig for audit uten å
+  dominere hovedopplevelsen
+- static/GitHub Pages skal fortsatt være diskret/passiv ved manglende server
+
+Scope- og statusvisning:
+
+- `manual-assessments-notes` kan merkes som production-pilot proven
+- status skal fortsatt være not writable
+- nye writes krever fortsatt senere eksplisitt GO
+- samme modul + samme `serviceDate` + samme scope = samme readback for nivåer
+  som faktisk har modulen
+- samme readback betyr ikke samme rettighet til å endre
+- serverstate skal fortsatt presenteres som readback/audit, ikke operativ
+  sannhetskilde
+
+Tilgangsmodell, kun plan:
+
+- ikke lat som rollefilter/auth finnes før det faktisk er implementert
+- `Agila` bør ikke se manual-notater dersom Agila kun har Sporplan
+- relevante nivåer kan senere være SDE/skiftere, DROPS, verksted,
+  Vaktplan/ledelse og Admin/pilot
+- slike nivåer skal bare se `manual-assessments-notes` når modul/scope er
+  eksplisitt tildelt
+- Admin/pilot kan senere få mer auditdetalj, men ikke write uten egen GO
+- dette er plan, ikke tilgangsimplementering
+
+Senere readback-visning skal ikke påvirke:
+
+- score
+- sortering
+- SDE-forslag
+- DROPS
+- verkstedstatus
+- Tursatt
+- Vaktplan
+- operativ state
+- operational authority
+- løpende write/sync
+
+Risikoer:
+
+- manuelle notater kan feiltolkes som instruks hvis UI-tekst er for sterk
+- payloadtekst bør forkortes og eventuelt saniteres i UI
+- actor/device og event id bør være tilgjengelig for audit, men ikke dominere
+  hovedopplevelsen
+- B42 beviser ett scope, ikke bred Shared Workspace authority
+- rollefilter/auth må ikke påstås før det faktisk finnes
+- production-pilot proven betyr ikke generell write-rettighet
+
+Mulig senere B43-faseplan:
+
+- B43-A: README-only plan
+- B43-B: read-only review av plan mot `index.html`
+- B43-C: eventuell smal read-only UI patch, egen GO
+- B43-D: read-only verifisering
+- B43-E: dokumentasjon
+- operational authority / løpende write: fortsatt `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
