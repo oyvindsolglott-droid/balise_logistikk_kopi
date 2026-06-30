@@ -3697,6 +3697,105 @@ Videre faseplan:
 - eventuell production-pilot senere: egen GO
 - operational authority / løpende write: `0 %`, ikke åpnet
 
+## B41-E2 manual-assessments-notes idempotency/revision-resultat
+
+Status: B41-E2 GREEN.
+
+B41-E2 dokumenterer en isolert test-only idempotency/revision-verifisering
+for `manual-assessments-notes`. Testen ble kjørt mot testserver/temp DB, ikke
+production. Den åpnet ikke operational authority og etablerer ikke løpende
+write/sync.
+
+Testmiljø:
+
+- testserver port: `8791`
+- temp DB: `/tmp/sde-b41e2-manual-notes-GDKPDC/sde-test.sqlite3`
+- eneste flagg satt: `SDE_ENABLE_OPERATIONAL_STATE_WRITES=1`
+- production-write flagg: av
+- operational authority: false
+
+POST-plan/resultat:
+
+- planlagt POST count: `4`
+- faktisk POST count: `4`
+- retry count: `0`
+
+POST 1, valid create:
+
+- resultat: `201 Created`
+- revision: `1 -> 2`
+- event id: `1`
+
+POST 2, identisk idempotency replay:
+
+- resultat: `200 OK`
+- `mode: replayed`
+- revision fortsatt `2`
+- ingen ny event
+
+POST 3, samme idempotencyKey med endret payload:
+
+- resultat: `409 idempotency_key_conflict`
+- ingen ny event
+- ingen revision bump
+
+POST 4, ny idempotencyKey med stale `expectedRevision:1`:
+
+- resultat: `409 revision_conflict`
+- current revision: `2`
+- ingen ny event
+- ingen revision bump
+
+Temp DB/readback-bevis:
+
+- `PRAGMA integrity_check: ok`
+- `PRAGMA user_version: 0`
+- `app_state revision: 2`
+- `events count: 1`
+- event:
+  `1|operational_state.snapshot.test|1|2|2026-06-30T09:16:09.764Z`
+- scope: `manual-assessments-notes`
+- `readbackOnly:true`
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+
+Production postcheck:
+
+- production port `8787` uendret
+- production revision fortsatt `7`
+- production events fortsatt kun id `5` og id `6`
+- alle write/operational/production/migration-flagg av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- ingen production DB-write
+
+Eksplisitte avgrensninger:
+
+B41-E2 var ikke:
+
+- production-write
+- operational authority
+- løpende write/sync
+- skifteordre
+- Utført/Annullert
+- SDE-motor-source
+- TXP operational block
+- DROPS dispatch
+- verksted binding/frigjøring
+- Cloudflare-endring
+- migration/schemaendring
+- `index.html`-endring
+
+Videre fase:
+
+- B41 test-write preparation: ca. `97 %`
+- B41 er svært nær ferdig som test-write preparation
+- SDE Shared Workspace totalt: ca. `55 %`
+- neste mulige steg etter dokumentasjon er B41 avslutningsreview / B41-GREEN
+  vurdering
+- eventuell production-pilot krever egen senere GO
+- operational authority / løpende write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
