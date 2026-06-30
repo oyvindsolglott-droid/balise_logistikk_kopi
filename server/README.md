@@ -3399,6 +3399,216 @@ mennesker. Derfor må kontrakten være readback/audit først, med eksplisitte
 `notOperationalOrder`, `notCompletedCancelled`, `notSdeMotorSource`,
 `serverStateAuthority:false` og `operationalAuthority:false`.
 
+## B41-B manual-assessments-notes test-only runbook
+
+Status: README/design/runbook-only. B41-B kjører ikke testserver, setter ingen
+flagg, sender ingen POST, implementerer ingen endpoint og åpner ingen
+write/sync/operational-authority.
+
+Formål:
+
+- teste shared workspace write-mekanikk for lavrisiko
+  `manual-assessments-notes`
+- teste payload-kontrakt, idempotency, `expectedRevision` og readback
+- ikke teste production
+- ikke teste operational authority
+
+Hovedprinsipp:
+
+- test-write skal aldri gå mot production DB
+- test-write skal aldri gå mot port 8787
+- test-write skal aldri gi operational authority
+- test-write skal aldri bli skifteordre
+- test-write skal aldri bli `Utført`/`Annullert`
+- test-write skal aldri bli SDE-motor-source
+- test-write skal aldri bli DROPS dispatch
+- test-write skal aldri bli TXP operational block
+- test-write skal aldri bli verksted binding/frigjøring
+
+Test-only miljø for senere B41-C/B41-D:
+
+- temp DB utenfor production DB
+- testserver på ikke-production port, for eksempel 8791
+- production port 8787 restartes ikke
+- production DB røres ikke
+- Cloudflare røres ikke
+- production runtime forblir read-only
+
+Tillatt scope:
+
+- `manual-assessments-notes`
+
+Tillatt senere test-write:
+
+- nøyaktig én test-event/snapshot innen `manual-assessments-notes`
+- ikke direkte klientwrite til `shared-workspace-audit-log`
+- ikke writes til andre scopes
+
+Påkrevd ikke-operativ `clientContext`:
+
+- `notOperationalOrder: true`
+- `notCompletedCancelled: true`
+- `notSdeMotorSource: true`
+- `serverStateAuthority: false`
+- `operationalAuthority: false`
+- `noAutomaticSubmit: true`
+- `oneManualSubmit: true`
+
+Eksempelnotat for senere test:
+
+```json
+{
+  "category": "observation",
+  "assessmentStatus": "observation",
+  "relatedScope": "manual-assessments-notes",
+  "text": "Testnotat for Shared Workspace readback. Ikke operativ ordre.",
+  "relatedVehicle": "",
+  "relatedSlot": "",
+  "relatedTrain": ""
+}
+```
+
+Minimum payload for senere test-write:
+
+- `serviceDate`
+- `scope: "manual-assessments-notes"`
+- `idempotencyKey`
+- `expectedRevision`
+- `schemaVersion`
+- `scopeVersion`
+- `actor`
+- `device`
+- `sourceModule`
+- `writeIntent`
+- `readbackOnly: true`
+- `payload`
+- `clientContext`
+
+Normalisering før senere test-write:
+
+- `category` må være kontrollert enum
+- `assessmentStatus` må være kontrollert enum
+- `relatedScope` må være kjent scope
+- tekstlengde må være begrenset
+- HTML/script er ikke tillatt
+- ordreformulering er ikke tillatt
+- `Utført`/`Annullert` er ikke tillatt
+- SDE-score som sannhet er ikke tillatt
+- raw diagnose dump er ikke tillatt
+- drag/transient UI-state er ikke tillatt
+- `selectedSlot`, hover, focus, modal, scroll, filter og sort state er ikke
+  tillatt
+
+Test-only flagg for senere B41-D:
+
+- `SDE_ENABLE_OPERATIONAL_STATE_WRITES=1`
+- eventuelt eget test-only flagg dersom eksisterende serverkontrakt krever det
+- production-write flagg skal være av
+- migration-flagg skal være av
+- alle andre action/write-flagg skal være av
+
+B41-B setter ingen flagg. Senere B41-D må eksplisitt vise hvilke flagg som
+brukes i testservervinduet.
+
+Før-test abortkriterier for senere test-write:
+
+- repo er ikke rent/synkronisert
+- feil HEAD
+- production port 8787 er ikke read-only
+- production flags er ikke av
+- testserver peker mot production DB
+- testserver bruker port 8787
+- temp DB er ikke isolert
+- payload mangler `idempotencyKey`
+- payload mangler `expectedRevision`
+- feil scope
+- payload inneholder ordre/`Utført`/`Annullert`/operational authority
+- mer enn én test-submit kan skje
+- auto-submit/retry finnes
+- audit-log kan skrives direkte fra klient
+
+Forventet resultat for senere B41-D:
+
+- nøyaktig én ny test-event/snapshot i temp DB
+- scope er `manual-assessments-notes`
+- readback viser testnotatet
+- revision øker nøyaktig én gang i test DB
+- production revision forblir 7
+- production events forblir id 5 og id 6
+- production DB er uendret
+- ingen schema/migration
+- ingen writes til andre scopes
+- ingen operational authority
+
+Etter-test abort/incident for senere B41-D:
+
+- production DB endres
+- production revision endres
+- mer enn én test-event
+- feil scope
+- feil payload
+- retry/auto-submit
+- `expectedRevision` ignoreres
+- idempotency virker ikke
+- event havner i audit-log direkte fra klient
+- schema/migration endres
+- operational authority blir true
+
+Idempotency/conflict test senere:
+
+- samme idempotency + samme payload = replay
+- samme idempotency + ulik payload = conflict
+- `expectedRevision` mismatch = `409 Conflict`
+- ingen auto-retry
+
+Readback-verifisering senere:
+
+- GET/readback viser notatet
+- eventlogg viser actor/device/sourceModule/writeIntent
+- `clientContext` viser ikke-operativ kontrakt
+- notatet vises som readback/audit, ikke handling
+- ingen UI tolker notatet som ordre
+
+Rollback/recovery for test-only temp DB:
+
+- normal cleanup er å slette temp DB etter dokumentert test hvis ønskelig
+- ingen production rollback skal være nødvendig
+- hvis production påvirkes, stopp umiddelbart og rapporter incident
+- ikke forsøk å fikse med ny write uten egen GO
+
+B41-faseplan:
+
+- B41-A: kontrakt/dokumentasjon - GREEN
+- B41-B: test-only runbook - denne fasen
+- B41-C: test-only server/endpoint vurdering eller minimal
+  implementeringsplan
+- B41-D: test-only write mot temp DB/testserver
+- B41-E: readback/verifisering
+- B41-F: dokumentasjon av test-resultat
+- eventuell production-pilot senere, egen GO
+
+Eksplisitt ikke del av B41-B:
+
+- endpoint
+- serverkode
+- frontendknapp
+- POST
+- flagg
+- testserverstart
+- production-pilot
+- Cloudflare
+- auth-implementering
+- rollefilter-implementering
+- operational authority
+
+Risikotekst:
+
+Største risiko er at manuelle vurderinger/notater blir tolket som operativ
+ordre. Nest største risiko er at en test-write ved feil peker mot production
+DB. Derfor må testserver/temp DB, non-authority `clientContext`,
+idempotency, `expectedRevision` og abortkriterier være eksplisitte før noen
+write.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
