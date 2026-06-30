@@ -3974,6 +3974,90 @@ Videre faseplan:
 - B42-F: dokumentasjon
 - operational authority / løpende write: `0 %`, ikke åpnet
 
+## B42-F manual-assessments-notes production-pilot resultat
+
+Status: README-only dokumentasjon. B42-F dokumenterer resultatet fra B42-D
+production-pilot og B42-E read-only verifisering. Dette er ikke ny execution,
+ikke ny POST, ikke flaggåpning og ikke operational authority.
+
+B42-D GREEN:
+
+- én kontrollert production-pilot POST ble utført
+- endpoint: `POST http://localhost:8787/api/operational-state/snapshot`
+- HTTP: `201 Created`
+- POST count: `1`
+- Retry count: `0`
+- revision `7 -> 8`
+- ny event: id `7`
+- eventtype: `operational_state.snapshot.production_pilot`
+- scope: `manual-assessments-notes`
+- idempotencyKey:
+  `manual-assessments-notes-production-pilot-20260630-b42d-001`
+
+Payload/kontrakt:
+
+- `writeIntent:"production_pilot_manual_assessment_note"`
+- `readbackOnly:true`
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- non-authority `clientContext`
+- notatet var readback/audit-only
+- ikke skifteordre
+- ikke Utført/Annullert
+- ikke SDE-motor-source
+- ikke TXP/DROPS/verksted/tursatt-operativ beslutning
+
+B42-E GREEN:
+
+- production revision: `8`
+- operational-state events: id `5`, `6`, `7`
+- event id `7` verifisert som
+  `operational_state.snapshot.production_pilot`
+- readback viser `manual-assessments-notes`
+- readback viser
+  `writeIntent:"production_pilot_manual_assessment_note"`
+- readback viser `readbackOnly:true`
+- readback viser `serverStateAuthority:false`
+- readback viser `operationalAuthority:false`
+- runtime fortsatt read-only
+- alle write/operational/production/migration-flagg av
+- `migrationRequired:false`
+
+DB sanity etter pilot:
+
+- `PRAGMA integrity_check: ok`
+- `PRAGMA user_version: 1`
+- events count: `7`
+- actions count: `4`
+
+Runtime etter lukking:
+
+- port `8787`
+- read-only PID etter lukking: `24002`
+- screen-session: `sde-server-8787`
+- production DB:
+  `/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3`
+
+B42-D/E åpnet ikke:
+
+- operational authority
+- løpende write/sync
+- auto-submit
+- retry
+- writes til andre scopes
+- Cloudflare
+- migration/schemaendring
+- `index.html`
+- serverkodeendring
+- testserver
+
+Videre faseplan:
+
+- B42-F: README-only dokumentasjon
+- B42-G: avslutningsreview / B42 GREEN-vurdering
+- eventuell videre production-utvidelse krever egen GO
+- operational authority / løpende write: fortsatt `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
