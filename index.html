@@ -5944,7 +5944,10 @@ button{padding:12px 12px}
   <div class="server-note-description">Read-only preview av felles serverbasert readback/eventlogg. Dette er ikke skifteordre, ikke Utført/Annullert og ikke operativ sannhetskilde. Ingen sync, submit eller write er åpnet.</div>
   <div class="server-note-readback-summary" id="sharedWorkspacePreviewSummary">Avventer serverreadback.</div>
   <div class="server-note-readback-list" id="sharedWorkspaceScopeCatalog"></div>
+  <div class="server-note-readback-summary" id="sharedWorkspaceRuleSummary">Samme modul + samme serviceDate + samme scope = samme synkrone readback for alle nivåer som har modulen. Samme informasjon betyr ikke samme mulighet til å endre.</div>
+  <div class="server-note-readback-list" id="sharedWorkspaceAccessMatrix"></div>
   <div class="server-note-readback-summary" id="sharedWorkspaceAccessSummary">Tilgangsnivå bestemmer funksjoner og moduler. Samme modul, serviceDate og scope skal senere gi samme synlige informasjon, men ikke samme write-rettighet.</div>
+  <div class="server-note-readback-summary" id="sharedWorkspaceConceptSummary">Funksjonstilgang, synkron state per funksjon og rettighet innen funksjon vises her som read-only preview. Ingen auth/rollefilter er implementert.</div>
 </div>
 <div class="server-note-panel" id="serverNotePanel" aria-live="polite">
   <div class="server-note-header">
@@ -25320,15 +25323,25 @@ const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
 const SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT = 5;
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE = "sde-night-placement-manual-overrides";
 const SDE_SHARED_WORKSPACE_SCOPE_CATALOG = Object.freeze([
-  {scope:"input-sporplan-shared-readback", module:"Input Sporplan"},
-  {scope:"txp-infrastructure-status", module:"TXP uvirksom infrastruktur"},
-  {scope:SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE, module:"SDE Nattplassering"},
-  {scope:"sde-shift-movements-shared-readback", module:"SDE Skiftebevegelser"},
-  {scope:"sde-vaktplan-shared-readback", module:"SDE Vaktplan"},
-  {scope:"drops-material-control-shared-readback", module:"DROPS"},
-  {scope:"workshop-status-shared-readback", module:"Verksted / materiellstatus"},
-  {scope:"manual-notes-shared-readback", module:"Manuelle vurderinger/notater"},
-  {scope:"audit-log-shared-readback", module:"Audit/readback/historikk"}
+  {scope:"sporplan-readback", module:"Sporplan", purpose:"felles sporplanvisning"},
+  {scope:"input-sporplan-draft", module:"Input Sporplan", purpose:"delt kladd/readback for sporplan-input"},
+  {scope:"txp-infrastructure-status", module:"TXP uvirksom infrastruktur", purpose:"infrastrukturstatus som situasjonsdata"},
+  {scope:SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE, module:"SDE Nattplassering", purpose:"manuelle nattplassering-overrides som pilot-readback"},
+  {scope:"sde-shift-movement-assessments", module:"SDE Skiftebevegelser", purpose:"readback for vurderinger, ikke skifteordre"},
+  {scope:"sde-vaktplan-coverage", module:"SDE Vaktplan", purpose:"dekning og bemanningsreadback"},
+  {scope:"drops-material-control", module:"DROPS", purpose:"materiellstyring som readback"},
+  {scope:"workshop-material-status", module:"Verksted / materiellstatus", purpose:"verkstedstatus som readback"},
+  {scope:"manual-assessments-notes", module:"Manuelle vurderinger/notater", purpose:"ikke-operative vurderinger og notater"},
+  {scope:"shared-workspace-audit-log", module:"Audit/readback/historikk", purpose:"eventlogg og historikk som audit"}
+]);
+const SDE_SHARED_WORKSPACE_ACCESS_MATRIX = Object.freeze([
+  {level:"Agila", functions:["Sporplan"]},
+  {level:"TXP", functions:["Sporplan", "Input Sporplan", "TXP uvirksom infrastruktur"]},
+  {level:"DROPS", functions:["Sporplan", "SDE readback", "DROPS materiellstyring", "verkstedstatus"]},
+  {level:"Verksted", functions:["Sporplan", "DROPS-relevante behov", "verksted/materiellstatus"]},
+  {level:"SDE/skiftere", functions:["Sporplan", "Input Sporplan readback", "SDE Skiftebevegelser", "SDE nattplassering", "DROPS/verksted readback"]},
+  {level:"Vaktplan/ledelse", functions:["Sporplan", "SDE Vaktplan", "relevant SDE/DROPS/verksted readback"]},
+  {level:"Admin/pilot", functions:["eksplisitt tildelte moduler", "begrenset pilotstyring"]}
 ]);
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_QUERY = "sdeOperationalStateTestSubmit";
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_TEST_SUBMIT_PORT = "8791";
@@ -26497,7 +26510,10 @@ function getSharedWorkspacePreviewElements(){
     state: document.getElementById("sharedWorkspacePreviewState"),
     summary: document.getElementById("sharedWorkspacePreviewSummary"),
     catalog: document.getElementById("sharedWorkspaceScopeCatalog"),
-    access: document.getElementById("sharedWorkspaceAccessSummary")
+    rule: document.getElementById("sharedWorkspaceRuleSummary"),
+    matrix: document.getElementById("sharedWorkspaceAccessMatrix"),
+    access: document.getElementById("sharedWorkspaceAccessSummary"),
+    concept: document.getElementById("sharedWorkspaceConceptSummary")
   };
 }
 
@@ -26513,8 +26529,17 @@ function renderSharedWorkspacePreviewMessage(stateText, tone, summaryText){
   if(elements.catalog){
     elements.catalog.replaceChildren();
   }
+  if(elements.matrix){
+    elements.matrix.replaceChildren();
+  }
+  if(elements.rule){
+    elements.rule.textContent = "Samme modul + samme serviceDate + samme scope = samme synkrone readback for alle nivåer som har modulen. Samme informasjon betyr ikke samme mulighet til å endre.";
+  }
   if(elements.access){
-    elements.access.textContent = "Tilgangsnivå bestemmer funksjoner og moduler. Samme modul, serviceDate og scope skal senere gi samme synlige informasjon, men ikke samme write-rettighet. Auth/rollefilter er ikke implementert i denne previewen.";
+    elements.access.textContent = "Tilgangsnivå bestemmer funksjoner og moduler. Rettighet innen funksjon er fortsatt konservativ: read-only først, deretter eventuell write-draft, test-write, production-pilot-write, admin/pilot og senere operational-authority bare etter ny GO.";
+  }
+  if(elements.concept){
+    elements.concept.textContent = "Begreper: Funksjonstilgang = hvilke moduler nivået får se/bruke. Synkron state per funksjon = samme readback for samme modul/scope. Rettighet innen funksjon = hva nivået kan endre. Auth/rollefilter er ikke implementert i B40-C.";
   }
 }
 
@@ -26570,22 +26595,31 @@ function getSharedWorkspaceStatusFlags(status, readbackBody){
 }
 
 function getSharedWorkspaceScopeStatuses(scopeEntry, readbackBody, eventsBody){
+  const statuses = ["documented", "read-only planned", "not writable", "requires later GO"];
   if(scopeEntry.scope === SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE
     && hasSharedWorkspaceNightPlacementPilotProof(readbackBody, eventsBody)){
-    return ["pilot-proven", "read-only planned", "not writable", "requires later GO"];
+    return ["pilot-proven", ...statuses];
   }
-  return ["documented", "read-only planned", "not writable", "requires later GO"];
+  return statuses;
 }
 
 function createSharedWorkspaceScopeCatalogItem(scopeEntry, readbackBody, eventsBody){
   const statuses = getSharedWorkspaceScopeStatuses(scopeEntry, readbackBody, eventsBody);
   const note = statuses.includes("pilot-proven")
-    ? "H1E har bevist én kontrollert nattplassering-snapshot for dette scope. Dette er fortsatt readback/audit, ikke generell sync og ikke operativ sannhet."
-    : "Scope er katalogisert for senere Shared Workspace-readback. Ingen write, sync, skifteordre eller operativ sannhet er åpnet.";
+    ? "H1E event id 6/revision 7 beviser én kontrollert nattplassering-snapshot for dette scope. Det er pilot-audit/readback, ikke generell sync, ikke write-rettighet og ikke operativ sannhet."
+    : "Scope er katalogisert for senere Shared Workspace-readback. Status er not writable og requires later GO. Ingen sync-write, skifteordre, Utført/Annullert eller operativ sannhet er åpnet.";
   return createServerNoteReadbackItem(
     scopeEntry.scope,
-    [scopeEntry.module, ...statuses],
+    [scopeEntry.module, scopeEntry.purpose || "readback", ...statuses],
     note
+  );
+}
+
+function createSharedWorkspaceAccessMatrixItem(entry){
+  return createServerNoteReadbackItem(
+    entry.level,
+    ["funksjonstilgang", "read-only preview", "ingen rollefilter ennå"],
+    `${entry.functions.join(", ")}. Samme modul + samme serviceDate + samme scope gir samme synkrone readback for nivåer som har modulen; samme informasjon betyr ikke samme mulighet til å endre.`
   );
 }
 
@@ -26610,8 +26644,20 @@ function renderSharedWorkspacePreview(status, readbackBody, eventsBody, base){
   SDE_SHARED_WORKSPACE_SCOPE_CATALOG.forEach(scopeEntry => {
     elements.catalog.appendChild(createSharedWorkspaceScopeCatalogItem(scopeEntry, readbackBody, eventsBody));
   });
+  if(elements.rule){
+    elements.rule.textContent = "Hovedregel: Samme modul + samme serviceDate + samme scope = samme synkrone readback for alle nivåer som har modulen. Rettighetsregel: Samme informasjon betyr ikke samme mulighet til å endre.";
+  }
+  if(elements.matrix){
+    elements.matrix.replaceChildren();
+    SDE_SHARED_WORKSPACE_ACCESS_MATRIX.forEach(entry => {
+      elements.matrix.appendChild(createSharedWorkspaceAccessMatrixItem(entry));
+    });
+  }
   if(elements.access){
-    elements.access.textContent = "Tilgangsmodell preview: tilgangsnivå styrer funksjoner/moduler, rolle styrer handlinger. Alle med samme modul, serviceDate og scope skal senere se samme synlige readback. Samme informasjon betyr ikke samme write-rettighet. Observer, pilot/adminskriver og operativ rolle holdes adskilt. Auth/rollefilter er ikke implementert i B40-A.";
+    elements.access.textContent = "Tilgangsmodell preview: Funksjonstilgang styrer hvilke moduler nivået får se/bruke. Synkron state per funksjon betyr samme readback for samme modul/scope. Rettighet innen funksjon kan være read-only, write-draft, test-write, production-pilot-write, admin/pilot eller senere operational-authority. B40-C implementerer bare read-only visning og ingen faktisk auth/rollefilter.";
+  }
+  if(elements.concept){
+    elements.concept.textContent = "Dette er fortsatt ikke operativ sannhetskilde, ikke skifteordre, ikke Utført/Annullert, ikke SDE-motor-source og ikke løpende operational write. DROPS, verksted, Tursatt, Vaktplan, score, sortering og kandidatgenerator endres ikke av previewet.";
   }
 }
 
