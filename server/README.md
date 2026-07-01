@@ -7047,6 +7047,214 @@ Fremdrift etter B47-M:
 - SDE Shared Workspace totalt: ca. 94 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B47-N — Expected-YELLOW resolution decision record
+
+Status: README-only expected-YELLOW resolution decision record. B47-N
+dokumenterer normativ retning for de tre expected-YELLOW-funnene fra B47-K/M
+før teknisk fix, felles katalog eller runtime-auth kan vurderes. Dette er
+ikke kodeendring, ikke testendring, ikke expected-YELLOW teknisk fix, ikke
+catalog parity-test-endring, ikke felles katalogmodul, ikke runtime-auth, ikke
+middleware, ikke endpoint enforcement, ikke private readback, ikke
+login/session/token/issuer-kode, ikke write, ikke production-write og ikke
+operational authority.
+
+Formål:
+
+- låse beslutning for expected-YELLOW resolution før teknisk arbeid
+- bevare B47-K/L/M som isolert parity-test og closeout
+- gjøre det tydelig at expected-YELLOW er dokumentert, men ikke løst
+- hindre at expected-YELLOW tolkes som runtime-aksept
+- blokkere runtime-auth/enforcement til katalogspørsmålene er avklart
+- angi neste trygge fase uten å implementere noe
+
+Locked status fra B47-M og B47-N-PRE:
+
+- B47-K/L holder B47-J-cutline
+- parity-testen er isolert
+- expected-YELLOW er dokumentert og synlig i test
+- RED-funn hard-failer
+- runtime-auth/enforcement er fortsatt blokkert
+- expected-YELLOW er ikke løst
+- expected-YELLOW er ikke runtime-aksept
+
+Expected-YELLOW 1: `manual-assessments-notes`
+
+Nåværende divergens:
+
+- `accessPolicy`: kun `admin_pilot`
+- `identityPolicy`: `admin_pilot`, `sde_skiftere`, `vaktplan_ledelse`
+
+Vurderte alternativer:
+
+1. Stramme `identityPolicy` til `accessPolicy`:
+   - `manual-assessments-notes` blir kun `admin_pilot`
+   - best privacy/default-deny før private runtime-readback
+   - ulempe: `sde_skiftere` og `vaktplan_ledelse` mister planlagt readback
+     inntil egen tildeling
+2. Utvide `accessPolicy` til `identityPolicy`:
+   - også `sde_skiftere` og `vaktplan_ledelse`
+   - bedre samsvar med mulig fremtidig readbackmatrise
+   - risiko: bredere eksponering av sensitive manuelle notater
+3. Beholde expected-YELLOW midlertidig:
+   - trygt bare så lenge ingen runtime-auth/enforcement finnes
+   - ikke runtime-aksept
+
+Normativ beslutning:
+
+- strengeste policy skal gjelde først
+- `accessPolicy` er midlertidig norm for private readback
+- `manual-assessments-notes` skal behandles som `admin_pilot`-only inntil
+  egen eksplisitt beslutning utvider tildelingen
+- eventuell senere tildeling til `sde_skiftere` eller `vaktplan_ledelse`
+  krever egen README-beslutning, sensitivity-vurdering og egen GO
+- teknisk fix skal ikke gjøres i B47-N
+
+Expected-YELLOW 2: `sde-night-placement-manual-overrides`
+
+Nåværende divergens:
+
+- scope finnes i `accessPolicy`
+- scope mangler i `identityPolicy`
+
+Vurderte alternativer:
+
+1. Legge scope senere inn i `identityPolicy`:
+   - kan gi konsistent readback for relevante roller
+   - sannsynlige kandidater senere: `admin_pilot`, `sde_skiftere`
+   - andre roller krever egen begrunnelse
+2. Holde scope utenfor `identityPolicy`:
+   - legitimt hvis scope ikke skal identity-gated readback ennå
+   - blokkerer runtime-bruk
+3. Beholde expected-YELLOW til eierskap/felles katalog er valgt:
+   - tryggest nå
+   - runtime må fortsatt blokkeres
+
+Normativ beslutning:
+
+- ingen teknisk fix nå
+- før eventuell fix må README låse roller/sensitivitet
+- foreløpig retning: scope kan senere vurderes for `admin_pilot` og
+  `sde_skiftere`, men skal ikke aktiveres eller legges til runtime uten egen
+  GO
+- inntil teknisk fix er besluttet, forblir dette expected-YELLOW og
+  runtime-blocker
+
+Expected-YELLOW 3: `sde-vaktplan-coverage`
+
+Nåværende divergens:
+
+- scope finnes i `accessPolicy`
+- scope mangler i `identityPolicy`
+
+Vurderte alternativer:
+
+1. Legge scope senere inn i `identityPolicy`:
+   - kan gi konsistent vaktplan-readback
+   - sannsynlige kandidater senere: `admin_pilot`, `vaktplan_ledelse`
+2. Holde scope utenfor `identityPolicy`:
+   - legitimt hvis vaktplan/bemanning/dekning ikke skal inn i
+     identity-readback ennå
+   - blokkerer runtime-bruk
+3. Beholde expected-YELLOW til eierskap/felles katalog er valgt:
+   - tryggest nå
+   - runtime må fortsatt blokkeres
+
+Normativ beslutning:
+
+- ingen teknisk fix nå
+- foreløpig retning: scope kan senere vurderes for `admin_pilot` og
+  `vaktplan_ledelse`, men skal ikke aktiveres eller legges til runtime uten
+  egen GO
+- inntil teknisk fix er besluttet, forblir dette expected-YELLOW og
+  runtime-blocker
+
+Prioritert resolution-plan:
+
+1. Lås README-beslutning for alle tre expected-YELLOW i B47-N.
+2. Avklar `manual-assessments-notes` først ved eventuell teknisk fix, fordi
+   den er mest sensitiv.
+3. Deretter avklar `sde-night-placement-manual-overrides`.
+4. Deretter avklar `sde-vaktplan-coverage`.
+5. Først etter beslutning: eventuell isolert teknisk fix.
+6. Felles katalogmodul krever egen preflight og GO.
+7. Runtime-auth/enforcement er fortsatt blokkert til expected-YELLOW enten er
+   løst eller eksplisitt hard-gated.
+
+Mulig senere filscope, forslag bare:
+
+README-only:
+
+- `server/README.md`
+
+Isolated fix senere:
+
+- mulig `server/src/identityPolicy.js`
+- mulig `server/scripts/test-identity-policy.js`
+- mulig `server/scripts/test-catalog-parity.js`
+- mulig `server/README.md`
+- fortsatt NO-GO for `server/src/index.js`
+- fortsatt NO-GO for runtime/middleware
+
+Felles katalog senere:
+
+- mulig `server/src/accessCatalog.js`
+- mulige nye tester
+- krever egen preflight og GO
+
+Abortkriterier for senere expected-YELLOW resolution:
+
+- forslag om runtime-auth
+- forslag om middleware
+- forslag om `server/src/index.js`
+- forslag om private readback activation
+- forslag om write/production-write
+- forslag om operational authority
+- forslag om Cloudflare/CORS/transport
+- forslag om DB/schema/migration
+- forslag om packageendring uten egen GO
+- forslag om å skjule expected-YELLOW som GREEN
+- forslag om å ignorere `manual-assessments-notes`-divergens
+- forslag om å utvide `manual-assessments-notes` uten sensitivity-beslutning
+
+Ikke-mål for B47-N:
+
+- ingen kodeendring
+- ingen testendring
+- ingen expected-YELLOW teknisk fix
+- ingen catalog parity-test-endring
+- ingen felles katalogmodul
+- ingen runtime-kobling
+- ingen middleware
+- ingen endpoint enforcement
+- ingen login/session/token/issuer
+- ingen `server/src/index.js`
+- ingen `index.html`
+- ingen POST/write
+- ingen flags
+- ingen restart
+- ingen DB-write
+- ingen migration/schema
+- ingen Cloudflare/CORS/transport
+- ingen production-write
+- ingen operational authority
+
+Anbefalt neste fase, ikke utført:
+
+`B47-O-PRE — read-only expected-YELLOW technical fix preflight`
+
+B47-O-PRE bør være read-only. Den skal ikke endre kode eller tester, og den
+skal vurdere om teknisk fix bør være isolert `identityPolicy`/test/parity-
+oppdatering. Den skal fortsatt ikke gi runtime-auth, ikke middleware, ikke
+`server/src/index.js`, ikke write og ikke operational authority.
+
+Fremdrift etter B47-N:
+
+- B38-B45: GREEN / låst
+- B46 skeleton/testherding: GREEN / 100 % isolert
+- B47 identity/security design: ca. 84 %
+- SDE Shared Workspace totalt: ca. 94 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
