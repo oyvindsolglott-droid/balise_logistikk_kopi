@@ -4346,6 +4346,186 @@ Videre faseplan:
 - senere auth/rollefilter: eget B45/B46-løp
 - operational authority / løpende write: fortsatt `0 %`, ikke åpnet
 
+## B45-A SDE Shared Workspace auth/access-control contract
+
+Status: README-only kontrakt. B45-A dokumenterer fremtidig faktisk
+auth/access-control for SDE Shared Workspace. Dette er ikke implementering,
+ikke token/session/login, ikke serverkode, ikke UI-filter, ikke write og ikke
+operational authority. Kontrakten gir ingen faktisk sikkerhet ennå.
+
+Formål:
+
+- beskrive hva som må være sant før rolle-/scope-basert tilgangskontroll kan
+  regnes som aktiv
+- gjøre det eksplisitt at UI-synlighet er ikke sikkerhet
+- låse at `data-levels` og frontend-only nivåvalg fortsatt bare er
+  prototypevisning
+- kreve server-side enforcement før private readback- eller write-rettigheter
+  kan håndheves
+- holde auth/access-control adskilt fra operational-authority og løpende
+  write/sync
+
+Hovedprinsipper:
+
+- frontend-only nivåvalg er ikke sikkerhet
+- GitHub Pages/static kan ikke være sikkerhetsgrense for private rolledata
+- faktisk tilgangskontroll må håndheves server-side
+- default-deny skal gjelde for ukjent bruker, ukjent rolle, ukjent nivå,
+  ukjent modul og ukjent scope
+- ukjent rolle/nivå skal få ingen tilgang
+- ukjent scope/modul skal avvises
+- actor/device i payload og audit er ikke autentisert identitet
+- auth må ikke blandes med operational-authority
+- samme readback betyr ikke samme write
+- samme readback betyr ikke operativ sannhet
+- samme readback betyr ikke operational authority
+
+Identitet, senere kontrakt:
+
+En senere auth-kontrakt må definere:
+
+- authenticated user identity
+- stabil user id
+- display name dersom det skal vises i audit/UI
+- role/access level
+- session/token-format
+- token lifetime og fornyelsesregler
+- trusted issuer
+- transport/security boundary, for eksempel LAN/VPN/Cloudflare Access eller
+  annen eksplisitt grense
+- hvordan identitet bindes til audit
+- hvordan client-supplied actor/device skal behandles etter auth
+
+Etter faktisk auth må audit skille mellom:
+
+- autentisert identity
+- server-verifisert rolle/scope
+- client-supplied actor/device/context
+- device/browser-informasjon som bare er metadata
+
+Roller/nivåer, foreløpig modell:
+
+Eksisterende nivånavn kan brukes som planmodell, men de er ikke tilstrekkelige
+som sikkerhetsmodell alene:
+
+- `Agila`
+- `TXP`
+- `DROPS`
+- `Verksted`
+- `SDE/skiftere`
+- `Vaktplan/ledelse`
+- `Admin/pilot`
+
+Krav til senere tildeling:
+
+- hvert nivå må få eksplisitt tildelte moduler og scopes
+- samme modul kan tildeles flere nivåer
+- ulike nivåer kan ha ulike moduler
+- samme modul + samme `serviceDate` + samme `scope` = samme readback for
+  autoriserte nivåer
+- samme readback gir ikke automatisk skriverettighet
+- write-rettigheter må være eksplisitt scope-, modul- og fasebundet
+
+Moduler og scopes:
+
+Access-control må skille mellom:
+
+- modul/funksjon
+- scope
+- `serviceDate`
+- readback
+- write-draft
+- test-write
+- production-pilot-write
+- admin/pilot
+- senere operational-authority, alltid eget GO
+
+Eksempel: `manual-assessments-notes`
+
+- production-pilot proven etter B42
+- readback/audit-only som standard
+- not writable som standard
+- nye writes krever egen eksplisitt GO
+- nye production-pilot-write-vinduer er ikke løpende write/sync
+- skal ikke bli ordre, Utført/Annullert, SDE-motor-source eller operativ
+  sannhet
+
+Foreløpige rettighetskategorier:
+
+| Kategori | Betydning |
+| --- | --- |
+| `no-access` | Ingen readback eller write for modul/scope. |
+| `read-only` | Kan se ikke-privat eller eksplisitt tildelt readback. |
+| `readback/audit` | Kan se audit/readback-linjer og relevante detaljer for tildelt scope. |
+| `write-draft` | Kan lagre utkast dersom senere endpoint/kontrakt godkjennes. |
+| `test-write` | Kan skrive i isolert testserver/temp DB etter egen GO. |
+| `production-pilot-write` | Kan gjøre avgrenset production-pilot etter egen GO, backup og flaggvindu. |
+| `admin/pilot` | Kan se pilot-/auditdetaljer og drive godkjente pilotløp. |
+| `operational-authority` | Ikke åpnet. Krever eget senere spor og egen GO. |
+
+Avgrensning:
+
+- operational-authority er `0 %` / ikke åpnet
+- production-pilot-write er ikke løpende write
+- løpende write/sync er ikke åpnet
+- readback/audit gir ikke rett til å skrive
+- admin/pilot gir ikke write uten egen eksplisitt GO
+
+Server-side enforcement, senere krav:
+
+En senere implementering må håndheve server-side:
+
+- identity required for private/access-controlled endpoints
+- role/access level resolved server-side
+- module/scope allowlist server-side
+- readback rights server-side
+- write rights server-side
+- `expectedRevision` for writes
+- `idempotencyKey` for writes
+- audit trail for access-controlled reads/writes
+- default-deny som sikker standard
+- no trust in frontend `data-levels`
+- ingen klientstyrt utvidelse av scope, rolle eller eventtype
+
+Static/offline/GitHub Pages:
+
+- static/GitHub Pages kan fortsatt være offentlig/local frontend
+- static/offline skal ikke late som private eller rollebaserte data er
+  beskyttet
+- ved manglende server skal appen fortsatt være diskret/passiv
+- private access-controlled readback krever server-side auth i senere fase
+- GitHub Pages/static skal ikke være eneste sikkerhetsgrense for
+  `manual-assessments-notes` eller andre private scopes
+
+Audit:
+
+- alle access-controlled reads/writes bør kunne auditeres senere
+- writes må ha actor/identity/device
+- actor/device uten auth er bare klientpåstand/auditmetadata
+- etter auth må audit skille authenticated identity fra client-supplied context
+- audit-logg skal fortsatt ikke være direkte klientskrivbar
+- `shared-workspace-audit-log` skal fortsatt være servergenerert
+
+Risikoer:
+
+- frontend-only rollevalg kan misforstås som sikkerhet
+- manuelle notater kan eksponeres for bredt uten faktisk auth
+- auth kan blandes feil med operational authority
+- write-rettigheter kan åpnes for bredt hvis rolle/scope ikke er strengt
+  servervaliderte
+- Cloudflare/domene/transport må vurderes før ekte auth
+- static/offline kan ikke beskytte private data
+- actor/device kan feiltolkes som verifisert identitet før auth finnes
+
+Videre faseplan:
+
+- B45-A: README-only auth/access-control contract
+- B45-B: read-only review av kontrakt mot server/index
+- B45-C: threat model / security boundary review
+- B45-D: eventuell minimal server-side auth design, egen GO
+- B46: eventuell implementering, egen GO
+- operational authority / løpende write: fortsatt eget senere spor, `0 %`
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
