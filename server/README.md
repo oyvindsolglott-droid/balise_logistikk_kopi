@@ -6918,6 +6918,135 @@ Fremdrift etter B47-K:
 - SDE Shared Workspace totalt: ca. 94 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B47-M — Catalog parity-test closeout
+
+Status: README-only closeout for B47-K/L. B47-M dokumenterer at den
+isolerte catalog parity-testen holder B47-J-planen, og at B47-L reviewet
+testen som inert, isolert og uten runtime-effekt. Dette er ikke runtime-auth,
+ikke middleware, ikke endpoint enforcement, ikke felles katalogmodul, ikke
+login/session/token/issuer-kode, ikke private readback, ikke write,
+ikke production-write og ikke operational authority.
+
+Formål:
+
+- dokumentere closeout for `server/scripts/test-catalog-parity.js`
+- låse at B47-K/L holder B47-J-cutline
+- låse at expected-YELLOW er synliggjort, ikke løst
+- låse at runtime-auth/enforcement fortsatt er blokkert
+- låse at katalogdivergens og eierskap må avklares før runtime
+- låse at neste fase krever egen eksplisitt GO
+
+Hva B47-K leverte:
+
+- `server/scripts/test-catalog-parity.js`
+- isolert maskinell sammenligning av `accessPolicy` og `identityPolicy`
+- GREEN checks for roller, high-risk scopes, sentrale rights, write-deny,
+  production-pilot-write-deny, operational-authority-deny, `agila`-cutline,
+  ukjent rolle/scope/right, actor/device og frontend `data-levels`
+- expected-YELLOW checks for dokumenterte katalogforskjeller
+- RED hard-fail checks for farlige allow/regresjoner, skjult divergens og
+  runtime-kobling
+- README-dokumentasjon av hva testen beviser og ikke beviser
+- ingen import i `server/src/index.js`
+- ingen runtime-kobling
+
+Hva B47-L review bekreftet:
+
+- testen er inert og isolert
+- testen gjør ingen HTTP/fetch/POST
+- testen bruker ikke DB
+- testen starter ikke server
+- testen leser ikke env-flagg
+- testen skriver ikke filer
+- testen importerer ikke `server/src/index.js`
+- `server/src/index.js` importerer ikke `accessPolicy`, `identityPolicy` eller
+  `test-catalog-parity.js`
+- ingen middleware er koblet inn
+- ingen endpoint enforcement finnes
+- ingen login/session/token/issuer finnes
+- ingen private endpoint-beskyttelse finnes
+- production revision/events/flagg var uendret etter review
+
+Låst GREEN-konklusjon:
+
+- B47-K/L holder B47-J-cutline
+- parity-testen er teknisk kontroll av katalogdivergens
+- GREEN-grensene er testet maskinelt
+- RED-funn skal hard-faile
+- testen er ikke runtime-klarering
+- testen er ikke auth/enforcement
+- catalog parity er fortsatt ikke runtime-klar
+
+Expected-YELLOW som fortsatt står:
+
+- `manual-assessments-notes` har fortsatt rolledivergens:
+  - `accessPolicy`: kun `admin_pilot`
+  - `identityPolicy`: `admin_pilot`, `sde_skiftere`,
+    `vaktplan_ledelse`
+- `identityPolicy` mangler fortsatt:
+  - `sde-night-placement-manual-overrides`
+  - `sde-vaktplan-coverage`
+- forskjellene er synliggjort og testet, men ikke løst
+- forskjellene må avklares før runtime-auth/enforcement
+- expected-YELLOW må ikke tolkes som permanent runtime-aksept
+
+Hva B47-M ikke beviser:
+
+- ikke runtime-auth
+- ikke middleware
+- ikke endpoint enforcement
+- ikke felles katalogmodul
+- ikke private readback-beskyttelse
+- ikke login/session/token/issuer
+- ikke CORS/Cloudflare/transport-sikkerhet
+- ikke write
+- ikke production-write
+- ikke operational authority
+- ikke løpende write/sync
+- ikke endelig catalog ownership
+
+Gjenstående gap før runtime-auth:
+
+- avgjøre endelig `manual-assessments-notes` rollemodell
+- avgjøre manglende identity scopes
+- avgjøre katalogeierskap eller felles katalog
+- avgjøre om parity-test skal bli fast preflight for senere auth
+- avklare endpoint enforcement-scope
+- avklare middleware-design
+- avklare identity/trust boundary
+- lage direct API-testplan
+- lage rollout/rollback-plan
+- avklare production restart-policy
+- innhente eksplisitt bruker-GO før hvert runtime-steg
+
+Absolutte sperrer videre:
+
+- B47-M er ikke GO for runtime-auth
+- B47-M er ikke GO for middleware
+- B47-M er ikke GO for `server/src/index.js`
+- B47-M er ikke GO for endpoint enforcement
+- B47-M er ikke GO for felles katalogmodul
+- B47-M er ikke GO for private readback activation
+- B47-M er ikke GO for write/production-write
+- B47-M er ikke GO for operational authority
+- operational authority/write forblir `0 %`, ikke åpnet
+
+Anbefalt neste fase, ikke utført:
+
+`B47-N-PRE — read-only expected-YELLOW resolution planning`
+
+B47-N-PRE bør være read-only. Den skal ikke endre kode, ikke endre tester,
+ikke koble runtime, og den må planlegge hvordan `manual-assessments-notes`
+og manglende identity scopes skal avklares før runtime-auth/enforcement.
+
+Fremdrift etter B47-M:
+
+- B38-B45: GREEN / låst
+- B46 skeleton/testherding: GREEN / 100 % isolert
+- B47 identity/security design: ca. 80 %
+- SDE Shared Workspace totalt: ca. 94 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
