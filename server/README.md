@@ -8862,6 +8862,182 @@ Fremdrift etter B48-F-DOC:
 - SDE Shared Workspace totalt: ca. 95 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B48-G-DOC — Isolated harness result / limitation decision record
+
+Status: README-only isolated harness result / limitation decision record.
+B48-G-DOC dokumenterer B48-G-resultatet og avgrenser at B48-G er et
+isolert default-deny harness-bevis, ikke production runtime-auth, middleware,
+endpoint enforcement eller private readback activation.
+
+Beslutning:
+
+- B48-G er GREEN som isolert auth runtime-harness testscript
+- B48-G er et isolert testbevis, ikke production runtime-auth
+- `server/src/index.js` importerer fortsatt ikke `authPolicy`
+- ingen middleware er implementert
+- ingen endpoint enforcement er implementert
+- private readback er ikke aktivert
+- operational authority/write er fortsatt `0 %`
+
+Endret artefakt:
+
+- ny fil: `server/scripts/test-auth-runtime-harness.js`
+- scriptet er isolert
+- scriptet importerer ikke `server/src/index.js`
+- scriptet bruker ikke HTTP-server
+- scriptet bruker ikke DB
+- scriptet bruker ikke port `8787`
+- scriptet bruker ikke production runtime
+- scriptet krever ingen packageendring
+- scriptet endrer ingen runtimeflags
+- scriptet skriver ikke audit til DB
+- scriptet åpner ikke private readback
+
+Hva B48-G beviser:
+
+B48-G beviser isolert:
+
+- default-deny harness-atferd
+- deny stopper før handler-effekt
+- handler-effect counter forblir `0` ved deny
+- public safe GET allow uten identity
+- unknown GET ikke automatisk allow
+- review-needed GET blir ikke automatisk private allow
+- private candidates deny uten trusted identity
+- spoofed headers deny som identity
+- actor deny som identity
+- device deny som identity
+- clientContext deny som identity
+- Local/LAN deny som identity
+- wrong role deny
+- wrong scope deny
+- trusted server-side identity mock kan gi read-only allow bare når
+  endpointklasse og requestedRight tillater det
+- write/private blocked deny
+- production-write deny
+- operational authority deny
+- migration/schema deny
+- ingen DB/event/revision-effekt i harness
+
+Hva B48-G ikke beviser:
+
+- ikke production runtime-auth
+- ikke middleware i production
+- ikke endpoint enforcement i production
+- ikke private readback activation
+- ikke login/session/token/issuer
+- ikke cookies/JWT/API keys
+- ikke packageendring
+- ikke DB/schema
+- ikke Cloudflare/CORS/transport security
+- ikke write
+- ikke production-write
+- ikke operational authority
+- ikke at production endpoints håndhever `authPolicy`
+- ikke at review-needed endpoints er ferdig sensitivitetssplittet
+
+Runtime boundary etter B48-G:
+
+- production runtime er fortsatt read-only
+- production revision er fortsatt `8`
+- production events er fortsatt id `5`, `6` og `7`
+- event id `7` er fortsatt `operational_state.snapshot.production_pilot`
+- scope/readback er fortsatt `manual-assessments-notes`
+- alle write/operational/production/migration-flagg er fortsatt av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+- ingen nye production events fra B48-G
+
+Identity boundary etter B48-G:
+
+- trusted identity i B48-G er kun mocket server-side testcontext
+- headers er fortsatt ikke trusted identity
+- actor/device/clientContext er fortsatt audit-/payloadmetadata, ikke
+  access-control identity
+- Local/LAN er fortsatt ikke identity
+- B48-G velger ikke identity-source
+- B48-G implementerer ikke login/session/token/issuer
+
+Harness boundary etter B48-G:
+
+- harness er testscript, ikke runtime
+- harness skal ikke brukes som middleware
+- harness skal ikke importeres av `server/src/index.js`
+- harness skal ikke brukes til å åpne private readback
+- harness skal ikke brukes som grunnlag for write/operational authority
+- videre teknisk kobling krever egen senere preflight og eksplisitt GO
+
+Hvorfor dette er nyttig:
+
+- B48-G gir isolert regression-bevis for default-deny før handler-effekt
+- B48-G reduserer risiko for fail-open-design før runtime
+- B48-G gir testmatrise for public/review/private/write uten production-risk
+- B48-G gir ikke runtimebeskyttelse
+
+Gjenstående risikoer:
+
+- ingen production middleware finnes
+- ingen endpoint enforcement finnes
+- ingen identity-source er valgt
+- review-needed endpoints er ikke sensitivitetssplittet ferdig
+- private readback er ikke aktivert
+- runtime-import er fortsatt ikke godkjent
+- testscriptbevis kan ikke erstatte production runtime-test senere
+- Cloudflare/CORS/transport er fortsatt uavklart
+- write/operational authority er fortsatt ikke åpnet og skal ikke åpnes i B48
+
+Hva B48-G-DOC låser:
+
+- README-only result/limitation decision record
+- B48-G er låst som isolert harness-bevis
+- B48-G skal ikke omtales som runtime-auth
+- runtime-import fortsatt ikke godkjent
+- middleware fortsatt ikke godkjent
+- endpoint enforcement fortsatt ikke godkjent
+- private readback fortsatt ikke aktivert
+- operational authority/write fortsatt `0 %`
+
+Hva B48-G-DOC ikke beviser:
+
+- runtime-auth
+- middleware
+- endpoint enforcement
+- private readback
+- identity-source
+- session/token/issuer
+- packageendring
+- DB/schema
+- Cloudflare/CORS/transport
+- write
+- operational authority
+
+Anbefalt neste trygge steg:
+
+`B48-H-PRE — read-only runtime-import readiness gap review`
+
+Ikke runtime-import direkte. Ikke middleware direkte. Ikke private readback
+direkte. Ikke operational authority.
+
+Production lock ved B48-G-DOC:
+
+- production revision forblir `8`
+- operational-state events forblir id `5`, `6` og `7`
+- event id `7` forblir `operational_state.snapshot.production_pilot`
+- scope/readback forblir `manual-assessments-notes`
+- alle write/operational/production/migration-flagg forblir av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Fremdrift etter B48-G-DOC:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- B48 runtime-auth design: ca. 93 %
+- SDE Shared Workspace totalt: ca. 96 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
