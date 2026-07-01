@@ -4264,6 +4264,88 @@ Videre faseplan:
 - senere flere scopes/modulreadback må ha egne GO-løp
 - operational authority / løpende write: fortsatt `0 %`, ikke åpnet
 
+## B44-A manual-assessments-notes access/readback matrix
+
+Status: README-only dokumentasjon. B44-A dokumenterer en tilgangs- og
+readbackmatrise for `manual-assessments-notes`. Dette er ikke auth,
+ikke rollefilter-implementering, ikke write og ikke operational authority.
+UI-synlighet er ikke sikkerhet.
+
+Formål:
+
+- låse en read-only tilgangs-/readbackmatrise for `manual-assessments-notes`
+- skille tydelig mellom planlagt synlighet og faktisk tilgangskontroll
+- beholde `manual-assessments-notes` som readback/audit-only
+- ikke åpne write, sync, operational authority eller serverstate som operativ
+  sannhetskilde
+
+Hovedskille:
+
+- funksjonstilgang: hvilke moduler et nivå senere kan få se eller bruke
+- synkron readback per modul/scope: samme serverbaserte readback for tildelt
+  modul, serviceDate og scope
+- skriverettighet: separat rettighet som ikke følger automatisk av readback
+- faktisk auth/tilgangskontroll: ikke implementert her og ikke erstattet av
+  frontend-nivåvalg
+
+Shared Workspace-regel:
+
+- samme modul + samme `serviceDate` + samme `scope` = samme readback for nivåer
+  som faktisk har modulen
+- samme readback betyr ikke samme skriverettighet
+- samme readback betyr ikke operativ sannhet
+- samme readback betyr ikke operational authority
+- samme readback betyr ikke at UI-visning er en sikkerhetsmodell
+
+Anbefalt read-only matrise for `manual-assessments-notes`:
+
+| Nivå | Read-only synlighet | Avgrensning |
+| --- | --- | --- |
+| `Agila` | Skal ikke se `manual-assessments-notes` dersom Agila kun har Sporplan. | Manual-notater er ikke del av ren Sporplan-visning. |
+| `TXP` | Skal ikke se `manual-assessments-notes` som standard. Kan bare få relevant TXP-readback hvis dette eksplisitt tildeles senere. | Må ikke bli TXP operational block. |
+| `DROPS` | Kan senere se relevante read-only notater når de gjelder materiell/situasjonsbilde. | Må ikke bli DROPS dispatch eller tursettingsbeslutning. |
+| `Verksted` | Kan senere se relevante read-only notater knyttet til materiell/verkstedstatus. | Må ikke bli binding/frigjøring eller operativ verkstedbeslutning. |
+| `SDE/skiftere` | Kan senere se read-only notater som situasjonsbilde/audit. | Må ikke bli skifteordre, Utført/Annullert eller SDE-motor-source. |
+| `Vaktplan/ledelse` | Kan senere se read-only audit/situasjonsbilde. | Må ikke bli operativ sannhetskilde. |
+| `Admin/pilot` | Kan se auditdetaljer og pilotstatus. | Får ikke write uten egen eksplisitt GO. |
+
+Skriverettighet:
+
+- `manual-assessments-notes` er etter B42/B43 production-pilot proven
+- status er readback/audit-only
+- status er not writable som standard
+- nye writes krever egen eksplisitt GO
+- ingen løpende write/sync er åpnet
+- ingen operational authority er åpnet
+
+`manual-assessments-notes` skal aldri bli:
+
+- ordre
+- Utført/Annullert
+- SDE-motor-source
+- TXP operational block
+- DROPS dispatch
+- verksted binding/frigjøring
+- tursatt/operativ beslutning
+- generell operativ sannhetskilde
+
+Risikoer:
+
+- for bred readback uten auth kan eksponere mer enn ønsket
+- frontend-only nivåvalg må ikke behandles som sikkerhet
+- manuelle notater kan feiltolkes som instruks hvis de vises for bredt eller
+  for sterkt
+- faktisk auth/rollefilter må være eget senere løp
+- operational authority må være eget senere løp
+
+Videre faseplan:
+
+- B44-A: README-only access/readback matrix
+- B44-B: read-only review av matrix mot eksisterende UI/README
+- B44-C: eventuell read-only label/UI-plan, egen GO
+- senere auth/rollefilter: eget B45/B46-løp
+- operational authority / løpende write: fortsatt `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
