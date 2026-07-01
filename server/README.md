@@ -6797,6 +6797,127 @@ Fremdrift etter B47-J:
 - SDE Shared Workspace totalt: ca. 94 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B47-K — Isolated catalog parity test
+
+Status: isolated catalog parity test. B47-K legger til et scriptbasert
+parity-/sync-testgrunnlag for B46 `accessPolicy` og B47 `identityPolicy`.
+Dette er fortsatt ikke runtime-auth, ikke middleware, ikke endpoint
+enforcement, ikke felles katalogmodul, ikke login/session/token/issuer-kode,
+ikke private readback, ikke write, ikke production-write og ikke operational
+authority.
+
+Endrede filer i B47-K:
+
+- `server/scripts/test-catalog-parity.js`
+- `server/README.md`
+
+Testkommando:
+
+```sh
+node server/scripts/test-catalog-parity.js
+```
+
+Hva B47-K implementerer:
+
+- isolert CommonJS-testscript uten eksterne dependencies
+- direkte import av eksporterte data/funksjoner fra `accessPolicy` og
+  `identityPolicy`
+- ingen import i `server/src/index.js`
+- ingen serverstart
+- ingen HTTP/fetch
+- ingen POST/write
+- ingen DB/schema/migration
+- ingen env-flagg
+- ingen packageendring
+- ingen runtime-kobling
+
+GREEN checks som testen låser:
+
+- rollersett finnes og matcher i begge kataloger
+- high-risk scopes finnes og matcher i begge kataloger
+- sentrale rights-navn finnes i begge kataloger
+- write, test-write og production-pilot-write gir ikke allow via readback
+- operational authority gir ikke allow
+- `agila` har kun `sporplan-readback`
+- `agila` har ikke `manual-assessments-notes`
+- ingen rolle får operational authority i role/scope-mapping
+- high-risk scopes har ingen aktiv allow i role/scope-mapping
+- ukjent rolle, scope og right gir deny / ikke-allow
+- actor/device alene er ikke identity
+- frontend `data-levels` er ikke security
+- testen laster ikke server runtime
+
+Expected-YELLOW som testen observerer eksplisitt:
+
+- `manual-assessments-notes` har ulik rollemodell:
+  - `accessPolicy`: kun `admin_pilot`
+  - `identityPolicy`: `admin_pilot`, `sde_skiftere`,
+    `vaktplan_ledelse`
+- `identityPolicy` mangler:
+  - `sde-night-placement-manual-overrides`
+  - `sde-vaktplan-coverage`
+
+Expected-YELLOW betyr:
+
+- forskjellene er dokumentert og synlige
+- forskjellene passerer ikke som GREEN
+- testen feiler hvis forskjellene endrer karakter uten at expected-YELLOW
+  oppdateres eksplisitt
+- catalog parity er fortsatt ikke runtime-klar
+- runtime-auth/enforcement er fortsatt blokkert
+
+RED-funn testen skal stoppe:
+
+- high-risk scope allow i én katalog
+- write/production-write allow via readback
+- operational authority allow
+- `agila` får mer enn `sporplan-readback`
+- ukjent scope eller rolle gir allow
+- expected-YELLOW skjuler ny ikke-dokumentert divergens
+- `manual-assessments-notes` går mot runtime uten avklaring
+- runtime-kobling oppdages
+- server runtime importeres av testen
+- HTTP, DB, POST eller serverstart blandes inn i testen
+
+Hva B47-K beviser:
+
+- parity-test kan kjøres isolert uten serverstart
+- eksportene fra `accessPolicy` og `identityPolicy` er tilstrekkelige for
+  første tekniske parity/sync-kontroll
+- GREEN-cutlines fra B47-J kan kontrolleres maskinelt
+- expected-YELLOW-forskjellene er eksplisitte og kan ikke skjules som GREEN
+- RED-funn kan gjøres til hard testfeil før runtime-auth vurderes
+
+Hva B47-K ikke beviser:
+
+- ingen runtime-auth
+- ingen middleware
+- ingen endpoint enforcement
+- ingen felles katalogmodul
+- ingen login/session/token/issuer
+- ingen private readback-beskyttelse
+- ingen production-write
+- ingen operational authority
+- ingen løpende write/sync
+- ingen løsning på endelig catalog ownership
+
+Neste fase krever egen eksplisitt GO:
+
+- eventuell B47-L review/closeout av catalog parity-test
+- eventuell senere felles katalog-skeleton
+- eventuell senere runtime-auth/enforcement preflight
+
+B47-K er ikke GO for runtime-kobling, `server/src/index.js`, middleware,
+private readback, write, production-write eller operational authority.
+
+Fremdrift etter B47-K:
+
+- B38-B45: GREEN / låst
+- B46 skeleton/testherding: GREEN / 100 % isolert
+- B47 identity/security design: ca. 78 %
+- SDE Shared Workspace totalt: ca. 94 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
