@@ -6595,6 +6595,208 @@ Fremdrift etter B47-I:
 - SDE Shared Workspace totalt: ca. 94 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B47-J — Catalog parity/sync plan
+
+Status: README-only catalog parity/sync plan. B47-J dokumenterer hvordan
+role/scope-katalogene senere skal sammenlignes før teknisk parity-test eller
+felles katalogmodul vurderes. Dette er ikke parity-test implementation, ikke
+felles katalogmodul, ikke runtime-auth, ikke middleware, ikke endpoint
+enforcement, ikke login/session/token/issuer-kode, ikke private readback, ikke
+write, ikke production-write og ikke operational authority.
+
+Formål:
+
+- dokumentere hva senere catalog parity/sync må sammenligne
+- låse hvilke funn som er GREEN, YELLOW og RED i senere paritet
+- dokumentere tilsiktede forskjeller
+- dokumentere uønsket divergens
+- kreve eksplisitt expected-YELLOW allowlist før teknisk parity-test
+- låse at runtime-auth/enforcement fortsatt er blokkert
+- låse at neste tekniske steg krever egen eksplisitt GO
+
+Låst status fra B47-I og B47-J-PRE:
+
+- katalogdivergens er YELLOW, ikke RED, fordi begge kataloger er isolerte og
+  ikke runtime-koblet
+- ingen katalog er runtime-sannhetskilde
+- `accessPolicy` og `identityPolicy` er isolerte skeletons
+- runtime-auth/enforcement er blokkert til ownership/parity er avklart
+- `manual-assessments-notes`-forskjellen må avklares før private readback
+  eller enforcement
+- `sde-night-placement-manual-overrides` og `sde-vaktplan-coverage` mangler i
+  identity-katalogen og må avklares før runtime
+
+Senere parity/sync må sammenligne:
+
+- roller i begge kataloger
+- scopes i begge kataloger
+- high-risk scopes i begge kataloger
+- rights-navn
+- role-to-scope mapping
+- role-to-right mapping
+- readback/audit vs write
+- production-pilot-write
+- operational authority
+- `manual-assessments-notes`
+- `agila`
+- `admin_pilot`
+- `sde_skiftere`
+- `vaktplan_ledelse`
+- scopes bare i én katalog
+- roller bare i én katalog
+
+Tilsiktede forskjeller som kan være expected-YELLOW:
+
+- `identityPolicy` kan være smalere i skeleton-fasen for å holde Local/LAN
+  identity isolert
+- `accessPolicy` kan være bredere fordi den modellerer endpoint/access-
+  kategorier
+- slike forskjeller er bare akseptable så lenge ingen runtime-kobling finnes
+- expected-YELLOW må være eksplisitt dokumentert før teknisk parity-test
+- expected-YELLOW skal ikke bli permanent runtime-sannhet uten senere
+  eierskapsbeslutning
+
+Uønsket divergens som må avklares:
+
+- `manual-assessments-notes` er ulikt tildelt
+- `identityPolicy` mangler `sde-night-placement-manual-overrides`
+- `identityPolicy` mangler `sde-vaktplan-coverage`
+- én katalog kan oppdateres senere uten den andre
+- ulike kataloger kan gi motsatte allow/deny ved runtime
+- dette må ikke ignoreres før runtime-auth/enforcement
+
+Foreslåtte parity-kategorier:
+
+| Kategori | Funn |
+| --- | --- |
+| GREEN | Roller matcher. |
+| GREEN | High-risk scopes matcher. |
+| GREEN | Write deny matcher. |
+| GREEN | Production-pilot-write deny matcher. |
+| GREEN | Operational authority deny matcher. |
+| GREEN | `agila` kun `sporplan-readback` matcher. |
+| YELLOW | Dokumentert smalere identity-katalog. |
+| YELLOW | Scopes finnes bare i `accessPolicy`, men er dokumentert som non-runtime forskjell. |
+| YELLOW | Readback-forskjeller er dokumentert og ikke runtime-koblet. |
+| YELLOW | Expected-YELLOW allowlist finnes eksplisitt i README før teknisk test. |
+| RED | High-risk scope allow i én katalog. |
+| RED | Write eller production-write allow via readback. |
+| RED | Operational authority allow. |
+| RED | `agila` får mer enn `sporplan-readback`. |
+| RED | Ukjent scope eller rolle gir allow. |
+| RED | `manual-assessments-notes`-forskjell går mot runtime uten avklaring. |
+| RED | Runtime-kobling før parity/eierskap. |
+| RED | To kataloger brukes som runtime-sannhet uten paritet/eierskap. |
+
+`manual-assessments-notes` cutline:
+
+- `manual-assessments-notes` er sensitiv nok til at ulik rollemodell må
+  avklares før private readback/enforcement
+- ingen runtime-auth kan basere seg på uavklart tildeling
+- hvis senere parity-test har expected-YELLOW for dette, må det være
+  eksplisitt og midlertidig
+- før private readback må endelig rolle/scope-eier være låst
+- `manual-assessments-notes` må ikke gli fra readback/audit til instruks,
+  write, skifteordre, Utført/Annullert eller operational authority
+
+Manglende identity scopes cutline:
+
+- `sde-night-placement-manual-overrides` mangler i `identityPolicy`
+- `sde-vaktplan-coverage` mangler i `identityPolicy`
+- dette kan være tilsiktet smal skeleton, men må dokumenteres som
+  expected-YELLOW før teknisk test
+- før runtime må disse enten inn i felles/eid katalog eller eksplisitt holdes
+  utenfor identity-scope
+- manglende scopes kan ikke ignoreres hvis private readback eller endpoint
+  enforcement vurderes
+
+Vurderte neste tekniske alternativer:
+
+| Alternativ | Vurdering |
+| --- | --- |
+| README-only plan først | Valgt i B47-J. Lavest risiko og låser expected GREEN/YELLOW/RED før test. |
+| Isolated catalog parity test senere | Mulig senere fil: `server/scripts/test-catalog-parity.js`. Ingen runtime-kobling, ingen felles katalogmodul, sammenligner eksporterte data fra `accessPolicy` og `identityPolicy`, og krever expected-YELLOW allowlist fra README. |
+| Isolated accessCatalog skeleton senere | Mulig senere fil: `server/src/accessCatalog.js`. Høyere risiko, krever egen GO, og bør ikke gjøres før parity/sync-plan og testmodell er låst. |
+
+Mulig senere filscope, forslag bare:
+
+- mulig `server/scripts/test-catalog-parity.js`
+- mulig `server/README.md`
+- ikke `server/src/index.js`
+- ikke `server/src/accessPolicy.js`
+- ikke `server/src/identityPolicy.js`
+- ikke packagefiler
+- ikke DB/schema
+- ikke runtime
+- ikke Cloudflare/CORS/transport
+
+Mulige senere testkrav, forslag bare:
+
+- rollersett matcher
+- high-risk scopes matcher
+- operational authority deny matcher
+- write deny matcher
+- production-pilot-write deny matcher
+- `agila`-begrensning matcher
+- `manual-assessments-notes` difference failer eller markeres som
+  expected-YELLOW etter eksplisitt allowlist
+- manglende identity scopes failer eller markeres som expected-YELLOW etter
+  eksplisitt allowlist
+- ingen runtime import
+- ingen HTTP/DB/POST/serverstart
+
+Abortkriterier for senere teknisk steg:
+
+- behov for runtime-kobling
+- behov for `server/src/index.js`
+- behov for middleware
+- behov for login/session/token/issuer
+- behov for packageendring
+- behov for DB/schema/migration
+- forslag om write/production-write
+- forslag om operational authority
+- forslag om Cloudflare/CORS/transport
+- forslag om private readback activation
+- forslag om å ignorere `manual-assessments-notes`-divergens
+- forslag om å ignorere manglende identity scopes
+- forslag om å la to kataloger være runtime-sannhet uten paritet/eierskap
+
+Ikke-mål for B47-J:
+
+- ingen kodeendring
+- ingen testendring
+- ingen parity-test
+- ingen felles katalogmodul
+- ingen runtime-kobling
+- ingen middleware
+- ingen endpoint enforcement
+- ingen login/session/token/issuer
+- ingen `server/src/index.js`
+- ingen `index.html`
+- ingen POST/write
+- ingen flags
+- ingen restart
+- ingen DB-write
+- ingen migration/schema
+- ingen Cloudflare/CORS/transport
+- ingen production-write
+- ingen operational authority
+
+Anbefalt neste fase, ikke utført:
+
+`B47-K — isolated catalog parity test`
+
+B47-K krever egen GO. Det skal ikke gi runtime-auth, middleware,
+`server/src/index.js`, felles katalogmodul, write eller operational authority.
+
+Fremdrift etter B47-J:
+
+- B38-B45: GREEN / låst
+- B46 skeleton/testherding: GREEN / 100 % isolert
+- B47 identity/security design: ca. 73 %
+- SDE Shared Workspace totalt: ca. 94 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
