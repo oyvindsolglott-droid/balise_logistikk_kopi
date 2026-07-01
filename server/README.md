@@ -5147,6 +5147,88 @@ Neste fase:
   egen eksplisitt GO
 - operational authority / løpende write forblir `0 %`, ikke åpnet
 
+## B46-C — Access-policy endpoint catalog og test-herding
+
+Status: smal policy-/testherding for B46 skeleton. B46-C gjør den inerte
+access-policyen mer konkret ved å legge til endpoint-katalog som data og
+utvide testdekningen, men kobler fortsatt ingenting inn i runtime.
+
+Tillatte filer i B46-C:
+
+- `server/src/accessPolicy.js`
+- `server/scripts/test-access-policy.js`
+- `server/README.md`
+
+B46-C etablerer:
+
+- inert endpoint policy catalog for nåværende readback/status/static/write-
+  kategorier
+- helper for endpoint-klassifisering uten HTTP-server, middleware eller DB
+- kategori for static/serverhosted frontend/data/assets som `static_read`
+- eksplisitt mapping for read-only status/readback:
+  `GET /api/health`, `GET /api/state/revision`,
+  `GET /api/server/status`, `GET /api/state`, `GET /api/events`,
+  `GET /api/operational-state`, `GET /api/operational-state/events` og
+  `GET /api/stream`
+- inert mapping for static/serverhosted:
+  `GET /`, `GET /app`, `GET /data/:filename` og `GET /assets/:filename`
+- inert mapping for write-kategorier:
+  `POST /api/operational-state/snapshot`, `POST /api/actions/test-note`,
+  `POST /api/actions/action-contract-test`,
+  `POST /api/actions/actions-table-test`, `POST /api/actions/server-note`
+  og `POST /api/actions/sde-recommendation-ack`
+
+Testherding i B46-C:
+
+- public/status-endpoints er fortsatt eneste kategori som kan tillates uten
+  identity i policy-helper
+- Shared Workspace readback krever fortsatt identity, rolle og scope
+- write-endepunkter i katalogen gir ikke write-rettighet uten eksplisitt
+  rolle/scope-rettighet, og dagens matrise gir ingen production-write
+- `Agila` og `TXP` får fortsatt ikke `manual-assessments-notes`
+- `Admin/pilot` får readback/audit, men ikke admin/write/production-pilot
+  som følge av skeletonet
+- alle high-risk scopes er fortsatt default-deny
+- `shared-workspace-audit-log` er fortsatt ikke klientskrivbar
+- ukjente endpoint, endpoint-kategorier, scopes, roller og requestedRight
+  gir deny
+- actor/device er fortsatt auditmetadata, ikke autentisert identity
+
+Kontraktsgrenser:
+
+- ingen runtime-kobling
+- ingen middleware
+- ingen faktisk auth, login, session, token eller issuer
+- ingen server-side enforcement på live endpoints
+- ingen `server/src/index.js`
+- ingen `index.html`
+- ingen DB/schema/migration
+- ingen package/data/`.github`
+- ingen POST-kjøring, flags, restart, Cloudflare, CORS eller transportendring
+- ingen production-write
+- ingen operational authority
+- ingen løpende write/sync
+
+B46-C beviser:
+
+- policykatalogen kan beskrive status/readback/static/write-kategorier uten
+  runtime-sideeffekt
+- readback/write/authority skilles konservativt i ren policykode
+- testscriptet kan validere default-deny-kontrakten isolert
+
+B46-C beviser ikke:
+
+- faktisk auth
+- privat endpoint-beskyttelse
+- rollefilter i UI
+- transport-/issuer-/sessionmodell
+- enforcement på production endpoints
+- operational authority eller løpende write
+
+Neste fase etter B46-C må fortsatt være egen eksplisitt review/GO før
+middleware, auth, token/session, issuer, UI-filter, private endpoints eller
+enforcement vurderes.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.

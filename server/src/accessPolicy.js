@@ -3,6 +3,7 @@
 const ENDPOINT_CATEGORIES = Object.freeze({
   PUBLIC_STATUS: "public_status",
   SERVER_STATUS_READ: "server_status_read",
+  STATIC_READ: "static_read",
   SHARED_READBACK: "shared_readback",
   SCOPE_RESTRICTED_READBACK: "scope_restricted_readback",
   TEST_WRITE: "test_write",
@@ -64,6 +65,7 @@ const KNOWN_SCOPE_VALUES = new Set([
 const DEFAULT_RIGHT_BY_ENDPOINT_CATEGORY = Object.freeze({
   [ENDPOINT_CATEGORIES.PUBLIC_STATUS]: ACCESS_RIGHTS.READ_ONLY,
   [ENDPOINT_CATEGORIES.SERVER_STATUS_READ]: ACCESS_RIGHTS.READ_ONLY,
+  [ENDPOINT_CATEGORIES.STATIC_READ]: ACCESS_RIGHTS.READ_ONLY,
   [ENDPOINT_CATEGORIES.SHARED_READBACK]: ACCESS_RIGHTS.READBACK_AUDIT,
   [ENDPOINT_CATEGORIES.SCOPE_RESTRICTED_READBACK]: ACCESS_RIGHTS.READBACK_AUDIT,
   [ENDPOINT_CATEGORIES.TEST_WRITE]: ACCESS_RIGHTS.TEST_WRITE,
@@ -170,6 +172,117 @@ const ROLE_SCOPE_RIGHTS = Object.freeze({
   })
 });
 
+const ENDPOINT_POLICY_CATALOG = Object.freeze([
+  endpointPolicy({
+    method: "GET",
+    path: "/api/health",
+    endpointCategory: ENDPOINT_CATEGORIES.PUBLIC_STATUS,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/api/state/revision",
+    endpointCategory: ENDPOINT_CATEGORIES.PUBLIC_STATUS,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/api/server/status",
+    endpointCategory: ENDPOINT_CATEGORIES.SERVER_STATUS_READ,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/api/state",
+    endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/api/events",
+    endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/api/operational-state",
+    endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/api/operational-state/events",
+    endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/api/stream",
+    endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/",
+    endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/app",
+    endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/data/:filename",
+    endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/assets/:filename",
+    endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY
+  }),
+  endpointPolicy({
+    method: "POST",
+    path: "/api/operational-state/snapshot",
+    endpointCategory: ENDPOINT_CATEGORIES.PRODUCTION_PILOT_WRITE,
+    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+  }),
+  endpointPolicy({
+    method: "POST",
+    path: "/api/actions/test-note",
+    endpointCategory: ENDPOINT_CATEGORIES.TEST_WRITE,
+    defaultRight: ACCESS_RIGHTS.TEST_WRITE
+  }),
+  endpointPolicy({
+    method: "POST",
+    path: "/api/actions/action-contract-test",
+    endpointCategory: ENDPOINT_CATEGORIES.TEST_WRITE,
+    defaultRight: ACCESS_RIGHTS.TEST_WRITE
+  }),
+  endpointPolicy({
+    method: "POST",
+    path: "/api/actions/actions-table-test",
+    endpointCategory: ENDPOINT_CATEGORIES.TEST_WRITE,
+    defaultRight: ACCESS_RIGHTS.TEST_WRITE
+  }),
+  endpointPolicy({
+    method: "POST",
+    path: "/api/actions/server-note",
+    endpointCategory: ENDPOINT_CATEGORIES.PRODUCTION_PILOT_WRITE,
+    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+  }),
+  endpointPolicy({
+    method: "POST",
+    path: "/api/actions/sde-recommendation-ack",
+    endpointCategory: ENDPOINT_CATEGORIES.PRODUCTION_PILOT_WRITE,
+    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+  })
+]);
+
 function decideAccess({
   identity = null,
   role = null,
@@ -261,6 +374,64 @@ function decideAccess({
   });
 }
 
+function decideEndpointAccess({
+  method = null,
+  path = null,
+  identity = null,
+  role = null,
+  scope = null,
+  requestedRight = null,
+  actor = null,
+  device = null
+} = {}) {
+  const endpointPolicyMatch = getEndpointPolicy({ method, path });
+
+  if (!endpointPolicyMatch) {
+    return deny("unknown_endpoint", {
+      endpointCategory: null,
+      scope: normalizeString(scope),
+      role: normalizeRole(role, identity),
+      requestedRight: normalizeString(requestedRight),
+      matchedRight: null
+    });
+  }
+
+  return decideAccess({
+    identity,
+    role,
+    scope,
+    endpointCategory: endpointPolicyMatch.endpointCategory,
+    requestedRight: requestedRight || endpointPolicyMatch.defaultRight,
+    actor,
+    device
+  });
+}
+
+function getEndpointPolicy({ method = null, path = null } = {}) {
+  const normalizedMethod = normalizeMethod(method);
+  const normalizedPath = normalizePath(path);
+
+  if (!normalizedMethod || !normalizedPath) {
+    return null;
+  }
+
+  return ENDPOINT_POLICY_CATALOG.find((policy) => {
+    return (
+      policy.method === normalizedMethod &&
+      matchesEndpointPath(policy.path, normalizedPath)
+    );
+  }) || null;
+}
+
+function endpointPolicy({ method, path, endpointCategory, defaultRight }) {
+  return Object.freeze({
+    method,
+    path,
+    endpointCategory,
+    defaultRight
+  });
+}
+
 function scopeRights(entries) {
   return Object.freeze(
     Object.entries(entries).reduce((result, [scope, rights]) => {
@@ -295,6 +466,34 @@ function normalizeString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function normalizeMethod(method) {
+  return typeof method === "string" && method.trim()
+    ? method.trim().toUpperCase()
+    : null;
+}
+
+function normalizePath(path) {
+  if (typeof path !== "string" || !path.trim()) return null;
+
+  const withoutHash = path.trim().split("#")[0];
+  const withoutQuery = withoutHash.split("?")[0];
+  return withoutQuery || "/";
+}
+
+function matchesEndpointPath(pattern, path) {
+  if (pattern === path) return true;
+  if (!pattern.includes(":")) return false;
+
+  const patternParts = pattern.split("/").filter(Boolean);
+  const pathParts = path.split("/").filter(Boolean);
+
+  if (patternParts.length !== pathParts.length) return false;
+
+  return patternParts.every((patternPart, index) => {
+    return patternPart.startsWith(":") || patternPart === pathParts[index];
+  });
+}
+
 function findMatchingRight(roleRights, requestedRight) {
   return roleRights.find((roleRight) => {
     const grants = RIGHT_GRANTS[roleRight] || [];
@@ -321,9 +520,12 @@ function deny(reason, details) {
 module.exports = {
   ACCESS_RIGHTS,
   ENDPOINT_CATEGORIES,
+  ENDPOINT_POLICY_CATALOG,
   HIGH_RISK_SCOPES,
   ROLE_KEYS,
   ROLE_SCOPE_RIGHTS,
   SHARED_WORKSPACE_SCOPES,
-  decideAccess
+  decideAccess,
+  decideEndpointAccess,
+  getEndpointPolicy
 };
