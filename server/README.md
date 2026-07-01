@@ -4169,6 +4169,101 @@ Mulig senere B43-faseplan:
 - B43-E: dokumentasjon
 - operational authority / løpende write: fortsatt `0 %`, ikke åpnet
 
+## B43-E manual-assessments-notes readback/UI resultat
+
+Status: README-only dokumentasjon. B43-E dokumenterer resultatet fra B43-C
+read-only UI-patch og B43-D read-only verifisering. Dette er ikke ny
+implementering, ikke ny write, ikke flaggåpning og ikke operational authority.
+
+B43-C GREEN:
+
+- smal read-only UI-patch
+- endret fil: `index.html`
+- Shared Workspace eventfilter inkluderer:
+  - `operational_state.snapshot.test`
+  - `operational_state.snapshot.production_pilot`
+- `manual-assessments-notes` gjenkjennes som read-only Shared Workspace
+  readback/audit
+- dette åpner ingen write, sync eller operational authority
+
+B43-D GREEN:
+
+- serverhostet app viste `manual-assessments-notes`
+- production-pilot event id `7` ble vist/behandlet som Shared Workspace
+  readback
+- status ble vist som:
+  - production-pilot proven
+  - readback/audit-only
+  - not writable
+  - requires later GO
+- kompakt auditlinje viste:
+  - event id
+  - revision
+  - serviceDate
+  - writeIntent
+  - actor/device
+  - eventtype
+- payloadtekst var dempet/forkortet
+- detaljer var collapsed:
+  - `detailsCount: 1`
+  - `openDetailsCount: 0`
+
+Read-only / ingen writeflate:
+
+- `0 buttons`
+- `0 forms`
+- `0 inputs`
+- `0 submit-kontroller`
+- ingen nye POST/write-handlere
+- ingen save/sync
+- ingen `localStorage`/`sessionStorage` serverstate-write
+- ingen operational authority
+- ingen løpende write/sync
+
+Production read-only status ved B43-D:
+
+- revision: `8`
+- events: id `5`, `6`, `7`
+- event id `7`: `operational_state.snapshot.production_pilot`
+- scope/readback: `manual-assessments-notes`
+- `writeIntent:"production_pilot_manual_assessment_note"`
+- `readbackOnly:true`
+- alle write/operational/production/migration-flagg av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+B43-C/D åpnet ikke og påvirket ikke:
+
+- write
+- operational authority
+- løpende write/sync
+- serverstate som generell operativ sannhetskilde
+- ordre
+- Utført/Annullert
+- SDE-motor-source
+- score
+- sortering
+- SDE-forslag
+- DROPS
+- verkstedstatus
+- Tursatt
+- Vaktplan
+
+Static/offline:
+
+- eksisterende diskret fallback beholdes ved manglende server
+- ingen ny stor serverdiagnostikkflate tvinges frem
+- GitHub Pages/static skal fortsatt være passiv/diskret når server ikke nås
+
+Videre faseplan:
+
+- B43-E: README-only dokumentasjon
+- B43-F: eventuell avslutningsreview / B43 GREEN-vurdering
+- senere eventuell rolle-/funksjonstilgang må ha egen GO
+- senere flere scopes/modulreadback må ha egne GO-løp
+- operational authority / løpende write: fortsatt `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
