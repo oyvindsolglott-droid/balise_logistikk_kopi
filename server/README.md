@@ -5061,6 +5061,92 @@ B45-G endelig konklusjon:
   dokumentasjons-closeouten
 - operational authority / write forblir `0 %`, ikke åpnet
 
+## B46-A — Minimal auth/access-policy skeleton
+
+Status: minimal server-side access-policy skeleton. B46-A starter auth/access
+implementation som inert policykode og testscript, men kobler ingenting inn i
+production runtime.
+
+Tillatte filer i B46-A:
+
+- `server/src/accessPolicy.js`
+- `server/scripts/test-access-policy.js`
+- `server/README.md`
+
+Hva B46-A etablerer:
+
+- endpoint-kategorier:
+  `public_status`, `server_status_read`, `shared_readback`,
+  `scope_restricted_readback`, `test_write`, `production_pilot_write` og
+  `operational_authority`
+- rettighetsnivåer:
+  `no_access`, `read_only`, `readback_audit`, `write_draft`, `test_write`,
+  `production_pilot_write`, `admin_pilot` og `operational_authority`
+- statisk rolle/modul/scope-matrise for test
+- scope-katalog for Shared Workspace readback
+- eksplisitt high-risk default-deny for:
+  `sde-shift-orders`, `sde-shift-completion-status`,
+  `txp-operational-blocks`, `drops-dispatch-decisions` og
+  `operational-authority-state`
+- `decideAccess(...)` som ren default-deny access-decision helper
+- tester som beviser at actor/device ikke gir tilgang og at frontend-nivåer
+  ikke er sikkerhet
+
+Kontraktsgrenser:
+
+- ingen runtime-kobling
+- ingen middleware på production endpoints
+- ingen login/session/token/issuer
+- ingen endpoint enforcement ennå
+- ingen `index.html`
+- ingen packageendring
+- ingen DB/schema/migration
+- ingen POST, write, flags, restart, Cloudflare, CORS eller transportendring
+- ingen production-write
+- ingen operational authority
+- ingen løpende write/sync
+
+Policy-bevis i B46-A:
+
+- public status kan tillates uten identity når endpoint-kategori eksplisitt er
+  `public_status`
+- private/restricted readback krever identity og kjent rolle
+- ukjent rolle, ukjent scope, manglende scope eller manglende identity gir deny
+- rolle uten scope gir deny
+- rolle med scope kan få readback/audit hvis matrisen eksplisitt tildeler det
+- `Agila` får ikke `manual-assessments-notes`
+- `Admin/pilot` får eksplisitt readback/audit til
+  `manual-assessments-notes`
+- actor/device ignoreres som identity
+- production-pilot-write er deny som default
+- operational-authority er deny
+- high-risk scopes er deny
+
+Testkommando:
+
+```sh
+node server/scripts/test-access-policy.js
+```
+
+Hva B46-A ikke beviser:
+
+- ingen faktisk autentisering
+- ingen session/token/login/issuer
+- ingen server-side enforcement på live endpoints
+- ingen rollefilter i UI
+- ingen beskyttelse av private data i production
+- ingen write- eller production-pilot-rettighet
+- ingen operational authority
+
+Neste fase:
+
+- B46-B bør være read-only review av skeleton mot B45-kontrakt og faktisk
+  endpoint-inventar
+- eventuell kobling til `server/src/index.js`, middleware, auth, login,
+  token/session, issuer, UI-filter eller private endpoint-enforcement krever
+  egen eksplisitt GO
+- operational authority / løpende write forblir `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
