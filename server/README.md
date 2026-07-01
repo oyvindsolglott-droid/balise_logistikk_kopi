@@ -7313,6 +7313,161 @@ Fremdrift etter B47-O:
 - SDE Shared Workspace totalt: ca. 94 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B47-P — Missing identity scopes decision record
+
+Status: README-only decision record for the two remaining expected-YELLOW
+identity-scope gaps. This is not a technical fix, not a catalog parity-test
+change, not a common catalog module, not runtime-auth, not middleware, not
+endpoint enforcement, not private readback activation, not write, not
+production-write and not operational authority.
+
+B47-P follows B47-O:
+
+- `manual-assessments-notes` is already `admin_pilot`-only in both
+  `accessPolicy` and `identityPolicy`
+- `sde_skiftere` and `vaktplan_ledelse` are denied
+  `manual-assessments-notes`
+- `manual-assessments-notes` is no longer expected-YELLOW
+- two expected-YELLOW gaps remain:
+  - `identityPolicy` lacks `sde-night-placement-manual-overrides`
+  - `identityPolicy` lacks `sde-vaktplan-coverage`
+
+Decision for `sde-night-placement-manual-overrides`:
+
+- later isolated technical fix should add this scope to `identityPolicy`
+- the role set should align with current `accessPolicy`:
+  - `admin_pilot`
+  - `sde_skiftere`
+  - `drops`
+- all access is readback/audit-only
+- this does not create night-placement authority
+- this does not create SDE motor source
+- this does not create DROPS dispatch or tursetting
+- this does not create operational truth
+- this does not grant write, production-write or operational authority
+
+Rationale:
+
+- `admin_pilot` needs audit visibility for pilot/admin verification
+- `sde_skiftere` is the direct functional owner of night-placement readback
+- `drops` already has this readback scope in `accessPolicy`; keeping it in
+  the later identity fix aligns catalogs instead of preserving a hidden
+  role divergence
+- the scope remains sensitive, but the accepted surface is readback/audit,
+  not instructions or operational decisions
+
+Roles that should not get `sde-night-placement-manual-overrides` in the
+later isolated fix:
+
+- `agila`
+- `txp`
+- `verksted`
+- `vaktplan_ledelse`
+
+Decision for `sde-vaktplan-coverage`:
+
+- later isolated technical fix should add this scope to `identityPolicy`
+- the role set should align with current `accessPolicy`:
+  - `admin_pilot`
+  - `vaktplan_ledelse`
+- all access is readback/audit-only
+- this does not create staffing authority
+- this does not create shift assignment authority
+- this does not create operational truth
+- this does not grant write, production-write or operational authority
+
+Rationale:
+
+- `admin_pilot` needs audit visibility for pilot/admin verification
+- `vaktplan_ledelse` is the direct functional owner of vaktplan coverage
+  readback
+- the scope can contain staffing/coverage-sensitive information and should
+  not be widened beyond the current `accessPolicy` role set without a later
+  explicit GO
+
+Roles that should not get `sde-vaktplan-coverage` in the later isolated fix:
+
+- `agila`
+- `txp`
+- `drops`
+- `verksted`
+- `sde_skiftere`
+
+Resolution plan after B47-P:
+
+1. Keep both gaps expected-YELLOW until the technical fix is explicitly
+   approved.
+2. In a later isolated technical fix, add both scopes to `identityPolicy`
+   with exactly the role sets above.
+3. Update identity tests for allow/deny/readback-only behavior.
+4. Update catalog parity so these two gaps no longer remain expected-YELLOW.
+5. Keep high-risk scope deny, write deny, production-write deny and
+   operational-authority deny hard-green.
+6. Keep runtime-auth/enforcement blocked until the technical fix is complete
+   and separately reviewed.
+
+Allowed later technical fix file scope, only with explicit GO:
+
+- `server/src/identityPolicy.js`
+- `server/scripts/test-identity-policy.js`
+- `server/scripts/test-catalog-parity.js`
+- `server/README.md`
+
+Still out of scope for that isolated fix unless separately approved:
+
+- `server/src/accessPolicy.js`
+- `server/src/index.js`
+- `index.html`
+- package files
+- DB/data/schema/migration
+- Cloudflare/CORS/transport
+- runtime-auth
+- middleware
+- login/session/token/issuer
+- private readback activation
+- write or production-write
+- operational authority
+
+Minimum later test requirements:
+
+- `sde-night-placement-manual-overrides` allows exactly
+  `admin_pilot`, `sde_skiftere` and `drops`
+- `sde-night-placement-manual-overrides` denies irrelevant roles
+- `sde-vaktplan-coverage` allows exactly `admin_pilot` and
+  `vaktplan_ledelse`
+- `sde-vaktplan-coverage` denies irrelevant roles
+- both scopes remain readback/audit-only
+- write, production-write and operational authority remain denied
+- high-risk scopes remain denied
+- catalog parity has no hidden expected-YELLOW drift
+- tests do not import server runtime
+- no HTTP, DB, POST, serverstart or env flag dependency
+
+Abort criteria for later resolution/fix:
+
+- proposal to widen either scope beyond the role sets above without new
+  sensitivity decision
+- proposal to hide expected-YELLOW as GREEN before the fix is tested
+- proposal to add runtime-auth or middleware in the same phase
+- proposal to edit `server/src/index.js`
+- proposal to activate private readback endpoints
+- proposal to add write, production-write or operational authority
+- proposal to change Cloudflare/CORS/transport, package files, DB/schema or
+  migration
+- test failure or production revision/event/flag drift
+
+B47-P proves only the decision. It does not clear the expected-YELLOW test
+state by itself. The actual technical closure must happen in a later
+isolated phase with its own GO.
+
+Fremdrift etter B47-P:
+
+- B38-B45: GREEN / låst
+- B46 skeleton/testherding: GREEN / 100 % isolert
+- B47 identity/security design: ca. 89 %
+- SDE Shared Workspace totalt: ca. 94 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
