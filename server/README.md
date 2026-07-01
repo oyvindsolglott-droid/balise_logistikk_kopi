@@ -5609,6 +5609,174 @@ Fremdrift:
 - SDE Shared Workspace totalt: ca. 93-94 %
 - Operational authority / løpende write: 0 % / ikke åpnet
 
+## B47-A — Identity/session decision record
+
+Status: README-only decision record. B47-A dokumenterer beslutningsgrunnlag
+for et mulig senere identity/session/issuer-spor etter B47-PRE. Dette er ikke
+runtime-auth, ikke middleware, ikke login/session/token/issuer-kode, ikke
+endpoint enforcement, ikke write, ikke production-write og ikke operational
+authority.
+
+Formål:
+
+- låse at B47-PRE anbefaler beslutningsdokumentasjon før implementering
+- dokumentere vurderte identity/session/issuer-retninger
+- velge en anbefalt første retning som designkandidat, ikke runtimevalg
+- beskrive startkriterier, abortkriterier, testkrav og rollout/rollback før
+  eventuell senere implementering
+- holde actor/device separat fra authenticated identity
+- holde frontend `data-levels`, UI-synlighet og skjulte knapper utenfor
+  sikkerhetsmodellen
+
+Nåværende auth-status fra B47-PRE:
+
+- ingen login
+- ingen session
+- ingen token
+- ingen issuer
+- ingen JWT
+- ingen signed cookies
+- ingen API keys
+- ingen auth middleware
+- ingen authenticated identity
+- ingen server-side role/scope enforcement i runtime
+- `server/src/index.js` importerer ikke `accessPolicy`
+- CORS er transport-/browsermekanisme, ikke auth
+- ingen private endpoint-beskyttelse er aktiv
+
+Identity boundary:
+
+- actor/device er klientlevert auditmetadata
+- actor/device er ikke authenticated identity
+- authenticated identity må senere komme fra en trusted issuer/sessionmekanisme
+- frontend `data-levels` er ikke sikkerhet
+- UI-synlighet og skjulte knapper er ikke sikkerhet
+- direkte API-kall er hovedtrussel, ikke bare UI-bruk
+- serveren må senere avgjøre role/scope server-side
+- default-deny må gjelde for ukjent identity, rolle, modul, scope og rettighet
+
+Vurderte identity/session/issuer-retninger:
+
+| Retning | Fordeler | Ulemper/risiko | B47-A vurdering |
+| --- | --- | --- | --- |
+| Local/LAN pilot identity | Enkel, lokal og avgrenset designkandidat for lukket pilot. Kan avklare role/scope/identity-konsepter uten ekstern flate. | Kan gi falsk trygghet hvis den senere tolkes som ekstern sikkerhet. Beskytter ikke Cloudflare/ekstern tilgang. | Anbefalt første designretning, men bare som decision record. |
+| Trusted reverse proxy headers | Kan passe senere hvis reverse proxy/Cloudflare Access faktisk blir trust boundary. | Krever at direkte servertilgang ikke kan omgå proxy. Header-spoofing er kritisk risiko ved bypass. | Ikke første runtime-steg uten egen transport-/trust-boundary-fase. |
+| Session-cookie login | Mer robust appmodell med serverstyrt session. | Krever secret, secure cookies, logout, CSRF-vurdering, transport og egen designfase. | For bredt for B47-A. |
+| Token/JWT | Egnet for API/issuer-modell senere. | Krever issuer, audience, expiry, signing, rotation og nøkkelstyring. | For bredt som første runtime-steg. |
+| Ingen identity ennå | Tryggest for videre policy/dokumentasjon uten runtime-risiko. | Blokkerer private readback og enforcement. | Akseptabel HOLD-retning hvis implementeringsrisiko er for høy. |
+
+B47-A anbefalt beslutning:
+
+Første retning som bør dokumenteres videre er:
+
+`Local/LAN pilot identity design record`
+
+Dette er bare en designkandidat. Det er ikke runtime-auth, ikke ekstern
+sikkerhetsmodell, ikke Cloudflare/transport, ikke middleware, ikke private
+readback, ikke write og ikke operational authority.
+
+Begrunnelse:
+
+- SDE står foreløpig som lokal/LAN production read-only
+- B46 policy/testherding er isolert og ikke runtime-koblet
+- Local/LAN pilot identity kan avklare identity, role og scope før bredere
+  transport- eller issuer-valg
+- reverse proxy, session-cookie login og JWT er for brede før trust boundary og
+  rollout er mer presist låst
+
+Endpoint-vurdering før senere identity:
+
+- `GET /api/health` kan forbli public/status så lenge responsen holdes
+  ikke-sensitiv
+- `GET /api/state/revision` kan trolig forbli public/status så lenge responsen
+  ikke lekker private data
+- `/api/state`, `/api/events`, `/api/operational-state`,
+  `/api/operational-state/events` og `/api/stream` må vurderes for identity
+  før private eller scope-restricted data eksponeres
+- write/test/production-pilot endpoints krever egen senere GO, guards,
+  idempotency/revision, audit og auth før bredere bruk
+- operational-authority endpoints er fortsatt helt utenfor B47-A
+
+Startkriterier før senere B47 implementation:
+
+- valgt identity-retning
+- trust boundary / issuer
+- avklaring av hvordan direkte serverbypass håndteres
+- dokumentert skille mellom authenticated identity og actor/device
+- role/scope mapping for ekte identity
+- første enforcement-scope
+- eksplisitte out-of-scope endpoints
+- direkte API-testplan uten UI
+- rollback/recovery
+- restart/rollout-policy
+- transport/CORS/Cloudflare-avgrensning
+- eksplisitt bruker-GO
+
+Abortkriterier:
+
+- forslag om å stole på frontend `data-levels`
+- forslag om å stole på actor/device som identity
+- forslag om proxy headers uten bypass-stenging
+- forslag om middleware uten valgt trust boundary
+- forslag om login/session/JWT uten egen designfase
+- forslag om samtidig POST/write/production-write
+- forslag om operational authority
+- forslag om DB/schema/migration
+- forslag om restart/flags uten egen GO
+- scope-drift til SDE-operativ beslutningslogikk
+
+Testkrav før senere runtime-auth:
+
+- no identity => restricted denied
+- invalid identity => denied
+- unknown role => denied
+- role without scope => denied
+- role with scope => allowed for readback only
+- actor/device ignored as identity
+- direct API call without UI
+- public health/status still public
+- static/data/assets not treated as private security
+- write remains denied unless separate GO
+- operational authority remains denied
+- production revision/events unchanged
+
+Rollout/rollback-krav:
+
+- ingen production restart uten egen GO
+- ingen middleware på production endpoints uten egen GO
+- ingen DB/schema/migration i første identity-spor
+- revert av commit skal være nok ved isolert kode
+- production GET-only postcheck må inngå
+- tydelig feature/cutline kreves hvis senere runtime-aktivering vurderes
+
+Ikke-mål for B47-A:
+
+- ingen kodeendring
+- ingen testendring
+- ingen runtime-kobling
+- ingen middleware
+- ingen login/session/token/issuer-kode
+- ingen endpoint enforcement
+- ingen CORS/Cloudflare/transport-endring
+- ingen `server/src/index.js`
+- ingen `index.html`
+- ingen POST/write
+- ingen flags
+- ingen restart
+- ingen DB-write
+- ingen migration/schema
+- ingen production-write
+- ingen operational authority
+
+B47-A konklusjon:
+
+- B47-A låser identity/session decision record
+- B47-A er ikke auth i drift
+- B47-A er ikke GO for middleware
+- B47-A er ikke GO for login/session/token/issuer
+- B47-A er ikke GO for runtime-kobling
+- neste fase krever egen eksplisitt GO
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
