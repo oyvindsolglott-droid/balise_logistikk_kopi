@@ -8654,6 +8654,214 @@ Fremdrift etter B48-E-DOC:
 - SDE Shared Workspace totalt: ca. 95 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B48-F-DOC — Isolated runtime-harness scope decision record
+
+Status: README-only isolated runtime-harness scope decision record.
+B48-F-DOC dokumenterer B48-F-PRE-resultatet og låser hvilket scope en
+eventuell senere isolert runtime-harness kan ha. Dette er fortsatt ikke
+runtime-import, ikke middleware, ikke endpoint enforcement og ikke private
+readback activation.
+
+Beslutning:
+
+- B48-F-PRE er GREEN som read-only isolated runtime-harness scope preflight
+- det finnes fortsatt ingen auth runtime-harness/testserver
+- det finnes fortsatt ingen runtime-import av `authPolicy`
+- det finnes fortsatt ingen middleware
+- det finnes fortsatt ingen endpoint enforcement
+- private readback er fortsatt ikke aktivert
+- operational authority/write er fortsatt `0 %`
+
+Nåværende safe state:
+
+- `server/scripts/test-auth-policy.js` tester skeleton/pure policy, ikke
+  Express/runtime
+- `server/src/index.js` importerer ikke `authPolicy`
+- `server/src/authPolicy.js` er fortsatt fri for
+  Express/HTTP/DB/session/token/runtime-deps
+- production runtime på port `8787` er eneste faktiske server og skal bare
+  leses med GET i disse fasene
+- `server/package.json` har fortsatt kun `express`
+- no-auth/private-readback-disabled er fortsatt safe default
+
+Formål med en mulig senere isolert harness:
+
+En senere harness kan bare vurderes hvis egen GO gis. Den skal da bevise:
+
+- default-deny før handler-effekt
+- public/safe GET kan tillates uten identity
+- review-needed GET blir ikke automatisk private
+- private readback candidates deny uten trusted identity
+- spoofed headers deny as identity
+- actor/device/clientContext deny as identity
+- Local/LAN deny as identity
+- wrong role/scope deny
+- allowed role/scope read-only allow i isolert test
+- write/production-write/operational-authority deny
+- ingen DB-write
+- ingen nye events
+- revision uendret
+- production runtime uendret
+
+Smaleste senere harness-scope:
+
+Hvis egen senere GO gis, er smaleste kandidat:
+
+- ny `server/scripts/test-auth-runtime-harness.js`
+- eventuell README-oppdatering
+
+Presiseringer:
+
+- første harness bør ikke kreve ny dependency
+- første harness bør ikke bruke `supertest` uten egen package-GO
+- første harness bør helst bruke ren handler-/policy-simulering eller isolert
+  Express-app i testscript med eksisterende `express`
+- første harness bør ikke importere `server/src/index.js`
+- første harness bør ikke bruke DB
+- første harness bør bruke ephemeral port eller ingen port
+- første harness må aldri bruke port `8787`
+
+Strengt forbudt senere uten egen GO:
+
+- `server/src/index.js`
+- production runtime
+- restart
+- flags
+- production DB
+- packageendring
+- middleware i production
+- endpoint enforcement i production
+- private readback activation
+- real POST mot production
+- write
+- production-write
+- operational authority
+- Cloudflare/CORS/transport
+- DB/schema/migration
+
+Harness designprinsipper:
+
+- første harness skal ikke teste production runtime
+- første harness skal ikke starte productionserver
+- første harness skal ikke bruke production DB
+- første harness skal ikke importere `server/src/index.js`
+- første harness skal ikke endre flags
+- første harness skal ikke gjøre real POST mot production
+- deny skal skje før handler-effekt
+- handler-effekt skal kunne simuleres med tellere/spies i testscript
+- no-event/no-revision-change skal være eksplisitt forventning dersom state
+  senere simuleres
+- DB/state bør først være fraværende eller rent simulert
+
+Endpointmatrise for senere harness:
+
+Public safe GET:
+
+- `/api/health`
+- `/api/server/status`
+- `/api/state/revision`
+
+Review-needed GET:
+
+- `/api/state`
+- `/api/events`
+- `/api/operational-state`
+- `/api/operational-state/events`
+- `/api/stream`
+- `/`
+- `/app`
+- `/data/:filename`
+- `/assets/:filename`
+
+Private candidates:
+
+- manual-assessments readback
+- operational-state sensitive readback
+- scope-restricted Shared Workspace readback
+
+Blocked write:
+
+- `/api/operational-state/snapshot`
+- alle `/api/actions/*`
+- production-write
+- operational authority
+- migration/schema
+
+Identity-mocking i senere harness:
+
+- trusted identity må mockes som server-side context, ikke header
+- spoofed headers må testes som untrusted
+- actor må testes som auditmetadata, ikke identity
+- device må testes som auditmetadata, ikke identity
+- clientContext må testes som auditmetadata, ikke identity
+- Local/LAN må testes som ikke-identity
+- missing identity skal deny private readback
+- wrong role/scope skal deny
+- allowed role/scope skal kun gi read-only allow der endpointklasse og
+  requestedRight tillater det
+
+DB-/state-sikkerhet:
+
+- første harness bør ikke koble til DB
+- production DB må aldri brukes
+- hvis temp DB senere vurderes, krever det egen GO og eksplisitt temp-path
+  utenfor production DB
+- revision/events må ikke endres
+- migration/schema er NO-GO i harnessfase uten egen GO
+- audit DB-write er NO-GO uten egen senere fase
+
+Hva B48-F-DOC låser:
+
+- README-only isolated runtime-harness scope decision record
+- scope for mulig senere isolert harness
+- smaleste senere kandidat: `server/scripts/test-auth-runtime-harness.js`
+- ingen harness er implementert
+- ingen runtime-import
+- ingen middleware
+- ingen endpoint enforcement
+- ingen private readback
+- operational authority/write fortsatt `0 %`
+
+Hva B48-F-DOC ikke beviser:
+
+- runtime-auth
+- middleware
+- endpoint enforcement
+- private readback
+- login/session/token/issuer
+- cookies/JWT/API keys
+- packageendring
+- DB/schema
+- Cloudflare/CORS/transport security
+- write
+- operational authority
+- harness-implementering
+
+Anbefalt neste trygge steg:
+
+`B48-G-PRE — read-only isolated harness implementation preflight`
+
+Ikke runtime-import. Ikke middleware. Ikke private readback.
+
+Production lock ved B48-F-DOC:
+
+- production revision forblir `8`
+- operational-state events forblir id `5`, `6` og `7`
+- event id `7` forblir `operational_state.snapshot.production_pilot`
+- scope/readback forblir `manual-assessments-notes`
+- alle write/operational/production/migration-flagg forblir av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Fremdrift etter B48-F-DOC:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- B48 runtime-auth design: ca. 82 %
+- SDE Shared Workspace totalt: ca. 95 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
