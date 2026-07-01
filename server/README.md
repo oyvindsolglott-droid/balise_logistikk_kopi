@@ -7551,6 +7551,131 @@ Fremdrift etter B47-Q:
 - SDE Shared Workspace totalt: ca. 94 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B47-S — B47 identity/security closeout and B48 readiness gate
+
+B47-S closes the B47 identity/security design line as README-only
+documentation. It is not a code change, not a test change, not runtime-auth,
+not middleware, not endpoint enforcement, not private readback activation, not
+login/session/token/issuer, not a common catalog module, not write, not
+production-write and not operational authority.
+
+B47 line closed by B47-S:
+
+- B45 threat model and auth/access-control contract documented the security
+  boundary before implementation
+- B46 created isolated access-policy skeleton/testherding without runtime
+  coupling
+- B47 documented identity decisions, Local/LAN identity design, readiness
+  gates, identity skeleton, catalog ownership and catalog parity
+- B47-P documented the missing identity-scope decision before technical fix
+- B47-Q added the two missing identity scopes and cleared expected-YELLOW
+- B47-R verified that catalog parity has no remaining expected-YELLOW scope
+  gaps
+- B47-S locks the closeout and moves any runtime-auth decision to B48
+
+B47 proves:
+
+- `accessPolicy` and `identityPolicy` are isolated policy modules
+- catalog parity is GREEN without expected-YELLOW scope gaps
+- `manual-assessments-notes` is `admin_pilot`-only
+- `sde-night-placement-manual-overrides` is allowed only for:
+  - `admin_pilot`
+  - `drops`
+  - `sde_skiftere`
+- `sde-vaktplan-coverage` is allowed only for:
+  - `admin_pilot`
+  - `vaktplan_ledelse`
+- all of those sensitive/private scopes are readback/audit-only
+- write, production-write and operational authority remain denied
+- high-risk scope allows hard-fail
+- unknown role/scope combinations do not allow access
+- Agila remains limited to `sporplan-readback`
+- policy tests do not import server runtime
+- policy tests do not start HTTP, touch DB, POST, set flags or start server
+- production remained read-only and unchanged during B47
+
+B47 does not prove:
+
+- runtime-auth
+- middleware
+- endpoint enforcement
+- private readback activation
+- server-side runtime enforcement
+- login/session/token/issuer
+- cookies, JWT or API keys
+- transport, issuer, CORS or Cloudflare security
+- common catalog module
+- write or production-write
+- operational authority
+- DB/schema/migration readiness
+- server restart readiness
+
+B48 readiness gate:
+
+- B48 must start with a read-only runtime-auth readiness/security-boundary
+  preflight
+- B48 must clarify identity/session/issuer model before implementation
+- B48 must clarify Local/LAN user/role identity and trusted boundary
+- B48 must define spoofing prevention and default-deny server-side behavior
+- B48 must classify endpoint classes before any middleware is wired
+- B48 must identify candidate private readback endpoints before activation
+- B48 must separate authenticated identity from `actor`/`device` audit metadata
+- B48 must preserve production read-only until a separate explicit GO
+- B48 tests must prove runtime-auth behavior without production write
+- B48 must define rollback/stop criteria before runtime coupling
+- B48 must prove that operational authority remains off
+
+B48 hard NO-GO without its own explicit GO:
+
+- no runtime-auth implementation
+- no middleware
+- no `server/src/index.js` runtime linkage
+- no endpoint enforcement
+- no private readback activation
+- no login/session/token/issuer
+- no cookies, JWT or API keys
+- no Cloudflare/CORS/transport change
+- no package change
+- no DB/schema/migration
+- no POST/write
+- no production-write
+- no operational authority
+- no restart
+- no flags
+
+Recommended next phase:
+
+- `B48-PRE — read-only runtime-auth readiness/security-boundary preflight`
+- B48-PRE should be read-only
+- B48-PRE should not change files, code, tests, middleware or `index.js`
+- B48-PRE should not POST, write, set flags, restart or open authority
+
+Possible later B48 file scopes, not approved by B47-S:
+
+- README-only planning may use `server/README.md`
+- isolated auth-design/test files may be considered only after B48-PRE and
+  explicit GO
+- runtime linkage in `server/src/index.js` requires its own explicit GO
+- package, DB, schema or migration changes require their own explicit GO
+
+Production lock at B47-S:
+
+- production revision remains `8`
+- operational-state events remain id `5`, `6` and `7`
+- event id `7` remains `operational_state.snapshot.production_pilot`
+- scope/readback remains `manual-assessments-notes`
+- all write/operational/production/migration flags remain off
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Fremdrift etter B47-S:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- SDE Shared Workspace totalt: ca. 95 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
