@@ -7944,6 +7944,142 @@ Fremdrift etter B48-A:
 - SDE Shared Workspace totalt: ca. 95 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B48-B — Isolated auth-policy skeleton
+
+Status: isolated auth-policy skeleton. B48-B legger til ren beslutningslogikk
+og isolerte tester for auth-policy uten runtime-kobling, middleware,
+endpoint enforcement eller private readback-aktivering.
+
+Endrede filer i B48-B:
+
+- `server/src/authPolicy.js`
+- `server/scripts/test-auth-policy.js`
+- `server/README.md`
+
+Hva B48-B implementerer:
+
+- CommonJS-modul uten eksterne avhengigheter
+- endpoint-klassifisering med eksplisitte klasser:
+  - `public_read_only`
+  - `review_needed_read_only`
+  - `private_readback_candidate`
+  - `write_blocked`
+  - `unknown`
+- auth-rettigheter:
+  - `read_only`
+  - `readback_audit`
+  - `write`
+  - `test_write`
+  - `production_write`
+  - `operational_authority`
+- funksjonene:
+  - `classifyEndpoint`
+  - `normalizeIdentityContext`
+  - `isTrustedIdentityContext`
+  - `evaluateAuthDecision`
+  - `buildAuthAuditDecision`
+- eksplisitt katalog-injeksjon via `roleScopeCatalog`, uten import av
+  `accessPolicy` eller `identityPolicy`
+- default-deny for ukjent endpoint, ukjent rolle, ukjent scope, feil rolle,
+  manglende identitet, manglende trusted boundary og ukjent rettighet
+- hard deny for write, test-write, production-write og operational authority
+- hard deny for high-risk scopes:
+  - `sde-shift-orders`
+  - `sde-shift-completion-status`
+  - `txp-operational-blocks`
+  - `drops-dispatch-decisions`
+  - `operational-authority-state`
+- tydelig skille mellom authenticated identity og klientleverte auditfelt:
+  - `actor`
+  - `device`
+  - `clientContext`
+  - frontend data-level
+  - klientheaders
+  - lokal/LAN-claim
+
+Hva B48-B-testen dekker:
+
+- public read-only kan tillates uten privat identitet
+- review-needed endpoints blir ikke automatisk private runtime-endpoints
+- private readback-kandidat krever authenticated identity og trusted boundary
+- ukjent rolle, ukjent scope, feil rolle og manglende scope avvises
+- allowed rolle kan bare få readback/audit når scope og katalog matcher
+- write, production-write og operational authority avvises
+- spoofede klientheaders avvises som identitet
+- `actor`, `device`, `clientContext`, frontend data-level og lokal/LAN-claim
+  er ikke identitet
+- high-risk scopes avvises selv om injisert testkatalog gir readback
+- auditbeslutning skiller authenticated identity fra auditmetadata
+- auth-policy-testen laster ikke `server/src/index.js`
+- negativ runtime-scan holder `authPolicy.js` fri for runtime-/session-/DB-
+  kobling
+
+B48-B beviser:
+
+- det finnes en isolert auth-policy beslutningsmodell som kan testes uten
+  runtime
+- default-deny kan uttrykkes før middleware eller endpoint enforcement
+- private readback kan modelleres uten å aktivere privat readback i runtime
+- actor/device/clientContext er fortsatt auditmetadata, ikke identitet
+- write, production-write og operational authority forblir blokkert i policy
+  skeleton
+
+B48-B beviser ikke:
+
+- runtime-auth i drift
+- middleware
+- endpoint enforcement
+- private readback activation
+- login/session/token/issuer
+- cookies/JWT/API keys
+- Cloudflare/CORS/transport
+- package change
+- DB/schema/migration
+- POST/write/flags/restart
+- production-write
+- operational authority
+- felles katalogmodul
+- frontend/UI-endring
+
+Hard avgrensning etter B48-B:
+
+- `server/src/index.js` er ikke endret og importerer ikke `authPolicy`
+- `index.html` er ikke endret
+- `server/src/accessPolicy.js` er ikke endret
+- `server/src/identityPolicy.js` er ikke endret
+- packagefiler er ikke endret
+- datafiler og `.github` er ikke endret
+- ingen runtime-auth, middleware, endpoint enforcement eller private readback er
+  aktivert
+
+Production lock ved B48-B:
+
+- production revision forblir `8`
+- operational-state events forblir id `5`, `6` og `7`
+- event id `7` forblir `operational_state.snapshot.production_pilot`
+- scope/readback forblir `manual-assessments-notes`
+- alle write/operational/production/migration-flagg forblir av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Neste trygge fase krever egen eksplisitt GO:
+
+`B48-C-PRE — read-only auth-policy/runtime boundary preflight`
+
+B48-C-PRE bør være read-only og avklare om skeleton i det hele tatt kan kobles
+mot runtime senere. Den skal ikke importere policy i `server/src/index.js`,
+ikke lage middleware, ikke aktivere private readback, ikke endre transport og
+ikke åpne write eller operational authority.
+
+Fremdrift etter B48-B:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- B48 readiness/security: ca. 45 %
+- SDE Shared Workspace totalt: ca. 95 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
