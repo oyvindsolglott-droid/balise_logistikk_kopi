@@ -31,6 +31,14 @@ function expectDenied(label, decision, reason) {
   assert.equal(decision.reason, reason, `${label}: unexpected deny reason`);
 }
 
+function identityFor(role, scope) {
+  return {
+    id: `${role}-${scope}`,
+    role,
+    scopes: [scope]
+  };
+}
+
 assert.equal(LOCAL_LAN_TRUST_MODEL.designOnly, true, "Local/LAN model must be design-only");
 assert.equal(LOCAL_LAN_TRUST_MODEL.externalSecurity, false, "Local/LAN model is not external security");
 assert.equal(LOCAL_LAN_TRUST_MODEL.runtimeEnforcement, false, "Local/LAN model is not runtime enforcement");
@@ -255,6 +263,108 @@ expectAllowed(
     matchedRight: ACCESS_RIGHTS.READBACK_AUDIT
   }
 );
+
+for (const role of [
+  ROLE_KEYS.ADMIN_PILOT,
+  ROLE_KEYS.SDE_SKIFTERE,
+  ROLE_KEYS.DROPS
+]) {
+  expectAllowed(
+    `${role} allowed readback/audit for sde-night-placement-manual-overrides`,
+    decideIdentityAccess({
+      identity: identityFor(
+        role,
+        SHARED_WORKSPACE_SCOPES.SDE_NIGHT_PLACEMENT_MANUAL_OVERRIDES
+      ),
+      requestedScope: SHARED_WORKSPACE_SCOPES.SDE_NIGHT_PLACEMENT_MANUAL_OVERRIDES,
+      requestedRight: ACCESS_RIGHTS.READBACK_AUDIT
+    }),
+    {
+      role,
+      matchedRight: ACCESS_RIGHTS.READBACK_AUDIT,
+      matchedScope: SHARED_WORKSPACE_SCOPES.SDE_NIGHT_PLACEMENT_MANUAL_OVERRIDES
+    }
+  );
+}
+
+for (const role of [
+  ROLE_KEYS.AGILA,
+  ROLE_KEYS.TXP,
+  ROLE_KEYS.VERKSTED,
+  ROLE_KEYS.VAKTPLAN_LEDELSE
+]) {
+  expectDenied(
+    `${role} denied sde-night-placement-manual-overrides`,
+    decideIdentityAccess({
+      identity: identityFor(
+        role,
+        SHARED_WORKSPACE_SCOPES.SDE_NIGHT_PLACEMENT_MANUAL_OVERRIDES
+      ),
+      requestedScope: SHARED_WORKSPACE_SCOPES.SDE_NIGHT_PLACEMENT_MANUAL_OVERRIDES
+    }),
+    "role_scope_not_allowed"
+  );
+}
+
+for (const role of [
+  ROLE_KEYS.ADMIN_PILOT,
+  ROLE_KEYS.VAKTPLAN_LEDELSE
+]) {
+  expectAllowed(
+    `${role} allowed readback/audit for sde-vaktplan-coverage`,
+    decideIdentityAccess({
+      identity: identityFor(role, SHARED_WORKSPACE_SCOPES.SDE_VAKTPLAN_COVERAGE),
+      requestedScope: SHARED_WORKSPACE_SCOPES.SDE_VAKTPLAN_COVERAGE,
+      requestedRight: ACCESS_RIGHTS.READBACK_AUDIT
+    }),
+    {
+      role,
+      matchedRight: ACCESS_RIGHTS.READBACK_AUDIT,
+      matchedScope: SHARED_WORKSPACE_SCOPES.SDE_VAKTPLAN_COVERAGE
+    }
+  );
+}
+
+for (const role of [
+  ROLE_KEYS.AGILA,
+  ROLE_KEYS.TXP,
+  ROLE_KEYS.DROPS,
+  ROLE_KEYS.VERKSTED,
+  ROLE_KEYS.SDE_SKIFTERE
+]) {
+  expectDenied(
+    `${role} denied sde-vaktplan-coverage`,
+    decideIdentityAccess({
+      identity: identityFor(role, SHARED_WORKSPACE_SCOPES.SDE_VAKTPLAN_COVERAGE),
+      requestedScope: SHARED_WORKSPACE_SCOPES.SDE_VAKTPLAN_COVERAGE
+    }),
+    "role_scope_not_allowed"
+  );
+}
+
+for (const scope of [
+  SHARED_WORKSPACE_SCOPES.SDE_NIGHT_PLACEMENT_MANUAL_OVERRIDES,
+  SHARED_WORKSPACE_SCOPES.SDE_VAKTPLAN_COVERAGE
+]) {
+  expectDenied(
+    `${scope} does not grant write`,
+    decideIdentityAccess({
+      identity: identityFor(ROLE_KEYS.ADMIN_PILOT, scope),
+      requestedScope: scope,
+      requestedRight: ACCESS_RIGHTS.WRITE_DRAFT
+    }),
+    "write_not_allowed"
+  );
+  expectDenied(
+    `${scope} does not grant production-pilot-write`,
+    decideIdentityAccess({
+      identity: identityFor(ROLE_KEYS.ADMIN_PILOT, scope),
+      requestedScope: scope,
+      requestedRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+    }),
+    "write_not_allowed"
+  );
+}
 
 expectDenied(
   "role with scope gets readback only, not write",

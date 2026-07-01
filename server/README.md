@@ -7468,6 +7468,89 @@ Fremdrift etter B47-P:
 - SDE Shared Workspace totalt: ca. 94 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B47-Q — Missing identity scopes technical fix
+
+B47-Q is an isolated technical fix for the two remaining identity-scope
+catalog gaps from B47-P. It changes policy/test documentation only. It is
+not runtime-auth, not middleware, not endpoint enforcement, not a common
+catalog module, not private readback activation, not write, not
+production-write and not operational authority.
+
+Technical fix:
+
+- `identityPolicy` now includes `sde-night-placement-manual-overrides`
+- `sde-night-placement-manual-overrides` is readback/audit-only for:
+  - `admin_pilot`
+  - `sde_skiftere`
+  - `drops`
+- `identityPolicy` now includes `sde-vaktplan-coverage`
+- `sde-vaktplan-coverage` is readback/audit-only for:
+  - `admin_pilot`
+  - `vaktplan_ledelse`
+- `manual-assessments-notes` remains `admin_pilot`-only
+- `sde_skiftere` and `vaktplan_ledelse` remain denied for
+  `manual-assessments-notes`
+
+Catalog parity status after B47-Q:
+
+- `manual-assessments-notes` matches `accessPolicy` and `identityPolicy`
+- `sde-night-placement-manual-overrides` matches `accessPolicy` and
+  `identityPolicy`
+- `sde-vaktplan-coverage` matches `accessPolicy` and `identityPolicy`
+- expected-YELLOW is cleared from the catalog parity test
+- RED findings still hard-fail:
+  - high-risk scope allow
+  - write or production-write allow
+  - operational authority allow
+  - Agila receiving more than `sporplan-readback`
+  - unknown role/scope allow
+  - new undocumented divergence
+  - runtime import
+
+B47-Q proves:
+
+- the missing identity scopes are now represented in both catalogs
+- the role sets match the B47-P decision record
+- all three sensitive/private readback scopes are explicit and tested
+- all added scope rights are readback/audit-only
+- catalog parity has no remaining expected-YELLOW scope gaps
+
+B47-Q does not prove:
+
+- no runtime-auth
+- no middleware
+- no endpoint enforcement
+- no private readback activation
+- no common catalog module
+- no login/session/token/issuer
+- no write
+- no production-write
+- no operational authority
+- no server-side role enforcement in production runtime
+
+Runtime remains uncoupled:
+
+- `server/src/index.js` is unchanged
+- `accessPolicy` is unchanged
+- frontend is unchanged
+- DB/schema/data are unchanged
+- Cloudflare/CORS/transport are unchanged
+- no env flags are required
+- no server restart is required
+
+Next safe phase requires a separate GO. Runtime-auth/enforcement remains
+blocked until this technical fix is reviewed as closed and a later
+readiness/security boundary step explicitly allows moving from isolated
+policy data to runtime behavior.
+
+Fremdrift etter B47-Q:
+
+- B38-B45: GREEN / låst
+- B46 skeleton/testherding: GREEN / 100 % isolert
+- B47 identity/security design: ca. 92 %
+- SDE Shared Workspace totalt: ca. 94 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.

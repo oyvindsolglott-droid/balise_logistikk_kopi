@@ -4,9 +4,17 @@ const assert = require("node:assert/strict");
 const accessPolicy = require("../src/accessPolicy");
 const identityPolicy = require("../src/identityPolicy");
 
-const EXPECTED_ACCESS_ONLY_SCOPES = Object.freeze([
-  "sde-night-placement-manual-overrides",
-  "sde-vaktplan-coverage"
+const EXPECTED_ACCESS_ONLY_SCOPES = Object.freeze([]);
+
+const EXPECTED_NIGHT_PLACEMENT_ROLES = Object.freeze([
+  "admin_pilot",
+  "drops",
+  "sde_skiftere"
+]);
+
+const EXPECTED_VAKTPLAN_COVERAGE_ROLES = Object.freeze([
+  "admin_pilot",
+  "vaktplan_ledelse"
 ]);
 
 const EXPECTED_MANUAL_ASSESSMENTS_ROLES = Object.freeze([
@@ -56,6 +64,22 @@ function difference(left, right) {
 
 function expectDenied(label, decision) {
   assert.equal(decision.allowed, false, `${label}: expected deny`);
+}
+
+function expectScopeRolesAndRights(roleScopes, scope, expectedRoles, policyName) {
+  assert.deepEqual(
+    rolesForScope(roleScopes, scope),
+    sorted(expectedRoles),
+    `${policyName} ${scope} roles must match expected readback owners`
+  );
+
+  for (const role of expectedRoles) {
+    assert.deepEqual(
+      rightsForScope(roleScopes, role, scope),
+      ["readback_audit"],
+      `${policyName} ${role}/${scope} must be readback/audit-only`
+    );
+  }
 }
 
 function expectNoOperationalAuthority(roleScopes, policyName) {
@@ -144,6 +168,31 @@ assert.equal(
   rolesForScope(identityRoleScopes, "manual-assessments-notes").includes("vaktplan_ledelse"),
   false,
   "manual-assessments identity roles must deny vaktplan_ledelse"
+);
+
+expectScopeRolesAndRights(
+  accessRoleScopes,
+  "sde-night-placement-manual-overrides",
+  EXPECTED_NIGHT_PLACEMENT_ROLES,
+  "accessPolicy"
+);
+expectScopeRolesAndRights(
+  identityRoleScopes,
+  "sde-night-placement-manual-overrides",
+  EXPECTED_NIGHT_PLACEMENT_ROLES,
+  "identityPolicy"
+);
+expectScopeRolesAndRights(
+  accessRoleScopes,
+  "sde-vaktplan-coverage",
+  EXPECTED_VAKTPLAN_COVERAGE_ROLES,
+  "accessPolicy"
+);
+expectScopeRolesAndRights(
+  identityRoleScopes,
+  "sde-vaktplan-coverage",
+  EXPECTED_VAKTPLAN_COVERAGE_ROLES,
+  "identityPolicy"
 );
 
 assert.deepEqual(
@@ -332,8 +381,8 @@ assert.equal(
 console.log("B47-K catalog parity tests OK");
 console.log("GREEN checks passed");
 console.log("- manual-assessments-notes is admin_pilot-only in accessPolicy and identityPolicy");
-console.log("expected-YELLOW checks observed");
-console.log("- identityPolicy missing sde-night-placement-manual-overrides");
-console.log("- identityPolicy missing sde-vaktplan-coverage");
+console.log("- sde-night-placement-manual-overrides matches B47-P role decision");
+console.log("- sde-vaktplan-coverage matches B47-P role decision");
+console.log("expected-YELLOW checks cleared");
 console.log("RED checks absent");
-console.log("catalog parity is not runtime-ready; expected-YELLOW remains documented");
+console.log("catalog parity is still isolated and not runtime-ready");
