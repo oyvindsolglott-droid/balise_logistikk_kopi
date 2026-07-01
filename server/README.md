@@ -5229,6 +5229,168 @@ Neste fase etter B46-C må fortsatt være egen eksplisitt review/GO før
 middleware, auth, token/session, issuer, UI-filter, private endpoints eller
 enforcement vurderes.
 
+## B46-E — Endpoint access matrix og enforcement cutline
+
+Status: README-only endpoint access matrix og enforcement cutline. B46-E
+dokumenterer hva B46-D fant om faktisk endpointflate og hva som må låses før
+senere runtime-enforcement kan vurderes. Dette er ikke implementering.
+
+Formål:
+
+- låse endpoint access matrix før eventuell senere enforcement
+- skille public/status, serverstatus, shared readback, static og writeflater
+- dokumentere gule B46-D-punkter uten å endre kode
+- hindre at B46-C-katalogen tolkes som aktiv auth eller middleware
+- holde write, production-write, operational authority og løpende write/sync
+  stengt
+
+B46-E gir ikke:
+
+- faktisk auth i runtime
+- middleware
+- login, session, token eller issuer
+- endpoint enforcement
+- write, production-write eller operational authority
+- CORS-, Cloudflare- eller transportendring
+
+Endpoint access matrix:
+
+| Kategori | Endpoints | Nåværende status | Senere enforcement-cutline |
+| --- | --- | --- | --- |
+| Public/status | `GET /api/health`, `GET /api/state/revision` | Read-only status. Kan være public så lenge de ikke lekker private data. | Kan forbli public, men bare hvis payload holdes ikke-sensitiv. Ingen write. Utenfor operational authority. |
+| Server status/read contract | `GET /api/server/status` | Read-only drift/status, viser flagg, kontrakt og runtime-status. | Bør vurderes for sensitivitet. Kan trenge begrenset statusvisning hvis private runtimefelt legges til. Ingen write. |
+| Shared/readback | `GET /api/state`, `GET /api/events`, `GET /api/operational-state`, `GET /api/operational-state/events`, `GET /api/stream` | Readback/read stream, ikke write. | Må senere deles i public, shared non-sensitive, scope-restricted og private/sensitive audit readback før enforcement. |
+| Static/serverhostet frontend/data/assets | `GET /`, `GET /app`, `GET /data/:filename`, `GET /assets/:filename` | Serverhostet frontend og runtime allowlist for data/assets. | Static/GitHub Pages kan ikke beskytte private data. Runtime allowlist må modelleres presist før enforcement. |
+| Write/test/production-pilot | `POST /api/operational-state/snapshot`, `POST /api/actions/test-note`, `POST /api/actions/action-contract-test`, `POST /api/actions/actions-table-test`, `POST /api/actions/server-note`, `POST /api/actions/sde-recommendation-ack` | Write/test/production-pilot-flater, runtime-/flagg-/guard-styrt. | Krever særskilt senere GO, flags, guards, idempotency/revision, audit og senere auth/role/scope hvis private eller rollebegrenset. |
+
+Public/status cutline:
+
+- public/status kan bare være unauthenticated så lenge responsen ikke inneholder
+  private readback-, audit-, rolle- eller scope-data
+- `GET /api/health` og `GET /api/state/revision` skal ikke brukes som
+  authority-signal
+- public/status gir ikke readback-rettighet, write-rettighet eller
+  operational authority
+
+Server status/read contract cutline:
+
+- `GET /api/server/status` er read-only status og kontrakt, ikke operativ
+  sannhetskilde
+- statusfelt om flagg, schema, DB og runtime må vurderes før ekstern/private
+  eksponering
+- serverstatus skal ikke brukes som auth, rollefilter eller transportgrense
+
+OPTIONS/CORS cutline:
+
+- OPTIONS/CORS preflight er runtimeflate og må modelleres før aktiv
+  enforcement
+- B46-E endrer ikke CORS
+- B46-E endrer ikke transport
+- før senere middleware/enforcement må det avklares:
+  - hvilke origins som er tillatt
+  - hvilke metoder som er tillatt
+  - hvilke headers som er tillatt
+  - om private endpoints krever auth før CORS åpnes
+  - om Cloudflare/ekstern tilgang er utenfor scope
+- CORS er ikke auth
+- CORS skal ikke brukes som sikkerhetsmodell
+- CORS, transport og Cloudflare krever senere separat GO
+
+Static/data/assets cutline:
+
+- `GET /` og `GET /app` er serverhostet frontend/static
+- `GET /data/:filename` og `GET /assets/:filename` må ikke behandles som bred
+  sikkerhetsmessig allow
+- runtime allowlist må senere modelleres presist før enforcement
+- static/GitHub Pages kan ikke beskytte private data
+- private eller scope-restricted data skal ikke legges i statisk payload
+- B46-E endrer ikke static, data eller assets
+
+Readback cutline:
+
+- `GET /api/state`, `GET /api/events`, `GET /api/operational-state`,
+  `GET /api/operational-state/events` og `GET /api/stream` er readback/read
+  stream, ikke write
+- readback betyr ikke operativ sannhet
+- readback betyr ikke samme write-rettighet
+- readback betyr ikke operational authority
+- readback-endpoints kan senere måtte deles i:
+  - public status
+  - shared non-sensitive readback
+  - scope-restricted readback
+  - private/sensitive audit readback
+- `manual-assessments-notes` og fremtidige private scopes må ikke eksponeres
+  bredt uten server-side enforcement
+- `/api/state` er spesielt risikabelt fordi det kan bli for bredt dersom
+  private data legges inn senere
+- `/api/events` og operational-state eventreadback må vurderes for audit- og
+  scope-sensitivitet før private data eksponeres
+
+Write endpoint cutline:
+
+- alle `POST`-endpoints forblir write eller test/production-pilot-write
+- B46-E åpner ikke write
+- production-pilot-write er ikke løpende write/sync
+- write krever fortsatt:
+  - eksplisitt fase-GO
+  - flags
+  - runtime guards
+  - idempotency/revision
+  - audit
+  - senere auth/role/scope hvis private eller rollebegrenset
+- operational authority er ikke del av B46-E
+- operational authority krever separat høy-risiko GO senere
+
+Enforcement cutline før senere runtime-kobling:
+
+- endpoint matrix må være låst
+- OPTIONS/CORS-preflight må være modellert
+- static/data/assets allowlist må være modellert presist
+- readback må være delt i public/shared/scope-restricted/private
+- issuer/sessionmodell må være avklart eller eksplisitt holdt utenfor
+- middleware-scope må være bestemt
+- tillatte filer må være bestemt
+- testplan for direkte API-kall uten UI må være dokumentert
+- rollback/recovery må være dokumentert
+- production GET-only postcheck må være definert
+- eksplisitt bruker-GO må foreligge
+
+Mulig senere B46-F, ikke utført her:
+
+- `B46-F — read-only policy catalog alignment`
+- eller `B46-F — isolated policy data hardening for OPTIONS/static/readback cutlines`
+
+Et slikt B46-F-spor skal fortsatt ikke være middleware, runtime enforcement,
+login/session, write eller operational authority uten egen eksplisitt GO.
+
+Ikke-mål for B46-E:
+
+- ingen kodeendring
+- ingen testendring
+- ingen runtime-kobling
+- ingen middleware
+- ingen login/session/token/issuer
+- ingen CORS/Cloudflare/transport-endring
+- ingen `server/src/index.js`
+- ingen `server/src/accessPolicy.js`
+- ingen `index.html`
+- ingen POST/write
+- ingen flags
+- ingen restart
+- ingen DB-write
+- ingen migration/schema
+- ingen production-write
+- ingen operational authority
+
+B46-E konklusjon:
+
+- B46-E låser dokumentert endpoint access matrix og cutline før enforcement
+- B46-E er ikke auth i drift
+- B46-E er ikke GO for middleware
+- B46-E er ikke GO for login/session
+- B46-E er ikke GO for write
+- neste fase krever egen eksplisitt GO
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
