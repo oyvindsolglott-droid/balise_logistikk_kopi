@@ -4780,6 +4780,145 @@ B45-E konklusjon:
 - B46 kan bare vurderes etter særskilt bruker-GO og eksplisitt smalt scope
 - operational authority / løpende write forblir `0 %`, ikke åpnet
 
+## B45-F — B46 scope proposal / implementation cutline
+
+Status: README-only scope proposal. B45-F gjør neste mulige B46-steg
+konkret og smalt nok til senere eksplisitt brukerbeslutning. Dette er ikke
+B46, ikke auth-implementering, ikke runtime-endring, ikke serverkode, ikke
+UI-endring, ikke write og ikke operational authority.
+
+Formål:
+
+- foreslå et smalt første B46-scope uten å starte B46
+- hindre at B46 starter for bredt eller glir inn i runtime/execution
+- skille mellom auth/access-control skeleton og faktisk login/session
+- holde private data, write og operational authority stengt
+- gjøre cutlines, tester og abortkriterier tydelige før senere B46-GO
+
+Anbefalt første B46-scope:
+
+`B46-A — auth/access-control skeleton, server-side only, no production-write`
+
+Dette er kun forslag. Det krever senere eksplisitt bruker-GO og skal ikke
+gjennomføres i B45-F.
+
+Mulig senere B46-A-formål:
+
+- definere server-side access-policy-modul
+- definere default-deny helper
+- definere endpoint/scope-kategorier i kode
+- legge til testbar access-decision-funksjon
+- ikke koble til reell login/session ennå med mindre særskilt GO sier det
+- ikke beskytte production runtime aktivt før testplan og rollout er
+  eksplisitt godkjent
+- ikke åpne private readback-data eller write
+
+Mulige filer for senere B46-A, bare etter eksplisitt GO:
+
+- `server/src/...` for access-policy skeleton
+- eventuell ny testfil for access-decision-logikk
+- `server/README.md` for kontrakt/resultatdokumentasjon
+- ikke `index.html` i første B46-A med mindre senere GO eksplisitt sier det
+- ikke DB/schema/data
+- ikke packagefiler med mindre testoppsett krever det og bruker gir
+  eksplisitt GO
+
+Første endpoint-kategorisering for senere B46:
+
+| Endpoint-kategori | Første B46-vurdering |
+| --- | --- |
+| Public health/status | Kan forbli public hvis de ikke lekker private data. |
+| Read-only server status | Må sjekkes for sensitivitet og eventuell begrenset statusvisning. |
+| Shared readback/audit | Må klassifiseres etter sensitivity, scope og auditbehov. |
+| Scope-restricted readback | Krever server-side identity, role/scope allowlist og default-deny. |
+| Test-write | Krever eksplisitt test-boundary, identity, idempotency/revision og audit. |
+| Production-pilot-write | Krever egen fase-GO, backup/preflight, flaggvindu og audit. |
+| Operational-authority | Separat høy-risiko-spor, utenfor første B46. |
+
+Absolutte cutlines for senere B46-A:
+
+- skal ikke åpne production-write
+- skal ikke åpne operational authority
+- skal ikke gjøre DB-write
+- skal ikke gjøre migration
+- skal ikke endre Cloudflare/CORS/transport
+- skal ikke koble static/GitHub Pages til private data
+- skal ikke stole på frontend `data-levels`
+- skal ikke bruke actor/device som authenticated identity
+- skal ikke innføre rollefilter som bare virker i UI
+- skal ikke endre SDE-score, sortering, forslag, DROPS, verkstedstatus,
+  Tursatt eller Vaktplan
+
+Testkrav for senere B46-A:
+
+- default-deny
+- public endpoint tillatt
+- restricted endpoint avvist uten identitet
+- ukjent rolle avvist
+- rolle uten scope avvist
+- rolle med scope tillatt
+- actor/device ikke brukt som identitet
+- direkte API-kall uten UI
+- no-write/no-POST hvis fasen ikke eksplisitt åpner det
+- production read-only-status uendret
+
+Rollback/recovery-krav for senere B46-A:
+
+- tydelig filscope
+- ingen migration
+- ingen production DB-endring
+- enkel revert av commit
+- ingen runtime restart uten separat GO
+- production GET-only postcheck
+- abort ved testfeil eller scope-drift
+
+B46-A GO-kriterier:
+
+- valgt nøyaktig scope
+- tillatte filer
+- testplan
+- abortkriterier
+- rollback/recovery-plan
+- avklaring om B46-A bare er skeleton/policy eller også middleware
+- avklaring om login/session/issuer fortsatt holdes utenfor
+- eksplisitt bruker-GO for B46-A
+
+B46-A HOLD/NO-GO-kriterier:
+
+- forslag om å implementere full login/session uten egen designfase
+- forslag om production-write
+- forslag om operational authority
+- forslag om Cloudflare/ekstern tilgang samtidig
+- forslag om DB/schemaendring
+- forslag om UI-only security
+- forslag om å stole på actor/device
+- forslag om å gjøre private readback-data tilgjengelig før server-side
+  enforcement
+- forslag om å røre `index.html` uten eksplisitt GO
+- forslag om å blande auth med SDE-operativ beslutningslogikk
+
+Ikke-mål for B45-F:
+
+- ingen runtime-endring
+- ingen auth
+- ingen token/session/login
+- ingen middleware
+- ingen rollefilter
+- ingen endpoint-endring
+- ingen UI-endring
+- ingen write/POST
+- ingen restart
+- ingen DB-write
+- ingen Cloudflare/CORS/transport-endring
+- ingen operational authority
+
+B45-F konklusjon:
+
+- B45-F fullfører nesten hele B45 som design-/gatefase
+- B45-F er fortsatt ikke GO for B46
+- etter B45-F kan bruker vurdere egen eksplisitt GO for en smal B46-A
+- operational authority / løpende write forblir `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
