@@ -8080,6 +8080,186 @@ Fremdrift etter B48-B:
 - SDE Shared Workspace totalt: ca. 95 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B48-C-DOC — Auth runtime-boundary decision record
+
+Status: README-only runtime-boundary decision record. B48-C-DOC dokumenterer
+B48-C-PRE-resultatet og låser at B48-B `authPolicy` fortsatt er isolert.
+Dette er ikke runtime-auth, ikke middleware, ikke endpoint enforcement og ikke
+private readback activation.
+
+Beslutning:
+
+- B48-C-PRE er GREEN som read-only boundary-preflight
+- B48-B auth-policy skeleton forblir isolert
+- `server/src/index.js` bruker ikke `authPolicy`
+- runtime-import er ikke godkjent
+- middleware er ikke godkjent
+- endpoint enforcement er ikke godkjent
+- private readback activation er ikke godkjent
+- operational authority/write er fortsatt `0 %`
+
+Runtime-boundary:
+
+- `server/src/authPolicy.js` er ren beslutningslogikk
+- ingen Express request/response
+- ingen HTTP
+- ingen DB
+- ingen serverstart
+- ingen miljøflagg
+- ingen cookies/JWT/API keys/session/token/issuer
+- ingen packageendring
+- ingen runtime dependency
+- ingen import i `server/src/index.js`
+
+Identity-boundary:
+
+- Local/LAN er ikke identity
+- headers er ikke trusted identity
+- frontend data-levels er ikke trusted identity
+- `actor`, `device` og `clientContext` er audit-/payloadmetadata, ikke
+  access-control identity
+- authenticated identity må senere komme fra eksplisitt server-side identity
+  source
+- identity source er fortsatt uavklart og må ha egen senere preflight før
+  runtime-auth
+
+Endpoint-boundary:
+
+Public/safe read-only:
+
+- `GET /api/health`
+- `GET /api/server/status`
+- `GET /api/state/revision`
+
+Review-needed read-only:
+
+- `GET /api/state`
+- `GET /api/events`
+- `GET /api/operational-state`
+- `GET /api/operational-state/events`
+- `GET /api/stream`
+- `GET /`
+- `GET /app`
+- `GET /data/:filename`
+- `GET /assets/:filename`
+
+Private-read candidates senere, ikke aktivert:
+
+- operational-state readback/events ved sensitive operational facts
+- manual-assessments readback
+- scope-restricted Shared Workspace readback
+
+Write/private blocked:
+
+- `POST /api/operational-state/snapshot`
+- alle `POST /api/actions/*`
+- production-pilot-write
+- operational-state mutation
+- migration/schema
+- alt som endrer DB/event/state
+
+Operational authority blocked:
+
+- ingen endpoint skal gi `operationalAuthority:true`
+- ingen endpoint skal gjøre SDE til operativ sannhetskilde
+- ingen endpoint skal åpne production-write
+
+Runtime-import cutline:
+
+En senere import i `server/src/index.js` krever minst:
+
+- dokumentert server-side identity source
+- avklart issuer/session/login eller annen auth-modell
+- endpointklassekart
+- default-deny runtime-testmodell
+- public/review/private/write-skillet testet
+- katalog-injeksjon eller annen kontrollert policy-input
+- tester for spoofed headers/actor/device/clientContext
+- no-DB-write/no-POST regression
+- production GET-only uendret
+
+Middleware/enforcement cutline:
+
+Middleware kan ikke vurderes før:
+
+- public endpoints kan forbli public uten private data
+- review-needed endpoints ikke automatisk åpnes som private
+- private readback krever trusted identity og riktig role/scope
+- write endpoints fortsatt deny uansett identity
+- production-write og operational authority fortsatt hard-deny
+- runtime-testene beviser default-deny før private readback
+
+Audit-boundary:
+
+En senere auditmodell må skille:
+
+- authenticated identity
+- actor
+- device
+- clientContext
+- source IP/local metadata
+- endpoint
+- method
+- scope
+- requested right/action
+- decision
+- reason
+- trusted boundary marker
+
+Presiseringer:
+
+- B48-C-DOC skriver ikke audit til DB
+- source IP/local metadata er metadata, ikke identity
+- actor/device/clientContext er ikke identity
+
+Hva B48-C-DOC låser:
+
+- README-only runtime-boundary decision record
+- B48-B skeleton er fortsatt isolert
+- runtime er fortsatt ikke koblet til `authPolicy`
+- import/middleware/private readback er ikke neste steg uten egen preflight
+- operational authority/write er fortsatt `0 %`
+
+Hva B48-C-DOC ikke beviser:
+
+- runtime-auth
+- middleware
+- endpoint enforcement
+- private readback activation
+- login/session/token/issuer
+- cookies/JWT/API keys
+- Cloudflare/CORS/transport security
+- DB/schema
+- write
+- operational authority
+
+Anbefalt neste trygge steg:
+
+`B48-D-PRE — read-only identity-source / issuer-session model preflight`
+
+Alternativt kan en senere README-only testdesignfase dokumentere
+middleware/default-deny runtime-testmodell før noen runtime-import vurderes.
+Runtime-import skal ikke være neste direkte steg.
+
+Production lock ved B48-C-DOC:
+
+- production revision forblir `8`
+- operational-state events forblir id `5`, `6` og `7`
+- event id `7` forblir `operational_state.snapshot.production_pilot`
+- scope/readback forblir `manual-assessments-notes`
+- alle write/operational/production/migration-flagg forblir av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Fremdrift etter B48-C-DOC:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- B48 readiness/security: ca. 55 %
+- SDE Shared Workspace totalt: ca. 95 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
