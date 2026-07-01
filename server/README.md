@@ -4522,9 +4522,139 @@ Videre faseplan:
 - B45-A: README-only auth/access-control contract
 - B45-B: read-only review av kontrakt mot server/index
 - B45-C: threat model / security boundary review
-- B45-D: eventuell minimal server-side auth design, egen GO
-- B46: eventuell implementering, egen GO
+- B45-D: README-only threat model documentation
+- B45-E: read-only review av threat model
+- B46-A: eventuell minimal auth architecture plan, egen GO
+- B46-B/C: eventuell implementering, egen GO
 - operational authority / løpende write: fortsatt eget senere spor, `0 %`
+
+## B45-D — Threat model og security boundary review
+
+Status: README-only dokumentasjon. B45-D låser threat model og security
+boundaries for en mulig senere auth/access-control-implementering. Dette er
+ikke implementering, ikke middleware, ikke token/session/login, ikke serverkode,
+ikke UI-endring, ikke write og ikke operational authority.
+
+Formål:
+
+- dokumentere trusselmodell og sikkerhetsgrenser før eventuell senere auth
+- gjøre det tydelig at B45-D ikke gir faktisk sikkerhet alene
+- låse at UI-synlighet og `data-levels` fortsatt ikke er sikkerhetsmodell
+- holde serverstate som readback/audit, ikke operativ sannhetskilde
+- holde operational-authority og løpende write/sync på `0 %`
+- avgrense B45-D fra B46 og fra all execution
+
+Assets som må beskyttes:
+
+| Asset | Hvorfor det må beskyttes |
+| --- | --- |
+| Private eller rollebegrensede readback-data | Kan inneholde situasjonsbilde som ikke skal vises for alle nivåer. |
+| `manual-assessments-notes` | Production-pilot proven, men fortsatt readback/audit-only og ikke generell instruks. |
+| Fremtidige scopes | Nye moduler kan få mer sensitivt innhold enn dagens readback. |
+| Audit-historikk | Må være pålitelig grunnlag for etterkontroll og skal ikke kunne forfalskes av klient. |
+| Production DB | Inneholder eventlogg, revision og state/readback som må beskyttes mot uautorisert write. |
+| Write-endepunkter | Kan endre state hvis runtime/flagg senere åpnes. Må aldri bare beskyttes av UI. |
+| Idempotency/revision-mekanisme | Hindrer replay, duplikater og stale writes; feil bruk kan gi audit-/state-avvik. |
+| Actor/device/auditmetadata | Er klientpåstand før auth og må ikke forveksles med autentisert identitet. |
+| Fremtidig authenticated identity | Må bindes server-side til rolle, scope og audit. |
+| Operational authority | Eget høy-risiko-spor, fortsatt `0 %` og ikke åpnet. |
+
+Trust boundaries:
+
+| Grense | Vurdering |
+| --- | --- |
+| GitHub Pages/static frontend | Offentlig/local frontend. Kan ikke beskytte private rolledata eller håndheve auth. |
+| Browser/client | Ikke betrodd. Kan manipulere `data-levels`, payload, actor/device og direkte API-kall. |
+| Serverhostet app | Kan gi same-origin readback, men blir ikke sikkerhetsgrense uten server-side auth. |
+| LAN/lokal server | Reduserer eksponering, men er ikke rolle-/scope-enforcement. |
+| Cloudflare/ekstern tilgang | Må ha eksplisitt issuer/transport/sessionmodell før private data eksponeres. |
+| Server API | Fremtidig enforcement-punkt for identity, role, module, scope og write rights. |
+| SQLite DB | Sann kilde for event/revision/readback, men ikke operativ sannhetskilde for SDE uten egen GO. |
+| Backupfiler | Må lagres utenfor repo og behandles som sensitive produksjonskopier. |
+| Miljøflagg/runtime | Kan åpne test eller pilot-write; må ikke være eneste sikkerhetskontroll. |
+| Serverprosess/screen-session | Driftsgrense for runtime. Restart/flaggendring er kontrollert execution, ikke auth. |
+
+Threat actors:
+
+- tilfeldig bruker med tilgang til statisk frontend
+- intern bruker med feil rolle eller feil modulbehov
+- bruker som manipulerer frontend `data-levels`
+- bruker som sender direkte API-kall uten UI
+- bruker som forfalsker actor/device eller clientContext
+- utilsiktet operatørfeil i et pilot-/flaggvindu
+- feilkonfigurert runtime eller miljøflagg
+- kompromittert klient/browser
+- fremtidig ekstern bruker via Cloudflare eller annen tunnel
+
+Risikoer og angrepsflater:
+
+- frontend-only nivåvalg kan misforstås som sikkerhet
+- actor/device kan misforstås som autentisert identitet
+- direkte API-kall kan omgå alle UI-labels og skjulte knapper
+- private readback-data kan eksponeres via static/GitHub Pages hvis de bygges
+  inn eller hentes uten server-side auth
+- write-endepunkter kan åpnes med flags uten auth hvis runtime er feil
+  konfigurert
+- production-pilot-write kan blandes med løpende write/sync hvis fasegrenser
+  blir uklare
+- auth kan blandes feil med operational authority
+- audit-logg kan miste verdi hvis klienten kan skrive eller forfalske
+  auditidentitet
+- idempotency/revision kan brukes feil hvis expectedRevision eller
+  idempotencyKey ikke håndheves server-side
+- serverstate kan tolkes som operativ sannhetskilde hvis UI-tekst eller
+  tilgangsmodell er for sterk
+- DB-path, backupfiler, CORS, Cloudflare eller transport kan bli uklar
+  sikkerhetsgrense
+
+Minimumskrav før senere auth-implementering:
+
+- server-side identity required for private endpoints
+- default-deny for ukjent bruker, rolle, modul, scope og write-intent
+- explicit module/scope allowlist
+- role/access resolved server-side
+- no trust in frontend `data-levels`
+- actor/device må skilles fra authenticated identity
+- audit av access-controlled writes og eventuelt sensitive reads
+- clear separation mellom read-only, draft, test-write,
+  production-pilot-write og operational-authority
+- production-write fortsatt eksplisitt fase-GO
+- operational authority fortsatt eget senere spor
+- transport/issuer/sessionmodell avklart før ekstern tilgang
+
+Static/offline/GitHub Pages:
+
+- kan fortsatt være offentlig/local frontend for ikke-private data og lokal
+  beslutningsstøtte
+- må aldri regnes som privat eller sikker kanal for rollebasert readback
+- skal være diskret/passiv ved manglende server
+- private role-based readback skal ikke vises på GitHub Pages uten
+  server-side auth og eksplisitt sikkerhetsgrense
+- static/offline kan ikke håndheve scope-, rolle- eller write-rettigheter
+
+Ikke-mål for B45-D:
+
+- ingen auth-implementering
+- ingen middleware
+- ingen token/session/login
+- ingen server-side role enforcement
+- ingen UI-endring
+- ingen serverkodeendring
+- ingen write/POST
+- ingen restart
+- ingen DB-write
+- ingen Cloudflare
+- ingen operational authority
+- ingen løpende write/sync
+
+B45-D konklusjon:
+
+- B45-D låser dokumentert threat model og security boundary-vurdering
+- B45-D gjør B45 auth/access design mer komplett
+- B45-D er ikke GO for B46
+- før B46 må det fortsatt foreligge egen eksplisitt GO for konkret auth-design
+  eller implementering
+- operational authority / løpende write forblir `0 %`, ikke åpnet
 
 ## Neste fase
 
