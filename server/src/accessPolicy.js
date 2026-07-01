@@ -1,9 +1,13 @@
 "use strict";
 
 const ENDPOINT_CATEGORIES = Object.freeze({
+  CORS_PREFLIGHT: "cors_preflight",
   PUBLIC_STATUS: "public_status",
   SERVER_STATUS_READ: "server_status_read",
   STATIC_READ: "static_read",
+  STATIC_FRONTEND: "static_frontend",
+  STATIC_ASSET: "static_asset",
+  STATIC_DATA_ALLOWLISTED: "static_data_allowlisted",
   SHARED_READBACK: "shared_readback",
   SCOPE_RESTRICTED_READBACK: "scope_restricted_readback",
   TEST_WRITE: "test_write",
@@ -53,6 +57,19 @@ const HIGH_RISK_SCOPES = Object.freeze({
   OPERATIONAL_AUTHORITY_STATE: "operational-authority-state"
 });
 
+const READBACK_CLASSES = Object.freeze({
+  PUBLIC_STATUS: "public_status",
+  SHARED_NON_SENSITIVE_READBACK: "shared_non_sensitive_readback",
+  SCOPE_RESTRICTED_READBACK: "scope_restricted_readback",
+  PRIVATE_AUDIT_READBACK: "private_audit_readback"
+});
+
+const STATIC_RESOURCE_KINDS = Object.freeze({
+  FRONTEND: "static_frontend",
+  ASSET: "static_asset",
+  DATA_ALLOWLISTED: "static_data_allowlisted"
+});
+
 const ENDPOINT_CATEGORY_VALUES = new Set(Object.values(ENDPOINT_CATEGORIES));
 const ACCESS_RIGHT_VALUES = new Set(Object.values(ACCESS_RIGHTS));
 const SHARED_WORKSPACE_SCOPE_VALUES = new Set(Object.values(SHARED_WORKSPACE_SCOPES));
@@ -63,9 +80,13 @@ const KNOWN_SCOPE_VALUES = new Set([
 ]);
 
 const DEFAULT_RIGHT_BY_ENDPOINT_CATEGORY = Object.freeze({
+  [ENDPOINT_CATEGORIES.CORS_PREFLIGHT]: ACCESS_RIGHTS.NO_ACCESS,
   [ENDPOINT_CATEGORIES.PUBLIC_STATUS]: ACCESS_RIGHTS.READ_ONLY,
   [ENDPOINT_CATEGORIES.SERVER_STATUS_READ]: ACCESS_RIGHTS.READ_ONLY,
   [ENDPOINT_CATEGORIES.STATIC_READ]: ACCESS_RIGHTS.READ_ONLY,
+  [ENDPOINT_CATEGORIES.STATIC_FRONTEND]: ACCESS_RIGHTS.READ_ONLY,
+  [ENDPOINT_CATEGORIES.STATIC_ASSET]: ACCESS_RIGHTS.READ_ONLY,
+  [ENDPOINT_CATEGORIES.STATIC_DATA_ALLOWLISTED]: ACCESS_RIGHTS.READ_ONLY,
   [ENDPOINT_CATEGORIES.SHARED_READBACK]: ACCESS_RIGHTS.READBACK_AUDIT,
   [ENDPOINT_CATEGORIES.SCOPE_RESTRICTED_READBACK]: ACCESS_RIGHTS.READBACK_AUDIT,
   [ENDPOINT_CATEGORIES.TEST_WRITE]: ACCESS_RIGHTS.TEST_WRITE,
@@ -174,112 +195,187 @@ const ROLE_SCOPE_RIGHTS = Object.freeze({
 
 const ENDPOINT_POLICY_CATALOG = Object.freeze([
   endpointPolicy({
+    method: "OPTIONS",
+    path: "/api/health",
+    endpointCategory: ENDPOINT_CATEGORIES.CORS_PREFLIGHT,
+    defaultRight: ACCESS_RIGHTS.NO_ACCESS,
+    readbackClass: READBACK_CLASSES.PUBLIC_STATUS,
+    transportOnly: true,
+    corsPreflight: true,
+    corsIsAuth: false
+  }),
+  endpointPolicy({
+    method: "OPTIONS",
+    path: "/api/server/status",
+    endpointCategory: ENDPOINT_CATEGORIES.CORS_PREFLIGHT,
+    defaultRight: ACCESS_RIGHTS.NO_ACCESS,
+    readbackClass: READBACK_CLASSES.SHARED_NON_SENSITIVE_READBACK,
+    transportOnly: true,
+    corsPreflight: true,
+    corsIsAuth: false
+  }),
+  endpointPolicy({
+    method: "OPTIONS",
+    path: "/api/state/revision",
+    endpointCategory: ENDPOINT_CATEGORIES.CORS_PREFLIGHT,
+    defaultRight: ACCESS_RIGHTS.NO_ACCESS,
+    readbackClass: READBACK_CLASSES.PUBLIC_STATUS,
+    transportOnly: true,
+    corsPreflight: true,
+    corsIsAuth: false
+  }),
+  endpointPolicy({
+    method: "OPTIONS",
+    path: "/api/events",
+    endpointCategory: ENDPOINT_CATEGORIES.CORS_PREFLIGHT,
+    defaultRight: ACCESS_RIGHTS.NO_ACCESS,
+    readbackClass: READBACK_CLASSES.PRIVATE_AUDIT_READBACK,
+    transportOnly: true,
+    corsPreflight: true,
+    corsIsAuth: false
+  }),
+  endpointPolicy({
     method: "GET",
     path: "/api/health",
     endpointCategory: ENDPOINT_CATEGORIES.PUBLIC_STATUS,
-    defaultRight: ACCESS_RIGHTS.READ_ONLY
+    defaultRight: ACCESS_RIGHTS.READ_ONLY,
+    readbackClass: READBACK_CLASSES.PUBLIC_STATUS
   }),
   endpointPolicy({
     method: "GET",
     path: "/api/state/revision",
     endpointCategory: ENDPOINT_CATEGORIES.PUBLIC_STATUS,
-    defaultRight: ACCESS_RIGHTS.READ_ONLY
+    defaultRight: ACCESS_RIGHTS.READ_ONLY,
+    readbackClass: READBACK_CLASSES.PUBLIC_STATUS
   }),
   endpointPolicy({
     method: "GET",
     path: "/api/server/status",
     endpointCategory: ENDPOINT_CATEGORIES.SERVER_STATUS_READ,
-    defaultRight: ACCESS_RIGHTS.READ_ONLY
+    defaultRight: ACCESS_RIGHTS.READ_ONLY,
+    readbackClass: READBACK_CLASSES.SHARED_NON_SENSITIVE_READBACK
   }),
   endpointPolicy({
     method: "GET",
     path: "/api/state",
     endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+    readbackClass: READBACK_CLASSES.SCOPE_RESTRICTED_READBACK,
+    requiresScopeBeforePrivateData: true
   }),
   endpointPolicy({
     method: "GET",
     path: "/api/events",
     endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+    readbackClass: READBACK_CLASSES.PRIVATE_AUDIT_READBACK,
+    requiresScopeBeforePrivateData: true
   }),
   endpointPolicy({
     method: "GET",
     path: "/api/operational-state",
     endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+    readbackClass: READBACK_CLASSES.SHARED_NON_SENSITIVE_READBACK,
+    requiresScopeBeforePrivateData: true
   }),
   endpointPolicy({
     method: "GET",
     path: "/api/operational-state/events",
     endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+    readbackClass: READBACK_CLASSES.PRIVATE_AUDIT_READBACK,
+    requiresScopeBeforePrivateData: true
   }),
   endpointPolicy({
     method: "GET",
     path: "/api/stream",
     endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+    readbackClass: READBACK_CLASSES.SHARED_NON_SENSITIVE_READBACK,
+    readStream: true,
+    requiresScopeBeforePrivateData: true
   }),
   endpointPolicy({
     method: "GET",
     path: "/",
-    endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
-    defaultRight: ACCESS_RIGHTS.READ_ONLY
+    endpointCategory: ENDPOINT_CATEGORIES.STATIC_FRONTEND,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY,
+    staticKind: STATIC_RESOURCE_KINDS.FRONTEND
   }),
   endpointPolicy({
     method: "GET",
     path: "/app",
-    endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
-    defaultRight: ACCESS_RIGHTS.READ_ONLY
+    endpointCategory: ENDPOINT_CATEGORIES.STATIC_FRONTEND,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY,
+    staticKind: STATIC_RESOURCE_KINDS.FRONTEND
   }),
   endpointPolicy({
     method: "GET",
     path: "/data/:filename",
-    endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
-    defaultRight: ACCESS_RIGHTS.READ_ONLY
+    endpointCategory: ENDPOINT_CATEGORIES.STATIC_DATA_ALLOWLISTED,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY,
+    staticKind: STATIC_RESOURCE_KINDS.DATA_ALLOWLISTED,
+    requiresRuntimeAllowlist: true,
+    privateDataAllowed: false,
+    allowedPathValues: [
+      "/data/api_idag.json",
+      "/data/api_imorgen.json"
+    ]
   }),
   endpointPolicy({
     method: "GET",
     path: "/assets/:filename",
-    endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
-    defaultRight: ACCESS_RIGHTS.READ_ONLY
+    endpointCategory: ENDPOINT_CATEGORIES.STATIC_ASSET,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY,
+    staticKind: STATIC_RESOURCE_KINDS.ASSET,
+    requiresRuntimeAllowlist: true,
+    allowedPathValues: [
+      "/assets/slot_track_empty.png",
+      "/assets/motorvognsett_top.png"
+    ]
   }),
   endpointPolicy({
     method: "POST",
     path: "/api/operational-state/snapshot",
     endpointCategory: ENDPOINT_CATEGORIES.PRODUCTION_PILOT_WRITE,
-    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE,
+    writeEndpoint: true
   }),
   endpointPolicy({
     method: "POST",
     path: "/api/actions/test-note",
     endpointCategory: ENDPOINT_CATEGORIES.TEST_WRITE,
-    defaultRight: ACCESS_RIGHTS.TEST_WRITE
+    defaultRight: ACCESS_RIGHTS.TEST_WRITE,
+    writeEndpoint: true
   }),
   endpointPolicy({
     method: "POST",
     path: "/api/actions/action-contract-test",
     endpointCategory: ENDPOINT_CATEGORIES.TEST_WRITE,
-    defaultRight: ACCESS_RIGHTS.TEST_WRITE
+    defaultRight: ACCESS_RIGHTS.TEST_WRITE,
+    writeEndpoint: true
   }),
   endpointPolicy({
     method: "POST",
     path: "/api/actions/actions-table-test",
     endpointCategory: ENDPOINT_CATEGORIES.TEST_WRITE,
-    defaultRight: ACCESS_RIGHTS.TEST_WRITE
+    defaultRight: ACCESS_RIGHTS.TEST_WRITE,
+    writeEndpoint: true
   }),
   endpointPolicy({
     method: "POST",
     path: "/api/actions/server-note",
     endpointCategory: ENDPOINT_CATEGORIES.PRODUCTION_PILOT_WRITE,
-    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE,
+    writeEndpoint: true
   }),
   endpointPolicy({
     method: "POST",
     path: "/api/actions/sde-recommendation-ack",
     endpointCategory: ENDPOINT_CATEGORIES.PRODUCTION_PILOT_WRITE,
-    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE,
+    writeEndpoint: true
   })
 ]);
 
@@ -314,6 +410,20 @@ function decideAccess({
 
   if (!ACCESS_RIGHT_VALUES.has(normalizedRequestedRight)) {
     return deny("unknown_requested_right", base);
+  }
+
+  if (normalizedEndpointCategory === ENDPOINT_CATEGORIES.CORS_PREFLIGHT) {
+    return deny("cors_preflight_not_auth", base);
+  }
+
+  if (isStaticEndpointCategory(normalizedEndpointCategory)) {
+    if (normalizedRequestedRight !== ACCESS_RIGHTS.READ_ONLY) {
+      return deny("static_read_only_only", base);
+    }
+    return allow("static_read_allowed", {
+      ...base,
+      matchedRight: ACCESS_RIGHTS.READ_ONLY
+    });
   }
 
   if (normalizedEndpointCategory === ENDPOINT_CATEGORIES.PUBLIC_STATUS) {
@@ -418,17 +528,51 @@ function getEndpointPolicy({ method = null, path = null } = {}) {
   return ENDPOINT_POLICY_CATALOG.find((policy) => {
     return (
       policy.method === normalizedMethod &&
-      matchesEndpointPath(policy.path, normalizedPath)
+      matchesEndpointPath(policy.path, normalizedPath, policy)
     );
   }) || null;
 }
 
-function endpointPolicy({ method, path, endpointCategory, defaultRight }) {
+function getReadbackClassification({ method = null, path = null } = {}) {
+  const policy = getEndpointPolicy({ method, path });
+  return policy ? policy.readbackClass || null : null;
+}
+
+function endpointPolicy({
+  method,
+  path,
+  endpointCategory,
+  defaultRight,
+  readbackClass = null,
+  staticKind = null,
+  requiresRuntimeAllowlist = false,
+  requiresScopeBeforePrivateData = false,
+  privateDataAllowed = null,
+  readStream = false,
+  writeEndpoint = false,
+  transportOnly = false,
+  corsPreflight = false,
+  corsIsAuth = false,
+  allowedPathValues = null
+}) {
   return Object.freeze({
     method,
     path,
     endpointCategory,
-    defaultRight
+    defaultRight,
+    readbackClass,
+    staticKind,
+    requiresRuntimeAllowlist,
+    requiresScopeBeforePrivateData,
+    privateDataAllowed,
+    readStream,
+    writeEndpoint,
+    transportOnly,
+    corsPreflight,
+    corsIsAuth,
+    allowedPathValues: Array.isArray(allowedPathValues)
+      ? Object.freeze([...allowedPathValues])
+      : null
   });
 }
 
@@ -466,6 +610,15 @@ function normalizeString(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function isStaticEndpointCategory(endpointCategory) {
+  return (
+    endpointCategory === ENDPOINT_CATEGORIES.STATIC_READ ||
+    endpointCategory === ENDPOINT_CATEGORIES.STATIC_FRONTEND ||
+    endpointCategory === ENDPOINT_CATEGORIES.STATIC_ASSET ||
+    endpointCategory === ENDPOINT_CATEGORIES.STATIC_DATA_ALLOWLISTED
+  );
+}
+
 function normalizeMethod(method) {
   return typeof method === "string" && method.trim()
     ? method.trim().toUpperCase()
@@ -480,7 +633,7 @@ function normalizePath(path) {
   return withoutQuery || "/";
 }
 
-function matchesEndpointPath(pattern, path) {
+function matchesEndpointPath(pattern, path, policy = null) {
   if (pattern === path) return true;
   if (!pattern.includes(":")) return false;
 
@@ -489,9 +642,14 @@ function matchesEndpointPath(pattern, path) {
 
   if (patternParts.length !== pathParts.length) return false;
 
-  return patternParts.every((patternPart, index) => {
+  const patternMatches = patternParts.every((patternPart, index) => {
     return patternPart.startsWith(":") || patternPart === pathParts[index];
   });
+
+  if (!patternMatches) return false;
+  if (!policy || !policy.allowedPathValues) return true;
+
+  return policy.allowedPathValues.includes(path);
 }
 
 function findMatchingRight(roleRights, requestedRight) {
@@ -522,10 +680,13 @@ module.exports = {
   ENDPOINT_CATEGORIES,
   ENDPOINT_POLICY_CATALOG,
   HIGH_RISK_SCOPES,
+  READBACK_CLASSES,
   ROLE_KEYS,
   ROLE_SCOPE_RIGHTS,
   SHARED_WORKSPACE_SCOPES,
+  STATIC_RESOURCE_KINDS,
   decideAccess,
   decideEndpointAccess,
-  getEndpointPolicy
+  getEndpointPolicy,
+  getReadbackClassification
 };

@@ -5391,6 +5391,125 @@ B46-E konklusjon:
 - B46-E er ikke GO for write
 - neste fase krever egen eksplisitt GO
 
+## B46-F — Policydata for OPTIONS/static/readback cutlines
+
+Status: isolert policydata- og testherding. B46-F styrker B46-C-katalogen
+etter B46-D/B46-E-cutlines, men kobler fortsatt ingenting til runtime.
+
+Tillatte filer i B46-F:
+
+- `server/src/accessPolicy.js`
+- `server/scripts/test-access-policy.js`
+- `server/README.md`
+
+B46-F etablerer:
+
+- inert endpoint-kategori for OPTIONS/CORS preflight: `cors_preflight`
+- eksplisitt policydata som sier at CORS/preflight er transport/browser-
+  mekanisme, ikke auth
+- mer presis static-modell:
+  - `static_frontend`
+  - `static_asset`
+  - `static_data_allowlisted`
+- allowlist-avhengig policydata for `/data/:filename` og `/assets/:filename`
+- readback-classification metadata:
+  - `public_status`
+  - `shared_non_sensitive_readback`
+  - `scope_restricted_readback`
+  - `private_audit_readback`
+- helper for å lese readback-klassifisering fra endpoint policydata
+- testdekning for at static, CORS og readback ikke gir write, identity eller
+  operational authority
+
+OPTIONS/CORS cutline i B46-F:
+
+- `OPTIONS` behandles ikke som automatisk auth-allow
+- kjente preflight-endpoints klassifiseres som `cors_preflight`
+- ukjent OPTIONS-path er default-deny
+- CORS/preflight gir ikke identity
+- CORS/preflight gir ikke readback
+- CORS/preflight gir ikke private endpoint access
+- CORS/preflight gir ikke write
+- CORS er ikke auth
+- Cloudflare/ekstern tilgang er fortsatt utenfor scope
+- B46-F endrer ikke CORS-runtime, headers, origins, transport eller
+  Cloudflare
+
+Static/data/assets cutline i B46-F:
+
+- `GET /` og `GET /app` modelleres som `static_frontend`
+- allowlistede assets modelleres som `static_asset`
+- allowlistede datafiler modelleres som `static_data_allowlisted`
+- ukjent data/static/asset path er default-deny i policykatalogen
+- static data er markert som allowlist-avhengig
+- static data skal ikke brukes til private eller scope-restricted payload
+- static/GitHub Pages er fortsatt ikke sikkerhetsmodell
+- B46-F endrer ikke `index.html`, datafiler, assets eller static runtime
+
+Readback cutline i B46-F:
+
+- `GET /api/state` er markert som readback med senere scope-risk
+- `GET /api/events` er markert som audit/event readback med mulig sensitivity
+- `GET /api/operational-state` er markert som shared operational readback,
+  ikke operational authority
+- `GET /api/operational-state/events` er markert som operational
+  audit/readback
+- `GET /api/stream` er markert som read stream/readback, ikke write
+- `manual-assessments-notes` krever fortsatt eksplisitt scope/role i policy
+- high-risk scopes er fortsatt default-deny
+- readback gir fortsatt ikke write
+
+Testherding i B46-F:
+
+- OPTIONS/CORS kan ikke brukes som auth
+- static/frontend/data/assets gir ikke private readback eller write
+- unknown endpoint, method, category, scope og right gir fortsatt deny
+- actor/device er fortsatt ikke identity
+- `production_pilot_write` er fortsatt deny som default
+- operational authority er fortsatt deny
+- high-risk scopes er fortsatt deny
+- testscriptet starter ikke server, bruker ikke DB og gjør ingen HTTP/POST
+
+Kontraktsgrenser:
+
+- ingen runtime-kobling
+- ingen middleware
+- ingen faktisk auth, login, session, token eller issuer
+- ingen endpoint enforcement på live endpoints
+- ingen `server/src/index.js`
+- ingen `index.html`
+- ingen DB/schema/migration
+- ingen package/data/`.github`
+- ingen POST-kjøring, flags, restart, Cloudflare, CORS eller transportendring
+- ingen production-write
+- ingen operational authority
+- ingen løpende write/sync
+
+B46-F beviser:
+
+- policydata kan beskrive OPTIONS/static/readback cutlines uten runtime-
+  sideeffekt
+- CORS/preflight er modellert som ikke-auth
+- static/data/assets er modellert mer presist enn bred static-read
+- readback sensitivity kan dokumenteres og testes som policygrunnlag
+- default-deny-invariantene holder etter hardening
+
+B46-F beviser ikke:
+
+- faktisk auth
+- privat endpoint-beskyttelse
+- middleware
+- login/session/token/issuer
+- CORS/Cloudflare/transport-sikkerhet
+- enforcement på production endpoints
+- write eller production-write-rettighet
+- operational authority eller løpende write
+
+Neste fase etter B46-F må fortsatt ha egen eksplisitt GO før policydata
+eventuelt justeres videre eller kobles mot runtime. Runtime enforcement,
+middleware, login/session, issuer, UI-filter, private endpoints og write er
+fortsatt egne senere faser.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.

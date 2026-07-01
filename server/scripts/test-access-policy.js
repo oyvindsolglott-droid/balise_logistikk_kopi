@@ -6,11 +6,14 @@ const {
   ENDPOINT_CATEGORIES,
   ENDPOINT_POLICY_CATALOG,
   HIGH_RISK_SCOPES,
+  READBACK_CLASSES,
   ROLE_KEYS,
   SHARED_WORKSPACE_SCOPES,
+  STATIC_RESOURCE_KINDS,
   decideAccess,
   decideEndpointAccess,
-  getEndpointPolicy
+  getEndpointPolicy,
+  getReadbackClassification
 } = require("../src/accessPolicy");
 
 const identity = Object.freeze({
@@ -34,6 +37,10 @@ function expectPolicy(label, method, path, expected = {}) {
   const policy = getEndpointPolicy({ method, path });
   assert.ok(policy, `${label}: expected endpoint policy`);
   for (const [key, value] of Object.entries(expected)) {
+    if (Array.isArray(value)) {
+      assert.deepEqual(policy[key], value, `${label}: expected ${key}=${value}`);
+      continue;
+    }
     assert.equal(policy[key], value, `${label}: expected ${key}=${value}`);
   }
 }
@@ -44,98 +51,240 @@ function expectNoPolicy(label, method, path) {
 }
 
 assert.ok(
-  ENDPOINT_POLICY_CATALOG.length >= 12,
-  "endpoint policy catalog should cover current read/write categories"
+  ENDPOINT_POLICY_CATALOG.length >= 18,
+  "endpoint policy catalog should cover current read/write and preflight categories"
 );
 
 expectPolicy("health endpoint is public status", "get", "/api/health", {
   endpointCategory: ENDPOINT_CATEGORIES.PUBLIC_STATUS,
-  defaultRight: ACCESS_RIGHTS.READ_ONLY
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  readbackClass: READBACK_CLASSES.PUBLIC_STATUS
 });
 
 expectPolicy("state revision endpoint is public status", "GET", "/api/state/revision", {
   endpointCategory: ENDPOINT_CATEGORIES.PUBLIC_STATUS,
-  defaultRight: ACCESS_RIGHTS.READ_ONLY
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  readbackClass: READBACK_CLASSES.PUBLIC_STATUS
 });
 
 expectPolicy("server status endpoint is read-only status", "GET", "/api/server/status", {
   endpointCategory: ENDPOINT_CATEGORIES.SERVER_STATUS_READ,
-  defaultRight: ACCESS_RIGHTS.READ_ONLY
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  readbackClass: READBACK_CLASSES.SHARED_NON_SENSITIVE_READBACK
 });
 
-expectPolicy("state endpoint is shared readback", "GET", "/api/state", {
+expectPolicy("state endpoint is scope-risk readback", "GET", "/api/state", {
   endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-  defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+  defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+  readbackClass: READBACK_CLASSES.SCOPE_RESTRICTED_READBACK,
+  requiresScopeBeforePrivateData: true
 });
 
-expectPolicy("events endpoint is shared readback", "GET", "/api/events", {
+expectPolicy("events endpoint is private audit readback", "GET", "/api/events", {
   endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-  defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+  defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+  readbackClass: READBACK_CLASSES.PRIVATE_AUDIT_READBACK,
+  requiresScopeBeforePrivateData: true
 });
 
 expectPolicy("operational-state endpoint is shared readback", "GET", "/api/operational-state", {
   endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-  defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+  defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+  readbackClass: READBACK_CLASSES.SHARED_NON_SENSITIVE_READBACK,
+  requiresScopeBeforePrivateData: true
 });
 
 expectPolicy(
-  "operational-state events endpoint is shared readback",
+  "operational-state events endpoint is audit readback",
   "GET",
   "/api/operational-state/events?limit=20",
   {
     endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+    defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+    readbackClass: READBACK_CLASSES.PRIVATE_AUDIT_READBACK,
+    requiresScopeBeforePrivateData: true
   }
 );
 
-expectPolicy("stream endpoint is shared readback", "GET", "/api/stream", {
+expectPolicy("stream endpoint is read stream/readback", "GET", "/api/stream", {
   endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
-  defaultRight: ACCESS_RIGHTS.READBACK_AUDIT
+  defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
+  readbackClass: READBACK_CLASSES.SHARED_NON_SENSITIVE_READBACK,
+  readStream: true,
+  writeEndpoint: false
 });
 
-expectPolicy("root frontend is static read", "GET", "/", {
-  endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
-  defaultRight: ACCESS_RIGHTS.READ_ONLY
+assert.equal(
+  getReadbackClassification({ method: "GET", path: "/api/state" }),
+  READBACK_CLASSES.SCOPE_RESTRICTED_READBACK,
+  "readback classification helper should classify /api/state"
+);
+
+assert.equal(
+  getReadbackClassification({ method: "GET", path: "/api/events" }),
+  READBACK_CLASSES.PRIVATE_AUDIT_READBACK,
+  "readback classification helper should classify /api/events"
+);
+
+expectPolicy("health preflight is CORS/preflight", "OPTIONS", "/api/health", {
+  endpointCategory: ENDPOINT_CATEGORIES.CORS_PREFLIGHT,
+  defaultRight: ACCESS_RIGHTS.NO_ACCESS,
+  transportOnly: true,
+  corsPreflight: true,
+  corsIsAuth: false,
+  writeEndpoint: false
 });
 
-expectPolicy("app frontend is static read", "GET", "/app?role=sde", {
-  endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
-  defaultRight: ACCESS_RIGHTS.READ_ONLY
+expectPolicy("events preflight is CORS/preflight", "OPTIONS", "/api/events", {
+  endpointCategory: ENDPOINT_CATEGORIES.CORS_PREFLIGHT,
+  defaultRight: ACCESS_RIGHTS.NO_ACCESS,
+  transportOnly: true,
+  corsPreflight: true,
+  corsIsAuth: false,
+  readbackClass: READBACK_CLASSES.PRIVATE_AUDIT_READBACK
 });
 
-expectPolicy("data file is static read", "GET", "/data/api_idag.json", {
-  endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
-  defaultRight: ACCESS_RIGHTS.READ_ONLY
+expectDenied(
+  "known CORS preflight does not become auth",
+  decideEndpointAccess({
+    method: "OPTIONS",
+    path: "/api/health"
+  }),
+  "cors_preflight_not_auth"
+);
+
+expectDenied(
+  "CORS preflight does not grant readback",
+  decideEndpointAccess({
+    method: "OPTIONS",
+    path: "/api/events",
+    identity,
+    requestedRight: ACCESS_RIGHTS.READBACK_AUDIT,
+    scope: SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES
+  }),
+  "cors_preflight_not_auth"
+);
+
+expectDenied(
+  "CORS preflight does not grant private endpoint access",
+  decideEndpointAccess({
+    method: "OPTIONS",
+    path: "/api/events",
+    identity,
+    requestedRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE,
+    scope: SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES
+  }),
+  "cors_preflight_not_auth"
+);
+
+expectNoPolicy("unknown OPTIONS path is not classified", "OPTIONS", "/api/not-real");
+
+expectDenied(
+  "unknown OPTIONS path denied",
+  decideEndpointAccess({
+    method: "OPTIONS",
+    path: "/api/not-real",
+    identity,
+    scope: SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES
+  }),
+  "unknown_endpoint"
+);
+
+expectPolicy("root frontend is static frontend", "GET", "/", {
+  endpointCategory: ENDPOINT_CATEGORIES.STATIC_FRONTEND,
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  staticKind: STATIC_RESOURCE_KINDS.FRONTEND
 });
 
-expectPolicy("asset file is static read", "GET", "/assets/logo.png", {
-  endpointCategory: ENDPOINT_CATEGORIES.STATIC_READ,
-  defaultRight: ACCESS_RIGHTS.READ_ONLY
+expectPolicy("app frontend is static frontend", "GET", "/app?role=sde", {
+  endpointCategory: ENDPOINT_CATEGORIES.STATIC_FRONTEND,
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  staticKind: STATIC_RESOURCE_KINDS.FRONTEND
 });
+
+expectPolicy("allowlisted data file is static data", "GET", "/data/api_idag.json", {
+  endpointCategory: ENDPOINT_CATEGORIES.STATIC_DATA_ALLOWLISTED,
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  staticKind: STATIC_RESOURCE_KINDS.DATA_ALLOWLISTED,
+  requiresRuntimeAllowlist: true,
+  privateDataAllowed: false
+});
+
+expectPolicy("allowlisted asset file is static asset", "GET", "/assets/slot_track_empty.png", {
+  endpointCategory: ENDPOINT_CATEGORIES.STATIC_ASSET,
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  staticKind: STATIC_RESOURCE_KINDS.ASSET,
+  requiresRuntimeAllowlist: true
+});
+
+expectNoPolicy("unknown data file is not classified", "GET", "/data/private.json");
+expectNoPolicy("unknown asset file is not classified", "GET", "/assets/private.png");
+expectNoPolicy("unknown static path is not classified", "GET", "/static/private.json");
+
+expectAllowed(
+  "static frontend can be read-only without becoming identity",
+  decideEndpointAccess({
+    method: "GET",
+    path: "/"
+  }),
+  {
+    reason: "static_read_allowed",
+    matchedRight: ACCESS_RIGHTS.READ_ONLY
+  }
+);
+
+expectDenied(
+  "static data does not grant private readback access",
+  decideEndpointAccess({
+    method: "GET",
+    path: "/data/api_idag.json",
+    identity,
+    requestedRight: ACCESS_RIGHTS.READBACK_AUDIT,
+    scope: SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES
+  }),
+  "static_read_only_only"
+);
+
+expectDenied(
+  "static asset does not grant write",
+  decideEndpointAccess({
+    method: "GET",
+    path: "/assets/slot_track_empty.png",
+    identity,
+    requestedRight: ACCESS_RIGHTS.TEST_WRITE,
+    scope: SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES
+  }),
+  "static_read_only_only"
+);
 
 expectPolicy("operational-state snapshot is production-pilot write category", "POST", "/api/operational-state/snapshot", {
   endpointCategory: ENDPOINT_CATEGORIES.PRODUCTION_PILOT_WRITE,
-  defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+  defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE,
+  writeEndpoint: true
 });
 
 expectPolicy("test note action is test-write category", "POST", "/api/actions/test-note", {
   endpointCategory: ENDPOINT_CATEGORIES.TEST_WRITE,
-  defaultRight: ACCESS_RIGHTS.TEST_WRITE
+  defaultRight: ACCESS_RIGHTS.TEST_WRITE,
+  writeEndpoint: true
 });
 
 expectPolicy("action contract test is test-write category", "POST", "/api/actions/action-contract-test", {
   endpointCategory: ENDPOINT_CATEGORIES.TEST_WRITE,
-  defaultRight: ACCESS_RIGHTS.TEST_WRITE
+  defaultRight: ACCESS_RIGHTS.TEST_WRITE,
+  writeEndpoint: true
 });
 
 expectPolicy("actions table test is test-write category", "POST", "/api/actions/actions-table-test", {
   endpointCategory: ENDPOINT_CATEGORIES.TEST_WRITE,
-  defaultRight: ACCESS_RIGHTS.TEST_WRITE
+  defaultRight: ACCESS_RIGHTS.TEST_WRITE,
+  writeEndpoint: true
 });
 
 expectPolicy("server-note action is production-pilot write category", "POST", "/api/actions/server-note", {
   endpointCategory: ENDPOINT_CATEGORIES.PRODUCTION_PILOT_WRITE,
-  defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+  defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE,
+  writeEndpoint: true
 });
 
 expectPolicy(
@@ -144,11 +293,13 @@ expectPolicy(
   "/api/actions/sde-recommendation-ack",
   {
     endpointCategory: ENDPOINT_CATEGORIES.PRODUCTION_PILOT_WRITE,
-    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE
+    defaultRight: ACCESS_RIGHTS.PRODUCTION_PILOT_WRITE,
+    writeEndpoint: true
   }
 );
 
 expectNoPolicy("unknown endpoint is not classified", "GET", "/api/not-real");
+expectNoPolicy("unknown method is not classified", "PATCH", "/api/health");
 
 expectDenied(
   "unknown endpoint decision denied",
@@ -174,7 +325,27 @@ expectAllowed(
 );
 
 expectDenied(
-  "shared readback helper requires identity",
+  "public status cannot be upgraded to readback",
+  decideEndpointAccess({
+    method: "GET",
+    path: "/api/health",
+    requestedRight: ACCESS_RIGHTS.READBACK_AUDIT
+  }),
+  "public_status_read_only_only"
+);
+
+expectDenied(
+  "scope-risk readback requires scope before private data",
+  decideEndpointAccess({
+    method: "GET",
+    path: "/api/state",
+    identity
+  }),
+  "missing_scope"
+);
+
+expectDenied(
+  "shared readback helper requires identity when scope is present",
   decideEndpointAccess({
     method: "GET",
     path: "/api/operational-state",
@@ -184,7 +355,7 @@ expectDenied(
 );
 
 expectAllowed(
-  "shared readback helper allows explicit role and scope",
+  "manual-assessments-notes readback requires explicit scope and role",
   decideEndpointAccess({
     method: "GET",
     path: "/api/operational-state/events",
@@ -195,6 +366,18 @@ expectAllowed(
     matchedRight: ACCESS_RIGHTS.READBACK_AUDIT,
     role: ROLE_KEYS.ADMIN_PILOT
   }
+);
+
+expectDenied(
+  "readback endpoint helper does not grant write",
+  decideEndpointAccess({
+    method: "GET",
+    path: "/api/operational-state/events",
+    identity,
+    requestedRight: ACCESS_RIGHTS.TEST_WRITE,
+    scope: SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES
+  }),
+  "insufficient_right"
 );
 
 expectDenied(
@@ -476,4 +659,4 @@ expectDenied(
   "unknown_requested_right"
 );
 
-console.log("B46-C access-policy tests OK");
+console.log("B46-F access-policy tests OK");
