@@ -8260,6 +8260,177 @@ Fremdrift etter B48-C-DOC:
 - SDE Shared Workspace totalt: ca. 95 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B48-D-DOC — Identity-source / issuer-session decision record
+
+Status: README-only identity-source / issuer-session decision record. B48-D-DOC
+dokumenterer B48-D-PRE-resultatet. Dette er ikke runtime-auth, ikke
+login/session/token/issuer-implementering, ikke middleware, ikke endpoint
+enforcement og ikke private readback activation.
+
+Beslutning:
+
+- B48-D-PRE er GREEN som read-only identity-source / issuer-session preflight
+- ingen identity-source er valgt eller implementert i runtime
+- ingen issuer/session/login/token/JWT/API-key-modell finnes i runtime
+- runtime-import, middleware, endpoint enforcement og private readback er
+  fortsatt NO-GO
+- operational authority/write er fortsatt `0 %`
+
+Nåværende safe default:
+
+- no auth
+- private readback disabled
+- ingen private endpoints aktivert
+- public/read-only forblir begrenset til safe/review-needed GET
+- write/production-write/operational authority forblir denied/blocked
+
+Dette er ikke målbildet for ferdig auth. Dette er safe HOLD-state inntil
+identity-source er valgt og dokumentert.
+
+Identity-boundary som fortsatt gjelder:
+
+- Local/LAN er ikke identity
+- headers er ikke trusted identity
+- frontend data-levels er ikke trusted identity
+- `actor`, `device` og `clientContext` er audit-/payloadmetadata, ikke
+  access-control identity
+- source IP/local metadata er metadata, ikke identity
+- transitive cookie-pakker fra Express/package-lock er ikke valgt
+  cookie/session-authmodell
+
+Alternativ A — No auth / private readback disabled:
+
+- tryggeste default/HOLD
+- ingen private readback
+- ingen identityrisiko introdusert
+- begrenser funksjonalitet
+- bør stå som default til identity-source er valgt og dokumentert
+
+Alternativ B — Shared operator secret:
+
+- kan kanskje brukes som smal read-only pilot senere
+- gir ikke individuell authenticated identity
+- har replay-/deling-/audit-risiko
+- headers/secret-input er ikke nok uten trust boundary
+- ikke egnet for operational authority
+- skal ikke brukes som reell identitymodell nå
+
+Alternativ C — Local/LAN server-issued session:
+
+- mest lovende Local/LAN-kandidat for senere design
+- ikke implementert nå
+- krever egen senere preflight/design for:
+  - login
+  - session
+  - expiry
+  - logout
+  - cookie eller annen bearer-mekanisme
+  - CSRF-vurdering
+  - secret storage
+  - audit av authenticated identity
+  - role/scope-kobling
+  - default-deny runtime-test
+  - no-DB-write/no-POST regression
+  - package/dependency-beslutning eller eksplisitt no-dependency-design
+- ikke egnet til operational authority før langt senere eksplisitt GO
+
+Alternativ D — Reverse proxy / Cloudflare Access / ekstern issuer:
+
+- senere ekstern/proxy-kandidat
+- kan gi sterkere issuer/identity
+- krever egen Cloudflare/CORS/transport/proxy/header trust-boundary preflight
+- forwarded headers er ikke trusted før proxy/issuer-boundary er dokumentert
+- må fail-closed ved manglende eller ugyldig issuer identity
+- må avklare lokal bypass-risiko
+
+Alternativ E — Manual local admin-only read-only mode:
+
+- mulig mellomfase
+- må fortsatt ha server-side authenticated identity
+- actor/device/clientContext er ikke nok
+- kan ikke åpne operational authority
+- kan ikke åpne write
+
+Streng anbefaling:
+
+- A er nåværende default safe state
+- C er mest lovende senere Local/LAN-designkandidat
+- D holdes som senere ekstern/proxy-kandidat
+- B avvises som reell identitymodell
+- ingen authvariant gir GO for operational authority
+- runtime-import, middleware og private readback forblir NO-GO
+
+Minimumskrav før senere runtime-auth kan vurderes:
+
+- identity source valgt
+- issuer/sessionmodell valgt
+- trust boundary dokumentert
+- fail-closed/default-deny krav dokumentert
+- public/review/private/write endpointklassifisering låst
+- private readback-sensitivitet avklart
+- auditmodell låst
+- spoofed headers/actor/device/clientContext testet
+- role/scope-katalog koblet trygt til `authPolicy`
+- package/dependency-beslutning tatt
+- transport/Cloudflare/CORS vurdert hvis relevant
+- no-DB-write/no-POST regression testet
+- production GET-only uendret
+
+Hva B48-D-DOC låser:
+
+- README-only identity-source / issuer-session decision record
+- ingen runtime identity-source
+- no-auth/private-readback-disabled som safe default
+- Local/LAN server-issued session som senere kandidat, ikke implementering
+- proxy/Cloudflare/ekstern issuer som senere kandidat, ikke valgt
+- shared secret er ikke reell identity
+- runtime-import fortsatt ikke godkjent
+- middleware fortsatt ikke godkjent
+- endpoint enforcement fortsatt ikke godkjent
+- private readback fortsatt ikke aktivert
+- operational authority/write fortsatt `0 %`
+
+Hva B48-D-DOC ikke beviser:
+
+- runtime-auth
+- login/session/token/issuer
+- cookies/JWT/API keys
+- middleware
+- endpoint enforcement
+- private readback activation
+- packageendring
+- DB/schema
+- Cloudflare/CORS/transport security
+- write
+- operational authority
+
+Anbefalt neste trygge steg:
+
+`B48-E-PRE — read-only default-deny middleware/runtime test-model preflight`
+
+Alternativt kan B48-E-DOC dokumentere middleware/default-deny test design som
+README-only beslutningsgrunnlag. Runtime-import skal ikke være neste direkte
+steg.
+
+Production lock ved B48-D-DOC:
+
+- production revision forblir `8`
+- operational-state events forblir id `5`, `6` og `7`
+- event id `7` forblir `operational_state.snapshot.production_pilot`
+- scope/readback forblir `manual-assessments-notes`
+- alle write/operational/production/migration-flagg forblir av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Fremdrift etter B48-D-DOC:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- B48 readiness/security: ca. 65 %
+- SDE Shared Workspace totalt: ca. 95 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
