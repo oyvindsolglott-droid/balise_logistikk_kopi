@@ -9,14 +9,8 @@ const EXPECTED_ACCESS_ONLY_SCOPES = Object.freeze([
   "sde-vaktplan-coverage"
 ]);
 
-const EXPECTED_MANUAL_ASSESSMENTS_ACCESS_ROLES = Object.freeze([
-  "admin_pilot"
-]);
-
-const EXPECTED_MANUAL_ASSESSMENTS_IDENTITY_ROLES = Object.freeze([
+const EXPECTED_MANUAL_ASSESSMENTS_ROLES = Object.freeze([
   "admin_pilot",
-  "sde_skiftere",
-  "vaktplan_ledelse"
 ]);
 
 const CENTRAL_RIGHTS = Object.freeze([
@@ -133,13 +127,23 @@ assert.deepEqual(
 
 assert.deepEqual(
   rolesForScope(accessRoleScopes, "manual-assessments-notes"),
-  sorted(EXPECTED_MANUAL_ASSESSMENTS_ACCESS_ROLES),
-  "manual-assessments access roles must stay explicit expected-YELLOW"
+  sorted(EXPECTED_MANUAL_ASSESSMENTS_ROLES),
+  "manual-assessments access roles must stay admin_pilot-only"
 );
 assert.deepEqual(
   rolesForScope(identityRoleScopes, "manual-assessments-notes"),
-  sorted(EXPECTED_MANUAL_ASSESSMENTS_IDENTITY_ROLES),
-  "manual-assessments identity roles must stay explicit expected-YELLOW"
+  sorted(EXPECTED_MANUAL_ASSESSMENTS_ROLES),
+  "manual-assessments identity roles must stay admin_pilot-only"
+);
+assert.equal(
+  rolesForScope(identityRoleScopes, "manual-assessments-notes").includes("sde_skiftere"),
+  false,
+  "manual-assessments identity roles must deny sde_skiftere"
+);
+assert.equal(
+  rolesForScope(identityRoleScopes, "manual-assessments-notes").includes("vaktplan_ledelse"),
+  false,
+  "manual-assessments identity roles must deny vaktplan_ledelse"
 );
 
 assert.deepEqual(
@@ -327,8 +331,8 @@ assert.equal(
 
 console.log("B47-K catalog parity tests OK");
 console.log("GREEN checks passed");
+console.log("- manual-assessments-notes is admin_pilot-only in accessPolicy and identityPolicy");
 console.log("expected-YELLOW checks observed");
-console.log("- manual-assessments-notes role divergence");
 console.log("- identityPolicy missing sde-night-placement-manual-overrides");
 console.log("- identityPolicy missing sde-vaktplan-coverage");
 console.log("RED checks absent");

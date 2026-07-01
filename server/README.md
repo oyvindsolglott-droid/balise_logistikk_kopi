@@ -7255,6 +7255,64 @@ Fremdrift etter B47-N:
 - SDE Shared Workspace totalt: ca. 94 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B47-O — Manual assessments identity-scope fix
+
+B47-O er en isolert teknisk fix for `manual-assessments-notes` i
+identity-katalogen. Den følger B47-N-beslutningen om at `accessPolicy` er
+midlertidig norm for private readback, og at `manual-assessments-notes` skal
+behandles som `admin_pilot`-only inntil egen sensitivity-beslutning og GO.
+
+Endring:
+
+- `identityPolicy` gir nå `manual-assessments-notes` kun til `admin_pilot`
+- `sde_skiftere` er denied for `manual-assessments-notes`
+- `vaktplan_ledelse` er denied for `manual-assessments-notes`
+- `manual-assessments-notes` er ikke lenger expected-YELLOW i catalog
+  parity-testen
+- parity-testen krever at `manual-assessments-notes` er `admin_pilot`-only
+  i både `accessPolicy` og `identityPolicy`
+
+Expected-YELLOW som fortsatt står:
+
+- `identityPolicy` mangler fortsatt
+  `sde-night-placement-manual-overrides`
+- `identityPolicy` mangler fortsatt `sde-vaktplan-coverage`
+
+B47-O beviser:
+
+- `manual-assessments-notes` er strammet til samme rolleomfang i
+  `identityPolicy` som i `accessPolicy`
+- `sde_skiftere` og `vaktplan_ledelse` får ikke readback/audit for
+  `manual-assessments-notes`
+- catalog parity-testen skiller teknisk fikset manual-notat-scope fra de to
+  gjenstående expected-YELLOW-scope
+
+B47-O beviser ikke:
+
+- ingen runtime-auth
+- ingen middleware
+- ingen endpoint enforcement
+- ingen private readback activation
+- ingen felles katalogmodul
+- ingen login/session/token/issuer
+- ingen write
+- ingen production-write
+- ingen operational authority
+
+B47-O kobler ikke policy til server runtime. `server/src/index.js`,
+`accessPolicy`, frontend, DB/schema, transport/CORS/Cloudflare og runtime er
+uendret. Neste fase krever egen eksplisitt GO, og de to gjenstående
+expected-YELLOW-scope må avklares separat før runtime-auth/enforcement kan
+vurderes.
+
+Fremdrift etter B47-O:
+
+- B38-B45: GREEN / låst
+- B46 skeleton/testherding: GREEN / 100 % isolert
+- B47 identity/security design: ca. 87 %
+- SDE Shared Workspace totalt: ca. 94 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.

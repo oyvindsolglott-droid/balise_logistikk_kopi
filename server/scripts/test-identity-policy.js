@@ -217,6 +217,32 @@ expectDenied(
   "role_scope_not_allowed"
 );
 
+expectDenied(
+  "sde_skiftere denied manual-assessments-notes",
+  decideIdentityAccess({
+    identity: {
+      id: "sde-skifter-user",
+      role: ROLE_KEYS.SDE_SKIFTERE,
+      scopes: [SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES]
+    },
+    requestedScope: SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES
+  }),
+  "role_scope_not_allowed"
+);
+
+expectDenied(
+  "vaktplan_ledelse denied manual-assessments-notes",
+  decideIdentityAccess({
+    identity: {
+      id: "vaktplan-ledelse-user",
+      role: ROLE_KEYS.VAKTPLAN_LEDELSE,
+      scopes: [SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES]
+    },
+    requestedScope: SHARED_WORKSPACE_SCOPES.MANUAL_ASSESSMENTS_NOTES
+  }),
+  "role_scope_not_allowed"
+);
+
 expectAllowed(
   "admin_pilot allowed readback/audit for manual-assessments-notes",
   decideIdentityAccess({
