@@ -4656,6 +4656,130 @@ B45-D konklusjon:
   eller implementering
 - operational authority / løpende write forblir `0 %`, ikke åpnet
 
+## B45-E — B46 readiness gate / auth implementation precheck
+
+Status: README-only review/gate. B45-E dokumenterer hva som må være
+avklart før en eventuell senere B46 auth/access-control-implementering kan
+vurderes. Dette er ikke implementering, ikke runtime-endring, ikke token,
+ikke session, ikke login, ikke middleware, ikke write og ikke operational
+authority.
+
+Formål:
+
+- gjøre B46-gaten eksplisitt og streng før noen auth-implementering vurderes
+- sikre at B45-D threat model brukes som precheck, ikke som implisitt GO
+- skille mellom dokumentert readiness og faktisk runtime-sikkerhet
+- låse at B45-E ikke gir auth, tilgangskontroll, write eller operational
+  authority
+- hindre at B46 starter uten særskilt bruker-GO og smalt scope
+
+B46 kan ikke starte uten:
+
+- valgt identity/sessionmodell
+- definert issuer/trust anchor
+- beskrivelse av hvordan serveren verifiserer identitet
+- rolle-/nivåmodell mappet til moduler og scopes
+- default-deny-policy
+- eksplisitt allowlist per endpoint og scope
+- static/offline/GitHub Pages-avgrensning
+- LAN/Cloudflare/transportmodell
+- auditmodell for authenticated identity
+- skille mellom authenticated identity og client-supplied actor/device
+- testplan for direkte API-kall uten UI
+- rollback/recovery-plan
+- abortkriterier for implementering og test
+- eksplisitt bruker-GO for nøyaktig B46-scope
+
+Endpoint-kategorier som senere må klassifiseres:
+
+| Kategori | Senere vurdering |
+| --- | --- |
+| Public health/status endpoints | Kan være offentlig/unauthenticated hvis de ikke lekker private data. |
+| Shared readback/audit endpoints | Må vurderes for scope, sensitivity og auditbehov. |
+| Private/scope-restricted readback endpoints | Krever server-side auth, role/scope allowlist og default-deny. |
+| Draft/test-write endpoints | Krever auth, explicit scope, idempotency/revision og test-only boundary. |
+| Production-pilot-write endpoints | Krever auth, fase-GO, backup/preflight, flaggvindu og audit. |
+| Operational-authority endpoints | Fortsatt separat høy-risiko-spor, ikke del av B46 uten egen GO. |
+
+Read/write-skillet:
+
+- readback kan være synkront uten å være operativ sannhet
+- samme modul + samme `serviceDate` + samme `scope` = samme readback for
+  nivåer som faktisk har modulen
+- samme readback betyr ikke samme write
+- write krever egen rettighet, idempotency, revision guard, audit og fase-GO
+- production-pilot-write er ikke løpende write/sync
+- operational authority er ikke del av B46 med mindre senere eksplisitt GO
+  sier det
+
+Static/offline/GitHub Pages-grense:
+
+- GitHub Pages/static frontend kan ikke beskytte private data
+- frontend `data-levels` er prototypevisning, ikke sikkerhet
+- private/scope-restricted data må ikke legges i statisk payload
+- private readback-data må ikke eksponeres før server-side enforcement finnes
+- offline/static skal fortsatt være diskret ved manglende server
+
+Direkte API-kall:
+
+- UI-synlighet kan omgås
+- alle private endpoints og write endpoints må tåle direkte kall
+- auth må håndheves server-side
+- role/scope må løses server-side
+- client-supplied actor/device kan ikke brukes som identitet
+- CORS, same-origin eller skjulte knapper er ikke tilstrekkelig
+  tilgangskontroll
+
+B46 GO-kriterier:
+
+- valgt auth-retning dokumentert
+- endpoint/scope-matrise dokumentert
+- rolle/modul/scope-matrise dokumentert
+- default-deny-regel dokumentert
+- auditkrav dokumentert
+- testplan dokumentert, inkludert direkte API-kall uten UI
+- rollback/recovery dokumentert
+- eksplisitte ikke-mål dokumentert
+- production read-only baseline avklart
+- bruker-GO for nøyaktig B46-scope
+
+B46 abortkriterier:
+
+- uklar issuer/sessionmodell
+- uklart skille mellom UI `data-levels` og server-side auth
+- forslag om å stole på actor/device som identitet
+- forslag om å åpne production-write samtidig med auth
+- forslag om operational authority
+- forslag om Cloudflare/ekstern tilgang uten transport/sessionmodell
+- scope-drift til SDE-skifteordre, completion-status, TXP operational blocks,
+  DROPS dispatch decisions eller `operational-authority-state`
+- endring i `index.html` eller serverkode uten eksplisitt fase-GO
+- manglende rollback/testplan
+- uklar production read-only status
+
+Ikke-mål for B45-E:
+
+- ingen runtime-endring
+- ingen auth
+- ingen token/session/login
+- ingen middleware
+- ingen rollefilter
+- ingen endpoint-endring
+- ingen UI-endring
+- ingen write/POST
+- ingen restart
+- ingen DB-write
+- ingen Cloudflare/CORS/transport-endring
+- ingen operational authority
+- ingen løpende write/sync
+
+B45-E konklusjon:
+
+- B45-E gjør B45 mer komplett som design-/gatefase
+- B45-E er fortsatt ikke GO for B46
+- B46 kan bare vurderes etter særskilt bruker-GO og eksplisitt smalt scope
+- operational authority / løpende write forblir `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
