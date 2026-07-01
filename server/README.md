@@ -6401,6 +6401,200 @@ Fremdrift etter B47-H:
 - SDE Shared Workspace totalt: ca. 94 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B47-I — Role/scope catalog ownership decision record
+
+Status: README-only decision record. B47-I dokumenterer eierskap og
+samordning for role/scope-katalogen etter B47-I-PRE. Dette er ikke
+runtime-auth, ikke middleware, ikke endpoint enforcement, ikke felles
+katalog-implementation, ikke parity-test implementation, ikke
+login/session/token/issuer-kode, ikke private readback, ikke write,
+ikke production-write og ikke operational authority.
+
+Formål:
+
+- låse at role/scope-katalogen må ha eksplisitt eierskap før runtime-auth
+- skille tilsiktet skeleton-isolasjon fra uønsket katalogdivergens
+- dokumentere hvorfor dagens duplisering er akseptabel i inert testfase
+- dokumentere hvorfor dagens duplisering ikke er trygg runtime-sannhet
+- låse sperrer før middleware, endpoint enforcement og private readback
+- dokumentere neste trygge fase uten kode-, test- eller runtime-endring
+
+Bakgrunn fra B47-I-PRE:
+
+- B46 `accessPolicy` og B47 `identityPolicy` har dupliserte role/scope-data
+  for å holde delsporene isolert
+- dette er akseptabelt i inert skeleton/testfase fordi ingen av katalogene er
+  runtime-koblet
+- dette er ikke trygt som uavklart runtime-sannhet
+- før runtime-auth/enforcement må eierskap, paritet eller samordning låses
+- B47-I dokumenterer beslutningen; B47-I implementerer ikke felles katalog og
+  implementerer ikke parity-test
+
+Kartlagt `accessPolicy`-katalog:
+
+- roller: `agila`, `txp`, `drops`, `verksted`, `sde_skiftere`,
+  `vaktplan_ledelse`, `admin_pilot`
+- katalogen dekker full Shared Workspace scope-katalog
+- den inkluderer `sde-night-placement-manual-overrides` og
+  `sde-vaktplan-coverage`
+- high-risk scopes er de samme fem B47-sperrede scopes:
+  `sde-shift-orders`, `sde-shift-completion-status`,
+  `txp-operational-blocks`, `drops-dispatch-decisions` og
+  `operational-authority-state`
+- role/scope-rettighetene er readback/audit
+- ingen rolle får operational authority
+- write- og production-pilot-rights finnes som policybegreper, men ikke som
+  aktiv role/scope allow
+- `agila` har kun `sporplan-readback`
+- `manual-assessments-notes` er kun gitt til `admin_pilot`
+- `admin_pilot` har bredest readback og alle shared scopes
+
+Kartlagt `identityPolicy`-katalog:
+
+- roller: `agila`, `txp`, `drops`, `verksted`, `sde_skiftere`,
+  `vaktplan_ledelse`, `admin_pilot`
+- high-risk scopes er de samme fem B47-sperrede scopes
+- katalogen er smalere enn `accessPolicy`
+- den mangler `sde-night-placement-manual-overrides` og
+  `sde-vaktplan-coverage`
+- allow er readback-only
+- write, production-pilot-write og operational authority er eksplisitt deny
+- `agila` har kun `sporplan-readback`
+- `manual-assessments-notes` er gitt til `admin_pilot`, `sde_skiftere` og
+  `vaktplan_ledelse`
+- `admin_pilot` er bred, men ikke like bred som i `accessPolicy` fordi to
+  shared scopes mangler
+
+Divergens som må avklares:
+
+| Punkt | Status |
+| --- | --- |
+| Roller | Like i `accessPolicy` og `identityPolicy`. |
+| High-risk scopes | Like i begge kataloger. |
+| Scopes bare i `accessPolicy` | `sde-night-placement-manual-overrides`, `sde-vaktplan-coverage`. |
+| Scopes bare i `identityPolicy` | Ingen. |
+| `manual-assessments-notes` | `accessPolicy` gir bare `admin_pilot`; `identityPolicy` gir også `sde_skiftere` og `vaktplan_ledelse`. |
+| Modul-readbacks | `accessPolicy` kan være bredere. |
+| Manual notes | `identityPolicy` kan være bredere. |
+| Risikonivå nå | YELLOW, ikke RED, fordi ingen katalog er runtime-koblet. |
+
+Risiko ved uavklart divergens:
+
+- `identityPolicy` kan si allow der `accessPolicy` ville sagt deny
+- `accessPolicy` kan si allow der `identityPolicy` ville sagt deny
+- samme rolle kan få ulike scopes i de to katalogene
+- high-risk scopes kan senere bli behandlet ulikt hvis bare én katalog
+  oppdateres
+- `manual-assessments-notes` kan få ulik tildeling
+- readback-only kan senere feiltolkes som write
+- `admin_pilot` kan få for bredt scope i én katalog
+- `agila` kan feilaktig få mer enn Sporplan hvis katalogene divergerer senere
+- oppdatering i én katalog uten den andre kan gi usynlig sikkerhetsdrift
+
+Vurderte eierskapsmodeller:
+
+| Modell | Fordeler | Ulemper/risiko |
+| --- | --- | --- |
+| `accessPolicy` som sannhetskilde | Nærmest endpoint/access-beslutninger; bredest katalog i dag. | Identity-fasen kan bli avhengig for tidlig; ukritisk import kan svekke isolasjon. |
+| `identityPolicy` som sannhetskilde | Passer identity-fasen og identity-testene. | Smalere katalog i dag; kan gjøre endpoint/access-policy sekundær; kan gi identity-allow som access-policy ikke støtter. |
+| Separat felles katalogmodul senere, for eksempel `server/src/accessCatalog.js` | Best langsiktig sannhetskilde; kan brukes av både identity og access-policy. | Krever egen implementeringsfase; må være inert/testet før runtime; må ikke kobles til runtime for tidlig. |
+| Fortsatt duplisering med parity-/sync-tester | Bevarer isolasjon; avdekker divergens tidlig. | Krever at tilsiktede forskjeller dokumenteres først; ikke nok som permanent runtime-sannhet uten eierskap. |
+| README/manual ownership only | Raskt og tydelig som beslutningsdokument. | Høy risiko for menneskelig drift; ikke nok før runtime-auth. |
+
+B47-I beslutning:
+
+- kort sikt: `README-only ownership decision record` låser at
+  katalogdivergens er YELLOW og ikke kan gå til runtime
+- neste trygge tekniske retning: isolert parity/sync planning før
+  implementation
+- langsiktig foretrukket retning: separat felles katalogmodul eller eksplisitt
+  paritetstest, men bare etter egen GO
+- runtime-auth/enforcement er blokkert til katalogeierskap/paritet er låst
+- ingen katalog skal være runtime-sannhetskilde ennå
+- `accessPolicy` og `identityPolicy` er fortsatt isolerte skeletons
+- divergens er ikke tillatt å ignorere før runtime
+- `manual-assessments-notes`-forskjellen må avklares eksplisitt før private
+  readback eller enforcement
+
+Foreløpig normativ cutline:
+
+- `agila` skal fortsatt bare ha `sporplan-readback`
+- high-risk scopes skal fortsatt deny
+- operational authority skal fortsatt deny
+- write og production-write skal fortsatt deny
+- actor/device er fortsatt ikke identity
+- frontend `data-levels` er fortsatt ikke security
+- readback gir ikke write
+- `manual-assessments-notes` skal ikke gå til runtime med uavklart
+  rolleforskjell
+- `sde-night-placement-manual-overrides` og `sde-vaktplan-coverage` må
+  avklares i identity-katalogen før runtime
+
+Startkriterier før senere catalog/parity implementation:
+
+- eksplisitt valgt eierskapsmodell
+- liste over tilsiktede forskjeller
+- liste over ikke-tilsiktet divergens
+- beslutning om `manual-assessments-notes`-tildeling
+- beslutning om manglende scopes i `identityPolicy`
+- testplan for paritet/sync
+- filscope
+- rollback/recovery
+- production GET-only postcheck
+- eksplisitt bruker-GO
+
+Abortkriterier for senere arbeid:
+
+- forslag om runtime-auth før katalogeierskap er låst
+- forslag om middleware før katalogparitet/eierskap
+- forslag om å ignorere `manual-assessments-notes`-divergens
+- forslag om å ignorere manglende scopes i `identityPolicy`
+- forslag om at `identityPolicy` og `accessPolicy` får ulik runtime-sannhet
+- forslag om write eller production-write
+- forslag om operational authority
+- forslag om `server/src/index.js`
+- forslag om DB/schema/migration
+- forslag om Cloudflare/CORS/transport
+- forslag om login/session/token/issuer
+- forslag om private readback activation
+
+Ikke-mål for B47-I:
+
+- ingen kodeendring
+- ingen testendring
+- ingen felles katalogmodul
+- ingen parity-test
+- ingen runtime-kobling
+- ingen middleware
+- ingen endpoint enforcement
+- ingen login/session/token/issuer
+- ingen `server/src/index.js`
+- ingen `index.html`
+- ingen POST/write
+- ingen flags
+- ingen restart
+- ingen DB-write
+- ingen migration/schema
+- ingen Cloudflare/CORS/transport
+- ingen production-write
+- ingen operational authority
+
+Anbefalt neste fase, ikke utført:
+
+`B47-J-PRE — read-only catalog parity/sync planning`
+
+B47-J-PRE må være read-only og avgjøre om neste tekniske steg er parity-test
+eller felles katalog-skeleton. Det skal ikke gi runtime-auth, middleware,
+`server/src/index.js`, write eller operational authority.
+
+Fremdrift etter B47-I:
+
+- B38-B45: GREEN / låst
+- B46 skeleton/testherding: GREEN / 100 % isolert
+- B47 identity/security design: ca. 68 %
+- SDE Shared Workspace totalt: ca. 94 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
