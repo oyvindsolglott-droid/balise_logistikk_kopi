@@ -25321,7 +25321,15 @@ const SDE_HOSTED_HTTPS_ORIGIN = "https://sde.oyvind-solglott.no";
 const SDE_SERVER_NOTE_MAX_LENGTH = 500;
 const SDE_SERVER_NOTE_READBACK_EVENT_LIMIT = 5;
 const SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT = 5;
+const SDE_OPERATIONAL_STATE_SNAPSHOT_TEST_EVENT_TYPE = "operational_state.snapshot.test";
+const SDE_OPERATIONAL_STATE_SNAPSHOT_PRODUCTION_PILOT_EVENT_TYPE = "operational_state.snapshot.production_pilot";
+const SDE_OPERATIONAL_STATE_SNAPSHOT_EVENT_TYPES = Object.freeze([
+  SDE_OPERATIONAL_STATE_SNAPSHOT_TEST_EVENT_TYPE,
+  SDE_OPERATIONAL_STATE_SNAPSHOT_PRODUCTION_PILOT_EVENT_TYPE
+]);
 const SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE = "sde-night-placement-manual-overrides";
+const SDE_MANUAL_ASSESSMENTS_NOTES_SCOPE = "manual-assessments-notes";
+const SDE_MANUAL_ASSESSMENTS_PRODUCTION_PILOT_WRITE_INTENT = "production_pilot_manual_assessment_note";
 const SDE_SHARED_WORKSPACE_SCOPE_CATALOG = Object.freeze([
   {scope:"sporplan-readback", module:"Sporplan", purpose:"felles sporplanvisning"},
   {scope:"input-sporplan-draft", module:"Input Sporplan", purpose:"delt kladd/readback for sporplan-input"},
@@ -25331,7 +25339,7 @@ const SDE_SHARED_WORKSPACE_SCOPE_CATALOG = Object.freeze([
   {scope:"sde-vaktplan-coverage", module:"SDE Vaktplan", purpose:"dekning og bemanningsreadback"},
   {scope:"drops-material-control", module:"DROPS", purpose:"materiellstyring som readback"},
   {scope:"workshop-material-status", module:"Verksted / materiellstatus", purpose:"verkstedstatus som readback"},
-  {scope:"manual-assessments-notes", module:"Manuelle vurderinger/notater", purpose:"ikke-operative vurderinger og notater"},
+  {scope:SDE_MANUAL_ASSESSMENTS_NOTES_SCOPE, module:"Manuelle vurderinger/notater", purpose:"ikke-operative vurderinger og notater"},
   {scope:"shared-workspace-audit-log", module:"Audit/readback/historikk", purpose:"eventlogg og historikk som audit"}
 ]);
 const SDE_SHARED_WORKSPACE_ACCESS_MATRIX = Object.freeze([
@@ -25788,15 +25796,24 @@ function stringifySdeNightPlacementOperationalStateValue(value){
   return JSON.stringify(canonicalizeSdeNightPlacementOperationalStateValue(value));
 }
 
-function getSdeNightPlacementOperationalStateSnapshotScope(snapshot){
+function getOperationalStateSnapshotScopes(snapshot){
   return Array.isArray(snapshot?.stateScope)
     ? snapshot.stateScope.map(scope => String(scope || "").trim()).filter(Boolean)
     : [];
 }
 
+function getSdeNightPlacementOperationalStateSnapshotScope(snapshot){
+  return getOperationalStateSnapshotScopes(snapshot);
+}
+
 function hasSdeNightPlacementOperationalStateScope(snapshot){
-  return getSdeNightPlacementOperationalStateSnapshotScope(snapshot)
+  return getOperationalStateSnapshotScopes(snapshot)
     .includes(SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE);
+}
+
+function hasManualAssessmentsOperationalStateScope(snapshot){
+  return getOperationalStateSnapshotScopes(snapshot)
+    .includes(SDE_MANUAL_ASSESSMENTS_NOTES_SCOPE);
 }
 
 function getOperationalStateReadbackSnapshotsForCompare(serverReadback){
@@ -26431,7 +26448,7 @@ function renderOperationalStateReadback(readbackBody, eventsBody, status, base){
     : [];
   const events = Array.isArray(eventsBody?.events) ? eventsBody.events : [];
   const operationalStateEvents = events
-    .filter(event => event?.type === "operational_state.snapshot.test")
+    .filter(isSharedWorkspaceOperationalStateEvent)
     .slice(-SDE_OPERATIONAL_STATE_READBACK_EVENT_LIMIT)
     .reverse();
   const revision = readbackBody?.revision ?? status?.revision ?? "?";
@@ -26543,9 +26560,13 @@ function renderSharedWorkspacePreviewMessage(stateText, tone, summaryText){
   }
 }
 
+function isSharedWorkspaceOperationalStateEvent(event){
+  return SDE_OPERATIONAL_STATE_SNAPSHOT_EVENT_TYPES.includes(event?.type);
+}
+
 function getSharedWorkspaceOperationalStateEvents(eventsBody){
   const events = Array.isArray(eventsBody?.events) ? eventsBody.events : [];
-  return events.filter(event => event?.type === "operational_state.snapshot.test");
+  return events.filter(isSharedWorkspaceOperationalStateEvent);
 }
 
 function getLatestSharedWorkspaceOperationalStateEvent(eventsBody){
@@ -26566,6 +26587,54 @@ function hasSharedWorkspaceNightPlacementPilotProof(readbackBody, eventsBody){
   const eventsHaveH1ePilot = getSharedWorkspaceOperationalStateEvents(eventsBody)
     .some(event => Number(event?.id) === 6 && Number(event?.revision) === 7);
   return readbackHasScope || eventsHaveH1ePilot;
+}
+
+function getSharedWorkspaceManualAssessmentsSnapshot(readbackBody){
+  return getOperationalStateReadbackSnapshotsForCompare(readbackBody)
+    .find(hasManualAssessmentsOperationalStateScope) || null;
+}
+
+function getSharedWorkspaceManualAssessmentsEvent(eventsBody){
+  return getSharedWorkspaceOperationalStateEvents(eventsBody)
+    .filter(event => String(event?.idempotencyKey || "").startsWith(`${SDE_MANUAL_ASSESSMENTS_NOTES_SCOPE}-`))
+    .reduce((latest, event) => {
+      if(!latest) return event;
+      const latestId = Number(latest.id);
+      const eventId = Number(event.id);
+      if(Number.isFinite(eventId) && (!Number.isFinite(latestId) || eventId > latestId)){
+        return event;
+      }
+      return latest;
+    }, null);
+}
+
+function getSharedWorkspaceManualAssessmentsNote(snapshot){
+  const note = snapshot?.stateSnapshot?.manualAssessmentNote;
+  return isServerNoteReadbackObject(note) ? note : null;
+}
+
+function getSharedWorkspaceManualAssessmentsPayloadText(snapshot){
+  const note = getSharedWorkspaceManualAssessmentsNote(snapshot);
+  const payload = isServerNoteReadbackObject(note?.payload) ? note.payload : {};
+  const text = typeof payload.text === "string" ? payload.text.trim() : "";
+  return text ? text.slice(0, 140) : "Ingen notattekst i readback.";
+}
+
+function getSharedWorkspaceManualAssessmentsProof(readbackBody, eventsBody){
+  const snapshot = getSharedWorkspaceManualAssessmentsSnapshot(readbackBody);
+  const event = getSharedWorkspaceManualAssessmentsEvent(eventsBody);
+  return {
+    snapshot,
+    event,
+    proven: Boolean(snapshot || event)
+  };
+}
+
+function formatSharedWorkspaceActorDevice(snapshot){
+  const actorId = snapshot?.actor?.id || "ukjent actor";
+  const actorRole = snapshot?.actor?.role ? `/${snapshot.actor.role}` : "";
+  const deviceId = snapshot?.device?.id || "ukjent device";
+  return `actor ${actorId}${actorRole}, device ${deviceId}`;
 }
 
 function getSharedWorkspaceStatusFlags(status, readbackBody){
@@ -26600,10 +26669,60 @@ function getSharedWorkspaceScopeStatuses(scopeEntry, readbackBody, eventsBody){
     && hasSharedWorkspaceNightPlacementPilotProof(readbackBody, eventsBody)){
     return ["pilot-proven", ...statuses];
   }
+  if(scopeEntry.scope === SDE_MANUAL_ASSESSMENTS_NOTES_SCOPE
+    && getSharedWorkspaceManualAssessmentsProof(readbackBody, eventsBody).proven){
+    return ["production-pilot proven", "readback/audit-only", ...statuses];
+  }
   return statuses;
 }
 
+function createSharedWorkspaceManualAssessmentsScopeCatalogItem(scopeEntry, readbackBody, eventsBody){
+  const proof = getSharedWorkspaceManualAssessmentsProof(readbackBody, eventsBody);
+  const statuses = getSharedWorkspaceScopeStatuses(scopeEntry, readbackBody, eventsBody);
+
+  if(!proof.proven){
+    return createServerNoteReadbackItem(
+      scopeEntry.scope,
+      [scopeEntry.module, scopeEntry.purpose || "readback", ...statuses],
+      "Scope er katalogisert for read-only manual assessments readback. Not writable. Krever senere GO for nye writes. Ikke ordre, ikke Utført/Annullert og ikke operativ sannhet."
+    );
+  }
+
+  const snapshot = proof.snapshot || {};
+  const note = getSharedWorkspaceManualAssessmentsNote(snapshot);
+  const event = proof.event || {};
+  const eventType = event.type || SDE_OPERATIONAL_STATE_SNAPSHOT_PRODUCTION_PILOT_EVENT_TYPE;
+  const writeIntent = note?.writeIntent || SDE_MANUAL_ASSESSMENTS_PRODUCTION_PILOT_WRITE_INTENT;
+  const serviceDate = snapshot.serviceDate || event.serviceDate || "?";
+  const revision = event.revision ?? snapshot.revision ?? "?";
+  const meta = [
+    scopeEntry.module,
+    scopeEntry.purpose || "readback",
+    ...statuses,
+    `event ${event.id ?? "?"}`,
+    `rev ${revision}`,
+    `serviceDate ${serviceDate}`,
+    writeIntent,
+    eventType
+  ];
+  const noteText = `Production-pilot readback er audit-only. Ikke ordre. Ikke Utført/Annullert. Ikke SDE-motor-source. Ikke operativ sannhet. Not writable. Krever senere eksplisitt GO for nye writes. Payloadtekst: ${getSharedWorkspaceManualAssessmentsPayloadText(snapshot)}`;
+  const item = createServerNoteReadbackItem(scopeEntry.scope, meta, noteText);
+  const details = document.createElement("details");
+  const summary = document.createElement("summary");
+  summary.textContent = "Vis auditdetaljer";
+  const detail = document.createElement("div");
+  detail.className = "server-note-readback-note";
+  detail.textContent = `Read-only auditlinje: event ${event.id ?? "?"}, revision ${revision}, serviceDate ${serviceDate}, writeIntent ${writeIntent}, ${formatSharedWorkspaceActorDevice(snapshot)}, eventtype ${eventType}. Detaljer er audit/readback og brukes ikke som ordre, Utført/Annullert, SDE-motor-source eller operativ sannhet.`;
+  details.append(summary, detail);
+  item.appendChild(details);
+  return item;
+}
+
 function createSharedWorkspaceScopeCatalogItem(scopeEntry, readbackBody, eventsBody){
+  if(scopeEntry.scope === SDE_MANUAL_ASSESSMENTS_NOTES_SCOPE){
+    return createSharedWorkspaceManualAssessmentsScopeCatalogItem(scopeEntry, readbackBody, eventsBody);
+  }
+
   const statuses = getSharedWorkspaceScopeStatuses(scopeEntry, readbackBody, eventsBody);
   const note = statuses.includes("pilot-proven")
     ? "H1E event id 6/revision 7 beviser én kontrollert nattplassering-snapshot for dette scope. Det er pilot-audit/readback, ikke generell sync, ikke write-rettighet og ikke operativ sannhet."
