@@ -5984,6 +5984,203 @@ B47-C konklusjon:
 - B47-C er ikke GO for operational authority
 - neste fase krever egen eksplisitt GO
 
+## B47-E — Local/LAN implementation readiness gate
+
+Status: README-only implementation readiness gate. B47-E dokumenterer hva som
+må være sant før en senere Local/LAN identity implementation kan vurderes.
+Dette er ikke implementation, ikke runtime-auth, ikke middleware, ikke
+login/session/token/issuer-kode, ikke endpoint enforcement, ikke private
+readback, ikke write, ikke production-write og ikke operational authority.
+
+Formål:
+
+- låse readiness gate etter B47-D GREEN
+- dokumentere at B47-E bare er README-only
+- dokumentere at B47-E ikke gir runtime-auth
+- dokumentere at B47-E ikke gir middleware
+- dokumentere at B47-E ikke gir login/session/token/issuer-kode
+- dokumentere at B47-E ikke gir endpoint enforcement
+- dokumentere at B47-E ikke gir private readback
+- dokumentere at B47-E ikke gir write, production-write eller operational
+  authority
+- dokumentere at B47-E ikke er GO for B47 implementation
+
+Låst status fra B47-D:
+
+- Local/LAN er design record og pilotmodell
+- Local/LAN er ikke runtime-auth
+- Local/LAN er ikke middleware
+- Local/LAN er ikke endpoint enforcement
+- Local/LAN er ikke Cloudflare/ekstern sikkerhet
+- Local/LAN er ikke write
+- Local/LAN er ikke operational authority
+- LAN alene er ikke identity
+- klientfelt eller header er ikke trusted identity uten server-side trust
+  boundary
+- actor/device er ikke authenticated identity
+- UI, `data-levels` og skjulte knapper er ikke security
+- CORS er ikke auth
+- direkte API-kall er hovedtrussel
+
+Readiness gate før senere implementation:
+
+1. Trust boundary
+
+- faktisk kilde til authenticated identity må være valgt
+- det må dokumenteres hvorfor serveren kan stole på identity-kilden
+- spoofing må være blokkert eller eksplisitt håndtert
+- direkte API-bypass må være modellert og testet
+- LAN alene kan ikke være trust boundary
+
+2. Identity source
+
+- identity må være lokal/pilot-only eller ha tydeligere senere trustmodell
+- identity må settes server-side, ikke av frontend alene
+- actor/device må fortsatt ikke brukes som identity
+- frontend `data-levels` må fortsatt ikke brukes som identity
+- manglende eller ukjent identity skal gi deny på restricted endpoints
+
+3. Role/scope mapping
+
+- authenticated identity må mappes til rolle server-side
+- rolle må mappes til scope server-side
+- mapping må kunne bruke B46 access-policy skeleton uten runtime-drift
+- ukjent rolle skal være default-deny
+- ukjent scope skal være default-deny
+- operational authority skal fortsatt være utenfor
+
+4. Endpoint-scope
+
+- første implementation må angi nøyaktig hvilke endpoints som inngår
+- endpoints utenfor scope må være eksplisitt listet
+- public/status endpoints kan forbli public hvis de ikke lekker private data
+- private/scope-restricted readback skal ikke åpnes uten enforcement
+- write/test/production-pilot endpoints er utenfor
+- operational-authority endpoints er helt utenfor
+
+5. Direkte API-testplan
+
+- direkte kall uten UI må testes
+- manglende identity må gi restricted denied
+- spoofet actor/device må gi denied
+- spoofet frontend `data-level` må gi denied
+- spoofet client header må gi denied hvis ingen trust boundary finnes
+- ukjent rolle må gi denied
+- rolle uten scope må gi denied
+- rolle med scope må kunne gi eksplisitt readback allow
+- public health/status må forbli public
+- restricted readback må kreve identity/scope når enforcement finnes
+- write må fortsatt være denied
+- operational authority må fortsatt være denied
+
+6. Rollout/rollback
+
+- ingen production restart uten egen GO
+- ingen middleware på production endpoints uten egen GO
+- ingen DB/schema/migration i første implementation
+- revert av commit skal være nok hvis koden er isolert
+- production GET-only postcheck må være definert
+- implementation skal abortere ved uventet revision-, event- eller flaggendring
+
+7. Operational cutline
+
+- no production-write
+- no operational authority
+- no løpende write/sync
+- no skifteordre/completion/dispatch decisions
+- no SDE-operativ beslutningslogikk
+
+Mulig senere implementation-scope, bare forslag:
+
+- mulig `B47-F-PRE — read-only implementation preflight`
+- mulig `B47-F — isolated Local/LAN identity skeleton, no runtime enforcement`
+- eventuell senere fase må ha egen eksplisitt GO
+- mulig isolert identity resolver-modul uten runtime-kobling
+- mulig testbar identity object / role mapping
+- ingen middleware
+- ingen `server/src/index.js`
+- ingen login/session/token/issuer
+- ingen DB/schema
+- ingen write
+- ingen restart
+
+Filer som senere implementation eventuelt kan få vurdere:
+
+- mulig ny `server/src/identityPolicy.js` eller tilsvarende isolert modul
+- mulig ny `server/scripts/test-identity-policy.js`
+- `server/README.md`
+- `server/src/accessPolicy.js` bare hvis eksplisitt nødvendig og med egen GO
+- `server/src/index.js` fortsatt NO-GO før særskilt middleware/enforcement-fase
+- `index.html` NO-GO
+- DB/schema/data NO-GO
+- packagefiler NO-GO med mindre egen GO
+- Cloudflare/CORS/transport NO-GO
+
+Abortkriterier for senere implementation:
+
+- Local/LAN fremstilles som ekstern sikkerhet
+- LAN alene brukes som identity
+- klientfelt/header stoles på uten server-side trust boundary
+- actor/device brukes som identity
+- frontend `data-levels` brukes som security
+- CORS brukes som auth
+- direkte API-kall ikke testes
+- reverse proxy headers foreslås uten bypass-stenging
+- private data åpnes
+- write/production-write blandes inn
+- operational authority blandes inn
+- middleware/runtime-kobling foreslås uten egen GO
+- `server/src/index.js` røres uten egen GO
+- DB/schema/migration/restart/flags foreslås
+- Cloudflare/CORS/transportendring foreslås
+- scope-drift til SDE-operativ beslutningslogikk
+
+Testkrav før senere implementation:
+
+- no identity => restricted denied
+- invalid identity => restricted denied
+- spoofed actor/device => denied
+- spoofed client-level/data-level => denied
+- spoofed client header => denied hvis ingen trust boundary
+- direct API call without UI => denied for restricted
+- public health/status remains public
+- readback requires real identity/scope once enforcement exists
+- write remains denied
+- production-pilot-write remains denied unless separate GO
+- operational authority remains denied
+- reverse proxy bypass case documented
+- production revision/events unchanged
+
+Ikke-mål for B47-E:
+
+- ingen kodeendring
+- ingen testendring
+- ingen runtime-kobling
+- ingen middleware
+- ingen login/session/token/issuer-kode
+- ingen endpoint enforcement
+- ingen CORS/Cloudflare/transport-endring
+- ingen `server/src/index.js`
+- ingen `index.html`
+- ingen POST/write
+- ingen flags
+- ingen restart
+- ingen DB-write
+- ingen migration/schema
+- ingen production-write
+- ingen operational authority
+
+B47-E konklusjon:
+
+- B47-E låser implementation readiness gate
+- B47-E er ikke auth i drift
+- B47-E er ikke GO for middleware
+- B47-E er ikke GO for login/session/token/issuer
+- B47-E er ikke GO for runtime-kobling
+- B47-E er ikke GO for write
+- B47-E er ikke GO for operational authority
+- neste fase krever egen eksplisitt GO
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
