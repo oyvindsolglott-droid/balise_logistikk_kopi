@@ -9227,6 +9227,196 @@ Fremdrift etter B48-H-DOC:
 - SDE Shared Workspace totalt: ca. 96 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B48-I-DOC — Express-flow harness result / limitation decision record
+
+Status: README-only Express-flow harness result / limitation decision record.
+B48-I er GREEN som isolert Express-flow auth harness testscript. Dette er
+testscript-only og skal ikke omtales som production runtime-auth.
+
+Beslutning:
+
+- B48-I er et isolert Express-flow harness-bevis
+- B48-I er ikke production runtime-auth
+- B48-I er ikke production middleware
+- B48-I er ikke endpoint enforcement i production
+- B48-I aktiverer ikke private readback
+- B48-I åpner ikke write
+- B48-I åpner ikke operational authority
+- operational authority/write er fortsatt `0 %`
+
+Endret artefakt:
+
+- ny fil: `server/scripts/test-auth-express-flow-harness.js`
+- scriptet er isolert
+- scriptet importerer ikke `server/src/index.js`
+- scriptet endrer ikke `server/src/authPolicy.js`
+- scriptet bruker ikke `app.listen`
+- scriptet bruker ikke port
+- scriptet bruker ikke port `8787`
+- scriptet bruker ikke Node `http` eller `https`
+- scriptet bruker ikke `fetch`
+- scriptet bruker ikke DB
+- scriptet bruker ikke production runtime
+- scriptet krever ingen packageendring
+- scriptet leser ikke runtime env-flagg for aktivering
+- scriptet skriver ikke audit til DB
+- scriptet åpner ikke private readback
+
+Hva B48-I beviser isolert:
+
+- Express-lignende default-deny flow
+- deny skjer før handler-effekt
+- handler-effect counter forblir `0` ved deny
+- public safe GET allow uten identity
+- unknown endpoint fail-closed
+- unknown method fail-closed
+- malformed request fail-closed
+- review-needed endpoints blir ikke automatisk private allow
+- private candidates deny uten trusted identity
+- spoofed headers deny som identity
+- actor deny som identity
+- device deny som identity
+- clientContext deny som identity
+- Local/LAN deny som identity
+- wrong role deny
+- wrong scope deny
+- trusted server-side mocked identity kan gi read-only allow bare isolert
+- write/private blocked deny
+- production-write deny
+- operational authority deny
+- migration/schema deny
+- ingen DB-effekt i harness
+- ingen event-effekt i harness
+- ingen revision-effekt i harness
+
+Hva B48-I ikke beviser:
+
+- ikke production runtime-auth
+- ikke middleware i production
+- ikke endpoint enforcement i production
+- ikke private readback activation
+- ikke login/session/token/issuer
+- ikke cookies/JWT/API keys
+- ikke packageendring
+- ikke DB/schema
+- ikke DB-audit
+- ikke Cloudflare/CORS/transport security
+- ikke write
+- ikke production-write
+- ikke operational authority
+- ikke at production endpoints håndhever `authPolicy`
+- ikke at review-needed endpoints er ferdig sensitivitetssplittet
+
+Runtime boundary etter B48-I:
+
+- `server/src/index.js` er fortsatt urørt av B48-I
+- `server/src/index.js` importerer fortsatt ikke `authPolicy`
+- ingen production middleware finnes
+- ingen endpoint enforcement finnes i production
+- production runtime er fortsatt read-only
+- production revision er fortsatt `8`
+- production events er fortsatt id `5`, `6` og `7`
+- event id `7` er fortsatt `operational_state.snapshot.production_pilot`
+- scope/readback er fortsatt `manual-assessments-notes`
+- alle write/operational/production/migration-flagg er fortsatt av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+- ingen nye production events fra B48-I
+
+Identity boundary etter B48-I:
+
+- trusted identity i B48-I er kun mocket server-side testcontext
+- headers er fortsatt ikke trusted identity
+- actor, device og clientContext er fortsatt audit-/payloadmetadata, ikke
+  access-control identity
+- Local/LAN er fortsatt ikke identity
+- B48-I velger ikke identity-source
+- B48-I implementerer ikke login/session/token/issuer
+- B48-I beviser ikke at production kan stole på noen identitetskilde
+
+Express-flow boundary etter B48-I:
+
+- Express-flow harness er testscript, ikke production Express-middleware
+- harness skal ikke importeres av `server/src/index.js`
+- harness skal ikke brukes til å åpne private readback
+- harness skal ikke brukes som grunnlag for write eller operational authority
+- videre teknisk kobling krever egen senere preflight og eksplisitt GO
+- neste tekniske fase må fortsatt være isolert/read-only før production import
+  vurderes
+
+Hvorfor dette er nyttig:
+
+- B48-I gir sterkere bevis enn B48-G fordi det tester Express-lignende flow
+- B48-I reduserer risiko for fail-open før eventuell runtimefase
+- B48-I viser at deny kan stoppe før handler-effekt
+- B48-I gjør dette uten production-risk
+- B48-I gir fortsatt ikke runtimebeskyttelse
+
+Gjenstående risikoer:
+
+- ingen production middleware finnes
+- ingen endpoint enforcement finnes
+- ingen identity-source er valgt
+- review-needed endpoints er ikke sensitivitetssplittet ferdig
+- private readback er ikke aktivert
+- runtime-import er fortsatt ikke godkjent
+- testscriptbevis kan ikke erstatte production runtime-test senere
+- Cloudflare/CORS/transport er fortsatt uavklart
+- write/operational authority er fortsatt ikke åpnet og skal ikke åpnes i B48
+
+Hva B48-I-DOC låser:
+
+- README-only Express-flow harness result / limitation decision record
+- B48-I er låst som isolert Express-flow harness-bevis
+- B48-I skal ikke omtales som runtime-auth
+- runtime-import er fortsatt ikke godkjent
+- production middleware er fortsatt ikke godkjent
+- endpoint enforcement er fortsatt ikke godkjent
+- private readback er fortsatt ikke aktivert
+- operational authority/write fortsatt `0 %`
+
+Hva B48-I-DOC ikke beviser:
+
+- runtime-auth
+- production middleware
+- endpoint enforcement
+- private readback
+- identity-source
+- session/token/issuer
+- packageendring
+- DB/schema
+- Cloudflare/CORS/transport
+- write
+- operational authority
+- production Express-flow enforcement
+
+Anbefalt neste trygge steg:
+
+`B48-J-PRE — read-only runtime-auth phase closure / remaining-gap review`
+
+Ikke runtime-import direkte. Ikke production middleware. Ikke private readback.
+Ikke operational authority. Ikke write.
+
+Production lock ved B48-I-DOC:
+
+- production revision forblir `8`
+- operational-state events forblir id `5`, `6` og `7`
+- event id `7` forblir `operational_state.snapshot.production_pilot`
+- scope/readback forblir `manual-assessments-notes`
+- alle write/operational/production/migration-flagg forblir av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Fremdrift etter B48-I-DOC:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- B48 runtime-auth design: ca. 99 %
+- SDE Shared Workspace totalt: ca. 96 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
