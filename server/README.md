@@ -4919,6 +4919,148 @@ B45-F konklusjon:
 - etter B45-F kan bruker vurdere egen eksplisitt GO for en smal B46-A
 - operational authority / løpende write forblir `0 %`, ikke åpnet
 
+## B45-G — B45 closeout og B46-A beslutningspakke
+
+Status: README-only closeout and decision packet. B45-G implements no auth,
+role filtering, token/session/login, server middleware, UI filtering, write,
+operational authority or runtime change.
+
+Formål:
+
+- lukke B45 auth/access design som dokumentert designfase hvis repo,
+  runtime, production og scope fortsatt er grønne
+- samle hva B45 faktisk har levert
+- gjøre første mulige B46-A-beslutning smal og eksplisitt
+- hindre at B45-G tolkes som GO for B46-implementering
+
+Hva B45 har levert:
+
+| Fase | Leveranse | Status |
+| --- | --- | --- |
+| B45-PRE | Read-only review/design for faktisk auth og rollefilter | GREEN |
+| B45-A | README-only auth/access-control contract | GREEN |
+| B45-B | Read-only review mot serverkode og index/UI | GREEN |
+| B45-C | Threat model / security boundary review | GREEN |
+| B45-D | README-only threat model documentation | GREEN |
+| B45-E | README-only B46 readiness gate | GREEN |
+| B45-F | README-only B46 scope proposal / implementation cutline | GREEN |
+| B45-G | B45 closeout og B46-A beslutningspakke | Denne seksjonen |
+
+B45 låst konklusjon:
+
+- frontend-synlighet, `data-levels` og UI-filter er ikke sikkerhet
+- faktisk auth, rollefilter, token/session/login, trusted issuer og
+  server-side scope enforcement er ikke implementert
+- actor/device er fortsatt audit-/klientmetadata, ikke authenticated identity
+- default-deny og server-side authorization må designes før privat Shared
+  Workspace-tilgang
+- read-only, draft, test-write, production-pilot-write, admin og
+  operational-authority er separate capability-nivåer
+- `manual-assessments-notes` er readback/audit-only, ikke instruks, ikke
+  Utført/Annullert, ikke SDE-motor-source og ikke operativ sannhet
+- operational authority / løpende write forblir `0 %`, ikke åpnet
+
+Anbefalt B46-A første steg:
+
+`B46-A — minimal auth/access-policy skeleton, server-side only, no production-write`
+
+Mulig minimumsscope for B46-A:
+
+- legge til server-side access-policy skeleton uten å koble den aktivt på
+  production-endepunkter som standard
+- modellere default-deny access-decision helper
+- modellere roller/funksjoner, moduler, scopes, serviceDate og
+  capability-nivåer
+- modellere endpoint-kategorier som public-static, public-read,
+  shared-readback, test-write, production-pilot-write, admin og
+  operational-authority
+- holde `manual-assessments-notes` readback/audit-only med mindre senere fase
+  eksplisitt gir mer
+- bevare regelen: samme modul + samme serviceDate + samme scope = samme
+  readback for nivåer som faktisk har modulen
+- bevare regelen: samme readback betyr ikke samme skriverettighet, operativ
+  sannhet eller operational authority
+- teste allow/deny-beslutninger og farlig capability-eskalering
+- dokumentere at skeleton ikke er auth, login, session eller production
+  endpoint enforcement uten senere eksplisitt GO
+
+Mulig filscope for B46-A:
+
+- mulig ny server-side policy/helper-fil under `server/src/`
+- mulig ny fokusert testfil under `server/scripts/`
+- `server/README.md` for kontrakt og resultatdokumentasjon
+- ikke `index.html` uten senere UI-spesifikk GO
+- ikke DB, data, schema, migration, package, Cloudflare, CORS, tunnel,
+  token/session/login eller transport uten separat GO
+
+B46-A GO-kriterier før implementering:
+
+- repo er rent og på eksplisitt godkjent baseline
+- production er fortsatt read-only med forventet revision/events, eller med
+  ny låst forklaring
+- alle write/operational/production/migration-flagg er av
+- `serverStateAuthority:false` og `operationalAuthority:false`
+- scope er begrenset til inert server-side access-policy skeleton og tester
+- default-deny er første atferd
+- ingen production endpoint middleware aktiveres som standard
+- ingen write path, POST execution, production-write, operational-authority,
+  login/session/token, Cloudflare eller transportendring kreves
+
+B46-A HOLD/NO-GO-kriterier:
+
+- behov for production runtime-endring, flags, restart, POST, DB-write,
+  migration eller Cloudflare
+- forslag om å bruke frontend `data-levels` som sikkerhet
+- forslag om å bruke actor/device som authenticated identity
+- uklar issuer/session/token-modell
+- behov for å koble policy enforcement aktivt på live production-endepunkter
+  før skeleton er testet
+- scope-drift til operational authority, løpende write/sync, skifteordre,
+  Utført/Annullert, TXP operational block, DROPS dispatch eller verksted
+  binding/frigjøring
+- behov for å eksponere private readback-data over static/GitHub Pages uten
+  server-side auth
+
+B46-A testkrav hvis senere godkjent:
+
+- static parse/checks for ny kode
+- policy-decision tester for default-deny, explicit allow, feil rolle, feil
+  scope, feil modul, feil serviceDate og capability-eskalering
+- tester som beviser at readback access ikke innebærer write,
+  production-pilot-write, admin eller operational-authority
+- tester som beviser at `manual-assessments-notes` er readback/audit-only
+  som standard
+- tester som beviser at live production endpoint-atferd ikke endres uten
+  separat GO
+
+B46-A rollback/recovery:
+
+- fordi B46-A bør være inert skeleton, skal normal rollback være kode-revert
+  før noe production enforcement kobles på
+- DB-restore skal ikke være relevant fordi B46-A ikke skal skrive DB eller
+  endre schema
+- hvis runtime/write/auth-sideeffekt oppstår, stopp og HOLD før commit/push
+
+Ikke-mål for B45-G:
+
+- ingen B46-implementering
+- ingen auth, rollefilter, token/session/login, trusted issuer, middleware,
+  UI-filter eller server endpoint enforcement
+- ingen `index.html`, serverkode, testscript, data/package/.github, schema,
+  migration, Cloudflare, POST, flags, restart, DB-write, production-write,
+  operational authority eller løpende write/sync
+
+B45-G endelig konklusjon:
+
+- hvis repo-, production- og dokumentasjonskontroller forblir grønne, kan B45
+  auth/access design låses som GREEN / 100 %
+- B45-G er ikke GO for B46
+- neste steg etter B45-G er separat brukerbeslutning: GO/HOLD/NO-GO for
+  B46-A
+- SDE Shared Workspace totalt skal ikke blåses opp av denne
+  dokumentasjons-closeouten
+- operational authority / write forblir `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
