@@ -9038,6 +9038,195 @@ Fremdrift etter B48-G-DOC:
 - SDE Shared Workspace totalt: ca. 96 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B48-H-DOC — Runtime-import readiness gap decision record
+
+Status: README-only runtime-import readiness gap decision record.
+B48-H-DOC dokumenterer B48-H-PRE-resultatet og låser at runtime-import
+av `authPolicy` i `server/src/index.js` fortsatt er NO-GO. Import alene
+beskytter ingenting, middleware/enforcement finnes ikke, identity-source er
+ikke valgt, review-needed endpoints er ikke sensitivitetssplittet, og B48-G
+beviser bare isolert harness-atferd.
+
+Beslutning:
+
+- B48-H-PRE er GREEN som read-only runtime-import readiness gap review
+- runtime-import av `authPolicy` i `server/src/index.js` er fortsatt NO-GO
+- middleware er fortsatt NO-GO
+- endpoint enforcement er fortsatt NO-GO
+- private readback activation er fortsatt NO-GO
+- operational authority/write er fortsatt `0 %`
+- neste trygge retning er dokumentert gaplukking og eventuelt senere isolert
+  Express-flow preflight, ikke production runtime-import
+
+Nåværende runtime-status:
+
+- `server/src/index.js` importerer fortsatt ikke `authPolicy`
+- `server/src/index.js` importerer fortsatt ikke `accessPolicy` eller
+  `identityPolicy`
+- ingen auth-middleware finnes i runtime
+- ingen endpoint enforcement finnes i runtime
+- private readback er ikke aktivert
+- ingen runtime identity-source finnes
+- ingen session/token/issuer/login-modell finnes
+- headers, actor, device, clientContext og Local/LAN er fortsatt ikke trusted
+  identity
+- `server/package.json` har fortsatt kun `express`
+
+Hvorfor runtime-import fortsatt er NO-GO:
+
+- import alene beskytter ingenting
+- import uten håndheving kan gi falsk trygghet
+- import uten identity-source kan ikke gi trusted private readback
+- import uten endpointklassekart i runtime kan gi feil allow/deny
+- import uten Express-flow fail-closed test kan gi fail-open-risiko
+- import uten no-DB-write/no-event/no-revision-change assertions kan risikere
+  utilsiktet mutasjon
+- import må ikke blandes med private readback, write eller operational
+  authority
+
+Middleware-readiness gap:
+
+Dette mangler fortsatt før middleware kan vurderes:
+
+- faktisk Express-flow fail-closed test
+- testserver/harness som ikke bruker production runtime
+- identity-source eller eksplisitt mocket trusted identity i runtime-lignende
+  flow
+- endpointklassekart i runtime-test
+- fail-closed modell ved policyfeil
+- audit decision uten DB-write
+- bevis for deny før handler-effekt i Express-lignende flow
+- bevis for at public safe GET ikke blir allow-all GET
+- bevis for at private/write handler ikke nås ved deny
+
+Endpoint enforcement gap:
+
+- public/review/private/write-skillet er ikke ferdig runtimeklart
+- review-needed endpoints er ikke sensitivitetssplittet
+- følgende endpoints må fortsatt vurderes/splittes før enforcement:
+  - `GET /api/state`
+  - `GET /api/events`
+  - `GET /api/operational-state`
+  - `GET /api/operational-state/events`
+  - `GET /api/stream`
+  - `GET /`
+  - `GET /app`
+  - `GET /data/:filename`
+  - `GET /assets/:filename`
+- private readback kan ikke skilles trygt før sensitivitet og
+  public/review/private-matrise er låst
+
+Identity-source gap:
+
+- ingen identity-source er valgt
+- server-issued session er ikke valgt
+- proxy/Cloudflare/ekstern issuer er ikke valgt
+- headers er ikke trusted
+- actor/device/clientContext er ikke identity
+- Local/LAN er ikke identity
+- private readback krever senere eksplisitt server-side authenticated identity
+- identity-source må ha egen senere preflight/design før runtime-auth
+
+Harness-to-runtime gap:
+
+- B48-G beviser isolert default-deny før handler-effekt
+- B48-G beviser ikke production Express-flow
+- B48-G beviser ikke middleware
+- B48-G beviser ikke endpoint enforcement
+- B48-G beviser ikke private readback
+- neste tekniske bevis bør eventuelt være isolert Express-flow harness, ikke
+  production import
+- isolert Express-flow harness må fortsatt ikke importere `server/src/index.js`
+
+DB/state/audit gap:
+
+- B48-G bruker ikke DB, og det er riktig for safety
+- runtimefasen må senere bevise no-DB-write/no-event/no-revision-change
+- audit decision kan bygges uten DB-write
+- audit DB-write er fortsatt NO-GO uten egen senere fase
+- temp DB kan bare vurderes med egen GO og eksplisitt temp-path utenfor
+  production DB
+- production DB skal ikke brukes i auth runtime-testfaser
+
+Transport/proxy gap:
+
+- Cloudflare/CORS/transport er fortsatt uavklart
+- ekstern tilgang krever egen preflight
+- proxy/issuer/header trust-boundary er ikke dokumentert som trusted
+- headers kan ikke bli trusted identity uten dokumentert proxy/issuer-boundary
+- Local/LAN alene gir fortsatt ikke identity
+
+Minimumskrav før runtime-import senere kan vurderes:
+
+- identity-source valgt eller eksplisitt test-mocked i runtime-lignende flow
+- endpointklassekart låst for runtime
+- review-needed endpoints sensitivitetssplittet eller eksplisitt holdt
+  public/review
+- default-deny fail-closed Express-flow test finnes
+- deny før handler-effekt bevist i runtime-lignende flow
+- public safe GET allow uten allow-all GET
+- private readback deny uten trusted identity
+- wrong role/scope deny
+- spoofed headers deny
+- actor/device/clientContext deny as identity
+- Local/LAN deny as identity
+- write/production-write/operational authority deny
+- no-DB-write/no-event/no-revision-change assertions
+- production GET-only før/etter
+- ingen production port/DB/restart/flags
+- egen eksplisitt GO
+
+Hva B48-H-DOC låser:
+
+- README-only runtime-import readiness gap decision record
+- runtime-import er fortsatt ikke godkjent
+- middleware er fortsatt ikke godkjent
+- endpoint enforcement er fortsatt ikke godkjent
+- private readback er fortsatt ikke aktivert
+- B48-G er fortsatt bare isolert harness-bevis
+- operational authority/write fortsatt `0 %`
+
+Hva B48-H-DOC ikke beviser:
+
+- runtime-auth
+- middleware
+- endpoint enforcement
+- private readback
+- identity-source
+- session/token/issuer
+- packageendring
+- DB/schema
+- Cloudflare/CORS/transport
+- write
+- operational authority
+- production Express-flow enforcement
+
+Anbefalt neste trygge steg:
+
+`B48-I-PRE — read-only isolated Express-flow harness preflight`
+
+Ikke runtime-import direkte. Ikke production middleware. Ikke private readback.
+Ikke operational authority. Ikke write.
+
+Production lock ved B48-H-DOC:
+
+- production revision forblir `8`
+- operational-state events forblir id `5`, `6` og `7`
+- event id `7` forblir `operational_state.snapshot.production_pilot`
+- scope/readback forblir `manual-assessments-notes`
+- alle write/operational/production/migration-flagg forblir av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Fremdrift etter B48-H-DOC:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- B48 runtime-auth design: ca. 96 %
+- SDE Shared Workspace totalt: ca. 96 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
