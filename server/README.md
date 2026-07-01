@@ -8431,6 +8431,229 @@ Fremdrift etter B48-D-DOC:
 - SDE Shared Workspace totalt: ca. 95 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B48-E-DOC — Default-deny middleware/runtime test-model decision record
+
+Status: README-only default-deny middleware/runtime test-model decision
+record. B48-E-DOC dokumenterer B48-E-PRE-resultatet og låser hvilken
+testmodell som må finnes før noen senere fase kan vurdere runtime-import,
+middleware, endpoint enforcement eller private readback.
+
+Beslutning:
+
+- B48-E-PRE er GREEN som read-only default-deny middleware/runtime
+  test-model preflight
+- det finnes fortsatt ingen runtime-import av `authPolicy`
+- det finnes fortsatt ingen auth-middleware
+- det finnes fortsatt ingen endpoint enforcement
+- private readback er fortsatt ikke aktivert
+- runtime-import, middleware og private readback er fortsatt NO-GO
+- operational authority/write er fortsatt `0 %`
+
+Nåværende safe state:
+
+- `authPolicy` er skeleton/testet isolert beslutningslogikk
+- `server/scripts/test-auth-policy.js` tester skeleton, ikke runtime
+- `server/src/index.js` bruker ikke `authPolicy`
+- no-auth/private-readback-disabled er safe default
+- eksisterende write/action endpoints er fortsatt bare eksisterende
+  flagg-/guard-gated endpoints
+- ingen authvariant åpner write, production-write eller operational authority
+
+Public/safe GET testmodell:
+
+En senere runtime-testmodell må bevise:
+
+- `GET /api/health` er tillatt uten identity
+- `GET /api/server/status` er tillatt uten identity, men bare med safe
+  statusfelt
+- `GET /api/state/revision` er tillatt uten identity
+- public allow blir ikke "allow all GET"
+- public endpoints lekker ikke private readback
+- public endpoints gir ikke `serverStateAuthority:true`
+- public endpoints gir ikke `operationalAuthority:true`
+
+Review-needed GET testmodell:
+
+Følgende endpoints må klassifiseres/splittes før private readback:
+
+- `GET /api/state`
+- `GET /api/events`
+- `GET /api/operational-state`
+- `GET /api/operational-state/events`
+- `GET /api/stream`
+- `GET /`
+- `GET /app`
+- `GET /data/:filename`
+- `GET /assets/:filename`
+
+Review-needed endpoints:
+
+- skal ikke automatisk åpnes som private
+- skal ikke automatisk stenges uten separat beslutning
+- må vurderes for sensitive operational facts
+- kan trenge safe/public vs private/scope-restricted split senere
+- kan ikke brukes til å omgå private readback
+
+Private readback candidate testmodell:
+
+Senere runtime-test må bevise:
+
+- missing identity deny
+- untrusted identity deny
+- spoofed headers deny
+- actor deny as identity
+- device deny as identity
+- clientContext deny as identity
+- Local/LAN deny as identity
+- wrong role deny
+- wrong scope deny
+- allowed role/scope read-only allow
+- private readback kan ikke nås via public endpoint
+- private readback kan ikke nås via static/data/assets-rute
+- auditbeslutning bygges uten DB-write i første runtime-testmodell
+
+Write/private blocked testmodell:
+
+Senere runtime-test må bevise:
+
+- alle `POST /api/actions/*` deny uten separate write-flagg
+- alle `POST /api/actions/*` deny selv med read-only identity
+- `POST /api/operational-state/snapshot` deny uten egen senere writefase
+- production-write deny
+- operational authority deny
+- migration/schema deny
+- ingen DB-write
+- ingen nye events
+- revision uendret
+- flags fortsatt av
+- write/authority krever egen langt senere eksplisitt GO og er ikke del av
+  B48
+
+Middleware fail-closed testmodell:
+
+Senere middleware-test må bevise:
+
+- ukjent endpoint deny
+- ukjent metode deny
+- ukjent role deny
+- ukjent scope deny
+- manglende identity deny for private
+- feil identity-source deny
+- manglende policy-input deny
+- policy-feil deny
+- middleware-feil fail-closed, ikke fail-open
+- default-deny gjelder før handler utfører effekt
+- handler nås ikke ved deny for private/write
+- deny muterer ikke DB/event/revision
+
+Runtime-import cutline:
+
+`server/src/index.js` kan ikke importere `authPolicy` før det finnes minst:
+
+- testserver/harness-design uten production-write
+- endpointklassekart låst
+- identity-source valgt eller eksplisitt mocket som server-side trusted
+  context
+- public/review/private/write testmatrise
+- negative spoofing tests
+- no-DB-write/no-event/no-revision-change assertions
+- fail-closed behavior definert
+- auditbeslutning uten DB-write definert
+- package/dependency-beslutning hvis relevant
+- production GET-only før/etter
+- egen eksplisitt senere GO
+
+Audit testmodell:
+
+Senere runtime-test skal først bygge auditbeslutning uten DB-write:
+
+- authenticated identity
+- actor
+- device
+- clientContext
+- source IP/local metadata
+- endpoint
+- method
+- scope
+- requested right/action
+- decision
+- reason
+- trusted boundary marker
+
+Presiseringer:
+
+- authenticated identity må skilles fra actor/device/clientContext
+- source IP/local metadata er metadata, ikke identity
+- audit DB-write krever egen senere fase
+- B48-E-DOC skriver ikke audit til DB
+
+Minimumskrav før runtime-import/middleware kan vurderes:
+
+- identity-source valgt eller eksplisitt mocked i isolert test
+- endpointklassekart låst
+- default-deny testmodell dokumentert
+- public/review/private/write testmatrise definert
+- fail-closed oppførsel definert
+- no-DB-write/no-event/no-revision-change assertions definert
+- spoofed headers/actor/device/clientContext tests definert
+- private readback-sensitivitet klassifisert
+- auditbeslutning uten DB-write definert
+- testserver/harness-design avklart
+- production GET-only uendret
+- ingen runtime-import før egen senere GO
+
+Hva B48-E-DOC låser:
+
+- README-only default-deny middleware/runtime test-model decision record
+- skeleton/runtime-grensen er fortsatt intakt
+- default-deny runtime-testmodell må dokumenteres før teknisk kobling
+- runtime-import er fortsatt ikke godkjent
+- middleware er fortsatt ikke godkjent
+- endpoint enforcement er fortsatt ikke godkjent
+- private readback er fortsatt ikke aktivert
+- operational authority/write er fortsatt `0 %`
+
+Hva B48-E-DOC ikke beviser:
+
+- runtime-auth
+- middleware
+- endpoint enforcement
+- private readback
+- login/session/token/issuer
+- cookies/JWT/API keys
+- packageendring
+- DB/schema
+- Cloudflare/CORS/transport security
+- write
+- operational authority
+- testserver/harness-implementering
+
+Anbefalt neste trygge steg:
+
+`B48-F-PRE — read-only isolated runtime-harness scope preflight`
+
+Runtime-import, middleware og private readback skal ikke være neste direkte
+steg.
+
+Production lock ved B48-E-DOC:
+
+- production revision forblir `8`
+- operational-state events forblir id `5`, `6` og `7`
+- event id `7` forblir `operational_state.snapshot.production_pilot`
+- scope/readback forblir `manual-assessments-notes`
+- alle write/operational/production/migration-flagg forblir av
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Fremdrift etter B48-E-DOC:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- B48 readiness/security: ca. 75 %
+- SDE Shared Workspace totalt: ca. 95 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
