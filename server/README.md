@@ -6181,6 +6181,105 @@ B47-E konklusjon:
 - B47-E er ikke GO for operational authority
 - neste fase krever egen eksplisitt GO
 
+## B47-F — Isolert Local/LAN identity skeleton
+
+Status: GREEN som isolert skeleton når testene er grønne. B47-F legger til en
+ren Local/LAN identity-policy/resolver-modul og et scriptbasert testsett uten
+runtime-kobling.
+
+Endrede filer i B47-F:
+
+- `server/src/identityPolicy.js`
+- `server/scripts/test-identity-policy.js`
+- `server/README.md`
+
+Hva B47-F implementerer:
+
+- isolert CommonJS-modul for Local/LAN pilot identity
+- testbar identity object / role mapping
+- scope mapping for Shared Workspace readback
+- default-deny ved manglende eller ugyldig identity
+- deny ved ukjent rolle
+- deny ved kjent rolle uten tildelt scope
+- readback-only allow for kjent rolle med tildelt scope
+- eksplisitt at actor/device ikke er identity
+- eksplisitt at frontend `data-levels` og client-level ikke er security
+- eksplisitt at client header ikke er trusted identity uten trusted boundary
+- write, production-pilot-write og operational authority er deny
+- high-risk scopes er deny
+- public health/status kan modelleres som public/status
+- static/data/assets kan modelleres som read-only, men ikke security
+
+Testkommando:
+
+```sh
+node server/scripts/test-identity-policy.js
+```
+
+B47-F beviser:
+
+- identity-policy kan kjøres som ren beslutningslogikk uten serverstart
+- manglende identity gir restricted denied
+- null/tom/ugyldig identity gir denied
+- unknown role gir denied
+- kjent rolle uten scope gir denied
+- kjent rolle med scope gir readback-only allow
+- actor/device alene gir ikke identity
+- spoofed actor/device gir denied
+- spoofed frontend `data-level` eller client-level gir denied
+- spoofed client header gir denied uten trusted boundary
+- direct API-modell uten UI gir restricted denied
+- `agila` får `sporplan-readback`, men ikke `manual-assessments-notes`
+- `admin_pilot` kan ha readback/audit for `manual-assessments-notes`
+- write og production-pilot-write er denied
+- operational authority er denied
+- high-risk scopes er denied
+
+B47-F beviser ikke:
+
+- runtime-auth
+- middleware
+- endpoint enforcement
+- login/session/token/issuer
+- cookies/JWT/API keys
+- private readback protection i production
+- Cloudflare/CORS/transport-sikkerhet
+- production-write
+- operational authority
+- løpende write/sync
+
+Runtime cutline:
+
+- `identityPolicy` importeres ikke i `server/src/index.js`
+- ingen middleware er lagt til
+- ingen endpoint er beskyttet aktivt
+- ingen HTTP/fetch/POST er lagt til
+- ingen DB/schema/migration er lagt til
+- ingen env-flagg kreves
+- ingen production restart kreves
+- ingen private readback er åpnet
+- ingen operational authority er åpnet
+
+Local/LAN cutline:
+
+- Local/LAN er fortsatt pilot/design, ikke ekstern sikkerhet
+- LAN alene er fortsatt ikke identity
+- actor/device er fortsatt auditmetadata, ikke authenticated identity
+- frontend UI, `data-levels` og skjulte knapper er fortsatt ikke security
+- CORS er fortsatt ikke auth
+- client header er ikke trusted identity uten server-side trust boundary
+- direkte API-kall er fortsatt hovedtrussel for senere runtimefase
+
+Neste fase krever egen eksplisitt GO:
+
+- eventuell review av B47-F skeleton
+- eventuell README-only closeout
+- eventuell senere runtime preflight
+- eventuell middleware/enforcement-fase
+
+B47-F er ikke GO for runtime-kobling, `server/src/index.js`, middleware,
+private readback, write, production-write eller operational authority.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
