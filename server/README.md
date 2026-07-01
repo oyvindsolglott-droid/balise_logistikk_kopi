@@ -5777,6 +5777,213 @@ B47-A konklusjon:
 - B47-A er ikke GO for runtime-kobling
 - neste fase krever egen eksplisitt GO
 
+## B47-C — Local/LAN pilot identity design record
+
+Status: README-only design record. B47-C dokumenterer Local/LAN pilot identity
+som en mulig første designmodell etter B47-A/B og B47-C-PRE. Dette er ikke
+runtime-auth, ikke middleware, ikke login/session/token/issuer-kode, ikke
+endpoint enforcement, ikke private readback, ikke write, ikke production-write
+og ikke operational authority.
+
+Formål:
+
+- definere Local/LAN pilot identity som designmodell, ikke runtime-auth
+- dokumentere hva modellen kan og ikke kan brukes til
+- låse trust boundary og spoofing/bypass-risiko før eventuell senere kodefase
+- holde actor/device separat fra authenticated identity
+- holde frontend `data-levels`, UI-synlighet og skjulte knapper utenfor
+  sikkerhetsmodellen
+- gjøre direkte API-kall til hovedtrussel i senere tester
+- låse at Local/LAN ikke er ekstern/Cloudflare-sikkerhet
+
+Designbeslutning:
+
+- Local/LAN pilot identity er valgt som første designkandidat for videre
+  utredning
+- valget gjelder bare lokal/lukket pilotmodell
+- valget er ikke ekstern sikkerhetsmodell
+- valget er ikke Cloudflare/reverse proxy-modell
+- valget er ikke session/JWT/login-modell
+- valget er ikke runtime-enforcement
+- valget gir ikke write
+- valget gir ikke operational authority
+
+Begrunnelse:
+
+- SDE production står fortsatt read-only på lokal/LAN server
+- B46 access-policy skeleton/testherding er isolert og ikke runtime-koblet
+- Local/LAN pilot identity kan avklare role/scope/identity-konsepter før mer
+  kompleks auth
+- Local/LAN kan støtte design av skillet mellom identity og actor/device
+- reverse proxy, session-cookie login og JWT er for brede før trust boundary,
+  transport og rollout er bedre låst
+
+Nåværende sikkerhetsstatus:
+
+- ingen auth middleware
+- ingen login/session/token/issuer/JWT/signed cookies/API keys
+- ingen authenticated identity
+- ingen runtime role/scope enforcement
+- `server/src/index.js` importerer ikke `accessPolicy`
+- `accessPolicy` er inert policy/testgrunnlag
+- actor/device er auditmetadata, ikke identity
+- frontend `data-levels`, UI og skjulte knapper er ikke sikkerhet
+- CORS er ikke auth
+- ingen private endpoint-beskyttelse er aktiv
+- operational authority/write er 0 %
+
+Trust boundary:
+
+- browser/client er ikke trusted boundary
+- frontend/UI er ikke trusted boundary
+- actor/device er ikke trusted boundary
+- LAN er ikke automatisk trusted boundary
+- server API blir først enforcement boundary når middleware faktisk finnes
+- reverse proxy er bare trusted boundary hvis direkte bypass er stengt
+- Cloudflare/ekstern tilgang er utenfor Local/LAN pilot identity
+- DB er ikke identity boundary
+- production flags er write guards, ikke auth
+
+Threat actors:
+
+- LAN-bruker uten riktig rolle
+- direkte API-bruker
+- bruker som manipulerer frontend `data-levels`
+- bruker som forfalsker actor/device
+- bruker som forfalsker fremtidig pilot-header eller klientfelt
+- delt eller kompromittert klientmaskin
+- feilkonfigurert Mac mini/serverprosess
+- senere ekstern proxy/Cloudflare-bruker
+- operatørfeil som tolker Local/LAN som ekte auth
+
+Spoofing/bypass cutline:
+
+- Local/LAN identity kan spoofes hvis den kommer fra klientfelt/header uten
+  server-side trust boundary
+- direkte API-kall til port `8787` omgår UI-nivåer fullstendig
+- reverse proxy foran server hjelper ikke hvis direkte LAN-tilgang fortsatt
+  finnes
+- actor/device som identity ville være kritisk feil
+- static frontend kan ikke brukes som auth
+- CORS kan ikke brukes som auth
+- LAN alene kan ikke brukes som identity
+
+Hva Local/LAN pilot identity kan brukes til:
+
+- intern/lokal pilotdesign
+- role/scope-mapping
+- identity-vs-actor/device-skille
+- read-only/private-readback-forberedelse i test eller isolert fase
+- direkte API-testmodell
+- pilot av default-deny beslutninger uten write
+
+Hva Local/LAN pilot identity ikke kan brukes til:
+
+- ikke ekstern/Cloudflare-sikkerhet
+- ikke beskyttelse mot ondsinnet LAN-bruker dersom identity kan spoofes
+- ikke sikkert hvis direkte serverbypass finnes
+- ikke nok for write/production-write
+- ikke nok for operational authority
+- ikke erstatning for session/token/issuer
+- ikke beskyttelse av private data før server-side enforcement finnes
+
+Endpoint-grenser:
+
+- `GET /api/health` kan forbli public/status
+- `GET /api/state/revision` kan trolig forbli public/status så lenge respons
+  ikke lekker private data
+- `/api/state`, `/api/events`, `/api/operational-state`,
+  `/api/operational-state/events` og `/api/stream` må ikke få private data
+  eksponert uten ekte enforcement
+- write/test/production-pilot endpoints er utenfor Local/LAN pilot identity
+  design record
+- operational-authority endpoints er helt utenfor
+- private/scope-restricted readback holdes lukket til enforcement finnes
+
+Minimumskrav før senere implementation:
+
+- Local/LAN defineres som pilot/design, ikke ekstern sikkerhet
+- tydelig trust boundary
+- direkte API-kall som testkrav
+- actor/device eksplisitt ikke identity
+- frontend `data-levels` eksplisitt ikke security
+- public/status endpoints holdes public
+- private/scope-restricted readback holdes lukket til enforcement
+- write endpoints utenfor
+- operational authority utenfor
+- ingen middleware/runtime-kobling uten senere GO
+- rollback/recovery og postcheck-kriterier
+- eksplisitt bruker-GO
+
+Abortkriterier:
+
+- Local/LAN fremstilles som ekstern sikkerhet
+- LAN alene brukes som identity
+- klientfelt/header stoles på uten server-side trust boundary
+- actor/device brukes som identity
+- frontend `data-levels` brukes som security
+- CORS brukes som auth
+- direkte API-kall ikke modelleres
+- reverse proxy headers foreslås uten bypass-stenging
+- private data åpnes
+- write/production-write blandes inn
+- operational authority blandes inn
+- middleware/runtime-kobling foreslås uten egen GO
+- DB/schema/migration/restart/flags foreslås
+
+Testkrav før senere Local/LAN identity implementation:
+
+- no identity => restricted denied
+- invalid identity => restricted denied
+- spoofed actor/device => denied
+- spoofed client-level/data-level => denied
+- direct API call without UI => denied for restricted
+- public health/status remains public
+- readback requires real identity/scope once enforcement exists
+- write remains denied
+- operational authority remains denied
+- reverse proxy bypass case documented
+- production revision/events unchanged
+
+Rollout/rollback-krav:
+
+- ingen production restart uten egen GO
+- ingen middleware på production endpoints uten egen GO
+- ingen DB/schema/migration i første identity-spor
+- revert av commit skal være nok ved isolert kode
+- production GET-only postcheck
+- tydelig feature/cutline hvis senere runtime-aktivering vurderes
+
+Ikke-mål for B47-C:
+
+- ingen kodeendring
+- ingen testendring
+- ingen runtime-kobling
+- ingen middleware
+- ingen login/session/token/issuer-kode
+- ingen endpoint enforcement
+- ingen CORS/Cloudflare/transport-endring
+- ingen `server/src/index.js`
+- ingen `index.html`
+- ingen POST/write
+- ingen flags
+- ingen restart
+- ingen DB-write
+- ingen migration/schema
+- ingen production-write
+- ingen operational authority
+
+B47-C konklusjon:
+
+- B47-C låser Local/LAN pilot identity som design record
+- B47-C er ikke auth i drift
+- B47-C er ikke GO for middleware
+- B47-C er ikke GO for login/session/token/issuer
+- B47-C er ikke GO for runtime-kobling
+- B47-C er ikke GO for write
+- B47-C er ikke GO for operational authority
+- neste fase krever egen eksplisitt GO
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
