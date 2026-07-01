@@ -6280,6 +6280,127 @@ Neste fase krever egen eksplisitt GO:
 B47-F er ikke GO for runtime-kobling, `server/src/index.js`, middleware,
 private readback, write, production-write eller operational authority.
 
+## B47-H — Identity skeleton closeout
+
+Status: README-only closeout. B47-H dokumenterer B47-F/B47-G-resultatet for
+isolert Local/LAN identity skeleton. Dette er ikke runtime-auth, ikke
+middleware, ikke login/session/token/issuer-kode, ikke endpoint enforcement,
+ikke private readback, ikke write, ikke production-write og ikke operational
+authority.
+
+Formål:
+
+- dokumentere closeout for isolated identity skeleton
+- låse B47-G GREEN-vurderingen
+- låse at B47-H er README-only
+- låse at B47-H ikke gir runtime-auth
+- låse at B47-H ikke gir middleware
+- låse at B47-H ikke gir login/session/token/issuer-kode
+- låse at B47-H ikke gir endpoint enforcement
+- låse at B47-H ikke gir private readback
+- låse at B47-H ikke gir write, production-write eller operational authority
+
+Hva B47-F leverte:
+
+- `server/src/identityPolicy.js` som isolert identity-policy/resolver skeleton
+- `server/scripts/test-identity-policy.js` som isolert testscript
+- README-dokumentasjon
+- default-deny for manglende eller ugyldig identity
+- role/scope readback-only allow
+- actor/device er ikke identity
+- frontend `data-levels` og client-level er ikke security
+- spoofed client header gir denied uten trusted boundary
+- direct API uten UI gir restricted denied
+- write, production-pilot-write og operational authority er denied
+
+Hva B47-G review bekreftet:
+
+- `server/src/index.js` importerer ikke `identityPolicy`
+- ingen middleware
+- ingen endpoint-enforcement
+- ingen runtime-kobling
+- ingen DB-import
+- ingen HTTP/server-import
+- ingen Express-import
+- ingen env-flagglesing
+- ingen fetch/POST
+- ingen serverstart
+- ingen session/token/login/issuer
+- ingen cookies/JWT/API keys
+- ingen CORS/Cloudflare/transport-kobling
+- production revision, events og flagg var uendret
+
+Låst GREEN-konklusjon:
+
+- B47 isolated identity skeleton er GREEN som isolert delspor
+- skeleton er testbart
+- skeleton er inert
+- skeleton gir ikke runtime-auth
+- skeleton gir ikke private endpoint-beskyttelse
+- skeleton gir ikke write
+- skeleton gir ikke operational authority
+- neste fase krever egen eksplisitt GO
+
+YELLOW — role/scope-katalog-duplisering:
+
+- B47 `identityPolicy` dupliserer deler av role/scope-katalogen fra B46
+  `accessPolicy` for å holde B47-F isolert
+- dette er akseptabelt i skeleton/testfase fordi runtime-kobling er forbudt
+- dette må ikke bli permanent runtime-sannhet uten eierskap
+- før runtime-auth/enforcement må én av disse låses:
+  1. felles kilde/eierskap for role/scope-katalog
+  2. eksplisitt sync-/valideringsregel mellom `identityPolicy` og
+     `accessPolicy`
+  3. bevisst beslutning om separat katalog med test som hindrer divergens
+- uten dette kan identity og access-policy gi motstridende beslutninger
+
+Gjenstående gap før runtime-auth:
+
+- valgt trust boundary
+- ekte authenticated identity source
+- hvordan direkte API-kall håndteres
+- hvordan spoofing hindres
+- om og hvordan `identityPolicy` skal kobles til `accessPolicy`
+- eierskap til role/scope-katalog
+- endpoint enforcement-scope
+- middleware-design
+- direct API-testplan
+- rollout/rollback
+- restart-policy
+- transport/CORS/Cloudflare cutline
+- production GET-only postcheck
+- eksplisitt bruker-GO
+
+Absolutte sperrer videre:
+
+- B47-H er ikke GO for runtime-auth
+- B47-H er ikke GO for middleware
+- B47-H er ikke GO for `server/src/index.js`
+- B47-H er ikke GO for endpoint enforcement
+- B47-H er ikke GO for login/session/token/issuer
+- B47-H er ikke GO for private readback activation
+- B47-H er ikke GO for write/production-write
+- B47-H er ikke GO for operational authority
+- B47-H er ikke GO for Cloudflare/CORS/transportendring
+- operational authority/write forblir `0 %`, ikke åpnet
+
+Anbefalt neste fase, ikke utført:
+
+`B47-I-PRE — read-only role/scope catalog ownership preflight`
+
+Neste fase må være read-only og må avklare hvordan B46 `accessPolicy` og B47
+`identityPolicy` skal forholde seg til hverandre før runtime-auth vurderes.
+Den skal ikke endre kode, ikke koble runtime, ikke lage middleware og ikke åpne
+write eller operational authority uten egen senere GO.
+
+Fremdrift etter B47-H:
+
+- B38-B45: GREEN / låst
+- B46 skeleton/testherding: GREEN / 100 % isolert
+- B47 identity/security design: ca. 65 %
+- SDE Shared Workspace totalt: ca. 94 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
