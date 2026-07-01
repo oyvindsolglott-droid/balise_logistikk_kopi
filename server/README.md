@@ -7676,6 +7676,274 @@ Fremdrift etter B47-S:
 - SDE Shared Workspace totalt: ca. 95 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## B48-A — Runtime-auth readiness decision record
+
+Status: README-only readiness decision record. B48-A documents the decisions
+that must be locked before any auth skeleton, runtime-auth, middleware,
+endpoint enforcement or private readback activation can be considered. B48-A
+does not implement runtime-auth, does not create a skeleton, does not change
+code or tests, does not open write, and does not open operational authority.
+
+Purpose:
+
+- lock runtime-auth readiness decisions after B48-PRE
+- keep B48 in design/readiness mode before any technical auth work
+- keep `accessPolicy`, `identityPolicy` and catalog parity isolated
+- keep production read-only
+- prevent frontend/UI signals from being treated as security
+- prevent `actor`, `device` or `clientContext` from becoming access-control
+  identity
+
+Locked B47 baseline:
+
+- B47 identity/security design is GREEN / 100 %
+- `accessPolicy`, `identityPolicy` and catalog parity are isolated and GREEN
+- no expected-YELLOW scope gaps remain
+- `manual-assessments-notes` is `admin_pilot`-only
+- `sde-night-placement-manual-overrides` is cataloged for:
+  - `admin_pilot`
+  - `drops`
+  - `sde_skiftere`
+- `sde-vaktplan-coverage` is cataloged for:
+  - `admin_pilot`
+  - `vaktplan_ledelse`
+- all relevant scope rights are readback/audit-only
+- runtime-auth and runtime enforcement are not implemented
+- production is still read-only
+
+Security boundary decision:
+
+- Local/LAN alone is not identity
+- frontend data is not identity
+- client headers are not trusted identity
+- frontend `data-levels` are not trusted identity
+- `actor` is audit/payload metadata, not authenticated identity
+- `device` is audit/payload metadata, not authenticated identity
+- `clientContext` is audit/context metadata, not authenticated identity
+- private readback must require server-side authenticated identity before any
+  runtime activation
+- all auth decisions must default-deny
+- unknown role must deny
+- unknown scope must deny
+- wrong role must deny
+- write, production-write and operational authority must deny even when a role
+  is allowed for readback
+- same readback does not imply write right
+- same readback does not imply operational truth
+- same readback does not imply operational authority
+
+Identity/session/issuer decision:
+
+- B48 must not go directly to runtime-auth
+- the next technical candidate, if later approved, must first be an isolated
+  auth-policy skeleton with no runtime coupling
+- an auth-policy skeleton must model:
+  - server-side identity context
+  - role
+  - scope
+  - endpoint class
+  - requested right
+  - allow/deny decision
+  - allow/deny reason
+- an auth-policy skeleton must not read frontend headers as trusted identity
+- an auth-policy skeleton must not implement login, session, token or issuer
+- an auth-policy skeleton must not be imported in `server/src/index.js`
+- a real issuer/session/login/cookie/token model requires a later dedicated
+  preflight and explicit GO
+- Cloudflare Access, external issuer or transport model requires a later
+  dedicated preflight and explicit GO
+- shared operator secret may only be considered later as a narrow read-only
+  pilot candidate
+- shared operator secret is not selected as runtime solution in B48-A
+- shared operator secret is not suitable for operational authority
+- no-auth / keep private readback disabled remains a valid HOLD alternative
+
+Endpoint cutline decision:
+
+Public/read-only:
+
+- `GET /api/health`
+- `GET /api/server/status`
+- `GET /api/state/revision`
+- safe status fields only
+
+Public/read-only or review-needed before private runtime exposure:
+
+- `GET /api/state`
+- `GET /api/events`
+- `GET /api/operational-state`
+- `GET /api/operational-state/events`
+- `GET /api/stream`
+- static `/`
+- static `/app`
+- static `/data/:filename`
+- static `/assets/:filename`
+
+Private read-only candidates, not activated:
+
+- operational-state readback/events if they contain sensitive operational facts
+- manual-assessments readback
+- scope-restricted Shared Workspace readback
+- private audit/readback per module/scope/serviceDate
+
+Write/private blocked:
+
+- `POST /api/operational-state/snapshot`
+- `POST /api/actions/test-note`
+- `POST /api/actions/action-contract-test`
+- `POST /api/actions/actions-table-test`
+- `POST /api/actions/server-note`
+- `POST /api/actions/sde-recommendation-ack`
+- production-pilot-write
+- operational-state mutation
+- migration/schema
+- anything that changes DB, event, state or authority
+
+Must still be blocked:
+
+- production-write
+- operational authority
+- migrations
+- `serverStateAuthority:true`
+- `operationalAuthority:true`
+
+Audit decision:
+
+Minimum audit model before runtime-auth:
+
+- authenticated identity
+- role
+- actor
+- device
+- clientContext
+- source IP / local network metadata
+- timestamp
+- scope
+- endpoint
+- endpoint class
+- requested right
+- decision allow/deny
+- reason
+
+Audit cutline:
+
+- authenticated identity must be separate from client-supplied `actor`
+- authenticated identity must be separate from client-supplied `device`
+- spoofed `actor` must never grant access
+- spoofed `device` must never grant access
+- spoofed `clientContext` must never grant access
+- audit tests must be possible without production DB-write
+- read-only auth tests must not create events
+
+Test decision:
+
+Minimum tests before runtime-auth:
+
+- default-deny
+- unknown role deny
+- unknown scope deny
+- unknown endpoint deny where relevant
+- public endpoints unaffected
+- private readback requires authenticated identity
+- wrong role denied
+- allowed role allowed read-only
+- write denied even with allowed readback role
+- production-write denied
+- operational authority denied
+- spoofed frontend/client headers denied
+- `actor`/`device` not identity
+- no DB-write in read-only auth tests
+- no production mutation
+- no server restart unless explicitly approved in that phase
+- existing access/identity/parity tests remain GREEN
+
+Recommended next phase:
+
+`B48-B-PRE — read-only auth-policy skeleton scope preflight`
+
+B48-B-PRE must be:
+
+- read-only
+- no file changes
+- no skeleton yet
+- no code
+- no tests
+- no runtime coupling
+- no middleware
+- no `server/src/index.js`
+- no package change
+- no POST/write
+- no operational authority
+
+Possible later B48 technical scope, not approved now:
+
+Isolated auth-policy skeleton:
+
+- possible new `server/src/authPolicy.js`
+- possible new `server/scripts/test-auth-policy.js`
+- possible README documentation
+- still no runtime coupling
+- still no `server/src/index.js` import
+
+Runtime middleware later:
+
+- `server/src/index.js`
+- possible new middleware file
+- possible package change
+- only after separate explicit GO
+- not in B48-A
+- not in B48-B-PRE
+
+Package/session/cookie/issuer:
+
+- only after separate explicit GO
+- requires separate preflight
+- must not be mixed with private readback activation
+- must not be mixed with write/authority
+
+DB/audit persistence:
+
+- only after separate explicit GO
+- requires DB/schema/migration preflight
+- must not be needed for the first read-only auth-policy skeleton
+
+Hard NO-GO until separate GO:
+
+- runtime-auth implementation
+- middleware
+- endpoint enforcement
+- private readback activation
+- login/session/token/issuer
+- cookies/JWT/API keys
+- package change
+- `server/src/index.js`
+- Cloudflare/CORS/transport
+- DB/schema/migration
+- POST/write/flags/restart
+- production-write
+- operational authority
+- common catalog module
+- frontend `index.html`
+
+Production lock at B48-A:
+
+- production revision remains `8`
+- operational-state events remain id `5`, `6` and `7`
+- event id `7` remains `operational_state.snapshot.production_pilot`
+- scope/readback remains `manual-assessments-notes`
+- all write/operational/production/migration flags remain off
+- `serverStateAuthority:false`
+- `operationalAuthority:false`
+- `migrationRequired:false`
+
+Fremdrift etter B48-A:
+
+- B38-B46: GREEN / låst
+- B47 identity/security design: GREEN / 100 %
+- B48 readiness/security: ca. 30 %
+- SDE Shared Workspace totalt: ca. 95 %
+- operational authority/write: `0 %`, ikke åpnet
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
