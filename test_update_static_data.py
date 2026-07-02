@@ -37,6 +37,74 @@ class BaliseTrainLookupCandidateTest(unittest.TestCase):
             {"80804": "74-44", "2472": "74-01"},
         )
 
+    def test_re11_8xx_departure_validates_outbound_balise_train_number(self):
+        self.assertIn("80824", static_data.get_balise_train_lookup_candidates("824"))
+
+
+class BaliseArrivalSegmentSelectionTest(unittest.TestCase):
+    def test_arrival_to_skien_prefers_skien_segment_over_locked_earlier_segment(self):
+        text = """
+        Eidsvoll - Hensetting: 🔒 74-40, 74-20
+        Eidsvoll Verk - Oslo S: 74-20
+        Oslo S - Skien: 74-20, 74-41
+        """
+
+        general, departure, arrival = static_data.extract_vehicle_hits_from_balise_text(text)
+
+        self.assertEqual(general, ["74-20", "74-41"])
+        self.assertEqual(departure, [])
+        self.assertEqual(arrival, ["74-20", "74-41"])
+        self.assertNotIn("74-40", arrival)
+
+    def test_arrival_to_skien_falls_back_to_segment_passing_porsgrunn(self):
+        text = """
+        Eidsvoll - Hensetting: 74-40, 74-20
+        Eidsvoll Verk - Oslo S: 74-20
+        Oslo S - Porsgrunn: 74-20, 74-41
+        """
+
+        _general, departure, arrival = static_data.extract_vehicle_hits_from_balise_text(text)
+
+        self.assertEqual(departure, [])
+        self.assertEqual(arrival, ["74-20", "74-41"])
+        self.assertNotIn("74-40", arrival)
+
+
+class BaliseDepartureSegmentSelectionTest(unittest.TestCase):
+    def test_departure_from_skien_prefers_skien_segment_over_earlier_segment(self):
+        text = """
+        Eidsvoll - Hensetting: 🔒 74-40, 74-20
+        Skien - Eidsvoll: 74-20, 74-41
+        """
+
+        general, departure, _arrival = static_data.extract_vehicle_hits_from_balise_text(text)
+
+        self.assertEqual(general, ["74-20", "74-41"])
+        self.assertEqual(departure, ["74-20", "74-41"])
+        self.assertNotIn("74-40", departure)
+
+    def test_departure_from_skien_falls_back_to_segment_passing_porsgrunn(self):
+        text = """
+        Hensetting - Oslo S: 74-40, 74-20
+        Skien - Porsgrunn: 74-20, 74-41
+        """
+
+        _general, departure, _arrival = static_data.extract_vehicle_hits_from_balise_text(text)
+
+        self.assertEqual(departure, ["74-20", "74-41"])
+        self.assertNotIn("74-40", departure)
+
+    def test_departure_from_skien_does_not_use_segment_ending_at_porsgrunn(self):
+        text = """
+        Eidsvoll - Hensetting: 74-40, 74-20
+        Oslo S - Porsgrunn: 74-20, 74-41
+        """
+
+        _general, departure, arrival = static_data.extract_vehicle_hits_from_balise_text(text)
+
+        self.assertEqual(departure, [])
+        self.assertEqual(arrival, ["74-20", "74-41"])
+
 
 class AtomicStaticDataRefreshTest(unittest.TestCase):
     def test_atomic_write_writes_both_payload_files(self):

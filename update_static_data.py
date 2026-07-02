@@ -241,6 +241,50 @@ def find_first_material_line(text: str, keywords: Iterable[str]) -> List[str]:
     return []
 
 
+def find_first_material_route_line(
+    text: str,
+    origin_keywords: Iterable[str] = (),
+    destination_keywords: Iterable[str] = (),
+    route_keywords: Iterable[str] = (),
+) -> List[str]:
+    if not text:
+        return []
+
+    origin_list = [str(k).lower() for k in origin_keywords if str(k).strip()]
+    destination_list = [str(k).lower() for k in destination_keywords if str(k).strip()]
+    route_list = [str(k).lower() for k in route_keywords if str(k).strip()]
+
+    for raw_line in text.splitlines():
+        line = str(raw_line or "").strip()
+        if not line:
+            continue
+
+        prefix = line.split(":", 1)[0].strip()
+        match = re.match(r"^(.+?)\s*-\s*(.+)$", prefix)
+        if not match:
+            continue
+
+        route_lower = prefix.lower()
+        origin_lower = match.group(1).strip().lower()
+        destination_lower = match.group(2).strip().lower()
+        origin_match = bool(origin_list) and any(
+            keyword in origin_lower for keyword in origin_list
+        )
+        destination_match = bool(destination_list) and any(
+            keyword in destination_lower for keyword in destination_list
+        )
+        route_match = bool(route_list) and any(
+            keyword in route_lower for keyword in route_list
+        )
+
+        if origin_match or destination_match or route_match:
+            hits = material_or_type_hits(line)
+            if hits:
+                return hits
+
+    return []
+
+
 def get_balise_train_lookup_candidates(train_no: str) -> List[str]:
     """Returner tognummer som skal prøves mot Balise for samme planlagte tog."""
     train = normalize_train_no(train_no)
@@ -264,11 +308,17 @@ def has_arrival_route_to_skien_or_porsgrunn(text: str) -> bool:
         return False
 
     for raw_line in text.splitlines():
-        line = str(raw_line or "").strip().lower()
+        line = str(raw_line or "").strip()
         if not line:
             continue
 
-        if re.search(r"-\s*(skien|porsgrunn)\b", line):
+        prefix = line.split(":", 1)[0].strip()
+        match = re.match(r"^(.+?)\s*-\s*(.+)$", prefix)
+        if not match:
+            continue
+
+        destination_lower = match.group(2).strip().lower()
+        if "skien" in destination_lower or "porsgrunn" in destination_lower:
             return True
 
     return False
@@ -284,37 +334,22 @@ def has_balise_train_content(text: str) -> bool:
 
 def extract_vehicle_hits_from_balise_text(text: str) -> Tuple[List[str], List[str], List[str]]:
     general_route_hits = (
-        find_first_material_line(text, ["Oslo S - Skien", "- Skien"])
-        or find_first_material_line(text, ["Eidsvoll - Skien"])
-        or find_first_material_line(text, ["Notodden - Skien"])
-        or find_first_material_line(text, ["Skien - Eidsvoll"])
-        or find_first_material_line(text, ["Skien - Notodden"])
-        or find_first_material_line(text, ["Porsgrunn - Eidsvoll"])
-        or find_first_material_line(text, ["Porsgrunn - Notodden"])
-        or find_first_material_line(text, ["Eidsvoll - Porsgrunn"])
-        or find_first_material_line(text, ["Notodden - Porsgrunn"])
+        find_first_material_route_line(text, destination_keywords=["Skien"])
+        or find_first_material_route_line(text, origin_keywords=["Skien"])
+        or find_first_material_route_line(text, origin_keywords=["Porsgrunn"])
+        or find_first_material_route_line(text, destination_keywords=["Porsgrunn"])
     )
     general_hits = general_route_hits or unique_material_hits(text) or material_type_hits(text)
 
     departure_hits = (
-        find_first_material_line(text, ["Skien - Eidsvoll"])
-        or find_first_material_line(text, ["Skien - Notodden"])
-        or find_first_material_line(text, ["Skien - Oslo S"])
-        or find_first_material_line(text, ["Skien -"])
-        or find_first_material_line(text, ["Porsgrunn - Eidsvoll"])
-        or find_first_material_line(text, ["Porsgrunn - Notodden"])
-        or find_first_material_line(text, ["Porsgrunn:"])
-        or general_hits
+        find_first_material_route_line(text, origin_keywords=["Skien"])
+        or find_first_material_route_line(text, origin_keywords=["Porsgrunn"])
     )
 
     arrival_hits = (
-        find_first_material_line(text, ["Oslo S - Skien", "- Skien"])
-        or find_first_material_line(text, ["Eidsvoll - Skien"])
-        or find_first_material_line(text, ["Notodden - Skien"])
-        or find_first_material_line(text, ["Eidsvoll - Porsgrunn"])
-        or find_first_material_line(text, ["Notodden - Porsgrunn"])
+        find_first_material_route_line(text, destination_keywords=["Skien"])
+        or find_first_material_route_line(text, destination_keywords=["Porsgrunn"])
         or find_first_material_line(text, ["Porsgrunn:"])
-        or general_hits
     )
 
     return general_hits, departure_hits, arrival_hits
