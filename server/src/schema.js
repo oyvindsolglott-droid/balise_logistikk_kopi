@@ -34,6 +34,14 @@ function createSchemaSql(){
       payload_json TEXT,
       updated_at TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS shared_sporplan_draft (
+      id TEXT PRIMARY KEY,
+      revision INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      draft_json TEXT NOT NULL,
+      audit_json TEXT
+    );
   `;
 }
 

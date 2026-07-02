@@ -32,6 +32,10 @@ const {
   validateOperationalStateSnapshotPayload,
   writeOperationalStateSnapshot
 } = require("./operationalState");
+const {
+  getSharedSporplanDraft,
+  saveSharedSporplanDraft
+} = require("./sharedSporplanDraft");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
@@ -66,6 +70,7 @@ const ACTION_CONTRACT_TESTS_ENABLED = process.env.SDE_ENABLE_ACTION_CONTRACT_TES
 const ACTIONS_TABLE_TESTS_ENABLED = process.env.SDE_ENABLE_ACTIONS_TABLE_TEST_WRITES === "1";
 const SERVER_NOTE_ACTIONS_ENABLED = process.env.SDE_ENABLE_SERVER_NOTE_ACTIONS === "1";
 const SDE_RECOMMENDATION_ACK_ACTIONS_ENABLED = process.env.SDE_ENABLE_SDE_RECOMMENDATION_ACK_ACTIONS === "1";
+const SHARED_SPORPLAN_DRAFT_WRITES_ENABLED = process.env.SDE_ENABLE_SHARED_SPORPLAN_DRAFT_WRITES === "1";
 const SERVER_NOTE_STATUS = getServerNoteStatus(process.env);
 const SDE_RECOMMENDATION_ACK_STATUS = getSdeRecommendationAckStatus(process.env);
 const STARTED_AT = new Date();
@@ -91,11 +96,13 @@ const CLIENT_READ_CONTRACT = Object.freeze({
     "/api/health",
     "/api/server/status",
     "/api/state/revision",
-    "/api/events"
+    "/api/events",
+    "/api/shared-sporplan-draft"
   ],
   disallowedWriteEndpoints: [
     "/api/actions/server-note",
-    "/api/actions/sde-recommendation-ack"
+    "/api/actions/sde-recommendation-ack",
+    "POST /api/shared-sporplan-draft"
   ],
   dataSourceForOperations: "local_frontend_data",
   notes: "Serverstatus is observational only. The SDE engine and operational views still use local/static frontend data."
@@ -273,6 +280,7 @@ app.get("/api/server/status", (_req, res) => {
     serverNoteProductionActionsEnabled: SERVER_NOTE_STATUS.serverNoteProductionActionsEnabled,
     sdeRecommendationAckActionsEnabled: SDE_RECOMMENDATION_ACK_STATUS.sdeRecommendationAckActionsEnabled,
     sdeRecommendationAckProductionActionsEnabled: SDE_RECOMMENDATION_ACK_STATUS.sdeRecommendationAckProductionActionsEnabled,
+    sharedSporplanDraftWritesEnabled: SHARED_SPORPLAN_DRAFT_WRITES_ENABLED,
     operationalStateWritesEnabled: OPERATIONAL_STATE_STATUS.operationalStateWritesEnabled,
     operationalStateProductionWritesEnabled: OPERATIONAL_STATE_STATUS.operationalStateProductionWritesEnabled,
     operationalStateWritesAllowed: OPERATIONAL_STATE_STATUS.writesAllowed,
@@ -309,6 +317,59 @@ app.get("/api/events", (req, res) => {
     revision: currentRevision,
     sinceRevision,
     events: getEventsSinceRevision(db, sinceRevision)
+  });
+});
+
+app.get("/api/shared-sporplan-draft", (_req, res) => {
+  try{
+    res.json(getSharedSporplanDraft(db));
+  }catch(error){
+    console.error("shared sporplan draft read failed", error);
+    res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: "Internal server error."
+    });
+  }
+});
+
+app.post("/api/shared-sporplan-draft", (req, res) => {
+  if(!SHARED_SPORPLAN_DRAFT_WRITES_ENABLED){
+    return res.status(403).json({
+      ok: false,
+      error: "shared_sporplan_draft_writes_disabled",
+      message: "Shared sporplan draft writes are disabled. Set SDE_ENABLE_SHARED_SPORPLAN_DRAFT_WRITES=1 to enable this endpoint."
+    });
+  }
+
+  let result;
+  try{
+    result = saveSharedSporplanDraft(db, req.body);
+  }catch(error){
+    console.error("shared sporplan draft save failed", error);
+    return res.status(500).json({
+      ok: false,
+      error: "server_error",
+      message: "Internal server error."
+    });
+  }
+
+  if(!result.ok){
+    return res.status(result.status || 400).json({
+      ok: false,
+      error: result.code || "shared_sporplan_draft_failed",
+      message: result.message || "Shared sporplan draft request failed.",
+      field: result.field,
+      expectedRevision: result.expectedRevision,
+      currentRevision: result.currentRevision
+    });
+  }
+
+  return res.status(201).json({
+    ok: true,
+    action: "shared-sporplan-draft",
+    previousRevision: result.previousRevision,
+    ...result.readback
   });
 });
 
