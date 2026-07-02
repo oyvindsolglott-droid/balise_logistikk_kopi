@@ -182,6 +182,11 @@ HARDCODED_ARRIVALS: Dict[str, Dict[str, object]] = {
 
 ALLOWED_MATERIAL_PREFIXES = ["69", "70", "74", "75"]
 MATERIAL_RE = re.compile(r"\b(?:69|70|74|75)-\d{2}\b")
+MATERIAL_TYPE_RE = re.compile(
+    r"\b(?:materiell(?:type)?|type|togsett|kjøretøytype)\s*:?\s*(?:BM|Type\s*)?(69|70|74|75)\b",
+    re.IGNORECASE,
+)
+MATERIAL_CLASS_RE = re.compile(r"\b(69|70|74|75)\s*E?\b", re.IGNORECASE)
 
 
 def normalize_train_no(value: object) -> str:
@@ -192,6 +197,26 @@ def normalize_train_no(value: object) -> str:
 
 def unique_material_hits(text: str) -> List[str]:
     return list(dict.fromkeys(MATERIAL_RE.findall(text or "")))
+
+
+def material_type_hits(text: str) -> List[str]:
+    hits = []
+    for match in MATERIAL_TYPE_RE.finditer(text or ""):
+        material_type = match.group(1)
+        value = f"{material_type}/ukjent individ"
+        hits.append(value)
+    if hits:
+        return hits
+
+    for match in MATERIAL_CLASS_RE.finditer(text or ""):
+        material_type = match.group(1)
+        value = f"{material_type}/ukjent individ"
+        hits.append(value)
+    return hits
+
+
+def material_or_type_hits(text: str) -> List[str]:
+    return unique_material_hits(text) or material_type_hits(text)
 
 
 def find_first_material_line(text: str, keywords: Iterable[str]) -> List[str]:
@@ -209,7 +234,7 @@ def find_first_material_line(text: str, keywords: Iterable[str]) -> List[str]:
 
         line_lower = line.lower()
         if any(keyword in line_lower for keyword in keyword_list):
-            hits = unique_material_hits(line)
+            hits = material_or_type_hits(line)
             if hits:
                 return hits
 
@@ -243,7 +268,7 @@ def has_arrival_route_to_skien_or_porsgrunn(text: str) -> bool:
         if not line:
             continue
 
-        if re.search(r"-\s*(skien|porsgrunn)\s*:", line):
+        if re.search(r"-\s*(skien|porsgrunn)\b", line):
             return True
 
     return False
@@ -259,27 +284,35 @@ def has_balise_train_content(text: str) -> bool:
 
 def extract_vehicle_hits_from_balise_text(text: str) -> Tuple[List[str], List[str], List[str]]:
     general_route_hits = (
-        find_first_material_line(text, ["Skien - Eidsvoll:"])
-        or find_first_material_line(text, ["Skien - Notodden:"])
-        or find_first_material_line(text, ["Porsgrunn - Eidsvoll:"])
-        or find_first_material_line(text, ["Porsgrunn - Notodden:"])
-        or find_first_material_line(text, ["Eidsvoll - Skien:"])
-        or find_first_material_line(text, ["Notodden - Skien:"])
-        or find_first_material_line(text, ["Eidsvoll - Porsgrunn:"])
-        or find_first_material_line(text, ["Notodden - Porsgrunn:"])
+        find_first_material_line(text, ["Oslo S - Skien", "- Skien"])
+        or find_first_material_line(text, ["Eidsvoll - Skien"])
+        or find_first_material_line(text, ["Notodden - Skien"])
+        or find_first_material_line(text, ["Skien - Eidsvoll"])
+        or find_first_material_line(text, ["Skien - Notodden"])
+        or find_first_material_line(text, ["Porsgrunn - Eidsvoll"])
+        or find_first_material_line(text, ["Porsgrunn - Notodden"])
+        or find_first_material_line(text, ["Eidsvoll - Porsgrunn"])
+        or find_first_material_line(text, ["Notodden - Porsgrunn"])
     )
-    general_hits = general_route_hits or unique_material_hits(text)
+    general_hits = general_route_hits or unique_material_hits(text) or material_type_hits(text)
 
     departure_hits = (
-        find_first_material_line(text, ["Porsgrunn - Eidsvoll:"])
-        or find_first_material_line(text, ["Porsgrunn - Notodden:"])
+        find_first_material_line(text, ["Skien - Eidsvoll"])
+        or find_first_material_line(text, ["Skien - Notodden"])
+        or find_first_material_line(text, ["Skien - Oslo S"])
+        or find_first_material_line(text, ["Skien -"])
+        or find_first_material_line(text, ["Porsgrunn - Eidsvoll"])
+        or find_first_material_line(text, ["Porsgrunn - Notodden"])
         or find_first_material_line(text, ["Porsgrunn:"])
         or general_hits
     )
 
     arrival_hits = (
-        find_first_material_line(text, ["Eidsvoll - Porsgrunn:"])
-        or find_first_material_line(text, ["Notodden - Porsgrunn:"])
+        find_first_material_line(text, ["Oslo S - Skien", "- Skien"])
+        or find_first_material_line(text, ["Eidsvoll - Skien"])
+        or find_first_material_line(text, ["Notodden - Skien"])
+        or find_first_material_line(text, ["Eidsvoll - Porsgrunn"])
+        or find_first_material_line(text, ["Notodden - Porsgrunn"])
         or find_first_material_line(text, ["Porsgrunn:"])
         or general_hits
     )
@@ -474,7 +507,7 @@ def build_payload(mode: str, deadline_at: Optional[float] = None) -> Dict[str, o
         "requestedTrains": trains,
         "vehicles": remap_train_keys(vehicles, departure_display_map),
         "departureVehicles": remap_train_keys(departure_vehicles, departure_display_map),
-        "arrivalVehicles": remap_train_keys(arrival_vehicles, departure_display_map),
+        "arrivalVehicles": remap_train_keys(arrival_vehicles, arrival_display_map),
         "vehicleErrors": remap_train_keys(vehicle_errors, departure_display_map),
         "departures": remap_train_keys(HARDCODED_DEPARTURES, departure_display_map),
         "arrivalDisplayTrainNumbers": arrival_display_map,
