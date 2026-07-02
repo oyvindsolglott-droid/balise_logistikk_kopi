@@ -10349,7 +10349,13 @@ function getTursattVehicleCellInfo(train, side, mode){
   const manualKey = lookupKeys.find(trainKey => sanitizeVehicleValue(manualMap[trainKey] || ""));
   const fallbackKey = sourceKeys.find(trainKey => sanitizeVehicleValue(getBaseVehicleForTrain(trainKey, mode)));
   const baseValue = sanitizeVehicleValue(base.map?.[baseKey] || "");
-  const manualValue = sanitizeVehicleValue(manualMap[manualKey] || "");
+  const rawManualValue = sanitizeVehicleValue(manualMap[manualKey] || "");
+  const staleOriginalValue = displayTrain
+    ? sanitizeVehicleValue(base.map?.[key] || getBaseVehicleForTrain(key, mode))
+    : "";
+  const manualValue = displayTrain && !baseValue && rawManualValue && rawManualValue === staleOriginalValue
+    ? ""
+    : rawManualValue;
   const fallbackValue = sanitizeVehicleValue(getBaseVehicleForTrain(fallbackKey, mode));
   const effectiveValue = manualValue || baseValue || fallbackValue;
   const fallbackAllowed = !baseValue && !displayTrain;
