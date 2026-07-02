@@ -27,7 +27,12 @@ const HIGH_RISK_FIELD_KEYS = new Set([
   "dropsorders",
   "verksted",
   "workshop",
+  "actions",
+  "actionlog",
+  "events",
   "score",
+  "sdescore",
+  "recommendationscore",
   "sortering",
   "sorting",
   "txpoperationalblock",
@@ -111,11 +116,13 @@ function saveSharedSporplanDraft(db, payload, now = new Date()){
     }
 
     const revision = currentRevision + 1;
-    const audit = {
-      updatedByActor: validation.value.audit.updatedByActor,
-      updatedByDevice: validation.value.audit.updatedByDevice,
-      clientContext: validation.value.audit.clientContext
-    };
+    const audit = buildStoredAudit(validation.value.audit, {
+      expectedRevision: validation.value.expectedRevision,
+      previousServerRevision: currentRevision,
+      newServerRevision: revision,
+      serverReceivedAt: updatedAt,
+      serverUpdatedAt: updatedAt
+    });
 
     if(row){
       db.prepare(`
@@ -196,6 +203,10 @@ function validateSharedSporplanDraftPayload(payload){
   const grunnoppstillingRep = validateStringMap(payload.draft.grunnoppstillingRep, "draft.grunnoppstillingRep");
   if(!grunnoppstillingRep.ok) return grunnoppstillingRep;
 
+  if(isEmptyDraft(grunnoppstilling.value, grunnoppstillingRep.value)){
+    return validationError("empty_shared_draft", "Shared sporplan draft cannot be empty.");
+  }
+
   if(!isPlainObject(payload.audit)){
     return validationError("invalid_audit", "audit must be an object.");
   }
@@ -236,6 +247,35 @@ function validateSharedSporplanDraftPayload(payload){
         clientContext: deepClone(clientContext)
       }
     }
+  };
+}
+
+function isEmptyDraft(grunnoppstilling, grunnoppstillingRep){
+  return !hasStringMapContent(grunnoppstilling) && !hasStringMapContent(grunnoppstillingRep);
+}
+
+function hasStringMapContent(value){
+  if(!isPlainObject(value)) return false;
+  return Object.values(value).some(item => String(item || "").trim());
+}
+
+function buildStoredAudit(audit, metadata){
+  return {
+    mode: MODE,
+    authority: "draft_readback_only",
+    operationalAuthority: false,
+    serverStateAuthority: false,
+    writesRepresentOperationalAuthority: false,
+    expectedRevision: metadata.expectedRevision,
+    previousServerRevision: metadata.previousServerRevision,
+    newServerRevision: metadata.newServerRevision,
+    serverReceivedAt: metadata.serverReceivedAt,
+    serverUpdatedAt: metadata.serverUpdatedAt,
+    actor: audit.updatedByActor,
+    device: audit.updatedByDevice,
+    updatedByActor: audit.updatedByActor,
+    updatedByDevice: audit.updatedByDevice,
+    clientContext: audit.clientContext
   };
 }
 
@@ -394,11 +434,26 @@ function normalizeStoredAudit(value){
     return defaultAudit();
   }
 
-  return {
+  const normalized = {
     updatedByActor: typeof value.updatedByActor === "string" ? value.updatedByActor : null,
     updatedByDevice: typeof value.updatedByDevice === "string" ? value.updatedByDevice : null,
     clientContext: isPlainObject(value.clientContext) ? deepClone(value.clientContext) : {}
   };
+
+  if(value.mode === MODE) normalized.mode = MODE;
+  if(value.authority === "draft_readback_only") normalized.authority = "draft_readback_only";
+  if(value.operationalAuthority === false) normalized.operationalAuthority = false;
+  if(value.serverStateAuthority === false) normalized.serverStateAuthority = false;
+  if(value.writesRepresentOperationalAuthority === false) normalized.writesRepresentOperationalAuthority = false;
+  if(Number.isInteger(value.expectedRevision) && value.expectedRevision >= 0) normalized.expectedRevision = value.expectedRevision;
+  if(Number.isInteger(value.previousServerRevision) && value.previousServerRevision >= 0) normalized.previousServerRevision = value.previousServerRevision;
+  if(Number.isInteger(value.newServerRevision) && value.newServerRevision >= 1) normalized.newServerRevision = value.newServerRevision;
+  if(typeof value.serverReceivedAt === "string") normalized.serverReceivedAt = value.serverReceivedAt;
+  if(typeof value.serverUpdatedAt === "string") normalized.serverUpdatedAt = value.serverUpdatedAt;
+  if(typeof value.actor === "string") normalized.actor = value.actor;
+  if(typeof value.device === "string") normalized.device = value.device;
+
+  return normalized;
 }
 
 function validationError(code, message, field){

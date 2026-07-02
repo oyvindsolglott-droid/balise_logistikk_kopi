@@ -9608,6 +9608,36 @@ Fremdrift etter B48-J-DOC:
 - SDE Shared Workspace totalt: ca. 96 %
 - operational authority/write: `0 %`, ikke åpnet
 
+## SDE-SYNC-D1 shared sporplan-draft write-policy guard
+
+`POST /api/shared-sporplan-draft` finnes i kode, men er fortsatt runtime-blokkert
+som standard. Production skal fortsatt vise
+`sharedSporplanDraftWritesEnabled:false` inntil egen senere GO setter et kort og
+kontrollert writevindu.
+
+D1 låser bare server-side kontrakten før eventuell senere aktivering:
+
+- payload må ha `expectedRevision` som heltall `>= 0`
+- stale `expectedRevision` skal gi `409 revision_conflict`
+- tom draft avvises med `empty_shared_draft`
+- eneste draftfelt er `grunnoppstilling` og `grunnoppstillingRep`
+- authority-/høyrisikofelt som `operationalAuthority`,
+  `serverStateAuthority`, `writesRepresentOperationalAuthority`, `actions`,
+  `events`, `utfort`, `annullert`, `DROPS`, `verksted`, `score` og
+  `operationalState` avvises rekursivt
+- `audit_json` berikes server-side med `expectedRevision`,
+  `previousServerRevision`, `newServerRevision`, server-timestamps,
+  actor/device fra payload og `authority:"draft_readback_only"`
+- `operationalAuthority:false`, `serverStateAuthority:false` og
+  `writesRepresentOperationalAuthority:false` lagres som servervalgte
+  auditmarkører
+
+D1 åpner ikke autosave, polling, retry-loop, frontend-write, runtime-auth,
+rollefilter, operational authority eller serverstate som operativ sannhetskilde.
+Senere writefase må fortsatt ha eksplisitt brukerhandling, konfliktvisning,
+ingen automatisk overskriving av nyere serverdraft og ingen operativ effekt på
+SDE-score, SDE-motor, DROPS eller Utført/Annullert.
+
 ## Neste fase
 
 Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
