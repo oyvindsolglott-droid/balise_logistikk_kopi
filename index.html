@@ -6069,6 +6069,11 @@ button{padding:12px 12px}
 <section class="panel" id="grunnoppstilling">
 <div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for Sporplan og videre SDE-arbeid.</div>
 <div class="note" id="sharedSporplanDraftStatus">Delt sporplan-draft er ikke lest ennå. Draft/readback, ikke operativ sannhetskilde.</div>
+<div class="view-tools" aria-label="Delt sporplan-draft">
+<span class="label" id="sharedSporplanDraftWriteState">Delt lagring er ikke åpnet på server. Ingen POST sendes.</span>
+<button class="compact" type="button" id="sharedSporplanDraftRefreshBtn">Les delt draft</button>
+<button class="compact" type="button" id="sharedSporplanDraftSaveBtn" disabled>Lagre delt draft</button>
+</div>
 <div class="txp-unavailable-panel" id="txpUnavailableInfrastructurePanel"></div>
 <div class="mobile-table-label">Grunnoppstilling</div>
 <div class="zoom-wrap">
@@ -25488,6 +25493,9 @@ let sdeRecommendationAckReadbackOkForDisplay = false;
 let sdeNightPlacementOperationalStateTestSubmitInFlight = false;
 let sdeNightPlacementOperationalStateProductionPilotSubmitInFlight = false;
 let lastSharedSporplanDraftReadbackForDisplay = null;
+let lastKnownSharedDraftRevision = null;
+let lastSharedSporplanDraftWritesEnabled = false;
+let sharedSporplanDraftSaveInFlight = false;
 
 function getSameOriginServerStatusBase(){
   if(isSdeHostedHttpsOrigin()){
@@ -25526,11 +25534,41 @@ function getSharedSporplanDraftStatusElement(){
   return document.getElementById("sharedSporplanDraftStatus");
 }
 
+function getSharedSporplanDraftControls(){
+  return {
+    save: document.getElementById("sharedSporplanDraftSaveBtn"),
+    refresh: document.getElementById("sharedSporplanDraftRefreshBtn"),
+    writeState: document.getElementById("sharedSporplanDraftWriteState")
+  };
+}
+
 function renderSharedSporplanDraftStatus(message, tone = "off"){
   const element = getSharedSporplanDraftStatusElement();
   if(!element) return;
   element.dataset.sharedDraftStatus = tone;
   element.textContent = message;
+}
+
+function renderSharedSporplanDraftSaveState(message){
+  const controls = getSharedSporplanDraftControls();
+  const writesEnabled = lastSharedSporplanDraftWritesEnabled === true;
+  const revisionKnown = Number.isInteger(lastKnownSharedDraftRevision) && lastKnownSharedDraftRevision >= 0;
+  const disabled = sharedSporplanDraftSaveInFlight || !writesEnabled || !revisionKnown;
+
+  if(controls.save){
+    controls.save.disabled = disabled;
+    controls.save.title = writesEnabled
+      ? "Lagrer bare delt draft etter eksplisitt klikk og revision-sjekk."
+      : "Delt lagring er ikke åpnet på server.";
+  }
+
+  if(controls.writeState){
+    controls.writeState.textContent = message || (
+      writesEnabled
+        ? `Delt lagring er åpnet i serverstatus. Neste lagring bruker expectedRevision ${lastKnownSharedDraftRevision}. Draft/readback, ikke operativ sannhetskilde.`
+        : "Delt lagring er ikke åpnet på server. Ingen POST sendes."
+    );
+  }
 }
 
 function isPlainSharedSporplanDraftObject(value){
@@ -25574,6 +25612,68 @@ function isSharedSporplanDraftEmpty(readback){
     );
 }
 
+function cloneSharedSporplanDraftMap(value){
+  if(!isPlainSharedSporplanDraftObject(value)) return {};
+  return Object.entries(value).reduce((acc, [key, rawValue]) => {
+    const slot = String(key || "").trim();
+    if(!slot) return acc;
+    const text = String(rawValue || "").trim();
+    if(text) acc[slot] = text;
+    return acc;
+  }, {});
+}
+
+function getLocalSharedSporplanDraft(){
+  return {
+    grunnoppstilling: cloneSharedSporplanDraftMap(state?.grunnoppstilling),
+    grunnoppstillingRep: cloneSharedSporplanDraftMap(state?.grunnoppstillingRep)
+  };
+}
+
+function isLocalSharedSporplanDraftEmpty(draft){
+  return !draft
+    || (
+      getSharedSporplanDraftContentCount(draft.grunnoppstilling) === 0
+      && getSharedSporplanDraftContentCount(draft.grunnoppstillingRep) === 0
+    );
+}
+
+function buildSharedSporplanDraftSavePayload(){
+  const expectedRevision = Number(lastKnownSharedDraftRevision);
+  if(!Number.isInteger(expectedRevision) || expectedRevision < 0){
+    return {ok:false, message:"Mangler gyldig expectedRevision fra siste delte draft-readback."};
+  }
+
+  const draft = getLocalSharedSporplanDraft();
+  if(isLocalSharedSporplanDraftEmpty(draft)){
+    return {ok:false, message:"Tom lokal Input Sporplan kan ikke lagres som delt draft. Ingen POST sendt."};
+  }
+
+  return {
+    ok:true,
+    payload:{
+      expectedRevision,
+      draft,
+      audit:{
+        actor:"serverhosted-frontend",
+        device:window.location.hostname || "unknown-client",
+        clientContext:{
+          phase:"SDE-SYNC-D2",
+          action:"explicit-save-click",
+          scope:"input-sporplan-draft",
+          readbackOnly:true,
+          draftReadbackOnly:true,
+          manualActionOnly:true,
+          autosave:false,
+          notOperationalOrder:true,
+          notSdeMotorSource:true,
+          notCompletedCancelled:true
+        }
+      }
+    }
+  };
+}
+
 function shouldFetchSharedSporplanDraftReadback(){
   if(isPublicGithubPagesApp()) return false;
   if(window.location.protocol === "file:") return false;
@@ -25584,7 +25684,9 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
   lastSharedSporplanDraftReadbackForDisplay = null;
 
   if(!shouldFetchSharedSporplanDraftReadback()){
+    lastKnownSharedDraftRevision = null;
     renderSharedSporplanDraftStatus("Delt sporplan-draft ikke hentet uten server. Lokal Input Sporplan beholdes. Draft/readback, ikke operativ sannhetskilde.", "off");
+    renderSharedSporplanDraftSaveState("Delt lagring er ikke åpnet uten server. Ingen POST sendes.");
     return;
   }
 
@@ -25604,17 +25706,79 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
     }
 
     lastSharedSporplanDraftReadbackForDisplay = readback;
+    lastKnownSharedDraftRevision = readback.revision;
     if(isSharedSporplanDraftEmpty(readback)){
       renderSharedSporplanDraftStatus("Ingen delt draft funnet. Lokal Input Sporplan beholdes. Draft/readback, ikke operativ sannhetskilde.", "off");
+      renderSharedSporplanDraftSaveState();
       return;
     }
 
     const count = getSharedSporplanDraftContentCount(readback.grunnoppstilling)
       + getSharedSporplanDraftContentCount(readback.grunnoppstillingRep);
     renderSharedSporplanDraftStatus(`Delt sporplan-draft lest fra server (${count} felt, rev ${readback.revision}). Lokal Input Sporplan er ikke overskrevet. Draft/readback, ikke operativ sannhetskilde.`, "ok");
+    renderSharedSporplanDraftSaveState();
   }catch(error){
     lastSharedSporplanDraftReadbackForDisplay = null;
+    lastKnownSharedDraftRevision = null;
     renderSharedSporplanDraftStatus(`Delt sporplan-draft kunne ikke leses (${error?.message || "ukjent feil"}). Lokal Input Sporplan beholdes.`, "off");
+    renderSharedSporplanDraftSaveState("Delt draft kunne ikke leses. Lagring holdes inaktiv til serverstatus og revision er kjent.");
+  }
+}
+
+async function saveSharedSporplanDraftFromUi(){
+  if(sharedSporplanDraftSaveInFlight) return;
+
+  if(lastSharedSporplanDraftWritesEnabled !== true){
+    renderSharedSporplanDraftSaveState("Delt lagring er ikke åpnet på server. Ingen POST sendt.");
+    return;
+  }
+
+  if(!shouldFetchSharedSporplanDraftReadback()){
+    renderSharedSporplanDraftSaveState("Mangler same-origin server. Ingen POST sendt.");
+    return;
+  }
+
+  const built = buildSharedSporplanDraftSavePayload();
+  if(!built.ok){
+    renderSharedSporplanDraftSaveState(built.message);
+    return;
+  }
+
+  sharedSporplanDraftSaveInFlight = true;
+  renderSharedSporplanDraftSaveState("Lagrer delt draft etter eksplisitt klikk. Ikke operativ sannhetskilde.");
+
+  let finalMessage = "";
+  try{
+    const response = await fetch("/api/shared-sporplan-draft", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(built.payload)
+    });
+    let body = null;
+    try{
+      body = await response.json();
+    }catch(_error){
+      body = null;
+    }
+
+    if(response.status === 201){
+      const readback = normalizeSharedSporplanDraftPayload(body);
+      if(readback){
+        lastSharedSporplanDraftReadbackForDisplay = readback;
+        lastKnownSharedDraftRevision = readback.revision;
+      }
+      renderSharedSporplanDraftStatus(`Delt draft lagret. Revision ${body?.previousRevision ?? built.payload.expectedRevision} -> ${body?.revision ?? "?"}. Draft/readback, ikke operativ sannhetskilde.`, "ok");
+      finalMessage = "Delt draft lagret. Ingen SDE-score, DROPS, Utført/Annullert eller operational state er oppdatert.";
+    }else if(response.status === 409){
+      finalMessage = `Konflikt: serverrevision er ${body?.currentRevision ?? "ukjent"}, klient forventet ${body?.expectedRevision ?? built.payload.expectedRevision}. Lokal Input Sporplan beholdes. Les delt draft på nytt før manuell vurdering.`;
+    }else{
+      finalMessage = `Delt draft ble ikke lagret: HTTP ${response.status} ${body?.error || ""}. Lokal Input Sporplan beholdes.`.trim();
+    }
+  }catch(error){
+    finalMessage = `Delt draft kunne ikke lagres: ${error?.message || "nettverksfeil"}. Lokal Input Sporplan beholdes.`;
+  }finally{
+    sharedSporplanDraftSaveInFlight = false;
+    renderSharedSporplanDraftSaveState(finalMessage);
   }
 }
 
@@ -27647,6 +27811,8 @@ function renderServerStatusItems(items){
 function renderServerStatusIdle(){
   lastServerStatusForDisplay = null;
   lastServerStatusBaseForDisplay = "";
+  lastSharedSporplanDraftWritesEnabled = false;
+  lastKnownSharedDraftRevision = null;
   serverNoteReadbackOkForDisplay = false;
   operationalStateReadbackStateForDisplay = "idle";
   sdeRecommendationAckReadbackOkForDisplay = false;
@@ -27661,11 +27827,14 @@ function renderServerStatusIdle(){
   renderOperationalStateReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
   renderSharedWorkspacePreviewMessage("ikke lest", "warn", "Avventer serverstatus. Shared Workspace preview er read-only og inaktiv til serverreadback finnes.");
   renderSdeRecommendationAckReadbackMessage("ikke lest", "warn", "Avventer serverstatus.");
+  renderSharedSporplanDraftSaveState("Avventer serverstatus. Delt lagring er inaktiv.");
 }
 
 function renderServerStatusUnavailable(message){
   lastServerStatusForDisplay = null;
   lastServerStatusBaseForDisplay = "";
+  lastSharedSporplanDraftWritesEnabled = false;
+  lastKnownSharedDraftRevision = null;
   serverNoteReadbackOkForDisplay = false;
   operationalStateReadbackStateForDisplay = "idle";
   sdeRecommendationAckReadbackOkForDisplay = false;
@@ -27686,11 +27855,13 @@ function renderServerStatusUnavailable(message){
   renderOperationalStateReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Operational-state readback er ikke hentet.");
   renderSharedWorkspacePreviewMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. Shared Workspace preview er ikke hentet og gjør ingen write.");
   renderSdeRecommendationAckReadbackMessage("utilgjengelig", "warn", "Serverstatus utilgjengelig. SDE-ack readback er ikke hentet.");
+  renderSharedSporplanDraftSaveState("Serverstatus utilgjengelig. Delt lagring er inaktiv og ingen POST sendes.");
 }
 
 function renderServerStatus(status, base){
   lastServerStatusForDisplay = status || null;
   lastServerStatusBaseForDisplay = normalizeServerStatusBase(base);
+  lastSharedSporplanDraftWritesEnabled = status?.sharedSporplanDraftWritesEnabled === true;
   setServerDiagnosticsHidden(false);
   const schemaReady = status?.actionsTablePresent === true && status?.actionsSchemaReady === true && status?.migrationRequired === false;
   const contract = status?.clientReadContract || status?.clientContract || {};
@@ -27762,6 +27933,7 @@ function renderServerStatus(status, base){
   renderServerNotePanelFromStatus(status, base);
   renderSharedWorkspacePreview(status, lastOperationalStateReadbackBodyForDisplay, lastOperationalStateEventsBodyForDisplay || {events: []}, base);
   renderSdeRecommendationAckPanelFromStatus(status, base);
+  renderSharedSporplanDraftSaveState();
 }
 
 async function fetchServerStatusForDisplay(){
@@ -29258,6 +29430,8 @@ document.getElementById("serverStatusCheckBtn")?.addEventListener("click", fetch
 document.getElementById("serverDiagnosticsToggleBtn")?.addEventListener("click", () => {
   setServerDiagnosticsExpanded(document.body?.classList.contains("server-diagnostics-secondary") === true);
 });
+document.getElementById("sharedSporplanDraftRefreshBtn")?.addEventListener("click", fetchSharedSporplanDraftReadbackForRefresh);
+document.getElementById("sharedSporplanDraftSaveBtn")?.addEventListener("click", saveSharedSporplanDraftFromUi);
 document.getElementById("serverNoteSendBtn")?.addEventListener("click", submitServerNoteFromUi);
 document.getElementById("sdeRecommendationAckSendBtn")?.addEventListener("click", submitSdeRecommendationAckFromUi);
 [
