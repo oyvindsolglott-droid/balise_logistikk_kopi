@@ -6068,6 +6068,7 @@ button{padding:12px 12px}
 
 <section class="panel" id="grunnoppstilling">
 <div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for Sporplan og videre SDE-arbeid.</div>
+<div class="note" id="sharedSporplanDraftStatus">Delt sporplan-draft er ikke lest ennå. Draft/readback, ikke operativ sannhetskilde.</div>
 <div class="txp-unavailable-panel" id="txpUnavailableInfrastructurePanel"></div>
 <div class="mobile-table-label">Grunnoppstilling</div>
 <div class="zoom-wrap">
@@ -25486,6 +25487,7 @@ let lastOperationalStateEventsBodyForDisplay = null;
 let sdeRecommendationAckReadbackOkForDisplay = false;
 let sdeNightPlacementOperationalStateTestSubmitInFlight = false;
 let sdeNightPlacementOperationalStateProductionPilotSubmitInFlight = false;
+let lastSharedSporplanDraftReadbackForDisplay = null;
 
 function getSameOriginServerStatusBase(){
   if(isSdeHostedHttpsOrigin()){
@@ -25517,6 +25519,102 @@ function isLocalOrLanServerStatusBase(value){
     return url.protocol === "http:" || host === "localhost" || host === "127.0.0.1" || host === "::1" || host.startsWith("192.168.");
   }catch(_err){
     return false;
+  }
+}
+
+function getSharedSporplanDraftStatusElement(){
+  return document.getElementById("sharedSporplanDraftStatus");
+}
+
+function renderSharedSporplanDraftStatus(message, tone = "off"){
+  const element = getSharedSporplanDraftStatusElement();
+  if(!element) return;
+  element.dataset.sharedDraftStatus = tone;
+  element.textContent = message;
+}
+
+function isPlainSharedSporplanDraftObject(value){
+  return value && typeof value === "object" && !Array.isArray(value);
+}
+
+function getSharedSporplanDraftContentCount(draftSection){
+  return isPlainSharedSporplanDraftObject(draftSection)
+    ? Object.keys(draftSection).filter(key => String(draftSection[key] || "").trim()).length
+    : 0;
+}
+
+function normalizeSharedSporplanDraftPayload(payload){
+  if(!isPlainSharedSporplanDraftObject(payload)) return null;
+  if(payload.mode !== "shared_sporplan_draft") return null;
+  if(payload.serverStateAuthority === true || payload.operationalAuthority === true) return null;
+
+  const draft = isPlainSharedSporplanDraftObject(payload.draft) ? payload.draft : null;
+  if(!draft) return null;
+  const grunnoppstilling = isPlainSharedSporplanDraftObject(draft.grunnoppstilling) ? draft.grunnoppstilling : null;
+  const grunnoppstillingRep = isPlainSharedSporplanDraftObject(draft.grunnoppstillingRep) ? draft.grunnoppstillingRep : null;
+  if(!grunnoppstilling || !grunnoppstillingRep) return null;
+
+  const revision = Number(payload.revision);
+  return {
+    revision:Number.isFinite(revision) ? revision : 0,
+    updatedAt:typeof payload.updatedAt === "string" ? payload.updatedAt : null,
+    grunnoppstilling,
+    grunnoppstillingRep,
+    audit:isPlainSharedSporplanDraftObject(payload.audit) ? payload.audit : {}
+  };
+}
+
+function isSharedSporplanDraftEmpty(readback){
+  if(!readback) return true;
+  return readback.revision <= 0
+    || !readback.updatedAt
+    || (
+      getSharedSporplanDraftContentCount(readback.grunnoppstilling) === 0
+      && getSharedSporplanDraftContentCount(readback.grunnoppstillingRep) === 0
+    );
+}
+
+function shouldFetchSharedSporplanDraftReadback(){
+  if(isPublicGithubPagesApp()) return false;
+  if(window.location.protocol === "file:") return false;
+  return Boolean(getSameOriginServerStatusBase());
+}
+
+async function fetchSharedSporplanDraftReadbackForRefresh(){
+  lastSharedSporplanDraftReadbackForDisplay = null;
+
+  if(!shouldFetchSharedSporplanDraftReadback()){
+    renderSharedSporplanDraftStatus("Delt sporplan-draft ikke hentet uten server. Lokal Input Sporplan beholdes. Draft/readback, ikke operativ sannhetskilde.", "off");
+    return;
+  }
+
+  renderSharedSporplanDraftStatus("Leser delt sporplan-draft fra server. Ingen lokal Input Sporplan overskrives.", "warn");
+
+  try{
+    const response = await Promise.race([
+      fetch("/api/shared-sporplan-draft", { method: "GET", cache: "no-store" }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000))
+    ]);
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    const readback = normalizeSharedSporplanDraftPayload(payload);
+    if(!readback){
+      renderSharedSporplanDraftStatus("Delt sporplan-draft hadde ugyldig payload. Lokal Input Sporplan beholdes. Draft/readback, ikke operativ sannhetskilde.", "warn");
+      return;
+    }
+
+    lastSharedSporplanDraftReadbackForDisplay = readback;
+    if(isSharedSporplanDraftEmpty(readback)){
+      renderSharedSporplanDraftStatus("Ingen delt draft funnet. Lokal Input Sporplan beholdes. Draft/readback, ikke operativ sannhetskilde.", "off");
+      return;
+    }
+
+    const count = getSharedSporplanDraftContentCount(readback.grunnoppstilling)
+      + getSharedSporplanDraftContentCount(readback.grunnoppstillingRep);
+    renderSharedSporplanDraftStatus(`Delt sporplan-draft lest fra server (${count} felt, rev ${readback.revision}). Lokal Input Sporplan er ikke overskrevet. Draft/readback, ikke operativ sannhetskilde.`, "ok");
+  }catch(error){
+    lastSharedSporplanDraftReadbackForDisplay = null;
+    renderSharedSporplanDraftStatus(`Delt sporplan-draft kunne ikke leses (${error?.message || "ukjent feil"}). Lokal Input Sporplan beholdes.`, "off");
   }
 }
 
@@ -29204,6 +29302,7 @@ if(!isPublicGithubPagesApp()){
   activateTab(rememberedStartupTab);
   markSaved("Klar");
   renderServerStatusIdle();
+  fetchSharedSporplanDraftReadbackForRefresh();
   fetchServerStatusForDisplay();
   fetchBaliseApi();
   ensureTodayStaticDataLoaded();
