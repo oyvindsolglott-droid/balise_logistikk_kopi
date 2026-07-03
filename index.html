@@ -2389,6 +2389,49 @@ button{padding:12px 12px}
   box-sizing:border-box;
 }
 
+.shared-sporplan-draft-readback{
+  display:none;
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:6px;
+  margin:8px 0 10px;
+  padding:10px;
+  border:1px solid #bfdbfe;
+  border-radius:10px;
+  background:#f8fbff;
+  color:#0f172a;
+}
+
+.shared-sporplan-draft-readback.is-visible{
+  display:grid;
+}
+
+.shared-sporplan-draft-readback .shared-draft-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  min-height:28px;
+  padding:5px 7px;
+  border:1px solid #dbeafe;
+  border-radius:8px;
+  background:#fff;
+  font-size:13px;
+}
+
+.shared-sporplan-draft-readback .shared-draft-slot{
+  font-weight:900;
+  color:#1d4ed8;
+}
+
+.shared-sporplan-draft-readback .shared-draft-value{
+  font-weight:850;
+}
+
+.shared-sporplan-draft-readback .shared-draft-kind{
+  color:#64748b;
+  font-size:12px;
+}
+
 #grunnoppstillingTable td:nth-child(2) input{
   width:96px;
 }
@@ -6069,6 +6112,7 @@ button{padding:12px 12px}
 <section class="panel" id="grunnoppstilling">
 <div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for Sporplan og videre SDE-arbeid.</div>
 <div class="note" id="sharedSporplanDraftStatus">Delt sporplan-draft er ikke lest ennå. Draft/readback, ikke operativ sannhetskilde.</div>
+<div class="shared-sporplan-draft-readback" id="sharedSporplanDraftReadback" aria-live="polite"></div>
 <div class="view-tools" aria-label="Delt sporplan-draft">
 <span class="label" id="sharedSporplanDraftWriteState">Delt lagring er ikke åpnet på server. Ingen POST sendes.</span>
 <button class="compact" type="button" id="sharedSporplanDraftRefreshBtn">Les delt draft</button>
@@ -25549,6 +25593,69 @@ function renderSharedSporplanDraftStatus(message, tone = "off"){
   element.textContent = message;
 }
 
+function getSharedSporplanDraftReadbackElement(){
+  return document.getElementById("sharedSporplanDraftReadback");
+}
+
+function getSharedSporplanDraftReadbackRows(readback){
+  if(!readback) return [];
+  const rows = [];
+  const collectRows = (section, kind) => {
+    if(!isPlainSharedSporplanDraftObject(section)) return;
+    Object.entries(section).forEach(([rawSlot, rawValue]) => {
+      const slot = String(rawSlot || "").trim();
+      const value = String(rawValue || "").trim();
+      if(slot && value) rows.push({slot, value, kind});
+    });
+  };
+
+  collectRows(readback.grunnoppstilling, "Grunnoppstilling");
+  collectRows(readback.grunnoppstillingRep, "Rep/drei");
+  return rows.sort((left, right) => left.slot.localeCompare(right.slot, "nb", {numeric:true}));
+}
+
+function renderSharedSporplanDraftReadback(readback){
+  const element = getSharedSporplanDraftReadbackElement();
+  if(!element) return;
+
+  element.textContent = "";
+  element.classList.remove("is-visible");
+
+  if(!readback) return;
+
+  const rows = getSharedSporplanDraftReadbackRows(readback);
+  if(!rows.length){
+    const empty = document.createElement("div");
+    empty.className = "shared-draft-row";
+    empty.textContent = "Ingen delt sporplan-draft mapping. Readback, ikke skifteordre.";
+    element.appendChild(empty);
+    element.classList.add("is-visible");
+    return;
+  }
+
+  rows.forEach(row => {
+    const wrapper = document.createElement("div");
+    wrapper.className = "shared-draft-row";
+
+    const slot = document.createElement("span");
+    slot.className = "shared-draft-slot";
+    slot.textContent = `${row.slot} \u2192`;
+
+    const value = document.createElement("span");
+    value.className = "shared-draft-value";
+    value.textContent = row.value;
+
+    const kind = document.createElement("span");
+    kind.className = "shared-draft-kind";
+    kind.textContent = row.kind;
+
+    wrapper.append(slot, value, kind);
+    element.appendChild(wrapper);
+  });
+
+  element.classList.add("is-visible");
+}
+
 function renderSharedSporplanDraftSaveState(message){
   const controls = getSharedSporplanDraftControls();
   const writesEnabled = lastSharedSporplanDraftWritesEnabled === true;
@@ -25682,6 +25789,7 @@ function shouldFetchSharedSporplanDraftReadback(){
 
 async function fetchSharedSporplanDraftReadbackForRefresh(){
   lastSharedSporplanDraftReadbackForDisplay = null;
+  renderSharedSporplanDraftReadback(null);
 
   if(!shouldFetchSharedSporplanDraftReadback()){
     lastKnownSharedDraftRevision = null;
@@ -25708,6 +25816,7 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
     lastSharedSporplanDraftReadbackForDisplay = readback;
     lastKnownSharedDraftRevision = readback.revision;
     if(isSharedSporplanDraftEmpty(readback)){
+      renderSharedSporplanDraftReadback(readback);
       renderSharedSporplanDraftStatus("Ingen delt draft funnet. Lokal Input Sporplan beholdes. Draft/readback, ikke operativ sannhetskilde.", "off");
       renderSharedSporplanDraftSaveState();
       return;
@@ -25715,6 +25824,7 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
 
     const count = getSharedSporplanDraftContentCount(readback.grunnoppstilling)
       + getSharedSporplanDraftContentCount(readback.grunnoppstillingRep);
+    renderSharedSporplanDraftReadback(readback);
     renderSharedSporplanDraftStatus(`Delt sporplan-draft lest fra server (${count} felt, rev ${readback.revision}). Lokal Input Sporplan er ikke overskrevet. Draft/readback, ikke operativ sannhetskilde.`, "ok");
     renderSharedSporplanDraftSaveState();
   }catch(error){
