@@ -6910,6 +6910,8 @@ function makeDefaultState(){
     sdeMoveActionDragOffsets:{},
     sdeExpandedMoveActionKey:"",
     migrationClearKveldColE_v1:false,
+    sharedSporplanDraftAppliedRevision:null,
+    sharedSporplanDraftAppliedAt:null,
     demoMode:"",
     preDemoSnapshot:null
   };
@@ -6961,6 +6963,8 @@ if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.is
 if(!Array.isArray(state.sdeMoveLearningLog)) state.sdeMoveLearningLog=[];
 if(!state.sdeManualMoveOverrides || typeof state.sdeManualMoveOverrides !== "object" || Array.isArray(state.sdeManualMoveOverrides)) state.sdeManualMoveOverrides = {};
 if(!state.sdeNightPlacementManualOverrides || typeof state.sdeNightPlacementManualOverrides !== "object" || Array.isArray(state.sdeNightPlacementManualOverrides)) state.sdeNightPlacementManualOverrides = {};
+if(!("sharedSporplanDraftAppliedRevision" in state)) state.sharedSporplanDraftAppliedRevision=null;
+if(!("sharedSporplanDraftAppliedAt" in state)) state.sharedSporplanDraftAppliedAt=null;
 
 if(!state.baliseSelectedMode) state.baliseSelectedMode="idag";
 if(!state.apiBalise){
@@ -25730,6 +25734,20 @@ function cloneSharedSporplanDraftMap(value){
   }, {});
 }
 
+function applySharedSporplanDraftToActiveState(readback){
+  if(!readback || isSharedSporplanDraftEmpty(readback)) return false;
+
+  state.grunnoppstilling = cloneSharedSporplanDraftMap(readback.grunnoppstilling);
+  state.grunnoppstillingRep = cloneSharedSporplanDraftMap(readback.grunnoppstillingRep);
+  state.sharedSporplanDraftAppliedRevision = readback.revision;
+  state.sharedSporplanDraftAppliedAt = readback.updatedAt || new Date().toISOString();
+
+  buildGrunnoppstilling();
+  buildSporplan();
+  persist(true);
+  return true;
+}
+
 function getLocalSharedSporplanDraft(){
   return {
     grunnoppstilling: cloneSharedSporplanDraftMap(state?.grunnoppstilling),
@@ -25798,7 +25816,7 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
     return;
   }
 
-  renderSharedSporplanDraftStatus("Leser delt sporplan-draft fra server. Ingen lokal Input Sporplan overskrives.", "warn");
+  renderSharedSporplanDraftStatus("Leser delt sporplan-draft fra server. Gyldig draft brukes som aktivt parkert-hvor-grunnlag.", "warn");
 
   try{
     const response = await Promise.race([
@@ -25825,7 +25843,13 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
     const count = getSharedSporplanDraftContentCount(readback.grunnoppstilling)
       + getSharedSporplanDraftContentCount(readback.grunnoppstillingRep);
     renderSharedSporplanDraftReadback(readback);
-    renderSharedSporplanDraftStatus(`Delt sporplan-draft lest fra server (${count} felt, rev ${readback.revision}). Lokal Input Sporplan er ikke overskrevet. Draft/readback, ikke operativ sannhetskilde.`, "ok");
+    const applied = applySharedSporplanDraftToActiveState(readback);
+    renderSharedSporplanDraftStatus(
+      applied
+        ? `Delt sporplan-draft brukt som aktivt parkert-hvor-grunnlag (${count} felt, rev ${readback.revision}). Ikke skifteordre. Ikke operativ sannhetskilde.`
+        : `Delt sporplan-draft lest fra server (${count} felt, rev ${readback.revision}). Draft/readback, ikke operativ sannhetskilde.`,
+      "ok"
+    );
     renderSharedSporplanDraftSaveState();
   }catch(error){
     lastSharedSporplanDraftReadbackForDisplay = null;
