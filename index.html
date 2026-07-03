@@ -732,6 +732,12 @@ margin-bottom:10px
 font-size:13px;
 color:var(--muted)
 }
+#grunnoppstilling .view-tools{
+display:flex
+}
+#grunnoppstilling .view-tools .label{
+flex:1 1 100%
+}
 .tursatt-filter-tools{
 display:flex;
 gap:8px;
@@ -6116,7 +6122,7 @@ button{padding:12px 12px}
 <div class="view-tools" aria-label="Delt sporplan-draft">
 <span class="label" id="sharedSporplanDraftWriteState">Delt lagring er ikke åpnet på server. Ingen POST sendes.</span>
 <button class="compact" type="button" id="sharedSporplanDraftRefreshBtn">Les delt draft</button>
-<button class="compact" type="button" id="sharedSporplanDraftSaveBtn" disabled>Lagre delt draft</button>
+<button class="compact" type="button" id="sharedSporplanDraftSaveBtn" disabled>Lagre delt parkert-hvor</button>
 </div>
 <div class="txp-unavailable-panel" id="txpUnavailableInfrastructurePanel"></div>
 <div class="mobile-table-label">Grunnoppstilling</div>
@@ -9601,6 +9607,7 @@ function buildGrunnoppstilling(){
       refreshGrunnoppstillingDuplicateInputWarnings();
       buildSporplan();
       persist(true);
+      renderSharedSporplanDraftLocalChangeState();
     });
     vehicleTd.appendChild(inp);
     tr.appendChild(vehicleTd);
@@ -9627,6 +9634,7 @@ function buildGrunnoppstilling(){
       }
       buildSporplan();
       persist(true);
+      renderSharedSporplanDraftLocalChangeState();
     });
     repTd.appendChild(repInp);
     tr.appendChild(repTd);
@@ -25682,6 +25690,18 @@ function renderSharedSporplanDraftSaveState(message){
   }
 }
 
+function renderSharedSporplanDraftLocalChangeState(){
+  const localDraft = getLocalSharedSporplanDraft();
+  const count = getSharedSporplanDraftContentCount(localDraft.grunnoppstilling)
+    + getSharedSporplanDraftContentCount(localDraft.grunnoppstillingRep);
+  const revisionText = Number.isInteger(lastKnownSharedDraftRevision) && lastKnownSharedDraftRevision >= 0
+    ? `Neste eksplisitte lagring bruker expectedRevision ${lastKnownSharedDraftRevision}.`
+    : "Les delt draft før lagring slik at expectedRevision er kjent.";
+  renderSharedSporplanDraftSaveState(
+    `Lokal Input Sporplan er endret (${count} felt). Bruk “Lagre delt parkert-hvor” for å dele parkert-hvor som draft/readback. ${revisionText} Ikke skifteordre.`
+  );
+}
+
 function isPlainSharedSporplanDraftObject(value){
   return value && typeof value === "object" && !Array.isArray(value);
 }
@@ -25783,7 +25803,7 @@ function buildSharedSporplanDraftSavePayload(){
         actor:"serverhosted-frontend",
         device:window.location.hostname || "unknown-client",
         clientContext:{
-          phase:"SDE-SYNC-D2",
+          phase:"SDE-SYNC-H",
           action:"explicit-save-click",
           scope:"input-sporplan-draft",
           readbackOnly:true,
@@ -25867,6 +25887,26 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
   }
 }
 
+async function fetchSharedSporplanDraftReadbackForSaveConfirmation(options = {}){
+  const {applyActive = true} = options;
+  const response = await Promise.race([
+    fetch("/api/shared-sporplan-draft", { method: "GET", cache: "no-store" }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5000))
+  ]);
+  if(!response.ok) throw new Error(`HTTP ${response.status}`);
+  const payload = await response.json();
+  const readback = normalizeSharedSporplanDraftPayload(payload);
+  if(!readback) throw new Error("ugyldig payload");
+
+  lastSharedSporplanDraftReadbackForDisplay = readback;
+  lastKnownSharedDraftRevision = readback.revision;
+  renderSharedSporplanDraftReadback(readback);
+  if(applyActive && !isSharedSporplanDraftEmpty(readback)){
+    applySharedSporplanDraftToActiveState(readback);
+  }
+  return readback;
+}
+
 async function saveSharedSporplanDraftFromUi(){
   if(sharedSporplanDraftSaveInFlight) return;
 
@@ -25908,11 +25948,30 @@ async function saveSharedSporplanDraftFromUi(){
       if(readback){
         lastSharedSporplanDraftReadbackForDisplay = readback;
         lastKnownSharedDraftRevision = readback.revision;
+        renderSharedSporplanDraftReadback(readback);
+        if(!isSharedSporplanDraftEmpty(readback)){
+          applySharedSporplanDraftToActiveState(readback);
+        }
       }
-      renderSharedSporplanDraftStatus(`Delt draft lagret. Revision ${body?.previousRevision ?? built.payload.expectedRevision} -> ${body?.revision ?? "?"}. Draft/readback, ikke operativ sannhetskilde.`, "ok");
-      finalMessage = "Delt draft lagret. Ingen SDE-score, DROPS, Utført/Annullert eller operational state er oppdatert.";
+      let confirmedReadback = readback;
+      try{
+        confirmedReadback = await fetchSharedSporplanDraftReadbackForSaveConfirmation({applyActive:true});
+      }catch(confirmError){
+        finalMessage = `Delt draft lagret, men GET-bekreftelse feilet (${confirmError?.message || "ukjent feil"}). Refresh før videre deling.`;
+      }
+      const savedRevision = confirmedReadback?.revision ?? body?.revision ?? "?";
+      renderSharedSporplanDraftStatus(`Delt sporplan lagret — rev ${savedRevision}. Draft/readback, ikke skifteordre og ikke operativ sannhetskilde.`, "ok");
+      finalMessage = finalMessage || `Delt sporplan lagret — rev ${savedRevision}. Annen maskin får samme aktive Sporplan etter refresh. Ingen SDE-score, DROPS, Utført/Annullert eller operational state er oppdatert.`;
     }else if(response.status === 409){
-      finalMessage = `Konflikt: serverrevision er ${body?.currentRevision ?? "ukjent"}, klient forventet ${body?.expectedRevision ?? built.payload.expectedRevision}. Lokal Input Sporplan beholdes. Les delt draft på nytt før manuell vurdering.`;
+      let conflictRevision = body?.currentRevision ?? "ukjent";
+      try{
+        const serverReadback = await fetchSharedSporplanDraftReadbackForSaveConfirmation({applyActive:false});
+        conflictRevision = serverReadback?.revision ?? conflictRevision;
+      }catch(_confirmError){
+        // Keep the conflict message explicit even if follow-up readback fails.
+      }
+      lastKnownSharedDraftRevision = null;
+      finalMessage = `Konflikt: serverrevision er ${conflictRevision}, klient forventet ${body?.expectedRevision ?? built.payload.expectedRevision}. Lokal Input Sporplan beholdes. Les delt draft på nytt og merge manuelt før ny lagring.`;
     }else{
       finalMessage = `Delt draft ble ikke lagret: HTTP ${response.status} ${body?.error || ""}. Lokal Input Sporplan beholdes.`.trim();
     }
