@@ -6111,7 +6111,7 @@ button{padding:12px 12px}
 
 <section class="panel" id="grunnoppstilling">
 <div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for Sporplan og videre SDE-arbeid.</div>
-<div class="note" id="sharedSporplanDraftStatus">Delt sporplan-draft er ikke lest ennå. Draft/readback, ikke operativ sannhetskilde.</div>
+<div class="note" id="sharedSporplanDraftStatus">Ikke synkronisert — delt sporplan er ikke lest ennå. Lokal visning er ikke felles situasjonsbilde.</div>
 <div class="shared-sporplan-draft-readback" id="sharedSporplanDraftReadback" aria-live="polite"></div>
 <div class="view-tools" aria-label="Delt sporplan-draft">
 <span class="label" id="sharedSporplanDraftWriteState">Delt lagring er ikke åpnet på server. Ingen POST sendes.</span>
@@ -25811,12 +25811,14 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
 
   if(!shouldFetchSharedSporplanDraftReadback()){
     lastKnownSharedDraftRevision = null;
-    renderSharedSporplanDraftStatus("Delt sporplan-draft ikke hentet uten server. Lokal Input Sporplan beholdes. Draft/readback, ikke operativ sannhetskilde.", "off");
+    state.sharedSporplanDraftAppliedRevision = null;
+    state.sharedSporplanDraftAppliedAt = null;
+    renderSharedSporplanDraftStatus("Ikke synkronisert — delt sporplan kunne ikke leses fra denne adressen. Lokal fallback vises, ikke felles situasjonsbilde.", "off");
     renderSharedSporplanDraftSaveState("Delt lagring er ikke åpnet uten server. Ingen POST sendes.");
     return;
   }
 
-  renderSharedSporplanDraftStatus("Leser delt sporplan-draft fra server. Gyldig draft brukes som aktivt parkert-hvor-grunnlag.", "warn");
+  renderSharedSporplanDraftStatus("Ikke synkronisert — sjekker delt sporplan fra server. Lokal visning er ikke bekreftet felles situasjonsbilde ennå.", "warn");
 
   try{
     const response = await Promise.race([
@@ -25827,7 +25829,9 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
     const payload = await response.json();
     const readback = normalizeSharedSporplanDraftPayload(payload);
     if(!readback){
-      renderSharedSporplanDraftStatus("Delt sporplan-draft hadde ugyldig payload. Lokal Input Sporplan beholdes. Draft/readback, ikke operativ sannhetskilde.", "warn");
+      state.sharedSporplanDraftAppliedRevision = null;
+      state.sharedSporplanDraftAppliedAt = null;
+      renderSharedSporplanDraftStatus("Ikke synkronisert — delt sporplan hadde ugyldig payload. Lokal fallback vises, ikke felles situasjonsbilde.", "warn");
       return;
     }
 
@@ -25835,7 +25839,9 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
     lastKnownSharedDraftRevision = readback.revision;
     if(isSharedSporplanDraftEmpty(readback)){
       renderSharedSporplanDraftReadback(readback);
-      renderSharedSporplanDraftStatus("Ingen delt draft funnet. Lokal Input Sporplan beholdes. Draft/readback, ikke operativ sannhetskilde.", "off");
+      state.sharedSporplanDraftAppliedRevision = null;
+      state.sharedSporplanDraftAppliedAt = null;
+      renderSharedSporplanDraftStatus("Lokal fallback — ikke felles situasjonsbilde. Ingen delt sporplan-draft funnet på server.", "off");
       renderSharedSporplanDraftSaveState();
       return;
     }
@@ -25846,15 +25852,17 @@ async function fetchSharedSporplanDraftReadbackForRefresh(){
     const applied = applySharedSporplanDraftToActiveState(readback);
     renderSharedSporplanDraftStatus(
       applied
-        ? `Delt sporplan-draft brukt som aktivt parkert-hvor-grunnlag (${count} felt, rev ${readback.revision}). Ikke skifteordre. Ikke operativ sannhetskilde.`
-        : `Delt sporplan-draft lest fra server (${count} felt, rev ${readback.revision}). Draft/readback, ikke operativ sannhetskilde.`,
+        ? `Delt sporplan aktiv — kilde: server, rev ${readback.revision} (${count} felt). Ikke skifteordre. Ikke operativ sannhetskilde.`
+        : `Lokal fallback — ikke felles situasjonsbilde. Delt sporplan ble lest, men kunne ikke brukes aktivt.`,
       "ok"
     );
     renderSharedSporplanDraftSaveState();
   }catch(error){
     lastSharedSporplanDraftReadbackForDisplay = null;
     lastKnownSharedDraftRevision = null;
-    renderSharedSporplanDraftStatus(`Delt sporplan-draft kunne ikke leses (${error?.message || "ukjent feil"}). Lokal Input Sporplan beholdes.`, "off");
+    state.sharedSporplanDraftAppliedRevision = null;
+    state.sharedSporplanDraftAppliedAt = null;
+    renderSharedSporplanDraftStatus(`Ikke synkronisert — delt sporplan kunne ikke leses (${error?.message || "ukjent feil"}). Lokal fallback vises, ikke felles situasjonsbilde.`, "off");
     renderSharedSporplanDraftSaveState("Delt draft kunne ikke leses. Lagring holdes inaktiv til serverstatus og revision er kjent.");
   }
 }
