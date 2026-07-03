@@ -41,6 +41,52 @@ class BaliseTrainLookupCandidateTest(unittest.TestCase):
         self.assertIn("80824", static_data.get_balise_train_lookup_candidates("824"))
 
 
+class BaliseCandidateSelectionTest(unittest.TestCase):
+    def make_candidate(
+        self,
+        lookup_train_no,
+        general_hits=None,
+        departure_hits=None,
+        arrival_hits=None,
+        has_train_content=True,
+        is_arrival_route_to_base=True,
+    ):
+        return {
+            "lookup_train_no": lookup_train_no,
+            "general_hits": general_hits or [],
+            "departure_hits": departure_hits or [],
+            "arrival_hits": arrival_hits or [],
+            "has_train_content": has_train_content,
+            "is_arrival_route_to_base": is_arrival_route_to_base,
+        }
+
+    def test_re11_8xx_arrival_prefers_alternate_with_arrival_material(self):
+        selected = static_data.select_balise_candidate_result(
+            "853",
+            [
+                self.make_candidate("853", arrival_hits=["74-46", "74-50"]),
+                self.make_candidate("80853", has_train_content=True, is_arrival_route_to_base=True),
+                self.make_candidate("90853", general_hits=["74-19"], arrival_hits=["74-19"]),
+            ],
+        )
+
+        self.assertEqual(selected["lookup_train_no"], "90853")
+        self.assertEqual(selected["arrival_hits"], ["74-19"])
+        self.assertNotEqual(selected["arrival_hits"], ["74-46", "74-50"])
+
+    def test_re11_8xx_arrival_does_not_inherit_base_material_when_908xx_has_hits(self):
+        selected = static_data.select_balise_candidate_result(
+            "853",
+            [
+                self.make_candidate("853", general_hits=["74-46", "74-50"], arrival_hits=["74-46", "74-50"]),
+                self.make_candidate("90853", general_hits=["74-19"], arrival_hits=["74-19"]),
+            ],
+        )
+
+        self.assertEqual(selected["lookup_train_no"], "90853")
+        self.assertEqual(selected["arrival_hits"], ["74-19"])
+
+
 class BaliseArrivalSegmentSelectionTest(unittest.TestCase):
     def test_arrival_to_skien_prefers_skien_segment_over_locked_earlier_segment(self):
         text = """

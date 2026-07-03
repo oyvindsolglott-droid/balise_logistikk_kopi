@@ -355,6 +355,78 @@ def extract_vehicle_hits_from_balise_text(text: str) -> Tuple[List[str], List[st
     return general_hits, departure_hits, arrival_hits
 
 
+def select_balise_candidate_result(train_no: str, candidate_results: List[Dict[str, object]]):
+    train_number = int(train_no) if train_no.isdigit() else None
+    should_prefer_alternate_departure = (
+        train_number is not None
+        and 800 <= train_number <= 899
+        and train_no in HARDCODED_DEPARTURES
+    )
+
+    should_prefer_alternate_arrival = (
+        train_number is not None
+        and 800 <= train_number <= 899
+        and train_no in HARDCODED_ARRIVALS
+    )
+
+    if should_prefer_alternate_departure:
+        selected = next(
+            (
+                result
+                for result in candidate_results
+                if result["lookup_train_no"] != train_no
+                and result["departure_hits"]
+            ),
+            None,
+        )
+
+        if selected is not None:
+            return selected
+
+        selected = next(
+            (
+                result
+                for result in candidate_results
+                if result["lookup_train_no"] != train_no
+                and result["has_train_content"]
+            ),
+            None,
+        )
+
+        if selected is not None:
+            return selected
+
+    if should_prefer_alternate_arrival:
+        selected = next(
+            (
+                result
+                for result in candidate_results
+                if result["lookup_train_no"] != train_no
+                and result["is_arrival_route_to_base"]
+                and result["arrival_hits"]
+            ),
+            None,
+        )
+
+        if selected is not None:
+            return selected
+
+        selected = next(
+            (
+                result
+                for result in candidate_results
+                if result["lookup_train_no"] != train_no
+                and result["is_arrival_route_to_base"]
+            ),
+            None,
+        )
+
+        if selected is not None:
+            return selected
+
+    return candidate_results[0] if candidate_results else None
+
+
 def fetch_vehicle_maps_for_trains(
     train_numbers: Iterable[str],
     run_date: date,
@@ -415,56 +487,7 @@ def fetch_vehicle_maps_for_trains(
                 except Exception as exc:  # noqa: BLE001
                     last_error = f"{lookup_train_no}: {exc}"
 
-            selected = None
-
-            train_number = int(train_no) if train_no.isdigit() else None
-            should_prefer_alternate_departure = (
-                train_number is not None
-                and 800 <= train_number <= 899
-                and train_no in HARDCODED_DEPARTURES
-            )
-
-            should_prefer_alternate_arrival = (
-                train_number is not None
-                and 800 <= train_number <= 899
-                and train_no in HARDCODED_ARRIVALS
-            )
-
-            if should_prefer_alternate_departure:
-                selected = next(
-                    (
-                        result
-                        for result in candidate_results
-                        if result["lookup_train_no"] != train_no
-                        and result["departure_hits"]
-                    ),
-                    None,
-                )
-
-                if selected is None:
-                    selected = next(
-                        (
-                            result
-                            for result in candidate_results
-                            if result["lookup_train_no"] != train_no
-                            and result["has_train_content"]
-                        ),
-                        None,
-                    )
-
-            if selected is None and should_prefer_alternate_arrival:
-                selected = next(
-                    (
-                        result
-                        for result in candidate_results
-                        if result["lookup_train_no"] != train_no
-                        and result["is_arrival_route_to_base"]
-                    ),
-                    None,
-                )
-
-            if selected is None and candidate_results:
-                selected = candidate_results[0]
+            selected = select_balise_candidate_result(train_no, candidate_results)
 
             if selected is not None:
                 lookup_train_no = selected["lookup_train_no"]
