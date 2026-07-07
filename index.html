@@ -2438,6 +2438,21 @@ button{padding:12px 12px}
   font-size:12px;
 }
 
+#sharedSporplanDraftSaveBtn.shared-draft-save-dirty{
+  background:#f59e0b;
+  border-color:#d97706;
+  color:#111827;
+  font-weight:900;
+  box-shadow:0 0 0 2px rgba(245,158,11,.22);
+}
+
+#sharedSporplanDraftSaveBtn.shared-draft-save-dirty:disabled{
+  background:#e5e7eb;
+  border-color:#cbd5e1;
+  color:#64748b;
+  box-shadow:none;
+}
+
 #grunnoppstillingTable td:nth-child(2) input{
   width:96px;
 }
@@ -25550,6 +25565,7 @@ let lastSharedSporplanDraftReadbackForDisplay = null;
 let lastKnownSharedDraftRevision = null;
 let lastSharedSporplanDraftWritesEnabled = false;
 let sharedSporplanDraftSaveInFlight = false;
+let sharedSporplanDraftHasUnsavedLocalChanges = false;
 
 function getSameOriginServerStatusBase(){
   if(isSdeHostedHttpsOrigin()){
@@ -25674,8 +25690,12 @@ function renderSharedSporplanDraftSaveState(message){
 
   if(controls.save){
     controls.save.disabled = disabled;
+    controls.save.classList.toggle("shared-draft-save-dirty", sharedSporplanDraftHasUnsavedLocalChanges === true);
+    controls.save.textContent = sharedSporplanDraftHasUnsavedLocalChanges
+      ? "Lagre delt parkert-hvor (ulagret)"
+      : "Lagre delt parkert-hvor";
     controls.save.title = writesEnabled
-      ? "Lagrer bare delt draft etter eksplisitt klikk og revision-sjekk."
+      ? "Deler TXP Input Sporplan som delt parkert-hvor etter eksplisitt klikk og revision-sjekk."
       : "Delt lagring er ikke åpnet på server.";
   }
 
@@ -25689,12 +25709,17 @@ function renderSharedSporplanDraftSaveState(message){
 }
 
 function renderSharedSporplanDraftLocalChangeState(){
+  sharedSporplanDraftHasUnsavedLocalChanges = true;
   const localDraft = getLocalSharedSporplanDraft();
   const count = getSharedSporplanDraftContentCount(localDraft.grunnoppstilling)
     + getSharedSporplanDraftContentCount(localDraft.grunnoppstillingRep);
   const revisionText = Number.isInteger(lastKnownSharedDraftRevision) && lastKnownSharedDraftRevision >= 0
     ? `Neste eksplisitte lagring bruker expectedRevision ${lastKnownSharedDraftRevision}.`
     : "Les delt draft før lagring slik at expectedRevision er kjent.";
+  renderSharedSporplanDraftStatus(
+    `Ulagret delt parkert-hvor-endring — ${count} felt lokalt. Trykk “Lagre delt parkert-hvor” for å dele til andre enheter. Ikke skifteordre.`,
+    "warn"
+  );
   renderSharedSporplanDraftSaveState(
     `Lokal Input Sporplan er endret (${count} felt). Bruk “Lagre delt parkert-hvor” for å dele parkert-hvor som draft/readback. ${revisionText} Ikke skifteordre.`
   );
@@ -25759,6 +25784,7 @@ function applySharedSporplanDraftToActiveState(readback){
   state.grunnoppstillingRep = cloneSharedSporplanDraftMap(readback.grunnoppstillingRep);
   state.sharedSporplanDraftAppliedRevision = readback.revision;
   state.sharedSporplanDraftAppliedAt = readback.updatedAt || new Date().toISOString();
+  sharedSporplanDraftHasUnsavedLocalChanges = false;
 
   buildGrunnoppstilling();
   buildSporplan();
@@ -25925,6 +25951,7 @@ async function saveSharedSporplanDraftFromUi(){
   }
 
   sharedSporplanDraftSaveInFlight = true;
+  sharedSporplanDraftHasUnsavedLocalChanges = true;
   renderSharedSporplanDraftSaveState("Lagrer delt draft etter eksplisitt klikk. Ikke operativ sannhetskilde.");
 
   let finalMessage = "";
@@ -25958,8 +25985,9 @@ async function saveSharedSporplanDraftFromUi(){
         finalMessage = `Delt draft lagret, men GET-bekreftelse feilet (${confirmError?.message || "ukjent feil"}). Refresh før videre deling.`;
       }
       const savedRevision = confirmedReadback?.revision ?? body?.revision ?? "?";
-      renderSharedSporplanDraftStatus(`Delt sporplan lagret — rev ${savedRevision}. Draft/readback, ikke skifteordre og ikke operativ sannhetskilde.`, "ok");
-      finalMessage = finalMessage || `Delt sporplan lagret — rev ${savedRevision}. Annen maskin får samme aktive Sporplan etter refresh. Ingen SDE-score, DROPS, Utført/Annullert eller operational state er oppdatert.`;
+      sharedSporplanDraftHasUnsavedLocalChanges = false;
+      renderSharedSporplanDraftStatus(`Delt parkert-hvor lagret — server rev ${savedRevision}. Draft/readback, ikke skifteordre og ikke operativ sannhetskilde.`, "ok");
+      finalMessage = finalMessage || `Delt parkert-hvor lagret — server rev ${savedRevision}. Annen maskin får samme aktive Input Sporplan og Sporplan etter refresh. Ingen SDE-score, DROPS, Utført/Annullert eller operational state er oppdatert.`;
     }else if(response.status === 409){
       let conflictRevision = body?.currentRevision ?? "ukjent";
       try{
