@@ -3640,6 +3640,11 @@ button{padding:12px 12px}
   border-color:rgba(45,212,191,.68);
   background:linear-gradient(180deg, rgba(20,83,45,.54), rgba(8,47,73,.62));
 }
+.sde-night-placement-slot.planned-proposal{
+  border-style:dashed;
+  border-color:rgba(45,212,191,.52);
+  background:linear-gradient(180deg, rgba(15,118,110,.22), rgba(15,23,42,.44));
+}
 .sde-night-placement-slot.temporary{
   border-color:rgba(234,179,8,.72);
   background:linear-gradient(180deg, rgba(113,63,18,.74), rgba(24,20,12,.82));
@@ -3681,6 +3686,30 @@ button{padding:12px 12px}
   font-size:17px;
   font-weight:1000;
   line-height:1.05;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.sde-night-placement-proposal{
+  align-self:center;
+  min-width:0;
+  display:grid;
+  gap:3px;
+  color:#99f6e4;
+  font-size:12px;
+  font-weight:950;
+  line-height:1.15;
+}
+.sde-night-placement-proposal strong{
+  color:#f8fafc;
+  font-size:15px;
+  line-height:1.05;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.sde-night-placement-proposal span{
+  min-width:0;
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
@@ -23814,6 +23843,10 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       sourceKind:"empty",
       plannedSlot:"",
       plannedVehicle:"",
+      proposedVehicle:"",
+      proposedSource:"",
+      proposedFromSlot:"",
+      proposedRow:null,
       physicalSlot:"",
       row:null,
       collisionVehicles:[],
@@ -23848,6 +23881,10 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       entry.sourceKind = "empty";
       entry.plannedSlot = "";
       entry.plannedVehicle = "";
+      entry.proposedVehicle = "";
+      entry.proposedSource = "";
+      entry.proposedFromSlot = "";
+      entry.proposedRow = null;
       entry.physicalSlot = "";
       entry.row = null;
       entry.collisionVehicles = [];
@@ -23880,6 +23917,36 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
         {slot, vehicle:cleanVehicle}
       );
     }
+  };
+
+  const addPlannedProposal = (slot, vehicle, row, physicalSlot) => {
+    const targetSlot = normalizeSlot(slot);
+    const cleanVehicle = sanitizeVehicleValue(vehicle);
+    if(!targetSlot || !cleanVehicle) return;
+    if(targetSlot === "VN" || targetSlot === "VS"){
+      addReservePlacement(targetSlot, cleanVehicle, row, "move");
+      return;
+    }
+    if(!ordinarySlots.has(targetSlot)){
+      addWarning(
+        "missing_slot",
+        `${cleanVehicle} har SDE-forslag mot ${targetSlot}, men sporet finnes ikke i ordinær nattplassering.`,
+        {slot:targetSlot, vehicle:cleanVehicle}
+      );
+      return;
+    }
+    const entry = slots[targetSlot];
+    if(entry.vehicle && normalizeVehicleToken(entry.vehicle) !== normalizeVehicleToken(cleanVehicle)){
+      addWarning(
+        "proposal_target_occupied",
+        `${cleanVehicle} har SDE-forslag mot ${targetSlot}, men faktisk plassering der er ${entry.vehicle}. Forslaget vises ikke som faktisk kjøretøykort.`,
+        {slot:targetSlot, vehicle:cleanVehicle}
+      );
+    }
+    entry.proposedVehicle = cleanVehicle;
+    entry.proposedSource = getSdeNightPlacementSourceLabel(row, "move");
+    entry.proposedFromSlot = normalizeSlot(physicalSlot);
+    entry.proposedRow = row || null;
   };
 
   const placeVehicle = (slot, vehicle, row, source) => {
@@ -24005,6 +24072,8 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
         physicalEntry.plannedVehicle = vehicle;
         physicalEntry.plannedRow = row;
       }
+      addPlannedProposal(targetSlot, vehicle, row, physicalSlot);
+      return;
     }else{
       if(!preserveSequenceLayers){
         removeVehicleFromPlacement(vehicle);
@@ -24204,6 +24273,7 @@ function renderSdeNightPlacementOverview(data){
     const collisionVehicles = getSdeNightPlacementCollisionVehicles(entry);
     const hasCollision = collisionVehicles.length > 1;
     const hasVehicle = Boolean(entry.vehicle || hasCollision);
+    const hasProposal = Boolean(!hasVehicle && entry.proposedVehicle);
     const isTemporary = entry.stepRole === "temporary_parking" && !isHardOccupied && !hasCollision;
     const vehicleText = hasCollision
       ? isHardOccupied
@@ -24213,6 +24283,8 @@ function renderSdeNightPlacementOverview(data){
     const timeStatusText = !hasCollision ? getSdeNightPlacementTimeStatusText(row) : "";
     const isSimulated = Boolean(row?.sdeNightPlacementDragOverrideActive);
     const isPlanned = entry.sourceKind === "move" && hasVehicle && !hasCollision && !isTemporary;
+    const proposalFromSlot = normalizeSlot(entry.proposedFromSlot);
+    const proposalSource = String(entry.proposedSource || "Forslag").trim();
     const plannedSlot = normalizeSlot(entry.plannedSlot);
     const physicalSlot = normalizeSlot(entry.physicalSlot);
     const layerNote = isPhysical && plannedSlot
@@ -24255,6 +24327,7 @@ function renderSdeNightPlacementOverview(data){
       isCompletedLocked ? "completed-locked" : "",
       isTemporary ? "temporary" : "",
       isPlanned ? "planned" : "",
+      hasProposal ? "planned-proposal" : "",
       isSimulated ? "simulated" : "",
       overview.rejectedSlot === slot ? "drop-rejected" : ""
     ].filter(Boolean).join(" ");
@@ -24267,6 +24340,13 @@ function renderSdeNightPlacementOverview(data){
              ${compactTrainText ? `<div class="sde-night-placement-train">${escapeHtml(compactTrainText)}</div>` : ""}
              ${compactBadgesHtml}
            </div>`
+        : hasProposal
+        ? `<div class="sde-night-placement-proposal">
+             <span>Forslag, ikke faktisk plassering</span>
+             <strong>${escapeHtml(entry.proposedVehicle)}</strong>
+             <span>${escapeHtml(proposalFromSlot ? `${proposalFromSlot} → ${slot}` : proposalSource)}</span>
+           </div>
+           <div class="sde-night-placement-source">Plan/forslag</div>`
         : `<div class="sde-night-placement-empty-text">Tom</div><div class="sde-night-placement-source">Ledig</div>`}
     </div>`;
   }).join("")).join("");
