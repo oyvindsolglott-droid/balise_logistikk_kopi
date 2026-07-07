@@ -25567,7 +25567,7 @@ let lastSharedSporplanDraftWritesEnabled = false;
 let sharedSporplanDraftSaveInFlight = false;
 let sharedSporplanDraftHasUnsavedLocalChanges = false;
 let sharedSporplanDraftAutosaveTimer = null;
-const SHARED_SPORPLAN_DRAFT_AUTOSAVE_DELAY_MS = 1200;
+const SHARED_SPORPLAN_DRAFT_AUTOSAVE_DELAY_MS = 1800;
 
 function getSameOriginServerStatusBase(){
   if(isSdeHostedHttpsOrigin()){
@@ -25810,6 +25810,27 @@ function getLocalSharedSporplanDraft(){
   };
 }
 
+function getSharedSporplanDraftSaveSignature(draft){
+  const normalizeMap = value => {
+    const source = cloneSharedSporplanDraftMap(value);
+    return Object.keys(source)
+      .sort((left, right) => left.localeCompare(right, "nb", {numeric:true}))
+      .reduce((acc, key) => {
+        acc[key] = source[key];
+        return acc;
+      }, {});
+  };
+  return JSON.stringify({
+    grunnoppstilling:normalizeMap(draft?.grunnoppstilling),
+    grunnoppstillingRep:normalizeMap(draft?.grunnoppstillingRep)
+  });
+}
+
+function isSharedSporplanDraftInputEditingActive(){
+  const active = document.activeElement;
+  return !!active && typeof active.matches === "function" && active.matches("#grunnoppstillingTable input[data-slot]");
+}
+
 function isLocalSharedSporplanDraftEmpty(draft){
   return !draft
     || (
@@ -25992,6 +26013,7 @@ async function saveSharedSporplanDraftFromUi(options = {}){
 
   sharedSporplanDraftSaveInFlight = true;
   sharedSporplanDraftHasUnsavedLocalChanges = true;
+  const saveDraftSignature = getSharedSporplanDraftSaveSignature(built.payload.draft);
   renderSharedSporplanDraftSaveState(
     isAutosave
       ? "Lagrer delt parkert-hvor automatisk etter TXP Input-endring. Ikke skifteordre og ikke operativ sannhetskilde."
@@ -25999,6 +26021,7 @@ async function saveSharedSporplanDraftFromUi(options = {}){
   );
 
   let finalMessage = "";
+  let scheduleFollowUpAutosave = false;
   try{
     const response = await fetch("/api/shared-sporplan-draft", {
       method:"POST",
@@ -26014,24 +26037,33 @@ async function saveSharedSporplanDraftFromUi(options = {}){
 
     if(response.status === 201){
       const readback = normalizeSharedSporplanDraftPayload(body);
+      const keepActiveInputStable = isAutosave && isSharedSporplanDraftInputEditingActive();
       if(readback){
         lastSharedSporplanDraftReadbackForDisplay = readback;
         lastKnownSharedDraftRevision = readback.revision;
         renderSharedSporplanDraftReadback(readback);
-        if(!isSharedSporplanDraftEmpty(readback)){
+        if(!keepActiveInputStable && !isSharedSporplanDraftEmpty(readback)){
           applySharedSporplanDraftToActiveState(readback);
         }
       }
       let confirmedReadback = readback;
       try{
-        confirmedReadback = await fetchSharedSporplanDraftReadbackForSaveConfirmation({applyActive:true});
+        confirmedReadback = await fetchSharedSporplanDraftReadbackForSaveConfirmation({applyActive:!keepActiveInputStable});
       }catch(confirmError){
         finalMessage = `Delt draft lagret, men GET-bekreftelse feilet (${confirmError?.message || "ukjent feil"}). Refresh før videre deling.`;
       }
       const savedRevision = confirmedReadback?.revision ?? body?.revision ?? "?";
-      sharedSporplanDraftHasUnsavedLocalChanges = false;
-      renderSharedSporplanDraftStatus(`Delt parkert-hvor lagret — server rev ${savedRevision}. Draft/readback, ikke skifteordre og ikke operativ sannhetskilde.`, "ok");
-      finalMessage = finalMessage || `Delt parkert-hvor lagret — server rev ${savedRevision}. Annen maskin får samme aktive Input Sporplan og Sporplan etter refresh. Ingen SDE-score, DROPS, Utført/Annullert eller operational state er oppdatert.`;
+      const currentDraftSignature = getSharedSporplanDraftSaveSignature(getLocalSharedSporplanDraft());
+      if(currentDraftSignature === saveDraftSignature){
+        sharedSporplanDraftHasUnsavedLocalChanges = false;
+        renderSharedSporplanDraftStatus(`Delt parkert-hvor lagret — server rev ${savedRevision}. Draft/readback, ikke skifteordre og ikke operativ sannhetskilde.`, "ok");
+        finalMessage = finalMessage || `Delt parkert-hvor lagret — server rev ${savedRevision}. Annen maskin får samme aktive Input Sporplan og Sporplan etter refresh. Ingen SDE-score, DROPS, Utført/Annullert eller operational state er oppdatert.`;
+      }else{
+        sharedSporplanDraftHasUnsavedLocalChanges = true;
+        scheduleFollowUpAutosave = true;
+        renderSharedSporplanDraftStatus(`Ulagret delt parkert-hvor-endring — server rev ${savedRevision} er bekreftet, men du skriver fortsatt. Ikke skifteordre.`, "warn");
+        finalMessage = `Delt draft lagret til server rev ${savedRevision}, men ny lokal endring kom mens lagringen pågikk. Fortsett å skrive; autosave kjører på nytt etter pause.`;
+      }
     }else if(response.status === 409){
       let conflictRevision = body?.currentRevision ?? "ukjent";
       try{
@@ -26050,6 +26082,9 @@ async function saveSharedSporplanDraftFromUi(options = {}){
   }finally{
     sharedSporplanDraftSaveInFlight = false;
     renderSharedSporplanDraftSaveState(finalMessage);
+    if(scheduleFollowUpAutosave){
+      scheduleSharedSporplanDraftAutosave();
+    }
   }
 }
 
