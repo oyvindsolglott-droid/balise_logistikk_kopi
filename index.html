@@ -24022,7 +24022,15 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
   };
 
   const completedLockedSlots = getSdeNightPlacementCompletedLockedSlots();
-  computeInndata().forEach(row=>{
+  const sharedActualPlacementActive = isSharedSporplanDraftActiveForCommonView();
+  const getCanonicalPhysicalSlotForVehicle = vehicle => {
+    const token = normalizeVehicleToken(vehicle);
+    if(!token) return "";
+    const entry = Object.values(physicalOccupants)
+      .find(item => normalizeVehicleToken(item?.vehicle) === token);
+    return normalizeSlot(entry?.slot);
+  };
+  computeCanonicalActualPlacementRows().forEach(row=>{
     const slot = normalizeSlot(row?.slot);
     const vehicle = sanitizeVehicleValue(row?.mat);
     if(!vehicle || !slot) return;
@@ -24060,7 +24068,25 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       return;
     }
 
-    const physicalSlot = getSdePhysicalSlotForVehicle(vehicle);
+    const canonicalPhysicalSlot = getCanonicalPhysicalSlotForVehicle(vehicle);
+    if(sharedActualPlacementActive){
+      if(canonicalPhysicalSlot){
+        const physicalEntry = slots[canonicalPhysicalSlot];
+        if(physicalEntry){
+          physicalEntry.plannedSlot = targetSlot;
+          physicalEntry.plannedVehicle = vehicle;
+          physicalEntry.plannedRow = row;
+        }
+        if(canonicalPhysicalSlot !== targetSlot){
+          addPlannedProposal(targetSlot, vehicle, row, canonicalPhysicalSlot);
+        }
+      }else{
+        addPlannedProposal(targetSlot, vehicle, row, "");
+      }
+      return;
+    }
+
+    const physicalSlot = canonicalPhysicalSlot || getSdePhysicalSlotForVehicle(vehicle);
     const preserveSequenceLayers = Number(row?.sdeNightPlacementStepCount || 0) > 1;
     const physicalOccupant = physicalSlot ? physicalOccupants[physicalSlot] : null;
     const hasPhysicalLayer = Boolean(
