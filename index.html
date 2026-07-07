@@ -1092,6 +1092,10 @@ color:#4c1d95;
 .slot.plan-ferdig{
 box-shadow:0 0 0 4px #16a34a inset,0 0 0 2px #14532d;
 }
+.slot.shared-draft-final-slot{
+box-shadow:0 0 0 4px #16a34a inset,0 0 0 2px #14532d;
+border-color:rgba(34,197,94,.86);
+}
 .slot-plan-badge.plan-ferdig{
 color:#14532d;
 }
@@ -11189,12 +11193,33 @@ function isSharedSporplanDraftActiveForCommonView(){
 }
 
 
+function computeSharedSporplanDraftRowsForCommonView(){
+  const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false,sharedDraft:false}));
+  const map=Object.fromEntries(result.map((row,index)=>[row.slot,index]));
+
+  Object.entries(state.grunnoppstilling || {}).forEach(([slot,value])=>{
+    const normalizedSlot = normalizeSlot(slot);
+    const mat = String(value || "").trim();
+    if(mat && map[normalizedSlot] !== undefined){
+      result[map[normalizedSlot]].tog = "";
+      result[map[normalizedSlot]].mat = mat;
+      result[map[normalizedSlot]].wash = false;
+      result[map[normalizedSlot]].sharedDraft = true;
+    }
+  });
+
+  return result;
+}
+
+
 function buildSporplan(){
   const duplicateVehicles = getDuplicateGrunnoppstillingVehicles();
-  const data=Object.fromEntries(computeInndata().map(r=>[r.slot,r]));
+  const sharedCommonView = isSharedSporplanDraftActiveForCommonView();
+  const dataRows = sharedCommonView ? computeSharedSporplanDraftRowsForCommonView() : computeInndata();
+  const data=Object.fromEntries(dataRows.map(r=>[r.slot,r]));
   const repSlots = getKveldRepSlots();
   const dreiSlots = getDreiSlots();
-  const suppressLocalVisualOverlay = isSharedSporplanDraftActiveForCommonView();
+  const suppressLocalVisualOverlay = sharedCommonView;
   const planSkifteMarkers = getPlanSkifteMarkersBySlot();
   const grid=document.getElementById("yardGrid");
   const washGrid=document.getElementById("yardWashMachine");
@@ -11246,6 +11271,7 @@ function buildSporplan(){
       if(duplicateVehicleInfo) div.classList.add("invalid-vehicle");
       if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
       if(dreiSlots.has(normalizeSlot(slot))) div.classList.add("drei-slot");
+      if(sharedCommonView && filled && info.sharedDraft) div.classList.add("shared-draft-final-slot");
 
       const planMarker = suppressLocalVisualOverlay ? null : (planSkifteMarkers[normalizeSlot(slot)] || null);
       if(planMarker?.from?.length) div.classList.add("plan-fra");
@@ -11342,6 +11368,7 @@ function buildSporplan(){
       if(duplicateVehicleInfo) div.classList.add("invalid-vehicle");
       if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
       if(dreiSlots.has(normalizeSlot(slot))) div.classList.add("drei-slot");
+      if(sharedCommonView && filled && info.sharedDraft) div.classList.add("shared-draft-final-slot");
 
       div.dataset.slot = slot;
       const addressColor = getSlotAddressColorClass(slot);
