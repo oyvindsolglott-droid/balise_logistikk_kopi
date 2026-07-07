@@ -298,6 +298,9 @@ def get_balise_train_lookup_candidates(train_no: str) -> List[str]:
         if 800 <= number <= 899:
             candidates.append(f"80{train}")
             candidates.append(f"90{train}")
+        if 2400 <= number <= 2499:
+            candidates.append(f"9{train}")
+            candidates.append(f"1{train}")
 
     return list(dict.fromkeys(candidates))
 
@@ -324,26 +327,44 @@ def has_arrival_route_to_skien_or_porsgrunn(text: str) -> bool:
     return False
 
 
-def has_departure_route_from_skien(text: str) -> bool:
-    """Sjekk om Balise-teksten tydelig viser en faktisk avgang fra Skien."""
+def first_time_value(text: object) -> Optional[str]:
+    match = re.search(r"\b\d{1,2}:\d{2}\b", str(text or ""))
+    return match.group(0) if match else None
+
+
+def extract_skien_station_stop(text: str) -> Dict[str, Optional[str]]:
+    """Returner planlagt ankomst/avgang fra Balise-raden for Skien/SKN."""
+    result: Dict[str, Optional[str]] = {"arrival": None, "departure": None}
     if not text:
-        return False
+        return result
 
     for raw_line in text.splitlines():
-        line = str(raw_line or "").strip()
-        if not line:
+        parts = [part.strip() for part in str(raw_line or "").split("\t")]
+        if len(parts) < 5:
             continue
 
-        prefix = line.split(":", 1)[0].strip()
-        match = re.match(r"^(.+?)\s*-\s*(.+)$", prefix)
-        if not match:
-            continue
+        for index, part in enumerate(parts):
+            station = part.lstrip("- ").strip().lower()
+            if station not in {"skien", "skn"}:
+                continue
 
-        origin_lower = match.group(1).strip().lower()
-        if "skien" in origin_lower:
-            return True
+            arrival_index = index + 2
+            departure_index = index + 4
+            if arrival_index < len(parts):
+                result["arrival"] = first_time_value(parts[arrival_index])
+            if departure_index < len(parts):
+                result["departure"] = first_time_value(parts[departure_index])
+            return result
 
-    return False
+    return result
+
+
+def has_arrival_stop_at_skien(text: str) -> bool:
+    return bool(extract_skien_station_stop(text).get("arrival"))
+
+
+def has_departure_stop_at_skien(text: str) -> bool:
+    return bool(extract_skien_station_stop(text).get("departure"))
 
 
 def has_balise_train_content(text: str) -> bool:
@@ -396,8 +417,8 @@ def select_balise_candidate_result(train_no: str, candidate_results: List[Dict[s
                 result
                 for result in candidate_results
                 if result["lookup_train_no"] != train_no
-                and result.get("is_departure_route_from_base")
-                and result["departure_hits"]
+                and result.get("skien_departure_time")
+                and (result["departure_hits"] or result["general_hits"])
             ),
             None,
         )
@@ -410,7 +431,7 @@ def select_balise_candidate_result(train_no: str, candidate_results: List[Dict[s
                 result
                 for result in candidate_results
                 if result["lookup_train_no"] != train_no
-                and result.get("is_departure_route_from_base")
+                and result.get("skien_departure_time")
             ),
             None,
         )
@@ -424,8 +445,8 @@ def select_balise_candidate_result(train_no: str, candidate_results: List[Dict[s
                 result
                 for result in candidate_results
                 if result["lookup_train_no"] != train_no
-                and result["is_arrival_route_to_base"]
-                and result["arrival_hits"]
+                and result.get("skien_arrival_time")
+                and (result["arrival_hits"] or result["general_hits"])
             ),
             None,
         )
@@ -438,7 +459,7 @@ def select_balise_candidate_result(train_no: str, candidate_results: List[Dict[s
                 result
                 for result in candidate_results
                 if result["lookup_train_no"] != train_no
-                and result["is_arrival_route_to_base"]
+                and result.get("skien_arrival_time")
             ),
             None,
         )
@@ -460,6 +481,9 @@ def fetch_vehicle_maps_for_trains(
     Dict[str, str],
     Dict[str, str],
     Dict[str, str],
+    Dict[str, str],
+    Dict[str, str],
+    Dict[str, str],
 ]:
     vehicles: Dict[str, str] = {}
     departure_vehicles: Dict[str, str] = {}
@@ -467,6 +491,9 @@ def fetch_vehicle_maps_for_trains(
     errors: Dict[str, str] = {}
     display_train_numbers: Dict[str, str] = {}
     validated_departure_display_numbers: Dict[str, str] = {}
+    validated_arrival_display_numbers: Dict[str, str] = {}
+    departure_times: Dict[str, str] = {}
+    arrival_times: Dict[str, str] = {}
 
     train_list = [normalize_train_no(train) for train in train_numbers]
     train_list = [train for train in train_list if train]
@@ -479,6 +506,9 @@ def fetch_vehicle_maps_for_trains(
             errors,
             display_train_numbers,
             validated_departure_display_numbers,
+            validated_arrival_display_numbers,
+            departure_times,
+            arrival_times,
         )
 
     with sync_playwright() as p:
@@ -500,6 +530,7 @@ def fetch_vehicle_maps_for_trains(
 
                     general_hits, departure_hits, arrival_hits = extract_vehicle_hits_from_balise_text(text)
                     has_train_content = has_balise_train_content(text)
+                    skien_stop = extract_skien_station_stop(text)
 
                     if general_hits or departure_hits or arrival_hits or has_train_content:
                         candidate_results.append(
@@ -509,8 +540,8 @@ def fetch_vehicle_maps_for_trains(
                                 "departure_hits": departure_hits,
                                 "arrival_hits": arrival_hits,
                                 "has_train_content": has_train_content,
-                                "is_departure_route_from_base": has_departure_route_from_skien(text),
-                                "is_arrival_route_to_base": has_arrival_route_to_skien_or_porsgrunn(text),
+                                "skien_arrival_time": skien_stop.get("arrival"),
+                                "skien_departure_time": skien_stop.get("departure"),
                             }
                         )
 
@@ -526,19 +557,34 @@ def fetch_vehicle_maps_for_trains(
                 if lookup_train_no != train_no:
                     display_train_numbers[train_no] = lookup_train_no
 
-                if selected.get("is_departure_route_from_base"):
+                if selected.get("skien_departure_time"):
                     validated_departure_display_numbers[train_no] = str(lookup_train_no)
+                    departure_times[train_no] = str(selected["skien_departure_time"])
+
+                if selected.get("skien_arrival_time"):
+                    validated_arrival_display_numbers[train_no] = str(lookup_train_no)
+                    arrival_times[train_no] = str(selected["skien_arrival_time"])
 
                 if selected["general_hits"]:
                     vehicles[train_no] = ", ".join(selected["general_hits"])
 
-                if selected["departure_hits"]:
-                    departure_vehicles[train_no] = ", ".join(selected["departure_hits"])
+                if selected.get("skien_departure_time"):
+                    departure_hits = selected["departure_hits"] or selected["general_hits"]
+                    if departure_hits:
+                        departure_vehicles[train_no] = ", ".join(departure_hits)
 
-                if selected["arrival_hits"]:
-                    arrival_vehicles[train_no] = ", ".join(selected["arrival_hits"])
+                if selected.get("skien_arrival_time"):
+                    arrival_hits = selected["arrival_hits"] or selected["general_hits"]
+                    if arrival_hits:
+                        arrival_vehicles[train_no] = ", ".join(arrival_hits)
 
-            if train_no not in vehicles and train_no not in departure_vehicles and train_no not in arrival_vehicles:
+            if (
+                train_no not in vehicles
+                and train_no not in departure_vehicles
+                and train_no not in arrival_vehicles
+                and train_no not in departure_times
+                and train_no not in arrival_times
+            ):
                 lookup_train_no = selected["lookup_train_no"] if selected is not None else ""
                 errors[train_no] = (
                     f"Fant ingen kjøretøy i siden {lookup_train_no}"
@@ -555,6 +601,9 @@ def fetch_vehicle_maps_for_trains(
         errors,
         display_train_numbers,
         validated_departure_display_numbers,
+        validated_arrival_display_numbers,
+        departure_times,
+        arrival_times,
     )
 
 
@@ -583,26 +632,34 @@ def build_payload(mode: str, deadline_at: Optional[float] = None) -> Dict[str, o
         vehicle_errors,
         display_train_numbers,
         validated_departure_display_numbers,
+        validated_arrival_display_numbers,
+        departure_times,
+        arrival_times,
     ) = fetch_vehicle_maps_for_trains(trains, run_date, deadline_at=deadline_at)
     validated_departures = {
-        train_no: value
-        for train_no, value in HARDCODED_DEPARTURES.items()
+        train_no: departure_times[train_no]
+        for train_no in HARDCODED_DEPARTURES
         if train_no in validated_departure_display_numbers
     }
-    departure_display_map = (
-        {
-            train_no: display_train
-            for train_no, display_train in validated_departure_display_numbers.items()
-            if train_no in HARDCODED_DEPARTURES
-            and display_train != train_no
+    validated_arrivals = {
+        train_no: {
+            "time": arrival_times[train_no],
+            "nextDay": bool(HARDCODED_ARRIVALS.get(train_no, {}).get("nextDay", False)),
         }
-        if mode == "imorgen"
-        else {}
-    )
+        for train_no in HARDCODED_ARRIVALS
+        if train_no in validated_arrival_display_numbers
+    }
+    departure_display_map = {
+        train_no: display_train
+        for train_no, display_train in validated_departure_display_numbers.items()
+        if train_no in HARDCODED_DEPARTURES
+        and display_train != train_no
+    }
     arrival_display_map = {
         train_no: display_train
-        for train_no, display_train in display_train_numbers.items()
+        for train_no, display_train in validated_arrival_display_numbers.items()
         if train_no in HARDCODED_ARRIVALS
+        and display_train != train_no
     }
 
     return {
@@ -618,7 +675,7 @@ def build_payload(mode: str, deadline_at: Optional[float] = None) -> Dict[str, o
         "vehicleErrors": remap_train_keys(vehicle_errors, departure_display_map),
         "departures": remap_train_keys(validated_departures, departure_display_map),
         "arrivalDisplayTrainNumbers": arrival_display_map,
-        "arrivals": HARDCODED_ARRIVALS,
+        "arrivals": remap_train_keys(validated_arrivals, arrival_display_map),
         "allowedMaterialPrefixes": ALLOWED_MATERIAL_PREFIXES,
         "materialFormat": ["69-xx", "70-xx", "74-xx", "75-xx"],
     }

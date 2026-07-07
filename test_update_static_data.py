@@ -23,10 +23,10 @@ class BaliseTrainLookupCandidateTest(unittest.TestCase):
             ["804", "80804", "90804"],
         )
 
-    def test_non_8xx_trains_use_original_train_number(self):
+    def test_24xx_trains_try_bratsberg_balise_numbers(self):
         self.assertEqual(
             static_data.get_balise_train_lookup_candidates("2472"),
-            ["2472"],
+            ["2472", "92472", "12472"],
         )
 
     def test_remap_train_keys_uses_actual_balise_train_number(self):
@@ -50,8 +50,8 @@ class BaliseCandidateSelectionTest(unittest.TestCase):
         departure_hits=None,
         arrival_hits=None,
         has_train_content=True,
-        is_departure_route_from_base=True,
-        is_arrival_route_to_base=True,
+        skien_arrival_time="10:00",
+        skien_departure_time="10:01",
     ):
         return {
             "lookup_train_no": lookup_train_no,
@@ -59,8 +59,8 @@ class BaliseCandidateSelectionTest(unittest.TestCase):
             "departure_hits": departure_hits or [],
             "arrival_hits": arrival_hits or [],
             "has_train_content": has_train_content,
-            "is_departure_route_from_base": is_departure_route_from_base,
-            "is_arrival_route_to_base": is_arrival_route_to_base,
+            "skien_arrival_time": skien_arrival_time,
+            "skien_departure_time": skien_departure_time,
         }
 
     def test_re11_8xx_arrival_prefers_alternate_with_arrival_material(self):
@@ -68,7 +68,7 @@ class BaliseCandidateSelectionTest(unittest.TestCase):
             "853",
             [
                 self.make_candidate("853", arrival_hits=["74-46", "74-50"]),
-                self.make_candidate("80853", has_train_content=True, is_arrival_route_to_base=True),
+                self.make_candidate("80853", has_train_content=True),
                 self.make_candidate("90853", general_hits=["74-19"], arrival_hits=["74-19"]),
             ],
         )
@@ -93,18 +93,18 @@ class BaliseCandidateSelectionTest(unittest.TestCase):
         selected = static_data.select_balise_candidate_result(
             "802",
             [
-                self.make_candidate("802", general_hits=["74-01"], is_departure_route_from_base=False),
+                self.make_candidate("802", general_hits=["74-01"], skien_departure_time=None),
                 self.make_candidate(
                     "80802",
                     general_hits=["74-08"],
                     has_train_content=True,
-                    is_departure_route_from_base=False,
+                    skien_departure_time=None,
                 ),
                 self.make_candidate(
                     "90802",
                     general_hits=["74-20"],
                     departure_hits=["74-20"],
-                    is_departure_route_from_base=True,
+                    skien_departure_time="06:49",
                 ),
             ],
         )
@@ -184,20 +184,63 @@ class BaliseDepartureSegmentSelectionTest(unittest.TestCase):
 
         _general, departure, _arrival = static_data.extract_vehicle_hits_from_balise_text(text)
 
-        self.assertFalse(static_data.has_departure_route_from_skien(text))
+        self.assertFalse(static_data.has_departure_stop_at_skien(text))
         self.assertEqual(departure, [])
 
 
-class SkienDeparturePayloadFilterTest(unittest.TestCase):
-    def test_departures_only_include_balise_validated_skien_origin_trains(self):
+class BaliseSkienStationStopTest(unittest.TestCase):
+    def test_station_stop_detects_starting_departure_from_skien(self):
+        text = "\tSkien\t2\t\t\t15:09\t"
+
+        stop = static_data.extract_skien_station_stop(text)
+
+        self.assertIsNone(stop["arrival"])
+        self.assertEqual(stop["departure"], "15:09")
+        self.assertTrue(static_data.has_departure_stop_at_skien(text))
+
+    def test_station_stop_detects_terminating_arrival_to_skien(self):
+        text = "\tSkien\t2\t13:53\t\t\t"
+
+        stop = static_data.extract_skien_station_stop(text)
+
+        self.assertEqual(stop["arrival"], "13:53")
+        self.assertIsNone(stop["departure"])
+        self.assertTrue(static_data.has_arrival_stop_at_skien(text))
+
+    def test_station_stop_detects_through_train_arrival_and_departure(self):
+        text = "\tSkien\t3\t12:02\t\t12:03\t"
+
+        stop = static_data.extract_skien_station_stop(text)
+
+        self.assertEqual(stop["arrival"], "12:02")
+        self.assertEqual(stop["departure"], "12:03")
+        self.assertTrue(static_data.has_arrival_stop_at_skien(text))
+        self.assertTrue(static_data.has_departure_stop_at_skien(text))
+
+    def test_station_stop_rejects_route_without_skien_stop(self):
+        text = "\tDrammen\t2\t05:35\t\t05:42\t\n\tEidsvoll\t2\t07:01\t\t\t"
+
+        stop = static_data.extract_skien_station_stop(text)
+
+        self.assertIsNone(stop["arrival"])
+        self.assertIsNone(stop["departure"])
+        self.assertFalse(static_data.has_arrival_stop_at_skien(text))
+        self.assertFalse(static_data.has_departure_stop_at_skien(text))
+
+
+class SkienStationStopPayloadFilterTest(unittest.TestCase):
+    def test_departures_only_include_balise_validated_skien_station_departures(self):
         def fake_fetch(train_numbers, run_date, deadline_at=None):
             return (
-                {"802": "74-08", "824": "74-20, 74-41"},
-                {"824": "74-20, 74-41"},
+                {"802": "74-08", "824": "74-20, 74-41", "2478": "74-07"},
+                {"824": "74-20, 74-41", "2478": "74-07"},
+                {"2478": "74-07"},
                 {},
-                {},
-                {"802": "80802", "824": "80824"},
-                {"824": "80824"},
+                {"802": "80802", "824": "80824", "2478": "92478"},
+                {"824": "80824", "2478": "92478"},
+                {"2478": "92478"},
+                {"824": "14:45", "2478": "12:03"},
+                {"2478": "12:02"},
             )
 
         with patch.object(static_data, "fetch_vehicle_maps_for_trains", side_effect=fake_fetch):
@@ -215,8 +258,14 @@ class SkienDeparturePayloadFilterTest(unittest.TestCase):
         self.assertNotIn("802", payload["departures"])
         self.assertNotIn("80802", payload["departures"])
         self.assertIn("80824", payload["departures"])
-        self.assertEqual(payload["departures"]["80824"], static_data.HARDCODED_DEPARTURES["824"])
+        self.assertIn("92478", payload["departures"])
+        self.assertIn("92478", payload["arrivals"])
+        self.assertEqual(payload["departures"]["80824"], "14:45")
+        self.assertEqual(payload["departures"]["92478"], "12:03")
+        self.assertEqual(payload["arrivals"]["92478"]["time"], "12:02")
         self.assertEqual(payload["departureVehicles"]["80824"], "74-20, 74-41")
+        self.assertEqual(payload["departureVehicles"]["92478"], "74-07")
+        self.assertEqual(payload["arrivalVehicles"]["92478"], "74-07")
 
 
 class AtomicStaticDataRefreshTest(unittest.TestCase):
