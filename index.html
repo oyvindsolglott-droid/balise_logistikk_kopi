@@ -11183,11 +11183,18 @@ function getSporplanTextsForSlot(slot, info){
 }
 
 
+function isSharedSporplanDraftActiveForCommonView(){
+  const revision = Number(state?.sharedSporplanDraftAppliedRevision);
+  return Number.isFinite(revision) && revision > 0;
+}
+
+
 function buildSporplan(){
   const duplicateVehicles = getDuplicateGrunnoppstillingVehicles();
   const data=Object.fromEntries(computeInndata().map(r=>[r.slot,r]));
   const repSlots = getKveldRepSlots();
   const dreiSlots = getDreiSlots();
+  const suppressLocalVisualOverlay = isSharedSporplanDraftActiveForCommonView();
   const planSkifteMarkers = getPlanSkifteMarkersBySlot();
   const grid=document.getElementById("yardGrid");
   const washGrid=document.getElementById("yardWashMachine");
@@ -11228,7 +11235,7 @@ function buildSporplan(){
 
       const info=data[slot]||{tog:"",mat:"",wash:false};
       const filled=Boolean((info.tog||"").trim()||(info.mat||"").trim());
-      const fillClass=filled?(info.wash?"wash-filled":"filled"):"empty";
+      const fillClass=filled?((info.wash && !suppressLocalVisualOverlay)?"wash-filled":"filled"):"empty";
 
 
       const div=document.createElement("div");
@@ -11240,7 +11247,7 @@ function buildSporplan(){
       if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
       if(dreiSlots.has(normalizeSlot(slot))) div.classList.add("drei-slot");
 
-      const planMarker = planSkifteMarkers[normalizeSlot(slot)] || null;
+      const planMarker = suppressLocalVisualOverlay ? null : (planSkifteMarkers[normalizeSlot(slot)] || null);
       if(planMarker?.from?.length) div.classList.add("plan-fra");
       if(planMarker?.to?.length) div.classList.add("plan-til");
       if(planMarker?.service6To?.length) div.classList.add("plan-service6");
@@ -11326,7 +11333,7 @@ function buildSporplan(){
     washMachineSlots.forEach(slot=>{
       const info=data[slot]||{tog:"",mat:"",wash:false};
       const filled=Boolean((info.tog||"").trim()||(info.mat||"").trim());
-      const fillClass=filled?(info.wash?"wash-filled":"filled"):"empty";
+      const fillClass=filled?((info.wash && !suppressLocalVisualOverlay)?"wash-filled":"filled"):"empty";
       const div=document.createElement("div");
       div.className=`slot ${fillClass} ${slotKind(slot)}`;
       const invalidVehicleMessage = info.mat ? getVehicleNumberValidationMessage(info.mat) : "";
