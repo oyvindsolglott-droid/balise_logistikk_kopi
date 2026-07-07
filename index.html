@@ -25518,6 +25518,29 @@ function getActiveAccessLevel(){
   return select ? String(select.value || "0") : "0";
 }
 
+function canUseSporplanResetInCurrentUi(){
+  const activeTab = document.querySelector(".seg.active")?.dataset?.tab || "";
+  const level = getActiveAccessLevel();
+  return activeTab === "sporplan" && (level === "0" || level === "2");
+}
+
+function updateSporplanResetVisibility(){
+  const allowed = canUseSporplanResetInCurrentUi();
+  const tools = document.querySelector("#sporplan .reset-tools");
+  const button = document.getElementById("resetBtn");
+
+  if(tools){
+    tools.hidden = !allowed;
+    tools.setAttribute("aria-hidden", allowed ? "false" : "true");
+  }
+
+  if(button){
+    button.disabled = !allowed;
+    button.tabIndex = allowed ? 0 : -1;
+    button.setAttribute("aria-disabled", allowed ? "false" : "true");
+  }
+}
+
 function isTabAllowedAtCurrentLevel(tabName){
   if(isLockedTxpEntry()) return isAllowedTxpRestrictedTab(tabName);
   const level = getActiveAccessLevel();
@@ -25612,6 +25635,7 @@ function applyAccessLevel(){
   if(activeBtn && activeBtn.classList.contains("level-hidden")){
     activateTab(getDefaultTabForCurrentLevel());
   }
+  updateSporplanResetVisibility();
 }
 
 function activateTab(name){
@@ -25636,6 +25660,8 @@ function activateTab(name){
   if(name === "sdeSkiftebevegelser"){
     renderSdeSkiftebevegelser();
   }
+
+  updateSporplanResetVisibility();
 }
 
 function getActiveTabName(){
@@ -29963,6 +29989,11 @@ if(loadVyDemoBtn){
 
 
 document.getElementById("resetBtn").addEventListener("click",()=>{
+  if(!canUseSporplanResetInCurrentUi()){
+    renderSharedSporplanDraftStatus("Reset sporplan er bare tilgjengelig i nivå 0 og nivå 2 TXP.", "warn");
+    return;
+  }
+
   if(!confirm("Nullstille hele appen?")) return;
 
 
