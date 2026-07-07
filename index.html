@@ -8332,8 +8332,6 @@ function computeInndata(){
     return computeInndataCachedRows;
   }
 
-  syncInputSporplanFromFinishedPlanSkifteRows();
-
   const result=inputSlots.map(slot=>({slot,tog:"",mat:"",wash:false}));
   const map=Object.fromEntries(result.map((r,i)=>[r.slot,i]));
 
@@ -11238,6 +11236,12 @@ function computeSharedSporplanDraftRowsForCommonView(){
   });
 
   return result;
+}
+
+function computeCanonicalActualPlacementRows(){
+  return isSharedSporplanDraftActiveForCommonView()
+    ? computeSharedSporplanDraftRowsForCommonView()
+    : computeInndata();
 }
 
 
@@ -23333,7 +23337,7 @@ function buildSdeNightPlacementDragOverrideMoves(baseRows){
 function getSdeNightPlacementPhysicalOccupants(){
   const occupants = {};
   const completedLockedSlots = getSdeNightPlacementCompletedLockedSlots();
-  computeInndata().forEach(row=>{
+  computeCanonicalActualPlacementRows().forEach(row=>{
     const slot = normalizeSlot(row?.slot);
     const vehicle = sanitizeVehicleValue(row?.mat);
     if(slot && vehicle){
