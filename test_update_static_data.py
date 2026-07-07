@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import update_static_data as static_data
 
@@ -49,6 +50,7 @@ class BaliseCandidateSelectionTest(unittest.TestCase):
         departure_hits=None,
         arrival_hits=None,
         has_train_content=True,
+        is_departure_route_from_base=True,
         is_arrival_route_to_base=True,
     ):
         return {
@@ -57,6 +59,7 @@ class BaliseCandidateSelectionTest(unittest.TestCase):
             "departure_hits": departure_hits or [],
             "arrival_hits": arrival_hits or [],
             "has_train_content": has_train_content,
+            "is_departure_route_from_base": is_departure_route_from_base,
             "is_arrival_route_to_base": is_arrival_route_to_base,
         }
 
@@ -85,6 +88,29 @@ class BaliseCandidateSelectionTest(unittest.TestCase):
 
         self.assertEqual(selected["lookup_train_no"], "90853")
         self.assertEqual(selected["arrival_hits"], ["74-19"])
+
+    def test_re11_8xx_departure_does_not_prefer_non_skien_alternate_content(self):
+        selected = static_data.select_balise_candidate_result(
+            "802",
+            [
+                self.make_candidate("802", general_hits=["74-01"], is_departure_route_from_base=False),
+                self.make_candidate(
+                    "80802",
+                    general_hits=["74-08"],
+                    has_train_content=True,
+                    is_departure_route_from_base=False,
+                ),
+                self.make_candidate(
+                    "90802",
+                    general_hits=["74-20"],
+                    departure_hits=["74-20"],
+                    is_departure_route_from_base=True,
+                ),
+            ],
+        )
+
+        self.assertEqual(selected["lookup_train_no"], "90802")
+        self.assertEqual(selected["departure_hits"], ["74-20"])
 
 
 class BaliseArrivalSegmentSelectionTest(unittest.TestCase):
@@ -150,6 +176,47 @@ class BaliseDepartureSegmentSelectionTest(unittest.TestCase):
 
         self.assertEqual(departure, [])
         self.assertEqual(arrival, ["74-20", "74-41"])
+
+    def test_departure_from_skien_rejects_route_from_other_origin(self):
+        text = """
+        Drammen - Eidsvoll: 74-08
+        """
+
+        _general, departure, _arrival = static_data.extract_vehicle_hits_from_balise_text(text)
+
+        self.assertFalse(static_data.has_departure_route_from_skien(text))
+        self.assertEqual(departure, [])
+
+
+class SkienDeparturePayloadFilterTest(unittest.TestCase):
+    def test_departures_only_include_balise_validated_skien_origin_trains(self):
+        def fake_fetch(train_numbers, run_date, deadline_at=None):
+            return (
+                {"802": "74-08", "824": "74-20, 74-41"},
+                {"824": "74-20, 74-41"},
+                {},
+                {},
+                {"802": "80802", "824": "80824"},
+                {"824": "80824"},
+            )
+
+        with patch.object(static_data, "fetch_vehicle_maps_for_trains", side_effect=fake_fetch):
+            with patch.object(
+                static_data,
+                "get_operational_tursatt_dates",
+                return_value={
+                    "arrival_date": static_data.date(2026, 7, 2),
+                    "departure_date": static_data.date(2026, 7, 2),
+                    "window": "test",
+                },
+            ):
+                payload = static_data.build_payload("imorgen")
+
+        self.assertNotIn("802", payload["departures"])
+        self.assertNotIn("80802", payload["departures"])
+        self.assertIn("80824", payload["departures"])
+        self.assertEqual(payload["departures"]["80824"], static_data.HARDCODED_DEPARTURES["824"])
+        self.assertEqual(payload["departureVehicles"]["80824"], "74-20, 74-41")
 
 
 class AtomicStaticDataRefreshTest(unittest.TestCase):
