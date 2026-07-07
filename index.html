@@ -752,6 +752,11 @@ gap:8px;
 margin-top:10px;
 }
 
+.reset-tools.is-hidden,
+.reset-tools[hidden]{
+display:none !important;
+}
+
 #resetBtn{
 background:#b91c1c;
 border:1px solid #7f1d1d;
@@ -25531,6 +25536,7 @@ function updateSporplanResetVisibility(){
 
   if(tools){
     tools.hidden = !allowed;
+    tools.classList.toggle("is-hidden", !allowed);
     tools.setAttribute("aria-hidden", allowed ? "false" : "true");
   }
 
