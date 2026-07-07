@@ -25566,6 +25566,8 @@ let lastKnownSharedDraftRevision = null;
 let lastSharedSporplanDraftWritesEnabled = false;
 let sharedSporplanDraftSaveInFlight = false;
 let sharedSporplanDraftHasUnsavedLocalChanges = false;
+let sharedSporplanDraftAutosaveTimer = null;
+const SHARED_SPORPLAN_DRAFT_AUTOSAVE_DELAY_MS = 1200;
 
 function getSameOriginServerStatusBase(){
   if(isSdeHostedHttpsOrigin()){
@@ -25617,6 +25619,13 @@ function renderSharedSporplanDraftStatus(message, tone = "off"){
   if(!element) return;
   element.dataset.sharedDraftStatus = tone;
   element.textContent = message;
+}
+
+function clearSharedSporplanDraftAutosaveTimer(){
+  if(sharedSporplanDraftAutosaveTimer){
+    clearTimeout(sharedSporplanDraftAutosaveTimer);
+    sharedSporplanDraftAutosaveTimer = null;
+  }
 }
 
 function getSharedSporplanDraftReadbackElement(){
@@ -25723,6 +25732,7 @@ function renderSharedSporplanDraftLocalChangeState(){
   renderSharedSporplanDraftSaveState(
     `Lokal Input Sporplan er endret (${count} felt). Bruk “Lagre delt parkert-hvor” for å dele parkert-hvor som draft/readback. ${revisionText} Ikke skifteordre.`
   );
+  scheduleSharedSporplanDraftAutosave();
 }
 
 function isPlainSharedSporplanDraftObject(value){
@@ -25785,6 +25795,7 @@ function applySharedSporplanDraftToActiveState(readback){
   state.sharedSporplanDraftAppliedRevision = readback.revision;
   state.sharedSporplanDraftAppliedAt = readback.updatedAt || new Date().toISOString();
   sharedSporplanDraftHasUnsavedLocalChanges = false;
+  clearSharedSporplanDraftAutosaveTimer();
 
   buildGrunnoppstilling();
   buildSporplan();
@@ -25807,7 +25818,8 @@ function isLocalSharedSporplanDraftEmpty(draft){
     );
 }
 
-function buildSharedSporplanDraftSavePayload(){
+function buildSharedSporplanDraftSavePayload(options = {}){
+  const isAutosave = options.autosave === true;
   const expectedRevision = Number(lastKnownSharedDraftRevision);
   if(!Number.isInteger(expectedRevision) || expectedRevision < 0){
     return {ok:false, message:"Mangler gyldig expectedRevision fra siste delte draft-readback."};
@@ -25827,13 +25839,13 @@ function buildSharedSporplanDraftSavePayload(){
         actor:"serverhosted-frontend",
         device:window.location.hostname || "unknown-client",
         clientContext:{
-          phase:"SDE-SYNC-H",
-          action:"explicit-save-click",
+          phase:isAutosave ? "SDE-SYNC-K2" : "SDE-SYNC-H",
+          action:isAutosave ? "txp-input-autosave-debounce" : "explicit-save-click",
           scope:"input-sporplan-draft",
           readbackOnly:true,
           draftReadbackOnly:true,
-          manualActionOnly:true,
-          autosave:false,
+          manualActionOnly:!isAutosave,
+          autosave:isAutosave,
           notOperationalOrder:true,
           notSdeMotorSource:true,
           notCompletedCancelled:true
@@ -25931,20 +25943,48 @@ async function fetchSharedSporplanDraftReadbackForSaveConfirmation(options = {})
   return readback;
 }
 
-async function saveSharedSporplanDraftFromUi(){
-  if(sharedSporplanDraftSaveInFlight) return;
+function scheduleSharedSporplanDraftAutosave(){
+  clearSharedSporplanDraftAutosaveTimer();
 
   if(lastSharedSporplanDraftWritesEnabled !== true){
-    renderSharedSporplanDraftSaveState("Delt lagring er ikke åpnet på server. Ingen POST sendt.");
+    renderSharedSporplanDraftSaveState("Ulagret delt parkert-hvor-endring. Delt lagring er ikke åpnet på server, så ingen POST sendes.");
+    return;
+  }
+  if(!shouldFetchSharedSporplanDraftReadback()){
+    renderSharedSporplanDraftSaveState("Ulagret delt parkert-hvor-endring. Mangler same-origin server, så ingen POST sendes.");
+    return;
+  }
+  if(!Number.isInteger(lastKnownSharedDraftRevision) || lastKnownSharedDraftRevision < 0){
+    renderSharedSporplanDraftSaveState("Ulagret delt parkert-hvor-endring. Les delt draft før automatisk lagring slik at expectedRevision er kjent.");
+    return;
+  }
+
+  renderSharedSporplanDraftSaveState(
+    `Ulagret delt parkert-hvor-endring. Lagrer automatisk om ${Math.round(SHARED_SPORPLAN_DRAFT_AUTOSAVE_DELAY_MS / 100) / 10} sekunder hvis du ikke fortsetter å skrive. Ikke skifteordre.`
+  );
+  sharedSporplanDraftAutosaveTimer = setTimeout(() => {
+    sharedSporplanDraftAutosaveTimer = null;
+    if(!sharedSporplanDraftHasUnsavedLocalChanges) return;
+    saveSharedSporplanDraftFromUi({autosave:true});
+  }, SHARED_SPORPLAN_DRAFT_AUTOSAVE_DELAY_MS);
+}
+
+async function saveSharedSporplanDraftFromUi(options = {}){
+  const isAutosave = options.autosave === true;
+  if(sharedSporplanDraftSaveInFlight) return;
+  if(!isAutosave) clearSharedSporplanDraftAutosaveTimer();
+
+  if(lastSharedSporplanDraftWritesEnabled !== true){
+    renderSharedSporplanDraftSaveState("Ikke lagret til delt sporplan: delt lagring er ikke åpnet på server. Ingen POST sendt.");
     return;
   }
 
   if(!shouldFetchSharedSporplanDraftReadback()){
-    renderSharedSporplanDraftSaveState("Mangler same-origin server. Ingen POST sendt.");
+    renderSharedSporplanDraftSaveState("Ikke lagret til delt sporplan: mangler same-origin server. Ingen POST sendt.");
     return;
   }
 
-  const built = buildSharedSporplanDraftSavePayload();
+  const built = buildSharedSporplanDraftSavePayload({autosave:isAutosave});
   if(!built.ok){
     renderSharedSporplanDraftSaveState(built.message);
     return;
@@ -25952,7 +25992,11 @@ async function saveSharedSporplanDraftFromUi(){
 
   sharedSporplanDraftSaveInFlight = true;
   sharedSporplanDraftHasUnsavedLocalChanges = true;
-  renderSharedSporplanDraftSaveState("Lagrer delt draft etter eksplisitt klikk. Ikke operativ sannhetskilde.");
+  renderSharedSporplanDraftSaveState(
+    isAutosave
+      ? "Lagrer delt parkert-hvor automatisk etter TXP Input-endring. Ikke skifteordre og ikke operativ sannhetskilde."
+      : "Lagrer delt draft etter eksplisitt klikk. Ikke operativ sannhetskilde."
+  );
 
   let finalMessage = "";
   try{
