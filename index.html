@@ -9393,6 +9393,44 @@ function refreshGrunnoppstillingDuplicateInputWarnings(){
   });
 }
 
+function removeGrunnoppstillingVehicleFromOtherSlots(vehicle, targetSlot, activeInput=null){
+  const token = normalizeVehicleToken(vehicle);
+  const normalizedTargetSlot = normalizeSlot(targetSlot);
+  if(!token || !normalizedTargetSlot) return false;
+
+  let changed = false;
+  Object.entries(state.grunnoppstilling || {}).forEach(([rawSlot, rawValue])=>{
+    const normalizedSlot = normalizeSlot(rawSlot);
+    if(!normalizedSlot || normalizedSlot === normalizedTargetSlot) return;
+    if(normalizeVehicleToken(rawValue) !== token) return;
+
+    delete state.grunnoppstilling[rawSlot];
+    if(state.grunnoppstillingRep?.[rawSlot]){
+      delete state.grunnoppstillingRep[rawSlot];
+    }
+    changed = true;
+  });
+
+  if(changed){
+    document.querySelectorAll("#grunnoppstillingTable .grunnoppstilling-vehicle-cell input[data-slot]").forEach(input=>{
+      const inputSlot = normalizeSlot(input.dataset.slot);
+      if(input !== activeInput && inputSlot && inputSlot !== normalizedTargetSlot && normalizeVehicleToken(input.value) === token){
+        input.value = "";
+        updateVehicleNumberInputValidation(input, "");
+      }
+    });
+    document.querySelectorAll("#grunnoppstillingTable .grunnoppstilling-status-cell input").forEach(input=>{
+      const inputSlot = normalizeSlot(input.closest("tr")?.querySelector(".grunnoppstilling-slot-cell")?.textContent?.replace(/UVIRKSOM/g,"") || "");
+      if(inputSlot && inputSlot !== normalizedTargetSlot && !state.grunnoppstilling?.[inputSlot]){
+        input.value = "";
+        updateGrunnoppstillingRepDreiInputValidation(input, "");
+      }
+    });
+  }
+
+  return changed;
+}
+
 function getGrunnoppstillingRepDreiValidationMessage(value){
   const normalized = String(value || "").trim().toLowerCase();
   if(!normalized) return "";
@@ -9615,6 +9653,7 @@ function buildGrunnoppstilling(){
       const value=String(e.target.value || "").trim();
       updateVehicleNumberInputValidation(inp, value);
       if(value){
+        removeGrunnoppstillingVehicleFromOtherSlots(value, slot, inp);
         state.grunnoppstilling[slot]=value;
       }else{
         delete state.grunnoppstilling[slot];
