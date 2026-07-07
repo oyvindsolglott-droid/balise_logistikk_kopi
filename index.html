@@ -19208,6 +19208,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
       recordSdeMoveLearningEvent(key, "completed", row, actionTime, learningReason);
       persist(true);
       refreshSdeAfterMoveAction();
+      await saveSharedSporplanDraftFromSdeCompletedMove();
       return;
     }finally{
       window.sdeMoveActionPendingKey = "";
@@ -25930,6 +25931,9 @@ function isLocalSharedSporplanDraftEmpty(draft){
 function buildSharedSporplanDraftSavePayload(options = {}){
   const isAutosave = options.autosave === true;
   const isReset = options.reset === true;
+  const phaseOverride = String(options.phase || "").trim();
+  const actionOverride = String(options.action || "").trim();
+  const isSdeCompletedMove = options.sdeCompletedMove === true;
   const expectedRevision = Number(lastKnownSharedDraftRevision);
   if(!Number.isInteger(expectedRevision) || expectedRevision < 0){
     return {ok:false, message:"Mangler gyldig expectedRevision fra siste delte draft-readback."};
@@ -25949,14 +25953,15 @@ function buildSharedSporplanDraftSavePayload(options = {}){
         actor:"serverhosted-frontend",
         device:window.location.hostname || "unknown-client",
         clientContext:{
-          phase:isReset ? "SDE-SYNC-M" : (isAutosave ? "SDE-SYNC-K2" : "SDE-SYNC-H"),
-          action:isReset ? "reset-sporplan" : (isAutosave ? "txp-input-autosave-debounce" : "explicit-save-click"),
+          phase:isReset ? "SDE-SYNC-M" : (phaseOverride || (isAutosave ? "SDE-SYNC-K2" : "SDE-SYNC-H")),
+          action:isReset ? "reset-sporplan" : (actionOverride || (isAutosave ? "txp-input-autosave-debounce" : "explicit-save-click")),
           scope:"input-sporplan-draft",
           readbackOnly:true,
           draftReadbackOnly:true,
           manualActionOnly:!isAutosave,
           autosave:isAutosave,
           sharedReset:isReset,
+          sdeCompletedMove:isSdeCompletedMove,
           notOperationalOrder:true,
           notSdeMotorSource:true,
           notCompletedCancelled:true
@@ -26120,30 +26125,43 @@ function scheduleSharedSporplanDraftAutosave(){
 async function saveSharedSporplanDraftFromUi(options = {}){
   const isAutosave = options.autosave === true;
   const isReset = options.reset === true;
+  const isSdeCompletedMove = options.sdeCompletedMove === true;
   if(sharedSporplanDraftSaveInFlight) return;
   if(!isAutosave) clearSharedSporplanDraftAutosaveTimer();
 
   if(lastSharedSporplanDraftWritesEnabled !== true){
-    renderSharedSporplanDraftSaveState("Ikke lagret til delt sporplan: delt lagring er ikke åpnet på server. Ingen POST sendt.");
+    renderSharedSporplanDraftSaveState(isSdeCompletedMove
+      ? "Utført lokalt — ikke lagret til delt sporplan: delt lagring er ikke åpnet på server. Ingen POST sendt."
+      : "Ikke lagret til delt sporplan: delt lagring er ikke åpnet på server. Ingen POST sendt.");
     return;
   }
 
   if(!shouldFetchSharedSporplanDraftReadback()){
-    renderSharedSporplanDraftSaveState("Ikke lagret til delt sporplan: mangler same-origin server. Ingen POST sendt.");
+    renderSharedSporplanDraftSaveState(isSdeCompletedMove
+      ? "Utført lokalt — ikke lagret til delt sporplan: mangler same-origin server. Ingen POST sendt."
+      : "Ikke lagret til delt sporplan: mangler same-origin server. Ingen POST sendt.");
     return;
   }
 
-  if(isReset && (!Number.isInteger(lastKnownSharedDraftRevision) || lastKnownSharedDraftRevision < 0)){
+  if((isReset || isSdeCompletedMove) && (!Number.isInteger(lastKnownSharedDraftRevision) || lastKnownSharedDraftRevision < 0)){
     try{
       await fetchSharedSporplanDraftReadbackForSaveConfirmation({applyActive:false});
     }catch(_error){
-      // The normal payload builder below keeps reset blocked until expectedRevision is known.
+      // The normal payload builder below keeps shared writes blocked until expectedRevision is known.
     }
   }
 
-  const built = buildSharedSporplanDraftSavePayload({autosave:isAutosave, reset:isReset});
+  const built = buildSharedSporplanDraftSavePayload({
+    autosave:isAutosave,
+    reset:isReset,
+    phase:options.phase,
+    action:options.action,
+    sdeCompletedMove:isSdeCompletedMove
+  });
   if(!built.ok){
-    renderSharedSporplanDraftSaveState(built.message);
+    renderSharedSporplanDraftSaveState(isSdeCompletedMove
+      ? `Utført lokalt — ikke lagret til delt sporplan: ${built.message}`
+      : built.message);
     return;
   }
 
@@ -26153,6 +26171,8 @@ async function saveSharedSporplanDraftFromUi(options = {}){
   renderSharedSporplanDraftSaveState(
     isReset
       ? "Lagrer delt sporplan reset. Dette nullstiller bare shared parkert-hvor draft, ikke skifteordre eller operativ sannhet."
+      : isSdeCompletedMove
+      ? "Lagrer Utført-resultat til delt sporplan. Kun parkert-hvor draft/readback, ikke skifteordre eller operativ sannhet."
       : isAutosave
       ? "Lagrer delt parkert-hvor automatisk etter TXP Input-endring. Ikke skifteordre og ikke operativ sannhetskilde."
       : "Lagrer delt draft etter eksplisitt klikk. Ikke operativ sannhetskilde."
@@ -26197,6 +26217,9 @@ async function saveSharedSporplanDraftFromUi(options = {}){
         if(isReset){
           renderSharedSporplanDraftStatus(`Delt sporplan reset lagret — server rev ${savedRevision}. Draft/readback, ikke skifteordre og ikke operativ sannhetskilde.`, "ok");
           finalMessage = finalMessage || `Delt sporplan reset lagret — server rev ${savedRevision}. Andre maskiner får blank Input Sporplan og Sporplan etter refresh. Ingen SDE-score, DROPS, Utført/Annullert eller operational state er oppdatert.`;
+        }else if(isSdeCompletedMove){
+          renderSharedSporplanDraftStatus(`Utført-resultat lagret til delt sporplan — server rev ${savedRevision}. Draft/readback, ikke skifteordre og ikke operativ sannhetskilde.`, "ok");
+          finalMessage = finalMessage || `Utført-resultat lagret til delt sporplan — server rev ${savedRevision}. Annen maskin får samme parkert-hvor etter refresh. Ingen SDE-score, DROPS, Utført/Annullert-logg eller operational state er oppdatert.`;
         }else{
           renderSharedSporplanDraftStatus(`Delt parkert-hvor lagret — server rev ${savedRevision}. Draft/readback, ikke skifteordre og ikke operativ sannhetskilde.`, "ok");
           finalMessage = finalMessage || `Delt parkert-hvor lagret — server rev ${savedRevision}. Annen maskin får samme aktive Input Sporplan og Sporplan etter refresh. Ingen SDE-score, DROPS, Utført/Annullert eller operational state er oppdatert.`;
@@ -26216,12 +26239,18 @@ async function saveSharedSporplanDraftFromUi(options = {}){
         // Keep the conflict message explicit even if follow-up readback fails.
       }
       lastKnownSharedDraftRevision = null;
-      finalMessage = `Konflikt: serverrevision er ${conflictRevision}, klient forventet ${body?.expectedRevision ?? built.payload.expectedRevision}. Lokal Input Sporplan beholdes. Les delt draft på nytt og merge manuelt før ny lagring.`;
+      finalMessage = isSdeCompletedMove
+        ? `Utført lokalt — ikke lagret til delt sporplan: konflikt mot serverrevision ${conflictRevision}, klient forventet ${body?.expectedRevision ?? built.payload.expectedRevision}. Lokal Input Sporplan beholdes. Les delt draft på nytt og merge manuelt før ny lagring.`
+        : `Konflikt: serverrevision er ${conflictRevision}, klient forventet ${body?.expectedRevision ?? built.payload.expectedRevision}. Lokal Input Sporplan beholdes. Les delt draft på nytt og merge manuelt før ny lagring.`;
     }else{
-      finalMessage = `Delt draft ble ikke lagret: HTTP ${response.status} ${body?.error || ""}. Lokal Input Sporplan beholdes.`.trim();
+      finalMessage = isSdeCompletedMove
+        ? `Utført lokalt — ikke lagret til delt sporplan: HTTP ${response.status} ${body?.error || ""}. Lokal Input Sporplan beholdes.`.trim()
+        : `Delt draft ble ikke lagret: HTTP ${response.status} ${body?.error || ""}. Lokal Input Sporplan beholdes.`.trim();
     }
   }catch(error){
-    finalMessage = `Delt draft kunne ikke lagres: ${error?.message || "nettverksfeil"}. Lokal Input Sporplan beholdes.`;
+    finalMessage = isSdeCompletedMove
+      ? `Utført lokalt — ikke lagret til delt sporplan: ${error?.message || "nettverksfeil"}. Lokal Input Sporplan beholdes.`
+      : `Delt draft kunne ikke lagres: ${error?.message || "nettverksfeil"}. Lokal Input Sporplan beholdes.`;
   }finally{
     sharedSporplanDraftSaveInFlight = false;
     renderSharedSporplanDraftSaveState(finalMessage);
@@ -26229,6 +26258,14 @@ async function saveSharedSporplanDraftFromUi(options = {}){
       scheduleSharedSporplanDraftAutosave();
     }
   }
+}
+
+async function saveSharedSporplanDraftFromSdeCompletedMove(){
+  await saveSharedSporplanDraftFromUi({
+    phase:"SDE-SYNC-R",
+    action:"sde-completed-move-shared-parked-location",
+    sdeCompletedMove:true
+  });
 }
 
 async function saveSharedSporplanDraftResetFromUi(){
