@@ -597,6 +597,23 @@ box-shadow:
   0 2px 0 rgba(15,23,42,.18),
   0 5px 12px rgba(15,23,42,.18);
 }
+.menu-hover-tooltip{
+position:fixed;
+z-index:10000;
+max-width:min(340px,calc(100vw - 32px));
+padding:10px 12px;
+border-radius:12px;
+background:rgba(15,23,42,.96);
+color:#fff;
+font-size:13px;
+line-height:1.35;
+font-weight:800;
+box-shadow:0 14px 30px rgba(15,23,42,.30);
+pointer-events:none;
+}
+.menu-hover-tooltip[hidden]{
+display:none;
+}
 .seg-icon{
 font-size:34px;
 line-height:1;
@@ -6158,15 +6175,15 @@ button{padding:12px 12px}
 </div>
 
 <div class="segmented" aria-label="Hovedmeny">
-<button class="seg seg-green active" type="button" data-tab="oppstilling" data-levels="0 1 2 3 5"><span class="seg-icon">🚆</span><span class="seg-main">Tursatt</span></button>
-<button class="seg seg-decision" type="button" data-tab="sdeSkiftebevegelser" data-levels="0 2 3"><span class="seg-icon">⇄</span><span class="seg-main">SDE<br>Skiftebevegelser</span></button>
-<button class="seg seg-decision" type="button" data-tab="sdeVaktplan" data-levels="0 1"><span class="seg-icon">▦</span><span class="seg-main">SDE<br>Vaktplan</span></button>
-<button class="seg" type="button" data-tab="dropsMateriellstyrer" data-levels="0 1"><span class="seg-icon">▱</span><span class="seg-main">DROPS<br>Materiellstyrer</span></button>
-<button class="seg seg-green" type="button" data-tab="sporplan" data-levels="0 1 2 3 5"><span class="seg-icon">▦</span><span class="seg-main">Sporplan</span></button>
-<button class="seg seg-blue" type="button" data-tab="grunnoppstilling" data-levels="0 2"><span class="seg-icon">TXP</span><span class="seg-main">TXP<br>Input Sporplan</span></button>
-<button class="seg seg-blue" type="button" data-tab="turneringKveld" data-levels="0 2"><span class="seg-icon">☾</span><span class="seg-main">Turnering Kveld</span></button>
-<button class="seg seg-blue" type="button" data-tab="turneringNatt" data-levels="0 2"><span class="seg-icon">☾</span><span class="seg-main">Turnering Natt</span></button>
-<button class="seg seg-red" type="button" data-tab="verkstedBestillinger" data-levels="0 4"><span class="seg-icon">🔧</span><span class="seg-main">Input verksted</span></button>
+<button class="seg seg-green active" type="button" data-tab="oppstilling" data-levels="0 1 2 3 5" data-menu-tooltip="Viser tursatte tog og materiell. Brukes som grunnlag for hva som kommer inn og skal ut."><span class="seg-icon">🚆</span><span class="seg-main">Tursatt</span></button>
+<button class="seg seg-decision" type="button" data-tab="sdeSkiftebevegelser" data-levels="0 2 3" data-menu-tooltip="Viser SDE-vurderinger og skifteforslag. Brukes til å planlegge og følge opp flytt."><span class="seg-icon">⇄</span><span class="seg-main">SDE<br>Skiftebevegelser</span></button>
+<button class="seg seg-decision" type="button" data-tab="sdeVaktplan" data-levels="0 1" data-menu-tooltip="Viser relevant vaktplaninformasjon og oppgaver. Skjuler støy som ikke hører til vaktbildet."><span class="seg-icon">▦</span><span class="seg-main">SDE<br>Vaktplan</span></button>
+<button class="seg" type="button" data-tab="dropsMateriellstyrer" data-levels="0 1" data-menu-tooltip="Viser materiellstatus, DROPS-behov og avklaringer rundt materiell og verksted."><span class="seg-icon">▱</span><span class="seg-main">DROPS<br>Materiellstyrer</span></button>
+<button class="seg seg-green" type="button" data-tab="sporplan" data-levels="0 1 2 3 5" data-menu-tooltip="Grafisk felles sporstatus. Viser hva som står hvor, basert på delt sporplan."><span class="seg-icon">▦</span><span class="seg-main">Sporplan</span></button>
+<button class="seg seg-blue" type="button" data-tab="grunnoppstilling" data-levels="0 2" data-menu-tooltip="Her legger TXP inn og deler parkert-hvor. Endringer synkes til felles sporplan."><span class="seg-icon">TXP</span><span class="seg-main">TXP<br>Input Sporplan</span></button>
+<button class="seg seg-blue" type="button" data-tab="turneringKveld" data-levels="0 2" data-menu-tooltip="Planflate for kveldsvinduet. Brukes til vurdering av spor, vask og videre plassering."><span class="seg-icon">☾</span><span class="seg-main">Turnering Kveld</span></button>
+<button class="seg seg-blue" type="button" data-tab="turneringNatt" data-levels="0 2" data-menu-tooltip="Planflate for natt-/tidligvinduet. Brukes til å forberede neste driftsbilde."><span class="seg-icon">☾</span><span class="seg-main">Turnering Natt</span></button>
+<button class="seg seg-red" type="button" data-tab="verkstedBestillinger" data-levels="0 4" data-menu-tooltip="Registrer verksted- og materiellstatus som brukes i vurderinger og planlegging."><span class="seg-icon">🔧</span><span class="seg-main">Input verksted</span></button>
 <button class="seg" type="button" data-tab="inndata" data-levels="0" style="display:none">Planlegge Skiftebevegelser</button>
 </div>
 
@@ -25141,7 +25158,7 @@ function renderSdeSkiftebevegelserInner(){
     <div class="sde-shift-section-title">
       <span class="sde-shift-section-title-main">Foreslåtte skiftebevegelser</span>
       <button class="sde-shift-reset-btn" type="button" onclick="handleSdeResetForDay()" title="${escapeHtml(sdeResetTitle)}"${sdeResetDisabled}>⟲ Nullstill SDE</button>
-      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="false" title="Vis eller skjul SDE Grafisk planverktøy">SDE Grafisk planverktøy</button>
+      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="false" aria-label="Vis eller skjul SDE Grafisk planverktøy" data-menu-tooltip="Visuelt planverktøy for ønsket sluttbilde og skifteplan. Dra kjøretøy for å foreslå overstyring; det opprettes et kort i SDE Skiftebevegelser som må godtas før flyttingen registreres.">SDE Grafisk planverktøy</button>
       <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
       <span class="sde-shift-section-title-count">${data.baseMoveCount ?? data.moves.length} forslag</span>
       ${nightPlacementOverriddenCardCount ? `<span class="sde-shift-section-title-count">${nightPlacementOverriddenCardCount} simulert manuell</span>` : ""}
@@ -30179,6 +30196,115 @@ document.getElementById("clearKjoretoyBtn").addEventListener("click",()=>{
   buildOppstilling();
 });
 
+const MENU_HOVER_TOOLTIP_DELAY_MS = 2000;
+let menuHoverTooltipTimer = null;
+let menuHoverTooltipTarget = null;
+
+function getMenuHoverTooltipElement(){
+  let tooltip = document.getElementById("menuHoverTooltip");
+  if(!tooltip){
+    tooltip = document.createElement("div");
+    tooltip.id = "menuHoverTooltip";
+    tooltip.className = "menu-hover-tooltip";
+    tooltip.setAttribute("role", "tooltip");
+    tooltip.hidden = true;
+    document.body.appendChild(tooltip);
+  }
+  return tooltip;
+}
+
+function clearMenuHoverTooltipTimer(){
+  if(menuHoverTooltipTimer){
+    window.clearTimeout(menuHoverTooltipTimer);
+    menuHoverTooltipTimer = null;
+  }
+}
+
+function hideMenuHoverTooltip(){
+  clearMenuHoverTooltipTimer();
+  if(menuHoverTooltipTarget){
+    menuHoverTooltipTarget.removeAttribute("aria-describedby");
+  }
+  menuHoverTooltipTarget = null;
+  const tooltip = document.getElementById("menuHoverTooltip");
+  if(tooltip){
+    tooltip.hidden = true;
+    tooltip.textContent = "";
+  }
+}
+
+function positionMenuHoverTooltip(target, tooltip){
+  const rect = target.getBoundingClientRect();
+  const tooltipRect = tooltip.getBoundingClientRect();
+  const margin = 12;
+  let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+  left = Math.max(margin, Math.min(left, window.innerWidth - tooltipRect.width - margin));
+  let top = rect.bottom + 10;
+  if(top + tooltipRect.height > window.innerHeight - margin){
+    top = rect.top - tooltipRect.height - 10;
+  }
+  top = Math.max(margin, Math.min(top, window.innerHeight - tooltipRect.height - margin));
+  tooltip.style.left = `${Math.round(left)}px`;
+  tooltip.style.top = `${Math.round(top)}px`;
+}
+
+function showMenuHoverTooltip(target){
+  const text = String(target?.dataset?.menuTooltip || "").trim();
+  if(!target || !text) return;
+  const tooltip = getMenuHoverTooltipElement();
+  tooltip.textContent = text;
+  tooltip.hidden = false;
+  target.setAttribute("aria-describedby", tooltip.id);
+  menuHoverTooltipTarget = target;
+  positionMenuHoverTooltip(target, tooltip);
+}
+
+function scheduleMenuHoverTooltip(target){
+  const text = String(target?.dataset?.menuTooltip || "").trim();
+  if(!target || !text) return;
+  if(menuHoverTooltipTarget && menuHoverTooltipTarget !== target){
+    hideMenuHoverTooltip();
+  }else{
+    clearMenuHoverTooltipTimer();
+  }
+  menuHoverTooltipTarget = target;
+  menuHoverTooltipTimer = window.setTimeout(() => {
+    menuHoverTooltipTimer = null;
+    showMenuHoverTooltip(target);
+  }, MENU_HOVER_TOOLTIP_DELAY_MS);
+}
+
+function initMenuHoverTooltips(){
+  document.addEventListener("mouseover", event => {
+    const target = event.target?.closest?.("[data-menu-tooltip]");
+    if(!target || target.contains(event.relatedTarget)) return;
+    scheduleMenuHoverTooltip(target);
+  });
+
+  document.addEventListener("mouseout", event => {
+    const target = event.target?.closest?.("[data-menu-tooltip]");
+    if(!target || target.contains(event.relatedTarget)) return;
+    if(target === menuHoverTooltipTarget) hideMenuHoverTooltip();
+  });
+
+  document.addEventListener("focusin", event => {
+    const target = event.target?.closest?.("[data-menu-tooltip]");
+    if(target) scheduleMenuHoverTooltip(target);
+  });
+
+  document.addEventListener("focusout", event => {
+    const target = event.target?.closest?.("[data-menu-tooltip]");
+    if(target && target === menuHoverTooltipTarget) hideMenuHoverTooltip();
+  });
+
+  document.addEventListener("click", hideMenuHoverTooltip);
+  document.addEventListener("keydown", event => {
+    if(event.key === "Escape") hideMenuHoverTooltip();
+  });
+  document.addEventListener("scroll", hideMenuHoverTooltip, true);
+  window.addEventListener("resize", hideMenuHoverTooltip);
+}
+
 document.getElementById("serverStatusCheckBtn")?.addEventListener("click", fetchServerStatusForDisplay);
 document.getElementById("serverDiagnosticsToggleBtn")?.addEventListener("click", () => {
   setServerDiagnosticsExpanded(document.body?.classList.contains("server-diagnostics-secondary") === true);
@@ -30187,6 +30313,7 @@ document.getElementById("sharedSporplanDraftRefreshBtn")?.addEventListener("clic
 document.getElementById("sharedSporplanDraftSaveBtn")?.addEventListener("click", saveSharedSporplanDraftFromUi);
 document.getElementById("serverNoteSendBtn")?.addEventListener("click", submitServerNoteFromUi);
 document.getElementById("sdeRecommendationAckSendBtn")?.addEventListener("click", submitSdeRecommendationAckFromUi);
+initMenuHoverTooltips();
 [
   "sdeRecommendationAckServiceDate",
   "sdeRecommendationAckRecommendationKey",
