@@ -6348,10 +6348,6 @@ button{padding:12px 12px}
 <div class="zoom-inner" id="sdeVaktplanZoom">
 <div class="sde-import-report" id="sdeImportReport">
 <div class="sde-import-report-title">SDE vaktplan</div>
-<div class="sde-demo-tools">
-<button class="compact" id="loadVyDemoBtn" type="button">Last Vy-demo</button>
-<span class="sde-demo-badge" id="sdeDemoBadge" hidden>DEMO</span>
-</div>
 <div class="sde-import-report-content" id="sdeImportReportText">Testgrunnlaget er deaktivert. Videre SDE bygger på faktisk Sporplan, Grunnoppstilling, Tursatt og skifteplanlegging i Turnering Kveld/Natt.</div>
 </div>
 <div class="note">
@@ -14343,7 +14339,8 @@ function getSdeShiftSummaryText(rows){
 }
 
 
-function getSdeNextActionsText(rows,currentDayType){
+function getSdeNextActionsText(rows,currentDayType,options={}){
+  const suppressDemo = Boolean(options?.suppressDemo);
   const phaseOrder = ["Kveld","Natt","Dag / utenfor SDE-vakt","Ikke tidsatt"];
   const planSources = new Set([
     "Planlegge Skiftebevegelser",
@@ -14804,7 +14801,7 @@ function getSdeNextActionsText(rows,currentDayType){
 
   let topActionPreviews = getSdeTopActionPreviews();
 
-  if(state.demoMode === "vy"){
+  if(!suppressDemo && state.demoMode === "vy"){
     topActionPreviews = [
       {
         group:"Kan utføres",
@@ -14849,7 +14846,7 @@ function getSdeNextActionsText(rows,currentDayType){
     getSdePlanningContextText()
   ];
 
-  if(state.demoMode === "vy"){
+  if(!suppressDemo && state.demoMode === "vy"){
     lines.push("");
     lines.push("DEMO: Vy-pilotmodus. Kontrollert demonstrasjon, ikke operativ produksjon. Scenarioet viser hvordan flere samtidige avvik kan skape handlingslammelse, og hvordan SDE løfter frem ett konkret første grep.");
   }
@@ -25252,10 +25249,51 @@ function buildSdeVaktOverviewHtml(rows, currentDayType){
   </div>`;
 }
 
+function isSdeVaktplanDemoOrPlaceholderRow(row){
+  const text = [
+    row?.source,
+    row?.status,
+    row?.operation,
+    row?.reason,
+    row?.recommendedAction
+  ].map(value=>String(value || "")).join(" ");
+
+  return /\b(?:demo|dummy|placeholder|mock|sample|testdata|test data)\b/i.test(text);
+}
+
+function isSdeVaktplanRelevantRow(row){
+  if(!row || isSdeVaktplanDemoOrPlaceholderRow(row)) return false;
+
+  const status = String(row.status || "").trim();
+  const priority = String(row.priority || "").trim();
+  const action = String(row.recommendedAction || "").trim();
+  const vehicle = normalizeVehicleToken(row.vehicle);
+
+  if(status === "Avklares" || status === "Annullert") return false;
+  if(!vehicle) return false;
+
+  if(status === "Planlagt" || status === "Avvik") return true;
+  if(priority === "Høy" || priority === "Middels") return true;
+  if(action === "Avklar datagrunnlag") return true;
+
+  return Boolean(row.currentSlot || row.suggestedSlot || row.departure || row.arrival);
+}
+
+function setSdeVaktplanEmptyState(report, table){
+  if(report){
+    report.style.whiteSpace = "normal";
+    report.style.lineHeight = "1.45";
+    report.textContent = "Ingen relevante vaktplanoppføringer i valgt periode.";
+  }
+
+  if(table){
+    table.style.display = "none";
+    table.innerHTML = "";
+  }
+}
+
 
 function buildSdeVaktplan(){
-  setSdeDemoBadge();
-
   const table = document.getElementById("sdeVaktplanTable");
   if(!table) return;
 
@@ -25464,17 +25502,25 @@ function buildSdeVaktplan(){
     return (a._sdeOriginalIndex || 0) - (b._sdeOriginalIndex || 0);
   });
 
+  const visibleRows = rows.filter(isSdeVaktplanRelevantRow);
+
   const overview = document.getElementById("sdeVaktOverview");
   if(overview){
-    overview.innerHTML = buildSdeVaktOverviewHtml(rows, currentDayType);
+    overview.innerHTML = buildSdeVaktOverviewHtml(visibleRows, currentDayType);
   }
 
   const report = document.getElementById("sdeImportReportText");
+
+  if(!visibleRows.length){
+    setSdeVaktplanEmptyState(report, table);
+    return;
+  }
+
   if(report){
     const knowledgeSnapshotText = getSdeKnowledgeSnapshotText(buildSdeKnowledgeSnapshot());
     const arrivalParkingNeedsText = getSdeArrivalParkingNeedsText(buildSdeArrivalParkingNeeds());
-    const nextActionsText = getSdeNextActionsText(rows,currentDayType);
-    const shiftSummaryText = getSdeShiftSummaryText(rows);
+    const nextActionsText = getSdeNextActionsText(visibleRows,currentDayType,{suppressDemo:true});
+    const shiftSummaryText = getSdeShiftSummaryText(visibleRows);
     const hiddenOldPlanWarningText = getHiddenOldPlanSkifteWarningText();
     report.style.whiteSpace = "pre-line";
     report.style.lineHeight = "1.45";
@@ -25491,7 +25537,7 @@ function buildSdeVaktplan(){
 
   const body = document.createElement("tbody");
 
-  rows.forEach(row=>{
+  visibleRows.forEach(row=>{
     const tr = document.createElement("tr");
     ["dayType","shiftPhase","fromTrain","arrival","vehicle","currentSlot","suggestedSlot","source","priority","recommendedAction","toTrain","part","departure","operation","status","reason"].forEach(key=>{
       const td = document.createElement("td");
