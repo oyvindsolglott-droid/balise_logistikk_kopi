@@ -6032,17 +6032,17 @@ button{padding:12px 12px}
   <div class="server-note-description">Read-only diagnostikk. Dette er ikke skifteordre, ikke Utført/Annullert og brukes ikke av SDE-motor, score, sortering, DROPS, Tursatt eller Vaktplan. Serverstate er fortsatt ikke operativ sannhetskilde.</div>
   <div class="server-note-readback-summary" id="operationalStateReadbackSummary">Avventer serverstatus.</div>
   <div class="server-note-readback-list" id="operationalStateReadbackList"></div>
-  <div class="server-note-description">Read-only payload preview for SDE Nattplassering manual overrides. Sendes ikke. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.</div>
+  <div class="server-note-description">Read-only payload preview for SDE Grafisk planverktøy manual overrides. Sendes ikke. Ikke skifteordre. Ikke Utført/Annullert. Serverstate er ikke operativ sannhetskilde.</div>
   <div class="server-note-readback-summary" id="sdeNightPlacementPayloadPreviewSummary">Avventer lokal state.</div>
-  <pre class="server-note-payload-preview" id="sdeNightPlacementPayloadPreview" aria-label="Read-only payload preview for SDE Nattplassering"></pre>
+  <pre class="server-note-payload-preview" id="sdeNightPlacementPayloadPreview" aria-label="Read-only payload preview for SDE Grafisk planverktøy"></pre>
   <div class="server-note-readback-summary" id="sdeNightPlacementReadbackCompareSummary">Read-only compare avventer lokal preview og serverreadback.</div>
   <div class="server-note-readback-summary" id="sdeNightPlacementWriteReadinessSummary">Write-readiness avventer lokal preview og serverstatus.</div>
   <div class="server-note-readback-summary" id="sdeNightPlacementTestSubmitGateSummary">Test-only submit gate er ikke aktiv i production.</div>
   <div class="server-note-result" id="sdeNightPlacementTestSubmitGateResult">write_not_available</div>
-  <div class="server-note-controls" id="sdeNightPlacementTestSubmitGateControls" aria-label="Test-only submit gate for SDE Nattplassering"></div>
+  <div class="server-note-controls" id="sdeNightPlacementTestSubmitGateControls" aria-label="Test-only submit gate for SDE Grafisk planverktøy"></div>
   <div class="server-note-readback-summary" id="sdeNightPlacementProductionPilotGateSummary">Production pilot gate er ikke aktivert.</div>
   <div class="server-note-result" id="sdeNightPlacementProductionPilotGateResult">write_not_available</div>
-  <div class="server-note-controls" id="sdeNightPlacementProductionPilotGateControls" aria-label="Production pilot gate for SDE Nattplassering"></div>
+  <div class="server-note-controls" id="sdeNightPlacementProductionPilotGateControls" aria-label="Production pilot gate for SDE Grafisk planverktøy"></div>
 </div>
 <div class="server-note-panel" id="sharedWorkspacePreviewPanel" aria-live="polite">
   <div class="server-note-header">
@@ -10404,7 +10404,7 @@ function buildTursattSplitJoinSdeDiagnosticHtml(){
               : `${add.vehicle}: kjent spor mangler, ikke lag automatisk flyttekort.`
           ).join(" ")
         : item.type === "split"
-          ? "Kjøretøy som blir igjen er markert i Tursatt-tabellen. Målspor må vurderes mot SDE Nattplassering/Sporplan før eventuell handling."
+          ? "Kjøretøy som blir igjen er markert i Tursatt-tabellen. Målspor må vurderes mot SDE Grafisk planverktøy/Sporplan før eventuell handling."
           : "Både deling og skjøting er indikert. Kontroller manuelt før eventuell skifteplan.";
 
       return `<div class="sde-shift-unresolved-item"><strong>${escapeHtml(title)}</strong><br>${escapeHtml(formatTursattFlowDiagnosticText(item))}<br>${escapeHtml(extra)}</div>`;
@@ -18493,7 +18493,7 @@ function handleSdeResetForDay(){
   const summary = getSdeResettableSummary();
 
   if(!summary.total){
-    alert("Ingen SDE-kvitteringer, SDE-genererte skifterader, nattplasseringer eller læringshendelser å nullstille.");
+    alert("Ingen SDE-kvitteringer, SDE-genererte skifterader, grafiske planplasseringer eller læringshendelser å nullstille.");
     return;
   }
 
@@ -18516,7 +18516,7 @@ function handleSdeResetForDay(){
     `Utførte: ${summary.completed}\n` +
     `Annullerte: ${summary.cancelled}\n` +
     `Overstyringer: ${summary.manualOverrides}\n` +
-    `Nattplasseringer: ${summary.nightPlacementManualOverrides}\n` +
+    `Grafiske planplasseringer: ${summary.nightPlacementManualOverrides}\n` +
     `SDE-skifterader: ${summary.sdePlanRows}\n` +
     `Læringshendelser: ${summary.learningEvents}\n\n` +
     (resetNeedsSnapshot
@@ -18553,7 +18553,7 @@ function handleSdeResetForDay(){
     `Fjernet utførte kvitteringer: ${summary.completed}\n` +
     `Fjernet annullerte kvitteringer: ${summary.cancelled}\n` +
     `Fjernet overstyringer: ${summary.manualOverrides}\n` +
-    `Fjernet nattplasseringer: ${summary.nightPlacementManualOverrides}\n` +
+    `Fjernet grafiske planplasseringer: ${summary.nightPlacementManualOverrides}\n` +
     `Fjernet læringshendelser: ${summary.learningEvents}\n` +
     (resetNeedsSnapshot ? `SDE-skifterader er tilbakestilt til før-bildet.` : `SDE-læring er ryddet.`)
   );
@@ -22642,8 +22642,8 @@ function getSdeNightPlacementVehicleStatusInfo(vehicle, slot){
 function getSdeNightPlacementSlotSourceText(entry){
   if(entry?.sourceKind === "completedLocked") return "lokal Utført";
   if(entry?.sourceKind === "standing") return "fysisk grunnlag / TXP Input / Grunnoppstilling";
-  if(entry?.stepRole === "temporary_parking") return "midlertidig planlagt nattplassering";
-  if(entry?.sourceKind === "move") return "planlagt/simulert nattplassering";
+  if(entry?.stepRole === "temporary_parking") return "midlertidig planlagt plassering";
+  if(entry?.sourceKind === "move") return "planlagt/simulert plassering";
   return entry?.source || "ukjent";
 }
 
@@ -22836,7 +22836,7 @@ function buildSdeNightPlacementCardOverrideMove(row, override){
     timeStatus:String(override.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"),
     sdeNightPlacementOverrideConflicts:Array.isArray(override.conflicts) ? override.conflicts : [],
     sdeNightPlacementOverrideAffectedVehicles:Array.isArray(override.affectedVehicles) ? override.affectedVehicles : [],
-    recommendationReason:`Overstyrt i SDE Nattplassering: opprinnelig SDE-forslag ${originalTargetSlot || "ukjent"} er erstattet av simulert manuell plassering ${toSlot}.`,
+    recommendationReason:`Overstyrt i SDE Grafisk planverktøy: opprinnelig SDE-forslag ${originalTargetSlot || "ukjent"} er erstattet av simulert manuell plassering ${toSlot}.`,
     parkingStrategy:"Simulert manuell plassering",
     parkingInstruction:"Simulert ønsket sluttplassering. Tidsstatus og konflikter må kontrolleres operativt."
   };
@@ -22906,7 +22906,7 @@ function buildSdeNightPlacementGeneratedMove(override){
     originalFromSlot:fromSlot,
     currentFromSlot:normalizeSlot(override?.currentFromSlot || override?.payloadSlot || override?.fromSlot),
     source:"night-placement-drag",
-    originalSource:"SDE Nattplassering",
+    originalSource:"SDE Grafisk planverktøy",
     isNightPlacementGenerated:true,
     isManualSimulated:true,
     isManualOnly:true,
@@ -22918,12 +22918,12 @@ function buildSdeNightPlacementGeneratedMove(override){
     sdeNightPlacementOverrideUpdatedAt:String(override.updatedAt || override.createdAt || ""),
     earliestMoveTime:String(override.earliestMoveTime || ""),
     latestMoveTime:String(override.latestMoveTime || ""),
-    sourceEvent:String(override.sourceEvent || "SDE Nattplassering"),
+    sourceEvent:String(override.sourceEvent || "SDE Grafisk planverktøy"),
     nextRequiredUse:String(override.nextRequiredUse || ""),
     timeStatus:String(override.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"),
     sdeNightPlacementOverrideConflicts:conflicts,
     sdeNightPlacementOverrideAffectedVehicles:affectedVehicles,
-    arrivalTrainText:"SDE Nattplassering",
+    arrivalTrainText:"SDE Grafisk planverktøy",
     departureTrainText:"Ingen kjent avgang",
     arrivalTime:String(override.earliestMoveTime || ""),
     nextDepartureText:"Ingen kjent avgang",
@@ -22932,9 +22932,9 @@ function buildSdeNightPlacementGeneratedMove(override){
     recommendationConfidence:"manuell",
     recommendationScore:"Ikke scoret",
     recommendationAlternatives:[],
-    recommendationReason:"Manuell simulert nattplassering. Ingen kjent SDE-avgang/behov. Manuell vurdering nødvendig. Dette er lokal planintensjon, ikke operativ skifteordre og ikke server-write.",
-    parkingStrategy:"Opprettet fra nattplassering",
-    parkingInstruction:"Manuell simulering fra nattplassering. Kontroller tidsstatus og eventuelle konflikter før lokal kvittering."
+    recommendationReason:"Manuell simulert plassering. Ingen kjent SDE-avgang/behov. Manuell vurdering nødvendig. Dette er lokal planintensjon, ikke operativ skifteordre og ikke server-write.",
+    parkingStrategy:"Opprettet fra grafisk planverktøy",
+    parkingInstruction:"Manuell simulering fra grafisk planverktøy. Kontroller tidsstatus og eventuelle konflikter før lokal kvittering."
   };
 }
 
@@ -23118,7 +23118,7 @@ function buildSdeNightPlacementCardOverrideHtml(row){
   const roleText = roleLabel === "MIDLERTIDIG PARKERING"
     ? `Mellomsteg før videre flytting${row.sdeNightPlacementNextSlot ? ` til ${row.sdeNightPlacementNextSlot}` : ""}.`
     : roleLabel === "ENDELIG PLASSERING"
-      ? "Siste aktive steg i nattplassering-sekvensen."
+      ? "Siste aktive steg i grafisk plansekvens."
       : "";
   const originalReason = String(row.sdeNightPlacementOriginalRecommendationReason || "").trim();
   const conflicts = Array.isArray(row.sdeNightPlacementOverrideConflicts)
@@ -23152,7 +23152,7 @@ function buildSdeNightPlacementGeneratedCardHtml(row){
   const roleText = roleLabel === "MIDLERTIDIG PARKERING"
     ? `Mellomsteg før videre flytting${row.sdeNightPlacementNextSlot ? ` til ${row.sdeNightPlacementNextSlot}` : ""}.`
     : roleLabel === "ENDELIG PLASSERING"
-      ? "Siste aktive steg i nattplassering-sekvensen."
+      ? "Siste aktive steg i grafisk plansekvens."
       : "";
   const conflicts = Array.isArray(row.sdeNightPlacementOverrideConflicts)
     ? row.sdeNightPlacementOverrideConflicts.map(item => String(item || "").trim()).filter(Boolean)
@@ -23162,7 +23162,7 @@ function buildSdeNightPlacementGeneratedCardHtml(row){
     : "";
 
   return `<div class="sde-night-card-override">
-    <strong>${escapeHtml(roleLabel || "Manuell / Simulert / Opprettet fra nattplassering")}</strong>
+    <strong>${escapeHtml(roleLabel || "Manuell / Simulert / Opprettet fra grafisk planverktøy")}</strong>
     <span>Lokal simulert skiftebevegelse: ${escapeHtml(fromSlot || "ukjent")} → ${escapeHtml(targetSlot || "ukjent")}</span>
     ${roleText ? `<span>${escapeHtml(roleText)}</span>` : ""}
     ${timeText ? `<span>${escapeHtml(timeText)}</span>` : ""}
@@ -23327,8 +23327,8 @@ function buildSdeNightPlacementDragOverrideMoves(baseRows){
       sdeNightPlacementOverrideId:String(override.id || ""),
       sdeNightPlacementOverrideCreatedAt:String(override.createdAt || ""),
       sdeNightPlacementOverrideUpdatedAt:String(override.updatedAt || override.createdAt || ""),
-      source:"SDE Nattplassering drag/drop",
-      recommendationReason:"Simulert ønsket sluttplassering fra SDE Nattplassering. Dette er ikke utført skiftebevegelse.",
+      source:"SDE Grafisk planverktøy drag/drop",
+      recommendationReason:"Simulert ønsket sluttplassering fra SDE Grafisk planverktøy. Dette er ikke utført skiftebevegelse.",
       parkingStrategy:"Simulert manuell plassering",
       parkingInstruction:"Simulert ønsket sluttplassering. Tidsstatus og konflikter må kontrolleres operativt.",
       ...timeAssessment
@@ -24398,7 +24398,7 @@ function renderSdeNightPlacementOverview(data){
 
   const warningsHtml = overview.warnings.length
     ? `<div class="sde-night-placement-warnings">
-        <div class="sde-night-placement-warnings-title">Varsler i nattplassering</div>
+        <div class="sde-night-placement-warnings-title">Varsler i grafisk planverktøy</div>
         ${overview.warnings.map(item => `<div class="sde-night-placement-warning ${item.severity === "error" ? "error" : ""}">${escapeHtml(item.text)}</div>`).join("")}
       </div>`
     : "";
@@ -24408,13 +24408,13 @@ function renderSdeNightPlacementOverview(data){
     : "";
   const hasManualDragOverrides = Object.keys(getSdeNightPlacementManualOverrides()).length > 0;
 
-  return `<section class="sde-night-placement-panel" id="sdeNightPlacementPanel" aria-label="SDE Nattplassering">
+  return `<section class="sde-night-placement-panel" id="sdeNightPlacementPanel" aria-label="SDE Grafisk planverktøy">
     <div class="sde-night-placement-header">
       <div>
-        <div class="sde-night-placement-title">SDE Nattplassering</div>
+        <div class="sde-night-placement-title">SDE Grafisk planverktøy</div>
         <div class="sde-night-placement-subtitle">Planlagt sluttposisjon etter SDE-forslag og aktive manuelle overstyringer.</div>
       </div>
-      <button class="sde-night-placement-close" type="button" data-sde-night-placement-close>Skjul SDE Nattplassering</button>
+      <button class="sde-night-placement-close" type="button" data-sde-night-placement-close>Skjul SDE Grafisk planverktøy</button>
     </div>
     <div class="sde-night-placement-summary">
       <span class="sde-night-placement-pill">${escapeHtml(String(overview.counts.occupied))} plasserte kjøretøy</span>
@@ -24423,7 +24423,7 @@ function renderSdeNightPlacementOverview(data){
       <span class="sde-night-placement-pill">${escapeHtml(String(overview.warnings.length))} varsler</span>
     </div>
     <div class="sde-night-placement-actions">
-      <button class="sde-night-placement-action-btn" type="button" data-sde-night-placement-clear-overrides ${hasManualDragOverrides ? "" : "disabled"}>Nullstill manuelle nattplasseringer</button>
+      <button class="sde-night-placement-action-btn" type="button" data-sde-night-placement-clear-overrides ${hasManualDragOverrides ? "" : "disabled"}>Nullstill manuelle planplasseringer</button>
     </div>
     ${selectedInfoHtml}
     <div class="sde-night-placement-yard-wrap">
@@ -24721,17 +24721,17 @@ function renderSdeSkiftebevegelserInner(){
   const canUseSdeReset = Boolean(sdeResetSummary.total && (!sdeResetNeedsSnapshot || hasSdeResetSnapshot));
   const sdeResetDisabled = canUseSdeReset ? "" : " disabled";
   const sdeResetTitle = canUseSdeReset
-    ? `Nullstill SDE: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.manualOverrides} overstyringer, ${sdeResetSummary.nightPlacementManualOverrides} nattplasseringer, ${sdeResetSummary.sdePlanRows} SDE-skifterader, ${sdeResetSummary.learningEvents} læringshendelser`
+    ? `Nullstill SDE: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.manualOverrides} overstyringer, ${sdeResetSummary.nightPlacementManualOverrides} grafiske planplasseringer, ${sdeResetSummary.sdePlanRows} SDE-skifterader, ${sdeResetSummary.learningEvents} læringshendelser`
     : sdeResetNeedsSnapshot
       ? "Gammel SDE-skifterad finnes, men mangler før-bilde. Start ny SDE-test før reset brukes."
-      : "Ingen SDE-kvitteringer, nattplasseringer eller læringshendelser å nullstille";
+      : "Ingen SDE-kvitteringer, grafiske planplasseringer eller læringshendelser å nullstille";
 
   const cardsHtml = topMoves.length
     ? topMoves.map((row,index)=>{
         const confidenceClass = `confidence-${escapeHtml(String(row.recommendationConfidence || "low"))}`;
         const priorityClass = row.recommendationConfidence === "high" ? "high" : row.recommendationConfidence === "medium" ? "medium" : "low";
         const alternativesText = row.isNightPlacementGenerated
-          ? "Ingen SDE-kandidatsett: kortet er opprettet lokalt fra SDE Nattplassering."
+          ? "Ingen SDE-kandidatsett: kortet er opprettet lokalt fra SDE Grafisk planverktøy."
           : Array.isArray(row.recommendationAlternatives) && row.recommendationAlternatives.length
             ? `Alternativer: ${row.recommendationAlternatives.map(alt=>`${alt.slot} (${alt.score})`).join(", ")}`
             : "Ingen alternative spor i første kandidatsett.";
@@ -24766,7 +24766,7 @@ function renderSdeSkiftebevegelserInner(){
             <span class="sde-shift-badge">${escapeHtml(row.parkingStrategy || "SDE-anbefaling")}</span>
             ${nightPlacementStepRoleLabel ? `<span class="sde-shift-badge sde-night-card-override-badge">${escapeHtml(nightPlacementStepRoleLabel)}</span>` : ""}
             ${row.sdeNightPlacementCardOverrideActive ? `<span class="sde-shift-badge sde-night-card-override-badge">OVERSTYRT</span>` : ""}
-            ${row.isNightPlacementGenerated ? `<span class="sde-shift-badge sde-night-card-override-badge">MANUELL</span><span class="sde-shift-badge sde-night-card-override-badge">SIMULERT</span><span class="sde-shift-badge sde-night-card-override-badge">OPPRETTET FRA NATTPLASSERING</span>` : ""}
+            ${row.isNightPlacementGenerated ? `<span class="sde-shift-badge sde-night-card-override-badge">MANUELL</span><span class="sde-shift-badge sde-night-card-override-badge">SIMULERT</span><span class="sde-shift-badge sde-night-card-override-badge">OPPRETTET FRA GRAFISK PLANVERKTØY</span>` : ""}
           </div>
 
           ${nightPlacementOverrideHtml}
@@ -24782,7 +24782,7 @@ function renderSdeSkiftebevegelserInner(){
           </div>
         </article>`;
       }).join("")
-    : `<div class="sde-shift-empty">Ingen foreslåtte skiftebevegelser er klare. SDE mangler anbefalte nattplasseringer eller datagrunnlag.</div>`;
+    : `<div class="sde-shift-empty">Ingen foreslåtte skiftebevegelser er klare. SDE mangler anbefalte planplasseringer eller datagrunnlag.</div>`;
 
   const unresolvedHtml = "";
 
@@ -25138,11 +25138,11 @@ function renderSdeSkiftebevegelserInner(){
     <div class="sde-shift-section-title">
       <span class="sde-shift-section-title-main">Foreslåtte skiftebevegelser</span>
       <button class="sde-shift-reset-btn" type="button" onclick="handleSdeResetForDay()" title="${escapeHtml(sdeResetTitle)}"${sdeResetDisabled}>⟲ Nullstill SDE</button>
-      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="false" title="Vis eller skjul SDE Nattplassering">SDE Nattplassering</button>
+      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="false" title="Vis eller skjul SDE Grafisk planverktøy">SDE Grafisk planverktøy</button>
       <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
       <span class="sde-shift-section-title-count">${data.baseMoveCount ?? data.moves.length} forslag</span>
       ${nightPlacementOverriddenCardCount ? `<span class="sde-shift-section-title-count">${nightPlacementOverriddenCardCount} simulert manuell</span>` : ""}
-      ${nightPlacementGeneratedCardCount ? `<span class="sde-shift-section-title-count">${nightPlacementGeneratedCardCount} opprettet fra nattplassering</span>` : ""}
+      ${nightPlacementGeneratedCardCount ? `<span class="sde-shift-section-title-count">${nightPlacementGeneratedCardCount} opprettet fra grafisk planverktøy</span>` : ""}
     </div>
     ${nightPlacementOverviewHtml}
     <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
@@ -25783,7 +25783,7 @@ const SDE_SHARED_WORKSPACE_SCOPE_CATALOG = Object.freeze([
   {scope:"sporplan-readback", module:"Sporplan", purpose:"felles sporplanvisning"},
   {scope:"input-sporplan-draft", module:"Input Sporplan", purpose:"delt kladd/readback for sporplan-input"},
   {scope:"txp-infrastructure-status", module:"TXP uvirksom infrastruktur", purpose:"infrastrukturstatus som situasjonsdata"},
-  {scope:SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE, module:"SDE Nattplassering", purpose:"manuelle nattplassering-overrides som pilot-readback"},
+  {scope:SDE_NIGHT_PLACEMENT_OPERATIONAL_STATE_SCOPE, module:"SDE Grafisk planverktøy", purpose:"manuelle planplassering-overrides som pilot-readback"},
   {scope:"sde-shift-movement-assessments", module:"SDE Skiftebevegelser", purpose:"readback for vurderinger, ikke skifteordre"},
   {scope:"sde-vaktplan-coverage", module:"SDE Vaktplan", purpose:"dekning og bemanningsreadback"},
   {scope:"drops-material-control", module:"DROPS", purpose:"materiellstyring som readback"},
@@ -25796,7 +25796,7 @@ const SDE_SHARED_WORKSPACE_ACCESS_MATRIX = Object.freeze([
   {level:"TXP", functions:["Sporplan", "Input Sporplan", "TXP uvirksom infrastruktur"]},
   {level:"DROPS", functions:["Sporplan", "SDE readback", "DROPS materiellstyring", "verkstedstatus"]},
   {level:"Verksted", functions:["Sporplan", "DROPS-relevante behov", "verksted/materiellstatus"]},
-  {level:"SDE/skiftere", functions:["Sporplan", "Input Sporplan readback", "SDE Skiftebevegelser", "SDE nattplassering", "DROPS/verksted readback"]},
+  {level:"SDE/skiftere", functions:["Sporplan", "Input Sporplan readback", "SDE Skiftebevegelser", "SDE Grafisk planverktøy", "DROPS/verksted readback"]},
   {level:"Vaktplan/ledelse", functions:["Sporplan", "SDE Vaktplan", "relevant SDE/DROPS/verksted readback"]},
   {level:"Admin/pilot", functions:["eksplisitt tildelte moduler", "begrenset pilotstyring"]}
 ]);
