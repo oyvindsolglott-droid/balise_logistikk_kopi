@@ -7805,6 +7805,75 @@ function getTomorrowOsloIsoDate(){
 }
 
 
+function resetBaliseStaticModeState(mode){
+  if(mode === "imorgen"){
+    state.baliseTomorrow = {};
+    state.baliseTomorrowDepartures = {};
+    state.baliseTomorrowArrivals = {};
+    state.baliseTomorrowDepartureVehicles = {};
+    state.baliseTomorrowArrivalVehicles = {};
+    state.baliseTomorrowVehicleErrors = {};
+    state.baliseTomorrowArrivalDisplayTrainNumbers = {};
+    state.baliseMetaTomorrow = null;
+  }else{
+    state.baliseToday = {};
+    state.baliseTodayDepartures = {};
+    state.baliseTodayArrivals = {};
+    state.baliseTodayDepartureVehicles = {};
+    state.baliseTodayArrivalVehicles = {};
+    state.baliseTodayVehicleErrors = {};
+    state.baliseTodayArrivalDisplayTrainNumbers = {};
+    state.baliseMetaToday = null;
+  }
+}
+
+
+function makeEmptyApiBaliseState(mode = "idag"){
+  return {
+    ok:false,
+    updatedAt:"",
+    mode,
+    date:"",
+    vehicles:{},
+    departures:{},
+    arrivals:{},
+    departureVehicles:{},
+    arrivalVehicles:{},
+    vehicleErrors:{},
+    arrivalDisplayTrainNumbers:{},
+    allowedMaterialPrefixes:[],
+    materialFormat:"",
+    error:""
+  };
+}
+
+
+function clearStalePersistedBaliseStaticData(){
+  const expectedToday = getTodayOsloIsoDate();
+  const expectedTomorrow = getTomorrowOsloIsoDate();
+  let changed = false;
+
+  if(state.baliseMetaToday?.date && String(state.baliseMetaToday.date) !== expectedToday){
+    resetBaliseStaticModeState("idag");
+    changed = true;
+  }
+
+  if(state.baliseMetaTomorrow?.date && String(state.baliseMetaTomorrow.date) !== expectedTomorrow){
+    resetBaliseStaticModeState("imorgen");
+    changed = true;
+  }
+
+  const apiMode = state.apiBalise?.mode === "imorgen" ? "imorgen" : "idag";
+  const expectedApiDate = apiMode === "imorgen" ? expectedTomorrow : expectedToday;
+  if(state.apiBalise?.date && String(state.apiBalise.date) !== expectedApiDate){
+    state.apiBalise = makeEmptyApiBaliseState(apiMode);
+    changed = true;
+  }
+
+  if(changed) persist(true);
+}
+
+
 function getBaliseDateWarning(mode, meta){
   if(!meta || !meta.date) return "";
 
@@ -30075,6 +30144,7 @@ document.getElementById("resetBtn").addEventListener("click",()=>{
   state=makeDefaultState();
 
 
+  clearStalePersistedBaliseStaticData();
   buildTurnering("turneringKveldTable","turneringKveld");
   buildTurnering("turneringNattTable","turneringNatt");
   buildGrunnoppstilling();
@@ -30341,6 +30411,7 @@ if(!isPublicGithubPagesApp()){
   renderSdeRecommendationAckPanelFromStatus(null, "");
 
 
+  clearStalePersistedBaliseStaticData();
   buildTurnering("turneringKveldTable","turneringKveld");
   buildTurnering("turneringNattTable","turneringNatt");
   buildGrunnoppstilling();
