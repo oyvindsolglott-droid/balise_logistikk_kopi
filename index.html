@@ -13292,6 +13292,357 @@ function isSdeSafeResolutionMove(vehicle, fromSlot, toSlot){
   return true;
 }
 
+function getSdePhysicalMoveParts(row){
+  const sourceRow = row || {};
+  const vehicle = sanitizeVehicleValue(sourceRow.vehicle);
+  const fromSlot = normalizeSlot(sourceRow.fromSlot || sourceRow.arrivalSlot || sourceRow.originalFromSlot || getSdeCurrentSlotForVehicle(vehicle));
+  const toSlot = normalizeSlot(sourceRow.recommendedSlot || sourceRow.toSlot);
+  return {vehicle, fromSlot, toSlot};
+}
+
+function getSdePhysicalBlockerItems(slots, reason){
+  const seen = new Set();
+  return (Array.isArray(slots) ? slots : [])
+    .map(slot => normalizeSlot(slot))
+    .filter(Boolean)
+    .map(slot => {
+      const vehicle = sanitizeVehicleValue(getSdeVehicleInSlot(slot));
+      if(!vehicle || seen.has(slot)) return null;
+      seen.add(slot);
+      return {slot, vehicle, reason};
+    })
+    .filter(Boolean);
+}
+
+function getSdeHardPhysicalBlockStateForMove(row){
+  const {vehicle, fromSlot, toSlot} = getSdePhysicalMoveParts(row);
+  const emptyState = {
+    hardBlocked:false,
+    vehicle,
+    fromSlot,
+    toSlot,
+    blockers:[],
+    routeText:"",
+    reason:""
+  };
+
+  if(!vehicle || !fromSlot || !toSlot || fromSlot === toSlot) return emptyState;
+  if(!inputSlots.includes(fromSlot) || !inputSlots.includes(toSlot)) return emptyState;
+
+  const physicalSlot = getSdePhysicalSlotForVehicle(vehicle);
+  const completedLocked = getSdeNightPlacementCompletedLockedSlots()[fromSlot];
+  const completedSourceMatches = completedLocked?.vehicle && haveSameSdeVehicleTokens(completedLocked.vehicle, vehicle);
+  if(physicalSlot && physicalSlot !== fromSlot && !completedSourceMatches){
+    return {
+      ...emptyState,
+      hardBlocked:true,
+      kind:"source_not_ready",
+      reason:`Hard stopp: ${vehicle} står ikke fysisk i ${fromSlot}. Sporplan viser ${physicalSlot}. Dette kortet kan først kvitteres når forrige/frigjørende steg faktisk er utført.`
+    };
+  }
+
+  const blockers = [];
+  const addBlockers = items => {
+    (Array.isArray(items) ? items : []).forEach(item=>{
+      if(!item?.slot || !item?.vehicle) return;
+      if(haveSameSdeVehicleTokens(item.vehicle, vehicle)) return;
+      if(blockers.some(existing => existing.slot === item.slot)) return;
+      blockers.push(item);
+    });
+  };
+
+  addBlockers(getSdePhysicalBlockerItems(
+    getSdeInternalBlockersBetweenSlots(fromSlot, toSlot),
+    `står mellom ${fromSlot} og ${toSlot}`
+  ));
+
+  const routeText = getSdeRouteAssessmentForPlanSkifte(fromSlot, toSlot);
+  const hardRouteBlocked = /^Kontroller:\s*rute blokkert/i.test(routeText);
+  if(hardRouteBlocked){
+    addBlockers(getSdePhysicalBlockerItems(
+      [
+        ...getSdeNorthernInternalBlockers(fromSlot),
+        ...getSdeSouthernInternalBlockers(fromSlot)
+      ],
+      "blokkerer fysisk adkomst/rute ut fra fra-sporet"
+    ));
+  }
+
+  if(!blockers.length && !hardRouteBlocked) return emptyState;
+
+  const blockerText = blockers.length
+    ? blockers.map(item => `${item.slot} (${item.vehicle})`).join(", ")
+    : "ukjent blokkerende kjøretøy";
+
+  return {
+    ...emptyState,
+    hardBlocked:true,
+    kind:"physical_blocked",
+    blockers,
+    routeText,
+    reason:`Hard stopp: ${vehicle} i ${fromSlot} er fysisk blokkert av ${blockerText}. Flytt blokkerende kjøretøy først før ${vehicle} kan kvitteres Utført til ${toSlot}.`
+  };
+}
+
+function isSdeSafePhysicalBlockerReleaseMove(vehicle, fromSlot, toSlot, blockedFromSlot=""){
+  const vehicleText = sanitizeVehicleValue(vehicle);
+  const from = normalizeSlot(fromSlot);
+  const to = normalizeSlot(toSlot);
+  const blockedFrom = normalizeSlot(blockedFromSlot);
+
+  if(!vehicleText || !from || !to) return false;
+  if(!inputSlots.includes(from) || !inputSlots.includes(to)) return false;
+  if(from === to || to === blockedFrom) return false;
+  if(getSdeVehicleInSlot(to)) return false;
+  if(isSdeDiscouragedPlatformToPlatformMove(from, to)) return false;
+
+  const sameTrackBlockers = getSdeInternalBlockersBetweenSlots(from, to);
+  if(sameTrackBlockers.length) return false;
+
+  const hardState = getSdeHardPhysicalBlockStateForMove({
+    vehicle:vehicleText,
+    fromSlot:from,
+    arrivalSlot:from,
+    recommendedSlot:to,
+    toSlot:to
+  });
+  if(hardState.hardBlocked) return false;
+
+  const routeAssessment = getSdeRouteAssessmentForPlanSkifte(from, to);
+  if(/^Kontroller:\s*rute blokkert/i.test(routeAssessment)) return false;
+
+  return true;
+}
+
+function getSdeBestPhysicalBlockerReleaseTarget(vehicle, fromSlot, blockedFromSlot=""){
+  const from = normalizeSlot(fromSlot);
+  const blockedFrom = normalizeSlot(blockedFromSlot);
+  return getSdeResolutionCandidateSlots(from, blockedFrom)
+    .filter(slot=>isSdeSafePhysicalBlockerReleaseMove(vehicle, from, slot, blockedFrom))
+    .map(slot=>({slot, score:scoreSdeResolutionTarget(slot)}))
+    .sort((a,b)=>b.score - a.score)[0]?.slot || "";
+}
+
+function buildSdePhysicalBlockerReturnAssessment(blockerVehicle, originSlot, freeingTarget, blockedVehicle, blockedFromSlot){
+  const origin = normalizeSlot(originSlot);
+  const target = normalizeSlot(freeingTarget);
+
+  return {
+    originSlot:origin,
+    freeingTarget:target,
+    blockedVehicle:sanitizeVehicleValue(blockedVehicle),
+    blockedFromSlot:normalizeSlot(blockedFromSlot),
+    shouldConsiderReturn:true,
+    returnPossible:"unknown",
+    reason:"Retur må vurderes etter at frigjørende skift er utført. SDE planlegger ikke automatisk retur før opprinnelig slot, fysisk adkomst og videre behov er kontrollert."
+  };
+}
+
+function annotateSdePhysicalBlockerFreeingMove(row, blockedRow, blockState, blocker, targetSlot="", options={}){
+  const freeingTarget = normalizeSlot(targetSlot || row?.recommendedSlot || row?.toSlot);
+  const blockerVehicle = sanitizeVehicleValue(blocker?.vehicle || row?.vehicle);
+  const blockerSlot = normalizeSlot(blocker?.slot || row?.fromSlot || row?.arrivalSlot);
+  const blockedVehicle = sanitizeVehicleValue(blockState?.vehicle || blockedRow?.vehicle);
+  const blockedFromSlot = normalizeSlot(blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot);
+  const blockedTargetSlot = normalizeSlot(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot);
+  const actionKey = getSdeMoveActionKey(row) ||
+    `physical-blocker-free|${normalizeVehicleToken(blockerVehicle)}|${blockerSlot}|${freeingTarget}|${normalizeVehicleToken(blockedVehicle)}|${blockedFromSlot}|${blockedTargetSlot}`;
+  const returnAssessment = buildSdePhysicalBlockerReturnAssessment(
+    blockerVehicle,
+    blockerSlot,
+    freeingTarget,
+    blockedVehicle,
+    blockedFromSlot
+  );
+
+  return {
+    ...row,
+    vehicle:blockerVehicle,
+    fromSlot:blockerSlot,
+    arrivalSlot:blockerSlot,
+    recommendedSlot:freeingTarget,
+    toSlot:freeingTarget,
+    source:row?.source || "SDE fysisk frigjøring",
+    stableActionKey:actionKey,
+    isSdePhysicalBlockerFreeingMove:true,
+    sdePhysicalBlockerForVehicle:blockedVehicle,
+    sdePhysicalBlockerForSlot:blockedFromSlot,
+    sdePhysicalBlockerOriginalTarget:blockedTargetSlot,
+    sdePhysicalImmediateBlockedVehicle:sanitizeVehicleValue(options.immediateBlockedVehicle || blockedVehicle),
+    sdePhysicalBlockerReturnAssessment:returnAssessment,
+    recommendationConfidence:row?.recommendationConfidence || "high",
+    recommendationScore:row?.recommendationScore ?? "Ikke scoret",
+    parkingStrategy:"Frigjør blokkert kjøretøy",
+    parkingInstruction:`Frigjør ${blockedVehicle} i ${blockedFromSlot}. Flytt ${blockerVehicle} fra ${blockerSlot} til ${freeingTarget} først.`,
+    recommendationReason:String(options.releaseReason || "").trim() ||
+      `Frigjøringskort: ${blockedVehicle} i ${blockedFromSlot} er fysisk blokkert av ${blockerVehicle} i ${blockerSlot}. Flytt ${blockerVehicle} til ${freeingTarget} først. ${returnAssessment.reason}`
+  };
+}
+
+function getSdePhysicalBlockersForReleaseQueue(slot, excludeSlots=[]){
+  const excluded = new Set((Array.isArray(excludeSlots) ? excludeSlots : []).map(normalizeSlot).filter(Boolean));
+  return getSdePhysicalBlockerItems(
+    [
+      ...getSdeNorthernInternalBlockers(slot),
+      ...getSdeSouthernInternalBlockers(slot)
+    ],
+    "blokkerer frigjøringskjøretøy"
+  ).filter(item => item?.slot && !excluded.has(item.slot));
+}
+
+function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, blocker, rows=[], context={}){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const visited = context.visited instanceof Set ? context.visited : new Set();
+  const blockerVehicle = sanitizeVehicleValue(blocker?.vehicle);
+  const blockerSlot = normalizeSlot(blocker?.slot);
+  const blockedFromSlot = normalizeSlot(blockState?.fromSlot);
+  if(!blockerVehicle || !blockerSlot) return null;
+
+  const visitKey = `${normalizeVehicleToken(blockerVehicle)}|${blockerSlot}`;
+  if(visited.has(visitKey)) return null;
+  visited.add(visitKey);
+
+  const avoidSlot = normalizeSlot(context.avoidSlot || blockedFromSlot);
+  const existingMove = sourceRows.find(row => {
+    if(!row || row === blockedRow) return false;
+    if(normalizeVehicleToken(row.vehicle) !== normalizeVehicleToken(blockerVehicle)) return false;
+    if(normalizeSlot(row.fromSlot || row.arrivalSlot) !== blockerSlot) return false;
+    if(isSdeMoveActioned(row)) return false;
+    const target = normalizeSlot(row.recommendedSlot || row.toSlot);
+    if(!target || target === avoidSlot || target === blockedFromSlot) return false;
+    return !getSdeHardPhysicalBlockStateForMove(row).hardBlocked;
+  });
+
+  if(existingMove){
+    return annotateSdePhysicalBlockerFreeingMove(existingMove, blockedRow, blockState, blocker, "", context.annotation || {});
+  }
+
+  const freeingTarget = getSdeBestPhysicalBlockerReleaseTarget(blockerVehicle, blockerSlot, avoidSlot || blockedFromSlot);
+  if(freeingTarget){
+    const generated = {
+      vehicle:blockerVehicle,
+      fromSlot:blockerSlot,
+      arrivalSlot:blockerSlot,
+      recommendedSlot:freeingTarget,
+      toSlot:freeingTarget,
+      arrivalTrainText:"Frigjøringsbehov",
+      departureTrainText:`Frigjør ${blockState.vehicle || "blokkert kjøretøy"}`,
+      arrivalTime:"",
+      nextDepartureText:"Frigjøringssteg før blokkert kort",
+      nextDepartureTrain:"",
+      nextDeparturePart:"",
+      recommendationAlternatives:[],
+      isManualOnly:true
+    };
+
+    return annotateSdePhysicalBlockerFreeingMove(generated, blockedRow, blockState, blocker, freeingTarget, context.annotation || {});
+  }
+
+  const nestedBlockers = getSdePhysicalBlockersForReleaseQueue(blockerSlot, [blockedFromSlot, blockerSlot]);
+  for(const nestedBlocker of nestedBlockers){
+    const nestedVehicle = sanitizeVehicleValue(nestedBlocker.vehicle);
+    const nestedSlot = normalizeSlot(nestedBlocker.slot);
+    if(!nestedVehicle || !nestedSlot) continue;
+    if(haveSameSdeVehicleTokens(nestedVehicle, blockState.vehicle)) continue;
+
+    const originalVehicle = sanitizeVehicleValue(blockState.vehicle);
+    const originalSlot = normalizeSlot(blockState.fromSlot);
+    const annotation = {
+      immediateBlockedVehicle:blockerVehicle,
+      releaseReason:`Frigjøringskort: ${blockerVehicle} i ${blockerSlot} kan ikke flyttes før ${nestedVehicle} i ${nestedSlot} flyttes. Flytt ${nestedVehicle} først for å åpne frigjøring av ${originalVehicle} i ${originalSlot}. Retur må vurderes etter at frigjørende skift er utført.`
+    };
+    const nestedMove = buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, nestedBlocker, sourceRows, {
+      visited,
+      avoidSlot:blockerSlot,
+      annotation
+    });
+    if(nestedMove) return nestedMove;
+  }
+
+  return null;
+}
+
+function buildSdePhysicalBlockerFreeingMove(blockedRow, blockState, rows=[]){
+  const blockers = Array.isArray(blockState?.blockers) ? blockState.blockers : [];
+  if(!blockers.length) return null;
+
+  for(const blocker of blockers){
+    const freeingMove = buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, blocker, rows, {
+      visited:new Set(),
+      avoidSlot:blockState.fromSlot
+    });
+    if(freeingMove) return freeingMove;
+  }
+
+  return null;
+}
+
+function buildSdePhysicalBlockerGuardMoves(rows=[]){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const guarded = [];
+  const insertedFreeingKeys = new Set();
+
+  sourceRows.forEach(row=>{
+    const rowKey = getSdeMoveActionKey(row);
+    if(rowKey && insertedFreeingKeys.has(rowKey)) return;
+
+    const blockState = getSdeHardPhysicalBlockStateForMove(row);
+    if(blockState.hardBlocked){
+      const freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, sourceRows);
+      const freeingKey = getSdeMoveActionKey(freeingMove);
+      if(freeingMove && freeingKey && !insertedFreeingKeys.has(freeingKey)){
+        guarded.push(freeingMove);
+        insertedFreeingKeys.add(freeingKey);
+      }
+      guarded.push({
+        ...row,
+        sdePhysicalHardBlocked:true,
+        sdePhysicalHardBlockState:blockState,
+        sdePhysicalNoSafeReleaseMove:!freeingMove,
+        sdePhysicalNoSafeReleaseReason:freeingMove ? "" : "NO SAFE RELEASE MOVE: SDE fant ikke trygt midlertidig målspor for blokkerende kjøretøy med eksisterende kandidat-/sikkerhetsregler."
+      });
+      return;
+    }
+
+    guarded.push(row);
+  });
+
+  return guarded;
+}
+
+function buildSdePhysicalBlockerGuardHtml(row, blockState=null){
+  const state = blockState || getSdeHardPhysicalBlockStateForMove(row);
+  if(!state?.hardBlocked) return "";
+
+  const blockers = Array.isArray(state.blockers) && state.blockers.length
+    ? state.blockers.map(item => `${item.slot} ${item.vehicle}`).join(", ")
+    : "ukjent blokkering";
+
+  return `<div class="sde-night-card-override">
+    <strong>Hard fysisk blokkering</strong>
+    <span>${escapeHtml(state.reason || "Trekket er fysisk blokkert og kan ikke kvitteres Utført nå.")}</span>
+    <span class="warning">Venter på frigjøring: ${escapeHtml(blockers)}.</span>
+    ${row?.sdePhysicalNoSafeReleaseMove ? `<span class="warning">${escapeHtml(row.sdePhysicalNoSafeReleaseReason || "NO SAFE RELEASE MOVE")}</span>` : ""}
+    <span>Dette kortet er ikke godkjennbart før blokkerende kjøretøy er flyttet.</span>
+  </div>`;
+}
+
+function buildSdePhysicalBlockerFreeingHtml(row){
+  if(!row?.isSdePhysicalBlockerFreeingMove) return "";
+
+  const assessment = row.sdePhysicalBlockerReturnAssessment || {};
+  const origin = normalizeSlot(assessment.originSlot);
+  const target = normalizeSlot(assessment.freeingTarget);
+  const blockedVehicle = sanitizeVehicleValue(assessment.blockedVehicle);
+
+  return `<div class="sde-night-card-override">
+    <strong>Frigjøringskort først</strong>
+    <span>Formål: frigjør ${escapeHtml(blockedVehicle || "blokkert kjøretøy")} før det blokkerte kortet kan kvitteres.</span>
+    <span>Frigjørende flytting: ${escapeHtml(origin || row.fromSlot || "ukjent")} → ${escapeHtml(target || row.toSlot || "ukjent")}.</span>
+    <span class="warning">${escapeHtml(assessment.reason || "Retur må vurderes etter at frigjørende skift er utført.")}</span>
+  </div>`;
+}
+
 
 function scoreSdeResolutionTarget(slot){
   const normalized = normalizeSlot(slot);
@@ -19298,6 +19649,12 @@ async function handleSdeShiftMoveAction(encodedKey, action){
   }
 
   if(actionType === "completed"){
+    const physicalBlockState = getSdeHardPhysicalBlockStateForMove(row);
+    if(physicalBlockState.hardBlocked){
+      alert(physicalBlockState.reason || "Kan ikke kvittere Utført: kjøretøyet er fysisk blokkert. Flytt blokkerende kjøretøy først.");
+      return;
+    }
+
     const targetVehicle = getSdeVehicleInSlot(targetSlot);
     const targetToken = normalizeVehicleToken(targetVehicle);
     const vehicleToken = normalizeVehicleToken(vehicle);
@@ -21971,6 +22328,7 @@ let sdeNightPlacementVisible = false;
 let sdeUnresolvedDetailsVisible = false;
 let sdeLearningDiagnosticsVisible = false;
 let sdeNightPlacementDropMessage = null;
+let sdeNightPlacementBlockedMoveRequest = null;
 let sdeNightPlacementDragPayload = null;
 let sdeNightPlacementSelectedSlot = "";
 const sdeDiagnosticSectionExpanded = {};
@@ -22495,6 +22853,7 @@ function getSdeNightPlacementSourceLabel(row, source){
   if(source === "completedLocked") return "Utført / belagt";
   if(source === "standing") return "Fysisk grunnlag";
   if(row?.sdeNightPlacementStale) return "Uavklart";
+  if(row?.isSdePhysicalBlockerFreeingMove) return "Frigjøringsforslag";
   if(row?.sdeNightPlacementDragOverrideActive) return "Simulert manuell";
   if(row?.manualPlanOverrideActive) return "Manuell plan";
   if(row?.manualOverrideActive) return "Manuell overstyring";
@@ -23194,7 +23553,7 @@ function buildSdeShiftCardMoves(data){
     .map(row => getSdeEffectiveMoveForCard(row, baseRows))
     .filter(row => !isSdeNightPlacementMoveAlreadySatisfied(row));
   const generatedMoves = buildSdeNightPlacementGeneratedMoves(baseRows);
-  return applySdeNightPlacementStepRoles([...effectiveMoves, ...generatedMoves]);
+  return applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves([...effectiveMoves, ...generatedMoves]));
 }
 
 function buildSdeNightPlacementCardOverrideHtml(row){
@@ -23277,6 +23636,8 @@ function buildSdeNightPlacementStepRoleHtml(row){
 
 function getSdeNightPlacementMovePriority(row){
   if(row?.sdeNightPlacementStale) return 60;
+  if(row?.isSdeNightPlacementBlockedMoveRequest) return 58;
+  if(row?.isSdePhysicalBlockerFreeingMove) return 57;
   if(row?.sdeNightPlacementDragOverrideActive) return 55;
   if(row?.manualOverrideActive || row?.manualPlanOverrideActive) return 50;
   if(row?.isWrongTrackReplacementMove) return 40;
@@ -23501,6 +23862,37 @@ function findSdeNightPlacementMoveForPayload(payload, data){
   ) || null;
 }
 
+function buildSdeNightPlacementBlockedMoveRequest(vehicle, fromSlot, toSlot, row=null, blockState=null){
+  const cleanVehicle = sanitizeVehicleValue(vehicle);
+  const sourceSlot = normalizeSlot(fromSlot);
+  const targetSlot = normalizeSlot(toSlot);
+  if(!cleanVehicle || !sourceSlot || !targetSlot) return null;
+
+  const stableKey = getSdeMoveActionKey(row) ||
+    `night-placement-hard-blocked|${normalizeVehicleToken(cleanVehicle)}|${sourceSlot}|${targetSlot}`;
+
+  return {
+    ...(row || {}),
+    vehicle:cleanVehicle,
+    fromSlot:sourceSlot,
+    arrivalSlot:sourceSlot,
+    recommendedSlot:targetSlot,
+    toSlot:targetSlot,
+    stableActionKey:stableKey,
+    needKey:getSdeMoveNeedKey(row) || `night-placement-hard-blocked-need|${stableKey}`,
+    source:"SDE grafisk planverktøy hard blokkering",
+    isManualOnly:true,
+    isSdeNightPlacementBlockedMoveRequest:true,
+    sdePhysicalHardBlocked:true,
+    sdePhysicalHardBlockState:blockState || null,
+    recommendationConfidence:"blocked",
+    recommendationScore:"Ikke scoret",
+    parkingStrategy:"Hard fysisk blokkering",
+    parkingInstruction:`Ikke flytt ${cleanVehicle} fra ${sourceSlot} til ${targetSlot} før fysisk blokkering er frigjort.`,
+    recommendationReason:blockState?.reason || `Hard stopp: ${cleanVehicle} i ${sourceSlot} er fysisk blokkert.`
+  };
+}
+
 function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLastRenderedData || getSdeShiftShowcaseData()){
   const vehicle = sanitizeVehicleValue(payload?.vehicle);
   const targetSlot = normalizeSlot(toSlot);
@@ -23617,6 +24009,48 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
 
   const row = findSdeNightPlacementMoveForPayload(payload, data);
   const assessmentFromSlot = fromSlot || getSdeNightPlacementOriginalFromSlot(vehicle, row?.fromSlot || row?.arrivalSlot);
+  const blockedMoveRequest = buildSdeNightPlacementBlockedMoveRequest(vehicle, assessmentFromSlot, targetSlot, row);
+  const hardBlockState = getSdeHardPhysicalBlockStateForMove(blockedMoveRequest);
+  if(hardBlockState.hardBlocked){
+    const blockedRequest = buildSdeNightPlacementBlockedMoveRequest(vehicle, assessmentFromSlot, targetSlot, row, hardBlockState);
+    const releaseRows = Array.isArray(data?.moves) ? data.moves : [];
+    const freeingMove = buildSdePhysicalBlockerFreeingMove(blockedRequest, hardBlockState, releaseRows);
+    const releaseParts = freeingMove ? getSdePhysicalMoveParts(freeingMove) : null;
+    const releaseText = freeingMove && releaseParts?.vehicle && releaseParts.fromSlot && releaseParts.toSlot
+      ? `Frigjøringsforslag: flytt ${releaseParts.vehicle} fra ${releaseParts.fromSlot} til ${releaseParts.toSlot} først for å frigjøre ${vehicle}. Retur må vurderes etter frigjøring.`
+      : "NO SAFE RELEASE MOVE: SDE fant ikke trygt midlertidig målspor for blokkerende kjøretøy.";
+    const blockerVehicles = Array.isArray(hardBlockState.blockers)
+      ? hardBlockState.blockers.map(item => ({
+          slot:normalizeSlot(item?.slot),
+          vehicle:sanitizeVehicleValue(item?.vehicle),
+          reason:item?.reason || "fysisk blokkering"
+        })).filter(item => item.slot && item.vehicle)
+      : [];
+
+    return {
+      ok:false,
+      hardPhysicalBlocked:true,
+      vehicle,
+      fromSlot:assessmentFromSlot,
+      currentFromSlot:payloadSlot || assessmentFromSlot,
+      toSlot:targetSlot,
+      row,
+      blockedMoveRequest:blockedRequest,
+      freeingMove,
+      physicalBlockState:hardBlockState,
+      noSafeReleaseMove:!freeingMove,
+      isProjectedSource,
+      isCompletedLockedSource,
+      sourceKind:payloadSourceKind,
+      timeStatus:"CONFLICT_PHYSICAL_BLOCKED",
+      message:`${hardBlockState.reason} ${releaseText}`,
+      conflicts:[
+        hardBlockState.reason,
+        releaseText
+      ].filter(Boolean),
+      affectedVehicles:blockerVehicles
+    };
+  }
   const timeAssessment = getSdeNightPlacementTimeAssessment(row, assessmentFromSlot, targetSlot);
   const affectedVehicles = buildSdeNightPlacementAffectedVehicles(assessmentFromSlot, targetSlot);
   const conflicts = [
@@ -23653,10 +24087,12 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
 
 function applySdeNightPlacementDragOverride(payload, toSlot){
   const data = sdeShiftLastRenderedData || getSdeShiftShowcaseData();
+  sdeNightPlacementBlockedMoveRequest = null;
   const assessment = buildSdeNightPlacementDropAssessment(payload, toSlot, data);
   const targetSlot = normalizeSlot(toSlot);
 
   if(assessment.noOp){
+    sdeNightPlacementBlockedMoveRequest = null;
     const noOpVehicle = assessment.vehicle || payload?.vehicle;
     const noOpSourceSlot = normalizeSlot(assessment.fromSlot || assessment.currentFromSlot || payload?.slot || payload?.fromSlot);
     const physicalSlot = getSdePhysicalSlotForVehicle(noOpVehicle);
@@ -23677,6 +24113,9 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   }
 
   if(!assessment.ok){
+    sdeNightPlacementBlockedMoveRequest = assessment.hardPhysicalBlocked
+      ? assessment.blockedMoveRequest || null
+      : null;
     sdeNightPlacementDropMessage = {
       type:"error",
       slot:targetSlot,
@@ -23690,6 +24129,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   const currentFromSlot = normalizeSlot(assessment.currentFromSlot || assessment.fromSlot || payload?.slot || payload?.fromSlot);
   const backtrackOverride = findSdeNightPlacementBacktrackOverride(assessment.vehicle, currentFromSlot, assessment.toSlot);
   if(backtrackOverride){
+    sdeNightPlacementBlockedMoveRequest = null;
     removeSdeNightPlacementOverridesForVehicleStep(assessment.vehicle, assessment.toSlot);
     sdeNightPlacementDropMessage = {
       type:"info",
@@ -23767,6 +24207,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   };
 
   getSdeNightPlacementManualOverrides()[key] = override;
+  sdeNightPlacementBlockedMoveRequest = null;
   sdeNightPlacementDropMessage = {
     type:assessment.timeStatus === "OK_TIME_KNOWN" ? "info" : "warning",
     slot:assessment.toSlot,
@@ -23781,6 +24222,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
 function clearSdeNightPlacementDragOverrides(options={}){
   state.sdeNightPlacementManualOverrides = {};
   sdeNightPlacementDropMessage = null;
+  sdeNightPlacementBlockedMoveRequest = null;
   sdeNightPlacementDragPayload = null;
   sdeNightPlacementSelectedSlot = "";
   if(options?.persist !== false) persist(true);
@@ -23792,7 +24234,10 @@ function buildSdeNightPlacementEffectiveMoves(data){
     .filter(row => row && !isSdeMoveActioned(row));
   const dragOverrideMoves = buildSdeNightPlacementDragOverrideMoves(baseRows);
   const manualPlanMoves = buildSdeNightPlacementManualPlanMoves(baseRows);
-  const sourceRows = [...dragOverrideMoves, ...manualPlanMoves, ...baseRows]
+  const blockedRequestMoves = sdeNightPlacementBlockedMoveRequest
+    ? [sdeNightPlacementBlockedMoveRequest]
+    : [];
+  const sourceRows = [...blockedRequestMoves, ...dragOverrideMoves, ...manualPlanMoves, ...baseRows]
     .sort((a,b) => getSdeNightPlacementMovePriority(b) - getSdeNightPlacementMovePriority(a));
 
   const manualOverrideNeedKeys = getSdeNightPlacementManualOverrideNeedKeys();
@@ -23913,7 +24358,9 @@ function buildSdeNightPlacementEffectiveMoves(data){
     if(vehicleFromKey !== "|") usedVehicleFromKeys.add(vehicleFromKey);
   });
 
-  return {moves:applySdeNightPlacementStepRoles(moves), stale};
+  const guardedMoves = buildSdePhysicalBlockerGuardMoves(moves);
+  const visibleMoves = guardedMoves.filter(row => !row?.sdePhysicalHardBlocked);
+  return {moves:applySdeNightPlacementStepRoles(visibleMoves), stale};
 }
 
 function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
@@ -24158,6 +24605,22 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       );
       return;
     }
+    if(row?.isSdePhysicalBlockerFreeingMove){
+      const returnAssessment = row.sdePhysicalBlockerReturnAssessment || {};
+      const originSlot = normalizeSlot(returnAssessment.originSlot || row.fromSlot || row.arrivalSlot);
+      const blockedVehicle = sanitizeVehicleValue(row.sdePhysicalBlockerForVehicle || returnAssessment.blockedVehicle);
+      const blockedSlot = normalizeSlot(row.sdePhysicalBlockerForSlot || returnAssessment.blockedFromSlot);
+      addWarning(
+        "physical_blocker_freeing_move",
+        `Frigjøringsforslag: flytt ${vehicle}${originSlot ? ` fra ${originSlot}` : ""} til ${targetSlot}${blockedVehicle ? ` for å frigjøre ${blockedVehicle}${blockedSlot ? ` i ${blockedSlot}` : ""}` : ""}. Retur må vurderes etter utført frigjøring.`,
+        {
+          slot:targetSlot,
+          vehicle,
+          blockedVehicle,
+          severity:"warning"
+        }
+      );
+    }
 
     const canonicalPhysicalSlot = getCanonicalPhysicalSlotForVehicle(vehicle);
     if(sharedActualPlacementActive){
@@ -24317,7 +24780,9 @@ function getSdeNightPlacementCompactBadges(entry, row, context={}){
   const statusInfo = vehicle ? getSdeNightPlacementVehicleStatusInfo(vehicle, slot) : null;
   const status = String(statusInfo?.status || "").trim().toLowerCase();
 
-  if(sourceKind === "completedLocked"){
+  if(row?.isSdePhysicalBlockerFreeingMove){
+    badges.push({text:"FRIGJ", warning:true});
+  }else if(sourceKind === "completedLocked"){
     badges.push({text:"UTF"});
   }else if(sourceKind === "standing"){
     badges.push({text:"FYS"});
@@ -24363,6 +24828,18 @@ function buildSdeNightPlacementSlotTitle(slot, entry, context={}){
     lines.push(`Midlertidig parkering før videre flytting${entry.nextSlot ? ` til ${entry.nextSlot}` : ""}`);
   }else if(entry?.stepRole === "final_planned" && Number(entry?.routeStepCount || 0) > 1){
     lines.push("Endelig planlagt plassering i sekvens");
+  }
+  if(row?.isSdePhysicalBlockerFreeingMove){
+    const assessment = row.sdePhysicalBlockerReturnAssessment || {};
+    const blockedVehicle = sanitizeVehicleValue(row.sdePhysicalBlockerForVehicle || assessment.blockedVehicle);
+    const originSlot = normalizeSlot(assessment.originSlot || row.fromSlot || row.arrivalSlot);
+    const freeingTarget = normalizeSlot(assessment.freeingTarget || row.recommendedSlot || row.toSlot);
+    if(blockedVehicle){
+      lines.push(`Frigjøringsforslag: frigjør ${blockedVehicle}`);
+    }
+    if(originSlot && freeingTarget){
+      lines.push(`Returvurdering: ${originSlot} -> ${freeingTarget}; retur må vurderes etter utført frigjøring`);
+    }
   }
   if(context.layerNote) lines.push(context.layerNote);
   if(context.timeStatusText) lines.push(context.timeStatusText);
@@ -24829,6 +25306,12 @@ function renderSdeSkiftebevegelserInner(){
         const manualOverrideControlHtml = buildSdeManualOverrideControlHtml(row, data, index);
         const nightPlacementStepRoleLabel = getSdeNightPlacementStepRoleLabel(row);
         const nightPlacementOverrideHtml = buildSdeNightPlacementCardOverrideHtml(row) || buildSdeNightPlacementGeneratedCardHtml(row) || buildSdeNightPlacementStepRoleHtml(row);
+        const physicalBlockState = getSdeHardPhysicalBlockStateForMove(row);
+        const physicalBlockerGuardHtml = buildSdePhysicalBlockerGuardHtml(row, physicalBlockState);
+        const physicalBlockerFreeingHtml = buildSdePhysicalBlockerFreeingHtml(row);
+        const doneButtonHtml = physicalBlockState.hardBlocked
+          ? `<button class="sde-shift-action-btn done" type="button" disabled title="${escapeHtml(physicalBlockState.reason || "Flytt blokkerende kjøretøy først")}">Utført sperret</button>`
+          : `<button class="sde-shift-action-btn done" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'completed')">Utført</button>`;
 
         return `<article class="sde-shift-card ${priorityClass}" style="--delay:${index * 55}ms">
           <div class="sde-shift-card-top">
@@ -24859,6 +25342,8 @@ function renderSdeSkiftebevegelserInner(){
           </div>
 
           ${nightPlacementOverrideHtml}
+          ${physicalBlockerFreeingHtml}
+          ${physicalBlockerGuardHtml}
           ${trackClearanceWindowHtml}
           <div class="sde-shift-details">
             <div class="sde-shift-reason">${escapeHtml(row.recommendationReason || row.parkingInstruction || "SDE har ikke begrunnelse for denne anbefalingen ennå.")}</div>
@@ -24866,7 +25351,7 @@ function renderSdeSkiftebevegelserInner(){
           </div>
           ${manualOverrideControlHtml}
           <div class="sde-shift-actions" aria-label="Kvitter SDE-skifteforslag">
-            <button class="sde-shift-action-btn done" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'completed')">Utført</button>
+            ${doneButtonHtml}
             <button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'cancelled')">Annullert</button>
           </div>
         </article>`;
