@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>no.oyvind.sde-balise-data-sync</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/python3</string>
+    <string>/Users/solglottsr/balise_logistikk_kopi/server/scripts/sync_production_balise_data.py</string>
+    <string>--repo</string>
+    <string>/Users/solglottsr/balise_logistikk_kopi</string>
+    <string>--remote</string>
+    <string>origin</string>
+    <string>--branch</string>
+    <string>main</string>
+    <string>--status-file</string>
+    <string>/Users/solglottsr/Library/Application Support/SDE/balise-data-sync-status.json</string>
+    <string>--log-file</string>
+    <string>/Users/solglottsr/Library/Logs/SDE/balise-data-sync.log</string>
+    <string>--lock-file</string>
+    <string>/Users/solglottsr/Library/Application Support/SDE/balise-data-sync.lock</string>
+    <string>--git-path</string>
+    <string>/usr/bin/git</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/solglottsr/balise_logistikk_kopi</string>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>StartInterval</key>
+  <integer>60</integer>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/Users/solglottsr/Library/Logs/SDE/balise-data-sync-launchd.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/solglottsr/Library/Logs/SDE/balise-data-sync-launchd.err.log</string>
+</dict>
+</plist>
