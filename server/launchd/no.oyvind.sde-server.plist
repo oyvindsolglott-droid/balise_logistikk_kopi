@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>no.oyvind.sde-server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/Cellar/node/26.3.1/bin/node</string>
+    <string>/Users/solglottsr/balise_logistikk_kopi/server/src/index.js</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/solglottsr/balise_logistikk_kopi/server</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PORT</key>
+    <string>8787</string>
+    <key>SDE_SERVER_DB_PATH</key>
+    <string>/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3</string>
+    <key>SDE_ENABLE_SHARED_SPORPLAN_DRAFT_WRITES</key>
+    <string>1</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>/Users/solglottsr/Library/Logs/SDE/sde-server.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/solglottsr/Library/Logs/SDE/sde-server.err.log</string>
+</dict>
+</plist>
