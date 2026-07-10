@@ -7847,6 +7847,411 @@ function makeEmptyApiBaliseState(mode = "idag"){
   };
 }
 
+const BALISE_STATIC_FILE_BY_MODE = {
+  idag:"./data/api_idag.json",
+  imorgen:"./data/api_imorgen.json"
+};
+const BALISE_FRESHNESS_CHECK_INTERVAL_MS = 45000;
+const BALISE_FRESHNESS_TRIGGER_RATE_LIMIT_MS = 5000;
+const BALISE_FRESHNESS_REQUEST_TIMEOUT_MS = 12000;
+const BALISE_FRESHNESS_RETRY_DELAYS_MS = [15000, 30000, 60000, 120000, 300000];
+const baliseFreshnessWatchdog = {
+  started:false,
+  intervalId:null,
+  retryTimerId:null,
+  triggerTimerId:null,
+  inFlight:false,
+  pendingRefresh:false,
+  retryStep:0,
+  lastSignature:"",
+  lastAttemptAt:"",
+  lastSuccessAt:"",
+  lastError:"",
+  nextRetryAt:"",
+  sourceDates:{idag:"", imorgen:""},
+  requestSeq:0,
+  latestAppliedSeq:0,
+  lastTriggerAt:0,
+  lastReason:"startup"
+};
+
+function getBaliseExpectedDateForMode(mode){
+  return mode === "imorgen" ? getTomorrowOsloIsoDate() : getTodayOsloIsoDate();
+}
+
+function makeBaliseFreshnessSignature(now = new Date()){
+  const operationalDates = getOperationalTursattDatesOslo(now);
+  return {
+    signature:`${operationalDates.window}|${operationalDates.arrivalDate}|${operationalDates.departureDate}`,
+    window:operationalDates.window,
+    expected:{idag:operationalDates.arrivalDate, imorgen:operationalDates.departureDate}
+  };
+}
+
+function getBaliseMetaForMode(mode){
+  return mode === "imorgen" ? state.baliseMetaTomorrow : state.baliseMetaToday;
+}
+
+function isBaliseModeFresh(mode, snapshot = makeBaliseFreshnessSignature()){
+  const meta = getBaliseMetaForMode(mode);
+  const expected = snapshot.expected[mode] || getBaliseExpectedDateForMode(mode);
+  return Boolean(meta && String(meta.date || "") === expected);
+}
+
+function isBaliseStaticFullyFresh(snapshot = makeBaliseFreshnessSignature()){
+  return isBaliseModeFresh("idag", snapshot) && isBaliseModeFresh("imorgen", snapshot);
+}
+
+function formatBaliseWatchdogTime(value){
+  if(!value) return "ikke ennå";
+  const date = new Date(value);
+  if(Number.isNaN(date.getTime())) return "ukjent";
+  return date.toLocaleTimeString("nb-NO", {
+    timeZone:"Europe/Oslo",
+    hour:"2-digit",
+    minute:"2-digit"
+  });
+}
+
+function getBaliseFreshnessStatusText(mode){
+  const snapshot = makeBaliseFreshnessSignature();
+  const meta = getBaliseMetaForMode(mode);
+  const expected = snapshot.expected[mode] || getBaliseExpectedDateForMode(mode);
+  const actual = meta?.date ? formatDisplayDate(meta.date) : "ukjent dato";
+  const expectedLabel = expected ? formatDisplayDate(expected) : "ukjent dato";
+  const lastAttempt = formatBaliseWatchdogTime(baliseFreshnessWatchdog.lastAttemptAt);
+  const lastSuccess = formatBaliseWatchdogTime(baliseFreshnessWatchdog.lastSuccessAt);
+  const nextRetry = formatBaliseWatchdogTime(baliseFreshnessWatchdog.nextRetryAt);
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+
+  if(!isBaliseModeFresh(mode, snapshot)){
+    const retryText = baliseFreshnessWatchdog.nextRetryAt
+      ? `Nytt automatisk forsøk ${nextRetry}.`
+      : "Nytt automatisk forsøk planlegges.";
+    const errorText = baliseFreshnessWatchdog.lastError ? ` ${baliseFreshnessWatchdog.lastError}` : "";
+    const offlineText = offline ? " Nettleseren er offline; viser sist kjente data." : "";
+    return `Viser ${actual}, forventer ${expectedLabel}. Siste forsøk ${lastAttempt}. ${retryText}${offlineText}${errorText}`;
+  }
+
+  if(baliseFreshnessWatchdog.lastSuccessAt){
+    return `Fersk kontroll ${lastSuccess}.`;
+  }
+
+  return "";
+}
+
+function buildBaliseStaticCacheBustUrl(mode, requestId = ""){
+  const filePath = BALISE_STATIC_FILE_BY_MODE[mode] || BALISE_STATIC_FILE_BY_MODE.idag;
+  const separator = filePath.includes("?") ? "&" : "?";
+  const token = `${Date.now()}-${baliseFreshnessWatchdog.requestSeq}-${requestId || mode}`;
+  return `${filePath}${separator}v=${encodeURIComponent(token)}`;
+}
+
+async function fetchBaliseStaticJson(mode, options = {}){
+  const timeoutMs = Number(options.timeoutMs || BALISE_FRESHNESS_REQUEST_TIMEOUT_MS);
+  const requestId = options.requestId || mode;
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeoutId = controller
+    ? window.setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+
+  try{
+    const response = await fetch(buildBaliseStaticCacheBustUrl(mode, requestId), {
+      cache:"no-store",
+      signal:controller ? controller.signal : undefined
+    });
+    if(!response.ok){
+      throw new Error(`HTTP ${response.status}`);
+    }
+    const payload = await response.json();
+    if(!payload || typeof payload !== "object" || Array.isArray(payload)){
+      throw new Error("Ugyldig Balise JSON");
+    }
+    return payload;
+  }finally{
+    if(timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
+function normalizeBaliseStaticPayload(payload, mode){
+  const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
+  const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
+  const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
+  const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
+  const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
+  const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
+  const normalizedArrivalDisplayTrainNumbers = normalizeTrainDisplayMap(payload.arrivalDisplayTrainNumbers);
+  const vehicleErrorCount = payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0;
+
+  const meta = {
+    source: payload.source || "statisk data",
+    mode: payload.mode || mode,
+    date: String(payload.date || ""),
+    generated_at: String(payload.updatedAt || payload.generated_at || ""),
+    hasDepartures: Object.keys(normalizedDepartures).length > 0,
+    hasArrivals: Object.keys(normalizedArrivals).length > 0,
+    vehicleCount: Object.values(normalizedVehicles).filter(v => sanitizeVehicleValue(v)).length,
+    departureVehicleCount: Object.keys(normalizedDepartureVehicles).length,
+    arrivalVehicleCount: Object.keys(normalizedArrivalVehicles).length,
+    vehicleErrors: vehicleErrorCount
+  };
+
+  return {
+    mode: payload.mode === "imorgen" ? "imorgen" : mode,
+    meta,
+    apiState:{
+      ok:Boolean(payload.ok !== false),
+      updatedAt:String(payload.updatedAt || payload.generated_at || ""),
+      mode:payload.mode || mode,
+      date:String(payload.date || ""),
+      vehicles:normalizedVehicles,
+      departures:normalizedDepartures,
+      arrivals:normalizedArrivals,
+      departureVehicles:normalizedDepartureVehicles,
+      arrivalVehicles:normalizedArrivalVehicles,
+      vehicleErrors:normalizedVehicleErrors,
+      arrivalDisplayTrainNumbers:normalizedArrivalDisplayTrainNumbers,
+      allowedMaterialPrefixes:Array.isArray(payload.allowedMaterialPrefixes) ? payload.allowedMaterialPrefixes.map(v=>String(v)) : [],
+      materialFormat:Array.isArray(payload.materialFormat) ? payload.materialFormat.join(", ") : String(payload.materialFormat || ""),
+      error:""
+    },
+    normalized:{
+      vehicles:normalizedVehicles,
+      departures:normalizedDepartures,
+      arrivals:normalizedArrivals,
+      departureVehicles:normalizedDepartureVehicles,
+      arrivalVehicles:normalizedArrivalVehicles,
+      vehicleErrors:normalizedVehicleErrors,
+      arrivalDisplayTrainNumbers:normalizedArrivalDisplayTrainNumbers
+    }
+  };
+}
+
+function shouldApplyBaliseStaticPayload(mode, payload){
+  const incomingDate = String(payload?.date || "");
+  const currentMeta = getBaliseMetaForMode(mode);
+  const currentDate = String(currentMeta?.date || "");
+  const expected = getBaliseExpectedDateForMode(mode);
+
+  if(currentDate === expected && incomingDate !== expected){
+    return false;
+  }
+
+  if(currentDate && incomingDate && incomingDate < currentDate){
+    return false;
+  }
+
+  return true;
+}
+
+function applyBaliseStaticPayloadToState(mode, payload, options = {}){
+  const effectiveMode = mode === "imorgen" ? "imorgen" : "idag";
+  if(!shouldApplyBaliseStaticPayload(effectiveMode, payload)){
+    return false;
+  }
+
+  const normalizedPayload = normalizeBaliseStaticPayload(payload, effectiveMode);
+  const data = normalizedPayload.normalized;
+
+  if(effectiveMode === "imorgen"){
+    state.baliseTomorrow = data.vehicles;
+    state.baliseTomorrowDepartures = data.departures;
+    state.baliseTomorrowArrivals = data.arrivals;
+    state.baliseTomorrowDepartureVehicles = data.departureVehicles;
+    state.baliseTomorrowArrivalVehicles = data.arrivalVehicles;
+    state.baliseTomorrowVehicleErrors = data.vehicleErrors;
+    state.baliseTomorrowArrivalDisplayTrainNumbers = data.arrivalDisplayTrainNumbers;
+    state.baliseMetaTomorrow = normalizedPayload.meta;
+  }else{
+    state.baliseToday = data.vehicles;
+    state.baliseTodayDepartures = data.departures;
+    state.baliseTodayArrivals = data.arrivals;
+    state.baliseTodayDepartureVehicles = data.departureVehicles;
+    state.baliseTodayArrivalVehicles = data.arrivalVehicles;
+    state.baliseTodayVehicleErrors = data.vehicleErrors;
+    state.baliseTodayArrivalDisplayTrainNumbers = data.arrivalDisplayTrainNumbers;
+    state.baliseMetaToday = normalizedPayload.meta;
+  }
+
+  if(options.updateApi){
+    state.apiBalise = normalizedPayload.apiState;
+  }
+
+  baliseFreshnessWatchdog.sourceDates[effectiveMode] = normalizedPayload.meta.date;
+  return true;
+}
+
+function rerenderAfterBaliseStaticRefresh(options = {}){
+  persist(true);
+  if(options.renderApi) renderApiTables();
+  buildTurnering("turneringKveldTable","turneringKveld");
+  buildTurnering("turneringNattTable","turneringNatt");
+  buildSdeVaktplan();
+  buildOppstilling();
+  updateBaliseStatus();
+  updateTopDataStatus();
+  updateBaliseViewState();
+}
+
+function clearBaliseFreshnessRetryTimer(){
+  if(baliseFreshnessWatchdog.retryTimerId){
+    window.clearTimeout(baliseFreshnessWatchdog.retryTimerId);
+    baliseFreshnessWatchdog.retryTimerId = null;
+  }
+  baliseFreshnessWatchdog.nextRetryAt = "";
+}
+
+function scheduleBaliseFreshnessRetry(reason){
+  const delay = BALISE_FRESHNESS_RETRY_DELAYS_MS[Math.min(
+    baliseFreshnessWatchdog.retryStep,
+    BALISE_FRESHNESS_RETRY_DELAYS_MS.length - 1
+  )];
+  baliseFreshnessWatchdog.retryStep += 1;
+  if(baliseFreshnessWatchdog.retryTimerId){
+    window.clearTimeout(baliseFreshnessWatchdog.retryTimerId);
+  }
+  baliseFreshnessWatchdog.nextRetryAt = new Date(Date.now() + delay).toISOString();
+  baliseFreshnessWatchdog.retryTimerId = window.setTimeout(() => {
+    baliseFreshnessWatchdog.retryTimerId = null;
+    baliseFreshnessWatchdog.nextRetryAt = "";
+    requestBaliseFreshnessCheck(`retry:${reason}`, {forceNetwork:true});
+  }, delay);
+  updateTopDataStatus();
+}
+
+async function runBaliseFreshnessCheck(reason = "timer", options = {}){
+  if(baliseFreshnessWatchdog.inFlight){
+    baliseFreshnessWatchdog.pendingRefresh = true;
+    return;
+  }
+
+  const snapshot = makeBaliseFreshnessSignature();
+  const signatureChanged = baliseFreshnessWatchdog.lastSignature !== snapshot.signature;
+  const fullFresh = isBaliseStaticFullyFresh(snapshot);
+  if(!options.forceNetwork && fullFresh && !signatureChanged){
+    baliseFreshnessWatchdog.lastReason = reason;
+    updateTopDataStatus();
+    return;
+  }
+
+  if(!options.forceNetwork && reason === "timer" && baliseFreshnessWatchdog.retryTimerId && !fullFresh){
+    updateTopDataStatus();
+    return;
+  }
+
+  baliseFreshnessWatchdog.inFlight = true;
+  baliseFreshnessWatchdog.pendingRefresh = false;
+  baliseFreshnessWatchdog.lastReason = reason;
+  baliseFreshnessWatchdog.lastAttemptAt = new Date().toISOString();
+  baliseFreshnessWatchdog.lastError = "";
+  const requestSeq = ++baliseFreshnessWatchdog.requestSeq;
+  updateTopDataStatus();
+
+  try{
+    const results = await Promise.allSettled([
+      fetchBaliseStaticJson("idag", {requestId:`${requestSeq}-idag`}),
+      fetchBaliseStaticJson("imorgen", {requestId:`${requestSeq}-imorgen`})
+    ]);
+
+    if(requestSeq !== baliseFreshnessWatchdog.requestSeq){
+      return;
+    }
+
+    let applied = false;
+    const errors = [];
+    [["idag", results[0]], ["imorgen", results[1]]].forEach(([mode, result]) => {
+      if(result.status === "fulfilled"){
+        if(applyBaliseStaticPayloadToState(mode, result.value, {updateApi:state.baliseSelectedMode === mode})){
+          applied = true;
+        }
+      }else{
+        errors.push(`${mode}: ${result.reason?.message || "ukjent feil"}`);
+      }
+    });
+
+    if(applied){
+      rerenderAfterBaliseStaticRefresh({renderApi:true});
+      baliseFreshnessWatchdog.latestAppliedSeq = requestSeq;
+    }else{
+      updateTopDataStatus();
+    }
+
+    const freshAfter = isBaliseStaticFullyFresh(makeBaliseFreshnessSignature());
+    if(freshAfter){
+      baliseFreshnessWatchdog.lastSignature = makeBaliseFreshnessSignature().signature;
+      baliseFreshnessWatchdog.lastSuccessAt = new Date().toISOString();
+      baliseFreshnessWatchdog.retryStep = 0;
+      baliseFreshnessWatchdog.lastError = "";
+      clearBaliseFreshnessRetryTimer();
+    }else{
+      const todayDate = state.baliseMetaToday?.date || "ukjent";
+      const tomorrowDate = state.baliseMetaTomorrow?.date || "ukjent";
+      const expectedToday = getTodayOsloIsoDate();
+      const expectedTomorrow = getTomorrowOsloIsoDate();
+      baliseFreshnessWatchdog.lastError = errors.length
+        ? `Balise-fetch feilet (${errors.join("; ")}).`
+        : `Serverdata fortsatt stale: idag ${todayDate}/${expectedToday}, imorgen ${tomorrowDate}/${expectedTomorrow}.`;
+      scheduleBaliseFreshnessRetry(reason);
+    }
+
+    updateTopDataStatus();
+  }catch(err){
+    baliseFreshnessWatchdog.lastError = err?.name === "AbortError"
+      ? "Balise-fetch timeout."
+      : `Balise-fetch feilet: ${err?.message || "ukjent feil"}.`;
+    scheduleBaliseFreshnessRetry(reason);
+  }finally{
+    baliseFreshnessWatchdog.inFlight = false;
+    if(baliseFreshnessWatchdog.pendingRefresh){
+      baliseFreshnessWatchdog.pendingRefresh = false;
+      window.setTimeout(() => requestBaliseFreshnessCheck("pending", {forceNetwork:true}), 0);
+    }
+  }
+}
+
+function requestBaliseFreshnessCheck(reason = "manual", options = {}){
+  if(baliseFreshnessWatchdog.inFlight){
+    baliseFreshnessWatchdog.pendingRefresh = true;
+    return;
+  }
+
+  const now = Date.now();
+  const forceNetwork = Boolean(options.forceNetwork);
+  if(!forceNetwork && now - baliseFreshnessWatchdog.lastTriggerAt < BALISE_FRESHNESS_TRIGGER_RATE_LIMIT_MS){
+    if(baliseFreshnessWatchdog.triggerTimerId){
+      window.clearTimeout(baliseFreshnessWatchdog.triggerTimerId);
+    }
+    const delay = Math.max(250, BALISE_FRESHNESS_TRIGGER_RATE_LIMIT_MS - (now - baliseFreshnessWatchdog.lastTriggerAt));
+    baliseFreshnessWatchdog.triggerTimerId = window.setTimeout(() => {
+      baliseFreshnessWatchdog.triggerTimerId = null;
+      requestBaliseFreshnessCheck(reason, options);
+    }, delay);
+    return;
+  }
+
+  baliseFreshnessWatchdog.lastTriggerAt = now;
+  runBaliseFreshnessCheck(reason, options);
+}
+
+function startBaliseFreshnessWatchdog(){
+  if(baliseFreshnessWatchdog.started) return;
+  baliseFreshnessWatchdog.started = true;
+  baliseFreshnessWatchdog.intervalId = window.setInterval(() => {
+    requestBaliseFreshnessCheck("timer");
+  }, BALISE_FRESHNESS_CHECK_INTERVAL_MS);
+
+  document.addEventListener("visibilitychange", () => {
+    if(document.visibilityState === "visible"){
+      requestBaliseFreshnessCheck("visibility");
+    }
+  });
+  window.addEventListener("focus", () => requestBaliseFreshnessCheck("focus"));
+  window.addEventListener("online", () => requestBaliseFreshnessCheck("online", {forceNetwork:true}));
+  window.addEventListener("pageshow", () => requestBaliseFreshnessCheck("pageshow"));
+
+  requestBaliseFreshnessCheck("startup", {forceNetwork:true});
+}
+
 
 function clearStalePersistedBaliseStaticData(){
   const expectedToday = getTodayOsloIsoDate();
@@ -7900,12 +8305,14 @@ function updateTopDataStatus(){
 
   const date = meta && meta.date ? meta.date : "ukjent";
   const warning = getBaliseDateWarning(mode, meta);
+  const freshnessStatus = getBaliseFreshnessStatusText(mode);
 
   if(warning){
-    el.textContent = warning;
+    el.textContent = freshnessStatus ? `${warning} | ${freshnessStatus}` : warning;
     el.classList.add("balise-date-warning");
   }else{
-    el.textContent = `Data: ${mode} | dato: ${formatDisplayDate(date)}`;
+    const freshText = freshnessStatus ? ` | ${freshnessStatus}` : "";
+    el.textContent = `Data: ${mode} | dato: ${formatDisplayDate(date)}${freshText}`;
     el.classList.remove("balise-date-warning");
   }
 
@@ -29496,90 +29903,25 @@ function normalizeApiArrivalMap(raw){
 
 async function ensureTodayStaticDataLoaded(){
   try{
-    const response = await fetch(`./data/api_idag.json?v=${Date.now()}`, {cache:"no-store"});
-    if(!response.ok) return;
-
-    const payload = await response.json();
-    const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
-    const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
-    const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
-    const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
-    const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
-    const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
-    const normalizedArrivalDisplayTrainNumbers = normalizeTrainDisplayMap(payload.arrivalDisplayTrainNumbers);
-    const vehicleErrorCount = payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0;
-
-    state.baliseToday = normalizedVehicles;
-    state.baliseTodayDepartures = normalizedDepartures;
-    state.baliseTodayArrivals = normalizedArrivals;
-    state.baliseTodayDepartureVehicles = normalizedDepartureVehicles;
-    state.baliseTodayArrivalVehicles = normalizedArrivalVehicles;
-    state.baliseTodayVehicleErrors = normalizedVehicleErrors;
-    state.baliseTodayArrivalDisplayTrainNumbers = normalizedArrivalDisplayTrainNumbers;
-    state.baliseMetaToday = {
-      source: payload.source || "statisk data",
-      mode: payload.mode || "idag",
-      date: String(payload.date || ""),
-      generated_at: String(payload.updatedAt || payload.generated_at || ""),
-      hasDepartures: Object.keys(normalizedDepartures).length > 0,
-      hasArrivals: Object.keys(normalizedArrivals).length > 0,
-      vehicleCount: Object.values(normalizedVehicles).filter(v => sanitizeVehicleValue(v)).length,
-      departureVehicleCount: Object.keys(normalizedDepartureVehicles).length,
-      arrivalVehicleCount: Object.keys(normalizedArrivalVehicles).length,
-      vehicleErrors: vehicleErrorCount
-    };
-
-    persist(true);
-    buildTurnering("turneringKveldTable","turneringKveld");
-    buildOppstilling();
-    updateBaliseStatus();
-    updateTopDataStatus();
-    updateBaliseViewState();
+    const payload = await fetchBaliseStaticJson("idag", {requestId:"ensure-idag"});
+    if(applyBaliseStaticPayloadToState("idag", payload, {updateApi:state.baliseSelectedMode !== "imorgen"})){
+      rerenderAfterBaliseStaticRefresh({renderApi:state.baliseSelectedMode !== "imorgen"});
+    }
   }catch(err){
+    baliseFreshnessWatchdog.lastError = `Balise i dag kunne ikke hentes: ${err?.message || "ukjent feil"}.`;
+    updateTopDataStatus();
   }
 }
 
 async function ensureTomorrowStaticDataLoaded(){
   try{
-    const response = await fetch(`./data/api_imorgen.json?v=${Date.now()}`, {cache:"no-store"});
-    if(!response.ok) return;
-
-    const payload = await response.json();
-    const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
-    const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
-    const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
-    const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
-    const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
-    const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
-    const normalizedArrivalDisplayTrainNumbers = normalizeTrainDisplayMap(payload.arrivalDisplayTrainNumbers);
-
-    state.baliseTomorrow = normalizedVehicles;
-    state.baliseTomorrowDepartures = normalizedDepartures;
-    state.baliseTomorrowArrivals = normalizedArrivals;
-    state.baliseTomorrowDepartureVehicles = normalizedDepartureVehicles;
-    state.baliseTomorrowArrivalVehicles = normalizedArrivalVehicles;
-    state.baliseTomorrowVehicleErrors = normalizedVehicleErrors;
-    state.baliseTomorrowArrivalDisplayTrainNumbers = normalizedArrivalDisplayTrainNumbers;
-    state.baliseMetaTomorrow = {
-      source: payload.source || "statisk data",
-      mode: payload.mode || "imorgen",
-      date: String(payload.date || ""),
-      generated_at: String(payload.updatedAt || payload.generated_at || ""),
-      hasDepartures: Object.keys(normalizedDepartures).length > 0,
-      hasArrivals: Object.keys(normalizedArrivals).length > 0,
-      vehicleCount: Object.values(normalizedVehicles).filter(v => sanitizeVehicleValue(v)).length,
-      departureVehicleCount: Object.keys(normalizedDepartureVehicles).length,
-      arrivalVehicleCount: Object.keys(normalizedArrivalVehicles).length,
-      vehicleErrors: payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0
-    };
-
-    persist(true);
-    buildTurnering("turneringKveldTable","turneringKveld");
-    buildOppstilling();
-    updateBaliseStatus();
-    updateTopDataStatus();
-    updateBaliseViewState();
+    const payload = await fetchBaliseStaticJson("imorgen", {requestId:"ensure-imorgen"});
+    if(applyBaliseStaticPayloadToState("imorgen", payload, {updateApi:state.baliseSelectedMode === "imorgen"})){
+      rerenderAfterBaliseStaticRefresh({renderApi:state.baliseSelectedMode === "imorgen"});
+    }
   }catch(err){
+    baliseFreshnessWatchdog.lastError = `Balise i morgen kunne ikke hentes: ${err?.message || "ukjent feil"}.`;
+    updateTopDataStatus();
   }
 }
 
@@ -29631,78 +29973,9 @@ async function fetchBaliseApi(){
 
   try{
     const mode = state.baliseSelectedMode === "imorgen" ? "imorgen" : "idag";
-    const filePath = mode === "imorgen" ? "./data/api_imorgen.json" : "./data/api_idag.json";
-
-    const response = await fetch(`${filePath}?v=${Date.now()}`, {cache:"no-store"});
-    if(!response.ok){
-      throw new Error(`HTTP ${response.status}`);
-    }
-
-    const payload = await response.json();
-    const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
-    const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
-    const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
-    const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
-    const normalizedArrivalVehicles = buildVehicleMapFromPayload({vehicles: payload.arrivalVehicles || {}});
-    const normalizedVehicleErrors = normalizeVehicleErrorMap(payload.vehicleErrors);
-    const normalizedArrivalDisplayTrainNumbers = normalizeTrainDisplayMap(payload.arrivalDisplayTrainNumbers);
-    const vehicleErrorCount = payload.vehicleErrors && typeof payload.vehicleErrors === "object" ? Object.keys(payload.vehicleErrors).length : 0;
-
-    state.apiBalise = {
-      ok:Boolean(payload.ok !== false),
-      updatedAt:String(payload.updatedAt || payload.generated_at || ""),
-      mode:payload.mode || mode,
-      date:String(payload.date || ""),
-      vehicles:normalizedVehicles,
-      departures:normalizedDepartures,
-      arrivals:normalizedArrivals,
-      departureVehicles:normalizedDepartureVehicles,
-      arrivalVehicles:normalizedArrivalVehicles,
-      vehicleErrors:normalizedVehicleErrors,
-      arrivalDisplayTrainNumbers:normalizedArrivalDisplayTrainNumbers,
-      allowedMaterialPrefixes:Array.isArray(payload.allowedMaterialPrefixes) ? payload.allowedMaterialPrefixes.map(v=>String(v)) : [],
-      materialFormat:Array.isArray(payload.materialFormat) ? payload.materialFormat.join(", ") : String(payload.materialFormat || ""),
-      error:""
-    };
-
-    const meta = {
-      source: payload.source || "statisk data",
-      mode: payload.mode || mode,
-      date: String(payload.date || ""),
-      generated_at: String(payload.updatedAt || payload.generated_at || ""),
-      hasDepartures: Object.keys(normalizedDepartures).length > 0,
-      vehicleCount: Object.values(normalizedVehicles).filter(v => sanitizeVehicleValue(v)).length,
-      departureVehicleCount: Object.keys(normalizedDepartureVehicles).length,
-      arrivalVehicleCount: Object.keys(normalizedArrivalVehicles).length,
-      vehicleErrors: vehicleErrorCount
-    };
-
-    if((payload.mode || mode) === "imorgen"){
-      state.baliseTomorrow = normalizedVehicles;
-      state.baliseTomorrowDepartures = normalizedDepartures;
-      state.baliseTomorrowArrivals = normalizedArrivals;
-      state.baliseTomorrowDepartureVehicles = normalizedDepartureVehicles;
-      state.baliseTomorrowArrivalVehicles = normalizedArrivalVehicles;
-      state.baliseTomorrowVehicleErrors = normalizedVehicleErrors;
-      state.baliseTomorrowArrivalDisplayTrainNumbers = normalizedArrivalDisplayTrainNumbers;
-      state.baliseMetaTomorrow = meta;
-    }else{
-      state.baliseToday = normalizedVehicles;
-      state.baliseTodayDepartures = normalizedDepartures;
-      state.baliseTodayArrivals = normalizedArrivals;
-      state.baliseTodayDepartureVehicles = normalizedDepartureVehicles;
-      state.baliseTodayArrivalVehicles = normalizedArrivalVehicles;
-      state.baliseTodayVehicleErrors = normalizedVehicleErrors;
-      state.baliseTodayArrivalDisplayTrainNumbers = normalizedArrivalDisplayTrainNumbers;
-      state.baliseMetaToday = meta;
-    }
-
-    persist(true);
-    renderApiTables();
-    buildSdeVaktplan();
-    updateBaliseStatus();
-    updateBaliseViewState();
-    buildOppstilling();
+    const payload = await fetchBaliseStaticJson(mode, {requestId:`manual-${mode}`});
+    applyBaliseStaticPayloadToState(mode, payload, {updateApi:true});
+    rerenderAfterBaliseStaticRefresh({renderApi:true});
   }catch(err){
     state.apiBalise = {
       ok:false,
@@ -30914,9 +31187,7 @@ if(!isPublicGithubPagesApp()){
   renderServerStatusIdle();
   fetchSharedSporplanDraftReadbackForRefresh();
   fetchServerStatusForDisplay();
-  fetchBaliseApi();
-  ensureTodayStaticDataLoaded();
-  ensureTomorrowStaticDataLoaded();
+  startBaliseFreshnessWatchdog();
 }
 </script>
 
