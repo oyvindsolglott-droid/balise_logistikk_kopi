@@ -3224,6 +3224,76 @@ button{padding:12px 12px}
   border-color:rgba(109,255,189,.30);
 }
 
+.sde-shift-card.sde-release-cancelled{
+  border-color:rgba(255,92,92,.78);
+  background:
+    linear-gradient(145deg, rgba(112,18,28,.76), rgba(43,12,21,.72)),
+    rgba(10,18,32,.90);
+  box-shadow:0 20px 46px rgba(0,0,0,.34), 0 0 30px rgba(255,67,67,.18);
+}
+
+.sde-shift-card.sde-release-cancelled .sde-night-card-override{
+  border-color:rgba(255,104,104,.48);
+  background:rgba(94,17,27,.58);
+}
+
+.sde-shift-card.sde-release-cancelled .sde-night-card-override strong,
+.sde-release-cancelled-message{
+  color:#ffb3b3;
+}
+
+.sde-release-cancelled-message{
+  display:block;
+  margin-top:8px;
+  border:1px solid rgba(255,104,104,.54);
+  border-radius:10px;
+  padding:10px 12px;
+  background:rgba(128,20,30,.68);
+  font-weight:950;
+  line-height:1.4;
+  box-shadow:0 0 0 1px rgba(255,255,255,.04) inset;
+}
+
+.sde-shift-card.sde-release-cancelled-exit{
+  z-index:2;
+  pointer-events:none;
+  transform-origin:50% 65%;
+  animation:sdeReleaseCardCrumble var(--sde-release-exit-duration, 2000ms) cubic-bezier(.55,.02,.38,.98) forwards;
+}
+
+@keyframes sdeReleaseCardCrumble{
+  0%{
+    opacity:1;
+    transform:translateY(0) scale(1) rotate(0deg);
+    filter:blur(0) saturate(1);
+    clip-path:polygon(0 0,100% 0,100% 100%,0 100%);
+  }
+  45%{
+    opacity:.74;
+    transform:translateY(5px) scale(.985) rotate(-.35deg);
+    filter:blur(.7px) saturate(.72);
+    clip-path:polygon(0 0,100% 2%,96% 18%,100% 33%,94% 49%,99% 64%,92% 81%,96% 100%,4% 98%,8% 82%,2% 66%,7% 48%,1% 31%,5% 15%);
+  }
+  100%{
+    opacity:0;
+    transform:translateY(28px) scale(.86) rotate(1.8deg);
+    filter:blur(9px) saturate(.18);
+    clip-path:polygon(8% 8%,91% 4%,84% 22%,96% 38%,76% 50%,91% 68%,68% 81%,78% 96%,20% 91%,31% 76%,10% 63%,25% 45%,5% 29%,19% 16%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce){
+  .sde-shift-card.sde-release-cancelled-exit{
+    animation-name:sdeReleaseCardReducedExit;
+    animation-duration:var(--sde-release-exit-duration, 250ms);
+  }
+}
+
+@keyframes sdeReleaseCardReducedExit{
+  from{ opacity:1; }
+  to{ opacity:0; }
+}
+
 .sde-shift-card-top{
   display:flex;
   justify-content:space-between;
@@ -14587,7 +14657,11 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
       const freeingKey = getSdeMoveActionKey(freeingMove);
       const chainId = getSdePhysicalDependencyChainId(row, blockState, freeingMove);
       const rejectedRows = (Array.isArray(blockState.blockers) ? blockState.blockers : [])
-        .flatMap(blocker => buildSdeRejectedPhysicalReleaseRows(row, blockState, blocker, {chainId}));
+        .flatMap(blocker => buildSdeRejectedPhysicalReleaseRows(row, blockState, blocker, {chainId}))
+        .map(rejectedRow => ({
+          ...rejectedRow,
+          sdePhysicalReplacementAvailable:Boolean(freeingMove && freeingKey)
+        }));
       const rejectedTargetsText = rejectedRows
         .map(rejected => normalizeSlot(rejected.recommendedSlot || rejected.toSlot))
         .filter(Boolean)
@@ -14685,9 +14759,151 @@ function buildSdePhysicalBlockerFreeingHtml(row){
     <span>Frigjørende flytting: ${escapeHtml(origin || row.fromSlot || "ukjent")} → ${escapeHtml(target || row.toSlot || "ukjent")}.</span>
     ${row?.sdePhysicalChainStepCount ? `<span>Automatisk frigjøringskjede: steg ${escapeHtml(String(row.sdePhysicalChainStep || 1))} av ${escapeHtml(String(row.sdePhysicalChainStepCount))}.</span>` : ""}
     ${isRejected ? `<span class="warning">${escapeHtml(row.sdePhysicalRejectedReleaseReason || "Dette frigjøringsmålet er avvist.")}</span>` : ""}
+    ${isRejected ? `<span class="sde-release-cancelled-message">${escapeHtml(row.recommendationReason || "Annullert frigjøringsforslag. SDE søker neste trygge frigjøringsslot.")}</span>` : ""}
     ${!isRejected && rejectedTargets.length ? `<span class="warning">Tidligere frigjøringsmål ${escapeHtml(rejectedTargets.join(", "))} er forkastet. Dette er neste trygge kandidat.</span>` : ""}
     <span class="warning">${escapeHtml(assessment.reason || "Retur må vurderes etter at frigjørende skift er utført.")}</span>
   </div>`;
+}
+
+const SDE_RELEASE_CANCELLED_HOLD_MS = 5000;
+const SDE_RELEASE_CANCELLED_EXIT_MS = 2000;
+const SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS = 250;
+
+function prefersReducedSdeReleaseMotion(){
+  return typeof window?.matchMedia === "function"
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function getSdePhysicalReleaseCancelledUiState(row, now=Date.now()){
+  const managed = Boolean(row?.sdePhysicalRejectedReleaseMove && row?.sdePhysicalReplacementAvailable);
+  if(!managed){
+    return {managed:false, hidden:false, phase:"visible", cancelledAt:"", elapsedMs:0};
+  }
+
+  const actionKey = getSdeMoveActionKey(row);
+  const actionRecord = getSdeMoveActionRecord(actionKey);
+  const parsedCancelledAt = Date.parse(String(actionRecord?.time || ""));
+  const cancelledAtMs = Number.isFinite(parsedCancelledAt) ? parsedCancelledAt : Number(now);
+  const elapsedMs = Math.max(0, Number(now) - cancelledAtMs);
+  const exitMs = prefersReducedSdeReleaseMotion()
+    ? SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS
+    : SDE_RELEASE_CANCELLED_EXIT_MS;
+  const totalMs = SDE_RELEASE_CANCELLED_HOLD_MS + exitMs;
+
+  return {
+    managed:true,
+    hidden:elapsedMs >= totalMs,
+    phase:elapsedMs < SDE_RELEASE_CANCELLED_HOLD_MS ? "hold" : "exit",
+    cancelledAt:new Date(cancelledAtMs).toISOString(),
+    elapsedMs,
+    holdMs:SDE_RELEASE_CANCELLED_HOLD_MS,
+    exitMs,
+    totalMs
+  };
+}
+
+function buildSdePhysicalReleaseCancelledCardUi(row, uiState=null){
+  const state = uiState || getSdePhysicalReleaseCancelledUiState(row);
+  if(!state.managed) return {className:"", attributes:""};
+
+  const phaseClass = state.phase === "exit" ? " sde-release-cancelled-exit" : "";
+  return {
+    className:` sde-release-cancelled${phaseClass}`,
+    attributes:` data-sde-release-cancelled-card="1" data-sde-release-cancelled-at="${escapeHtml(state.cancelledAt)}" data-sde-release-has-replacement="1"`
+  };
+}
+
+function clearSdePhysicalReleaseDismissTimers(){
+  const timers = Array.isArray(window.sdePhysicalReleaseDismissTimers)
+    ? window.sdePhysicalReleaseDismissTimers
+    : [];
+  timers.forEach(timer => clearTimeout(timer));
+  window.sdePhysicalReleaseDismissTimers = [];
+}
+
+function registerSdePhysicalReleaseDismissTimer(timer){
+  if(!Array.isArray(window.sdePhysicalReleaseDismissTimers)){
+    window.sdePhysicalReleaseDismissTimers = [];
+  }
+  window.sdePhysicalReleaseDismissTimers.push(timer);
+}
+
+function removeSdePhysicalReleaseCardWithReflow(card, reducedMotion=false){
+  if(!card?.isConnected) return;
+  const grid = card.closest(".sde-shift-grid");
+  if(!grid){
+    card.remove();
+    return;
+  }
+
+  const remainingCards = Array.from(grid.querySelectorAll(".sde-shift-card"))
+    .filter(candidate => candidate !== card);
+  const previousPositions = new Map(
+    remainingCards.map(candidate => [candidate, candidate.getBoundingClientRect()])
+  );
+  card.remove();
+
+  if(reducedMotion) return;
+  remainingCards.forEach(candidate => {
+    const previous = previousPositions.get(candidate);
+    const next = candidate.getBoundingClientRect();
+    const deltaX = previous.left - next.left;
+    const deltaY = previous.top - next.top;
+    if(!deltaX && !deltaY) return;
+    if(typeof candidate.animate !== "function") return;
+    candidate.animate(
+      [
+        {transform:`translate(${deltaX}px, ${deltaY}px)`},
+        {transform:"translate(0, 0)"}
+      ],
+      {duration:480, easing:"cubic-bezier(.2,.8,.2,1)"}
+    );
+  });
+}
+
+function scheduleSdePhysicalReleaseCardDismissals(root){
+  clearSdePhysicalReleaseDismissTimers();
+  if(!root) return;
+
+  const reducedMotion = prefersReducedSdeReleaseMotion();
+  root.querySelectorAll('[data-sde-release-cancelled-card="1"][data-sde-release-has-replacement="1"]')
+    .forEach(card => {
+      const cancelledAtMs = Date.parse(String(card.dataset.sdeReleaseCancelledAt || ""));
+      if(!Number.isFinite(cancelledAtMs)) return;
+
+      const exitMs = reducedMotion
+        ? SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS
+        : SDE_RELEASE_CANCELLED_EXIT_MS;
+      const totalMs = SDE_RELEASE_CANCELLED_HOLD_MS + exitMs;
+      const elapsedMs = Math.max(0, Date.now() - cancelledAtMs);
+
+      if(elapsedMs >= totalMs){
+        removeSdePhysicalReleaseCardWithReflow(card, true);
+        return;
+      }
+
+      const startExit = ()=>{
+        if(!card.isConnected) return;
+        const currentElapsedMs = Math.max(0, Date.now() - cancelledAtMs);
+        const remainingExitMs = Math.max(1, totalMs - currentElapsedMs);
+        card.style.setProperty("--sde-release-exit-duration", `${remainingExitMs}ms`);
+        card.classList.add("sde-release-cancelled-exit");
+        registerSdePhysicalReleaseDismissTimer(setTimeout(
+          ()=>removeSdePhysicalReleaseCardWithReflow(card, reducedMotion),
+          remainingExitMs
+        ));
+      };
+
+      if(elapsedMs >= SDE_RELEASE_CANCELLED_HOLD_MS){
+        startExit();
+        return;
+      }
+
+      registerSdePhysicalReleaseDismissTimer(setTimeout(
+        startExit,
+        SDE_RELEASE_CANCELLED_HOLD_MS - elapsedMs
+      ));
+    });
 }
 
 
@@ -26394,11 +26610,12 @@ function buildSdeLimitedPlanningData(reason, text){
 function buildSdeLimitedPlanningCardsHtml(data){
   const sourceRows = Array.isArray(data?.moves) ? data.moves.filter(row => !isSdeMoveCardActioned(row)) : [];
   const rows = applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves(sourceRows));
-  if(!rows.length){
+  const visibleRows = rows.filter(row => !getSdePhysicalReleaseCancelledUiState(row).hidden);
+  if(!visibleRows.length){
     return `<div class="sde-shift-empty">Ingen manuelle planforslag er opprettet. Åpne SDE Grafisk planverktøy og dra et kjøretøy fra gjeldende sporplan til en ledig slot for å lage et simulert forslag.</div>`;
   }
 
-  return rows.map((row,index)=>{
+  return visibleRows.map((row,index)=>{
     const actionKey = escapeHtml(getSdeMoveActionKey(row) || row?.stableActionKey || "");
     const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot || row.originalFromSlot);
     const toSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
@@ -26408,8 +26625,10 @@ function buildSdeLimitedPlanningCardsHtml(data){
     const physicalBlockerFreeingHtml = buildSdePhysicalBlockerFreeingHtml(row);
     const physicalBlockerGuardHtml = buildSdePhysicalBlockerGuardHtml(row);
     const actionControlsHtml = buildSdeShiftMoveActionControlsHtml(row, encodeURIComponent(actionKey));
+    const cancelledReleaseUiState = getSdePhysicalReleaseCancelledUiState(row);
+    const cancelledReleaseCardUi = buildSdePhysicalReleaseCancelledCardUi(row, cancelledReleaseUiState);
 
-    return `<article class="sde-shift-card low" data-sde-limited-planning-card="${actionKey}" style="--delay:${index * 55}ms">
+    return `<article class="sde-shift-card low${cancelledReleaseCardUi.className}" data-sde-card-key="${actionKey}" data-sde-limited-planning-card="${actionKey}"${cancelledReleaseCardUi.attributes} style="--delay:${index * 55}ms">
       <div class="sde-shift-card-top">
         <div>
           <div class="sde-shift-eyebrow">Kjøretøy</div>
@@ -26498,6 +26717,8 @@ function renderSdeLimitedPlanningMode(root, options={}){
     ${nightPlacementOverviewHtml}
     <div class="sde-shift-board"><div class="sde-shift-grid">${cardsHtml}</div></div>
   `;
+
+  scheduleSdePhysicalReleaseCardDismissals(root);
 
   const nightPlacementToggle = document.getElementById("sdeNightPlacementToggle");
   if(nightPlacementToggle){
@@ -26597,7 +26818,9 @@ function renderSdeSkiftebevegelserInner(){
   const unresolvedKpiExpanded = Boolean(sdeUnresolvedDetailsVisible && unresolvedCount > 0);
   const learningDiagnosticsHtml = "";
   const cardMoves = buildSdeShiftCardMoves(data);
-  const topMoves = cardMoves.filter(row => !isSdeMoveCardActioned(row)).slice(0, 20);
+  const topMoves = cardMoves
+    .filter(row => !isSdeMoveCardActioned(row) && !getSdePhysicalReleaseCancelledUiState(row).hidden)
+    .slice(0, 20);
   const nightPlacementOverriddenCardCount = topMoves.filter(row => row?.sdeNightPlacementCardOverrideActive).length;
   const nightPlacementGeneratedCardCount = topMoves.filter(row => row?.isNightPlacementGenerated).length;
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
@@ -26621,7 +26844,8 @@ function renderSdeSkiftebevegelserInner(){
           : Array.isArray(row.recommendationAlternatives) && row.recommendationAlternatives.length
             ? `Alternativer: ${row.recommendationAlternatives.map(alt=>`${alt.slot} (${alt.score})`).join(", ")}`
             : "Ingen alternative spor i første kandidatsett.";
-        const actionKey = encodeURIComponent(row.sdeNightPlacementOriginalActionKey || getSdeMoveActionKey(row));
+        const rawActionKey = row.sdeNightPlacementOriginalActionKey || getSdeMoveActionKey(row);
+        const actionKey = encodeURIComponent(rawActionKey);
         const trackClearanceWindowHtml = buildSdeTrackClearanceWindowHtml(row);
         const manualOverrideControlHtml = buildSdeManualOverrideControlHtml(row, data, index);
         const nightPlacementStepRoleLabel = getSdeNightPlacementStepRoleLabel(row);
@@ -26629,8 +26853,10 @@ function renderSdeSkiftebevegelserInner(){
         const physicalBlockerGuardHtml = buildSdePhysicalBlockerGuardHtml(row);
         const physicalBlockerFreeingHtml = buildSdePhysicalBlockerFreeingHtml(row);
         const actionControlsHtml = buildSdeShiftMoveActionControlsHtml(row, actionKey);
+        const cancelledReleaseUiState = getSdePhysicalReleaseCancelledUiState(row);
+        const cancelledReleaseCardUi = buildSdePhysicalReleaseCancelledCardUi(row, cancelledReleaseUiState);
 
-        return `<article class="sde-shift-card ${priorityClass}" style="--delay:${index * 55}ms">
+        return `<article class="sde-shift-card ${priorityClass}${cancelledReleaseCardUi.className}" data-sde-card-key="${escapeHtml(rawActionKey)}"${cancelledReleaseCardUi.attributes} style="--delay:${index * 55}ms">
           <div class="sde-shift-card-top">
             <div>
               <div class="sde-shift-eyebrow">Kjøretøy</div>
@@ -27055,6 +27281,8 @@ function renderSdeSkiftebevegelserInner(){
     ${spor3PlatformClearanceDiagnosticsHtml}
     ${unresolvedHtml}${flexibleUnknownHtml}
   `;
+
+  scheduleSdePhysicalReleaseCardDismissals(root);
 
   if(sdeChangesSinceLast.snapshotToWrite){
     writeSdeShiftLastSnapshot(sdeChangesSinceLast.snapshotToWrite);
