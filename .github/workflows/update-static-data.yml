@@ -3,31 +3,16 @@ name: Update static balise data
 on:
   workflow_dispatch:
   schedule:
-    # GitHub Actions bruker UTC.
-    # Norge er UTC+1 vintertid og UTC+2 sommertid.
-    #
-    # Workflowen kjører en lett kontroll hvert 15. minutt hele døgnet.
-    # Tunge steg kjøres bare hvis:
-    # - kjøringen er manuell
-    # - lokal Oslo-time er 04, 07 eller 15 og data ikke er oppdatert i samme time
-    # - datafilene har feil operativ dato
-    #
-    # Dette gjør at forsinkede/mislykkede kjøringer selvrepareres uten manuell push.
-    - cron: "*/15 * * * *"
+    # Bruk eksplisitt Oslo-tid slik at sommer-/vintertid handteres av GitHub.
+    # En lett kontroll kl. :17 hver time er sikkerhetsnett ved forsinkede eller
+    # droppede schedule-events. Tunge steg styres fortsatt av kontrollen under.
+    - cron: "17 * * * *"
+      timezone: "Europe/Oslo"
 
-    # Ekstra robuste kontroller rett etter kritiske norske datovinduer.
-    # Datoreglene i Python er fortsatt styrende; disse cron-tidene øker bare
-    # sjansen for at GitHub faktisk starter workflowen etter vindusskift.
-    #
-    # 07:00 Oslo er 05:00 UTC ved sommertid og 06:00 UTC ved vintertid.
-    # Kjør flere kontroller etter 07:00, ikke før.
-    - cron: "3,8,13,23,38,53 5 * * *"
-    - cron: "3,8,13,23,38,53 6 * * *"
-
-    # 15:00 Oslo er 13:00 UTC ved sommertid og 14:00 UTC ved vintertid.
-    # Kjør flere kontroller etter 15:00, ikke før.
-    - cron: "3,8,13,23,38,53 13 * * *"
-    - cron: "3,8,13,23,38,53 14 * * *"
+    # Kritiske Oslo-vinduer: forste forsok syv minutter etter timeskiftet,
+    # deretter kontrollerte retry-forsok gjennom samme time.
+    - cron: "7,22,37,52 4,7,15 * * *"
+      timezone: "Europe/Oslo"
 
 permissions:
   contents: write
@@ -54,6 +39,9 @@ jobs:
 
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
 
       - name: Determine whether update is needed
         id: update-check
@@ -213,5 +201,23 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/api_idag.json data/api_imorgen.json
-          git diff --cached --quiet || git commit -m "Oppdater statiske balise-data"
-          git push
+
+          staged_files="$(git diff --cached --name-only)"
+          unexpected_files="$(printf '%s\n' "$staged_files" | grep -vE '^data/api_(idag|imorgen)\.json$' || true)"
+          if [ -n "$unexpected_files" ]; then
+            echo "Uventede filer er staged:"
+            printf '%s\n' "$unexpected_files"
+            exit 1
+          fi
+
+          if git diff --cached --quiet; then
+            echo "Ingen dataendring; ingen commit eller push."
+            exit 0
+          fi
+
+          git commit -m "Oppdater statiske balise-data"
+
+          branch="${{ github.event.repository.default_branch }}"
+          git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+          git rebase "origin/$branch"
+          git push origin "HEAD:$branch"
