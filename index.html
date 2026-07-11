@@ -26344,6 +26344,59 @@ function buildSdeNightPlacementEffectiveMoves(data){
   return {moves:applySdeNightPlacementStepRoles(guardedMoves), stale};
 }
 
+function getSdeActiveNightPlacementOverlayMoves(rows=[]){
+  const activeRows = (Array.isArray(rows) ? rows : []).filter(row=>{
+    if(!row || isSdeMoveActioned(row)) return false;
+    if(row.sdePhysicalRejectedReleaseMove) return false;
+    return true;
+  });
+  const activeDependencyKeys = new Set(
+    activeRows
+      .filter(row=>!isSdePhysicalBlockerFreeingRow(row))
+      .flatMap(row=>Array.isArray(row.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : [])
+      .map(key=>String(key || "").trim())
+      .filter(Boolean)
+  );
+  const selectedReleaseKeys = new Set();
+  const selectedBlockerVehicles = new Set();
+
+  activeRows
+    .filter(isSdePhysicalBlockerFreeingRow)
+    .map((row,index)=>{
+      const key = getSdeMoveActionKey(row);
+      const replanKey = getSdePhysicalReleaseReplanKey(row);
+      const replanRecord = normalizeSdePhysicalReleaseReplanRecord(
+        replanKey,
+        getSdePhysicalReleaseReplanRecord(replanKey)
+      );
+      return {
+        row,
+        index,
+        key,
+        vehicleToken:normalizeVehicleToken(row.vehicle),
+        dependencyActive:Boolean(key && activeDependencyKeys.has(key)),
+        replanActive:Boolean(key && replanRecord.activePrerequisiteCardId === key)
+      };
+    })
+    .filter(item=>item.key && (item.dependencyActive || item.replanActive))
+    .sort((a,b)=>
+      Number(b.dependencyActive) - Number(a.dependencyActive)
+      || Number(b.replanActive) - Number(a.replanActive)
+      || a.index - b.index
+      || a.key.localeCompare(b.key)
+    )
+    .forEach(item=>{
+      if(!item.vehicleToken || selectedBlockerVehicles.has(item.vehicleToken)) return;
+      selectedBlockerVehicles.add(item.vehicleToken);
+      selectedReleaseKeys.add(item.key);
+    });
+
+  return activeRows.filter(row=>{
+    if(!isSdePhysicalBlockerFreeingRow(row)) return true;
+    return selectedReleaseKeys.has(getSdeMoveActionKey(row));
+  });
+}
+
 function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
   const layoutRows = getSdeNightPlacementLayoutRows();
   const ordinarySlots = new Set();
@@ -26562,7 +26615,7 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
   });
 
   const effectiveMoves = buildSdeNightPlacementEffectiveMoves(data);
-  const activeMoves = effectiveMoves.moves;
+  const activeMoves = getSdeActiveNightPlacementOverlayMoves(effectiveMoves.moves);
 
   effectiveMoves.stale.forEach(row=>{
     const vehicle = sanitizeVehicleValue(row?.vehicle);
