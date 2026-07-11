@@ -22772,6 +22772,11 @@ function getSdeTomorrowJsonPendingText(){
 }
 
 
+function getSdeLimitedPlanningText(){
+  return "Begrenset datagrunnlag. Du kan fortsatt planlegge skifteoperasjoner ut fra gjeldende sporplan og ledig kapasitet. Ankomst, avgang, tidsbinding og SDE-score er ikke vurdert.";
+}
+
+
 let sdeShiftDetailsExpanded = false;
 let sdeNightPlacementVisible = false;
 let sdeUnresolvedDetailsVisible = false;
@@ -25300,6 +25305,7 @@ function buildSdeNightPlacementSlotTitle(slot, entry, context={}){
 
 function renderSdeNightPlacementOverview(data){
   const overview = buildSdeNightPlacementOverviewData(data);
+  const limitedPlanningMode = Boolean(data?.limitedPlanningMode);
   const columnLabels = ["12","11","10","9","8","7","","6","5","4","3","","2","1"];
   const headerHtml = columnLabels
     .map(label => `<div class="sde-night-placement-head">${escapeHtml(label)}</div>`)
@@ -25423,18 +25429,25 @@ function renderSdeNightPlacementOverview(data){
     : "";
   const hasManualDragOverrides = Object.keys(getSdeNightPlacementManualOverrides()).length > 0;
 
+  const overviewSubtitle = limitedPlanningMode
+    ? "Planlagt sluttposisjon etter gjeldende sporplan og lokale manuelle planforslag."
+    : "Planlagt sluttposisjon etter SDE-forslag og aktive manuelle overstyringer.";
+  const activeMovesLabel = limitedPlanningMode
+    ? "aktive manuelle planforslag"
+    : "aktive SDE-forslag brukt";
+
   return `<section class="sde-night-placement-panel" id="sdeNightPlacementPanel" aria-label="SDE Grafisk planverktøy">
     <div class="sde-night-placement-header">
       <div>
         <div class="sde-night-placement-title">SDE Grafisk planverktøy</div>
-        <div class="sde-night-placement-subtitle">Planlagt sluttposisjon etter SDE-forslag og aktive manuelle overstyringer.</div>
+        <div class="sde-night-placement-subtitle">${escapeHtml(overviewSubtitle)}</div>
       </div>
       <button class="sde-night-placement-close" type="button" data-sde-night-placement-close>Skjul SDE Grafisk planverktøy</button>
     </div>
     <div class="sde-night-placement-summary">
       <span class="sde-night-placement-pill">${escapeHtml(String(overview.counts.occupied))} plasserte kjøretøy</span>
       <span class="sde-night-placement-pill">${escapeHtml(String(overview.counts.empty))} tomme ordinære slots</span>
-      <span class="sde-night-placement-pill">${escapeHtml(String(overview.counts.activeMoves))} aktive SDE-forslag brukt</span>
+      <span class="sde-night-placement-pill">${escapeHtml(String(overview.counts.activeMoves))} ${escapeHtml(activeMovesLabel)}</span>
       <span class="sde-night-placement-pill">${escapeHtml(String(overview.warnings.length))} varsler</span>
     </div>
     <div class="sde-night-placement-actions">
@@ -25645,6 +25658,146 @@ function renderSdeSkiftebevegelser(){
   return withComputeInndataCache(renderSdeSkiftebevegelserInner);
 }
 
+function buildSdeLimitedPlanningData(reason, text){
+  const moves = buildSdeNightPlacementGeneratedMoves([]);
+  return {
+    score:"–",
+    moves,
+    baseMoveCount:0,
+    unresolved:[],
+    unresolvedCount:0,
+    filteredPastDepartureNeeds:[],
+    flexibleUnknownParking:[],
+    solvedArrivals:0,
+    totalArrivals:0,
+    securedDepartures:0,
+    totalDepartures:0,
+    limitedPlanningMode:true,
+    limitedPlanningReason:String(reason || "LIMITED_DATA").trim(),
+    limitedPlanningText:String(text || getSdeLimitedPlanningText()).trim()
+  };
+}
+
+function buildSdeLimitedPlanningCardsHtml(data){
+  const rows = Array.isArray(data?.moves) ? data.moves.filter(row => !isSdeMoveCardActioned(row)) : [];
+  if(!rows.length){
+    return `<div class="sde-shift-empty">Ingen manuelle planforslag er opprettet. Åpne SDE Grafisk planverktøy og dra et kjøretøy fra gjeldende sporplan til en ledig slot for å lage et simulert forslag.</div>`;
+  }
+
+  return rows.map((row,index)=>{
+    const actionKey = escapeHtml(getSdeMoveActionKey(row) || row?.stableActionKey || "");
+    const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot || row.originalFromSlot);
+    const toSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+    const vehicle = sanitizeVehicleValue(row.vehicle) || "Ukjent";
+    const reason = String(row.recommendationReason || row.parkingInstruction || getSdeLimitedPlanningText()).trim();
+    const timeStatus = getSdeNightPlacementTimeStatusText(row) || "Tid ikke vurdert";
+
+    return `<article class="sde-shift-card low" data-sde-limited-planning-card="${actionKey}" style="--delay:${index * 55}ms">
+      <div class="sde-shift-card-top">
+        <div>
+          <div class="sde-shift-eyebrow">Kjøretøy</div>
+          <div class="sde-shift-vehicle">${escapeHtml(vehicle)}</div>
+        </div>
+        <div class="sde-shift-trains">
+          <div class="sde-shift-train-pill"><b>Ankomst</b> Ikke tilgjengelig</div>
+          <div class="sde-shift-train-pill"><b>Avgang</b> Ikke tilgjengelig</div>
+        </div>
+      </div>
+
+      <div class="sde-shift-route" aria-label="Simulert manuell skiftebevegelse">
+        <div class="sde-shift-slot from">${escapeHtml(fromSlot || "ukjent")}</div>
+        <div class="sde-shift-arrow">→</div>
+        <div class="sde-shift-slot to">${escapeHtml(toSlot || "ukjent")}</div>
+      </div>
+
+      <div class="sde-shift-meta">
+        <span class="sde-shift-badge">Manuelt forslag</span>
+        <span class="sde-shift-badge sde-night-card-override-badge">SIMULERT</span>
+        <span class="sde-shift-badge sde-night-card-override-badge">BEGRENSET DATAGRUNNLAG</span>
+        <span class="sde-shift-badge">Tid ikke vurdert</span>
+        <span class="sde-shift-badge">Score ikke beregnet</span>
+      </div>
+
+      <div class="sde-night-card-override">
+        <strong>Manuell / Simulert / Begrenset datagrunnlag</strong>
+        <span>${escapeHtml(timeStatus)}</span>
+        <span>Ankomst/avgang er ikke tilgjengelig. Dette er et lokalt planforslag, ikke faktisk parkert-hvor og ikke operativ skifteordre.</span>
+      </div>
+      <div class="sde-shift-details show">
+        <div class="sde-shift-reason">${escapeHtml(reason)}</div>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function renderSdeLimitedPlanningMode(root, options={}){
+  const reason = String(options.reason || "LIMITED_DATA").trim();
+  const limitedText = String(options.text || getSdeLimitedPlanningText()).trim();
+  const pendingText = String(options.pendingText || "").trim();
+  const data = buildSdeLimitedPlanningData(reason, limitedText);
+  const overview = buildSdeNightPlacementOverviewData(data);
+  const noRegisteredVehicles = Number(overview?.counts?.occupied || 0) <= 0;
+  const generatedCardCount = Array.isArray(data.moves) ? data.moves.length : 0;
+  const nightPlacementOverviewHtml = sdeNightPlacementVisible
+    ? renderSdeNightPlacementOverview(data)
+    : "";
+  const cardsHtml = noRegisteredVehicles
+    ? `<div class="sde-shift-empty">Ingen kjøretøy er registrert i gjeldende sporplan. Legg inn parkert-hvor i TXP Input Sporplan før skiftebevegelser planlegges.</div>`
+    : buildSdeLimitedPlanningCardsHtml(data);
+
+  sdeShiftLastRenderedData = data;
+  sdeShiftLastDiagnosticContext = null;
+  root.innerHTML = `
+    <div class="sde-shift-hero">
+      <div class="sde-shift-score warn">
+        <div class="sde-shift-eyebrow">SDE-resultat</div>
+        <div class="sde-shift-title">${escapeHtml(options.title || "Begrenset planleggingsmodus")}</div>
+        <div class="sde-shift-score-number"><strong>–</strong><span>/ 100</span></div>
+      </div>
+      <div class="sde-shift-kpis">
+        <div class="sde-shift-kpi"><strong>0</strong><span>automatiske skifteforslag</span></div>
+        <div class="sde-shift-kpi"><strong>${escapeHtml(String(overview?.counts?.occupied || 0))}</strong><span>kjøretøy i gjeldende sporplan</span></div>
+        <div class="sde-shift-kpi"><strong>${escapeHtml(String(overview?.counts?.empty || 0))}</strong><span>ledige ordinære slots</span></div>
+        <div class="sde-shift-kpi"><strong>Begrenset</strong><span>${escapeHtml(reason)}</span></div>
+      </div>
+    </div>
+    <div class="sde-shift-empty">${escapeHtml(limitedText)}</div>
+    ${pendingText ? buildSdeDiagnosticSectionHtml({
+      id:`limited-planning-${reason.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+      title:options.diagnosticTitle || "Automatiske SDE-forslag avventer",
+      count:"Score ikke beregnet",
+      bodyHtml:`<div class="sde-shift-unresolved-item">${escapeHtml(pendingText)}</div>`
+    }) : ""}
+
+    <div class="sde-shift-section-title">
+      <span class="sde-shift-section-title-main">Manuell skifteplanlegging</span>
+      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="false" aria-label="Vis eller skjul SDE Grafisk planverktøy" data-menu-tooltip="Visuelt planverktøy for ønsket sluttbilde og skifteplan. Dra kjøretøy for å lage et lokalt simulert forslag; faktisk sporplan endres ikke.">SDE Grafisk planverktøy</button>
+      <span class="sde-shift-section-title-count">${escapeHtml(String(generatedCardCount))} manuelle forslag</span>
+      ${noRegisteredVehicles ? `<span class="sde-shift-section-title-count">ingen registrerte kjøretøy</span>` : ""}
+    </div>
+    ${nightPlacementOverviewHtml}
+    <div class="sde-shift-board"><div class="sde-shift-grid">${cardsHtml}</div></div>
+  `;
+
+  const nightPlacementToggle = document.getElementById("sdeNightPlacementToggle");
+  if(nightPlacementToggle){
+    nightPlacementToggle.addEventListener("click", ()=>toggleSdeNightPlacement());
+    nightPlacementToggle.classList.toggle("active", sdeNightPlacementVisible);
+    nightPlacementToggle.setAttribute("aria-pressed", sdeNightPlacementVisible ? "true" : "false");
+  }
+
+  const nightPlacementClose = document.querySelector("[data-sde-night-placement-close]");
+  if(nightPlacementClose){
+    nightPlacementClose.addEventListener("click", ()=>toggleSdeNightPlacement(false));
+  }
+
+  if(sdeNightPlacementVisible){
+    setupSdeNightPlacementDragAndDrop();
+  }
+
+  renderSdeNightPlacementOperationalStatePayloadPreview();
+}
+
 function renderSdeSkiftebevegelserInner(){
   const root = document.getElementById("sdeSkiftebevegelserDashboard");
   if(!root) return;
@@ -25670,58 +25823,25 @@ function renderSdeSkiftebevegelserInner(){
   const sdeDataReadiness = getSdeTomorrowJsonReadinessForScore();
 
   if(!sdeDataReadiness.ready){
-    sdeShiftLastRenderedData = null;
-    sdeShiftLastDiagnosticContext = null;
-    root.innerHTML = `
-      <div class="sde-shift-hero">
-        <div class="sde-shift-score warn">
-          <div class="sde-shift-eyebrow">SDE-resultat</div>
-          <div class="sde-shift-title">Avventer datagrunnlag</div>
-          <div class="sde-shift-score-number"><strong>–</strong><span>/ 100</span></div>
-        </div>
-        <div class="sde-shift-kpis">
-          <div class="sde-shift-kpi"><strong>–</strong><span>foreslåtte skiftebevegelser</span></div>
-          <div class="sde-shift-kpi"><strong>–</strong><span>ankomster ivaretatt</span></div>
-          <div class="sde-shift-kpi"><strong>–</strong><span>avganger koblet</span></div>
-          <div class="sde-shift-kpi"><strong>Venter</strong><span>morgendagens JSON</span></div>
-        </div>
-      </div>
-      ${buildSdeDiagnosticSectionHtml({
-        id:"data-pending",
-        title:"Datagrunnlag ikke komplett",
-        count:"Score ikke beregnet",
-        bodyHtml:`<div class="sde-shift-unresolved-item">${escapeHtml(getSdeTomorrowJsonPendingText())}</div>`
-      })}
-    `;
+    renderSdeLimitedPlanningMode(root, {
+      reason:sdeDataReadiness.reason || "DATA_NOT_READY",
+      title:"Avventer datagrunnlag",
+      text:getSdeLimitedPlanningText(),
+      pendingText:`${getSdeTomorrowJsonPendingText()} Automatiske SDE-forslag avventer datagrunnlag. Manuell skifteplanlegging er fortsatt tilgjengelig.`,
+      diagnosticTitle:"Datagrunnlag ikke komplett"
+    });
     return;
   }
 
   if(sdeDataReadiness.reason === "FRESH_NO_TURSATT_ASSIGNMENTS"){
-    sdeShiftLastRenderedData = null;
-    sdeShiftLastDiagnosticContext = null;
     const noAssignmentsText = getSdeFreshNoTursattAssignmentsText();
-    root.innerHTML = `
-      <div class="sde-shift-hero">
-        <div class="sde-shift-score">
-          <div class="sde-shift-eyebrow">SDE-resultat</div>
-          <div class="sde-shift-title">Datagrunnlag oppdatert</div>
-          <div class="sde-shift-score-number"><strong>–</strong><span>/ 100</span></div>
-        </div>
-        <div class="sde-shift-kpis">
-          <div class="sde-shift-kpi"><strong>0</strong><span>foreslåtte skiftebevegelser</span></div>
-          <div class="sde-shift-kpi"><strong>0</strong><span>tursatte avganger</span></div>
-          <div class="sde-shift-kpi"><strong>${escapeHtml(String(sdeDataReadiness.arrivalCount || 0))}</strong><span>ankomster i ferskt datagrunnlag</span></div>
-          <div class="sde-shift-kpi"><strong>Fersk</strong><span>FRESH_NO_TURSATT_ASSIGNMENTS</span></div>
-        </div>
-      </div>
-      <div class="sde-shift-empty">${escapeHtml(noAssignmentsText)}</div>
-      ${buildSdeDiagnosticSectionHtml({
-        id:"fresh-no-tursatt-assignments",
-        title:"Ingen tursatte kjøretøybevegelser",
-        count:"FRESH_NO_TURSATT_ASSIGNMENTS",
-        bodyHtml:`<div class="sde-shift-unresolved-item">${escapeHtml(noAssignmentsText)}</div>`
-      })}
-    `;
+    renderSdeLimitedPlanningMode(root, {
+      reason:"FRESH_NO_TURSATT_ASSIGNMENTS",
+      title:"Datagrunnlag oppdatert",
+      text:`${noAssignmentsText} ${getSdeLimitedPlanningText()}`,
+      pendingText:noAssignmentsText,
+      diagnosticTitle:"Ingen tursatte kjøretøybevegelser"
+    });
     return;
   }
 
