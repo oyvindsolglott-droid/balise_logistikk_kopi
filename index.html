@@ -8195,6 +8195,9 @@ async function runBaliseFreshnessCheck(reason = "timer", options = {}){
     }
 
     updateTopDataStatus();
+    if(isSdeSkiftebevegelserActive()){
+      renderSdeSkiftebevegelser();
+    }
   }catch(err){
     baliseFreshnessWatchdog.lastError = err?.name === "AbortError"
       ? "Balise-fetch timeout."
@@ -22699,15 +22702,20 @@ function getSdeExpectedDataDateTimeText(){
 }
 
 
-function isSdeTomorrowJsonReadyForScore(){
+function getSdeTomorrowJsonReadinessForScore(){
   const statusText = getSdeDataStatusText();
 
   if(/ikke\s+lest\s+ennå/i.test(statusText)){
-    return false;
+    return { ready: false, reason: "DATA_NOT_LOADED" };
   }
 
   if(/ADVARSEL/i.test(statusText) && /Forventet\s+dato/i.test(statusText)){
-    return false;
+    return { ready: false, reason: "STALE_OR_WARNING" };
+  }
+
+  const hasFreshStatus = /Fersk\s+kontroll/i.test(statusText);
+  if(!hasFreshStatus){
+    return { ready: false, reason: "DATA_NOT_FRESH" };
   }
 
   const bindings = typeof buildSdeTursattVehicleBindings === "function"
@@ -22718,7 +22726,41 @@ function isSdeTomorrowJsonReadyForScore(){
     ? bindings.filter(binding => binding?.role === "departure" && binding?.mustBeAccessible)
     : [];
 
-  return accessibleDepartures.length > 0;
+  if(accessibleDepartures.length > 0){
+    return {
+      ready: true,
+      reason: "HAS_TURSATT_ASSIGNMENTS",
+      accessibleDepartureCount: accessibleDepartures.length
+    };
+  }
+
+  const todayMeta = state.baliseMetaToday || {};
+  const tomorrowMeta = state.baliseMetaTomorrow || {};
+  const todayDepartures = Object.keys(state.baliseTodayDepartures || {}).length;
+  const todayArrivals = Object.keys(state.baliseTodayArrivals || {}).length;
+  const tomorrowDepartures = Object.keys(state.baliseTomorrowDepartures || {}).length;
+  const tomorrowArrivals = Object.keys(state.baliseTomorrowArrivals || {}).length;
+
+  return {
+    ready: true,
+    reason: "FRESH_NO_TURSATT_ASSIGNMENTS",
+    accessibleDepartureCount: 0,
+    arrivalCount: todayArrivals + tomorrowArrivals,
+    departureCount: todayDepartures + tomorrowDepartures,
+    arrivalVehicleCount: Number(todayMeta.arrivalVehicleCount || 0) + Number(tomorrowMeta.arrivalVehicleCount || 0),
+    departureVehicleCount: Number(todayMeta.departureVehicleCount || 0) + Number(tomorrowMeta.departureVehicleCount || 0)
+  };
+}
+
+
+function isSdeTomorrowJsonReadyForScore(){
+  const readiness = getSdeTomorrowJsonReadinessForScore();
+  return readiness.ready && readiness.reason !== "FRESH_NO_TURSATT_ASSIGNMENTS";
+}
+
+
+function getSdeFreshNoTursattAssignmentsText(){
+  return "Datagrunnlaget er oppdatert. Ingen kjøretøy er tursatt for dette driftsvinduet. Tidtabellgrunnlaget er tilgjengelig, men det finnes ingen tursatte kjøretøybevegelser å vise.";
 }
 
 
@@ -25625,7 +25667,9 @@ function renderSdeSkiftebevegelserInner(){
     toggleSdeDiagnosticSection(toggle.dataset.sdeDiagnosticToggle);
   };
 
-  if(!isSdeTomorrowJsonReadyForScore()){
+  const sdeDataReadiness = getSdeTomorrowJsonReadinessForScore();
+
+  if(!sdeDataReadiness.ready){
     sdeShiftLastRenderedData = null;
     sdeShiftLastDiagnosticContext = null;
     root.innerHTML = `
@@ -25647,6 +25691,35 @@ function renderSdeSkiftebevegelserInner(){
         title:"Datagrunnlag ikke komplett",
         count:"Score ikke beregnet",
         bodyHtml:`<div class="sde-shift-unresolved-item">${escapeHtml(getSdeTomorrowJsonPendingText())}</div>`
+      })}
+    `;
+    return;
+  }
+
+  if(sdeDataReadiness.reason === "FRESH_NO_TURSATT_ASSIGNMENTS"){
+    sdeShiftLastRenderedData = null;
+    sdeShiftLastDiagnosticContext = null;
+    const noAssignmentsText = getSdeFreshNoTursattAssignmentsText();
+    root.innerHTML = `
+      <div class="sde-shift-hero">
+        <div class="sde-shift-score">
+          <div class="sde-shift-eyebrow">SDE-resultat</div>
+          <div class="sde-shift-title">Datagrunnlag oppdatert</div>
+          <div class="sde-shift-score-number"><strong>–</strong><span>/ 100</span></div>
+        </div>
+        <div class="sde-shift-kpis">
+          <div class="sde-shift-kpi"><strong>0</strong><span>foreslåtte skiftebevegelser</span></div>
+          <div class="sde-shift-kpi"><strong>0</strong><span>tursatte avganger</span></div>
+          <div class="sde-shift-kpi"><strong>${escapeHtml(String(sdeDataReadiness.arrivalCount || 0))}</strong><span>ankomster i ferskt datagrunnlag</span></div>
+          <div class="sde-shift-kpi"><strong>Fersk</strong><span>FRESH_NO_TURSATT_ASSIGNMENTS</span></div>
+        </div>
+      </div>
+      <div class="sde-shift-empty">${escapeHtml(noAssignmentsText)}</div>
+      ${buildSdeDiagnosticSectionHtml({
+        id:"fresh-no-tursatt-assignments",
+        title:"Ingen tursatte kjøretøybevegelser",
+        count:"FRESH_NO_TURSATT_ASSIGNMENTS",
+        bodyHtml:`<div class="sde-shift-unresolved-item">${escapeHtml(noAssignmentsText)}</div>`
       })}
     `;
     return;
