@@ -14454,6 +14454,29 @@ function recordSdePhysicalReleaseRejectedTarget(row, actionKey){
   return record;
 }
 
+function findSdePhysicalReleaseReplacementRow(cancelledRow, data){
+  const replanKey = getSdePhysicalReleaseReplanKey(cancelledRow);
+  const cancelledKey = getSdeMoveActionKey(cancelledRow);
+  if(!replanKey) return null;
+
+  const sourceData = data && Array.isArray(data.moves)
+    ? data
+    : (sdeShiftLastRenderedData && Array.isArray(sdeShiftLastRenderedData.moves)
+      ? sdeShiftLastRenderedData
+      : null);
+  if(!sourceData) return null;
+
+  return buildSdeShiftCardMoves(sourceData)
+    .find(candidate => {
+      if(!isSdePhysicalBlockerFreeingRow(candidate)) return false;
+      if(candidate?.sdePhysicalRejectedReleaseMove) return false;
+      const candidateKey = getSdeMoveActionKey(candidate);
+      if(!candidateKey || candidateKey === cancelledKey) return false;
+      if(getSdeMoveActionRecord(candidateKey)) return false;
+      return getSdePhysicalReleaseReplanKey(candidate) === replanKey;
+    }) || null;
+}
+
 function buildSdeRejectedPhysicalReleaseRows(blockedRow, blockState, blocker, context={}){
   const rejectedTargets = getSdePhysicalReleaseRejectedTargetsForBlocker(blockedRow, blockState, blocker);
   if(!rejectedTargets.size) return [];
@@ -14656,12 +14679,33 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
       });
       const freeingKey = getSdeMoveActionKey(freeingMove);
       const chainId = getSdePhysicalDependencyChainId(row, blockState, freeingMove);
-      const rejectedRows = (Array.isArray(blockState.blockers) ? blockState.blockers : [])
-        .flatMap(blocker => buildSdeRejectedPhysicalReleaseRows(row, blockState, blocker, {chainId}))
-        .map(rejectedRow => ({
+      const rejectedRowHistory = (Array.isArray(blockState.blockers) ? blockState.blockers : [])
+        .flatMap(blocker => buildSdeRejectedPhysicalReleaseRows(row, blockState, blocker, {chainId}));
+      const rejectedRows = rejectedRowHistory.map((rejectedRow, index) => {
+        const rejectedKey = getSdeMoveActionKey(rejectedRow);
+        const actionRecord = getSdeMoveActionRecord(rejectedKey);
+        const nextRejectedKey = getSdeMoveActionKey(rejectedRowHistory[index + 1]);
+        const historicalReplacementKey = String(
+          actionRecord?.replacedByCardId
+          || nextRejectedKey
+          || (index === rejectedRowHistory.length - 1 ? freeingKey : "")
+          || ""
+        ).trim();
+        const dismissalState = String(actionRecord?.dismissalState || "").trim()
+          || (historicalReplacementKey
+            ? SDE_RELEASE_DISMISSAL_REPLACED
+            : SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE);
+
+        return {
           ...rejectedRow,
-          sdePhysicalReplacementAvailable:Boolean(freeingMove && freeingKey)
-        }));
+          sdePhysicalDismissalState:dismissalState,
+          sdePhysicalReplacedByCardId:historicalReplacementKey,
+          sdePhysicalReplacementAvailable:Boolean(
+            dismissalState === SDE_RELEASE_DISMISSAL_REPLACED
+            && historicalReplacementKey
+          )
+        };
+      });
       const rejectedTargetsText = rejectedRows
         .map(rejected => normalizeSlot(rejected.recommendedSlot || rejected.toSlot))
         .filter(Boolean)
@@ -14768,6 +14812,8 @@ function buildSdePhysicalBlockerFreeingHtml(row){
 const SDE_RELEASE_CANCELLED_HOLD_MS = 5000;
 const SDE_RELEASE_CANCELLED_EXIT_MS = 2000;
 const SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS = 250;
+const SDE_RELEASE_DISMISSAL_REPLACED = "annulled_and_replaced";
+const SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE = "annulled_no_alternative";
 
 function prefersReducedSdeReleaseMotion(){
   return typeof window?.matchMedia === "function"
@@ -14775,13 +14821,35 @@ function prefersReducedSdeReleaseMotion(){
 }
 
 function getSdePhysicalReleaseCancelledUiState(row, now=Date.now()){
-  const managed = Boolean(row?.sdePhysicalRejectedReleaseMove && row?.sdePhysicalReplacementAvailable);
-  if(!managed){
-    return {managed:false, hidden:false, phase:"visible", cancelledAt:"", elapsedMs:0};
-  }
-
   const actionKey = getSdeMoveActionKey(row);
   const actionRecord = getSdeMoveActionRecord(actionKey);
+  const dismissalState = String(
+    row?.sdePhysicalDismissalState
+    || actionRecord?.dismissalState
+    || ""
+  ).trim();
+  const replacedByCardId = String(
+    row?.sdePhysicalReplacedByCardId
+    || actionRecord?.replacedByCardId
+    || ""
+  ).trim();
+  const managed = Boolean(
+    row?.sdePhysicalRejectedReleaseMove
+    && dismissalState === SDE_RELEASE_DISMISSAL_REPLACED
+    && replacedByCardId
+  );
+  if(!managed){
+    return {
+      managed:false,
+      hidden:false,
+      phase:"visible",
+      cancelledAt:"",
+      elapsedMs:0,
+      dismissalState:dismissalState || SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
+      replacedByCardId:""
+    };
+  }
+
   const parsedCancelledAt = Date.parse(String(actionRecord?.time || ""));
   const cancelledAtMs = Number.isFinite(parsedCancelledAt) ? parsedCancelledAt : Number(now);
   const elapsedMs = Math.max(0, Number(now) - cancelledAtMs);
@@ -14798,7 +14866,9 @@ function getSdePhysicalReleaseCancelledUiState(row, now=Date.now()){
     elapsedMs,
     holdMs:SDE_RELEASE_CANCELLED_HOLD_MS,
     exitMs,
-    totalMs
+    totalMs,
+    dismissalState,
+    replacedByCardId
   };
 }
 
@@ -20982,7 +21052,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
 
         const actionTime = new Date().toISOString();
         const replanRecord = recordSdePhysicalReleaseRejectedTarget(row, key);
-        state.sdeMoveActions[key] = {
+        const cancellationRecord = {
           action:"cancelled",
           vehicle,
           fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
@@ -20990,8 +21060,19 @@ async function handleSdeShiftMoveAction(encodedKey, action){
           time:actionTime,
           replanKey:replanRecord?.key || getSdePhysicalReleaseReplanKey(row),
           rejectedTargetSlot:targetSlot,
+          dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
+          replacedByCardId:"",
+          replacementCreatedAt:"",
           snapshot:getSdeMoveActionSnapshot(row)
         };
+        state.sdeMoveActions[key] = cancellationRecord;
+        const replacementRow = findSdePhysicalReleaseReplacementRow(row, data);
+        const replacementKey = getSdeMoveActionKey(replacementRow);
+        if(replacementRow && replacementKey){
+          cancellationRecord.dismissalState = SDE_RELEASE_DISMISSAL_REPLACED;
+          cancellationRecord.replacedByCardId = replacementKey;
+          cancellationRecord.replacementCreatedAt = actionTime;
+        }
         recordSdeMoveLearningEvent(
           key,
           "cancelled",
