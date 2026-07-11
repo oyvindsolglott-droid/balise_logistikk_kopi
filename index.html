@@ -14063,6 +14063,10 @@ function isSdeSafePhysicalBlockerReleaseMove(vehicle, fromSlot, toSlot, blockedF
 }
 
 function getSdeBestPhysicalBlockerReleaseTarget(vehicle, fromSlot, blockedFromSlot="", options={}){
+  return getSdePhysicalBlockerReleaseCandidateOrder(vehicle, fromSlot, blockedFromSlot, options)[0] || "";
+}
+
+function getSdePhysicalBlockerReleaseCandidateOrder(vehicle, fromSlot, blockedFromSlot="", options={}){
   const from = normalizeSlot(fromSlot);
   const blockedFrom = normalizeSlot(blockedFromSlot);
   const avoidSlots = new Set(
@@ -14074,7 +14078,8 @@ function getSdeBestPhysicalBlockerReleaseTarget(vehicle, fromSlot, blockedFromSl
     .filter(slot=>!avoidSlots.has(slot))
     .filter(slot=>isSdeSafePhysicalBlockerReleaseMove(vehicle, from, slot, blockedFrom, {avoidSlots:[...avoidSlots]}))
     .map(slot=>({slot, score:scoreSdeResolutionTarget(slot)}))
-    .sort((a,b)=>b.score - a.score || a.slot.localeCompare(b.slot))[0]?.slot || "";
+    .sort((a,b)=>b.score - a.score || a.slot.localeCompare(b.slot))
+    .map(candidate=>candidate.slot);
 }
 
 function buildSdePhysicalBlockerReturnAssessment(blockerVehicle, originSlot, freeingTarget, blockedVehicle, blockedFromSlot){
@@ -14152,7 +14157,25 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
   const blockedFromSlot = normalizeSlot(blockState?.fromSlot);
   if(!blockerVehicle || !blockerSlot) return null;
 
-  const rejectedTargets = getSdePhysicalReleaseRejectedTargetsForBlocker(blockedRow, blockState, blocker);
+  const baseAvoidSlots = [
+    blockedFromSlot,
+    blockState?.toSlot,
+    context.avoidSlot,
+    ...(Array.isArray(context.avoidSlots) ? context.avoidSlots : [])
+  ].map(normalizeSlot).filter(Boolean);
+  const completeCandidateOrder = getSdePhysicalBlockerReleaseCandidateOrder(
+    blockerVehicle,
+    blockerSlot,
+    normalizeSlot(context.avoidSlot || blockedFromSlot),
+    {avoidSlots:baseAvoidSlots}
+  );
+  const planningStateSignature = getSdePhysicalPlanningStateSignature(sourceRows);
+  const roundRecord = prepareSdePhysicalReleaseRound(
+    getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker),
+    completeCandidateOrder,
+    planningStateSignature
+  );
+  const rejectedTargets = new Set(roundRecord.rejectedTargetsInCurrentRound);
 
   const visitKey = `${normalizeVehicleToken(blockerVehicle)}|${blockerSlot}`;
   if(visited.has(visitKey)) return null;
@@ -14160,10 +14183,7 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
 
   const avoidSlots = new Set(
     [
-      blockedFromSlot,
-      blockState?.toSlot,
-      context.avoidSlot,
-      ...(Array.isArray(context.avoidSlots) ? context.avoidSlots : []),
+      ...baseAvoidSlots,
       ...rejectedTargets
     ]
       .map(normalizeSlot)
@@ -14181,17 +14201,23 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
   });
 
   if(existingMove){
-    return annotateSdePhysicalBlockerFreeingMove(existingMove, blockedRow, blockState, blocker, "", context.annotation || {});
+    return annotateSdePhysicalReleaseRound(
+      annotateSdePhysicalBlockerFreeingMove(existingMove, blockedRow, blockState, blocker, "", context.annotation || {}),
+      blockedRow,
+      blockState,
+      blocker,
+      completeCandidateOrder,
+      planningStateSignature
+    );
   }
 
-  const preferredTarget = normalizeSlot(context.preferredTarget);
+  const preferredTarget = normalizeSlot(roundRecord.activeTarget || context.preferredTarget);
   const safePreferredTarget = preferredTarget &&
     !avoidSlots.has(preferredTarget) &&
     isSdeSafePhysicalBlockerReleaseMove(blockerVehicle, blockerSlot, preferredTarget, avoidSlot || blockedFromSlot, {avoidSlots:[...avoidSlots]})
       ? preferredTarget
       : "";
-  const freeingTarget = safePreferredTarget ||
-    getSdeBestPhysicalBlockerReleaseTarget(blockerVehicle, blockerSlot, avoidSlot || blockedFromSlot, {avoidSlots:[...avoidSlots]});
+  const freeingTarget = safePreferredTarget || completeCandidateOrder.find(slot=>!rejectedTargets.has(slot)) || "";
   if(freeingTarget){
     const generated = {
       vehicle:blockerVehicle,
@@ -14209,7 +14235,14 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
       isManualOnly:true
     };
 
-    return annotateSdePhysicalBlockerFreeingMove(generated, blockedRow, blockState, blocker, freeingTarget, context.annotation || {});
+    return annotateSdePhysicalReleaseRound(
+      annotateSdePhysicalBlockerFreeingMove(generated, blockedRow, blockState, blocker, freeingTarget, context.annotation || {}),
+      blockedRow,
+      blockState,
+      blocker,
+      completeCandidateOrder,
+      planningStateSignature
+    );
   }
 
   const nestedBlockers = getSdePhysicalBlockersForReleaseQueue(blockerSlot, [blockedFromSlot, blockerSlot]);
@@ -14293,23 +14326,38 @@ function hasSdePhysicalReleaseRejectionsForRow(row, blockState){
   return blockers.some(blocker => getSdePhysicalReleaseRejectedTargetsForBlocker(row, blockState, blocker).size > 0);
 }
 
-function getSdeActivePhysicalReleaseRejectedTargets(rows=[]){
-  const rejectedTargets = new Set();
-  (Array.isArray(rows) ? rows : []).forEach(row=>{
-    const blockState = getSdeHardPhysicalBlockStateForMove(row);
-    if(!blockState.hardBlocked) return;
-    (Array.isArray(blockState.blockers) ? blockState.blockers : []).forEach(blocker=>{
-      getSdePhysicalReleaseRejectedTargetsForBlocker(row, blockState, blocker)
-        .forEach(slot=>rejectedTargets.add(normalizeSlot(slot)));
-    });
+function hasSdePhysicalReleaseReplanHistoryForRow(row, blockState){
+  const blockers = Array.isArray(blockState?.blockers) ? blockState.blockers : [];
+  return blockers.some(blocker=>{
+    const replanKey = getSdePhysicalReleaseReplanKeyForBlocker(row, blockState, blocker);
+    const record = normalizeSdePhysicalReleaseReplanRecord(replanKey, getSdePhysicalReleaseReplanRecord(replanKey));
+    return record.rejectedProposals.length > 0 || record.completedRounds.length > 0;
   });
-  rejectedTargets.delete("");
-  return rejectedTargets;
 }
 
 function getSdeStablePhysicalReleaseTargetForRow(row, blockState, rows=[], baseReservedSlots=[]){
   if(!row || !blockState?.hardBlocked) return "";
   if(hasSdePhysicalReleaseRejectionsForRow(row, blockState)) return "";
+
+  const blockers = Array.isArray(blockState.blockers) ? blockState.blockers : [];
+  for(const blocker of blockers){
+    const replanKey = getSdePhysicalReleaseReplanKeyForBlocker(row, blockState, blocker);
+    const record = normalizeSdePhysicalReleaseReplanRecord(replanKey, getSdePhysicalReleaseReplanRecord(replanKey));
+    const activeTarget = normalizeSlot(record.activeTarget);
+    if(
+      activeTarget
+      && !baseReservedSlots.map(normalizeSlot).includes(activeTarget)
+      && isSdeSafePhysicalBlockerReleaseMove(
+        blocker?.vehicle,
+        blocker?.slot,
+        activeTarget,
+        blockState.fromSlot,
+        {avoidSlots:baseReservedSlots}
+      )
+    ){
+      return activeTarget;
+    }
+  }
 
   const freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, rows, {
     avoidSlots:[...baseReservedSlots]
@@ -14318,8 +14366,6 @@ function getSdeStablePhysicalReleaseTargetForRow(row, blockState, rows=[], baseR
 }
 
 function getSdePhysicalDependencyChainId(blockedRow, blockState, freeingMove=null){
-  const mainKey = getSdeMoveActionKey(blockedRow);
-  const freeingKey = getSdeMoveActionKey(freeingMove);
   const blockers = (Array.isArray(blockState?.blockers) ? blockState.blockers : [])
     .map(item => `${normalizeSlot(item?.slot)}:${normalizeVehicleToken(item?.vehicle)}`)
     .filter(Boolean)
@@ -14331,8 +14377,7 @@ function getSdePhysicalDependencyChainId(blockedRow, blockState, freeingMove=nul
     normalizeVehicleToken(blockState?.vehicle || blockedRow?.vehicle),
     normalizeSlot(blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot),
     normalizeSlot(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot),
-    blockers,
-    freeingKey || mainKey
+    blockers
   ].join("|");
 }
 
@@ -14395,13 +14440,133 @@ function getSdePhysicalReleaseReplanRecord(key){
   return ensureSdePhysicalReleaseReplans()[cleanKey] || null;
 }
 
+function normalizeSdePhysicalReleaseReplanRecord(key, sourceRecord=null){
+  const source = sourceRecord && typeof sourceRecord === "object" && !Array.isArray(sourceRecord)
+    ? sourceRecord
+    : {};
+  const legacyRejectedTargets = (Array.isArray(source.rejectedTargetSlots) ? source.rejectedTargetSlots : [])
+    .map(normalizeSlot)
+    .filter(Boolean);
+  const currentRejectedTargets = (Array.isArray(source.rejectedTargetsInCurrentRound)
+    ? source.rejectedTargetsInCurrentRound
+    : legacyRejectedTargets
+  ).map(normalizeSlot).filter(Boolean);
+  const priorCardIds = Array.isArray(source.previousPrerequisiteCardIds)
+    ? source.previousPrerequisiteCardIds.map(value=>String(value || "").trim()).filter(Boolean)
+    : [];
+  const rejectedProposals = Array.isArray(source.rejectedProposals)
+    ? source.rejectedProposals.map((proposal,index)=>({
+        cardId:String(proposal?.cardId || "").trim(),
+        targetSlot:normalizeSlot(proposal?.targetSlot),
+        roundNumber:Math.max(1, Number(proposal?.roundNumber) || 1),
+        proposalNumber:Math.max(1, Number(proposal?.proposalNumber) || index + 1),
+        rejectedAt:String(proposal?.rejectedAt || "").trim()
+      })).filter(proposal=>proposal.cardId && proposal.targetSlot)
+    : legacyRejectedTargets.map((targetSlot,index)=>({
+        cardId:priorCardIds[index] || "",
+        targetSlot,
+        roundNumber:Math.max(1, Number(source.roundNumber) || 1),
+        proposalNumber:index + 1,
+        rejectedAt:""
+      })).filter(proposal=>proposal.cardId);
+  const highestProposalNumber = rejectedProposals.reduce(
+    (highest,proposal)=>Math.max(highest, Number(proposal.proposalNumber) || 0),
+    0
+  );
+
+  return {
+    ...source,
+    key:String(key || source.key || "").trim(),
+    roundNumber:Math.max(1, Number(source.roundNumber) || 1),
+    rejectedTargetsInCurrentRound:Array.from(new Set(currentRejectedTargets)),
+    rejectedTargetSlots:Array.from(new Set(legacyRejectedTargets)),
+    completeCandidateOrder:(Array.isArray(source.completeCandidateOrder) ? source.completeCandidateOrder : [])
+      .map(normalizeSlot)
+      .filter(Boolean),
+    previousPrerequisiteCardIds:priorCardIds,
+    rejectedProposals,
+    completedRounds:Array.isArray(source.completedRounds) ? source.completedRounds : [],
+    proposalNumber:Math.max(1, Number(source.proposalNumber) || highestProposalNumber + 1 || 1),
+    activePrerequisiteCardId:String(source.activePrerequisiteCardId || "").trim(),
+    activeTarget:normalizeSlot(source.activeTarget),
+    acceptedTarget:normalizeSlot(source.acceptedTarget),
+    planningStateSignature:String(source.planningStateSignature || source.planSignature || "").trim()
+  };
+}
+
+function getSdePhysicalPlanningStateSignature(rows=[]){
+  const occupancy = Object.entries(state.grunnoppstilling || {})
+    .map(([slot,vehicle])=>[normalizeSlot(slot), normalizeVehicleToken(vehicle)])
+    .filter(([slot,vehicle])=>slot && vehicle)
+    .sort((a,b)=>a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  const activePlans = (Array.isArray(rows) ? rows : [])
+    .filter(row=>row && !isSdeMoveActioned(row))
+    .map(row=>[
+      normalizeVehicleToken(row.vehicle),
+      normalizeSlot(row.fromSlot || row.arrivalSlot),
+      normalizeSlot(row.recommendedSlot || row.toSlot),
+      String(row.sdePhysicalChainId || "").trim()
+    ])
+    .filter(parts=>parts[0] && parts[1] && parts[2])
+    .sort((a,b)=>a.join("|").localeCompare(b.join("|")));
+  return JSON.stringify({occupancy, activePlans});
+}
+
+function prepareSdePhysicalReleaseRound(key, candidateOrder=[], planningStateSignature=""){
+  const cleanKey = String(key || "").trim();
+  const candidates = Array.from(new Set(
+    (Array.isArray(candidateOrder) ? candidateOrder : []).map(normalizeSlot).filter(Boolean)
+  ));
+  if(!cleanKey){
+    return normalizeSdePhysicalReleaseReplanRecord("", {
+      completeCandidateOrder:candidates,
+      planningStateSignature
+    });
+  }
+
+  const replans = ensureSdePhysicalReleaseReplans();
+  const record = normalizeSdePhysicalReleaseReplanRecord(cleanKey, replans[cleanKey]);
+  const signature = String(planningStateSignature || "").trim();
+  const stateChanged = Boolean(
+    signature && record.planningStateSignature && signature !== record.planningStateSignature
+  );
+  const rejected = new Set(record.rejectedTargetsInCurrentRound);
+  const exhausted = Boolean(candidates.length && candidates.every(slot=>rejected.has(slot)));
+
+  if(!record.acceptedTarget && (stateChanged || exhausted)){
+    record.completedRounds = [
+      ...record.completedRounds,
+      {
+        roundNumber:record.roundNumber,
+        rejectedTargets:Array.from(rejected),
+        candidateOrder:record.completeCandidateOrder.length ? record.completeCandidateOrder : candidates,
+        reason:stateChanged ? "planning_state_changed" : "all_candidates_rejected",
+        completedAt:new Date().toISOString()
+      }
+    ];
+    record.roundNumber += 1;
+    record.rejectedTargetsInCurrentRound = [];
+    record.activePrerequisiteCardId = "";
+    record.activeTarget = "";
+  }
+
+  record.completeCandidateOrder = candidates;
+  record.planningStateSignature = signature;
+  replans[cleanKey] = record;
+  return record;
+}
+
 function getSdePhysicalReleaseRejectedTargets(key){
-  const record = getSdePhysicalReleaseReplanRecord(key);
+  const record = normalizeSdePhysicalReleaseReplanRecord(key, getSdePhysicalReleaseReplanRecord(key));
   return new Set(
-    (Array.isArray(record?.rejectedTargetSlots) ? record.rejectedTargetSlots : [])
+    (Array.isArray(record?.rejectedTargetsInCurrentRound) ? record.rejectedTargetsInCurrentRound : [])
       .map(normalizeSlot)
       .filter(Boolean)
   );
+}
+
+function getSdePhysicalReleaseRejectedProposals(key){
+  return normalizeSdePhysicalReleaseReplanRecord(key, getSdePhysicalReleaseReplanRecord(key)).rejectedProposals;
 }
 
 function getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker){
@@ -14418,21 +14583,86 @@ function getSdePhysicalReleaseRejectedTargetsForBlocker(blockedRow, blockState, 
   return getSdePhysicalReleaseRejectedTargets(getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker));
 }
 
+function annotateSdePhysicalReleaseRound(row, blockedRow, blockState, blocker, candidateOrder=[], planningStateSignature=""){
+  if(!row) return null;
+  const replanKey = getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker);
+  const record = prepareSdePhysicalReleaseRound(replanKey, candidateOrder, planningStateSignature);
+  const baseActionKey = String(row.stableActionKey || getSdeMoveActionKey(row) || "").trim();
+  const roundNumber = Math.max(1, Number(record.roundNumber) || 1);
+  const proposalNumber = Math.max(1, Number(record.proposalNumber) || 1);
+  const cardId = [baseActionKey, `replan-round-${roundNumber}`, `proposal-${proposalNumber}`]
+    .filter(Boolean)
+    .join("|");
+
+  record.activePrerequisiteCardId = cardId;
+  record.activeTarget = normalizeSlot(row.recommendedSlot || row.toSlot);
+  ensureSdePhysicalReleaseReplans()[replanKey] = record;
+
+  return {
+    ...row,
+    stableActionKey:cardId,
+    sdePhysicalReleaseReplanKey:replanKey,
+    sdePhysicalReleaseRoundNumber:roundNumber,
+    sdePhysicalReleaseProposalNumber:proposalNumber,
+    sdePhysicalReleaseCandidateOrder:[...record.completeCandidateOrder],
+    sdePhysicalPlanningStateSignature:record.planningStateSignature,
+    sdePhysicalActivePrerequisiteCardId:cardId
+  };
+}
+
 function recordSdePhysicalReleaseRejectedTarget(row, actionKey){
   const replanKey = getSdePhysicalReleaseReplanKey(row);
   const rejectedTarget = normalizeSlot(row?.recommendedSlot || row?.toSlot);
   if(!replanKey || !rejectedTarget) return null;
 
   const replans = ensureSdePhysicalReleaseReplans();
-  const existing = replans[replanKey] || {};
+  const existing = normalizeSdePhysicalReleaseReplanRecord(replanKey, replans[replanKey]);
+  const rowRoundNumber = Math.max(1, Number(row?.sdePhysicalReleaseRoundNumber) || existing.roundNumber);
+  const candidateOrder = Array.from(new Set(
+    (Array.isArray(row?.sdePhysicalReleaseCandidateOrder)
+      ? row.sdePhysicalReleaseCandidateOrder
+      : existing.completeCandidateOrder
+    ).map(normalizeSlot).filter(Boolean)
+  ));
+  const rejectedTargetsInCurrentRound = new Set(
+    rowRoundNumber === existing.roundNumber ? existing.rejectedTargetsInCurrentRound : []
+  );
+  rejectedTargetsInCurrentRound.add(rejectedTarget);
   const rejectedTargetSlots = Array.from(new Set([
-    ...(Array.isArray(existing.rejectedTargetSlots) ? existing.rejectedTargetSlots : []),
+    ...existing.rejectedTargetSlots,
     rejectedTarget
   ].map(normalizeSlot).filter(Boolean)));
+  const proposalNumber = Math.max(1, Number(row?.sdePhysicalReleaseProposalNumber) || existing.proposalNumber);
+  const cardId = String(actionKey || getSdeMoveActionKey(row) || "").trim();
   const previousPrerequisiteCardIds = Array.from(new Set([
-    ...(Array.isArray(existing.previousPrerequisiteCardIds) ? existing.previousPrerequisiteCardIds : []),
-    String(actionKey || getSdeMoveActionKey(row) || "").trim()
+    ...existing.previousPrerequisiteCardIds,
+    cardId
   ].filter(Boolean)));
+  const rejectedProposals = [
+    ...existing.rejectedProposals.filter(proposal=>proposal.cardId !== cardId),
+    {
+      cardId,
+      targetSlot:rejectedTarget,
+      roundNumber:rowRoundNumber,
+      proposalNumber,
+      rejectedAt:new Date().toISOString()
+    }
+  ];
+  const roundExhausted = Boolean(
+    candidateOrder.length && candidateOrder.every(slot=>rejectedTargetsInCurrentRound.has(slot))
+  );
+  const completedRounds = roundExhausted
+    ? [
+        ...existing.completedRounds,
+        {
+          roundNumber:rowRoundNumber,
+          rejectedTargets:Array.from(rejectedTargetsInCurrentRound),
+          candidateOrder,
+          reason:"all_candidates_rejected",
+          completedAt:new Date().toISOString()
+        }
+      ]
+    : existing.completedRounds;
 
   const record = {
     ...existing,
@@ -14443,17 +14673,38 @@ function recordSdePhysicalReleaseRejectedTarget(row, actionKey){
     blockedFromSlot:normalizeSlot(row.sdePhysicalBlockerForSlot),
     blockedTargetSlot:normalizeSlot(row.sdePhysicalBlockerOriginalTarget),
     chainId:String(row.sdePhysicalChainId || existing.chainId || "").trim(),
+    roundNumber:roundExhausted ? rowRoundNumber + 1 : rowRoundNumber,
+    rejectedTargetsInCurrentRound:roundExhausted ? [] : Array.from(rejectedTargetsInCurrentRound),
     rejectedTargetSlots,
     previousPrerequisiteCardIds,
-    planSignature:[
-      normalizeVehicleToken(row.sdePhysicalBlockerForVehicle),
-      normalizeSlot(row.sdePhysicalBlockerForSlot),
-      normalizeSlot(row.sdePhysicalBlockerOriginalTarget),
-      normalizeVehicleToken(row.vehicle),
-      normalizeSlot(row.fromSlot || row.arrivalSlot)
-    ].join("|"),
+    rejectedProposals,
+    completedRounds,
+    completeCandidateOrder:candidateOrder,
+    proposalNumber:proposalNumber + 1,
+    activePrerequisiteCardId:"",
+    activeTarget:"",
+    acceptedTarget:"",
+    planningStateSignature:String(
+      row?.sdePhysicalPlanningStateSignature || existing.planningStateSignature || ""
+    ).trim(),
+    lastRejectedTarget:rejectedTarget,
+    lastRejectedRoundNumber:rowRoundNumber,
+    lastRoundExhausted:roundExhausted,
     updatedAt:new Date().toISOString()
   };
+  replans[replanKey] = record;
+  return record;
+}
+
+function completeSdePhysicalReleaseReplan(row, actionKey, completedAt){
+  const replanKey = getSdePhysicalReleaseReplanKey(row);
+  if(!replanKey) return null;
+  const replans = ensureSdePhysicalReleaseReplans();
+  const record = normalizeSdePhysicalReleaseReplanRecord(replanKey, replans[replanKey]);
+  record.acceptedTarget = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+  record.activePrerequisiteCardId = String(actionKey || getSdeMoveActionKey(row) || "").trim();
+  record.completedAt = String(completedAt || new Date().toISOString());
+  record.updatedAt = record.completedAt;
   replans[replanKey] = record;
   return record;
 }
@@ -14482,10 +14733,12 @@ function findSdePhysicalReleaseReplacementRow(cancelledRow, data){
 }
 
 function buildSdeRejectedPhysicalReleaseRows(blockedRow, blockState, blocker, context={}){
-  const rejectedTargets = getSdePhysicalReleaseRejectedTargetsForBlocker(blockedRow, blockState, blocker);
-  if(!rejectedTargets.size) return [];
+  const replanKey = getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker);
+  const rejectedProposals = getSdePhysicalReleaseRejectedProposals(replanKey);
+  if(!rejectedProposals.length) return [];
 
-  return Array.from(rejectedTargets).map((targetSlot, index)=>{
+  return rejectedProposals.map((proposal,index)=>{
+    const targetSlot = normalizeSlot(proposal.targetSlot);
     const base = {
       vehicle:sanitizeVehicleValue(blocker?.vehicle),
       fromSlot:normalizeSlot(blocker?.slot),
@@ -14506,6 +14759,7 @@ function buildSdeRejectedPhysicalReleaseRows(blockedRow, blockState, blocker, co
     });
     return {
       ...row,
+      stableActionKey:proposal.cardId,
       sdePhysicalChainId:String(context.chainId || row.sdePhysicalChainId || "").trim(),
       sdePhysicalChainStep:1,
       sdePhysicalChainStepCount:2,
@@ -14515,6 +14769,8 @@ function buildSdeRejectedPhysicalReleaseRows(blockedRow, blockState, blocker, co
       sdePhysicalDependencyRole:"prerequisite",
       sdePhysicalRejectedReleaseMove:true,
       sdePhysicalRejectedReleaseIndex:index + 1,
+      sdePhysicalReleaseRoundNumber:proposal.roundNumber,
+      sdePhysicalReleaseProposalNumber:proposal.proposalNumber,
       sdePhysicalRejectedReleaseReason:`Avvist frigjøringsmål: ${targetSlot}.`
     };
   });
@@ -14535,6 +14791,206 @@ function getSdeActiveShiftRowsForValidation(data=null){
   }
 }
 
+function hasSdePhysicalDependencyPath(row, targetKey, rows=[], visited=new Set()){
+  const wanted = String(targetKey || "").trim();
+  if(!row || !wanted) return false;
+  const rowKey = getSdeMoveActionKey(row);
+  if(rowKey && visited.has(rowKey)) return false;
+  if(rowKey) visited.add(rowKey);
+  const dependencies = Array.isArray(row.sdePhysicalDependsOn)
+    ? row.sdePhysicalDependsOn.map(key=>String(key || "").trim()).filter(Boolean)
+    : [];
+  if(dependencies.includes(wanted)) return true;
+  const byKey = new Map(
+    (Array.isArray(rows) ? rows : [])
+      .map(candidate=>[getSdeMoveActionKey(candidate), candidate])
+      .filter(([key])=>key)
+  );
+  return dependencies.some(key=>{
+    const dependencyRow = byKey.get(key);
+    return dependencyRow
+      ? hasSdePhysicalDependencyPath(dependencyRow, wanted, rows, visited)
+      : false;
+  });
+}
+
+function canSdeReusePhysicalTargetSequentially(laterRow, earlierRow, rows=[]){
+  const targetSlot = normalizeSlot(earlierRow?.recommendedSlot || earlierRow?.toSlot);
+  const earlierKey = getSdeMoveActionKey(earlierRow);
+  const earlierVehicle = normalizeVehicleToken(earlierRow?.vehicle);
+  if(!targetSlot || !earlierKey || !earlierVehicle) return false;
+
+  const moveOutRow = (Array.isArray(rows) ? rows : []).find(candidate=>{
+    if(!candidate || isSdeMoveActioned(candidate)) return false;
+    if(normalizeVehicleToken(candidate.vehicle) !== earlierVehicle) return false;
+    if(normalizeSlot(candidate.fromSlot || candidate.arrivalSlot) !== targetSlot) return false;
+    return hasSdePhysicalDependencyPath(candidate, earlierKey, rows);
+  });
+  const moveOutKey = getSdeMoveActionKey(moveOutRow);
+  return Boolean(
+    moveOutKey
+    && hasSdePhysicalDependencyPath(laterRow, moveOutKey, rows)
+  );
+}
+
+function getSdePhysicalSequenceRows(rows=[]){
+  return (Array.isArray(rows) ? rows : []).filter(row=>{
+    if(!row || row.sdePhysicalRejectedReleaseMove || isSdeMoveActioned(row)) return false;
+    return Boolean(
+      String(row.sdePhysicalChainId || "").trim()
+      || isSdePhysicalBlockerFreeingRow(row)
+      || (Array.isArray(row.sdePhysicalDependsOn) && row.sdePhysicalDependsOn.length)
+    );
+  });
+}
+
+function simulateSdePhysicalSequenceReservations(rows=[], initialOccupancy=null){
+  const sequenceRows = getSdePhysicalSequenceRows(rows);
+  const entries = sequenceRows.map((row,index)=>({
+    row,
+    index,
+    key:getSdeMoveActionKey(row),
+    dependencies:(Array.isArray(row.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : [])
+      .map(key=>String(key || "").trim())
+      .filter(Boolean)
+  })).filter(entry=>entry.key);
+  const entryByKey = new Map(entries.map(entry=>[entry.key, entry]));
+  const processedKeys = new Set();
+  const pending = [...entries];
+  const ordered = [];
+  const errors = [];
+
+  while(pending.length){
+    const readyIndex = pending.findIndex(entry=>entry.dependencies.every(dependencyKey=>{
+      const action = getSdeMoveActionRecord(dependencyKey);
+      if(action?.action === "cancelled") return false;
+      return action?.action === "completed" || processedKeys.has(dependencyKey) || !entryByKey.has(dependencyKey);
+    }));
+    if(readyIndex < 0){
+      pending.forEach(entry=>errors.push({
+        key:entry.key,
+        code:"cyclic_or_cancelled_dependency",
+        message:"Sekvensen har syklisk, annullert eller uavklart dependency."
+      }));
+      break;
+    }
+    const [entry] = pending.splice(readyIndex, 1);
+    ordered.push(entry);
+    processedKeys.add(entry.key);
+  }
+
+  const occupancy = new Map();
+  const reservations = [];
+  const latestReservationBySlot = new Map();
+  const baselineEntries = initialOccupancy && typeof initialOccupancy === "object"
+    ? Object.entries(initialOccupancy)
+    : Object.entries(state.grunnoppstilling || {});
+  baselineEntries.forEach(([slotRaw,vehicleRaw])=>{
+    const slot = normalizeSlot(slotRaw);
+    const vehicle = sanitizeVehicleValue(vehicleRaw);
+    if(!slot || !vehicle) return;
+    const reservation = {
+      slot,
+      vehicleId:vehicle,
+      chainId:"physical",
+      moveId:"physical",
+      sequence:0,
+      reservedFromStep:0,
+      releasedAfterStep:null,
+      reservationType:"physicalOccupancy"
+    };
+    occupancy.set(slot, reservation);
+    reservations.push(reservation);
+    latestReservationBySlot.set(slot, reservation);
+  });
+
+  ordered.forEach((entry,index)=>{
+    const globalStep = index + 1;
+    const row = entry.row;
+    const vehicle = sanitizeVehicleValue(row.vehicle);
+    const vehicleToken = normalizeVehicleToken(vehicle);
+    const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot);
+    const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+    if(!vehicle || !fromSlot || !targetSlot){
+      errors.push({key:entry.key, code:"invalid_move", message:"Sekvenssteget mangler kjøretøy, fra-slot eller målslot."});
+      return;
+    }
+
+    const fromReservation = occupancy.get(fromSlot);
+    if(!fromReservation || normalizeVehicleToken(fromReservation.vehicleId) !== vehicleToken){
+      errors.push({key:entry.key, code:"source_not_ready", message:`${vehicle} står ikke i ${fromSlot} på sekvenssteg ${globalStep}.`});
+      return;
+    }
+    const targetReservation = occupancy.get(targetSlot);
+    if(targetReservation && normalizeVehicleToken(targetReservation.vehicleId) !== vehicleToken){
+      errors.push({key:entry.key, code:"target_occupied", message:`${targetSlot} er opptatt på sekvenssteg ${globalStep}.`});
+      return;
+    }
+
+    const priorTargetReservation = latestReservationBySlot.get(targetSlot);
+    if(
+      !targetReservation
+      && priorTargetReservation
+      && priorTargetReservation.releasedAfterStep !== null
+      && !hasSdePhysicalDependencyPath(row, priorTargetReservation.releasedByMoveId, sequenceRows)
+    ){
+      errors.push({
+        key:entry.key,
+        code:"unproven_sequential_reuse",
+        message:`${targetSlot} kan ikke gjenbrukes uten eksplisitt dependency på utsteget som frigjorde slotten.`
+      });
+      return;
+    }
+
+    fromReservation.releasedAfterStep = globalStep;
+    fromReservation.releasedByMoveId = entry.key;
+    occupancy.delete(fromSlot);
+    const reservation = {
+      slot:targetSlot,
+      vehicleId:vehicle,
+      chainId:String(row.sdePhysicalChainId || "").trim(),
+      moveId:entry.key,
+      sequence:globalStep,
+      globalStep,
+      reservedFromStep:globalStep,
+      releasedAfterStep:null,
+      reservationType:isSdePhysicalBlockerFreeingRow(row) ? "prerequisiteTarget" : "mainTarget"
+    };
+    occupancy.set(targetSlot, reservation);
+    reservations.push(reservation);
+    latestReservationBySlot.set(targetSlot, reservation);
+  });
+
+  return {
+    ok:errors.length === 0,
+    errors,
+    order:ordered.map((entry,index)=>({key:entry.key, globalStep:index + 1})),
+    reservations
+  };
+}
+
+function applySdePhysicalSequenceReservations(rows=[]){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const simulation = simulateSdePhysicalSequenceReservations(sourceRows);
+  const stepByKey = new Map(simulation.order.map(item=>[item.key, item.globalStep]));
+  const errorsByKey = new Map(simulation.errors.map(error=>[error.key, error]));
+  const reservationByMove = new Map(
+    simulation.reservations
+      .filter(reservation=>reservation.moveId && reservation.moveId !== "physical")
+      .map(reservation=>[reservation.moveId, reservation])
+  );
+  return sourceRows.map(row=>{
+    const key = getSdeMoveActionKey(row);
+    const error = errorsByKey.get(key);
+    return {
+      ...row,
+      sdePhysicalGlobalStep:stepByKey.get(key) || null,
+      sdePhysicalReservation:reservationByMove.get(key) || null,
+      sdePhysicalSequenceConflictReason:error?.message || ""
+    };
+  });
+}
+
 function getSdePhysicalTargetReservationConflict(row, rows=null){
   const targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
   const actionKey = getSdeMoveActionKey(row);
@@ -14551,12 +15007,19 @@ function getSdePhysicalTargetReservationConflict(row, rows=null){
     const candidateTarget = normalizeSlot(candidate.recommendedSlot || candidate.toSlot);
     if(candidateTarget !== targetSlot) return false;
     const candidateChainId = String(candidate.sdePhysicalChainId || "").trim();
-    return !chainId || !candidateChainId || candidateChainId !== chainId;
+    if(chainId && candidateChainId && candidateChainId === chainId) return false;
+    if(canSdeReusePhysicalTargetSequentially(row, candidate, activeRows)) return false;
+    if(canSdeReusePhysicalTargetSequentially(candidate, row, activeRows)) return false;
+    return true;
   }) || null;
 }
 
 function validateSdePhysicalBlockerFreeingMoveBeforeAction(row, data=null){
   if(!isSdePhysicalBlockerFreeingRow(row)) return {ok:true, message:""};
+
+  if(row?.sdePhysicalSequenceConflictReason){
+    return {ok:false, message:`Kan ikke kvittere Utført: ${row.sdePhysicalSequenceConflictReason}`};
+  }
 
   const dependencyBlockReason = getSdeMoveDependencyBlockReason(row);
   if(dependencyBlockReason){
@@ -14591,6 +15054,7 @@ function validateSdePhysicalBlockerFreeingMoveBeforeAction(row, data=null){
 }
 
 function getSdeShiftMoveActionBlockReason(row){
+  if(row?.sdePhysicalSequenceConflictReason) return row.sdePhysicalSequenceConflictReason;
   const dependencyBlockReason = getSdeMoveDependencyBlockReason(row);
   if(dependencyBlockReason) return dependencyBlockReason;
 
@@ -14650,7 +15114,6 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
   const guarded = [];
   const insertedFreeingKeys = new Set();
   const reservedSlots = getSdePhysicalGuardReservedTargetSlots(sourceRows);
-  const activeRejectedReleaseTargets = Array.from(getSdeActivePhysicalReleaseRejectedTargets(sourceRows));
   const stableReleaseTargetsByRowKey = new Map();
 
   sourceRows.forEach(row=>{
@@ -14659,8 +15122,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
     const blockState = getSdeHardPhysicalBlockStateForMove(row);
     if(!blockState.hardBlocked) return;
     const stableTarget = getSdeStablePhysicalReleaseTargetForRow(row, blockState, sourceRows, [
-      ...reservedSlots,
-      ...activeRejectedReleaseTargets
+      ...reservedSlots
     ]);
     if(stableTarget) stableReleaseTargetsByRowKey.set(rowKey, stableTarget);
   });
@@ -14671,7 +15133,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
 
     const blockState = getSdeHardPhysicalBlockStateForMove(row);
     if(blockState.hardBlocked){
-      const shouldYieldToStableReleaseTargets = hasSdePhysicalReleaseRejectionsForRow(row, blockState);
+      const shouldYieldToStableReleaseTargets = hasSdePhysicalReleaseReplanHistoryForRow(row, blockState);
       const otherStableReleaseTargets = shouldYieldToStableReleaseTargets
         ? Array.from(stableReleaseTargetsByRowKey.entries())
           .filter(([stableRowKey]) => stableRowKey !== rowKey)
@@ -14679,7 +15141,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
           .filter(Boolean)
         : [];
       const freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, sourceRows, {
-        avoidSlots:[...reservedSlots, ...activeRejectedReleaseTargets, ...otherStableReleaseTargets]
+        avoidSlots:[...reservedSlots, ...otherStableReleaseTargets]
       });
       const freeingKey = getSdeMoveActionKey(freeingMove);
       const chainId = getSdePhysicalDependencyChainId(row, blockState, freeingMove);
@@ -14717,9 +15179,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
       const blockedKey = getSdeMoveActionKey(row);
       const dependencyLabel = freeingMove && freeingKey
         ? `${rejectedTargetsText ? `Tidligere frigjøringsmål ${rejectedTargetsText} er avvist. ` : ""}Venter på frigjøringssteg: ${sanitizeVehicleValue(freeingMove.vehicle)} ${normalizeSlot(freeingMove.fromSlot || freeingMove.arrivalSlot)} → ${normalizeSlot(freeingMove.recommendedSlot || freeingMove.toSlot)}.`
-        : rejectedTargetsText
-          ? "Ingen trygg alternativ frigjøringsslot ble funnet. Flyttingen må vurderes på nytt."
-          : "Venter på trygg frigjøringskjede før dette kortet kan kvitteres Utført.";
+        : "Ingen trygg frigjøringsslot er tilgjengelig i gjeldende sporplan.";
       rejectedRows.forEach(rejectedRow => {
         const rejectedKey = getSdeMoveActionKey(rejectedRow);
         if(rejectedKey && insertedFreeingKeys.has(rejectedKey)) return;
@@ -14752,9 +15212,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
         sdePhysicalDependencyLabel:dependencyLabel,
         sdePhysicalDependencyRole:"dependent",
         sdePhysicalNoSafeReleaseMove:!freeingMove,
-        sdePhysicalNoSafeReleaseReason:freeingMove ? "" : (rejectedTargetsText
-          ? "Ingen trygg alternativ frigjøringsslot ble funnet. Flyttingen må vurderes på nytt."
-          : "NO SAFE RELEASE MOVE: SDE fant ikke trygt midlertidig målspor for blokkerende kjøretøy med eksisterende kandidat-/sikkerhetsregler.")
+        sdePhysicalNoSafeReleaseReason:freeingMove ? "" : "Ingen trygg frigjøringsslot er tilgjengelig i gjeldende sporplan."
       });
       return;
     }
@@ -14764,7 +15222,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
     if(targetSlot) reservedSlots.add(targetSlot);
   });
 
-  return guarded;
+  return applySdePhysicalSequenceReservations(guarded);
 }
 
 function buildSdePhysicalBlockerGuardHtml(row, blockState=null){
@@ -14793,19 +15251,23 @@ function buildSdePhysicalBlockerFreeingHtml(row){
   const origin = normalizeSlot(assessment.originSlot);
   const target = normalizeSlot(assessment.freeingTarget);
   const blockedVehicle = sanitizeVehicleValue(assessment.blockedVehicle);
-  const rejectedTargets = Array.from(getSdePhysicalReleaseRejectedTargets(getSdePhysicalReleaseReplanKey(row)));
+  const replanKey = getSdePhysicalReleaseReplanKey(row);
+  const replanRecord = normalizeSdePhysicalReleaseReplanRecord(replanKey, getSdePhysicalReleaseReplanRecord(replanKey));
+  const rejectedTargets = Array.from(getSdePhysicalReleaseRejectedTargets(replanKey));
   const isRejected = Boolean(row.sdePhysicalRejectedReleaseMove);
   const title = isRejected
     ? "Frigjøringskort annullert"
-    : rejectedTargets.length
+    : replanRecord.rejectedProposals.length
       ? "Nytt frigjøringsforslag"
       : "Frigjøringskort først";
+  const roundNumber = Math.max(1, Number(row.sdePhysicalReleaseRoundNumber) || replanRecord.roundNumber);
 
   return `<div class="sde-night-card-override">
     <strong>${escapeHtml(title)}</strong>
     <span>Formål: frigjør ${escapeHtml(blockedVehicle || "blokkert kjøretøy")} før det blokkerte kortet kan kvitteres.</span>
     <span>Frigjørende flytting: ${escapeHtml(origin || row.fromSlot || "ukjent")} → ${escapeHtml(target || row.toSlot || "ukjent")}.</span>
     ${row?.sdePhysicalChainStepCount ? `<span>Automatisk frigjøringskjede: steg ${escapeHtml(String(row.sdePhysicalChainStep || 1))} av ${escapeHtml(String(row.sdePhysicalChainStepCount))}.</span>` : ""}
+    ${!isRejected && roundNumber > 1 ? `<span>Forslagsrunde ${escapeHtml(String(roundNumber))}.</span>` : ""}
     ${isRejected ? `<span class="warning">${escapeHtml(row.sdePhysicalRejectedReleaseReason || "Dette frigjøringsmålet er avvist.")}</span>` : ""}
     ${isRejected ? `<span class="sde-release-cancelled-message">${escapeHtml(row.recommendationReason || "Annullert frigjøringsforslag. SDE søker neste trygge frigjøringsslot.")}</span>` : ""}
     ${!isRejected && rejectedTargets.length ? `<span class="warning">Tidligere frigjøringsmål ${escapeHtml(rejectedTargets.join(", "))} er forkastet. Dette er neste trygge kandidat.</span>` : ""}
@@ -20986,13 +21448,11 @@ async function handleSdeShiftMoveAction(encodedKey, action){
   if(row){
     row = getSdeEffectiveMoveForCard(row, data.moves);
   }else{
-    const limitedBlockedRows = sdeNightPlacementBlockedMoveRequest
-      ? applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves([
-          sdeNightPlacementBlockedMoveRequest,
-          ...(Array.isArray(data?.moves) ? data.moves : [])
-        ]))
-      : [];
-    row = [...limitedBlockedRows, ...buildSdeShiftCardMoves(data)]
+    const guardedActionRows = applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves([
+      ...(sdeNightPlacementBlockedMoveRequest ? [sdeNightPlacementBlockedMoveRequest] : []),
+      ...(Array.isArray(data?.moves) ? data.moves : [])
+    ]));
+    row = [...guardedActionRows, ...buildSdeShiftCardMoves(data)]
       .find(candidate => getSdeMoveActionLookupKeys(candidate).includes(key));
   }
 
@@ -21062,6 +21522,9 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         time:actionTime,
         snapshot:getSdeMoveActionSnapshot(row)
       };
+      if(isSdePhysicalBlockerFreeingRow(row)){
+        completeSdePhysicalReleaseReplan(row, key, actionTime);
+      }
       recordSdeMoveLearningEvent(key, "completed", row, actionTime, learningReason);
       persist(true);
       refreshSdeAfterMoveAction();
