@@ -14293,6 +14293,20 @@ function hasSdePhysicalReleaseRejectionsForRow(row, blockState){
   return blockers.some(blocker => getSdePhysicalReleaseRejectedTargetsForBlocker(row, blockState, blocker).size > 0);
 }
 
+function getSdeActivePhysicalReleaseRejectedTargets(rows=[]){
+  const rejectedTargets = new Set();
+  (Array.isArray(rows) ? rows : []).forEach(row=>{
+    const blockState = getSdeHardPhysicalBlockStateForMove(row);
+    if(!blockState.hardBlocked) return;
+    (Array.isArray(blockState.blockers) ? blockState.blockers : []).forEach(blocker=>{
+      getSdePhysicalReleaseRejectedTargetsForBlocker(row, blockState, blocker)
+        .forEach(slot=>rejectedTargets.add(normalizeSlot(slot)));
+    });
+  });
+  rejectedTargets.delete("");
+  return rejectedTargets;
+}
+
 function getSdeStablePhysicalReleaseTargetForRow(row, blockState, rows=[], baseReservedSlots=[]){
   if(!row || !blockState?.hardBlocked) return "";
   if(hasSdePhysicalReleaseRejectionsForRow(row, blockState)) return "";
@@ -14385,16 +14399,6 @@ function getSdePhysicalReleaseRejectedTargets(key){
   const record = getSdePhysicalReleaseReplanRecord(key);
   return new Set(
     (Array.isArray(record?.rejectedTargetSlots) ? record.rejectedTargetSlots : [])
-      .map(normalizeSlot)
-      .filter(Boolean)
-  );
-}
-
-function getSdeAllPhysicalReleaseRejectedTargets(){
-  const replans = ensureSdePhysicalReleaseReplans();
-  return new Set(
-    Object.values(replans)
-      .flatMap(record => Array.isArray(record?.rejectedTargetSlots) ? record.rejectedTargetSlots : [])
       .map(normalizeSlot)
       .filter(Boolean)
   );
@@ -14646,7 +14650,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
   const guarded = [];
   const insertedFreeingKeys = new Set();
   const reservedSlots = getSdePhysicalGuardReservedTargetSlots(sourceRows);
-  const globallyRejectedReleaseTargets = Array.from(getSdeAllPhysicalReleaseRejectedTargets());
+  const activeRejectedReleaseTargets = Array.from(getSdeActivePhysicalReleaseRejectedTargets(sourceRows));
   const stableReleaseTargetsByRowKey = new Map();
 
   sourceRows.forEach(row=>{
@@ -14656,7 +14660,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
     if(!blockState.hardBlocked) return;
     const stableTarget = getSdeStablePhysicalReleaseTargetForRow(row, blockState, sourceRows, [
       ...reservedSlots,
-      ...globallyRejectedReleaseTargets
+      ...activeRejectedReleaseTargets
     ]);
     if(stableTarget) stableReleaseTargetsByRowKey.set(rowKey, stableTarget);
   });
@@ -14675,7 +14679,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
           .filter(Boolean)
         : [];
       const freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, sourceRows, {
-        avoidSlots:[...reservedSlots, ...globallyRejectedReleaseTargets, ...otherStableReleaseTargets]
+        avoidSlots:[...reservedSlots, ...activeRejectedReleaseTargets, ...otherStableReleaseTargets]
       });
       const freeingKey = getSdeMoveActionKey(freeingMove);
       const chainId = getSdePhysicalDependencyChainId(row, blockState, freeingMove);
