@@ -14850,26 +14850,45 @@ function getSdePhysicalReleaseCancelledUiState(row, now=Date.now()){
   }
 
   const parsedCancelledAt = Date.parse(String(
-    actionRecord?.dismissScheduledAt
+    actionRecord?.cancelledAt
+    || actionRecord?.dismissScheduledAt
     || actionRecord?.time
     || ""
   ));
   const cancelledAtMs = Number.isFinite(parsedCancelledAt) ? parsedCancelledAt : Number(now);
+  const storedExitDurationMs = Number(actionRecord?.exitDurationMs);
+  const exitMs = Number.isFinite(storedExitDurationMs) && storedExitDurationMs > 0
+    ? storedExitDurationMs
+    : prefersReducedSdeReleaseMotion()
+      ? SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS
+      : SDE_RELEASE_CANCELLED_EXIT_MS;
+  const parsedExitStartedAt = Date.parse(String(
+    actionRecord?.exitStartedAt
+    || actionRecord?.dismissAt
+    || ""
+  ));
+  const exitStartedAtMs = Number.isFinite(parsedExitStartedAt)
+    ? parsedExitStartedAt
+    : cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS;
+  const parsedRemoveAt = Date.parse(String(actionRecord?.removeAt || ""));
+  const removeAtMs = Number.isFinite(parsedRemoveAt)
+    ? parsedRemoveAt
+    : exitStartedAtMs + exitMs;
   const elapsedMs = Math.max(0, Number(now) - cancelledAtMs);
-  const exitMs = prefersReducedSdeReleaseMotion()
-    ? SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS
-    : SDE_RELEASE_CANCELLED_EXIT_MS;
-  const totalMs = SDE_RELEASE_CANCELLED_HOLD_MS + exitMs;
+  const hidden = actionRecord?.removedFromActiveLayout === true || Number(now) >= removeAtMs;
 
   return {
     managed:true,
-    hidden:elapsedMs >= totalMs,
-    phase:elapsedMs < SDE_RELEASE_CANCELLED_HOLD_MS ? "hold" : "exit",
+    hidden,
+    phase:Number(now) < exitStartedAtMs ? "hold" : "exit",
     cancelledAt:new Date(cancelledAtMs).toISOString(),
+    exitStartedAt:new Date(exitStartedAtMs).toISOString(),
+    removeAt:new Date(removeAtMs).toISOString(),
     elapsedMs,
-    holdMs:SDE_RELEASE_CANCELLED_HOLD_MS,
+    holdMs:Math.max(0, exitStartedAtMs - cancelledAtMs),
     exitMs,
-    totalMs,
+    totalMs:Math.max(0, removeAtMs - cancelledAtMs),
+    removedFromActiveLayout:hidden,
     dismissalState,
     replacedByCardId
   };
@@ -14882,7 +14901,7 @@ function buildSdePhysicalReleaseCancelledCardUi(row, uiState=null){
   const phaseClass = state.phase === "exit" ? " sde-release-cancelled-exit" : "";
   return {
     className:` sde-release-cancelled${phaseClass}`,
-    attributes:` data-sde-release-cancelled-card="1" data-sde-release-cancelled-at="${escapeHtml(state.cancelledAt)}" data-sde-release-dismiss-scheduled="1"`
+    attributes:` data-sde-release-cancelled-card="1" data-sde-release-cancelled-at="${escapeHtml(state.cancelledAt)}" data-sde-release-exit-started-at="${escapeHtml(state.exitStartedAt)}" data-sde-release-remove-at="${escapeHtml(state.removeAt)}" data-sde-release-dismiss-scheduled="1"`
   };
 }
 
@@ -14942,23 +14961,20 @@ function scheduleSdePhysicalReleaseCardDismissals(root){
   root.querySelectorAll('[data-sde-release-cancelled-card="1"][data-sde-release-dismiss-scheduled="1"]')
     .forEach(card => {
       const cancelledAtMs = Date.parse(String(card.dataset.sdeReleaseCancelledAt || ""));
-      if(!Number.isFinite(cancelledAtMs)) return;
+      const exitStartedAtMs = Date.parse(String(card.dataset.sdeReleaseExitStartedAt || ""));
+      const removeAtMs = Date.parse(String(card.dataset.sdeReleaseRemoveAt || ""));
+      if(!Number.isFinite(cancelledAtMs) || !Number.isFinite(exitStartedAtMs) || !Number.isFinite(removeAtMs)) return;
 
-      const exitMs = reducedMotion
-        ? SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS
-        : SDE_RELEASE_CANCELLED_EXIT_MS;
-      const totalMs = SDE_RELEASE_CANCELLED_HOLD_MS + exitMs;
-      const elapsedMs = Math.max(0, Date.now() - cancelledAtMs);
+      const now = Date.now();
 
-      if(elapsedMs >= totalMs){
+      if(now >= removeAtMs){
         removeSdePhysicalReleaseCardWithReflow(card, true);
         return;
       }
 
       const startExit = ()=>{
         if(!card.isConnected) return;
-        const currentElapsedMs = Math.max(0, Date.now() - cancelledAtMs);
-        const remainingExitMs = Math.max(1, totalMs - currentElapsedMs);
+        const remainingExitMs = Math.max(1, removeAtMs - Date.now());
         card.style.setProperty("--sde-release-exit-duration", `${remainingExitMs}ms`);
         card.classList.add("sde-release-cancelled-exit");
         registerSdePhysicalReleaseDismissTimer(setTimeout(
@@ -14967,14 +14983,14 @@ function scheduleSdePhysicalReleaseCardDismissals(root){
         ));
       };
 
-      if(elapsedMs >= SDE_RELEASE_CANCELLED_HOLD_MS){
+      if(now >= exitStartedAtMs){
         startExit();
         return;
       }
 
       registerSdePhysicalReleaseDismissTimer(setTimeout(
         startExit,
-        SDE_RELEASE_CANCELLED_HOLD_MS - elapsedMs
+        exitStartedAtMs - now
       ));
     });
 }
@@ -20966,7 +20982,13 @@ async function handleSdeShiftMoveAction(encodedKey, action){
   if(row){
     row = getSdeEffectiveMoveForCard(row, data.moves);
   }else{
-    row = buildSdeShiftCardMoves(data)
+    const limitedBlockedRows = sdeNightPlacementBlockedMoveRequest
+      ? applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves([
+          sdeNightPlacementBlockedMoveRequest,
+          ...(Array.isArray(data?.moves) ? data.moves : [])
+        ]))
+      : [];
+    row = [...limitedBlockedRows, ...buildSdeShiftCardMoves(data)]
       .find(candidate => getSdeMoveActionLookupKeys(candidate).includes(key));
   }
 
@@ -21054,6 +21076,12 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         ensureSdeResetSnapshot();
 
         const actionTime = new Date().toISOString();
+        const cancelledAtMs = Date.parse(actionTime);
+        const exitDurationMs = prefersReducedSdeReleaseMotion()
+          ? SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS
+          : SDE_RELEASE_CANCELLED_EXIT_MS;
+        const exitStartedAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS).toISOString();
+        const removeAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS + exitDurationMs).toISOString();
         const replanRecord = recordSdePhysicalReleaseRejectedTarget(row, key);
         const cancellationRecord = {
           action:"cancelled",
@@ -21063,7 +21091,13 @@ async function handleSdeShiftMoveAction(encodedKey, action){
           time:actionTime,
           replanKey:replanRecord?.key || getSdePhysicalReleaseReplanKey(row),
           rejectedTargetSlot:targetSlot,
+          cancelledAt:actionTime,
           dismissScheduledAt:actionTime,
+          dismissAt:exitStartedAt,
+          exitStartedAt,
+          removeAt,
+          exitDurationMs,
+          removedFromActiveLayout:false,
           dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
           replacedByCardId:"",
           replacementCreatedAt:"",
@@ -25566,6 +25600,18 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     return false;
   }
 
+  if(assessment.hardPhysicalBlocked){
+    sdeNightPlacementBlockedMoveRequest = assessment.blockedMoveRequest || null;
+    sdeNightPlacementDropMessage = {
+      type:"warning",
+      slot:targetSlot,
+      text:assessment.message,
+      timeStatus:assessment.timeStatus || "CONFLICT_PHYSICAL_BLOCKED"
+    };
+    renderSdeSkiftebevegelser();
+    return Boolean(sdeNightPlacementBlockedMoveRequest);
+  }
+
   if(!assessment.ok){
     sdeNightPlacementBlockedMoveRequest = assessment.hardPhysicalBlocked
       ? assessment.blockedMoveRequest || null
@@ -26693,7 +26739,10 @@ function buildSdeLimitedPlanningData(reason, text){
 }
 
 function buildSdeLimitedPlanningCardsHtml(data){
-  const sourceRows = Array.isArray(data?.moves) ? data.moves.filter(row => !isSdeMoveCardActioned(row)) : [];
+  const sourceRows = [
+    ...(sdeNightPlacementBlockedMoveRequest ? [sdeNightPlacementBlockedMoveRequest] : []),
+    ...(Array.isArray(data?.moves) ? data.moves : [])
+  ].filter(row => !isSdeMoveCardActioned(row));
   const rows = applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves(sourceRows));
   const visibleRows = rows.filter(row => !getSdePhysicalReleaseCancelledUiState(row).hidden);
   if(!visibleRows.length){
