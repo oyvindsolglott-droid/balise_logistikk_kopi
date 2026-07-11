@@ -24290,7 +24290,9 @@ function getSdeLimitedPlanningText(){
 
 
 let sdeShiftDetailsExpanded = false;
-let sdeNightPlacementVisible = false;
+const SDE_SHIFT_VIEW_MODE_CARDS = "cards";
+const SDE_SHIFT_VIEW_MODE_GRAPHIC_PLAN = "graphic_plan";
+let sdeShiftViewMode = SDE_SHIFT_VIEW_MODE_CARDS;
 let sdeUnresolvedDetailsVisible = false;
 let sdeLearningDiagnosticsVisible = false;
 let sdeNightPlacementDropMessage = null;
@@ -24557,12 +24559,20 @@ function toggleSdeShiftDetails(){
 
 function toggleSdeNightPlacement(force){
   if(typeof force === "boolean"){
-    sdeNightPlacementVisible = force;
+    sdeShiftViewMode = force
+      ? SDE_SHIFT_VIEW_MODE_GRAPHIC_PLAN
+      : SDE_SHIFT_VIEW_MODE_CARDS;
   }else{
-    sdeNightPlacementVisible = !sdeNightPlacementVisible;
+    sdeShiftViewMode = sdeShiftViewMode === SDE_SHIFT_VIEW_MODE_GRAPHIC_PLAN
+      ? SDE_SHIFT_VIEW_MODE_CARDS
+      : SDE_SHIFT_VIEW_MODE_GRAPHIC_PLAN;
   }
 
   renderSdeSkiftebevegelser();
+}
+
+function isSdeGraphicPlanViewMode(){
+  return sdeShiftViewMode === SDE_SHIFT_VIEW_MODE_GRAPHIC_PLAN;
 }
 
 function toggleSdeUnresolvedDetails(count){
@@ -27458,7 +27468,9 @@ function renderSdeLimitedPlanningMode(root, options={}){
   const overview = buildSdeNightPlacementOverviewData(data);
   const noRegisteredVehicles = Number(overview?.counts?.occupied || 0) <= 0;
   const generatedCardCount = Array.isArray(data.moves) ? data.moves.length : 0;
-  const nightPlacementOverviewHtml = sdeNightPlacementVisible
+  const graphicPlanVisible = isSdeGraphicPlanViewMode();
+  const viewToggleText = graphicPlanVisible ? "Til Skifte-kort" : "SDE Grafisk planverktøy";
+  const nightPlacementOverviewHtml = graphicPlanVisible
     ? renderSdeNightPlacementOverview(data)
     : "";
   const cardsHtml = noRegisteredVehicles
@@ -27491,12 +27503,12 @@ function renderSdeLimitedPlanningMode(root, options={}){
 
     <div class="sde-shift-section-title">
       <span class="sde-shift-section-title-main">Manuell skifteplanlegging</span>
-      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="false" aria-label="Vis eller skjul SDE Grafisk planverktøy" data-menu-tooltip="Visuelt planverktøy for ønsket sluttbilde og skifteplan. Dra kjøretøy for å lage et lokalt simulert forslag; faktisk sporplan endres ikke.">SDE Grafisk planverktøy</button>
+      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="${graphicPlanVisible ? "true" : "false"}" aria-label="${viewToggleText}" title="${viewToggleText}" data-menu-tooltip="Visuelt planverktøy for ønsket sluttbilde og skifteplan. Dra kjøretøy for å lage et lokalt simulert forslag; faktisk sporplan endres ikke.">${viewToggleText}</button>
       <span class="sde-shift-section-title-count">${escapeHtml(String(generatedCardCount))} manuelle forslag</span>
       ${noRegisteredVehicles ? `<span class="sde-shift-section-title-count">ingen registrerte kjøretøy</span>` : ""}
     </div>
     ${nightPlacementOverviewHtml}
-    <div class="sde-shift-board"><div class="sde-shift-grid">${cardsHtml}</div></div>
+    ${graphicPlanVisible ? "" : `<div class="sde-shift-board"><div class="sde-shift-grid">${cardsHtml}</div></div>`}
   `;
 
   scheduleSdePhysicalReleaseCardDismissals(root);
@@ -27504,8 +27516,7 @@ function renderSdeLimitedPlanningMode(root, options={}){
   const nightPlacementToggle = document.getElementById("sdeNightPlacementToggle");
   if(nightPlacementToggle){
     nightPlacementToggle.addEventListener("click", ()=>toggleSdeNightPlacement());
-    nightPlacementToggle.classList.toggle("active", sdeNightPlacementVisible);
-    nightPlacementToggle.setAttribute("aria-pressed", sdeNightPlacementVisible ? "true" : "false");
+    nightPlacementToggle.classList.toggle("active", graphicPlanVisible);
   }
 
   const nightPlacementClose = document.querySelector("[data-sde-night-placement-close]");
@@ -27513,7 +27524,7 @@ function renderSdeLimitedPlanningMode(root, options={}){
     nightPlacementClose.addEventListener("click", ()=>toggleSdeNightPlacement(false));
   }
 
-  if(sdeNightPlacementVisible){
+  if(graphicPlanVisible){
     setupSdeNightPlacementDragAndDrop();
   }
 
@@ -28000,7 +28011,9 @@ function renderSdeSkiftebevegelserInner(){
           };
         }
       });
-  const nightPlacementOverviewHtml = sdeNightPlacementVisible
+  const graphicPlanVisible = isSdeGraphicPlanViewMode();
+  const viewToggleText = graphicPlanVisible ? "Til Skifte-kort" : "SDE Grafisk planverktøy";
+  const nightPlacementOverviewHtml = graphicPlanVisible
     ? renderSdeNightPlacementOverview(data)
     : "";
   sdeShiftLastRenderedData = data;
@@ -28033,14 +28046,14 @@ function renderSdeSkiftebevegelserInner(){
     <div class="sde-shift-section-title">
       <span class="sde-shift-section-title-main">Foreslåtte skiftebevegelser</span>
       <button class="sde-shift-reset-btn" type="button" onclick="handleSdeResetForDay()" title="${escapeHtml(sdeResetTitle)}"${sdeResetDisabled}>⟲ Nullstill SDE</button>
-      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="false" aria-label="Vis eller skjul SDE Grafisk planverktøy" data-menu-tooltip="Visuelt planverktøy for ønsket sluttbilde og skifteplan. Dra kjøretøy for å foreslå overstyring; det opprettes et kort i SDE Skiftebevegelser som må godtas før flyttingen registreres.">SDE Grafisk planverktøy</button>
+      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="${graphicPlanVisible ? "true" : "false"}" aria-label="${viewToggleText}" title="${viewToggleText}" data-menu-tooltip="Visuelt planverktøy for ønsket sluttbilde og skifteplan. Dra kjøretøy for å foreslå overstyring; det opprettes et kort i SDE Skiftebevegelser som må godtas før flyttingen registreres.">${viewToggleText}</button>
       <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
       <span class="sde-shift-section-title-count">${data.baseMoveCount ?? data.moves.length} forslag</span>
       ${nightPlacementOverriddenCardCount ? `<span class="sde-shift-section-title-count">${nightPlacementOverriddenCardCount} simulert manuell</span>` : ""}
       ${nightPlacementGeneratedCardCount ? `<span class="sde-shift-section-title-count">${nightPlacementGeneratedCardCount} opprettet fra grafisk planverktøy</span>` : ""}
     </div>
     ${nightPlacementOverviewHtml}
-    <div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>
+    ${graphicPlanVisible ? "" : `<div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>`}
     ${pastDepartureDiagnosticsHtml}
     ${filteredReservationImpactDiagnosticsHtml}
     ${tursattSplitJoinDiagnosticsHtml}
@@ -28079,8 +28092,7 @@ function renderSdeSkiftebevegelserInner(){
   const nightPlacementToggle = document.getElementById("sdeNightPlacementToggle");
   if(nightPlacementToggle){
     nightPlacementToggle.addEventListener("click", ()=>toggleSdeNightPlacement());
-    nightPlacementToggle.classList.toggle("active", sdeNightPlacementVisible);
-    nightPlacementToggle.setAttribute("aria-pressed", sdeNightPlacementVisible ? "true" : "false");
+    nightPlacementToggle.classList.toggle("active", graphicPlanVisible);
   }
 
   const nightPlacementClose = document.querySelector("[data-sde-night-placement-close]");
@@ -28088,7 +28100,7 @@ function renderSdeSkiftebevegelserInner(){
     nightPlacementClose.addEventListener("click", ()=>toggleSdeNightPlacement(false));
   }
 
-  if(sdeNightPlacementVisible){
+  if(graphicPlanVisible){
     setupSdeNightPlacementDragAndDrop();
   }
 
