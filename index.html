@@ -14835,8 +14835,7 @@ function getSdePhysicalReleaseCancelledUiState(row, now=Date.now()){
   ).trim();
   const managed = Boolean(
     row?.sdePhysicalRejectedReleaseMove
-    && dismissalState === SDE_RELEASE_DISMISSAL_REPLACED
-    && replacedByCardId
+    && actionRecord?.action === "cancelled"
   );
   if(!managed){
     return {
@@ -14850,7 +14849,11 @@ function getSdePhysicalReleaseCancelledUiState(row, now=Date.now()){
     };
   }
 
-  const parsedCancelledAt = Date.parse(String(actionRecord?.time || ""));
+  const parsedCancelledAt = Date.parse(String(
+    actionRecord?.dismissScheduledAt
+    || actionRecord?.time
+    || ""
+  ));
   const cancelledAtMs = Number.isFinite(parsedCancelledAt) ? parsedCancelledAt : Number(now);
   const elapsedMs = Math.max(0, Number(now) - cancelledAtMs);
   const exitMs = prefersReducedSdeReleaseMotion()
@@ -14879,7 +14882,7 @@ function buildSdePhysicalReleaseCancelledCardUi(row, uiState=null){
   const phaseClass = state.phase === "exit" ? " sde-release-cancelled-exit" : "";
   return {
     className:` sde-release-cancelled${phaseClass}`,
-    attributes:` data-sde-release-cancelled-card="1" data-sde-release-cancelled-at="${escapeHtml(state.cancelledAt)}" data-sde-release-has-replacement="1"`
+    attributes:` data-sde-release-cancelled-card="1" data-sde-release-cancelled-at="${escapeHtml(state.cancelledAt)}" data-sde-release-dismiss-scheduled="1"`
   };
 }
 
@@ -14936,7 +14939,7 @@ function scheduleSdePhysicalReleaseCardDismissals(root){
   if(!root) return;
 
   const reducedMotion = prefersReducedSdeReleaseMotion();
-  root.querySelectorAll('[data-sde-release-cancelled-card="1"][data-sde-release-has-replacement="1"]')
+  root.querySelectorAll('[data-sde-release-cancelled-card="1"][data-sde-release-dismiss-scheduled="1"]')
     .forEach(card => {
       const cancelledAtMs = Date.parse(String(card.dataset.sdeReleaseCancelledAt || ""));
       if(!Number.isFinite(cancelledAtMs)) return;
@@ -21060,6 +21063,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
           time:actionTime,
           replanKey:replanRecord?.key || getSdePhysicalReleaseReplanKey(row),
           rejectedTargetSlot:targetSlot,
+          dismissScheduledAt:actionTime,
           dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
           replacedByCardId:"",
           replacementCreatedAt:"",
