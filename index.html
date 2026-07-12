@@ -16202,7 +16202,6 @@ function reconcileSdeFinalVnRecoveryRows(rows=[], sourceRows=[]){
   if(!vnVehicle) return guardedRows;
 
   const recoveryRows = guardedRows.filter(row =>
-    row?.sdeVnRecoveryRequired === true &&
     normalizeSlot(row.fromSlot || row.arrivalSlot) === "VN" &&
     haveSameSdeVehicleTokens(row.vehicle, vnVehicle)
   );
