@@ -4403,6 +4403,25 @@ button{padding:12px 12px}
   color:#450a0a;
   text-shadow:0 1px 0 rgba(255,255,255,.18);
 }
+.sde-shift-action-btn.delete-card{
+  background:linear-gradient(180deg,#fb7185 0%,#dc2626 58%,#7f1d1d 100%);
+  color:#fff7ed;
+  padding-inline:9px;
+  font-size:11px;
+  letter-spacing:0;
+  white-space:nowrap;
+}
+.sde-shift-action-btn.delete-card svg{
+  width:15px;
+  height:15px;
+  flex:0 0 auto;
+}
+.sde-shift-action-btn.delete-card:not(:disabled){
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+}
 .sde-shift-action-btn:hover{
   transform:translateY(-1px);
   filter:brightness(1.04) saturate(1.06);
@@ -4413,6 +4432,21 @@ button{padding:12px 12px}
     inset 0 5px 12px rgba(15,23,42,.28),
     0 1px 0 rgba(15,23,42,.18),
     0 5px 12px rgba(15,23,42,.16);
+}
+.sde-shift-action-btn:focus-visible{
+  outline:3px solid #f8fafc;
+  outline-offset:3px;
+}
+.sde-shift-action-btn:disabled{
+  cursor:not-allowed;
+  opacity:.48;
+  filter:grayscale(.28) saturate(.55);
+  transform:none;
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,.24),
+    inset 0 -3px 0 rgba(15,23,42,.12),
+    0 3px 0 rgba(15,23,42,.16),
+    0 7px 14px rgba(15,23,42,.14);
 }
 
 .sde-shift-unresolved{
@@ -4539,6 +4573,14 @@ button{padding:12px 12px}
   justify-content:flex-end;
   gap:10px;
   margin-top:14px;
+}
+.sde-learning-modal-actions.has-delete{
+  display:grid;
+  grid-template-columns:minmax(0, 2fr) minmax(0, 1fr) minmax(0, 2fr);
+}
+.sde-learning-modal-actions.has-delete .sde-shift-action-btn{
+  min-width:0;
+  width:100%;
 }
 
 .sde-shift-empty{
@@ -7089,6 +7131,7 @@ function makeDefaultState(){
       apiCombinedZoom:{scale:1,compact:false}
     },
     sdeMoveActions:{},
+    sdeDeletedMoveCards:{},
     sdeVnRecoveryObligations:{},
     sdeMoveLearningLog:[],
     sdeManualMoveOverrides:{},
@@ -7146,6 +7189,7 @@ if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkift
 else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",tilRep:"",operationType:"",utfort:"",...(row||{})}));
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.isArray(state.sdeMoveActions)) state.sdeMoveActions={};
+if(!state.sdeDeletedMoveCards || typeof state.sdeDeletedMoveCards !== "object" || Array.isArray(state.sdeDeletedMoveCards)) state.sdeDeletedMoveCards={};
 if(!state.sdeVnRecoveryObligations || typeof state.sdeVnRecoveryObligations !== "object" || Array.isArray(state.sdeVnRecoveryObligations)) state.sdeVnRecoveryObligations={};
 if(!Array.isArray(state.sdeMoveLearningLog)) state.sdeMoveLearningLog=[];
 if(!state.sdeManualMoveOverrides || typeof state.sdeManualMoveOverrides !== "object" || Array.isArray(state.sdeManualMoveOverrides)) state.sdeManualMoveOverrides = {};
@@ -15695,11 +15739,11 @@ function getSdeActiveShiftRowsForValidation(data=null){
     ? data
     : (sdeShiftLastRenderedData && Array.isArray(sdeShiftLastRenderedData.moves) ? sdeShiftLastRenderedData : null);
   if(sourceData){
-    return buildSdeShiftCardMoves(sourceData);
+    return buildSdeShiftCardMoves(sourceData).filter(row => !isSdeMoveCardLocallyDeleted(row));
   }
 
   try{
-    return buildSdeShiftCardMoves(getSdeShiftShowcaseData());
+    return buildSdeShiftCardMoves(getSdeShiftShowcaseData()).filter(row => !isSdeMoveCardLocallyDeleted(row));
   }catch(_error){
     return [];
   }
@@ -15735,7 +15779,7 @@ function canSdeReusePhysicalTargetSequentially(laterRow, earlierRow, rows=[]){
   if(!targetSlot || !earlierKey || !earlierVehicle) return false;
 
   const moveOutRow = (Array.isArray(rows) ? rows : []).find(candidate=>{
-    if(!candidate || isSdeMoveActioned(candidate)) return false;
+    if(!candidate || isSdeMoveActioned(candidate) || isSdeMoveCardLocallyDeleted(candidate)) return false;
     if(normalizeVehicleToken(candidate.vehicle) !== earlierVehicle) return false;
     if(normalizeSlot(candidate.fromSlot || candidate.arrivalSlot) !== targetSlot) return false;
     return hasSdePhysicalDependencyPath(candidate, earlierKey, rows);
@@ -15749,7 +15793,7 @@ function canSdeReusePhysicalTargetSequentially(laterRow, earlierRow, rows=[]){
 
 function getSdePhysicalSequenceRows(rows=[]){
   return (Array.isArray(rows) ? rows : []).filter(row=>{
-    if(!row || row.sdePhysicalRejectedReleaseMove || isSdeMoveActioned(row)) return false;
+    if(!row || row.sdePhysicalRejectedReleaseMove || isSdeMoveActioned(row) || isSdeMoveCardLocallyDeleted(row)) return false;
     return Boolean(
       String(row.sdePhysicalChainId || "").trim()
       || isSdePhysicalBlockerFreeingRow(row)
@@ -21710,6 +21754,18 @@ function getSdeMoveActionRecord(key){
   return actions[normalizedKey] || null;
 }
 
+function getSdeDeletedMoveCards(){
+  if(!state.sdeDeletedMoveCards || typeof state.sdeDeletedMoveCards !== "object" || Array.isArray(state.sdeDeletedMoveCards)){
+    state.sdeDeletedMoveCards = {};
+  }
+  return state.sdeDeletedMoveCards;
+}
+
+function isSdeMoveCardLocallyDeleted(row){
+  const deleted = getSdeDeletedMoveCards();
+  return getSdeMoveActionLookupKeys(row).some(key => Boolean(deleted[key]));
+}
+
 function isSdeMoveActioned(row){
   return Boolean(getSdeMoveActionRecord(getSdeMoveActionKey(row)));
 }
@@ -21724,7 +21780,107 @@ function getSdeMoveActionLookupKeys(row){
 }
 
 function isSdeMoveCardActioned(row){
-  return getSdeMoveActionLookupKeys(row).some(key => Boolean(getSdeMoveActionRecord(key)));
+  return isSdeMoveCardLocallyDeleted(row) ||
+    getSdeMoveActionLookupKeys(row).some(key => Boolean(getSdeMoveActionRecord(key)));
+}
+
+function getSdeMoveCardDeleteBlockReason(row, activeRows=[]){
+  if(!row) return "Kortet finnes ikke lenger i aktiv lokal plan.";
+  if(getSdeMoveActionLookupKeys(row).some(key => Boolean(getSdeMoveActionRecord(key)))){
+    return "Kort som allerede er kvittert Utført eller Annullert kan ikke slettes.";
+  }
+
+  const vehicle = sanitizeVehicleValue(row.vehicle);
+  const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot);
+  const vnVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VN"));
+  const isRequiredVnRecovery = Boolean(
+    row.isSdePhysicalBlockerReturnMove ||
+    row.sdeVnRecoveryRequired ||
+    row.vnRecoveryRequired ||
+    row.sdePhysicalDependencyRole === "return"
+  );
+  if(
+    fromSlot === "VN" &&
+    vnVehicle &&
+    haveSameSdeVehicleTokens(vehicle, vnVehicle) &&
+    isRequiredVnRecovery
+  ){
+    return "Kortet kan ikke slettes mens kjøretøyet står i VN og retur fortsatt kreves.";
+  }
+
+  const actionKey = getSdeMoveActionKey(row);
+  const chainId = String(row.sdePhysicalChainId || "").trim();
+  const dependencies = Array.isArray(row.sdePhysicalDependsOn)
+    ? row.sdePhysicalDependsOn.map(key => String(key || "").trim()).filter(Boolean)
+    : [];
+  const rows = Array.isArray(activeRows) ? activeRows : [];
+  const isActiveDependency = Boolean(actionKey && rows.some(candidate =>
+    candidate !== row &&
+    !isSdeMoveCardActioned(candidate) &&
+    Array.isArray(candidate?.sdePhysicalDependsOn) &&
+    candidate.sdePhysicalDependsOn.map(key => String(key || "").trim()).includes(actionKey)
+  ));
+  const hasActiveChainPeer = Boolean(chainId && rows.some(candidate =>
+    candidate !== row &&
+    !isSdeMoveCardActioned(candidate) &&
+    String(candidate?.sdePhysicalChainId || "").trim() === chainId
+  ));
+  const isMultiStepGraphicPlan = Number(row.sdeNightPlacementStepCount || 0) > 1;
+
+  if(
+    chainId ||
+    dependencies.length ||
+    isSdePhysicalBlockerFreeingRow(row) ||
+    isActiveDependency ||
+    hasActiveChainPeer ||
+    isMultiStepGraphicPlan
+  ){
+    return "Kortet inngår i en aktiv avhengighetskjede og kan ikke slettes uten å gjøre planen ugyldig.";
+  }
+
+  return "";
+}
+
+function deleteSdeLocalMoveCard(row, activeRows=[]){
+  const blockReason = getSdeMoveCardDeleteBlockReason(row, activeRows);
+  if(blockReason){
+    alert(blockReason);
+    return false;
+  }
+
+  const keys = getSdeMoveActionLookupKeys(row);
+  if(!keys.length){
+    alert("Kortet mangler stabil lokal identitet og kan ikke slettes sikkert.");
+    return false;
+  }
+
+  const deleted = getSdeDeletedMoveCards();
+  const deletedAt = new Date().toISOString();
+  keys.forEach(key => {
+    deleted[key] = {
+      deletedAt,
+      vehicle:sanitizeVehicleValue(row.vehicle),
+      fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
+      toSlot:normalizeSlot(row.recommendedSlot || row.toSlot)
+    };
+  });
+
+  clearSdeManualMoveOverrideForRow(row);
+  removeSdeNightPlacementOverridesForVehicleStep(
+    row.vehicle,
+    row.fromSlot || row.arrivalSlot || row.originalFromSlot
+  );
+
+  if(
+    sdeNightPlacementBlockedMoveRequest &&
+    getSdeMoveActionLookupKeys(sdeNightPlacementBlockedMoveRequest).some(key => keys.includes(key))
+  ){
+    sdeNightPlacementBlockedMoveRequest = null;
+  }
+
+  persist(true);
+  refreshSdeAfterMoveAction();
+  return true;
 }
 
 function addSdeCompletedMoveToPlanSkifte(row){
@@ -21805,6 +21961,7 @@ function getSdeResettableSummary(){
     : 0;
   const manualOverrides = Object.keys(getSdeManualMoveOverrides()).length;
   const nightPlacementManualOverrides = Object.keys(getSdeNightPlacementManualOverrides()).length;
+  const deletedMoveCards = Object.keys(getSdeDeletedMoveCards()).length;
 
   return {
     actions:actions.length,
@@ -21814,7 +21971,8 @@ function getSdeResettableSummary(){
     learningEvents,
     manualOverrides,
     nightPlacementManualOverrides,
-    total:actions.length + sdePlanRows + learningEvents + manualOverrides + nightPlacementManualOverrides
+    deletedMoveCards,
+    total:actions.length + sdePlanRows + learningEvents + manualOverrides + nightPlacementManualOverrides + deletedMoveCards
   };
 }
 
@@ -21863,6 +22021,7 @@ function handleSdeResetForDay(){
     `Annullerte: ${summary.cancelled}\n` +
     `Overstyringer: ${summary.manualOverrides}\n` +
     `Grafiske planplasseringer: ${summary.nightPlacementManualOverrides}\n` +
+    `Slettede lokale kort: ${summary.deletedMoveCards}\n` +
     `SDE-skifterader: ${summary.sdePlanRows}\n` +
     `Læringshendelser: ${summary.learningEvents}\n\n` +
     (resetNeedsSnapshot
@@ -21880,6 +22039,7 @@ function handleSdeResetForDay(){
   }
 
   state.sdeMoveActions = {};
+  state.sdeDeletedMoveCards = {};
   state.sdeVnRecoveryObligations = {};
   state.sdeMoveLearningLog = [];
   state.sdeManualMoveOverrides = {};
@@ -21901,6 +22061,7 @@ function handleSdeResetForDay(){
     `Fjernet annullerte kvitteringer: ${summary.cancelled}\n` +
     `Fjernet overstyringer: ${summary.manualOverrides}\n` +
     `Fjernet grafiske planplasseringer: ${summary.nightPlacementManualOverrides}\n` +
+    `Fjernet lokale slettemarkører: ${summary.deletedMoveCards}\n` +
     `Fjernet læringshendelser: ${summary.learningEvents}\n` +
     (resetNeedsSnapshot ? `SDE-skifterader er tilbakestilt til før-bildet.` : `SDE-læring er ryddet.`)
   );
@@ -22139,12 +22300,31 @@ function closeSdeMoveLearningReasonModal(resolve, value){
   if(typeof resolve === "function") resolve(value);
 }
 
-function openSdeMoveLearningReasonModal(actionType){
+function openSdeMoveLearningReasonModal(actionType, context={}){
   const existingModal = window.sdeMoveLearningReasonModal;
   if(existingModal?.promise) return existingModal.promise;
 
   const reasons = getSdeMoveLearningReasonOptions(actionType);
   const title = actionType === "completed" ? "Hvorfor ble SDE-forslaget utført?" : "Hvorfor ble SDE-forslaget annullert?";
+  const showDeleteAction = actionType === "cancelled" && context?.row;
+  const activeRows = Array.isArray(context?.activeRows) ? context.activeRows : [];
+  const deleteBlockReason = showDeleteAction
+    ? getSdeMoveCardDeleteBlockReason(context.row, activeRows)
+    : "";
+  const deleteDisabled = deleteBlockReason ? " disabled" : "";
+  const deleteTitle = deleteBlockReason || "Slett kort";
+  const deleteButtonHtml = showDeleteAction
+    ? `<button class="sde-shift-action-btn delete-card" type="button" data-sde-learning-delete aria-label="Slett kort" title="${escapeHtml(deleteTitle)}"${deleteDisabled}>
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-1 12H8L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z"/></svg>
+        <span>Slett kort</span>
+      </button>`
+    : "";
+  const modalActionsHtml = showDeleteAction
+    ? `<button class="sde-shift-action-btn done" type="button" data-sde-learning-save>Lagre</button>
+       ${deleteButtonHtml}
+       <button class="sde-shift-action-btn cancel" type="button" data-sde-learning-cancel>Avbryt</button>`
+    : `<button class="sde-shift-action-btn cancel" type="button" data-sde-learning-cancel>Avbryt</button>
+       <button class="sde-shift-action-btn done" type="button" data-sde-learning-save>Lagre</button>`;
 
   const backdrop = document.createElement("div");
   backdrop.className = "sde-learning-modal-backdrop";
@@ -22160,9 +22340,8 @@ function openSdeMoveLearningReasonModal(actionType){
         `).join("")}
       </div>
       <textarea class="sde-learning-modal-comment" placeholder="Kommentar / annet"></textarea>
-      <div class="sde-learning-modal-actions">
-        <button class="sde-shift-action-btn cancel" type="button" data-sde-learning-cancel>Avbryt</button>
-        <button class="sde-shift-action-btn done" type="button" data-sde-learning-save>Lagre</button>
+      <div class="sde-learning-modal-actions${showDeleteAction ? " has-delete" : ""}">
+        ${modalActionsHtml}
       </div>
     </div>
   `;
@@ -22180,6 +22359,7 @@ function openSdeMoveLearningReasonModal(actionType){
     closeSdeMoveLearningReasonModal(resolveModal, value);
   };
   const cancel = () => finish(null);
+  const deleteCard = () => finish({sdeMoveCardAction:"delete"});
   const save = () => {
     const selectedCodes = Array.from(backdrop.querySelectorAll('input[type="checkbox"]:checked'))
       .map(input => String(input.value || "").trim())
@@ -22205,6 +22385,7 @@ function openSdeMoveLearningReasonModal(actionType){
   };
 
   backdrop.querySelector("[data-sde-learning-cancel]")?.addEventListener("click", cancel);
+  backdrop.querySelector("[data-sde-learning-delete]:not(:disabled)")?.addEventListener("click", deleteCard);
   backdrop.querySelector("[data-sde-learning-save]")?.addEventListener("click", save);
   backdrop.addEventListener("keydown", event=>{
     if(event.key === "Escape") cancel();
@@ -22215,8 +22396,8 @@ function openSdeMoveLearningReasonModal(actionType){
   return promise;
 }
 
-function getSdeMoveLearningReason(actionType){
-  return openSdeMoveLearningReasonModal(actionType);
+function getSdeMoveLearningReason(actionType, context={}){
+  return openSdeMoveLearningReasonModal(actionType, context);
 }
 
 function getSdeLearningEventReasonItems(event){
@@ -22685,8 +22866,13 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         return;
       }
 
-      const learningReason = await getSdeMoveLearningReason("cancelled");
+      const activeRows = buildSdeShiftCardMoves(data);
+      const learningReason = await getSdeMoveLearningReason("cancelled", {row, activeRows});
       if(learningReason === null) return;
+      if(learningReason?.sdeMoveCardAction === "delete"){
+        deleteSdeLocalMoveCard(row, activeRows);
+        return;
+      }
 
       ensureSdeResetSnapshot();
 
@@ -27402,7 +27588,7 @@ function clearSdeNightPlacementDragOverrides(options={}){
 
 function buildSdeNightPlacementEffectiveMoves(data){
   const baseRows = (Array.isArray(data?.moves) ? data.moves : [])
-    .filter(row => row && !isSdeMoveActioned(row));
+    .filter(row => row && !isSdeMoveActioned(row) && !isSdeMoveCardLocallyDeleted(row));
   const dragOverrideMoves = buildSdeNightPlacementDragOverrideMoves(baseRows);
   const manualPlanMoves = buildSdeNightPlacementManualPlanMoves(baseRows);
   const blockedRequestMoves = sdeNightPlacementBlockedMoveRequest
@@ -27567,7 +27753,7 @@ function mergeSdeAuthoritativeVnRecoveryOverlayRows(rows=[], data=null){
 
 function getSdeActiveNightPlacementOverlayMoves(rows=[]){
   const activeRows = (Array.isArray(rows) ? rows : []).filter(row=>{
-    if(!row || isSdeMoveActioned(row)) return false;
+    if(!row || isSdeMoveActioned(row) || isSdeMoveCardLocallyDeleted(row)) return false;
     if(row.sdePhysicalRejectedReleaseMove) return false;
     if(row.sdePhysicalDeferredOverlayUntilDependenciesCompleted && getSdeUncompletedMoveDependencyKeys(row).length){
       return false;
@@ -28720,7 +28906,7 @@ function renderSdeSkiftebevegelserInner(){
   const canUseSdeReset = Boolean(sdeResetSummary.total && (!sdeResetNeedsSnapshot || hasSdeResetSnapshot));
   const sdeResetDisabled = canUseSdeReset ? "" : " disabled";
   const sdeResetTitle = canUseSdeReset
-    ? `Nullstill SDE: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.manualOverrides} overstyringer, ${sdeResetSummary.nightPlacementManualOverrides} grafiske planplasseringer, ${sdeResetSummary.sdePlanRows} SDE-skifterader, ${sdeResetSummary.learningEvents} læringshendelser`
+    ? `Nullstill SDE: ${sdeResetSummary.completed} utført, ${sdeResetSummary.cancelled} annullert, ${sdeResetSummary.deletedMoveCards} slettede lokale kort, ${sdeResetSummary.manualOverrides} overstyringer, ${sdeResetSummary.nightPlacementManualOverrides} grafiske planplasseringer, ${sdeResetSummary.sdePlanRows} SDE-skifterader, ${sdeResetSummary.learningEvents} læringshendelser`
     : sdeResetNeedsSnapshot
       ? "Gammel SDE-skifterad finnes, men mangler før-bilde. Start ny SDE-test før reset brukes."
       : "Ingen SDE-kvitteringer, grafiske planplasseringer eller læringshendelser å nullstille";
