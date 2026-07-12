@@ -3838,6 +3838,17 @@ button{padding:12px 12px}
   overflow:hidden;
   text-overflow:ellipsis;
 }
+.sde-night-placement-proposal span:last-child{
+  font-size:10px;
+}
+.sde-night-placement-slot.planned-proposal .sde-night-placement-source{
+  font-size:8px;
+  line-height:1.05;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  overflow:visible;
+  text-overflow:clip;
+}
 .sde-night-placement-train{
   min-width:0;
   color:#fde68a;
@@ -27522,6 +27533,38 @@ function buildSdeNightPlacementEffectiveMoves(data){
   return {moves:applySdeNightPlacementStepRoles(guardedMoves), stale};
 }
 
+function buildSdeFinalCardRowsForData(data){
+  if(data?.limitedPlanningMode){
+    const sourceRows = [
+      ...(sdeNightPlacementBlockedMoveRequest ? [sdeNightPlacementBlockedMoveRequest] : []),
+      ...(Array.isArray(data?.moves) ? data.moves : [])
+    ].filter(row => !isSdeMoveCardActioned(row));
+    return applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves(sourceRows));
+  }
+  return buildSdeShiftCardMoves(data);
+}
+
+function mergeSdeAuthoritativeVnRecoveryOverlayRows(rows=[], data=null){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const vnVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VN"));
+  if(!vnVehicle) return sourceRows;
+
+  const isCurrentVnRecoveryRow = row =>
+    normalizeSlot(row?.fromSlot || row?.arrivalSlot) === "VN" &&
+    haveSameSdeVehicleTokens(row?.vehicle, vnVehicle);
+  const finalRecoveryRows = buildSdeFinalCardRowsForData(data)
+    .filter(row => !isSdeMoveCardActioned(row))
+    .filter(isCurrentVnRecoveryRow);
+  const authoritativeTargetRow = finalRecoveryRows.find(row =>
+    normalizeSlot(row?.recommendedSlot || row?.toSlot)
+  ) || null;
+
+  return [
+    ...sourceRows.filter(row => !isCurrentVnRecoveryRow(row)),
+    ...(authoritativeTargetRow ? [authoritativeTargetRow] : [])
+  ];
+}
+
 function getSdeActiveNightPlacementOverlayMoves(rows=[]){
   const activeRows = (Array.isArray(rows) ? rows : []).filter(row=>{
     if(!row || isSdeMoveActioned(row)) return false;
@@ -27795,7 +27838,8 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
   });
 
   const effectiveMoves = buildSdeNightPlacementEffectiveMoves(data);
-  const activeMoves = getSdeActiveNightPlacementOverlayMoves(effectiveMoves.moves);
+  const overlayRows = mergeSdeAuthoritativeVnRecoveryOverlayRows(effectiveMoves.moves, data);
+  const activeMoves = getSdeActiveNightPlacementOverlayMoves(overlayRows);
 
   effectiveMoves.stale.forEach(row=>{
     const vehicle = sanitizeVehicleValue(row?.vehicle);
@@ -28162,7 +28206,7 @@ function renderSdeNightPlacementOverview(data){
            </div>`
         : hasProposal
         ? `<div class="sde-night-placement-proposal">
-             <span>Forslag, ikke faktisk plassering</span>
+             <span>Forslag</span>
              <strong>${escapeHtml(entry.proposedVehicle)}</strong>
              <span>${escapeHtml(proposalFromSlot ? `${proposalFromSlot} → ${slot}` : proposalSource)}</span>
            </div>
@@ -28452,11 +28496,7 @@ function buildSdeLimitedPlanningData(reason, text){
 }
 
 function buildSdeLimitedPlanningCardsHtml(data){
-  const sourceRows = [
-    ...(sdeNightPlacementBlockedMoveRequest ? [sdeNightPlacementBlockedMoveRequest] : []),
-    ...(Array.isArray(data?.moves) ? data.moves : [])
-  ].filter(row => !isSdeMoveCardActioned(row));
-  const rows = applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves(sourceRows));
+  const rows = buildSdeFinalCardRowsForData(data);
   const visibleRows = rows.filter(row => !getSdePhysicalReleaseCancelledUiState(row).hidden);
   if(!visibleRows.length){
     return `<div class="sde-shift-empty">Ingen manuelle planforslag er opprettet. Åpne SDE Grafisk planverktøy og dra et kjøretøy fra gjeldende sporplan til en ledig slot for å lage et simulert forslag.</div>`;
@@ -28667,7 +28707,7 @@ function renderSdeSkiftebevegelserInner(){
   const tursattSplitJoinDiagnosticsHtml = buildTursattSplitJoinSdeDiagnosticHtml();
   const unresolvedKpiExpanded = Boolean(sdeUnresolvedDetailsVisible && unresolvedCount > 0);
   const learningDiagnosticsHtml = "";
-  const cardMoves = buildSdeShiftCardMoves(data);
+  const cardMoves = buildSdeFinalCardRowsForData(data);
   const topMoves = cardMoves
     .filter(row => !isSdeMoveCardActioned(row) && !getSdePhysicalReleaseCancelledUiState(row).hidden)
     .slice(0, 20);
