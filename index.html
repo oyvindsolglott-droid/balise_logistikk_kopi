@@ -14572,7 +14572,7 @@ function buildSdePhysicalBlockerFreeingMove(blockedRow, blockState, rows=[], con
 
 function getSdePhysicalGuardReservedTargetSlots(rows=[]){
   const reserved = new Set();
-  (Array.isArray(rows) ? rows : []).forEach(row=>{
+  getSdeAuthoritativeActiveOutcomeRows(Array.isArray(rows) ? rows : []).forEach(row=>{
     if(!row || isSdeMoveActioned(row)) return;
     const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
     const fromSlot = normalizeSlot(row.fromSlot || row.arrivalSlot);
@@ -15457,7 +15457,7 @@ function getSdePhysicalPlanningStateSignature(rows=[]){
     .map(([slot,vehicle])=>[normalizeSlot(slot), normalizeVehicleToken(vehicle)])
     .filter(([slot,vehicle])=>slot && vehicle)
     .sort((a,b)=>a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
-  const activePlans = (Array.isArray(rows) ? rows : [])
+  const activePlans = getSdeAuthoritativeActiveOutcomeRows(Array.isArray(rows) ? rows : [])
     .filter(row=>row && !isSdeMoveActioned(row))
     .map(row=>[
       normalizeVehicleToken(row.vehicle),
@@ -15679,7 +15679,7 @@ function findSdePhysicalReleaseReplacementRow(cancelledRow, data){
       : null);
   if(!sourceData) return null;
 
-  return buildSdeShiftCardMoves(sourceData)
+  return buildSdeShiftCardMoveCandidates(sourceData, {reconcileActive:false})
     .find(candidate => {
       if(!isSdePhysicalBlockerFreeingRow(candidate)) return false;
       if(candidate?.sdePhysicalRejectedReleaseMove) return false;
@@ -15792,7 +15792,7 @@ function canSdeReusePhysicalTargetSequentially(laterRow, earlierRow, rows=[]){
 }
 
 function getSdePhysicalSequenceRows(rows=[]){
-  return (Array.isArray(rows) ? rows : []).filter(row=>{
+  return getSdeAuthoritativeActiveOutcomeRows(Array.isArray(rows) ? rows : []).filter(row=>{
     if(!row || row.sdePhysicalRejectedReleaseMove || isSdeMoveActioned(row) || isSdeMoveCardLocallyDeleted(row)) return false;
     return Boolean(
       String(row.sdePhysicalChainId || "").trim()
@@ -15961,7 +15961,9 @@ function getSdePhysicalTargetReservationConflict(row, rows=null){
   const chainId = String(row?.sdePhysicalChainId || "").trim();
   if(!targetSlot || !actionKey) return null;
 
-  const activeRows = Array.isArray(rows) ? rows : getSdeActiveShiftRowsForValidation();
+  const activeRows = getSdeAuthoritativeActiveOutcomeRows(
+    Array.isArray(rows) ? rows : getSdeActiveShiftRowsForValidation()
+  );
   return activeRows.find(candidate => {
     if(!candidate) return false;
     const candidateKey = getSdeMoveActionKey(candidate);
@@ -16041,6 +16043,17 @@ function buildSdeShiftMoveActionControlsHtml(row, encodedActionKey, options={}){
     decodedActionKey = actionKey;
   }
   const existingAction = getSdeMoveActionRecord(decodedActionKey);
+  const visualDismissal = isSdeVisualDismissalRow(row) || getSdePhysicalReleaseCancelledUiState(row).managed;
+  const authoritativeActive = isSdeAuthoritativeActiveOutcome(row);
+  if(visualDismissal || row?.sdeOutcomeActive === false || !authoritativeActive){
+    const inactiveLabel = visualDismissal || existingAction?.action === "cancelled"
+      ? "Annullert – avsluttes"
+      : "Erstattet forslag";
+    const inactiveButton = `<button class="sde-shift-action-btn cancel" type="button" disabled>${escapeHtml(inactiveLabel)}</button>`;
+    return options.wrap === false
+      ? inactiveButton
+      : `<div class="sde-shift-actions" aria-label="Inaktivt SDE-skifteforslag">${inactiveButton}</div>`;
+  }
   const blockReason = row?.isSdeCancellationFailClosed
     ? "Ingen fysisk trygg løsning er tilgjengelig. Bruk Annullert for en ny eksplisitt vurderingsrunde når state er kontrollert."
     : getSdeShiftMoveActionBlockReason(row);
@@ -16079,8 +16092,11 @@ function buildSdeShiftMoveActionControlsHtml(row, encodedActionKey, options={}){
   </div>`;
 }
 
-function buildSdePhysicalBlockerGuardMoves(rows=[]){
-  const sourceRows = Array.isArray(rows) ? rows : [];
+function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
+  const rawRows = Array.isArray(rows) ? rows : [];
+  const sourceRows = options?.reconcileActive === false
+    ? rawRows
+    : getSdeAuthoritativeActiveOutcomeRows(rawRows);
   const guarded = [];
   const insertedFreeingKeys = new Set();
   const insertedRecoveryKeys = new Set();
@@ -16412,6 +16428,7 @@ function buildSdeCancelledDismissalRows(){
     const removeAtMs = Date.parse(String(actionRecord.removeAt || ""));
     if(Number.isFinite(removeAtMs) && Date.now() >= removeAtMs){
       actionRecord.removedFromActiveLayout = true;
+      actionRecord.status = "removed";
       try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_error){}
       return [];
     }
@@ -16428,6 +16445,7 @@ function buildSdeCancelledDismissalRows(){
       departureTrainText:String(snapshot.departureTrainText || "").trim(),
       nextDepartureText:String(snapshot.departureTrainText || "").trim(),
       stableActionKey:actionKey,
+      sdeCanonicalOutcomeKey:String(actionRecord.outcomeKey || "").trim(),
       sdeCancellationNeedKey:String(actionRecord.needKey || snapshot.needKey || "").trim(),
       sdeCancellationRoundNumber:Number(actionRecord.roundNumber || snapshot.sdeCancellationRoundNumber || 1),
       recommendationReason:String(snapshot.reason || "Annullert skifteforslag. Samme behov vurderes på nytt.").trim(),
@@ -16555,6 +16573,7 @@ function removeSdePhysicalReleaseCardWithReflow(card, reducedMotion=false){
   const actionRecord = actionKey ? getSdeMoveActionRecord(actionKey) : null;
   if(actionRecord?.action === "cancelled" && actionRecord.removedFromActiveLayout !== true){
     actionRecord.removedFromActiveLayout = true;
+    actionRecord.status = "removed";
     try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_error){}
   }
   const grid = card.closest(".sde-shift-grid");
@@ -20769,6 +20788,10 @@ function getSdeMoveActionSnapshot(row){
     sdePhysicalChainStepCount:Number(row.sdePhysicalChainStepCount || 0),
     sdePhysicalDependencyRole:String(row.sdePhysicalDependencyRole || "").trim(),
     sdePhysicalDependsOn:Array.isArray(row.sdePhysicalDependsOn) ? [...row.sdePhysicalDependsOn] : [],
+    sdeNightPlacementStepIndex:Number.isFinite(Number(row.sdeNightPlacementStepIndex)) ? Number(row.sdeNightPlacementStepIndex) : null,
+    originalFromSlot:normalizeSlot(row.originalFromSlot || row.fromSlot || row.arrivalSlot),
+    sdeVnRecoveryObligationId:String(row.sdeVnRecoveryObligationId || "").trim(),
+    sdeVnEntryToken:String(row.sdeVnEntryToken || "").trim(),
     sdePhysicalResolutionContext:String(row.sdePhysicalResolutionContext || "").trim(),
     sdePhysicalVnReliefChain:vnReliefChain,
     isSdePhysicalBlockerFreeingMove:Boolean(row.isSdePhysicalBlockerFreeingMove),
@@ -20981,6 +21004,326 @@ function getSdeMoveActionKey(row){
     normalizeTognr(row.nextDepartureTrain),
     String(row.nextDeparturePart || "").trim()
   ].join("|");
+}
+
+function getSdeMoveOutcomeSequenceStep(row){
+  const physicalStep = Number(row?.sdePhysicalChainStep);
+  if(Number.isFinite(physicalStep) && physicalStep > 0) return `physical-${physicalStep}`;
+
+  const dependencyRole = String(row?.sdePhysicalDependencyRole || "").trim();
+  if(dependencyRole === "prerequisite") return "physical-1";
+  if(dependencyRole === "dependent") return "physical-2";
+  if(dependencyRole === "return") return "physical-3";
+  return "direct-1";
+}
+
+function getSdeMovePlanningObligationId(row){
+  if(!row) return "";
+  const vehicleToken = normalizeVehicleToken(row.vehicle);
+  const fromSlot = getSdeMoveOutcomePhysicalFromSlot(row);
+  const dependencyRole = String(row.sdePhysicalDependencyRole || "").trim();
+  if(dependencyRole === "prerequisite"){
+    const releaseReplanKey = String(
+      row.sdePhysicalReleaseReplanKey || getSdePhysicalReleaseReplanKey(row) || ""
+    ).trim();
+    if(releaseReplanKey) return `physical-release|${releaseReplanKey}`;
+  }
+  if(dependencyRole === "prerequisite" || dependencyRole === "return"){
+    const stableChainScope = String(row.sdePhysicalChainId || "").trim();
+    if(stableChainScope) return `physical-chain|${stableChainScope}`;
+  }
+  const explicitNeedKey = String(
+    row.sdeCancellationNeedKey
+    || row.sdeNightPlacementGeneratedNeedKey
+    || row.needKey
+    || getSdeMoveNeedKey(row)
+    || ""
+  ).trim();
+  const isGeneratedManualNeed = Boolean(
+    row.isNightPlacementGenerated
+    || row.sdeNightPlacementDragOverrideActive
+    || row.source === "night-placement-drag"
+    || /^night-placement-(?:drag-)?need\|/i.test(explicitNeedKey)
+  );
+  if(isGeneratedManualNeed && vehicleToken && fromSlot){
+    return `manual|${vehicleToken}|${fromSlot}`;
+  }
+  if(explicitNeedKey) return explicitNeedKey;
+  if(vehicleToken && fromSlot) return `physical|${vehicleToken}|${fromSlot}`;
+  return "";
+}
+
+function getSdeMoveOutcomePhysicalFromSlot(row){
+  return normalizeSlot(
+    row?.sdeCancellationPhysicalFromSlot
+    || row?.originalFromSlot
+    || row?.fromSlot
+    || row?.arrivalSlot
+  );
+}
+
+function getSdeCancelledOutcomeAlias(row){
+  if(!row) return "";
+  const vehicleToken = normalizeVehicleToken(row.vehicle);
+  const physicalFromSlot = getSdeMoveOutcomePhysicalFromSlot(row);
+  const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+  const sequenceStep = getSdeMoveOutcomeSequenceStep(row);
+  if(!vehicleToken || !physicalFromSlot) return "";
+
+  const rowCardIds = new Set([
+    getSdeMoveActionKey(row),
+    String(row.stableActionKey || "").trim(),
+    String(row.sdeNightPlacementGeneratedActionKey || "").trim(),
+    String(row.sdeNightPlacementOriginalActionKey || "").trim()
+  ].filter(Boolean));
+  const rowNeedKeys = new Set([
+    String(row.sdeCancellationNeedKey || "").trim(),
+    String(row.sdeNightPlacementGeneratedNeedKey || "").trim(),
+    String(row.needKey || "").trim(),
+    getSdeMoveNeedKey(row)
+  ].filter(Boolean));
+
+  return Object.entries(state.sdeMoveActions || {})
+    .filter(([,record]) => record?.action === "cancelled" && String(record.outcomeKey || "").trim())
+    .sort(([,left],[,right]) => String(right?.replacementCreatedAt || right?.time || "").localeCompare(String(left?.replacementCreatedAt || left?.time || "")))
+    .map(([cancelledCardId,record]) => {
+      const snapshot = record.snapshot || {};
+      const recordVehicle = normalizeVehicleToken(snapshot.vehicle || record.vehicle);
+      const recordFromSlot = normalizeSlot(record.physicalFromSlot || snapshot.originalFromSlot || snapshot.fromSlot || record.fromSlot);
+      const recordSequenceStep = String(record.sequenceStep || getSdeMoveOutcomeSequenceStep(snapshot)).trim();
+      if(recordVehicle !== vehicleToken || recordFromSlot !== physicalFromSlot || recordSequenceStep !== sequenceStep){
+        return "";
+      }
+
+      const recordCardIds = new Set([
+        cancelledCardId,
+        String(record.activeOutcomeId || "").trim(),
+        String(record.replacedByCardId || "").trim()
+      ].filter(Boolean));
+      const exactCardAlias = Array.from(rowCardIds).some(cardId => recordCardIds.has(cardId));
+      const recordNeedKey = String(record.needKey || snapshot.needKey || "").trim();
+      const exactNeedAlias = Boolean(recordNeedKey && rowNeedKeys.has(recordNeedKey));
+      const rejectedTargets = new Set([
+        normalizeSlot(record.toSlot),
+        normalizeSlot(record.rejectedTargetSlot),
+        normalizeSlot(snapshot.toSlot)
+      ].filter(Boolean));
+      const activeTarget = normalizeSlot(record.replacementTargetSlot);
+      const generatedManualAlias = Boolean(
+        row.isNightPlacementGenerated
+        || row.sdeNightPlacementDragOverrideActive
+        || row.source === "night-placement-drag"
+        || /^night-placement-(?:drag-)?need\|/i.test(String(row.sdeNightPlacementGeneratedNeedKey || row.needKey || ""))
+      );
+      const exactGeneratedPhysicalAlternative = Boolean(
+        generatedManualAlias
+        && targetSlot
+        && (rejectedTargets.has(targetSlot) || (activeTarget && targetSlot === activeTarget))
+      );
+      return exactCardAlias || exactNeedAlias || exactGeneratedPhysicalAlternative
+        ? String(record.outcomeKey || "").trim()
+        : "";
+    })
+    .find(Boolean) || "";
+}
+
+function getSdeMoveObligationStepKey(row){
+  if(!row) return "";
+  const canonicalOutcomeKey = String(row.sdeCanonicalOutcomeKey || row.sdeOutcomeKey || "").trim();
+  if(canonicalOutcomeKey) return canonicalOutcomeKey;
+  const vehicleToken = normalizeVehicleToken(row.vehicle);
+  const fromSlot = getSdeMoveOutcomePhysicalFromSlot(row);
+  const sequenceStep = getSdeMoveOutcomeSequenceStep(row);
+  const vnObligationId = String(
+    row.sdeVnRecoveryObligationId
+    || row.sdeVnEntryToken
+    || ""
+  ).trim();
+  if(vnObligationId){
+    return `vn|${vnObligationId}|${vehicleToken}|${sequenceStep}`;
+  }
+
+  const cancelledOutcomeAlias = getSdeCancelledOutcomeAlias(row);
+  if(cancelledOutcomeAlias) return cancelledOutcomeAlias;
+
+  const planningObligationId = getSdeMovePlanningObligationId(row);
+  if(!planningObligationId || !vehicleToken || !fromSlot) return "";
+  return `move|${planningObligationId}|${vehicleToken}|${fromSlot}|${sequenceStep}`;
+}
+
+function getSdeActiveMoveOutcomes(){
+  if(!state.sdeActiveMoveOutcomes || typeof state.sdeActiveMoveOutcomes !== "object" || Array.isArray(state.sdeActiveMoveOutcomes)){
+    state.sdeActiveMoveOutcomes = {};
+  }
+  return state.sdeActiveMoveOutcomes;
+}
+
+function getSdeMoveOutcomeKeyFromActionRecord(actionRecord){
+  if(!actionRecord || typeof actionRecord !== "object") return "";
+  const snapshot = actionRecord.snapshot || {};
+  return String(actionRecord.outcomeKey || "").trim() || getSdeMoveObligationStepKey({
+    ...snapshot,
+    vehicle:snapshot.vehicle || actionRecord.vehicle,
+    fromSlot:snapshot.fromSlot || actionRecord.fromSlot,
+    originalFromSlot:snapshot.originalFromSlot || actionRecord.fromSlot,
+    sdeCancellationPhysicalFromSlot:actionRecord.physicalFromSlot || actionRecord.fromSlot,
+    sdePhysicalChainId:snapshot.sdePhysicalChainId || actionRecord.chainId,
+    sdePhysicalChainStep:snapshot.sdePhysicalChainStep || actionRecord.sequenceStep,
+    sdeVnRecoveryObligationId:snapshot.sdeVnRecoveryObligationId || actionRecord.vnRecoveryObligationId,
+    sdeVnEntryToken:snapshot.sdeVnEntryToken || actionRecord.vnEntryToken
+  });
+}
+
+function getSdeActiveOutcomeAuthority(outcomeKey){
+  const key = String(outcomeKey || "").trim();
+  if(!key) return null;
+  const stored = getSdeActiveMoveOutcomes()[key];
+  if(stored?.outcomeKey && (stored.activeOutcomeId || stored.status === "transitioning")) return stored;
+
+  return Object.values(state.sdeMoveActions || {})
+    .filter(record => record?.action === "cancelled")
+    .filter(record => getSdeMoveOutcomeKeyFromActionRecord(record) === key)
+    .filter(record => Boolean(
+      String(record.activeOutcomeId || record.replacedByCardId || "").trim()
+      || record.authorityPending === true
+    ))
+    .sort((a,b)=>String(b.replacementCreatedAt || b.time || "").localeCompare(String(a.replacementCreatedAt || a.time || "")))
+    .map(record => ({
+      outcomeKey:key,
+      activeOutcomeId:String(record.activeOutcomeId || record.replacedByCardId || "").trim(),
+      activeChainId:String(record.activeChainId || "").trim(),
+      status:String(record.status || (record.activeOutcomeId ? "active" : "transitioning")).trim(),
+      updatedAt:String(record.replacementCreatedAt || record.time || "").trim(),
+      source:"cancelled_action_record"
+    }))[0] || null;
+}
+
+function setSdeActiveOutcomeAuthority(outcomeKey, activeRow, options={}){
+  const key = String(outcomeKey || "").trim();
+  const activeOutcomeId = String(options.activeOutcomeId || getSdeMoveActionKey(activeRow) || "").trim();
+  if(!key || !activeOutcomeId) return null;
+  const authority = {
+    outcomeKey:key,
+    activeOutcomeId,
+    activeChainId:String(activeRow?.sdePhysicalChainId || options.activeChainId || "").trim(),
+    vehicle:sanitizeVehicleValue(activeRow?.vehicle || options.vehicle),
+    physicalFromSlot:getSdeMoveOutcomePhysicalFromSlot(activeRow) || normalizeSlot(options.physicalFromSlot),
+    sequenceStep:getSdeMoveOutcomeSequenceStep(activeRow),
+    updatedAt:String(options.updatedAt || new Date().toISOString()),
+    source:String(options.source || "sde_cancel_replacement")
+  };
+  getSdeActiveMoveOutcomes()[key] = authority;
+  return authority;
+}
+
+function isSdeVisualDismissalRow(row){
+  if(!row) return false;
+  if(row.sdeCancellationDismissalCard) return true;
+  const actionRecord = getSdeMoveActionRecord(getSdeMoveActionKey(row));
+  return Boolean(row.sdePhysicalRejectedReleaseMove && actionRecord?.action === "cancelled");
+}
+
+function getSdeActiveOutcomeCandidatePriority(row, outcomeKey){
+  const cardId = getSdeMoveActionKey(row);
+  const authority = getSdeActiveOutcomeAuthority(outcomeKey);
+  if(authority?.activeOutcomeId === cardId) return 1000000;
+
+  let priority = 0;
+  if(row?.isSdeCancellationFailClosed) priority += 90000;
+  if(row?.isSdeCancellationReplacementMove) priority += 80000;
+  if(row?.sdeVnRecoveryAuthoritative) priority += 70000;
+  if(row?.isSdePhysicalBlockerReturnMove) priority += 60000;
+  if(row?.sdeNightPlacementDragOverrideActive || row?.manualOverrideActive) priority += 50000;
+  if(row?.isNightPlacementGenerated) priority += 40000;
+  priority += Math.max(0, Number(row?.sdeCancellationRoundNumber) || 0) * 100;
+  priority += Math.max(0, Number(row?.recommendationScore) || 0);
+  return priority;
+}
+
+function getSdeAuthoritativeActiveOutcomeRows(rows=[]){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const winners = new Map();
+
+  sourceRows.forEach((row,index)=>{
+    if(!row || isSdeVisualDismissalRow(row)) return;
+    if(isSdeMoveCardActioned(row) || isSdeMoveCardLocallyDeleted(row)) return;
+    const outcomeKey = getSdeMoveObligationStepKey(row) || `card|${getSdeMoveActionKey(row)}|${index}`;
+    const authority = getSdeActiveOutcomeAuthority(outcomeKey);
+    const cardId = getSdeMoveActionKey(row);
+    if(authority){
+      if(!authority.activeOutcomeId || authority.activeOutcomeId !== cardId) return;
+      winners.set(outcomeKey, {row, index, priority:Number.MAX_SAFE_INTEGER, outcomeKey});
+      return;
+    }
+    const priority = getSdeActiveOutcomeCandidatePriority(row, outcomeKey);
+    const current = winners.get(outcomeKey);
+    if(!current || priority > current.priority){
+      winners.set(outcomeKey, {row, index, priority, outcomeKey});
+    }
+  });
+
+  return Array.from(winners.values())
+    .sort((a,b)=>a.index - b.index)
+    .map(item => item.row);
+}
+
+function buildSdeReconciledOutcomeRows(rows=[]){
+  const sourceRows = Array.isArray(rows) ? rows : [];
+  const activeRows = getSdeAuthoritativeActiveOutcomeRows(sourceRows);
+  const activeSet = new Set(activeRows);
+  return sourceRows.flatMap(row=>{
+    if(isSdeVisualDismissalRow(row)){
+      const outcomeKey = getSdeMoveObligationStepKey(row);
+      const actionRecord = getSdeMoveActionRecord(getSdeMoveActionKey(row));
+      const authority = getSdeActiveOutcomeAuthority(outcomeKey);
+      return [{
+        ...row,
+        sdeOutcomeKey:outcomeKey,
+        sdeOutcomeActive:false,
+        sdeOutcomeStatus:actionRecord?.removedFromActiveLayout ? "removed" : "dismissing",
+        sdeActiveOutcomeId:String(authority?.activeOutcomeId || actionRecord?.activeOutcomeId || actionRecord?.replacedByCardId || "").trim(),
+        sdeSupersededBy:String(actionRecord?.supersededBy || actionRecord?.activeOutcomeId || actionRecord?.replacedByCardId || "").trim()
+      }];
+    }
+    if(!activeSet.has(row)) return [];
+    const outcomeKey = getSdeMoveObligationStepKey(row);
+    const authority = getSdeActiveOutcomeAuthority(outcomeKey);
+    return [{
+      ...row,
+      sdeOutcomeKey:outcomeKey,
+      sdeOutcomeActive:true,
+      sdeOutcomeStatus:"active",
+      sdeActiveOutcomeId:String(authority?.activeOutcomeId || getSdeMoveActionKey(row)).trim()
+    }];
+  });
+}
+
+function isSdeAuthoritativeActiveOutcome(row){
+  if(!row || isSdeVisualDismissalRow(row)) return false;
+  if(row.sdeOutcomeActive === false) return false;
+  if(isSdeMoveCardActioned(row) || isSdeMoveCardLocallyDeleted(row)) return false;
+  if(row.sdeOutcomeActive === true) return true;
+  const outcomeKey = getSdeMoveObligationStepKey(row);
+  const authority = getSdeActiveOutcomeAuthority(outcomeKey);
+  if(authority){
+    return Boolean(
+      authority.activeOutcomeId
+      && authority.activeOutcomeId === getSdeMoveActionKey(row)
+    );
+  }
+  return row.sdeOutcomeActive !== false;
+}
+
+function getSdeActiveProposalCount(rows=[]){
+  const proposalKeys = new Set();
+  getSdeAuthoritativeActiveOutcomeRows(Array.isArray(rows) ? rows : []).forEach((row,index)=>{
+    const chainId = String(row?.sdePhysicalChainId || "").trim();
+    const proposalKey = chainId
+      ? `chain|${chainId}`
+      : getSdeMoveObligationStepKey(row) || `card|${getSdeMoveActionKey(row)}|${index}`;
+    proposalKeys.add(proposalKey);
+  });
+  return proposalKeys.size;
 }
 
 function getSdeMoveCardDisplayIndex(actionKey){
@@ -22111,6 +22454,7 @@ function handleSdeResetForDay(){
   }
 
   state.sdeMoveActions = {};
+  state.sdeActiveMoveOutcomes = {};
   state.sdeDeletedMoveCards = {};
   state.sdeVnRecoveryObligations = {};
   state.sdeMoveLearningLog = [];
@@ -22794,7 +23138,11 @@ async function handleSdeShiftMoveAction(encodedKey, action){
       ...(sdeNightPlacementBlockedMoveRequest ? [sdeNightPlacementBlockedMoveRequest] : []),
       ...(Array.isArray(data?.moves) ? data.moves : [])
     ]));
-    row = [...guardedActionRows, ...buildSdeShiftCardMoves(data)]
+    row = [
+      ...guardedActionRows,
+      ...buildSdeShiftCardMoves(data),
+      ...buildSdePersistedPhysicalCancellationFailClosedRows()
+    ]
       .find(candidate => getSdeMoveActionLookupKeys(candidate).includes(key));
   }
 
@@ -22812,6 +23160,21 @@ async function handleSdeShiftMoveAction(encodedKey, action){
 
   if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.isArray(state.sdeMoveActions)){
     state.sdeMoveActions = {};
+  }
+
+  const existingActionRecord = getSdeMoveActionRecord(key) || getSdeMoveActionRecord(getSdeMoveActionKey(row));
+  if(existingActionRecord?.action === "completed" || existingActionRecord?.action === "cancelled"){
+    alert("SDE-kortet er allerede kvittert eller annullert og kan ikke behandles på nytt.");
+    return;
+  }
+  const currentOutcomeKey = getSdeMoveObligationStepKey(row);
+  const currentOutcomeAuthority = getSdeActiveOutcomeAuthority(currentOutcomeKey);
+  if(
+    currentOutcomeAuthority
+    && (!currentOutcomeAuthority.activeOutcomeId || currentOutcomeAuthority.activeOutcomeId !== getSdeMoveActionKey(row))
+  ){
+    alert("SDE-kortet er erstattet og er ikke lenger det aktive utfallet for dette skiftebehovet.");
+    return;
   }
 
   if(actionType === "completed"){
@@ -22890,6 +23253,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         ensureSdeResetSnapshot();
 
         const cardDisplayIndex = getSdeMoveCardDisplayIndex(key);
+        const outcomeKey = getSdeMoveObligationStepKey(row);
         const actionTime = new Date().toISOString();
         const cancelledAtMs = Date.parse(actionTime);
         const exitDurationMs = prefersReducedSdeReleaseMotion()
@@ -22905,6 +23269,8 @@ async function handleSdeShiftMoveAction(encodedKey, action){
           toSlot:targetSlot,
           time:actionTime,
           replanKey:replanRecord?.key || getSdePhysicalReleaseReplanKey(row),
+          needKey:getSdeMoveNeedKey(row),
+          roundNumber:Math.max(1, Number(row.sdePhysicalReleaseRoundNumber || 1)),
           rejectedTargetSlot:targetSlot,
           cancelledAt:actionTime,
           dismissScheduledAt:actionTime,
@@ -22913,6 +23279,14 @@ async function handleSdeShiftMoveAction(encodedKey, action){
           removeAt,
           exitDurationMs,
           cardDisplayIndex,
+          outcomeKey,
+          physicalFromSlot:getSdeMoveOutcomePhysicalFromSlot(row),
+          sequenceStep:getSdeMoveOutcomeSequenceStep(row),
+          active:false,
+          status:"dismissing",
+          authorityPending:true,
+          activeOutcomeId:"",
+          supersededBy:"",
           removedFromActiveLayout:false,
           dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
           replacedByCardId:"",
@@ -22921,12 +23295,36 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         };
         state.sdeMoveActions[key] = cancellationRecord;
         updateSdeVnRecoveryObligationForMove(row, "cancelled", actionTime);
-        const replacementRow = findSdePhysicalReleaseReplacementRow(row, data);
+        const replacementCandidate = findSdePhysicalReleaseReplacementRow(row, data);
+        const replacementRow = replacementCandidate
+          ? {...replacementCandidate, sdeCanonicalOutcomeKey:outcomeKey}
+          : null;
         const replacementKey = getSdeMoveActionKey(replacementRow);
         if(replacementRow && replacementKey){
           cancellationRecord.dismissalState = SDE_RELEASE_DISMISSAL_REPLACED;
           cancellationRecord.replacedByCardId = replacementKey;
           cancellationRecord.replacementCreatedAt = actionTime;
+          cancellationRecord.activeOutcomeId = replacementKey;
+          cancellationRecord.supersededBy = replacementKey;
+          cancellationRecord.authorityPending = false;
+          setSdeActiveOutcomeAuthority(outcomeKey, replacementRow, {
+            activeOutcomeId:replacementKey,
+            updatedAt:actionTime,
+            source:"physical_release_cancel_replacement"
+          });
+        }else{
+          const failClosedRow = buildSdeCancellationFailClosedRow(
+            row,
+            cancellationRecord.needKey,
+            cancellationRecord.roundNumber,
+            outcomeKey
+          );
+          bindSdeCancellationReplacementAuthority(
+            cancellationRecord,
+            outcomeKey,
+            failClosedRow,
+            actionTime
+          );
         }
         recordSdeMoveLearningEvent(
           key,
@@ -22959,6 +23357,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
       const removeAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS + exitDurationMs).toISOString();
       const needKey = getSdeMoveNeedKey(row);
       const cardDisplayIndex = getSdeMoveCardDisplayIndex(key);
+      const outcomeKey = getSdeMoveObligationStepKey(row);
       const cancellationRecord = {
         action:"cancelled",
         vehicle,
@@ -22974,6 +23373,14 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         removeAt,
         exitDurationMs,
         cardDisplayIndex,
+        outcomeKey,
+        physicalFromSlot:getSdeMoveOutcomePhysicalFromSlot(row),
+        sequenceStep:getSdeMoveOutcomeSequenceStep(row),
+        active:false,
+        status:"dismissing",
+        authorityPending:true,
+        activeOutcomeId:"",
+        supersededBy:"",
         removedFromActiveLayout:false,
         dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
         replacedByCardId:"",
@@ -22998,6 +23405,14 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         cancellationRecord.replacementAlternatives = Array.isArray(replacementRow.recommendationAlternatives)
           ? replacementRow.recommendationAlternatives.map(alternative=>({...alternative}))
           : [];
+        cancellationRecord.activeOutcomeId = replacementKey;
+        cancellationRecord.supersededBy = replacementKey;
+        cancellationRecord.authorityPending = false;
+        setSdeActiveOutcomeAuthority(outcomeKey, replacementRow, {
+          activeOutcomeId:replacementKey,
+          updatedAt:actionTime,
+          source:"generic_cancel_replacement"
+        });
       }
       persist(true);
       refreshSdeAfterMoveAction();
@@ -23091,6 +23506,9 @@ function getFreshSdeWrongTrackReplacementAlternative(baseRow, rejectedSlots, res
 
     const adaptiveRow = {
       ...baseRow,
+      stableActionKey:"",
+      sdeNightPlacementGeneratedActionKey:"",
+      sdeNightPlacementOriginalActionKey:"",
       recommendedSlot:slot,
       toSlot:slot
     };
@@ -23131,12 +23549,15 @@ function getFreshSdeWrongTrackReplacementAlternative(baseRow, rejectedSlots, res
   return null;
 }
 
-function buildSdeCancellationFailClosedRow(baseRow, needKey, roundNumber=1){
+function buildSdeCancellationFailClosedRow(baseRow, needKey, roundNumber=1, canonicalOutcomeKey=""){
   const round = Math.max(1, Number(roundNumber || 1));
+  const stableOutcomeKey = String(canonicalOutcomeKey || needKey || "").trim();
   return {
     ...baseRow,
-    stableActionKey:`sde-cancel-failclosed|${getSdeShiftSnapshotHash(needKey)}|r${round}`,
+    stableActionKey:`sde-cancel-failclosed|${getSdeShiftSnapshotHash(stableOutcomeKey)}|r${round}`,
     sdeNightPlacementGeneratedActionKey:"",
+    sdeNightPlacementOriginalActionKey:"",
+    sdeCanonicalOutcomeKey:String(canonicalOutcomeKey || "").trim(),
     sdeCancellationNeedKey:needKey,
     sdeCancellationRoundNumber:round,
     recommendedSlot:"",
@@ -23154,8 +23575,92 @@ function buildSdeCancellationFailClosedRow(baseRow, needKey, roundNumber=1){
   };
 }
 
+function bindSdeCancellationReplacementAuthority(actionRecord, outcomeKey, replacementRow, updatedAt=""){
+  if(!actionRecord || !replacementRow) return false;
+  const canonicalOutcomeKey = String(outcomeKey || "").trim();
+  const replacementKey = getSdeMoveActionKey(replacementRow);
+  if(!canonicalOutcomeKey || !replacementKey) return false;
+
+  const targetSlot = normalizeSlot(replacementRow.recommendedSlot || replacementRow.toSlot);
+  const failClosed = Boolean(replacementRow.isSdeCancellationFailClosed);
+  const changed = Boolean(
+    actionRecord.outcomeKey !== canonicalOutcomeKey
+    || actionRecord.activeOutcomeId !== replacementKey
+    || normalizeSlot(actionRecord.replacementTargetSlot) !== targetSlot
+    || actionRecord.replacementWasFailClosed !== failClosed
+    || actionRecord.authorityPending === true
+  );
+  const timestamp = String(updatedAt || new Date().toISOString());
+  actionRecord.outcomeKey = canonicalOutcomeKey;
+  actionRecord.activeOutcomeId = replacementKey;
+  actionRecord.replacedByCardId = replacementKey;
+  actionRecord.supersededBy = replacementKey;
+  actionRecord.activeChainId = String(replacementRow.sdePhysicalChainId || "").trim();
+  actionRecord.authorityPending = false;
+  actionRecord.replacementCreatedAt = changed ? timestamp : String(actionRecord.replacementCreatedAt || timestamp);
+  actionRecord.replacementTargetSlot = targetSlot;
+  actionRecord.replacementWasFailClosed = failClosed;
+  actionRecord.replacementScore = replacementRow.recommendationScore ?? "";
+  actionRecord.replacementAlternatives = Array.isArray(replacementRow.recommendationAlternatives)
+    ? replacementRow.recommendationAlternatives.map(alternative=>({...alternative}))
+    : [];
+  actionRecord.dismissalState = failClosed
+    ? SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE
+    : SDE_RELEASE_DISMISSAL_REPLACED;
+  setSdeActiveOutcomeAuthority(canonicalOutcomeKey, replacementRow, {
+    activeOutcomeId:replacementKey,
+    updatedAt:timestamp,
+    source:"cancel_replacement_reconciliation"
+  });
+  return changed;
+}
+
+function buildSdePersistedPhysicalCancellationFailClosedRows(){
+  return Object.values(state.sdeMoveActions || {}).flatMap(actionRecord=>{
+    const snapshot = actionRecord?.snapshot || {};
+    const isPhysicalReleaseCancellation = Boolean(
+      snapshot.isSdePhysicalBlockerFreeingMove
+      || snapshot.sdePhysicalDependencyRole === "prerequisite"
+    );
+    if(
+      actionRecord?.action !== "cancelled"
+      || actionRecord.replacementWasFailClosed !== true
+      || !isPhysicalReleaseCancellation
+    ){
+      return [];
+    }
+
+    const outcomeKey = String(actionRecord.outcomeKey || "").trim();
+    const needKey = String(actionRecord.needKey || snapshot.needKey || "").trim();
+    if(!outcomeKey || !needKey) return [];
+    const baseRow = {
+      ...snapshot,
+      vehicle:sanitizeVehicleValue(snapshot.vehicle || actionRecord.vehicle),
+      fromSlot:normalizeSlot(snapshot.fromSlot || actionRecord.fromSlot),
+      arrivalSlot:normalizeSlot(snapshot.fromSlot || actionRecord.fromSlot),
+      arrivalTrainText:String(snapshot.arrivalTrainText || "Frigjøringsbehov").trim(),
+      departureTrainText:String(snapshot.departureTrainText || "Fysisk state må avklares").trim(),
+      isSdePhysicalBlockerFreeingMove:false,
+      sdePhysicalDependencyRole:"",
+      sdePhysicalChainId:"",
+      sdePhysicalChainStep:0,
+      sdePhysicalDependsOn:[]
+    };
+    const failClosedRow = buildSdeCancellationFailClosedRow(
+      baseRow,
+      needKey,
+      Math.max(1, Number(actionRecord.roundNumber || snapshot.sdeCancellationRoundNumber || 1)),
+      outcomeKey
+    );
+    return getSdeMoveActionKey(failClosedRow) === String(actionRecord.activeOutcomeId || "").trim()
+      ? [failClosedRow]
+      : [];
+  });
+}
+
 function buildSdeCancelledReplacementMoves(baseMoves){
   const moves = Array.isArray(baseMoves) ? baseMoves : [];
+  const activeMoves = getSdeAuthoritativeActiveOutcomeRows(moves);
   const learningEvents = Array.isArray(state.sdeMoveLearningLog)
     ? state.sdeMoveLearningLog.filter(Boolean)
     : [];
@@ -23189,7 +23694,7 @@ function buildSdeCancelledReplacementMoves(baseMoves){
     });
 
   const baseMovesByNeedKey = new Map();
-  const reservedTargetSlotsByNeedKey = new Map();
+  const reservedTargetSlotsByOutcomeKey = new Map();
   moves.forEach(row=>{
     const needKey = getSdeWrongTrackReplacementNeedKeyFromMove(row);
     if(needKey && !baseMovesByNeedKey.has(needKey)) baseMovesByNeedKey.set(needKey, row);
@@ -23201,41 +23706,63 @@ function buildSdeCancelledReplacementMoves(baseMoves){
       row?.arrivalTime
     );
     if(legacyNeedKey && !baseMovesByNeedKey.has(legacyNeedKey)) baseMovesByNeedKey.set(legacyNeedKey, row);
+  });
+
+  activeMoves.forEach(row=>{
+    const needKey = getSdeWrongTrackReplacementNeedKeyFromMove(row);
     if(!needKey || isSdeMoveActioned(row)) return;
 
     const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
     if(!targetSlot) return;
 
-    const needKeys = reservedTargetSlotsByNeedKey.get(targetSlot) || new Set();
-    needKeys.add(needKey);
-    reservedTargetSlotsByNeedKey.set(targetSlot, needKeys);
+    const outcomeKey = getSdeMoveObligationStepKey(row) || `need|${needKey}`;
+    const outcomeKeys = reservedTargetSlotsByOutcomeKey.get(targetSlot) || new Set();
+    outcomeKeys.add(outcomeKey);
+    reservedTargetSlotsByOutcomeKey.set(targetSlot, outcomeKeys);
   });
 
   const groups = new Map();
-  cancelledEvents.forEach(event=>{
+  [...cancelledEvents]
+    .sort((left,right)=>String(left?.time || "").localeCompare(String(right?.time || "")))
+    .forEach(event=>{
     const snapshot = event?.snapshot || {};
     const needKey = getSdeWrongTrackReplacementNeedKeyFromEvent(event);
     const rejectedSlot = normalizeSlot(snapshot.toSlot);
     if(!needKey) return;
 
-    const group = groups.get(needKey) || {
+    const actionRecord = getSdeMoveActionRecord(event.key);
+    const canonicalOutcomeKey = String(
+      actionRecord?.outcomeKey
+      || getSdeMoveObligationStepKey({
+        ...snapshot,
+        sdeCancellationNeedKey:needKey,
+        sdeCancellationPhysicalFromSlot:actionRecord?.physicalFromSlot || snapshot.fromSlot
+      })
+      || `need|${needKey}`
+    ).trim();
+    const group = groups.get(canonicalOutcomeKey) || {
       event,
       snapshot,
+      needKey,
+      needKeys:new Set(),
+      canonicalOutcomeKey,
       rejectedSlots:new Set(),
       alternatives:[],
       reasonCodes:new Set(),
       roundNumber:Math.max(1, Number(snapshot.sdeCancellationRoundNumber || 1))
     };
+    group.needKeys.add(needKey);
     group.event = event;
     group.snapshot = snapshot;
-    group.actionRecord = getSdeMoveActionRecord(event.key);
+    group.needKey = needKey;
+    group.actionRecord = actionRecord || group.actionRecord;
     group.reasonCodes.add(String(event.reasonCode || "no_reason"));
 
     if(snapshot.isSdeCancellationFailClosed){
       group.rejectedSlots.clear();
       group.alternatives = [];
       group.roundNumber = Math.max(group.roundNumber + 1, Number(snapshot.sdeCancellationRoundNumber || 1) + 1);
-      groups.set(needKey, group);
+      groups.set(canonicalOutcomeKey, group);
       return;
     }
 
@@ -23250,19 +23777,35 @@ function buildSdeCancelledReplacementMoves(baseMoves){
       });
     }
 
-    groups.set(needKey, group);
+    groups.set(canonicalOutcomeKey, group);
   });
 
   const replacements = [];
-  groups.forEach((group, needKey)=>{
-    if(completedNeedKeys.has(needKey)) return;
-    if(getSdeDeletedMoveCards()[`need|${needKey}`]) return;
+  let authorityChanged = false;
+  groups.forEach((group, canonicalOutcomeKey)=>{
+    const needKey = String(group.needKey || "").trim();
+    const needKeys = Array.from(group.needKeys || []).filter(Boolean);
+    if(needKeys.some(key => completedNeedKeys.has(key))) return;
+    if(needKeys.some(key => getSdeDeletedMoveCards()[`need|${key}`])) return;
 
-    const baseRow = baseMovesByNeedKey.get(needKey);
+    const baseRow = [needKey, ...needKeys]
+      .map(key => baseMovesByNeedKey.get(key))
+      .find(Boolean);
     if(!baseRow) return;
 
     if(group.actionRecord?.replacementWasFailClosed === true && !group.snapshot?.isSdeCancellationFailClosed){
-      replacements.push(buildSdeCancellationFailClosedRow(baseRow, needKey, group.roundNumber));
+      const failClosedRow = buildSdeCancellationFailClosedRow(
+        baseRow,
+        needKey,
+        group.roundNumber,
+        canonicalOutcomeKey
+      );
+      replacements.push(failClosedRow);
+      authorityChanged = bindSdeCancellationReplacementAuthority(
+        group.actionRecord,
+        canonicalOutcomeKey,
+        failClosedRow
+      ) || authorityChanged;
       return;
     }
 
@@ -23270,7 +23813,7 @@ function buildSdeCancelledReplacementMoves(baseMoves){
     const stableReplacementTarget = normalizeSlot(group.actionRecord?.replacementTargetSlot);
     let nextAlternative = stableReplacementTarget && !group.rejectedSlots.has(stableReplacementTarget)
       && !getSdeVehicleInSlot(stableReplacementTarget)
-      && !Array.from(reservedTargetSlotsByNeedKey.get(stableReplacementTarget) || []).some(reservedNeedKey => reservedNeedKey !== needKey)
+      && !Array.from(reservedTargetSlotsByOutcomeKey.get(stableReplacementTarget) || []).some(reservedOutcomeKey => reservedOutcomeKey !== canonicalOutcomeKey)
       ? {
           slot:stableReplacementTarget,
           score:group.actionRecord?.replacementScore ?? baseRow.recommendationScore ?? "",
@@ -23281,10 +23824,10 @@ function buildSdeCancelledReplacementMoves(baseMoves){
       const slot = normalizeSlot(alt?.slot);
       if(!slot || group.rejectedSlots.has(slot)) return false;
       if(getSdeVehicleInSlot(slot)) return false;
-      if(Array.from(reservedTargetSlotsByNeedKey.get(slot) || []).some(reservedNeedKey => reservedNeedKey !== needKey)) return false;
+      if(Array.from(reservedTargetSlotsByOutcomeKey.get(slot) || []).some(reservedOutcomeKey => reservedOutcomeKey !== canonicalOutcomeKey)) return false;
 
-      const duplicateOrdinaryMove = moves.some(row =>
-        getSdeWrongTrackReplacementNeedKeyFromMove(row) === needKey &&
+      const duplicateOrdinaryMove = activeMoves.some(row =>
+        getSdeMoveObligationStepKey(row) === canonicalOutcomeKey &&
         normalizeSlot(row.recommendedSlot || row.toSlot) === slot &&
         !isSdeMoveActioned(row)
       );
@@ -23292,6 +23835,9 @@ function buildSdeCancelledReplacementMoves(baseMoves){
 
       const adaptiveRow = {
         ...baseRow,
+        stableActionKey:"",
+        sdeNightPlacementGeneratedActionKey:"",
+        sdeNightPlacementOriginalActionKey:"",
         recommendedSlot:slot,
         toSlot:slot
       };
@@ -23300,12 +23846,28 @@ function buildSdeCancelledReplacementMoves(baseMoves){
     let remainingAlternativeSource = group.alternatives;
 
     if(!nextAlternative){
-      nextAlternative = getFreshSdeWrongTrackReplacementAlternative(baseRow, group.rejectedSlots, reservedTargetSlotsByNeedKey, needKey);
+      nextAlternative = getFreshSdeWrongTrackReplacementAlternative(
+        baseRow,
+        group.rejectedSlots,
+        reservedTargetSlotsByOutcomeKey,
+        canonicalOutcomeKey
+      );
       remainingAlternativeSource = Array.isArray(nextAlternative?.alternatives) ? nextAlternative.alternatives : [];
     }
 
     if(!nextAlternative){
-      replacements.push(buildSdeCancellationFailClosedRow(baseRow, needKey, group.roundNumber));
+      const failClosedRow = buildSdeCancellationFailClosedRow(
+        baseRow,
+        needKey,
+        group.roundNumber,
+        canonicalOutcomeKey
+      );
+      replacements.push(failClosedRow);
+      authorityChanged = bindSdeCancellationReplacementAuthority(
+        group.actionRecord,
+        canonicalOutcomeKey,
+        failClosedRow
+      ) || authorityChanged;
       return;
     }
 
@@ -23322,8 +23884,10 @@ function buildSdeCancelledReplacementMoves(baseMoves){
 
     const replacement = {
       ...baseRow,
-      stableActionKey:"",
+      stableActionKey:`sde-cancel-replacement|${getSdeShiftSnapshotHash(canonicalOutcomeKey)}|r${group.roundNumber}|${nextSlot}`,
       sdeNightPlacementGeneratedActionKey:"",
+      sdeNightPlacementOriginalActionKey:"",
+      sdeCanonicalOutcomeKey:canonicalOutcomeKey,
       sdeCancellationNeedKey:needKey,
       sdeCancellationRoundNumber:group.roundNumber,
       fromSlot:normalizeSlot(baseRow.fromSlot || baseRow.arrivalSlot) || "Ukjent",
@@ -23343,12 +23907,21 @@ function buildSdeCancelledReplacementMoves(baseMoves){
 
     if(!isSdeMoveActioned(replacement)){
       replacements.push(replacement);
+      authorityChanged = bindSdeCancellationReplacementAuthority(
+        group.actionRecord,
+        canonicalOutcomeKey,
+        replacement
+      ) || authorityChanged;
 
-      const reservedNeedKeys = reservedTargetSlotsByNeedKey.get(nextSlot) || new Set();
-      reservedNeedKeys.add(needKey);
-      reservedTargetSlotsByNeedKey.set(nextSlot, reservedNeedKeys);
+      const reservedOutcomeKeys = reservedTargetSlotsByOutcomeKey.get(nextSlot) || new Set();
+      reservedOutcomeKeys.add(canonicalOutcomeKey);
+      reservedTargetSlotsByOutcomeKey.set(nextSlot, reservedOutcomeKeys);
     }
   });
+
+  if(authorityChanged){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_error){}
+  }
 
   return replacements;
 }
@@ -24439,7 +25012,7 @@ function isSdeSameReservationRow(a, b){
 
 
 function buildSdeMoveReservationMap(moves=[], exceptRows=[]){
-  const rows = Array.isArray(moves) ? moves : [];
+  const rows = getSdeAuthoritativeActiveOutcomeRows(Array.isArray(moves) ? moves : []);
   const exceptions = Array.isArray(exceptRows) ? exceptRows.filter(Boolean) : [];
 
   return rows.reduce((map,row)=>{
@@ -27011,13 +27584,22 @@ function getSdeNightPlacementStepRoleLabel(row){
   return "";
 }
 
-function buildSdeShiftCardMoves(data){
+function buildSdeShiftCardMoveCandidates(data, options={}){
   const baseRows = Array.isArray(data?.moves) ? data.moves : [];
   const effectiveMoves = baseRows
     .map(row => getSdeEffectiveMoveForCard(row, baseRows))
     .filter(row => !isSdeNightPlacementMoveAlreadySatisfied(row));
   const generatedMoves = buildSdeNightPlacementGeneratedMoves(baseRows);
-  return applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves([...effectiveMoves, ...generatedMoves]));
+  return applySdeNightPlacementStepRoles(
+    buildSdePhysicalBlockerGuardMoves(
+      [...effectiveMoves, ...generatedMoves],
+      {reconcileActive:options?.reconcileActive !== false}
+    )
+  );
+}
+
+function buildSdeShiftCardMoves(data){
+  return getSdeAuthoritativeActiveOutcomeRows(buildSdeShiftCardMoveCandidates(data));
 }
 
 function buildSdeNightPlacementCardOverrideHtml(row){
@@ -27822,14 +28404,19 @@ function clearSdeNightPlacementDragOverrides(options={}){
 }
 
 function buildSdeNightPlacementEffectiveMoves(data){
-  const baseRows = (Array.isArray(data?.moves) ? data.moves : [])
+  const baseRows = getSdeAuthoritativeActiveOutcomeRows(Array.isArray(data?.moves) ? data.moves : [])
     .filter(row => row && !isSdeMoveActioned(row) && !isSdeMoveCardLocallyDeleted(row));
   const dragOverrideMoves = buildSdeNightPlacementDragOverrideMoves(baseRows);
   const manualPlanMoves = buildSdeNightPlacementManualPlanMoves(baseRows);
   const blockedRequestMoves = sdeNightPlacementBlockedMoveRequest
     ? [sdeNightPlacementBlockedMoveRequest]
     : [];
-  const sourceRows = [...blockedRequestMoves, ...dragOverrideMoves, ...manualPlanMoves, ...baseRows]
+  const sourceRows = getSdeAuthoritativeActiveOutcomeRows([
+    ...blockedRequestMoves,
+    ...dragOverrideMoves,
+    ...manualPlanMoves,
+    ...baseRows
+  ])
     .sort((a,b) => getSdeNightPlacementMovePriority(b) - getSdeNightPlacementMovePriority(a));
 
   const manualOverrideNeedKeys = getSdeNightPlacementManualOverrideNeedKeys();
@@ -27956,6 +28543,7 @@ function buildSdeNightPlacementEffectiveMoves(data){
 
 function buildSdeFinalCardRowsForData(data){
   const dismissalRows = buildSdeCancelledDismissalRows();
+  const persistedPhysicalFailClosedRows = buildSdePersistedPhysicalCancellationFailClosedRows();
   const dismissalActionKeys = new Set(
     dismissalRows.map(row => getSdeMoveActionKey(row)).filter(Boolean)
   );
@@ -27967,22 +28555,24 @@ function buildSdeFinalCardRowsForData(data){
     ].filter(row => !isSdeMoveCardActioned(row));
     const failClosedRows = allSourceRows.filter(row => row?.isSdeCancellationFailClosed);
     const sourceRows = allSourceRows.filter(row => !row?.isSdeCancellationFailClosed);
-    return [
+    return buildSdeReconciledOutcomeRows([
       ...applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves(sourceRows))
         .filter(withoutDismissalDuplicate),
       ...failClosedRows.filter(withoutDismissalDuplicate),
+      ...persistedPhysicalFailClosedRows.filter(withoutDismissalDuplicate),
       ...dismissalRows
-    ];
+    ]);
   }
   const failClosedRows = (Array.isArray(data?.moves) ? data.moves : [])
     .filter(row => row?.isSdeCancellationFailClosed && !isSdeMoveCardActioned(row));
-  return [
+  return buildSdeReconciledOutcomeRows([
     ...buildSdeShiftCardMoves(data)
       .filter(row => !row?.isSdeCancellationFailClosed)
       .filter(withoutDismissalDuplicate),
     ...failClosedRows.filter(withoutDismissalDuplicate),
+    ...persistedPhysicalFailClosedRows.filter(withoutDismissalDuplicate),
     ...dismissalRows
-  ];
+  ]);
 }
 
 function mergeSdeAuthoritativeVnRecoveryOverlayRows(rows=[], data=null){
@@ -28007,8 +28597,9 @@ function mergeSdeAuthoritativeVnRecoveryOverlayRows(rows=[], data=null){
 }
 
 function getSdeActiveNightPlacementOverlayMoves(rows=[]){
-  const activeRows = (Array.isArray(rows) ? rows : []).filter(row=>{
+  const activeRows = getSdeAuthoritativeActiveOutcomeRows(Array.isArray(rows) ? rows : []).filter(row=>{
     if(!row || isSdeMoveActioned(row) || isSdeMoveCardLocallyDeleted(row)) return false;
+    if(!normalizeSlot(row.recommendedSlot || row.toSlot)) return false;
     if(row.sdePhysicalRejectedReleaseMove) return false;
     if(row.sdePhysicalDeferredOverlayUntilDependenciesCompleted && getSdeUncompletedMoveDependencyKeys(row).length){
       return false;
@@ -28996,7 +29587,7 @@ function buildSdeLimitedPlanningCardsHtml(data){
     const cancelledReleaseUiState = getSdePhysicalReleaseCancelledUiState(row);
     const cancelledReleaseCardUi = buildSdePhysicalReleaseCancelledCardUi(row, cancelledReleaseUiState);
 
-    return `<article class="sde-shift-card low${cancelledReleaseCardUi.className}" data-sde-card-key="${actionKey}" data-sde-limited-planning-card="${actionKey}"${cancelledReleaseCardUi.attributes} style="--delay:${index * 55}ms">
+    return `<article class="sde-shift-card low${cancelledReleaseCardUi.className}" data-sde-card-key="${actionKey}" data-sde-limited-planning-card="${actionKey}" data-sde-outcome-key="${escapeHtml(String(row.sdeOutcomeKey || getSdeMoveObligationStepKey(row)))}" data-sde-outcome-active="${row.sdeOutcomeActive === true ? "1" : "0"}" data-sde-active-outcome-id="${escapeHtml(String(row.sdeActiveOutcomeId || ""))}" data-sde-superseded-by="${escapeHtml(String(row.sdeSupersededBy || ""))}"${cancelledReleaseCardUi.attributes} style="--delay:${index * 55}ms">
       <div class="sde-shift-card-top">
         <div>
           <div class="sde-shift-eyebrow">Kjøretøy</div>
@@ -29046,7 +29637,7 @@ function renderSdeLimitedPlanningMode(root, options={}){
   const data = buildSdeLimitedPlanningData(reason, limitedText);
   const overview = buildSdeNightPlacementOverviewData(data);
   const noRegisteredVehicles = Number(overview?.counts?.occupied || 0) <= 0;
-  const generatedCardCount = Array.isArray(data.moves) ? data.moves.length : 0;
+  const generatedCardCount = getSdeActiveProposalCount(buildSdeFinalCardRowsForData(data));
   const graphicPlanVisible = isSdeGraphicPlanViewMode();
   const viewToggleText = graphicPlanVisible ? "Til Skifte-kort" : "SDE Grafisk planverktøy";
   const nightPlacementOverviewHtml = graphicPlanVisible
@@ -29189,6 +29780,7 @@ function renderSdeSkiftebevegelserInner(){
   const unresolvedKpiExpanded = Boolean(sdeUnresolvedDetailsVisible && unresolvedCount > 0);
   const learningDiagnosticsHtml = "";
   const cardMoves = buildSdeFinalCardRowsForData(data);
+  const activeProposalCount = getSdeActiveProposalCount(cardMoves);
   const topMoves = buildSdeVisibleCardMoveEntries(cardMoves)
     .slice(0, 20)
     .map(({row}) => row);
@@ -29230,7 +29822,7 @@ function renderSdeSkiftebevegelserInner(){
         const cancelledReleaseUiState = getSdePhysicalReleaseCancelledUiState(row);
         const cancelledReleaseCardUi = buildSdePhysicalReleaseCancelledCardUi(row, cancelledReleaseUiState);
 
-        return `<article class="sde-shift-card ${priorityClass}${cancelledReleaseCardUi.className}" data-sde-card-key="${escapeHtml(rawActionKey)}"${cancelledReleaseCardUi.attributes} style="--delay:${index * 55}ms">
+        return `<article class="sde-shift-card ${priorityClass}${cancelledReleaseCardUi.className}" data-sde-card-key="${escapeHtml(rawActionKey)}" data-sde-outcome-key="${escapeHtml(String(row.sdeOutcomeKey || getSdeMoveObligationStepKey(row)))}" data-sde-outcome-active="${row.sdeOutcomeActive === true ? "1" : "0"}" data-sde-active-outcome-id="${escapeHtml(String(row.sdeActiveOutcomeId || ""))}" data-sde-superseded-by="${escapeHtml(String(row.sdeSupersededBy || ""))}"${cancelledReleaseCardUi.attributes} style="--delay:${index * 55}ms">
           <div class="sde-shift-card-top">
             <div>
               <div class="sde-shift-eyebrow">Kjøretøy</div>
@@ -29615,7 +30207,7 @@ function renderSdeSkiftebevegelserInner(){
         <div class="sde-shift-score-number"><strong>${data.score}</strong><span>/ 100</span></div>
       </div>
       <div class="sde-shift-kpis">
-        <div class="sde-shift-kpi"><strong>${data.baseMoveCount ?? data.moves.length}</strong><span>foreslåtte skiftebevegelser</span></div>
+        <div class="sde-shift-kpi"><strong>${activeProposalCount}</strong><span>foreslåtte skiftebevegelser</span></div>
         <div class="sde-shift-kpi"><strong>${data.solvedArrivals}/${data.totalArrivals}</strong><span>ankomster ivaretatt</span></div>
         <div class="sde-shift-kpi"><strong>${data.securedDepartures}/${data.totalDepartures}</strong><span>avganger koblet</span></div>
         <button class="sde-shift-kpi sde-shift-kpi-button" type="button" data-sde-unresolved-kpi data-sde-unresolved-count="${unresolvedCount}" aria-expanded="${unresolvedKpiExpanded ? "true" : "false"}" aria-controls="sdeUnresolvedDetailsPanel" title="${unresolvedCount > 0 ? "Vis eller skjul uløste SDE-saker" : "Ingen uløste SDE-saker"}"><strong>${data.unresolvedCount}</strong><span>uløst / må avklares</span></button>
@@ -29632,7 +30224,7 @@ function renderSdeSkiftebevegelserInner(){
       <button class="sde-shift-reset-btn" type="button" onclick="handleSdeResetForDay()" title="${escapeHtml(sdeResetTitle)}"${sdeResetDisabled}>⟲ Nullstill SDE</button>
       <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="${graphicPlanVisible ? "true" : "false"}" aria-label="${viewToggleText}" title="${viewToggleText}" data-menu-tooltip="Visuelt planverktøy for ønsket sluttbilde og skifteplan. Dra kjøretøy for å foreslå overstyring; det opprettes et kort i SDE Skiftebevegelser som må godtas før flyttingen registreres.">${viewToggleText}</button>
       <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
-      <span class="sde-shift-section-title-count">${data.baseMoveCount ?? data.moves.length} forslag</span>
+      <span class="sde-shift-section-title-count">${activeProposalCount} forslag</span>
       ${nightPlacementOverriddenCardCount ? `<span class="sde-shift-section-title-count">${nightPlacementOverriddenCardCount} simulert manuell</span>` : ""}
       ${nightPlacementGeneratedCardCount ? `<span class="sde-shift-section-title-count">${nightPlacementGeneratedCardCount} opprettet fra grafisk planverktøy</span>` : ""}
     </div>
