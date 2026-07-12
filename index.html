@@ -14068,7 +14068,6 @@ function isSdeSafePhysicalBlockerReleaseMove(vehicle, fromSlot, toSlot, blockedF
       .map(normalizeSlot)
       .filter(Boolean)
   );
-
   if(!vehicleText || !from || !to) return false;
   if(!inputSlots.includes(from) || !inputSlots.includes(to)) return false;
   if(from === to || to === blockedFrom) return false;
@@ -14098,6 +14097,133 @@ function getSdeBestPhysicalBlockerReleaseTarget(vehicle, fromSlot, blockedFromSl
   return getSdePhysicalBlockerReleaseCandidateOrder(vehicle, fromSlot, blockedFromSlot, options)[0] || "";
 }
 
+const SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT = "butt_track_n_blocker_temporary_vn_relief";
+
+function getSdeButtTrackTemporaryVnPair(blockedFromSlot, blockerSlot){
+  const blockedFrom = normalizeSlot(blockedFromSlot);
+  const blockerFrom = normalizeSlot(blockerSlot);
+  const match = blockedFrom.match(/^(10|11|12)S$/);
+  if(!match) return null;
+  const track = match[1];
+  if(blockerFrom !== `${track}N`) return null;
+  return {
+    track,
+    blockedFromSlot:blockedFrom,
+    blockerSlot:blockerFrom,
+    returnSlot:blockedFrom,
+    recoverySlot:blockerFrom
+  };
+}
+
+function hasSdeButtTrackTemporaryVnDoubleSetHardStop(blockedRow, blocker, rows=[]){
+  const blockerToken = normalizeVehicleToken(blocker?.vehicle);
+  const relatedRows = (Array.isArray(rows) ? rows : []).filter(row =>
+    blockerToken && normalizeVehicleToken(row?.vehicle) === blockerToken
+  );
+  const explicitHardStop = [blockedRow, blocker, ...relatedRows].some(item =>
+    item?.sdeVnNextOperationIsDoubleSetDriftsbanegard === true ||
+    item?.nextOperationIsDoubleSetDriftsbanegard === true
+  );
+  if(explicitHardStop) return true;
+
+  const evidenceText = [blockedRow, blocker, ...relatedRows]
+    .flatMap(item => [
+      item?.nextOperationText,
+      item?.nextDepartureText,
+      item?.parkingInstruction,
+      item?.recommendationReason
+    ])
+    .map(value => String(value || "").trim())
+    .filter(Boolean)
+    .join(" ");
+  return /dobbeltsett[^.]{0,100}driftsbaneg[aå]rd|driftsbaneg[aå]rd[^.]{0,100}dobbeltsett/i.test(evidenceText);
+}
+
+function buildSdeButtTrackTemporaryVnReliefAssessment(blockedRow, blockState, blocker, rows=[], context={}){
+  const pair = getSdeButtTrackTemporaryVnPair(blockState?.fromSlot, blocker?.slot);
+  const blockerVehicle = sanitizeVehicleValue(blocker?.vehicle);
+  const blockedVehicle = sanitizeVehicleValue(blockState?.vehicle || blockedRow?.vehicle);
+  const mainTarget = normalizeSlot(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot);
+  const avoidSlots = new Set(
+    (Array.isArray(context?.avoidSlots) ? context.avoidSlots : [])
+      .map(normalizeSlot)
+      .filter(Boolean)
+  );
+  const reservedSlots = new Set(
+    (Array.isArray(context?.reservedSlots) ? context.reservedSlots : [])
+      .map(normalizeSlot)
+      .filter(Boolean)
+  );
+  const blockers = [];
+  const addBlocker = value => {
+    const text = String(value || "").trim();
+    if(text && !blockers.includes(text)) blockers.push(text);
+  };
+
+  if(!pair) addBlocker("Konteksten er ikke et blokkert S-buttspor med blocker i samme N-slot.");
+  if(!blockerVehicle || !blockedVehicle) addBlocker("Kjøretøygrunnlaget for frigjøringskjeden mangler.");
+  if(!mainTarget || mainTarget === pair?.blockedFromSlot) addBlocker("Hovedflyttingen mangler et separat, gyldig målspor.");
+  if(mainTarget && getSdeVehicleInSlot(mainTarget) && !haveSameSdeVehicleTokens(getSdeVehicleInSlot(mainTarget), blockedVehicle)){
+    addBlocker(`${mainTarget} er fysisk opptatt.`);
+  }
+
+  const physicalBlockers = Array.isArray(blockState?.blockers) ? blockState.blockers : [];
+  if(pair && (
+    physicalBlockers.length !== 1 ||
+    normalizeSlot(physicalBlockers[0]?.slot) !== pair.blockerSlot ||
+    !haveSameSdeVehicleTokens(physicalBlockers[0]?.vehicle, blockerVehicle)
+  )){
+    addBlocker("Hovedflyttingen har andre eller uavklarte fysiske blokkeringer enn samme spors N-slot.");
+  }
+
+  if(pair && !haveSameSdeVehicleTokens(getSdeVehicleInSlot(pair.blockerSlot), blockerVehicle)){
+    addBlocker(`${blockerVehicle || "Blocker-kjøretøyet"} står ikke fysisk i ${pair.blockerSlot}.`);
+  }
+  if(pair && !haveSameSdeVehicleTokens(getSdeVehicleInSlot(pair.blockedFromSlot), blockedVehicle)){
+    addBlocker(`${blockedVehicle || "Det blokkerte kjøretøyet"} står ikke fysisk i ${pair.blockedFromSlot}.`);
+  }
+  if(getSdeVehicleInSlot("VN")) addBlocker("VN er opptatt.");
+  if(getSdeVehicleInSlot("VS")) addBlocker("VS/adkomst er opptatt.");
+  if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot("VN")) addBlocker("VN er uvirksom i TXP.");
+  if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot("VS")) addBlocker("VS/adkomst er uvirksom i TXP.");
+  if(avoidSlots.has("VN")) addBlocker("VN er reservert av en annen aktiv kjede.");
+  if(pair && reservedSlots.has(pair.returnSlot)) addBlocker(`${pair.returnSlot} er reservert i et overlappende steg.`);
+
+  const incompatibleWashUse = (Array.isArray(rows) ? rows : []).some(row => {
+    if(!row || row === blockedRow || isSdeMoveActioned(row)) return false;
+    const rowFrom = normalizeSlot(row.fromSlot || row.arrivalSlot);
+    const rowTarget = normalizeSlot(row.recommendedSlot || row.toSlot);
+    return rowFrom === "VN" || rowFrom === "VS" || rowTarget === "VN" || rowTarget === "VS";
+  });
+  if(incompatibleWashUse) addBlocker("En annen aktiv kjede bruker VN eller VS uforenlig.");
+
+  if(pair){
+    const sourceAccessClear = getSdeClearAccessOptions(getSdeAccessOptionsForSlot(pair.blockerSlot, "source")).length > 0;
+    if(!sourceAccessClear) addBlocker(`${pair.blockerSlot} har ikke fri fysisk utkjøring.`);
+  }
+  if(hasSdeButtTrackTemporaryVnDoubleSetHardStop(blockedRow, blocker, rows)){
+    addBlocker("Hard stop: neste kjente skifteoperasjon er dobbeltsett til/fra driftsbanegården.");
+  }
+
+  const eligible = blockers.length === 0;
+  return {
+    eligible,
+    context:SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,
+    pair,
+    blockerVehicle,
+    blockedVehicle,
+    mainTarget,
+    holdingSlot:"VN",
+    accessResource:"VS",
+    returnSlot:pair?.returnSlot || "",
+    recoverySlot:pair?.recoverySlot || "",
+    blockers,
+    reason:eligible
+      ? `VN er validert som midlertidig venteposisjon i en full trestegskjede for spor ${pair.track}. VS er fri adkomstressurs, og retur til ${pair.returnSlot} er sekvensplanlagt etter hovedflyttingen.`
+      : blockers.join(" ")
+  };
+}
+
 function getSdePhysicalBlockerReleaseCandidateOrder(vehicle, fromSlot, blockedFromSlot="", options={}){
   const from = normalizeSlot(fromSlot);
   const blockedFrom = normalizeSlot(blockedFromSlot);
@@ -14117,16 +14243,30 @@ function getSdePhysicalBlockerReleaseCandidateOrder(vehicle, fromSlot, blockedFr
 function buildSdePhysicalBlockerReturnAssessment(blockerVehicle, originSlot, freeingTarget, blockedVehicle, blockedFromSlot){
   const origin = normalizeSlot(originSlot);
   const target = normalizeSlot(freeingTarget);
+  const blockedFrom = normalizeSlot(blockedFromSlot);
+  const temporaryVnReturn = target === "VN" && /^(10|11|12)S$/.test(blockedFrom);
 
   return {
     originSlot:origin,
     freeingTarget:target,
     blockedVehicle:sanitizeVehicleValue(blockedVehicle),
-    blockedFromSlot:normalizeSlot(blockedFromSlot),
+    blockedFromSlot:blockedFrom,
     shouldConsiderReturn:true,
-    returnPossible:"unknown",
-    reason:"Retur må vurderes etter at frigjørende skift er utført. SDE planlegger ikke automatisk retur før opprinnelig slot, fysisk adkomst og videre behov er kontrollert."
+    returnPossible:temporaryVnReturn ? true : "unknown",
+    returnSlot:temporaryVnReturn ? blockedFrom : "",
+    temporaryHoldingSlot:temporaryVnReturn ? "VN" : "",
+    reason:temporaryVnReturn
+      ? `Midlertidig frigjøring til VN. Retur til ${blockedFrom} er planlagt etter at kjøretøyet i ${blockedFrom} har forlatt sporet.`
+      : "Retur må vurderes etter at frigjørende skift er utført. SDE planlegger ikke automatisk retur før opprinnelig slot, fysisk adkomst og videre behov er kontrollert."
   };
+}
+
+function getSdePhysicalBlockerReturnPlanSummary(row){
+  const plan = row?.sdePhysicalVnReliefChain || row?.sdePhysicalVnReliefAssessment;
+  const returnSlot = normalizeSlot(plan?.returnTargetSlot || plan?.returnSlot);
+  return row?.sdePhysicalResolutionContext === SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT && returnSlot
+    ? `Retur til ${returnSlot} er sekvensplanlagt etter hovedflyttingen.`
+    : "Retur må vurderes etter utført frigjøring.";
 }
 
 function annotateSdePhysicalBlockerFreeingMove(row, blockedRow, blockState, blocker, targetSlot="", options={}){
@@ -14195,12 +14335,26 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
     context.avoidSlot,
     ...(Array.isArray(context.avoidSlots) ? context.avoidSlots : [])
   ].map(normalizeSlot).filter(Boolean);
-  const completeCandidateOrder = getSdePhysicalBlockerReleaseCandidateOrder(
+  const vnReliefAssessment = buildSdeButtTrackTemporaryVnReliefAssessment(
+    blockedRow,
+    blockState,
+    blocker,
+    sourceRows,
+    {
+      avoidSlots:baseAvoidSlots,
+      reservedSlots:Array.isArray(context?.sequenceReservedSlots) ? context.sequenceReservedSlots : []
+    }
+  );
+  const ordinaryCandidateOrder = getSdePhysicalBlockerReleaseCandidateOrder(
     blockerVehicle,
     blockerSlot,
     normalizeSlot(context.avoidSlot || blockedFromSlot),
     {avoidSlots:baseAvoidSlots}
   );
+  const completeCandidateOrder = Array.from(new Set([
+    ...(vnReliefAssessment.eligible ? ["VN"] : []),
+    ...ordinaryCandidateOrder
+  ]));
   const planningStateSignature = getSdePhysicalPlanningStateSignature(sourceRows);
   const roundRecord = prepareSdePhysicalReleaseRound(
     getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker),
@@ -14243,10 +14397,13 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
     );
   }
 
-  const preferredTarget = normalizeSlot(roundRecord.activeTarget || context.preferredTarget);
+  const vnPreferred = vnReliefAssessment.eligible && !rejectedTargets.has("VN");
+  const preferredTarget = normalizeSlot(vnPreferred ? "VN" : (roundRecord.activeTarget || context.preferredTarget));
   const safePreferredTarget = preferredTarget &&
     !avoidSlots.has(preferredTarget) &&
-    isSdeSafePhysicalBlockerReleaseMove(blockerVehicle, blockerSlot, preferredTarget, avoidSlot || blockedFromSlot, {avoidSlots:[...avoidSlots]})
+    (preferredTarget === "VN"
+      ? vnReliefAssessment.eligible
+      : isSdeSafePhysicalBlockerReleaseMove(blockerVehicle, blockerSlot, preferredTarget, avoidSlot || blockedFromSlot, {avoidSlots:[...avoidSlots]}))
       ? preferredTarget
       : "";
   const freeingTarget = safePreferredTarget || completeCandidateOrder.find(slot=>!rejectedTargets.has(slot)) || "";
@@ -14267,8 +14424,21 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
       isManualOnly:true
     };
 
+    const annotatedMove = annotateSdePhysicalBlockerFreeingMove(generated, blockedRow, blockState, blocker, freeingTarget, context.annotation || {});
+    const contextualMove = freeingTarget === "VN" && vnReliefAssessment.eligible
+      ? {
+          ...annotatedMove,
+          sdePhysicalResolutionContext:SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,
+          sdePhysicalTemporaryVnRelief:true,
+          sdePhysicalVnReliefAssessment:{...vnReliefAssessment, pair:{...vnReliefAssessment.pair}},
+          parkingStrategy:"Midlertidig VN-frigjøring",
+          parkingInstruction:`Flytt ${blockerVehicle} fra ${blockerSlot} midlertidig til VN. Retur til ${vnReliefAssessment.returnSlot} er planlagt etter hovedflyttingen.`,
+          recommendationReason:`Midlertidig frigjøring til VN. ${vnReliefAssessment.reason}`
+        }
+      : annotatedMove;
+
     return annotateSdePhysicalReleaseRound(
-      annotateSdePhysicalBlockerFreeingMove(generated, blockedRow, blockState, blocker, freeingTarget, context.annotation || {}),
+      contextualMove,
       blockedRow,
       blockState,
       blocker,
@@ -14294,6 +14464,7 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
       visited,
       avoidSlot:blockerSlot,
       avoidSlots:[...avoidSlots, blockerSlot],
+      sequenceReservedSlots:Array.isArray(context?.sequenceReservedSlots) ? context.sequenceReservedSlots : [],
       annotation
     });
     if(nestedMove) return nestedMove;
@@ -14333,6 +14504,7 @@ function buildSdePhysicalBlockerFreeingMove(blockedRow, blockState, rows=[], con
       visited:new Set(),
       avoidSlot:blockState.fromSlot,
       avoidSlots:[blockState.fromSlot, blockState.toSlot, ...contextAvoidSlots],
+      sequenceReservedSlots:Array.isArray(context?.sequenceReservedSlots) ? context.sequenceReservedSlots : contextAvoidSlots,
       preferredTarget:target
     });
     if(freeingMove) return freeingMove;
@@ -14392,7 +14564,8 @@ function getSdeStablePhysicalReleaseTargetForRow(row, blockState, rows=[], baseR
   }
 
   const freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, rows, {
-    avoidSlots:[...baseReservedSlots]
+    avoidSlots:[...baseReservedSlots],
+    sequenceReservedSlots:[...baseReservedSlots]
   });
   return normalizeSlot(freeingMove?.recommendedSlot || freeingMove?.toSlot);
 }
@@ -14411,6 +14584,180 @@ function getSdePhysicalDependencyChainId(blockedRow, blockState, freeingMove=nul
     normalizeSlot(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot),
     blockers
   ].join("|");
+}
+
+function buildSdeTemporaryVnReliefChainPlan(blockedRow, blockState, freeingMove, chainId){
+  const assessment = freeingMove?.sdePhysicalVnReliefAssessment;
+  if(
+    freeingMove?.sdePhysicalResolutionContext !== SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT ||
+    assessment?.eligible !== true ||
+    normalizeSlot(freeingMove?.recommendedSlot || freeingMove?.toSlot) !== "VN"
+  ){
+    return null;
+  }
+
+  const releaseActionKey = getSdeMoveActionKey(freeingMove);
+  const mainActionKey = getSdeMoveActionKey(blockedRow);
+  const blockerVehicle = sanitizeVehicleValue(freeingMove.vehicle);
+  const blockerFromSlot = normalizeSlot(freeingMove.fromSlot || freeingMove.arrivalSlot);
+  const blockedVehicle = sanitizeVehicleValue(blockState?.vehicle || blockedRow?.vehicle);
+  const blockedFromSlot = normalizeSlot(blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot);
+  const mainTargetSlot = normalizeSlot(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot);
+  if(!releaseActionKey || !mainActionKey || !blockerVehicle || !blockerFromSlot || !blockedVehicle || !blockedFromSlot || !mainTargetSlot){
+    return null;
+  }
+
+  const returnActionKey = [
+    "physical-vn-return",
+    normalizeVehicleToken(blockerVehicle),
+    "VN",
+    blockedFromSlot,
+    normalizeVehicleToken(blockedVehicle),
+    mainTargetSlot
+  ].join("|");
+  const recoveryActionKey = [
+    "physical-vn-recovery",
+    normalizeVehicleToken(blockerVehicle),
+    "VN",
+    blockerFromSlot,
+    normalizeVehicleToken(blockedVehicle),
+    blockedFromSlot
+  ].join("|");
+
+  return {
+    context:SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,
+    chainId:String(chainId || "").trim(),
+    releaseActionKey,
+    mainActionKey,
+    returnActionKey,
+    recoveryActionKey,
+    blockerVehicle,
+    blockerFromSlot,
+    holdingSlot:"VN",
+    accessResource:"VS",
+    blockedVehicle,
+    blockedFromSlot,
+    mainTargetSlot,
+    returnTargetSlot:blockedFromSlot,
+    recoveryTargetSlot:blockerFromSlot,
+    sequenceStepCount:3
+  };
+}
+
+function annotateSdeTemporaryVnReliefMainRow(row, plan){
+  if(!row || !plan) return row;
+  return {
+    ...row,
+    sdePhysicalChainId:plan.chainId,
+    sdePhysicalChainStep:2,
+    sdePhysicalChainStepCount:3,
+    sdePhysicalDependsOn:[plan.releaseActionKey],
+    sdePhysicalDependencyLabel:`Steg 2 av 3 venter på midlertidig frigjøring: ${plan.blockerVehicle} ${plan.blockerFromSlot} → VN.`,
+    sdePhysicalDependencyRole:"dependent",
+    sdePhysicalResolutionContext:SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,
+    sdePhysicalVnReliefChain:{...plan}
+  };
+}
+
+function buildSdeTemporaryVnReturnRow(plan, options={}){
+  if(!plan) return null;
+  const recovery = options.recovery === true;
+  const targetSlot = normalizeSlot(recovery ? plan.recoveryTargetSlot : plan.returnTargetSlot);
+  const dependencyKey = recovery ? plan.releaseActionKey : plan.mainActionKey;
+  const actionKey = recovery ? plan.recoveryActionKey : plan.returnActionKey;
+  if(!targetSlot || !dependencyKey || !actionKey) return null;
+
+  const recoveryConflict = recovery
+    ? (() => {
+        if(!haveSameSdeVehicleTokens(getSdeVehicleInSlot("VN"), plan.blockerVehicle)){
+          return `${plan.blockerVehicle} står ikke i VN. Recovery må vurderes manuelt.`;
+        }
+        const targetVehicle = getSdeVehicleInSlot(targetSlot);
+        if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle, plan.blockerVehicle)){
+          return `${targetSlot} er opptatt av ${targetVehicle}. Recovery stoppes fail-closed.`;
+        }
+        if(getSdeVehicleInSlot("VS")) return "VS/adkomst er opptatt. Recovery stoppes fail-closed.";
+        if(typeof isTxpUnavailableSlot === "function" && (isTxpUnavailableSlot("VN") || isTxpUnavailableSlot("VS"))){
+          return "VN eller VS/adkomst er uvirksom i TXP. Recovery stoppes fail-closed.";
+        }
+        return "";
+      })()
+    : "";
+
+  return {
+    vehicle:plan.blockerVehicle,
+    fromSlot:"VN",
+    arrivalSlot:"VN",
+    recommendedSlot:targetSlot,
+    toSlot:targetSlot,
+    source:recovery ? "SDE VN recovery" : "SDE VN retur",
+    stableActionKey:actionKey,
+    arrivalTrainText:recovery ? "Recovery etter annullert hovedflytting" : "Retur fra midlertidig venteposisjon",
+    departureTrainText:recovery ? `Tilbakefør ${plan.blockerVehicle}` : `Fullfør frigjøringskjede for ${plan.blockedVehicle}`,
+    arrivalTime:"",
+    nextDepartureText:"Kontrollert retur etter foregående steg",
+    nextDepartureTrain:"",
+    nextDeparturePart:"",
+    recommendationAlternatives:[],
+    recommendationConfidence:"high",
+    recommendationScore:"Sekvensvalidert",
+    parkingStrategy:recovery ? "Sikker VN-recovery" : "Retur fra midlertidig VN-venteposisjon",
+    parkingInstruction:recovery
+      ? `Hovedflyttingen ble annullert etter VN-frigjøring. Før ${plan.blockerVehicle} fra VN tilbake til ${targetSlot}.`
+      : `Før ${plan.blockerVehicle} fra VN til frigjort buttspor ${targetSlot} etter at ${plan.blockedVehicle} har forlatt sporet.`,
+    recommendationReason:recovery
+      ? `Recovery-kort: ${plan.blockerVehicle} skal ikke bli stående uten exit-plan i VN. Foretrukket trygg retur er opprinnelig N-slot ${targetSlot}.`
+      : `Retur fra midlertidig venteposisjon i VN til frigjort buttspor ${targetSlot}. VS brukes som sekvensiell adkomstressurs.`,
+    isManualOnly:true,
+    isSdePhysicalBlockerReturnMove:true,
+    isSdePhysicalVnRecoveryMove:recovery,
+    sdePhysicalChainId:plan.chainId,
+    sdePhysicalChainStep:3,
+    sdePhysicalChainStepCount:3,
+    sdePhysicalDependsOn:[dependencyKey],
+    sdePhysicalDependencyLabel:recovery
+      ? `Recovery venter på at VN-frigjøringen ${plan.blockerFromSlot} → VN er Utført.`
+      : `Steg 3 av 3 venter på at hovedflyttingen ${plan.blockedVehicle} ${plan.blockedFromSlot} → ${plan.mainTargetSlot} er Utført.`,
+    sdePhysicalDependencyRole:"return",
+    sdePhysicalDeferredOverlayUntilDependenciesCompleted:true,
+    sdePhysicalResolutionContext:SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,
+    sdePhysicalVnReliefChain:{...plan},
+    sdePhysicalSequenceConflictReason:recoveryConflict
+  };
+}
+
+function getSdeCompletedTemporaryVnReliefPlanForMainRow(row){
+  const mainActionKey = getSdeMoveActionKey(row);
+  if(!mainActionKey) return null;
+  const actions = state.sdeMoveActions || {};
+  for(const [releaseActionKey, action] of Object.entries(actions)){
+    if(action?.action !== "completed") continue;
+    const plan = action?.snapshot?.sdePhysicalVnReliefChain;
+    if(!plan || plan.context !== SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT) continue;
+    if(String(plan.mainActionKey || "") !== mainActionKey) continue;
+    if(String(plan.releaseActionKey || "") !== releaseActionKey) continue;
+    return {...plan};
+  }
+  return null;
+}
+
+function buildSdePersistedTemporaryVnReliefRows(mainRow, plan){
+  if(!mainRow || !plan) return null;
+  const returnRecord = getSdeMoveActionRecord(plan.returnActionKey);
+  const recoveryRecord = getSdeMoveActionRecord(plan.recoveryActionKey);
+  const mainRecord = getSdeMoveActionRecord(plan.mainActionKey);
+  const annotatedMain = annotateSdeTemporaryVnReliefMainRow(mainRow, plan);
+  if(returnRecord?.action === "completed" || recoveryRecord?.action === "completed"){
+    return {mainRow:annotatedMain, returnRow:null, completed:true};
+  }
+
+  const recovery = mainRecord?.action === "cancelled";
+  return {
+    mainRow:annotatedMain,
+    returnRow:buildSdeTemporaryVnReturnRow(plan, {recovery}),
+    completed:false,
+    recovery
+  };
 }
 
 function getSdeUncompletedMoveDependencyKeys(row){
@@ -14923,10 +15270,13 @@ function simulateSdePhysicalSequenceReservations(rows=[], initialOccupancy=null)
     if(!slot || !vehicle) return;
     const reservation = {
       slot,
+      targetSlot:slot,
       vehicleId:vehicle,
       chainId:"physical",
       moveId:"physical",
       sequence:0,
+      sequenceStep:0,
+      dependsOn:[],
       reservedFromStep:0,
       releasedAfterStep:null,
       reservationType:"physicalOccupancy"
@@ -14979,10 +15329,13 @@ function simulateSdePhysicalSequenceReservations(rows=[], initialOccupancy=null)
     occupancy.delete(fromSlot);
     const reservation = {
       slot:targetSlot,
+      targetSlot,
       vehicleId:vehicle,
       chainId:String(row.sdePhysicalChainId || "").trim(),
       moveId:entry.key,
       sequence:globalStep,
+      sequenceStep:Number(row.sdePhysicalChainStep || globalStep),
+      dependsOn:[...entry.dependencies],
       globalStep,
       reservedFromStep:globalStep,
       releasedAfterStep:null,
@@ -15113,10 +15466,14 @@ function buildSdeShiftMoveActionControlsHtml(row, encodedActionKey, options={}){
   const doneButtonHtml = blockReason
     ? `<button class="sde-shift-action-btn done" type="button" disabled title="${escapeHtml(blockReason)}">Utført sperret</button>`
     : `<button class="sde-shift-action-btn done" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'completed')">Utført</button>`;
-  const cancelButtonHtml = `<button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'cancelled')">Annullert</button>`;
+  const cancelButtonHtml = row?.isSdePhysicalBlockerReturnMove
+    ? `<button class="sde-shift-action-btn cancel" type="button" disabled title="Retur-/recovery-kortet beholdes fail-closed slik at kjøretøyet ikke blir stående uten exit-plan i VN.">Annullert sperret</button>`
+    : `<button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'cancelled')">Annullert</button>`;
   const hint = isSdePhysicalBlockerFreeingRow(row)
     ? `<div class="sde-night-card-override"><strong>Frigjøringskort kan kvitteres</strong><span>Utført/Annullert gjelder bare denne planlagte forutsetningen. Hovedkortet åpnes først når frigjøringssteget er kvittert Utført og sporstatus fortsatt stemmer.</span></div>`
-    : "";
+    : row?.isSdePhysicalBlockerReturnMove
+      ? `<div class="sde-night-card-override"><strong>Returplan beholdes fail-closed</strong><span>Retur-/recovery-kortet kan ikke annulleres bort mens kjøretøyet står i VN.</span></div>`
+      : "";
 
   if(options.wrap === false){
     if(existingAction?.action === "completed" || existingAction?.action === "cancelled"){
@@ -15151,6 +15508,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
   sourceRows.forEach(row=>{
     const rowKey = getSdeMoveActionKey(row);
     if(!rowKey) return;
+    if(isSdeMoveActioned(row)) return;
     const blockState = getSdeHardPhysicalBlockStateForMove(row);
     if(!blockState.hardBlocked) return;
     const stableTarget = getSdeStablePhysicalReleaseTargetForRow(row, blockState, sourceRows, [
@@ -15163,6 +15521,24 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
     const rowKey = getSdeMoveActionKey(row);
     if(rowKey && insertedFreeingKeys.has(rowKey)) return;
 
+    const persistedVnPlan = getSdeCompletedTemporaryVnReliefPlanForMainRow(row);
+    if(persistedVnPlan){
+      const persistedRows = buildSdePersistedTemporaryVnReliefRows(row, persistedVnPlan);
+      guarded.push(persistedRows?.mainRow || row);
+      if(persistedRows?.returnRow){
+        guarded.push(persistedRows.returnRow);
+        if(!getSdeMoveActionRecord(getSdeMoveActionKey(persistedRows.returnRow))){
+          reservedSlots.add("VN");
+        }
+      }
+      return;
+    }
+
+    if(isSdeMoveActioned(row)){
+      guarded.push(row);
+      return;
+    }
+
     const blockState = getSdeHardPhysicalBlockStateForMove(row);
     if(blockState.hardBlocked){
       const shouldYieldToStableReleaseTargets = hasSdePhysicalReleaseReplanHistoryForRow(row, blockState);
@@ -15173,10 +15549,12 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
           .filter(Boolean)
         : [];
       const freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, sourceRows, {
-        avoidSlots:[...reservedSlots, ...otherStableReleaseTargets]
+        avoidSlots:[...reservedSlots, ...otherStableReleaseTargets],
+        sequenceReservedSlots:[...reservedSlots]
       });
       const freeingKey = getSdeMoveActionKey(freeingMove);
       const chainId = getSdePhysicalDependencyChainId(row, blockState, freeingMove);
+      const vnChainPlan = buildSdeTemporaryVnReliefChainPlan(row, blockState, freeingMove, chainId);
       const rejectedRowHistory = (Array.isArray(blockState.blockers) ? blockState.blockers : [])
         .flatMap(blocker => buildSdeRejectedPhysicalReleaseRows(row, blockState, blocker, {chainId}));
       const rejectedRows = rejectedRowHistory.map((rejectedRow, index) => {
@@ -15223,29 +15601,44 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
           ...freeingMove,
           sdePhysicalChainId:chainId,
           sdePhysicalChainStep:1,
-          sdePhysicalChainStepCount:2,
+          sdePhysicalChainStepCount:vnChainPlan ? 3 : 2,
           sdePhysicalPrerequisiteFor:blockedKey,
           sdePhysicalDependsOn:[],
           sdePhysicalDependencyLabel:"Frigjøringssteg før blokkert hovedflytting.",
-          sdePhysicalDependencyRole:"prerequisite"
+          sdePhysicalDependencyRole:"prerequisite",
+          ...(vnChainPlan ? {
+            sdePhysicalResolutionContext:SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,
+            sdePhysicalVnReliefChain:{...vnChainPlan},
+            parkingStrategy:"Midlertidig VN-frigjøring",
+            parkingInstruction:`Midlertidig frigjøring til VN. Retur er planlagt etter at ${vnChainPlan.blockedVehicle} har forlatt ${vnChainPlan.blockedFromSlot}.`
+          } : {})
         });
         insertedFreeingKeys.add(freeingKey);
         const freeingTarget = normalizeSlot(freeingMove.recommendedSlot || freeingMove.toSlot);
         if(freeingTarget) reservedSlots.add(freeingTarget);
       }
+      const guardedMainRow = vnChainPlan
+        ? annotateSdeTemporaryVnReliefMainRow(row, vnChainPlan)
+        : {
+            ...row,
+            sdePhysicalChainId:chainId,
+            sdePhysicalChainStep:freeingMove ? 2 : 1,
+            sdePhysicalChainStepCount:freeingMove ? 2 : 1,
+            sdePhysicalDependsOn:freeingKey ? [freeingKey] : [],
+            sdePhysicalDependencyLabel:dependencyLabel,
+            sdePhysicalDependencyRole:"dependent"
+          };
       guarded.push({
-        ...row,
+        ...guardedMainRow,
         sdePhysicalHardBlocked:true,
         sdePhysicalHardBlockState:blockState,
-        sdePhysicalChainId:chainId,
-        sdePhysicalChainStep:freeingMove ? 2 : 1,
-        sdePhysicalChainStepCount:freeingMove ? 2 : 1,
-        sdePhysicalDependsOn:freeingKey ? [freeingKey] : [],
-        sdePhysicalDependencyLabel:dependencyLabel,
-        sdePhysicalDependencyRole:"dependent",
         sdePhysicalNoSafeReleaseMove:!freeingMove,
         sdePhysicalNoSafeReleaseReason:freeingMove ? "" : "Ingen trygg frigjøringsslot er tilgjengelig i gjeldende sporplan."
       });
+      if(vnChainPlan){
+        const returnRow = buildSdeTemporaryVnReturnRow(vnChainPlan);
+        if(returnRow) guarded.push(returnRow);
+      }
       return;
     }
 
@@ -15304,6 +15697,33 @@ function buildSdePhysicalBlockerFreeingHtml(row){
     ${isRejected ? `<span class="sde-release-cancelled-message">${escapeHtml(row.recommendationReason || "Annullert frigjøringsforslag. SDE søker neste trygge frigjøringsslot.")}</span>` : ""}
     ${!isRejected && rejectedTargets.length ? `<span class="warning">Tidligere frigjøringsmål ${escapeHtml(rejectedTargets.join(", "))} er forkastet. Dette er neste trygge kandidat.</span>` : ""}
     <span class="warning">${escapeHtml(assessment.reason || "Retur må vurderes etter at frigjørende skift er utført.")}</span>
+  </div>`;
+}
+
+function buildSdeTemporaryVnReliefChainHtml(row){
+  if(row?.sdePhysicalResolutionContext !== SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT) return "";
+  const plan = row.sdePhysicalVnReliefChain || {};
+  const step = Math.max(1, Number(row.sdePhysicalChainStep) || 1);
+  const title = row.isSdePhysicalVnRecoveryMove
+    ? "Sikker recovery fra VN"
+    : step === 1
+      ? "Midlertidig frigjøring til VN"
+      : step === 2
+        ? "Hovedflytt etter VN-frigjøring"
+        : "Retur fra midlertidig VN-venteposisjon";
+  const text = row.isSdePhysicalVnRecoveryMove
+    ? `${plan.blockerVehicle || row.vehicle} skal tilbake til ${plan.recoveryTargetSlot || row.toSlot} fordi hovedflyttingen ble annullert.`
+    : step === 1
+      ? `${plan.blockerVehicle || row.vehicle} flyttes midlertidig til VN. Retur til ${plan.returnTargetSlot || "frigjort S-slot"} er allerede planlagt.`
+      : step === 2
+        ? `${plan.blockedVehicle || row.vehicle} flyttes ut av ${plan.blockedFromSlot || row.fromSlot}. Returkortet åpnes først etter Utført.`
+        : `${plan.blockerVehicle || row.vehicle} returneres fra VN til ${plan.returnTargetSlot || row.toSlot}. VN er venteposisjon, ikke endelig parkering.`;
+
+  return `<div class="sde-night-card-override">
+    <strong>${escapeHtml(title)}</strong>
+    <span>Eksplisitt VN-sekvens: steg ${escapeHtml(String(step))} av 3.</span>
+    <span>${escapeHtml(text)}</span>
+    <span>VS er validert som sekvensiell adkomst-/transittressurs.</span>
   </div>`;
 }
 
@@ -19609,6 +20029,10 @@ function getSdeMoveActionSnapshot(row){
       }))
     : [];
 
+  const vnReliefChain = row?.sdePhysicalVnReliefChain && typeof row.sdePhysicalVnReliefChain === "object"
+    ? {...row.sdePhysicalVnReliefChain}
+    : null;
+
   return {
     vehicle:sanitizeVehicleValue(row.vehicle),
     arrivalTrainText:String(row.arrivalTrainText || (row.arrivalTrain ? `${row.arrivalTrain}${row.arrivalPart ? `/${row.arrivalPart}` : ""}` : "") || "").trim(),
@@ -19620,7 +20044,14 @@ function getSdeMoveActionSnapshot(row){
     recommendationScore:row.recommendationScore ?? "",
     parkingStrategy:String(row.parkingStrategy || "").trim(),
     reason:String(row.recommendationReason || row.parkingInstruction || "").trim(),
-    alternatives
+    alternatives,
+    sdePhysicalChainId:String(row.sdePhysicalChainId || "").trim(),
+    sdePhysicalChainStep:Number(row.sdePhysicalChainStep || 0),
+    sdePhysicalChainStepCount:Number(row.sdePhysicalChainStepCount || 0),
+    sdePhysicalDependencyRole:String(row.sdePhysicalDependencyRole || "").trim(),
+    sdePhysicalDependsOn:Array.isArray(row.sdePhysicalDependsOn) ? [...row.sdePhysicalDependsOn] : [],
+    sdePhysicalResolutionContext:String(row.sdePhysicalResolutionContext || "").trim(),
+    sdePhysicalVnReliefChain:vnReliefChain
   };
 }
 
@@ -21568,6 +21999,10 @@ async function handleSdeShiftMoveAction(encodedKey, action){
   }
 
   if(actionType === "cancelled"){
+    if(row?.isSdePhysicalBlockerReturnMove){
+      alert("Retur-/recovery-kortet kan ikke annulleres bort mens kjøretøyet står i VN. Fullfør sikker retur eller avklar fysisk state manuelt.");
+      return;
+    }
     if(window.sdeMoveActionPendingKey) return;
     window.sdeMoveActionPendingKey = `${key}|${actionType}`;
     try{
@@ -26097,7 +26532,7 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
     });
     const releaseParts = freeingMove ? getSdePhysicalMoveParts(freeingMove) : null;
     const releaseText = freeingMove && releaseParts?.vehicle && releaseParts.fromSlot && releaseParts.toSlot
-      ? `Frigjøringsforslag: flytt ${releaseParts.vehicle} fra ${releaseParts.fromSlot} til ${releaseParts.toSlot} først for å frigjøre ${vehicle}. Retur må vurderes etter frigjøring.`
+      ? `Frigjøringsforslag: flytt ${releaseParts.vehicle} fra ${releaseParts.fromSlot} til ${releaseParts.toSlot} først for å frigjøre ${vehicle}. ${getSdePhysicalBlockerReturnPlanSummary(freeingMove)}`
       : "NO SAFE RELEASE MOVE: SDE fant ikke trygt midlertidig målspor for blokkerende kjøretøy.";
     const blockerVehicles = Array.isArray(hardBlockState.blockers)
       ? hardBlockState.blockers.map(item => ({
@@ -26473,6 +26908,9 @@ function getSdeActiveNightPlacementOverlayMoves(rows=[]){
   const activeRows = (Array.isArray(rows) ? rows : []).filter(row=>{
     if(!row || isSdeMoveActioned(row)) return false;
     if(row.sdePhysicalRejectedReleaseMove) return false;
+    if(row.sdePhysicalDeferredOverlayUntilDependenciesCompleted && getSdeUncompletedMoveDependencyKeys(row).length){
+      return false;
+    }
     return true;
   });
   const activeDependencyKeys = new Set(
@@ -26770,7 +27208,7 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       const blockedSlot = normalizeSlot(row.sdePhysicalBlockerForSlot || returnAssessment.blockedFromSlot);
       addWarning(
         "physical_blocker_freeing_move",
-        `Frigjøringsforslag: flytt ${vehicle}${originSlot ? ` fra ${originSlot}` : ""} til ${targetSlot}${blockedVehicle ? ` for å frigjøre ${blockedVehicle}${blockedSlot ? ` i ${blockedSlot}` : ""}` : ""}. Retur må vurderes etter utført frigjøring.`,
+        `Frigjøringsforslag: flytt ${vehicle}${originSlot ? ` fra ${originSlot}` : ""} til ${targetSlot}${blockedVehicle ? ` for å frigjøre ${blockedVehicle}${blockedSlot ? ` i ${blockedSlot}` : ""}` : ""}. ${getSdePhysicalBlockerReturnPlanSummary(row)}`,
         {
           slot:targetSlot,
           vehicle,
@@ -27414,6 +27852,7 @@ function buildSdeLimitedPlanningCardsHtml(data){
     const reason = String(row.recommendationReason || row.parkingInstruction || getSdeLimitedPlanningText()).trim();
     const timeStatus = getSdeNightPlacementTimeStatusText(row) || "Tid ikke vurdert";
     const physicalBlockerFreeingHtml = buildSdePhysicalBlockerFreeingHtml(row);
+    const temporaryVnReliefChainHtml = buildSdeTemporaryVnReliefChainHtml(row);
     const physicalBlockerGuardHtml = buildSdePhysicalBlockerGuardHtml(row);
     const actionControlsHtml = buildSdeShiftMoveActionControlsHtml(row, encodeURIComponent(actionKey));
     const cancelledReleaseUiState = getSdePhysicalReleaseCancelledUiState(row);
@@ -27451,6 +27890,7 @@ function buildSdeLimitedPlanningCardsHtml(data){
         <span>Ankomst/avgang er ikke tilgjengelig. Dette er et lokalt planforslag, ikke faktisk parkert-hvor og ikke operativ skifteordre.</span>
       </div>
       ${physicalBlockerFreeingHtml}
+      ${temporaryVnReliefChainHtml}
       ${physicalBlockerGuardHtml}
       ${actionControlsHtml}
       <div class="sde-shift-details show">
@@ -27644,6 +28084,7 @@ function renderSdeSkiftebevegelserInner(){
         const nightPlacementOverrideHtml = buildSdeNightPlacementCardOverrideHtml(row) || buildSdeNightPlacementGeneratedCardHtml(row) || buildSdeNightPlacementStepRoleHtml(row);
         const physicalBlockerGuardHtml = buildSdePhysicalBlockerGuardHtml(row);
         const physicalBlockerFreeingHtml = buildSdePhysicalBlockerFreeingHtml(row);
+        const temporaryVnReliefChainHtml = buildSdeTemporaryVnReliefChainHtml(row);
         const actionControlsHtml = buildSdeShiftMoveActionControlsHtml(row, actionKey);
         const cancelledReleaseUiState = getSdePhysicalReleaseCancelledUiState(row);
         const cancelledReleaseCardUi = buildSdePhysicalReleaseCancelledCardUi(row, cancelledReleaseUiState);
@@ -27678,6 +28119,7 @@ function renderSdeSkiftebevegelserInner(){
 
           ${nightPlacementOverrideHtml}
           ${physicalBlockerFreeingHtml}
+          ${temporaryVnReliefChainHtml}
           ${physicalBlockerGuardHtml}
           ${trackClearanceWindowHtml}
           <div class="sde-shift-details">
