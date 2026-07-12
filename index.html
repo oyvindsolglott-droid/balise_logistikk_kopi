@@ -28938,9 +28938,46 @@ function buildSdeLimitedPlanningData(reason, text){
   };
 }
 
+function buildSdeVisibleCardMoveEntries(rows){
+  const visibleEntries = (Array.isArray(rows) ? rows : [])
+    .map(row => {
+      const dismissalState = getSdePhysicalReleaseCancelledUiState(row);
+      return {row, dismissalState};
+    })
+    .filter(({row, dismissalState}) => {
+      if(dismissalState.managed) return !dismissalState.hidden;
+      return !isSdeMoveCardActioned(row) && !dismissalState.hidden;
+    });
+  const orderedEntries = visibleEntries
+    .filter(({dismissalState}) => !dismissalState.managed);
+
+  visibleEntries
+    .filter(({dismissalState}) => dismissalState.managed)
+    .map(entry => {
+      const actionRecord = getSdeMoveActionRecord(getSdeMoveActionKey(entry.row));
+      const cardDisplayIndex = Number(actionRecord?.cardDisplayIndex);
+      return {
+        entry,
+        cardDisplayIndex:Number.isInteger(cardDisplayIndex) && cardDisplayIndex >= 0
+          ? cardDisplayIndex
+          : orderedEntries.length
+      };
+    })
+    .sort((a,b) => a.cardDisplayIndex - b.cardDisplayIndex)
+    .forEach(({entry, cardDisplayIndex}) => {
+      orderedEntries.splice(
+        Math.min(cardDisplayIndex, orderedEntries.length),
+        0,
+        entry
+      );
+    });
+
+  return orderedEntries;
+}
+
 function buildSdeLimitedPlanningCardsHtml(data){
   const rows = buildSdeFinalCardRowsForData(data);
-  const visibleRows = rows.filter(row => !getSdePhysicalReleaseCancelledUiState(row).hidden);
+  const visibleRows = buildSdeVisibleCardMoveEntries(rows).map(({row}) => row);
   if(!visibleRows.length){
     return `<div class="sde-shift-empty">Ingen manuelle planforslag er opprettet. Åpne SDE Grafisk planverktøy og dra et kjøretøy fra gjeldende sporplan til en ledig slot for å lage et simulert forslag.</div>`;
   }
@@ -29152,38 +29189,7 @@ function renderSdeSkiftebevegelserInner(){
   const unresolvedKpiExpanded = Boolean(sdeUnresolvedDetailsVisible && unresolvedCount > 0);
   const learningDiagnosticsHtml = "";
   const cardMoves = buildSdeFinalCardRowsForData(data);
-  const visibleCardMoveEntries = cardMoves
-    .map(row => {
-      const dismissalState = getSdePhysicalReleaseCancelledUiState(row);
-      return {row, dismissalState};
-    })
-    .filter(({row, dismissalState}) => {
-      if(dismissalState.managed) return !dismissalState.hidden;
-      return !isSdeMoveCardActioned(row) && !dismissalState.hidden;
-    });
-  const orderedCardMoveEntries = visibleCardMoveEntries
-    .filter(({dismissalState}) => !dismissalState.managed);
-  visibleCardMoveEntries
-    .filter(({dismissalState}) => dismissalState.managed)
-    .map(entry => {
-      const actionRecord = getSdeMoveActionRecord(getSdeMoveActionKey(entry.row));
-      const cardDisplayIndex = Number(actionRecord?.cardDisplayIndex);
-      return {
-        entry,
-        cardDisplayIndex:Number.isInteger(cardDisplayIndex) && cardDisplayIndex >= 0
-          ? cardDisplayIndex
-          : orderedCardMoveEntries.length
-      };
-    })
-    .sort((a,b) => a.cardDisplayIndex - b.cardDisplayIndex)
-    .forEach(({entry, cardDisplayIndex}) => {
-      orderedCardMoveEntries.splice(
-        Math.min(cardDisplayIndex, orderedCardMoveEntries.length),
-        0,
-        entry
-      );
-    });
-  const topMoves = orderedCardMoveEntries
+  const topMoves = buildSdeVisibleCardMoveEntries(cardMoves)
     .slice(0, 20)
     .map(({row}) => row);
   const nightPlacementOverriddenCardCount = topMoves.filter(row => row?.sdeNightPlacementCardOverrideActive).length;
