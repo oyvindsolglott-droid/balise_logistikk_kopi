@@ -16416,11 +16416,6 @@ function buildSdeCancelledDismissalRows(){
       return [];
     }
     const snapshot = actionRecord.snapshot || {};
-    if(
-      actionRecord.replanKey ||
-      snapshot.isSdePhysicalBlockerFreeingMove ||
-      snapshot.sdePhysicalDependencyRole === "prerequisite"
-    ) return [];
 
     return [{
       ...snapshot,
@@ -27961,6 +27956,10 @@ function buildSdeNightPlacementEffectiveMoves(data){
 
 function buildSdeFinalCardRowsForData(data){
   const dismissalRows = buildSdeCancelledDismissalRows();
+  const dismissalActionKeys = new Set(
+    dismissalRows.map(row => getSdeMoveActionKey(row)).filter(Boolean)
+  );
+  const withoutDismissalDuplicate = row => !dismissalActionKeys.has(getSdeMoveActionKey(row));
   if(data?.limitedPlanningMode){
     const allSourceRows = [
       ...(sdeNightPlacementBlockedMoveRequest ? [sdeNightPlacementBlockedMoveRequest] : []),
@@ -27969,16 +27968,19 @@ function buildSdeFinalCardRowsForData(data){
     const failClosedRows = allSourceRows.filter(row => row?.isSdeCancellationFailClosed);
     const sourceRows = allSourceRows.filter(row => !row?.isSdeCancellationFailClosed);
     return [
-      ...applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves(sourceRows)),
-      ...failClosedRows,
+      ...applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves(sourceRows))
+        .filter(withoutDismissalDuplicate),
+      ...failClosedRows.filter(withoutDismissalDuplicate),
       ...dismissalRows
     ];
   }
   const failClosedRows = (Array.isArray(data?.moves) ? data.moves : [])
     .filter(row => row?.isSdeCancellationFailClosed && !isSdeMoveCardActioned(row));
   return [
-    ...buildSdeShiftCardMoves(data).filter(row => !row?.isSdeCancellationFailClosed),
-    ...failClosedRows,
+    ...buildSdeShiftCardMoves(data)
+      .filter(row => !row?.isSdeCancellationFailClosed)
+      .filter(withoutDismissalDuplicate),
+    ...failClosedRows.filter(withoutDismissalDuplicate),
     ...dismissalRows
   ];
 }
