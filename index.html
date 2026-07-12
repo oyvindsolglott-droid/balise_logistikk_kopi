@@ -16041,7 +16041,9 @@ function buildSdeShiftMoveActionControlsHtml(row, encodedActionKey, options={}){
     decodedActionKey = actionKey;
   }
   const existingAction = getSdeMoveActionRecord(decodedActionKey);
-  const blockReason = getSdeShiftMoveActionBlockReason(row);
+  const blockReason = row?.isSdeCancellationFailClosed
+    ? "Ingen fysisk trygg løsning er tilgjengelig. Bruk Annullert for en ny eksplisitt vurderingsrunde når state er kontrollert."
+    : getSdeShiftMoveActionBlockReason(row);
   const doneButtonHtml = blockReason
     ? `<button class="sde-shift-action-btn done" type="button" disabled title="${escapeHtml(blockReason)}">Utført sperret</button>`
     : `<button class="sde-shift-action-btn done" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'completed')">Utført</button>`;
@@ -16402,6 +16404,45 @@ const SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS = 250;
 const SDE_RELEASE_DISMISSAL_REPLACED = "annulled_and_replaced";
 const SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE = "annulled_no_alternative";
 
+function buildSdeCancelledDismissalRows(){
+  return Object.entries(state.sdeMoveActions || {}).flatMap(([actionKey, actionRecord])=>{
+    if(actionRecord?.action !== "cancelled") return [];
+    if(actionRecord?.removedFromActiveLayout === true) return [];
+    if(!actionRecord?.cancelledAt || !actionRecord?.removeAt) return [];
+    const removeAtMs = Date.parse(String(actionRecord.removeAt || ""));
+    if(Number.isFinite(removeAtMs) && Date.now() >= removeAtMs){
+      actionRecord.removedFromActiveLayout = true;
+      try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_error){}
+      return [];
+    }
+    const snapshot = actionRecord.snapshot || {};
+    if(
+      actionRecord.replanKey ||
+      snapshot.isSdePhysicalBlockerFreeingMove ||
+      snapshot.sdePhysicalDependencyRole === "prerequisite"
+    ) return [];
+
+    return [{
+      ...snapshot,
+      vehicle:sanitizeVehicleValue(snapshot.vehicle || actionRecord.vehicle),
+      fromSlot:normalizeSlot(snapshot.fromSlot || actionRecord.fromSlot),
+      arrivalSlot:normalizeSlot(snapshot.fromSlot || actionRecord.fromSlot),
+      recommendedSlot:normalizeSlot(snapshot.toSlot || actionRecord.toSlot),
+      toSlot:normalizeSlot(snapshot.toSlot || actionRecord.toSlot),
+      arrivalTrainText:String(snapshot.arrivalTrainText || "").trim(),
+      departureTrainText:String(snapshot.departureTrainText || "").trim(),
+      nextDepartureText:String(snapshot.departureTrainText || "").trim(),
+      stableActionKey:actionKey,
+      sdeCancellationNeedKey:String(actionRecord.needKey || snapshot.needKey || "").trim(),
+      sdeCancellationRoundNumber:Number(actionRecord.roundNumber || snapshot.sdeCancellationRoundNumber || 1),
+      recommendationReason:String(snapshot.reason || "Annullert skifteforslag. Samme behov vurderes på nytt.").trim(),
+      recommendationAlternatives:Array.isArray(snapshot.alternatives) ? snapshot.alternatives : [],
+      sdeCancellationDismissalCard:true,
+      isManualOnly:true
+    }];
+  });
+}
+
 function prefersReducedSdeReleaseMotion(){
   return typeof window?.matchMedia === "function"
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -16421,8 +16462,8 @@ function getSdePhysicalReleaseCancelledUiState(row, now=Date.now()){
     || ""
   ).trim();
   const managed = Boolean(
-    row?.sdePhysicalRejectedReleaseMove
-    && actionRecord?.action === "cancelled"
+    actionRecord?.action === "cancelled" &&
+    (row?.sdePhysicalRejectedReleaseMove || row?.sdeCancellationDismissalCard)
   );
   if(!managed){
     return {
@@ -16466,6 +16507,7 @@ function getSdePhysicalReleaseCancelledUiState(row, now=Date.now()){
 
   return {
     managed:true,
+    actionKey,
     hidden,
     phase:Number(now) < exitStartedAtMs ? "hold" : "exit",
     cancelledAt:new Date(cancelledAtMs).toISOString(),
@@ -16488,8 +16530,13 @@ function buildSdePhysicalReleaseCancelledCardUi(row, uiState=null){
   const phaseClass = state.phase === "exit" ? " sde-release-cancelled-exit" : "";
   return {
     className:` sde-release-cancelled${phaseClass}`,
-    attributes:` data-sde-release-cancelled-card="1" data-sde-release-cancelled-at="${escapeHtml(state.cancelledAt)}" data-sde-release-exit-started-at="${escapeHtml(state.exitStartedAt)}" data-sde-release-remove-at="${escapeHtml(state.removeAt)}" data-sde-release-dismiss-scheduled="1"`
+    attributes:` data-sde-release-cancelled-card="1" data-sde-cancelled-action-key="${escapeHtml(state.actionKey || getSdeMoveActionKey(row))}" data-sde-release-cancelled-at="${escapeHtml(state.cancelledAt)}" data-sde-release-exit-started-at="${escapeHtml(state.exitStartedAt)}" data-sde-release-remove-at="${escapeHtml(state.removeAt)}" data-sde-release-dismiss-scheduled="1"`
   };
+}
+
+function buildSdeCancelledDismissalMessageHtml(row){
+  if(!row?.sdeCancellationDismissalCard) return "";
+  return `<span class="sde-release-cancelled-message">Annullert. Kortet avsluttes, mens samme uløste behov vurderes på nytt.</span>`;
 }
 
 function clearSdePhysicalReleaseDismissTimers(){
@@ -16509,6 +16556,12 @@ function registerSdePhysicalReleaseDismissTimer(timer){
 
 function removeSdePhysicalReleaseCardWithReflow(card, reducedMotion=false){
   if(!card?.isConnected) return;
+  const actionKey = String(card.dataset.sdeCancelledActionKey || "").trim();
+  const actionRecord = actionKey ? getSdeMoveActionRecord(actionKey) : null;
+  if(actionRecord?.action === "cancelled" && actionRecord.removedFromActiveLayout !== true){
+    actionRecord.removedFromActiveLayout = true;
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_error){}
+  }
   const grid = card.closest(".sde-shift-grid");
   if(!grid){
     card.remove();
@@ -20703,6 +20756,8 @@ function getSdeMoveActionSnapshot(row){
     : null;
 
   return {
+    needKey:getSdeMoveNeedKey(row),
+    source:String(row.source || "").trim(),
     vehicle:sanitizeVehicleValue(row.vehicle),
     arrivalTrainText:String(row.arrivalTrainText || (row.arrivalTrain ? `${row.arrivalTrain}${row.arrivalPart ? `/${row.arrivalPart}` : ""}` : "") || "").trim(),
     departureTrainText:String(row.departureTrainText || row.nextDepartureText || "").trim(),
@@ -20720,7 +20775,10 @@ function getSdeMoveActionSnapshot(row){
     sdePhysicalDependencyRole:String(row.sdePhysicalDependencyRole || "").trim(),
     sdePhysicalDependsOn:Array.isArray(row.sdePhysicalDependsOn) ? [...row.sdePhysicalDependsOn] : [],
     sdePhysicalResolutionContext:String(row.sdePhysicalResolutionContext || "").trim(),
-    sdePhysicalVnReliefChain:vnReliefChain
+    sdePhysicalVnReliefChain:vnReliefChain,
+    isSdePhysicalBlockerFreeingMove:Boolean(row.isSdePhysicalBlockerFreeingMove),
+    isSdeCancellationFailClosed:Boolean(row.isSdeCancellationFailClosed),
+    sdeCancellationRoundNumber:Number(row.sdeCancellationRoundNumber || 1)
   };
 }
 
@@ -20932,6 +20990,8 @@ function getSdeMoveActionKey(row){
 
 function getSdeMoveNeedKey(row){
   if(!row) return "";
+  const cancellationNeedKey = String(row.sdeCancellationNeedKey || "").trim();
+  if(cancellationNeedKey) return cancellationNeedKey;
   const generatedKey = String(row.sdeNightPlacementGeneratedNeedKey || "").trim();
   if(generatedKey) return generatedKey;
   if(row.sdeNightPlacementDragOverrideActive || row.isNightPlacementGenerated){
@@ -21763,7 +21823,9 @@ function getSdeDeletedMoveCards(){
 
 function isSdeMoveCardLocallyDeleted(row){
   const deleted = getSdeDeletedMoveCards();
-  return getSdeMoveActionLookupKeys(row).some(key => Boolean(deleted[key]));
+  const needKey = getSdeMoveNeedKey(row);
+  return Boolean(needKey && deleted[`need|${needKey}`]) ||
+    getSdeMoveActionLookupKeys(row).some(key => Boolean(deleted[key]));
 }
 
 function isSdeMoveActioned(row){
@@ -21864,6 +21926,14 @@ function deleteSdeLocalMoveCard(row, activeRows=[]){
       toSlot:normalizeSlot(row.recommendedSlot || row.toSlot)
     };
   });
+  const needKey = getSdeMoveNeedKey(row);
+  if(needKey){
+    deleted[`need|${needKey}`] = {
+      deletedAt,
+      vehicle:sanitizeVehicleValue(row.vehicle),
+      needKey
+    };
+  }
 
   clearSdeManualMoveOverrideForRow(row);
   removeSdeNightPlacementOverridesForVehicleStep(
@@ -22733,7 +22803,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
 
   const vehicle = sanitizeVehicleValue(row.vehicle);
   const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
-  if(!vehicle || !targetSlot){
+  if(!vehicle || (!targetSlot && !(actionType === "cancelled" && row?.isSdeCancellationFailClosed))){
     alert("SDE-forslaget mangler kjøretøy eller målspor. Kan ikke kvittere automatisk.");
     return;
   }
@@ -22877,16 +22947,52 @@ async function handleSdeShiftMoveAction(encodedKey, action){
       ensureSdeResetSnapshot();
 
       const actionTime = new Date().toISOString();
-      state.sdeMoveActions[key] = {
+      const cancelledAtMs = Date.parse(actionTime);
+      const exitDurationMs = prefersReducedSdeReleaseMotion()
+        ? SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS
+        : SDE_RELEASE_CANCELLED_EXIT_MS;
+      const exitStartedAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS).toISOString();
+      const removeAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS + exitDurationMs).toISOString();
+      const needKey = getSdeMoveNeedKey(row);
+      const cancellationRecord = {
         action:"cancelled",
         vehicle,
         fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
         toSlot:targetSlot,
         time:actionTime,
+        needKey,
+        roundNumber:Number(row.sdeCancellationRoundNumber || 1),
+        cancelledAt:actionTime,
+        dismissScheduledAt:actionTime,
+        dismissAt:exitStartedAt,
+        exitStartedAt,
+        removeAt,
+        exitDurationMs,
+        removedFromActiveLayout:false,
+        dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
+        replacedByCardId:"",
+        replacementCreatedAt:"",
         snapshot:getSdeMoveActionSnapshot(row)
       };
+      state.sdeMoveActions[key] = cancellationRecord;
       updateSdeVnRecoveryObligationForMove(row, "cancelled", actionTime);
       recordSdeMoveLearningEvent(key, "cancelled", row, actionTime, learningReason);
+      const replacementRow = buildSdeCancelledReplacementMoves(Array.isArray(data?.moves) ? data.moves : [] )
+        .find(candidate => getSdeMoveNeedKey(candidate) === needKey);
+      const replacementKey = getSdeMoveActionKey(replacementRow);
+      if(replacementRow && replacementKey){
+        cancellationRecord.dismissalState = replacementRow.isSdeCancellationFailClosed
+          ? SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE
+          : SDE_RELEASE_DISMISSAL_REPLACED;
+        cancellationRecord.replacedByCardId = replacementKey;
+        cancellationRecord.replacementCreatedAt = actionTime;
+        cancellationRecord.replacementTargetSlot = normalizeSlot(replacementRow.recommendedSlot || replacementRow.toSlot);
+        cancellationRecord.replacementWasFailClosed = Boolean(replacementRow.isSdeCancellationFailClosed);
+        cancellationRecord.replacementScore = replacementRow.recommendationScore ?? "";
+        cancellationRecord.replacementAlternatives = Array.isArray(replacementRow.recommendationAlternatives)
+          ? replacementRow.recommendationAlternatives.map(alternative=>({...alternative}))
+          : [];
+      }
       persist(true);
       refreshSdeAfterMoveAction();
       return;
@@ -22910,6 +23016,8 @@ function getSdeWrongTrackReplacementNeedKeyFromParts(vehicle, fromSlot, arrivalT
 
 function getSdeWrongTrackReplacementNeedKeyFromMove(row){
   if(!row) return "";
+  const needKey = getSdeMoveNeedKey(row);
+  if(needKey) return needKey;
   return getSdeWrongTrackReplacementNeedKeyFromParts(
     row.vehicle,
     row.fromSlot || row.arrivalSlot,
@@ -22921,6 +23029,8 @@ function getSdeWrongTrackReplacementNeedKeyFromMove(row){
 
 function getSdeWrongTrackReplacementNeedKeyFromEvent(event){
   const snapshot = event?.snapshot || {};
+  const needKey = String(snapshot.needKey || event?.needKey || "").trim();
+  if(needKey) return needKey;
   return getSdeWrongTrackReplacementNeedKeyFromParts(
     snapshot.vehicle,
     snapshot.fromSlot,
@@ -22931,7 +23041,7 @@ function getSdeWrongTrackReplacementNeedKeyFromEvent(event){
 }
 
 function getFreshSdeWrongTrackReplacementAlternative(baseRow, rejectedSlots, reservedTargetSlotsByNeedKey, needKey){
-  if(!baseRow || baseRow.source !== "Ankomstbasert parkeringsbehov" || baseRow.isWorkshopMoveNeed || baseRow.isSpor3ProductionNeed){
+  if(!baseRow || baseRow.isWorkshopMoveNeed || baseRow.isSpor3ProductionNeed){
     return null;
   }
 
@@ -22961,7 +23071,7 @@ function getFreshSdeWrongTrackReplacementAlternative(baseRow, rejectedSlots, res
 
     const recommendation = getSdeArrivalParkingRecommendation(baseRow, reservedSlots);
     const slot = normalizeSlot(recommendation?.slot);
-    if(!slot) return null;
+    if(!slot) break;
 
     if(rejectedSlots.has(slot) || getSdeVehicleInSlot(slot)){
       extraReservedSlots.add(slot);
@@ -22991,16 +23101,64 @@ function getFreshSdeWrongTrackReplacementAlternative(baseRow, rejectedSlots, res
     };
   }
 
+  const fallbackCandidates = getSdeResolutionCandidateSlots(baseRow.fromSlot || baseRow.arrivalSlot)
+    .map(slot=>({slot, assessment:scoreSdeArrivalParkingCandidate(baseRow, slot)}))
+    .filter(item=>{
+      const slot = normalizeSlot(item.slot);
+      if(!slot || rejectedSlots.has(slot) || getSdeVehicleInSlot(slot)) return false;
+      if(item.assessment?.status === "rejected") return false;
+      if(Array.from(reservedTargetSlotsByNeedKey.get(slot) || []).some(reservedNeedKey => reservedNeedKey !== needKey)) return false;
+      const candidateRow = {...baseRow, stableActionKey:"", sdeNightPlacementGeneratedActionKey:"", recommendedSlot:slot, toSlot:slot};
+      return !isSdeMoveActioned(candidateRow);
+    })
+    .sort((a,b)=>Number(b.assessment?.score || 0) - Number(a.assessment?.score || 0));
+  const fallback = fallbackCandidates[0];
+  if(fallback){
+    return {
+      slot:normalizeSlot(fallback.slot),
+      score:fallback.assessment?.score ?? baseRow.recommendationScore ?? "",
+      reason:(fallback.assessment?.reasons || []).join(" "),
+      alternatives:fallbackCandidates.slice(1).map(item=>({slot:normalizeSlot(item.slot), score:item.assessment?.score ?? ""}))
+    };
+  }
+
   return null;
 }
 
-function buildSdeWrongTrackReplacementMoves(baseMoves){
+function buildSdeCancellationFailClosedRow(baseRow, needKey, roundNumber=1){
+  const round = Math.max(1, Number(roundNumber || 1));
+  return {
+    ...baseRow,
+    stableActionKey:`sde-cancel-failclosed|${getSdeShiftSnapshotHash(needKey)}|r${round}`,
+    sdeNightPlacementGeneratedActionKey:"",
+    sdeCancellationNeedKey:needKey,
+    sdeCancellationRoundNumber:round,
+    recommendedSlot:"",
+    toSlot:"",
+    recommendationConfidence:"low",
+    recommendationScore:"Ikke scoret",
+    recommendationAlternatives:[],
+    recommendationReason:"Ingen ny fysisk trygg skifteplan kan bevises nå. Behovet er fortsatt uløst og beholdes fail-closed.",
+    parkingStrategy:"Fail-closed etter Annullert",
+    parkingInstruction:"Uløst skiftebehov. Fysisk state må endres eller vurderingen startes på nytt eksplisitt.",
+    isManualOnly:true,
+    isSdeCancellationFailClosed:true,
+    isWrongTrackReplacementMove:false,
+    isSdeCancellationReplacementMove:true
+  };
+}
+
+function buildSdeCancelledReplacementMoves(baseMoves){
   const moves = Array.isArray(baseMoves) ? baseMoves : [];
   const learningEvents = Array.isArray(state.sdeMoveLearningLog)
     ? state.sdeMoveLearningLog.filter(Boolean)
     : [];
-  const wrongTrackEvents = learningEvents.filter(event => event?.action === "cancelled" && event?.reasonCode === "wrong_track");
-  if(!wrongTrackEvents.length) return [];
+  const cancelledEvents = learningEvents.filter(event =>
+    event?.action === "cancelled" &&
+    event?.snapshot?.sdePhysicalDependencyRole !== "prerequisite" &&
+    event?.snapshot?.isSdePhysicalBlockerFreeingMove !== true
+  );
+  if(!cancelledEvents.length) return [];
 
   const completedNeedKeys = new Set();
   learningEvents
@@ -23029,6 +23187,14 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
   moves.forEach(row=>{
     const needKey = getSdeWrongTrackReplacementNeedKeyFromMove(row);
     if(needKey && !baseMovesByNeedKey.has(needKey)) baseMovesByNeedKey.set(needKey, row);
+    const legacyNeedKey = getSdeWrongTrackReplacementNeedKeyFromParts(
+      row?.vehicle,
+      row?.fromSlot || row?.arrivalSlot,
+      row?.arrivalTrainText,
+      row?.departureTrainText || row?.nextDepartureText,
+      row?.arrivalTime
+    );
+    if(legacyNeedKey && !baseMovesByNeedKey.has(legacyNeedKey)) baseMovesByNeedKey.set(legacyNeedKey, row);
     if(!needKey || isSdeMoveActioned(row)) return;
 
     const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
@@ -23040,19 +23206,34 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
   });
 
   const groups = new Map();
-  wrongTrackEvents.forEach(event=>{
+  cancelledEvents.forEach(event=>{
     const snapshot = event?.snapshot || {};
     const needKey = getSdeWrongTrackReplacementNeedKeyFromEvent(event);
     const rejectedSlot = normalizeSlot(snapshot.toSlot);
-    if(!needKey || !rejectedSlot) return;
+    if(!needKey) return;
 
     const group = groups.get(needKey) || {
       event,
       snapshot,
       rejectedSlots:new Set(),
-      alternatives:[]
+      alternatives:[],
+      reasonCodes:new Set(),
+      roundNumber:Math.max(1, Number(snapshot.sdeCancellationRoundNumber || 1))
     };
-    group.rejectedSlots.add(rejectedSlot);
+    group.event = event;
+    group.snapshot = snapshot;
+    group.actionRecord = getSdeMoveActionRecord(event.key);
+    group.reasonCodes.add(String(event.reasonCode || "no_reason"));
+
+    if(snapshot.isSdeCancellationFailClosed){
+      group.rejectedSlots.clear();
+      group.alternatives = [];
+      group.roundNumber = Math.max(group.roundNumber + 1, Number(snapshot.sdeCancellationRoundNumber || 1) + 1);
+      groups.set(needKey, group);
+      return;
+    }
+
+    if(rejectedSlot) group.rejectedSlots.add(rejectedSlot);
 
     if(Array.isArray(snapshot.alternatives)){
       snapshot.alternatives.forEach(alt=>{
@@ -23069,12 +23250,28 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
   const replacements = [];
   groups.forEach((group, needKey)=>{
     if(completedNeedKeys.has(needKey)) return;
+    if(getSdeDeletedMoveCards()[`need|${needKey}`]) return;
 
     const baseRow = baseMovesByNeedKey.get(needKey);
     if(!baseRow) return;
 
+    if(group.actionRecord?.replacementWasFailClosed === true && !group.snapshot?.isSdeCancellationFailClosed){
+      replacements.push(buildSdeCancellationFailClosedRow(baseRow, needKey, group.roundNumber));
+      return;
+    }
+
     const snapshot = group.snapshot || {};
-    let nextAlternative = group.alternatives.find(alt=>{
+    const stableReplacementTarget = normalizeSlot(group.actionRecord?.replacementTargetSlot);
+    let nextAlternative = stableReplacementTarget && !group.rejectedSlots.has(stableReplacementTarget)
+      && !getSdeVehicleInSlot(stableReplacementTarget)
+      && !Array.from(reservedTargetSlotsByNeedKey.get(stableReplacementTarget) || []).some(reservedNeedKey => reservedNeedKey !== needKey)
+      ? {
+          slot:stableReplacementTarget,
+          score:group.actionRecord?.replacementScore ?? baseRow.recommendationScore ?? "",
+          alternatives:Array.isArray(group.actionRecord?.replacementAlternatives) ? group.actionRecord.replacementAlternatives : []
+        }
+      : null;
+    if(!nextAlternative) nextAlternative = group.alternatives.find(alt=>{
       const slot = normalizeSlot(alt?.slot);
       if(!slot || group.rejectedSlots.has(slot)) return false;
       if(getSdeVehicleInSlot(slot)) return false;
@@ -23101,7 +23298,10 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
       remainingAlternativeSource = Array.isArray(nextAlternative?.alternatives) ? nextAlternative.alternatives : [];
     }
 
-    if(!nextAlternative) return;
+    if(!nextAlternative){
+      replacements.push(buildSdeCancellationFailClosedRow(baseRow, needKey, group.roundNumber));
+      return;
+    }
 
     const nextSlot = normalizeSlot(nextAlternative.slot);
     const remainingAlternatives = remainingAlternativeSource
@@ -23116,17 +23316,23 @@ function buildSdeWrongTrackReplacementMoves(baseMoves){
 
     const replacement = {
       ...baseRow,
+      stableActionKey:"",
+      sdeNightPlacementGeneratedActionKey:"",
+      sdeCancellationNeedKey:needKey,
+      sdeCancellationRoundNumber:group.roundNumber,
       fromSlot:normalizeSlot(baseRow.fromSlot || baseRow.arrivalSlot) || "Ukjent",
       arrivalSlot:normalizeSlot(baseRow.arrivalSlot || baseRow.fromSlot) || "",
       recommendedSlot:nextSlot,
       toSlot:nextSlot,
       recommendationConfidence:baseRow.recommendationConfidence === "medium" ? "medium" : "low",
       recommendationScore:nextAlternative.score ?? baseRow.recommendationScore ?? snapshot.recommendationScore ?? "",
-      recommendationReason:"Adaptivt forslag etter Feil spor. Basert på opprinnelig SDE-forslag. Kontroller operativt før utføring.",
+      recommendationReason:"Nytt fysisk vurdert forslag etter Annullert. Basert på samme uløste skiftebehov. Kontroller operativt før utføring.",
       recommendationAlternatives:remainingAlternatives,
-      parkingStrategy:"Adaptivt forslag etter Feil spor",
-      parkingInstruction:"Adaptivt forslag etter Feil spor. Kontroller operativt før utføring.",
-      isWrongTrackReplacementMove:true
+      parkingStrategy:"Ny vurdering etter Annullert",
+      parkingInstruction:"Nytt forslag etter Annullert. Kontroller operativt før utføring.",
+      isWrongTrackReplacementMove:group.reasonCodes.has("wrong_track"),
+      isSdeCancellationFailClosed:false,
+      isSdeCancellationReplacementMove:true
     };
 
     if(!isSdeMoveActioned(replacement)){
@@ -23756,7 +23962,7 @@ function getSdeShiftShowcaseData(){
       };
     })
     .sort(compareSdeShiftMoveDisplayRows);
-  const adaptiveMoves = buildSdeWrongTrackReplacementMoves(baseMoves);
+  const adaptiveMoves = buildSdeCancelledReplacementMoves(baseMoves);
   const moves = sortSdeShiftMovesForDisplay([...adaptiveMoves, ...baseMoves]);
 
   const unresolvedCandidates = needs.filter(row =>
@@ -26519,6 +26725,7 @@ function buildSdeNightPlacementCardOverrideMove(row, override){
 
 function getSdeEffectiveMoveForCard(row, allRows=[]){
   if(!row) return row;
+  if(row.isSdeCancellationReplacementMove || row.isSdeCancellationFailClosed) return row;
   const nightPlacementOverride = getSdeNightPlacementOverrideForMove(row, allRows);
   if(nightPlacementOverride){
     return buildSdeNightPlacementCardOverrideMove(row, nightPlacementOverride);
@@ -26616,12 +26823,33 @@ function buildSdeNightPlacementGeneratedMove(override){
   };
 }
 
+function getSdeNightPlacementCancelledReplanSourceOverrides(){
+  return Object.values(getSdeNightPlacementManualOverrides()).filter(override=>{
+    if(!override || isSdeNightPlacementNoOpOverride(override)) return false;
+    const actionKey = getSdeNightPlacementOverrideActionKey(override);
+    const actionRecord = actionKey ? getSdeMoveActionRecord(actionKey) : null;
+    if(actionRecord?.action !== "cancelled") return false;
+    const needKey = String(actionRecord.needKey || override.needKey || "").trim();
+    return !needKey || !getSdeDeletedMoveCards()[`need|${needKey}`];
+  });
+}
+
 function buildSdeNightPlacementGeneratedMoves(baseRows=[]){
   const rows = Array.isArray(baseRows) ? baseRows : [];
   const generated = [];
   const usedActionKeys = new Set(rows.map(row => getSdeMoveActionKey(row)).filter(Boolean));
+  const seenOverrideKeys = new Set();
+  const sourceOverrides = [
+    ...getSdeNightPlacementActiveManualOverrides(),
+    ...getSdeNightPlacementCancelledReplanSourceOverrides()
+  ].filter(override=>{
+    const key = String(override?.id || getSdeNightPlacementOverrideActionKey(override) || "").trim();
+    if(!key || seenOverrideKeys.has(key)) return false;
+    seenOverrideKeys.add(key);
+    return true;
+  });
 
-  getSdeNightPlacementActiveManualOverrides().forEach(override => {
+  sourceOverrides.forEach(override => {
     if(getSdeNightPlacementMatchedMoveForOverride(override, rows)) return;
 
     const generatedMove = buildSdeNightPlacementGeneratedMove(override);
@@ -26870,6 +27098,7 @@ function getSdeNightPlacementMovePriority(row){
   if(row?.isSdeNightPlacementBlockedMoveRequest) return 58;
   if(row?.sdeNightPlacementDragOverrideActive) return 55;
   if(row?.manualOverrideActive || row?.manualPlanOverrideActive) return 50;
+  if(row?.isSdeCancellationReplacementMove) return 45;
   if(row?.isWrongTrackReplacementMove) return 40;
   if(row?.isWorkshopMoveNeed) return 30;
   if(row?.isSpor3ProductionNeed) return 20;
@@ -27601,7 +27830,7 @@ function buildSdeNightPlacementEffectiveMoves(data){
   const actionedWrongTrackNeedKeys = getSdeNightPlacementActionedWrongTrackNeedKeys();
   const replacementWrongTrackNeedKeys = new Set(
     sourceRows
-      .filter(row => row?.isWrongTrackReplacementMove)
+      .filter(row => row?.isWrongTrackReplacementMove || row?.isSdeCancellationReplacementMove)
       .map(row => getSdeWrongTrackReplacementNeedKeyFromMove(row))
       .filter(Boolean)
   );
@@ -27658,7 +27887,7 @@ function buildSdeNightPlacementEffectiveMoves(data){
     const isManualPlan = Boolean(row?.manualPlanOverrideActive);
     const isManualOverride = Boolean(row?.manualOverrideActive);
     const isDragOverride = Boolean(row?.sdeNightPlacementDragOverrideActive);
-    const isAdaptive = Boolean(row?.isWrongTrackReplacementMove);
+    const isAdaptive = Boolean(row?.isWrongTrackReplacementMove || row?.isSdeCancellationReplacementMove);
     const hasStoredManualOverride = needKey && manualOverrideNeedKeys.has(needKey);
     const vehicleToken = normalizeVehicleToken(row?.vehicle);
     const feedsDragOverride = Boolean(
@@ -27720,14 +27949,27 @@ function buildSdeNightPlacementEffectiveMoves(data){
 }
 
 function buildSdeFinalCardRowsForData(data){
+  const dismissalRows = buildSdeCancelledDismissalRows();
   if(data?.limitedPlanningMode){
-    const sourceRows = [
+    const allSourceRows = [
       ...(sdeNightPlacementBlockedMoveRequest ? [sdeNightPlacementBlockedMoveRequest] : []),
       ...(Array.isArray(data?.moves) ? data.moves : [])
     ].filter(row => !isSdeMoveCardActioned(row));
-    return applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves(sourceRows));
+    const failClosedRows = allSourceRows.filter(row => row?.isSdeCancellationFailClosed);
+    const sourceRows = allSourceRows.filter(row => !row?.isSdeCancellationFailClosed);
+    return [
+      ...applySdeNightPlacementStepRoles(buildSdePhysicalBlockerGuardMoves(sourceRows)),
+      ...failClosedRows,
+      ...dismissalRows
+    ];
   }
-  return buildSdeShiftCardMoves(data);
+  const failClosedRows = (Array.isArray(data?.moves) ? data.moves : [])
+    .filter(row => row?.isSdeCancellationFailClosed && !isSdeMoveCardActioned(row));
+  return [
+    ...buildSdeShiftCardMoves(data).filter(row => !row?.isSdeCancellationFailClosed),
+    ...failClosedRows,
+    ...dismissalRows
+  ];
 }
 
 function mergeSdeAuthoritativeVnRecoveryOverlayRows(rows=[], data=null){
@@ -28662,7 +28904,9 @@ function renderSdeSkiftebevegelser(){
 }
 
 function buildSdeLimitedPlanningData(reason, text){
-  const moves = buildSdeNightPlacementGeneratedMoves([]);
+  const baseMoves = buildSdeNightPlacementGeneratedMoves([]);
+  const replacementMoves = buildSdeCancelledReplacementMoves(baseMoves);
+  const moves = sortSdeShiftMovesForDisplay([...replacementMoves, ...baseMoves]);
   return {
     score:"–",
     moves,
@@ -28717,7 +28961,7 @@ function buildSdeLimitedPlanningCardsHtml(data){
       <div class="sde-shift-route" aria-label="Simulert manuell skiftebevegelse">
         <div class="sde-shift-slot from">${escapeHtml(fromSlot || "ukjent")}</div>
         <div class="sde-shift-arrow">→</div>
-        <div class="sde-shift-slot to">${escapeHtml(toSlot || "ukjent")}</div>
+        <div class="sde-shift-slot to">${escapeHtml(toSlot || (row.isSdeCancellationFailClosed ? "Ingen trygg løsning" : "ukjent"))}</div>
       </div>
 
       <div class="sde-shift-meta">
@@ -28736,6 +28980,7 @@ function buildSdeLimitedPlanningCardsHtml(data){
       ${physicalBlockerFreeingHtml}
       ${temporaryVnReliefChainHtml}
       ${physicalBlockerGuardHtml}
+      ${buildSdeCancelledDismissalMessageHtml(row)}
       ${actionControlsHtml}
       <div class="sde-shift-details show">
         <div class="sde-shift-reason">${escapeHtml(reason)}</div>
@@ -28895,7 +29140,11 @@ function renderSdeSkiftebevegelserInner(){
   const learningDiagnosticsHtml = "";
   const cardMoves = buildSdeFinalCardRowsForData(data);
   const topMoves = cardMoves
-    .filter(row => !isSdeMoveCardActioned(row) && !getSdePhysicalReleaseCancelledUiState(row).hidden)
+    .filter(row => {
+      const dismissalState = getSdePhysicalReleaseCancelledUiState(row);
+      if(dismissalState.managed) return !dismissalState.hidden;
+      return !isSdeMoveCardActioned(row) && !dismissalState.hidden;
+    })
     .slice(0, 20);
   const nightPlacementOverriddenCardCount = topMoves.filter(row => row?.sdeNightPlacementCardOverrideActive).length;
   const nightPlacementGeneratedCardCount = topMoves.filter(row => row?.isNightPlacementGenerated).length;
@@ -28923,7 +29172,9 @@ function renderSdeSkiftebevegelserInner(){
         const rawActionKey = row.sdeNightPlacementOriginalActionKey || getSdeMoveActionKey(row);
         const actionKey = encodeURIComponent(rawActionKey);
         const trackClearanceWindowHtml = buildSdeTrackClearanceWindowHtml(row);
-        const manualOverrideControlHtml = buildSdeManualOverrideControlHtml(row, data, index);
+        const manualOverrideControlHtml = row?.sdeCancellationDismissalCard || row?.isSdeCancellationFailClosed
+          ? ""
+          : buildSdeManualOverrideControlHtml(row, data, index);
         const nightPlacementStepRoleLabel = getSdeNightPlacementStepRoleLabel(row);
         const nightPlacementOverrideHtml = buildSdeNightPlacementCardOverrideHtml(row) || buildSdeNightPlacementGeneratedCardHtml(row) || buildSdeNightPlacementStepRoleHtml(row);
         const physicalBlockerGuardHtml = buildSdePhysicalBlockerGuardHtml(row);
@@ -28948,7 +29199,7 @@ function renderSdeSkiftebevegelserInner(){
           <div class="sde-shift-route" aria-label="Foreslått skiftebevegelse">
             <div class="sde-shift-slot from">${escapeHtml(row.fromSlot)}</div>
             <div class="sde-shift-arrow">→</div>
-            <div class="sde-shift-slot to">${escapeHtml(row.toSlot)}</div>
+            <div class="sde-shift-slot to">${escapeHtml(row.toSlot || "Ingen trygg løsning")}</div>
           </div>
 
           <div class="sde-shift-meta">
@@ -28965,6 +29216,7 @@ function renderSdeSkiftebevegelserInner(){
           ${physicalBlockerFreeingHtml}
           ${temporaryVnReliefChainHtml}
           ${physicalBlockerGuardHtml}
+          ${buildSdeCancelledDismissalMessageHtml(row)}
           ${trackClearanceWindowHtml}
           <div class="sde-shift-details">
             <div class="sde-shift-reason">${escapeHtml(row.recommendationReason || row.parkingInstruction || "SDE har ikke begrunnelse for denne anbefalingen ennå.")}</div>
