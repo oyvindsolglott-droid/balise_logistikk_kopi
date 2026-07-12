@@ -16191,7 +16191,72 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
     insertedRecoveryKeys.add(key);
   });
 
-  return applySdePhysicalSequenceReservations(guarded);
+  return applySdePhysicalSequenceReservations(
+    reconcileSdeFinalVnRecoveryRows(guarded, sourceRows)
+  );
+}
+
+function reconcileSdeFinalVnRecoveryRows(rows=[], sourceRows=[]){
+  const guardedRows = Array.isArray(rows) ? rows : [];
+  const vnVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VN"));
+  if(!vnVehicle) return guardedRows;
+
+  const recoveryRows = guardedRows.filter(row =>
+    row?.sdeVnRecoveryRequired === true &&
+    normalizeSlot(row.fromSlot || row.arrivalSlot) === "VN" &&
+    haveSameSdeVehicleTokens(row.vehicle, vnVehicle)
+  );
+  if(recoveryRows.length <= 1) return guardedRows;
+
+  const nonRecoveryRows = guardedRows.filter(row => !recoveryRows.includes(row));
+  const sourceActionKeys = new Set(
+    (Array.isArray(sourceRows) ? sourceRows : []).map(getSdeMoveActionKey).filter(Boolean)
+  );
+  const evaluated = recoveryRows.map(row=>{
+    const plan = row.sdePhysicalVnReliefChain || {};
+    const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+    const mainRowPresent = sourceActionKeys.has(String(plan.mainActionKey || ""));
+    const mode = row.isSdePhysicalVnRecoveryMove ? "recovery" : "return";
+    const obligation = {
+      vnVehicleId:vnVehicle,
+      plan
+    };
+    const invalidReason = targetSlot
+      ? getSdeVnRecoveryCandidateInvalidReason({row, obligation, mode, mainRowPresent}, nonRecoveryRows)
+      : "Returmål mangler.";
+    return {row, targetSlot, invalidReason};
+  });
+  const validTargets = new Map();
+  evaluated.filter(item=>!item.invalidReason && item.targetSlot).forEach(item=>{
+    const targetRows = validTargets.get(item.targetSlot) || [];
+    targetRows.push(item.row);
+    validTargets.set(item.targetSlot, targetRows);
+  });
+
+  let selectedRow = null;
+  if(validTargets.size === 1){
+    const candidates = Array.from(validTargets.values())[0];
+    selectedRow = candidates.find(row=>row.sdeVnRecoveryAuthoritative === true) || candidates[0] || null;
+  }
+  if(!selectedRow){
+    selectedRow = recoveryRows.find(row => !normalizeSlot(row.recommendedSlot || row.toSlot)) || null;
+  }
+  if(!selectedRow){
+    const entryToken = String(
+      recoveryRows.map(row=>row.sdeVnEntryToken).find(Boolean) ||
+      buildSdeVnEntryToken(vnVehicle, "untracked")
+    ).trim();
+    selectedRow = buildSdeOrphanVnRecoveryRow(vnVehicle, {entryToken});
+  }
+
+  const selectedKey = getSdeMoveActionKey(selectedRow);
+  let inserted = false;
+  return guardedRows.filter(row=>{
+    if(!recoveryRows.includes(row)) return true;
+    if(inserted || getSdeMoveActionKey(row) !== selectedKey) return false;
+    inserted = true;
+    return true;
+  }).concat(inserted || !selectedRow ? [] : [selectedRow]);
 }
 
 function buildSdePhysicalBlockerGuardHtml(row, blockState=null){
