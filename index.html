@@ -29139,13 +29139,21 @@ function renderSdeSkiftebevegelserInner(){
   const unresolvedKpiExpanded = Boolean(sdeUnresolvedDetailsVisible && unresolvedCount > 0);
   const learningDiagnosticsHtml = "";
   const cardMoves = buildSdeFinalCardRowsForData(data);
-  const topMoves = cardMoves
-    .filter(row => {
+  const visibleCardMoveEntries = cardMoves
+    .map(row => {
       const dismissalState = getSdePhysicalReleaseCancelledUiState(row);
+      return {row, dismissalState};
+    })
+    .filter(({row, dismissalState}) => {
       if(dismissalState.managed) return !dismissalState.hidden;
       return !isSdeMoveCardActioned(row) && !dismissalState.hidden;
-    })
-    .slice(0, 20);
+    });
+  const topMoves = [
+    ...visibleCardMoveEntries.filter(({dismissalState}) => dismissalState.managed),
+    ...visibleCardMoveEntries.filter(({dismissalState}) => !dismissalState.managed)
+  ]
+    .slice(0, 20)
+    .map(({row}) => row);
   const nightPlacementOverriddenCardCount = topMoves.filter(row => row?.sdeNightPlacementCardOverrideActive).length;
   const nightPlacementGeneratedCardCount = topMoves.filter(row => row?.isNightPlacementGenerated).length;
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
