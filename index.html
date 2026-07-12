@@ -14665,12 +14665,22 @@ function normalizeSdeVnRecoveryObligation(source, fallbackId=""){
   const recoveryCardId = String(value.vnRecoveryFallbackCardId || plan.recoveryActionKey || "").trim();
   if(!chainId || !vehicle) return null;
 
+  const obligationId = String(value.obligationId || chainId).trim();
+  const supersededCardIds = Array.isArray(value.supersededCardIds)
+    ? Array.from(new Set(value.supersededCardIds.map(item=>String(item || "").trim()).filter(Boolean)))
+    : [];
+
   return {
+    obligationId,
     vnRecoveryRequired:value.vnRecoveryRequired !== false,
     vnVehicleId:vehicle,
+    vnEntryToken:String(value.vnEntryToken || "").trim(),
     vnRecoveryChainId:chainId,
     vnRecoveryCardId:returnCardId,
     vnRecoveryFallbackCardId:recoveryCardId,
+    activeRecoveryCardId:String(value.activeRecoveryCardId || "").trim(),
+    vnActiveRecoveryMode:String(value.vnActiveRecoveryMode || "").trim(),
+    vnRecoveryAuthoritative:value.vnRecoveryAuthoritative === true,
     vnOriginSlot:normalizeSlot(value.vnOriginSlot || plan.blockerFromSlot),
     vnPlannedReturnTarget:normalizeSlot(value.vnPlannedReturnTarget || plan.returnTargetSlot),
     vnRecoveryStatus:String(value.vnRecoveryStatus || "waiting_for_main").trim(),
@@ -14679,8 +14689,19 @@ function normalizeSdeVnRecoveryObligation(source, fallbackId=""){
     createdAt:String(value.createdAt || "").trim(),
     updatedAt:String(value.updatedAt || "").trim(),
     completedAt:String(value.completedAt || "").trim(),
+    supersededBy:String(value.supersededBy || "").trim(),
+    supersededCardIds,
+    hiddenFromActiveCards:value.hiddenFromActiveCards === true,
+    excludedFromReservations:value.excludedFromReservations === true,
+    excludedFromOverlays:value.excludedFromOverlays === true,
     plan
   };
+}
+
+function buildSdeVnEntryToken(vehicle, actionTime="", plan=null){
+  const vehicleToken = normalizeVehicleToken(vehicle) || "unknown";
+  const entryIdentity = String(actionTime || plan?.releaseActionKey || plan?.chainId || "unknown").trim();
+  return `vn-entry|${vehicleToken}|${entryIdentity}`;
 }
 
 function buildSdeVnRecoveryObligation(plan, actionTime=""){
@@ -14688,9 +14709,13 @@ function buildSdeVnRecoveryObligation(plan, actionTime=""){
   return normalizeSdeVnRecoveryObligation({
     vnRecoveryRequired:true,
     vnVehicleId:plan.blockerVehicle,
+    vnEntryToken:buildSdeVnEntryToken(plan.blockerVehicle, actionTime, plan),
     vnRecoveryChainId:plan.chainId,
     vnRecoveryCardId:plan.returnActionKey,
     vnRecoveryFallbackCardId:plan.recoveryActionKey,
+    activeRecoveryCardId:plan.returnActionKey,
+    vnActiveRecoveryMode:"return",
+    vnRecoveryAuthoritative:true,
     vnOriginSlot:plan.blockerFromSlot,
     vnPlannedReturnTarget:plan.returnTargetSlot,
     vnRecoveryStatus:"waiting_for_main",
@@ -14722,7 +14747,7 @@ function migrateSdeVnRecoveryObligationsFromMoveActions(){
   return obligations;
 }
 
-function getSdeActiveVnRecoveryObligations(){
+function getSdeRawRequiredVnRecoveryObligations(){
   const obligations = migrateSdeVnRecoveryObligationsFromMoveActions();
   return Object.entries(obligations)
     .map(([id,value])=>normalizeSdeVnRecoveryObligation(value, id))
@@ -14736,10 +14761,18 @@ function getSdeActiveVnRecoveryObligations(){
     });
 }
 
+function getSdeActiveVnRecoveryObligations(sourceRows=[]){
+  return reconcileSdeVnRecoveryObligations(sourceRows);
+}
+
 function getSdeVnRecoveryObligationForMainRow(row){
   const mainActionKey = getSdeMoveActionKey(row);
   if(!mainActionKey) return null;
-  return getSdeActiveVnRecoveryObligations().find(obligation =>
+  const vnVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VN"));
+  return getSdeRawRequiredVnRecoveryObligations().find(obligation =>
+    obligation.vnRecoveryAuthoritative &&
+    !obligation.hiddenFromActiveCards &&
+    haveSameSdeVehicleTokens(obligation.vnVehicleId, vnVehicle) &&
     String(obligation.plan?.mainActionKey || "") === mainActionKey
   ) || null;
 }
@@ -14770,12 +14803,16 @@ function updateSdeVnRecoveryObligationForMove(row, actionType, actionTime=""){
       if(type === "completed"){
         obligation.vnRecoveryStatus = "return_ready";
         obligation.vnRecoveryCardId = obligationPlan.returnActionKey;
+        obligation.activeRecoveryCardId = obligationPlan.returnActionKey;
+        obligation.vnActiveRecoveryMode = "return";
         obligation.vnPlannedReturnTarget = normalizeSlot(obligationPlan.returnTargetSlot);
         obligation.recoveryDependsOnCardId = obligationPlan.mainActionKey;
         changed = true;
       }else if(type === "cancelled"){
         obligation.vnRecoveryStatus = "recovery_required";
         obligation.vnRecoveryCardId = obligationPlan.recoveryActionKey;
+        obligation.activeRecoveryCardId = obligationPlan.recoveryActionKey;
+        obligation.vnActiveRecoveryMode = "recovery";
         obligation.vnPlannedReturnTarget = normalizeSlot(obligationPlan.recoveryTargetSlot);
         obligation.recoveryDependsOnCardId = obligationPlan.releaseActionKey;
         changed = true;
@@ -14792,6 +14829,7 @@ function updateSdeVnRecoveryObligationForMove(row, actionType, actionTime=""){
     );
     if(completedRecoveryCard){
       obligation.vnRecoveryRequired = false;
+      obligation.vnRecoveryAuthoritative = false;
       obligation.vnRecoveryStatus = "completed";
       obligation.completedAt = actionTime;
       changed = true;
@@ -14894,17 +14932,44 @@ function buildSdeVnRecoveryRowFromObligation(obligation, options={}){
   if(!obligation?.vnRecoveryRequired) return null;
   const plan = obligation.plan || {};
   const mainRecord = getSdeMoveActionRecord(plan.mainActionKey);
+  const requestedMode = String(
+    options.activeMode ||
+    (options.ignoreAuthoritativeMode ? "" : obligation.vnActiveRecoveryMode) ||
+    ""
+  ).trim();
+  if(requestedMode === "fail_closed"){
+    const missingMetadata = obligation.vnRecoveryStatus === "missing_recovery_metadata";
+    return buildSdeOrphanVnRecoveryRow(obligation.vnVehicleId, {
+      cardId:obligation.activeRecoveryCardId,
+      obligationId:obligation.obligationId,
+      entryToken:obligation.vnEntryToken,
+      status:missingMetadata ? "missing_recovery_metadata" : "ambiguous_recovery_target",
+      instruction:missingMetadata
+        ? `${obligation.vnVehicleId} står i VN uten komplett recoverymetadata. Kortet beholdes til en trygg returrute er validert.`
+        : `${obligation.vnVehicleId} står i VN, men én fysisk gyldig returrute kan ikke bevises.`,
+      reason:missingMetadata
+        ? "Ingen trygg returrute er tilgjengelig. Kjøretøyet kan ikke bli stående i VN uten synlig returplikt."
+        : "Flere eller ingen trygge recoveryplaner konkurrerer. Returmål må avklares eller replannes før Utført."
+    });
+  }
   const missingPendingMain = options.mainRowPresent === false && !mainRecord;
-  const recovery = mainRecord?.action === "cancelled" || obligation.vnRecoveryStatus === "recovery_required" || missingPendingMain;
+  const recovery = requestedMode
+    ? requestedMode === "recovery"
+    : mainRecord?.action === "cancelled" || obligation.vnRecoveryStatus === "recovery_required" || missingPendingMain;
   const row = buildSdeTemporaryVnReturnRow(plan, {recovery});
   if(!row) return null;
+  const modeCardId = recovery
+    ? (obligation.vnRecoveryFallbackCardId || row.stableActionKey)
+    : (obligation.vnRecoveryCardId || row.stableActionKey);
   return {
     ...row,
-    stableActionKey:recovery
-      ? (obligation.vnRecoveryFallbackCardId || row.stableActionKey)
-      : (obligation.vnRecoveryCardId || row.stableActionKey),
+    stableActionKey:options.ignoreAuthoritativeMode
+      ? modeCardId
+      : (obligation.activeRecoveryCardId || modeCardId),
     sdeVnRecoveryRequired:true,
-    sdeVnRecoveryObligationId:obligation.vnRecoveryChainId,
+    sdeVnRecoveryObligationId:obligation.obligationId || obligation.vnRecoveryChainId,
+    sdeVnEntryToken:obligation.vnEntryToken,
+    sdeVnRecoveryAuthoritative:obligation.vnRecoveryAuthoritative === true,
     sdeVnRecoveryStatus:missingPendingMain ? "recovery_required_missing_main" : obligation.vnRecoveryStatus,
     sdeVnRecoveryEnteredAtStep:obligation.vnEnteredAtStep,
     ...(missingPendingMain ? {
@@ -14915,10 +14980,12 @@ function buildSdeVnRecoveryRowFromObligation(obligation, options={}){
   };
 }
 
-function buildSdeOrphanVnRecoveryRow(vehicle){
+function buildSdeOrphanVnRecoveryRow(vehicle, options={}){
   const cleanVehicle = sanitizeVehicleValue(vehicle);
   if(!cleanVehicle) return null;
-  const cardId = `physical-vn-recovery-required|${normalizeVehicleToken(cleanVehicle)}|unknown`;
+  const entryToken = String(options.entryToken || "unknown").trim();
+  const cardId = String(options.cardId || `physical-vn-recovery-required|${normalizeVehicleToken(cleanVehicle)}|${entryToken}`).trim();
+  const obligationId = String(options.obligationId || cardId).trim();
   return {
     vehicle:cleanVehicle,
     fromSlot:"VN",
@@ -14937,14 +15004,16 @@ function buildSdeOrphanVnRecoveryRow(vehicle){
     recommendationConfidence:"low",
     recommendationScore:"Fail-closed",
     parkingStrategy:"RETUR FRA VN KREVES",
-    parkingInstruction:`${cleanVehicle} står i VN uten komplett recoverymetadata. Kortet beholdes til en trygg returrute er validert.`,
-    recommendationReason:"Ingen trygg returrute er tilgjengelig. Kjøretøyet kan ikke bli stående i VN uten synlig returplikt.",
+    parkingInstruction:options.instruction || `${cleanVehicle} står i VN uten komplett recoverymetadata. Kortet beholdes til en trygg returrute er validert.`,
+    recommendationReason:options.reason || "Ingen trygg returrute er tilgjengelig. Kjøretøyet kan ikke bli stående i VN uten synlig returplikt.",
     isManualOnly:true,
     isSdePhysicalBlockerReturnMove:true,
     isSdePhysicalVnRecoveryMove:true,
     sdeVnRecoveryRequired:true,
-    sdeVnRecoveryObligationId:cardId,
-    sdeVnRecoveryStatus:"missing_recovery_metadata",
+    sdeVnRecoveryObligationId:obligationId,
+    sdeVnEntryToken:entryToken,
+    sdeVnRecoveryAuthoritative:true,
+    sdeVnRecoveryStatus:options.status || "missing_recovery_metadata",
     sdePhysicalChainId:cardId,
     sdePhysicalChainStep:3,
     sdePhysicalChainStepCount:3,
@@ -14966,8 +15035,199 @@ function buildSdeOrphanVnRecoveryRow(vehicle){
   };
 }
 
+function getSdeVnRecoveryPreferredMode(obligation, mainRowPresent){
+  const plan = obligation?.plan || {};
+  const mainRecord = getSdeMoveActionRecord(plan.mainActionKey);
+  if(obligation?.vnRecoveryAuthoritative && ["return","recovery"].includes(obligation.vnActiveRecoveryMode)){
+    return obligation.vnActiveRecoveryMode;
+  }
+  if(mainRecord?.action === "completed") return "return";
+  if(mainRecord?.action === "cancelled") return "recovery";
+  if(obligation?.vnRecoveryStatus === "recovery_required" || mainRowPresent === false) return "recovery";
+  return "return";
+}
+
+function getSdeVnRecoveryCandidateInvalidReason(candidate, sourceRows=[]){
+  const row = candidate?.row;
+  const obligation = candidate?.obligation;
+  const targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+  const vehicle = sanitizeVehicleValue(obligation?.vnVehicleId || row?.vehicle);
+  if(!row || !targetSlot) return "Returmål mangler.";
+  if(!haveSameSdeVehicleTokens(getSdeVehicleInSlot("VN"), vehicle)) return `${vehicle} står ikke fysisk i VN.`;
+  if(targetSlot === "VN" || targetSlot === "VS") return `${targetSlot} kan ikke være recoverymål.`;
+
+  const targetVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(targetSlot));
+  const plan = obligation?.plan || {};
+  const mainPending = candidate.mainRowPresent && !getSdeMoveActionRecord(plan.mainActionKey);
+  const deferredOccupantLeaves = candidate.mode === "return" && mainPending &&
+    targetVehicle && haveSameSdeVehicleTokens(targetVehicle, plan.blockedVehicle);
+  if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle, vehicle) && !deferredOccupantLeaves){
+    return `${targetSlot} er fysisk opptatt av ${targetVehicle}.`;
+  }
+  if(getSdeVehicleInSlot("VS")) return "VS/adkomst er fysisk opptatt.";
+  if(typeof isTxpUnavailableSlot === "function" && (isTxpUnavailableSlot("VN") || isTxpUnavailableSlot("VS") || isTxpUnavailableSlot(targetSlot))){
+    return "VN, VS eller returmålet er uvirksomt i TXP.";
+  }
+
+  const conflictingReservation = (Array.isArray(sourceRows) ? sourceRows : []).find(sourceRow=>{
+    const sourceTarget = normalizeSlot(sourceRow?.recommendedSlot || sourceRow?.toSlot);
+    if(sourceTarget !== targetSlot) return false;
+    if(haveSameSdeVehicleTokens(sourceRow?.vehicle, vehicle) && normalizeSlot(sourceRow?.fromSlot || sourceRow?.arrivalSlot) === "VN") return false;
+    return true;
+  });
+  if(conflictingReservation) return `${targetSlot} er reservert av en annen aktiv bevegelse.`;
+  return "";
+}
+
+function reconcileSdeVnRecoveryObligations(sourceRows=[]){
+  const obligationsStore = migrateSdeVnRecoveryObligationsFromMoveActions();
+  const vnVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VN"));
+  if(!vnVehicle) return [];
+
+  let required = getSdeRawRequiredVnRecoveryObligations().filter(obligation =>
+    haveSameSdeVehicleTokens(obligation.vnVehicleId, vnVehicle)
+  );
+  if(!required.length){
+    const entryToken = buildSdeVnEntryToken(vnVehicle, "untracked");
+    const obligationId = `vn-recovery-obligation|${normalizeVehicleToken(vnVehicle)}|${entryToken}`;
+    const cardId = `physical-vn-recovery-required|${normalizeVehicleToken(vnVehicle)}|${entryToken}`;
+    obligationsStore[obligationId] = normalizeSdeVnRecoveryObligation({
+      obligationId,
+      vnRecoveryRequired:true,
+      vnVehicleId:vnVehicle,
+      vnEntryToken:entryToken,
+      vnRecoveryChainId:obligationId,
+      activeRecoveryCardId:cardId,
+      vnActiveRecoveryMode:"fail_closed",
+      vnRecoveryAuthoritative:true,
+      vnRecoveryStatus:"missing_recovery_metadata",
+      createdAt:"",
+      updatedAt:"",
+      plan:{
+        context:SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,
+        chainId:obligationId,
+        blockerVehicle:vnVehicle,
+        holdingSlot:"VN",
+        returnActionKey:cardId,
+        recoveryActionKey:cardId
+      }
+    }, obligationId);
+    required = [normalizeSdeVnRecoveryObligation(obligationsStore[obligationId], obligationId)];
+  }
+
+  const sourceActionKeys = new Set(
+    (Array.isArray(sourceRows) ? sourceRows : []).map(getSdeMoveActionKey).filter(Boolean)
+  );
+  const currentAuthority = required
+    .filter(obligation => obligation.vnRecoveryAuthoritative && !obligation.hiddenFromActiveCards)
+    .sort((a,b)=>String(b.createdAt || b.updatedAt || b.obligationId).localeCompare(String(a.createdAt || a.updatedAt || a.obligationId)))[0] || null;
+  const entryToken = String(
+    currentAuthority?.vnEntryToken ||
+    required.map(obligation=>obligation.vnEntryToken).filter(Boolean).sort()[0] ||
+    buildSdeVnEntryToken(vnVehicle, required.map(item=>item.createdAt || item.vnRecoveryChainId).sort()[0] || "legacy")
+  ).trim();
+
+  const preferredCandidates = required.map(obligation=>{
+    const mainRowPresent = sourceActionKeys.has(String(obligation.plan?.mainActionKey || ""));
+    const mode = getSdeVnRecoveryPreferredMode(obligation, mainRowPresent);
+    const row = buildSdeVnRecoveryRowFromObligation(obligation, {
+      activeMode:mode,
+      ignoreAuthoritativeMode:true,
+      mainRowPresent
+    });
+    const candidate = {obligation, mode, row, mainRowPresent};
+    candidate.invalidReason = getSdeVnRecoveryCandidateInvalidReason(candidate, sourceRows);
+    candidate.targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+    return candidate;
+  });
+
+  let selected = null;
+  if(currentAuthority && ["return","recovery"].includes(currentAuthority.vnActiveRecoveryMode)){
+    selected = preferredCandidates.find(candidate =>
+      candidate.obligation.obligationId === currentAuthority.obligationId && !candidate.invalidReason
+    ) || null;
+  }
+  if(!selected){
+    const validByTarget = new Map();
+    preferredCandidates.filter(candidate=>!candidate.invalidReason && candidate.targetSlot).forEach(candidate=>{
+      const rows = validByTarget.get(candidate.targetSlot) || [];
+      rows.push(candidate);
+      validByTarget.set(candidate.targetSlot, rows);
+    });
+    if(validByTarget.size === 1){
+      selected = Array.from(validByTarget.values())[0]
+        .sort((a,b)=>String(a.obligation.createdAt || a.obligation.obligationId).localeCompare(String(b.obligation.createdAt || b.obligation.obligationId)))[0];
+    }
+  }
+
+  const canTryAuthoritativeAlternate = currentAuthority && ["return","recovery"].includes(currentAuthority.vnActiveRecoveryMode);
+  if(!selected && (canTryAuthoritativeAlternate || (!currentAuthority && required.length === 1))){
+    const carrier = canTryAuthoritativeAlternate ? currentAuthority : required[0];
+    const preferred = preferredCandidates.find(candidate=>candidate.obligation.obligationId === carrier.obligationId);
+    const alternateMode = preferred?.mode === "return" ? "recovery" : "return";
+    const mainRowPresent = preferred?.mainRowPresent === true;
+    const row = buildSdeVnRecoveryRowFromObligation(carrier, {
+      activeMode:alternateMode,
+      ignoreAuthoritativeMode:true,
+      mainRowPresent
+    });
+    const alternate = {obligation:carrier, mode:alternateMode, row, mainRowPresent};
+    alternate.invalidReason = getSdeVnRecoveryCandidateInvalidReason(alternate, sourceRows);
+    alternate.targetSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+    if(!alternate.invalidReason && alternate.targetSlot) selected = alternate;
+  }
+
+  const carrier = selected?.obligation || currentAuthority || required
+    .slice()
+    .sort((a,b)=>String(a.createdAt || a.obligationId).localeCompare(String(b.createdAt || b.obligationId)))[0];
+  if(!carrier) return [];
+  const failClosed = !selected;
+  const activeCardId = failClosed
+    ? `physical-vn-recovery-required|${normalizeVehicleToken(vnVehicle)}|${entryToken}`
+    : getSdeMoveActionKey(selected.row);
+  const supersededCardIds = required
+    .filter(obligation=>obligation.obligationId !== carrier.obligationId)
+    .flatMap(obligation=>[obligation.activeRecoveryCardId, obligation.vnRecoveryCardId, obligation.vnRecoveryFallbackCardId])
+    .filter(Boolean);
+  if(carrier.activeRecoveryCardId && carrier.activeRecoveryCardId !== activeCardId){
+    supersededCardIds.push(carrier.activeRecoveryCardId);
+  }
+
+  let changed = false;
+  required.forEach(obligation=>{
+    const authoritative = obligation.obligationId === carrier.obligationId;
+    const next = {
+      ...obligation,
+      vnEntryToken:entryToken,
+      vnRecoveryAuthoritative:authoritative,
+      hiddenFromActiveCards:!authoritative,
+      excludedFromReservations:!authoritative,
+      excludedFromOverlays:!authoritative,
+      supersededBy:authoritative ? "" : carrier.obligationId,
+      ...(authoritative ? {
+        activeRecoveryCardId:activeCardId,
+        vnActiveRecoveryMode:failClosed ? "fail_closed" : selected.mode,
+        vnPlannedReturnTarget:failClosed ? "" : selected.targetSlot,
+        vnRecoveryStatus:failClosed
+          ? (obligation.vnRecoveryStatus === "missing_recovery_metadata" ? "missing_recovery_metadata" : "ambiguous_recovery_target")
+          : obligation.vnRecoveryStatus,
+        supersededCardIds:Array.from(new Set([...(obligation.supersededCardIds || []), ...supersededCardIds]))
+      } : {})
+    };
+    if(JSON.stringify(obligationsStore[obligation.obligationId]) !== JSON.stringify(next)){
+      obligationsStore[obligation.obligationId] = next;
+      changed = true;
+    }
+  });
+  if(changed){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(_error){}
+  }
+  const authoritative = normalizeSdeVnRecoveryObligation(obligationsStore[carrier.obligationId], carrier.obligationId);
+  return authoritative ? [authoritative] : [];
+}
+
 function buildSdePersistentVnRecoveryRows(sourceRows=[]){
-  const obligations = getSdeActiveVnRecoveryObligations();
+  const obligations = getSdeActiveVnRecoveryObligations(sourceRows);
   const sourceActionKeys = new Set(
     (Array.isArray(sourceRows) ? sourceRows : [])
       .map(getSdeMoveActionKey)
@@ -14976,14 +15236,6 @@ function buildSdePersistentVnRecoveryRows(sourceRows=[]){
   const rows = obligations.map(obligation=>buildSdeVnRecoveryRowFromObligation(obligation, {
     mainRowPresent:sourceActionKeys.has(String(obligation.plan?.mainActionKey || ""))
   })).filter(Boolean);
-  const vnVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VN"));
-  const hasMatchingObligation = obligations.some(obligation =>
-    haveSameSdeVehicleTokens(obligation.vnVehicleId, vnVehicle)
-  );
-  if(vnVehicle && !hasMatchingObligation){
-    const orphanRow = buildSdeOrphanVnRecoveryRow(vnVehicle);
-    if(orphanRow) rows.push(orphanRow);
-  }
   const seen = new Set();
   return rows.filter(row=>{
     const key = getSdeMoveActionKey(row);
