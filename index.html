@@ -7078,6 +7078,7 @@ function makeDefaultState(){
       apiCombinedZoom:{scale:1,compact:false}
     },
     sdeMoveActions:{},
+    sdeVnRecoveryObligations:{},
     sdeMoveLearningLog:[],
     sdeManualMoveOverrides:{},
     sdeNightPlacementManualOverrides:{},
@@ -7134,6 +7135,7 @@ if(!Array.isArray(state.planSkifteRows)) state.planSkifteRows=makeEmptyPlanSkift
 else state.planSkifteRows = state.planSkifteRows.map(row=>({time:"",vehicle:"",fromSpor:"",toSpor:"",crew:"",tilRep:"",operationType:"",utfort:"",...(row||{})}));
 if(!("baliseMetaTomorrow" in state)) state.baliseMetaTomorrow=null;
 if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.isArray(state.sdeMoveActions)) state.sdeMoveActions={};
+if(!state.sdeVnRecoveryObligations || typeof state.sdeVnRecoveryObligations !== "object" || Array.isArray(state.sdeVnRecoveryObligations)) state.sdeVnRecoveryObligations={};
 if(!Array.isArray(state.sdeMoveLearningLog)) state.sdeMoveLearningLog=[];
 if(!state.sdeManualMoveOverrides || typeof state.sdeManualMoveOverrides !== "object" || Array.isArray(state.sdeManualMoveOverrides)) state.sdeManualMoveOverrides = {};
 if(!state.sdeNightPlacementManualOverrides || typeof state.sdeNightPlacementManualOverrides !== "object" || Array.isArray(state.sdeNightPlacementManualOverrides)) state.sdeNightPlacementManualOverrides = {};
@@ -14644,6 +14646,164 @@ function buildSdeTemporaryVnReliefChainPlan(blockedRow, blockState, freeingMove,
   };
 }
 
+function ensureSdeVnRecoveryObligations(){
+  if(!state.sdeVnRecoveryObligations || typeof state.sdeVnRecoveryObligations !== "object" || Array.isArray(state.sdeVnRecoveryObligations)){
+    state.sdeVnRecoveryObligations = {};
+  }
+  return state.sdeVnRecoveryObligations;
+}
+
+function normalizeSdeVnRecoveryObligation(source, fallbackId=""){
+  const value = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+  const planSource = value.plan && typeof value.plan === "object" && !Array.isArray(value.plan)
+    ? value.plan
+    : value;
+  const plan = {...planSource};
+  const chainId = String(value.vnRecoveryChainId || plan.chainId || fallbackId || "").trim();
+  const vehicle = sanitizeVehicleValue(value.vnVehicleId || plan.blockerVehicle);
+  const returnCardId = String(value.vnRecoveryCardId || plan.returnActionKey || "").trim();
+  const recoveryCardId = String(value.vnRecoveryFallbackCardId || plan.recoveryActionKey || "").trim();
+  if(!chainId || !vehicle) return null;
+
+  return {
+    vnRecoveryRequired:value.vnRecoveryRequired !== false,
+    vnVehicleId:vehicle,
+    vnRecoveryChainId:chainId,
+    vnRecoveryCardId:returnCardId,
+    vnRecoveryFallbackCardId:recoveryCardId,
+    vnOriginSlot:normalizeSlot(value.vnOriginSlot || plan.blockerFromSlot),
+    vnPlannedReturnTarget:normalizeSlot(value.vnPlannedReturnTarget || plan.returnTargetSlot),
+    vnRecoveryStatus:String(value.vnRecoveryStatus || "waiting_for_main").trim(),
+    vnEnteredAtStep:Number(value.vnEnteredAtStep || 1),
+    recoveryDependsOnCardId:String(value.recoveryDependsOnCardId || plan.mainActionKey || "").trim(),
+    createdAt:String(value.createdAt || "").trim(),
+    updatedAt:String(value.updatedAt || "").trim(),
+    completedAt:String(value.completedAt || "").trim(),
+    plan
+  };
+}
+
+function buildSdeVnRecoveryObligation(plan, actionTime=""){
+  if(!plan || plan.context !== SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT) return null;
+  return normalizeSdeVnRecoveryObligation({
+    vnRecoveryRequired:true,
+    vnVehicleId:plan.blockerVehicle,
+    vnRecoveryChainId:plan.chainId,
+    vnRecoveryCardId:plan.returnActionKey,
+    vnRecoveryFallbackCardId:plan.recoveryActionKey,
+    vnOriginSlot:plan.blockerFromSlot,
+    vnPlannedReturnTarget:plan.returnTargetSlot,
+    vnRecoveryStatus:"waiting_for_main",
+    vnEnteredAtStep:1,
+    recoveryDependsOnCardId:plan.mainActionKey,
+    createdAt:actionTime,
+    updatedAt:actionTime,
+    plan:{...plan}
+  }, plan.chainId);
+}
+
+function migrateSdeVnRecoveryObligationsFromMoveActions(){
+  const obligations = ensureSdeVnRecoveryObligations();
+  const actions = state.sdeMoveActions || {};
+  const vnVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VN"));
+  if(!vnVehicle) return obligations;
+
+  Object.entries(actions).forEach(([releaseActionKey, action])=>{
+    if(action?.action !== "completed") return;
+    const plan = action?.snapshot?.sdePhysicalVnReliefChain;
+    if(!plan || plan.context !== SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT) return;
+    if(String(plan.releaseActionKey || "") !== releaseActionKey) return;
+    if(!haveSameSdeVehicleTokens(plan.blockerVehicle, vnVehicle)) return;
+    if(actions[plan.returnActionKey]?.action === "completed" || actions[plan.recoveryActionKey]?.action === "completed") return;
+    if(obligations[plan.chainId]) return;
+    const obligation = buildSdeVnRecoveryObligation(plan, action.time || "");
+    if(obligation) obligations[plan.chainId] = obligation;
+  });
+  return obligations;
+}
+
+function getSdeActiveVnRecoveryObligations(){
+  const obligations = migrateSdeVnRecoveryObligationsFromMoveActions();
+  return Object.entries(obligations)
+    .map(([id,value])=>normalizeSdeVnRecoveryObligation(value, id))
+    .filter(Boolean)
+    .filter(obligation=>{
+      if(!obligation.vnRecoveryRequired) return false;
+      const plan = obligation.plan || {};
+      if(getSdeMoveActionRecord(plan.returnActionKey)?.action === "completed") return false;
+      if(getSdeMoveActionRecord(plan.recoveryActionKey)?.action === "completed") return false;
+      return true;
+    });
+}
+
+function getSdeVnRecoveryObligationForMainRow(row){
+  const mainActionKey = getSdeMoveActionKey(row);
+  if(!mainActionKey) return null;
+  return getSdeActiveVnRecoveryObligations().find(obligation =>
+    String(obligation.plan?.mainActionKey || "") === mainActionKey
+  ) || null;
+}
+
+function updateSdeVnRecoveryObligationForMove(row, actionType, actionTime=""){
+  const type = String(actionType || "").trim();
+  const key = getSdeMoveActionKey(row);
+  const plan = row?.sdePhysicalVnReliefChain;
+  const obligations = ensureSdeVnRecoveryObligations();
+
+  if(
+    type === "completed" &&
+    plan?.context === SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT &&
+    Number(row?.sdePhysicalChainStep) === 1 &&
+    normalizeSlot(row?.recommendedSlot || row?.toSlot) === "VN"
+  ){
+    const obligation = buildSdeVnRecoveryObligation(plan, actionTime);
+    if(obligation) obligations[obligation.vnRecoveryChainId] = obligation;
+  }
+
+  Object.entries(obligations).forEach(([id,source])=>{
+    const obligation = normalizeSdeVnRecoveryObligation(source, id);
+    if(!obligation || !obligation.vnRecoveryRequired) return;
+    const obligationPlan = obligation.plan || {};
+    let changed = false;
+
+    if(key && key === obligationPlan.mainActionKey){
+      if(type === "completed"){
+        obligation.vnRecoveryStatus = "return_ready";
+        obligation.vnRecoveryCardId = obligationPlan.returnActionKey;
+        obligation.vnPlannedReturnTarget = normalizeSlot(obligationPlan.returnTargetSlot);
+        obligation.recoveryDependsOnCardId = obligationPlan.mainActionKey;
+        changed = true;
+      }else if(type === "cancelled"){
+        obligation.vnRecoveryStatus = "recovery_required";
+        obligation.vnRecoveryCardId = obligationPlan.recoveryActionKey;
+        obligation.vnPlannedReturnTarget = normalizeSlot(obligationPlan.recoveryTargetSlot);
+        obligation.recoveryDependsOnCardId = obligationPlan.releaseActionKey;
+        changed = true;
+      }
+    }
+
+    const completedRecoveryCard = type === "completed" && key && (
+      key === obligationPlan.returnActionKey ||
+      key === obligationPlan.recoveryActionKey ||
+      (
+        normalizeSlot(row?.fromSlot || row?.arrivalSlot) === "VN" &&
+        haveSameSdeVehicleTokens(row?.vehicle, obligation.vnVehicleId)
+      )
+    );
+    if(completedRecoveryCard){
+      obligation.vnRecoveryRequired = false;
+      obligation.vnRecoveryStatus = "completed";
+      obligation.completedAt = actionTime;
+      changed = true;
+    }
+
+    if(changed){
+      obligation.updatedAt = actionTime;
+      obligations[id] = obligation;
+    }
+  });
+}
+
 function annotateSdeTemporaryVnReliefMainRow(row, plan){
   if(!row || !plan) return row;
   return {
@@ -14667,18 +14827,22 @@ function buildSdeTemporaryVnReturnRow(plan, options={}){
   const actionKey = recovery ? plan.recoveryActionKey : plan.returnActionKey;
   if(!targetSlot || !dependencyKey || !actionKey) return null;
 
-  const recoveryConflict = recovery
+  const shouldValidateLiveRoute = recovery || getSdeMoveActionRecord(dependencyKey)?.action === "completed";
+  const recoveryConflict = shouldValidateLiveRoute
     ? (() => {
         if(!haveSameSdeVehicleTokens(getSdeVehicleInSlot("VN"), plan.blockerVehicle)){
-          return `${plan.blockerVehicle} står ikke i VN. Recovery må vurderes manuelt.`;
+          return `${plan.blockerVehicle} står ikke i VN. Returplikten beholdes til fysisk state er avklart.`;
         }
         const targetVehicle = getSdeVehicleInSlot(targetSlot);
         if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle, plan.blockerVehicle)){
-          return `${targetSlot} er opptatt av ${targetVehicle}. Recovery stoppes fail-closed.`;
+          return `${targetSlot} er opptatt av ${targetVehicle}. Returkortet beholdes og Utført sperres fail-closed.`;
         }
-        if(getSdeVehicleInSlot("VS")) return "VS/adkomst er opptatt. Recovery stoppes fail-closed.";
+        if(getSdeVehicleInSlot("VS")) return "VS/adkomst er opptatt. Returkortet beholdes og Utført sperres fail-closed.";
         if(typeof isTxpUnavailableSlot === "function" && (isTxpUnavailableSlot("VN") || isTxpUnavailableSlot("VS"))){
-          return "VN eller VS/adkomst er uvirksom i TXP. Recovery stoppes fail-closed.";
+          return "VN eller VS/adkomst er uvirksom i TXP. Returkortet beholdes fail-closed.";
+        }
+        if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(targetSlot)){
+          return `${targetSlot} er uvirksom i TXP. Returkortet beholdes til en trygg recovery er validert.`;
         }
         return "";
       })()
@@ -14726,9 +14890,114 @@ function buildSdeTemporaryVnReturnRow(plan, options={}){
   };
 }
 
+function buildSdeVnRecoveryRowFromObligation(obligation, options={}){
+  if(!obligation?.vnRecoveryRequired) return null;
+  const plan = obligation.plan || {};
+  const mainRecord = getSdeMoveActionRecord(plan.mainActionKey);
+  const missingPendingMain = options.mainRowPresent === false && !mainRecord;
+  const recovery = mainRecord?.action === "cancelled" || obligation.vnRecoveryStatus === "recovery_required" || missingPendingMain;
+  const row = buildSdeTemporaryVnReturnRow(plan, {recovery});
+  if(!row) return null;
+  return {
+    ...row,
+    stableActionKey:recovery
+      ? (obligation.vnRecoveryFallbackCardId || row.stableActionKey)
+      : (obligation.vnRecoveryCardId || row.stableActionKey),
+    sdeVnRecoveryRequired:true,
+    sdeVnRecoveryObligationId:obligation.vnRecoveryChainId,
+    sdeVnRecoveryStatus:missingPendingMain ? "recovery_required_missing_main" : obligation.vnRecoveryStatus,
+    sdeVnRecoveryEnteredAtStep:obligation.vnEnteredAtStep,
+    ...(missingPendingMain ? {
+      parkingInstruction:`Hovedkortet finnes ikke lenger etter reload. Før ${obligation.vnVehicleId} fra VN tilbake til ${obligation.vnOriginSlot} før ny planlegging.`,
+      recommendationReason:`RETUR FRA VN KREVES. Det opprinnelige hovedkortet mangler, så recovery til ${obligation.vnOriginSlot} beholdes fail-closed.`
+    } : {}),
+    sdePhysicalVnReliefChain:{...plan}
+  };
+}
+
+function buildSdeOrphanVnRecoveryRow(vehicle){
+  const cleanVehicle = sanitizeVehicleValue(vehicle);
+  if(!cleanVehicle) return null;
+  const cardId = `physical-vn-recovery-required|${normalizeVehicleToken(cleanVehicle)}|unknown`;
+  return {
+    vehicle:cleanVehicle,
+    fromSlot:"VN",
+    arrivalSlot:"VN",
+    recommendedSlot:"",
+    toSlot:"",
+    source:"SDE VN fail-closed recovery",
+    stableActionKey:cardId,
+    arrivalTrainText:"RETUR FRA VN KREVES",
+    departureTrainText:"Returmål må avklares",
+    arrivalTime:"",
+    nextDepartureText:"Ingen persistent recoverymetadata finnes",
+    nextDepartureTrain:"",
+    nextDeparturePart:"",
+    recommendationAlternatives:[],
+    recommendationConfidence:"low",
+    recommendationScore:"Fail-closed",
+    parkingStrategy:"RETUR FRA VN KREVES",
+    parkingInstruction:`${cleanVehicle} står i VN uten komplett recoverymetadata. Kortet beholdes til en trygg returrute er validert.`,
+    recommendationReason:"Ingen trygg returrute er tilgjengelig. Kjøretøyet kan ikke bli stående i VN uten synlig returplikt.",
+    isManualOnly:true,
+    isSdePhysicalBlockerReturnMove:true,
+    isSdePhysicalVnRecoveryMove:true,
+    sdeVnRecoveryRequired:true,
+    sdeVnRecoveryObligationId:cardId,
+    sdeVnRecoveryStatus:"missing_recovery_metadata",
+    sdePhysicalChainId:cardId,
+    sdePhysicalChainStep:3,
+    sdePhysicalChainStepCount:3,
+    sdePhysicalDependsOn:[],
+    sdePhysicalDependencyLabel:"RETUR FRA VN KREVES",
+    sdePhysicalDependencyRole:"return",
+    sdePhysicalResolutionContext:SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,
+    sdePhysicalVnReliefChain:{
+      context:SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,
+      chainId:cardId,
+      blockerVehicle:cleanVehicle,
+      holdingSlot:"VN",
+      returnTargetSlot:"",
+      recoveryTargetSlot:"",
+      returnActionKey:cardId,
+      recoveryActionKey:cardId
+    },
+    sdePhysicalSequenceConflictReason:"Ingen trygg returrute er tilgjengelig. Retur må planlegges manuelt."
+  };
+}
+
+function buildSdePersistentVnRecoveryRows(sourceRows=[]){
+  const obligations = getSdeActiveVnRecoveryObligations();
+  const sourceActionKeys = new Set(
+    (Array.isArray(sourceRows) ? sourceRows : [])
+      .map(getSdeMoveActionKey)
+      .filter(Boolean)
+  );
+  const rows = obligations.map(obligation=>buildSdeVnRecoveryRowFromObligation(obligation, {
+    mainRowPresent:sourceActionKeys.has(String(obligation.plan?.mainActionKey || ""))
+  })).filter(Boolean);
+  const vnVehicle = sanitizeVehicleValue(getSdeVehicleInSlot("VN"));
+  const hasMatchingObligation = obligations.some(obligation =>
+    haveSameSdeVehicleTokens(obligation.vnVehicleId, vnVehicle)
+  );
+  if(vnVehicle && !hasMatchingObligation){
+    const orphanRow = buildSdeOrphanVnRecoveryRow(vnVehicle);
+    if(orphanRow) rows.push(orphanRow);
+  }
+  const seen = new Set();
+  return rows.filter(row=>{
+    const key = getSdeMoveActionKey(row);
+    if(!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function getSdeCompletedTemporaryVnReliefPlanForMainRow(row){
   const mainActionKey = getSdeMoveActionKey(row);
   if(!mainActionKey) return null;
+  const obligation = getSdeVnRecoveryObligationForMainRow(row);
+  if(obligation?.plan) return {...obligation.plan};
   const actions = state.sdeMoveActions || {};
   for(const [releaseActionKey, action] of Object.entries(actions)){
     if(action?.action !== "completed") continue;
@@ -14743,6 +15012,7 @@ function getSdeCompletedTemporaryVnReliefPlanForMainRow(row){
 
 function buildSdePersistedTemporaryVnReliefRows(mainRow, plan){
   if(!mainRow || !plan) return null;
+  const obligation = getSdeVnRecoveryObligationForMainRow(mainRow);
   const returnRecord = getSdeMoveActionRecord(plan.returnActionKey);
   const recoveryRecord = getSdeMoveActionRecord(plan.recoveryActionKey);
   const mainRecord = getSdeMoveActionRecord(plan.mainActionKey);
@@ -14754,7 +15024,9 @@ function buildSdePersistedTemporaryVnReliefRows(mainRow, plan){
   const recovery = mainRecord?.action === "cancelled";
   return {
     mainRow:annotatedMain,
-    returnRow:buildSdeTemporaryVnReturnRow(plan, {recovery}),
+    returnRow:obligation
+      ? buildSdeVnRecoveryRowFromObligation(obligation)
+      : buildSdeTemporaryVnReturnRow(plan, {recovery}),
     completed:false,
     recovery
   };
@@ -15502,7 +15774,14 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
   const sourceRows = Array.isArray(rows) ? rows : [];
   const guarded = [];
   const insertedFreeingKeys = new Set();
+  const insertedRecoveryKeys = new Set();
   const reservedSlots = getSdePhysicalGuardReservedTargetSlots(sourceRows);
+  const persistentRecoveryRows = buildSdePersistentVnRecoveryRows(sourceRows);
+  persistentRecoveryRows.forEach(row=>{
+    reservedSlots.add("VN");
+    const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
+    if(targetSlot) reservedSlots.add(targetSlot);
+  });
   const stableReleaseTargetsByRowKey = new Map();
 
   sourceRows.forEach(row=>{
@@ -15527,6 +15806,8 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
       guarded.push(persistedRows?.mainRow || row);
       if(persistedRows?.returnRow){
         guarded.push(persistedRows.returnRow);
+        const returnKey = getSdeMoveActionKey(persistedRows.returnRow);
+        if(returnKey) insertedRecoveryKeys.add(returnKey);
         if(!getSdeMoveActionRecord(getSdeMoveActionKey(persistedRows.returnRow))){
           reservedSlots.add("VN");
         }
@@ -15637,7 +15918,11 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
       });
       if(vnChainPlan){
         const returnRow = buildSdeTemporaryVnReturnRow(vnChainPlan);
-        if(returnRow) guarded.push(returnRow);
+        if(returnRow){
+          guarded.push(returnRow);
+          const returnKey = getSdeMoveActionKey(returnRow);
+          if(returnKey) insertedRecoveryKeys.add(returnKey);
+        }
       }
       return;
     }
@@ -15645,6 +15930,13 @@ function buildSdePhysicalBlockerGuardMoves(rows=[]){
     guarded.push(row);
     const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
     if(targetSlot) reservedSlots.add(targetSlot);
+  });
+
+  persistentRecoveryRows.forEach(row=>{
+    const key = getSdeMoveActionKey(row);
+    if(!key || insertedRecoveryKeys.has(key)) return;
+    guarded.push(row);
+    insertedRecoveryKeys.add(key);
   });
 
   return applySdePhysicalSequenceReservations(guarded);
@@ -15704,14 +15996,20 @@ function buildSdeTemporaryVnReliefChainHtml(row){
   if(row?.sdePhysicalResolutionContext !== SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT) return "";
   const plan = row.sdePhysicalVnReliefChain || {};
   const step = Math.max(1, Number(row.sdePhysicalChainStep) || 1);
-  const title = row.isSdePhysicalVnRecoveryMove
-    ? "Sikker recovery fra VN"
+  const title = row.sdeVnRecoveryRequired
+    ? "RETUR FRA VN KREVES"
+    : row.isSdePhysicalVnRecoveryMove
+      ? "Sikker recovery fra VN"
     : step === 1
       ? "Midlertidig frigjøring til VN"
       : step === 2
         ? "Hovedflytt etter VN-frigjøring"
         : "Retur fra midlertidig VN-venteposisjon";
-  const text = row.isSdePhysicalVnRecoveryMove
+  const text = row.sdeVnRecoveryStatus === "missing_recovery_metadata"
+    ? `${row.vehicle || "Kjøretøyet"} står i VN uten komplett recoverymetadata. Ingen trygg returrute er tilgjengelig før ny manuell vurdering.`
+    : row.sdeVnRecoveryStatus === "recovery_required_missing_main"
+      ? `${plan.blockerVehicle || row.vehicle} skal tilbake til ${plan.recoveryTargetSlot || row.toSlot} fordi hovedkortet mangler etter reload.`
+    : row.isSdePhysicalVnRecoveryMove
     ? `${plan.blockerVehicle || row.vehicle} skal tilbake til ${plan.recoveryTargetSlot || row.toSlot} fordi hovedflyttingen ble annullert.`
     : step === 1
       ? `${plan.blockerVehicle || row.vehicle} flyttes midlertidig til VN. Retur til ${plan.returnTargetSlot || "frigjort S-slot"} er allerede planlagt.`
@@ -21255,6 +21553,7 @@ function handleSdeResetForDay(){
   }
 
   state.sdeMoveActions = {};
+  state.sdeVnRecoveryObligations = {};
   state.sdeMoveLearningLog = [];
   state.sdeManualMoveOverrides = {};
   clearSdeNightPlacementDragOverrides({persist:false, render:false});
@@ -21985,6 +22284,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         time:actionTime,
         snapshot:getSdeMoveActionSnapshot(row)
       };
+      updateSdeVnRecoveryObligationForMove(row, "completed", actionTime);
       if(isSdePhysicalBlockerFreeingRow(row)){
         completeSdePhysicalReleaseReplan(row, key, actionTime);
       }
@@ -22038,6 +22338,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
           snapshot:getSdeMoveActionSnapshot(row)
         };
         state.sdeMoveActions[key] = cancellationRecord;
+        updateSdeVnRecoveryObligationForMove(row, "cancelled", actionTime);
         const replacementRow = findSdePhysicalReleaseReplacementRow(row, data);
         const replacementKey = getSdeMoveActionKey(replacementRow);
         if(replacementRow && replacementKey){
@@ -22071,6 +22372,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         time:actionTime,
         snapshot:getSdeMoveActionSnapshot(row)
       };
+      updateSdeVnRecoveryObligationForMove(row, "cancelled", actionTime);
       recordSdeMoveLearningEvent(key, "cancelled", row, actionTime, learningReason);
       persist(true);
       refreshSdeAfterMoveAction();
