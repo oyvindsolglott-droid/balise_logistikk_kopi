@@ -20988,6 +20988,13 @@ function getSdeMoveActionKey(row){
   ].join("|");
 }
 
+function getSdeMoveCardDisplayIndex(actionKey){
+  const key = String(actionKey || "").trim();
+  if(!key) return -1;
+  return Array.from(document.querySelectorAll("#sdeSkiftebevegelserDashboard .sde-shift-card"))
+    .findIndex(card => String(card?.dataset?.sdeCardKey || "").trim() === key);
+}
+
 function getSdeMoveNeedKey(row){
   if(!row) return "";
   const cancellationNeedKey = String(row.sdeCancellationNeedKey || "").trim();
@@ -22887,6 +22894,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
       if(isSdePhysicalBlockerFreeingRow(row)){
         ensureSdeResetSnapshot();
 
+        const cardDisplayIndex = getSdeMoveCardDisplayIndex(key);
         const actionTime = new Date().toISOString();
         const cancelledAtMs = Date.parse(actionTime);
         const exitDurationMs = prefersReducedSdeReleaseMotion()
@@ -22909,6 +22917,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
           exitStartedAt,
           removeAt,
           exitDurationMs,
+          cardDisplayIndex,
           removedFromActiveLayout:false,
           dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
           replacedByCardId:"",
@@ -22954,6 +22963,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
       const exitStartedAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS).toISOString();
       const removeAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS + exitDurationMs).toISOString();
       const needKey = getSdeMoveNeedKey(row);
+      const cardDisplayIndex = getSdeMoveCardDisplayIndex(key);
       const cancellationRecord = {
         action:"cancelled",
         vehicle,
@@ -22968,6 +22978,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
         exitStartedAt,
         removeAt,
         exitDurationMs,
+        cardDisplayIndex,
         removedFromActiveLayout:false,
         dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
         replacedByCardId:"",
@@ -29148,10 +29159,29 @@ function renderSdeSkiftebevegelserInner(){
       if(dismissalState.managed) return !dismissalState.hidden;
       return !isSdeMoveCardActioned(row) && !dismissalState.hidden;
     });
-  const topMoves = [
-    ...visibleCardMoveEntries.filter(({dismissalState}) => dismissalState.managed),
-    ...visibleCardMoveEntries.filter(({dismissalState}) => !dismissalState.managed)
-  ]
+  const orderedCardMoveEntries = visibleCardMoveEntries
+    .filter(({dismissalState}) => !dismissalState.managed);
+  visibleCardMoveEntries
+    .filter(({dismissalState}) => dismissalState.managed)
+    .map(entry => {
+      const actionRecord = getSdeMoveActionRecord(getSdeMoveActionKey(entry.row));
+      const cardDisplayIndex = Number(actionRecord?.cardDisplayIndex);
+      return {
+        entry,
+        cardDisplayIndex:Number.isInteger(cardDisplayIndex) && cardDisplayIndex >= 0
+          ? cardDisplayIndex
+          : orderedCardMoveEntries.length
+      };
+    })
+    .sort((a,b) => a.cardDisplayIndex - b.cardDisplayIndex)
+    .forEach(({entry, cardDisplayIndex}) => {
+      orderedCardMoveEntries.splice(
+        Math.min(cardDisplayIndex, orderedCardMoveEntries.length),
+        0,
+        entry
+      );
+    });
+  const topMoves = orderedCardMoveEntries
     .slice(0, 20)
     .map(({row}) => row);
   const nightPlacementOverriddenCardCount = topMoves.filter(row => row?.sdeNightPlacementCardOverrideActive).length;
