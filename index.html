@@ -20770,14 +20770,25 @@ function getSdeMoveActionSnapshot(row){
     : null;
 
   return {
+    sdeCancellationSnapshotVersion:2,
     needKey:getSdeMoveNeedKey(row),
     source:String(row.source || "").trim(),
     vehicle:sanitizeVehicleValue(row.vehicle),
+    arrivalTrain:normalizeTognr(row.arrivalTrain),
+    arrivalPart:String(row.arrivalPart || "").trim(),
     arrivalTrainText:String(row.arrivalTrainText || (row.arrivalTrain ? `${row.arrivalTrain}${row.arrivalPart ? `/${row.arrivalPart}` : ""}` : "") || "").trim(),
+    nextDepartureTrain:normalizeTognr(row.nextDepartureTrain),
+    nextDeparturePart:String(row.nextDeparturePart || "").trim(),
+    nextDepartureText:String(row.nextDepartureText || row.departureTrainText || "").trim(),
     departureTrainText:String(row.departureTrainText || row.nextDepartureText || "").trim(),
     arrivalTime:String(row.arrivalTime || "").trim(),
     fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
+    arrivalSlot:normalizeSlot(row.arrivalSlot || row.fromSlot),
     toSlot:normalizeSlot(row.recommendedSlot || row.toSlot),
+    recommendedSlot:normalizeSlot(row.recommendedSlot || row.toSlot),
+    stableActionKey:String(row.stableActionKey || "").trim(),
+    sdeCanonicalOutcomeKey:String(row.sdeCanonicalOutcomeKey || row.sdeOutcomeKey || "").trim(),
+    sdeCancellationNeedKey:String(row.sdeCancellationNeedKey || "").trim(),
     recommendationConfidence:String(row.recommendationConfidence || "").trim(),
     recommendationScore:row.recommendationScore ?? "",
     parkingStrategy:String(row.parkingStrategy || "").trim(),
@@ -20795,7 +20806,20 @@ function getSdeMoveActionSnapshot(row){
     sdePhysicalResolutionContext:String(row.sdePhysicalResolutionContext || "").trim(),
     sdePhysicalVnReliefChain:vnReliefChain,
     isSdePhysicalBlockerFreeingMove:Boolean(row.isSdePhysicalBlockerFreeingMove),
+    isSdePhysicalBlockerReturnMove:Boolean(row.isSdePhysicalBlockerReturnMove),
+    sdeVnRecoveryRequired:Boolean(row.sdeVnRecoveryRequired),
+    vnRecoveryRequired:Boolean(row.vnRecoveryRequired),
+    isWorkshopMoveNeed:Boolean(row.isWorkshopMoveNeed),
+    isSpor3ProductionNeed:Boolean(row.isSpor3ProductionNeed),
+    sdePhysicalReleaseReplanKey:String(row.sdePhysicalReleaseReplanKey || "").trim(),
+    sdePhysicalReleaseRoundNumber:Number(row.sdePhysicalReleaseRoundNumber || 0),
+    sdeCancellationPhysicalFromSlot:normalizeSlot(row.sdeCancellationPhysicalFromSlot || row.originalFromSlot || row.fromSlot || row.arrivalSlot),
+    sdePhysicalDeferredOverlayUntilDependenciesCompleted:Boolean(row.sdePhysicalDeferredOverlayUntilDependenciesCompleted),
+    sdePhysicalRejectedReleaseMove:Boolean(row.sdePhysicalRejectedReleaseMove),
     isSdeCancellationFailClosed:Boolean(row.isSdeCancellationFailClosed),
+    isSdeCancellationReplacementMove:Boolean(row.isSdeCancellationReplacementMove),
+    isWrongTrackReplacementMove:Boolean(row.isWrongTrackReplacementMove),
+    isManualOnly:Boolean(row.isManualOnly),
     sdeCancellationRoundNumber:Number(row.sdeCancellationRoundNumber || 1)
   };
 }
@@ -23307,6 +23331,7 @@ async function handleSdeShiftMoveAction(encodedKey, action){
           cancellationRecord.activeOutcomeId = replacementKey;
           cancellationRecord.supersededBy = replacementKey;
           cancellationRecord.authorityPending = false;
+          cancellationRecord.replacementSnapshot = getSdeMoveActionSnapshot(replacementRow);
           setSdeActiveOutcomeAuthority(outcomeKey, replacementRow, {
             activeOutcomeId:replacementKey,
             updatedAt:actionTime,
@@ -23390,30 +23415,31 @@ async function handleSdeShiftMoveAction(encodedKey, action){
       state.sdeMoveActions[key] = cancellationRecord;
       updateSdeVnRecoveryObligationForMove(row, "cancelled", actionTime);
       recordSdeMoveLearningEvent(key, "cancelled", row, actionTime, learningReason);
-      const replacementRow = buildSdeCancelledReplacementMoves(Array.isArray(data?.moves) ? data.moves : [] )
-        .find(candidate => getSdeMoveNeedKey(candidate) === needKey);
-      const replacementKey = getSdeMoveActionKey(replacementRow);
-      if(replacementRow && replacementKey){
-        cancellationRecord.dismissalState = replacementRow.isSdeCancellationFailClosed
-          ? SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE
-          : SDE_RELEASE_DISMISSAL_REPLACED;
-        cancellationRecord.replacedByCardId = replacementKey;
-        cancellationRecord.replacementCreatedAt = actionTime;
-        cancellationRecord.replacementTargetSlot = normalizeSlot(replacementRow.recommendedSlot || replacementRow.toSlot);
-        cancellationRecord.replacementWasFailClosed = Boolean(replacementRow.isSdeCancellationFailClosed);
-        cancellationRecord.replacementScore = replacementRow.recommendationScore ?? "";
-        cancellationRecord.replacementAlternatives = Array.isArray(replacementRow.recommendationAlternatives)
-          ? replacementRow.recommendationAlternatives.map(alternative=>({...alternative}))
-          : [];
-        cancellationRecord.activeOutcomeId = replacementKey;
-        cancellationRecord.supersededBy = replacementKey;
-        cancellationRecord.authorityPending = false;
-        setSdeActiveOutcomeAuthority(outcomeKey, replacementRow, {
-          activeOutcomeId:replacementKey,
-          updatedAt:actionTime,
-          source:"generic_cancel_replacement"
-        });
+      const generatedReplacements = buildSdeCancelledReplacementMoves(
+        Array.isArray(data?.moves) ? data.moves : [],
+        {seedRow:row, requiredOutcomeKey:outcomeKey}
+      );
+      let replacementRow = generatedReplacements.find(candidate =>
+        getSdeMoveObligationStepKey(candidate) === outcomeKey
+      ) || generatedReplacements.find(candidate => getSdeMoveNeedKey(candidate) === needKey);
+      if(!replacementRow){
+        replacementRow = buildSdeCancellationFailClosedRow(
+          row,
+          needKey,
+          cancellationRecord.roundNumber,
+          outcomeKey
+        );
+        replacementRow.stableActionKey = getSdeAvailableCancellationActionKey(
+          replacementRow.stableActionKey,
+          `${outcomeKey}|${key}|${actionTime}|handler-failclosed`
+        );
       }
+      bindSdeCancellationReplacementAuthority(
+        cancellationRecord,
+        outcomeKey,
+        replacementRow,
+        actionTime
+      );
       persist(true);
       refreshSdeAfterMoveAction();
       return;
@@ -23549,6 +23575,92 @@ function getFreshSdeWrongTrackReplacementAlternative(baseRow, rejectedSlots, res
   return null;
 }
 
+function buildSdeCancellationSnapshotBaseRow(snapshot, actionRecord=null, fallbackNeedKey="", canonicalOutcomeKey=""){
+  const source = snapshot && typeof snapshot === "object" ? snapshot : {};
+  const record = actionRecord && typeof actionRecord === "object" ? actionRecord : {};
+  const vehicle = sanitizeVehicleValue(source.vehicle || record.vehicle);
+  const fromSlot = normalizeSlot(
+    source.originalFromSlot
+    || source.fromSlot
+    || source.arrivalSlot
+    || record.physicalFromSlot
+    || record.fromSlot
+  );
+  const needKey = String(
+    fallbackNeedKey
+    || source.sdeCancellationNeedKey
+    || source.needKey
+    || record.needKey
+    || ""
+  ).trim();
+  if(!vehicle && !fromSlot && !needKey) return null;
+
+  const toSlot = normalizeSlot(source.recommendedSlot || source.toSlot || record.toSlot);
+  const alternatives = Array.isArray(source.recommendationAlternatives)
+    ? source.recommendationAlternatives.map(alternative=>({...alternative}))
+    : Array.isArray(source.alternatives)
+      ? source.alternatives.map(alternative=>({...alternative}))
+      : [];
+  return {
+    ...source,
+    source:String(source.source || "SDE cancellation snapshot").trim(),
+    vehicle:vehicle || "Ukjent",
+    arrivalTrain:normalizeTognr(source.arrivalTrain),
+    arrivalPart:String(source.arrivalPart || "").trim(),
+    arrivalTrainText:String(source.arrivalTrainText || "Ukjent").trim(),
+    nextDepartureTrain:normalizeTognr(source.nextDepartureTrain),
+    nextDeparturePart:String(source.nextDeparturePart || "").trim(),
+    nextDepartureText:String(source.nextDepartureText || source.departureTrainText || "").trim(),
+    departureTrainText:String(source.departureTrainText || source.nextDepartureText || "Ikke registrert").trim(),
+    arrivalTime:String(source.arrivalTime || "").trim(),
+    fromSlot:fromSlot || "Ukjent",
+    arrivalSlot:normalizeSlot(source.arrivalSlot || fromSlot),
+    originalFromSlot:normalizeSlot(source.originalFromSlot || fromSlot),
+    recommendedSlot:toSlot,
+    toSlot,
+    recommendationAlternatives:alternatives,
+    stableActionKey:"",
+    sdeNightPlacementGeneratedActionKey:"",
+    sdeNightPlacementOriginalActionKey:"",
+    sdeCanonicalOutcomeKey:String(canonicalOutcomeKey || source.sdeCanonicalOutcomeKey || record.outcomeKey || "").trim(),
+    sdeCancellationNeedKey:needKey,
+    sdeCancellationSnapshotFallback:true,
+    sdeCancellationSnapshotSupportsFreshCandidates:Number(source.sdeCancellationSnapshotVersion || 0) >= 2,
+    isSdeCancellationFailClosed:false,
+    isSdeCancellationReplacementMove:false
+  };
+}
+
+function isSdeCancellationNeedStillPhysicallyUnresolved(row){
+  if(!row) return false;
+  const vehicle = sanitizeVehicleValue(row.vehicle);
+  const fromSlot = getSdeMoveOutcomePhysicalFromSlot(row);
+  if(!normalizeVehicleToken(vehicle) || !fromSlot) return false;
+  const physicalVehicle = sanitizeVehicleValue(getSdeVehicleInSlot(fromSlot));
+  return Boolean(
+    normalizeVehicleToken(physicalVehicle)
+    && haveSameSdeVehicleTokens(vehicle, physicalVehicle)
+  );
+}
+
+function getSdeAvailableCancellationActionKey(baseKey, transitionIdentity=""){
+  const stableBaseKey = String(baseKey || "").trim();
+  const unavailable = key => Boolean(
+    getSdeMoveActionRecord(key)
+    || getSdeDeletedMoveCards()[String(key || "").trim()]
+  );
+  if(!stableBaseKey || !unavailable(stableBaseKey)) return stableBaseKey;
+
+  const transitionToken = getSdeShiftSnapshotHash(`${stableBaseKey}|${String(transitionIdentity || "transition")}`);
+  let candidateKey = `${stableBaseKey}|t${transitionToken}`;
+  let collisionIndex = 2;
+  while(unavailable(candidateKey)){
+    candidateKey = `${stableBaseKey}|t${transitionToken}-${collisionIndex}`;
+    collisionIndex += 1;
+  }
+  return candidateKey;
+}
+
 function buildSdeCancellationFailClosedRow(baseRow, needKey, roundNumber=1, canonicalOutcomeKey=""){
   const round = Math.max(1, Number(roundNumber || 1));
   const stableOutcomeKey = String(canonicalOutcomeKey || needKey || "").trim();
@@ -23583,11 +23695,13 @@ function bindSdeCancellationReplacementAuthority(actionRecord, outcomeKey, repla
 
   const targetSlot = normalizeSlot(replacementRow.recommendedSlot || replacementRow.toSlot);
   const failClosed = Boolean(replacementRow.isSdeCancellationFailClosed);
+  const replacementSnapshot = getSdeMoveActionSnapshot(replacementRow);
   const changed = Boolean(
     actionRecord.outcomeKey !== canonicalOutcomeKey
     || actionRecord.activeOutcomeId !== replacementKey
     || normalizeSlot(actionRecord.replacementTargetSlot) !== targetSlot
     || actionRecord.replacementWasFailClosed !== failClosed
+    || String(actionRecord.replacementSnapshot?.stableActionKey || "").trim() !== replacementKey
     || actionRecord.authorityPending === true
   );
   const timestamp = String(updatedAt || new Date().toISOString());
@@ -23604,6 +23718,7 @@ function bindSdeCancellationReplacementAuthority(actionRecord, outcomeKey, repla
   actionRecord.replacementAlternatives = Array.isArray(replacementRow.recommendationAlternatives)
     ? replacementRow.recommendationAlternatives.map(alternative=>({...alternative}))
     : [];
+  actionRecord.replacementSnapshot = replacementSnapshot;
   actionRecord.dismissalState = failClosed
     ? SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE
     : SDE_RELEASE_DISMISSAL_REPLACED;
@@ -23658,25 +23773,58 @@ function buildSdePersistedPhysicalCancellationFailClosedRows(){
   });
 }
 
-function buildSdeCancelledReplacementMoves(baseMoves){
+function buildSdeCancelledReplacementMoves(baseMoves, options={}){
   const moves = Array.isArray(baseMoves) ? baseMoves : [];
   const activeMoves = getSdeAuthoritativeActiveOutcomeRows(moves);
   const learningEvents = Array.isArray(state.sdeMoveLearningLog)
     ? state.sdeMoveLearningLog.filter(Boolean)
     : [];
-  const cancelledEvents = learningEvents.filter(event =>
+  const cancelledEventsByKey = new Map();
+  learningEvents.filter(event =>
     event?.action === "cancelled" &&
     event?.snapshot?.sdePhysicalDependencyRole !== "prerequisite" &&
     event?.snapshot?.isSdePhysicalBlockerFreeingMove !== true
-  );
+  ).forEach(event=>{
+    const eventKey = String(event?.key || event?.id || "").trim();
+    if(eventKey) cancelledEventsByKey.set(eventKey, event);
+  });
+  Object.entries(state.sdeMoveActions || {})
+    .filter(([,record]) =>
+      record?.action === "cancelled"
+      && record?.snapshot?.sdePhysicalDependencyRole !== "prerequisite"
+      && record?.snapshot?.isSdePhysicalBlockerFreeingMove !== true
+    )
+    .forEach(([key,record])=>{
+      if(cancelledEventsByKey.has(key)) return;
+      const recordSnapshot = record?.snapshot && Object.keys(record.snapshot).length
+        ? record.snapshot
+        : record?.replacementSnapshot || {};
+      cancelledEventsByKey.set(key, {
+        id:`action-record|${key}`,
+        key,
+        action:"cancelled",
+        time:String(record?.time || record?.cancelledAt || "").trim(),
+        needKey:String(record?.needKey || "").trim(),
+        reasonCode:"no_reason",
+        snapshot:recordSnapshot
+      });
+    });
+  const cancelledEvents = Array.from(cancelledEventsByKey.values());
   if(!cancelledEvents.length) return [];
 
-  const completedNeedKeys = new Set();
+  const completedNeedTimes = new Map();
+  const recordCompletedNeed = (needKey, time)=>{
+    const key = String(needKey || "").trim();
+    if(!key) return;
+    const timestamp = Date.parse(String(time || ""));
+    const completedAt = Number.isFinite(timestamp) ? timestamp : 0;
+    completedNeedTimes.set(key, Math.max(completedNeedTimes.get(key) || 0, completedAt));
+  };
   learningEvents
     .filter(event => event?.action === "completed")
     .forEach(event=>{
       const needKey = getSdeWrongTrackReplacementNeedKeyFromEvent(event);
-      if(needKey) completedNeedKeys.add(needKey);
+      recordCompletedNeed(needKey, event?.time);
     });
 
   Object.values(state.sdeMoveActions || {})
@@ -23690,12 +23838,17 @@ function buildSdeCancelledReplacementMoves(baseMoves){
         snapshot.departureTrainText,
         snapshot.arrivalTime
       );
-      if(needKey) completedNeedKeys.add(needKey);
+      recordCompletedNeed(String(snapshot.needKey || action.needKey || needKey).trim(), action?.time);
+      if(needKey && needKey !== snapshot.needKey) recordCompletedNeed(needKey, action?.time);
     });
 
   const baseMovesByNeedKey = new Map();
   const reservedTargetSlotsByOutcomeKey = new Map();
-  moves.forEach(row=>{
+  const seedRows = [
+    ...(Array.isArray(options?.seedRows) ? options.seedRows : []),
+    ...(options?.seedRow ? [options.seedRow] : [])
+  ].filter(Boolean);
+  [...seedRows, ...moves].forEach(row=>{
     const needKey = getSdeWrongTrackReplacementNeedKeyFromMove(row);
     if(needKey && !baseMovesByNeedKey.has(needKey)) baseMovesByNeedKey.set(needKey, row);
     const legacyNeedKey = getSdeWrongTrackReplacementNeedKeyFromParts(
@@ -23749,6 +23902,7 @@ function buildSdeCancelledReplacementMoves(baseMoves){
       rejectedSlots:new Set(),
       alternatives:[],
       reasonCodes:new Set(),
+      latestCancelledAtMs:0,
       roundNumber:Math.max(1, Number(snapshot.sdeCancellationRoundNumber || 1))
     };
     group.needKeys.add(needKey);
@@ -23757,6 +23911,10 @@ function buildSdeCancelledReplacementMoves(baseMoves){
     group.needKey = needKey;
     group.actionRecord = actionRecord || group.actionRecord;
     group.reasonCodes.add(String(event.reasonCode || "no_reason"));
+    const cancelledAtMs = Date.parse(String(event?.time || actionRecord?.time || actionRecord?.cancelledAt || ""));
+    if(Number.isFinite(cancelledAtMs)){
+      group.latestCancelledAtMs = Math.max(group.latestCancelledAtMs || 0, cancelledAtMs);
+    }
 
     if(snapshot.isSdeCancellationFailClosed){
       group.rejectedSlots.clear();
@@ -23785,13 +23943,45 @@ function buildSdeCancelledReplacementMoves(baseMoves){
   groups.forEach((group, canonicalOutcomeKey)=>{
     const needKey = String(group.needKey || "").trim();
     const needKeys = Array.from(group.needKeys || []).filter(Boolean);
-    if(needKeys.some(key => completedNeedKeys.has(key))) return;
-    if(needKeys.some(key => getSdeDeletedMoveCards()[`need|${key}`])) return;
+    const deletedMoveCards = getSdeDeletedMoveCards();
+    if(needKeys.some(key => deletedMoveCards[`need|${key}`])) return;
+    const storedActiveOutcomeId = String(group.actionRecord?.activeOutcomeId || group.actionRecord?.replacedByCardId || "").trim();
+    if(storedActiveOutcomeId && deletedMoveCards[storedActiveOutcomeId]) return;
 
-    const baseRow = [needKey, ...needKeys]
+    const currentBaseRow = [needKey, ...needKeys]
       .map(key => baseMovesByNeedKey.get(key))
       .find(Boolean);
+    const actionRecordSnapshot = group.actionRecord?.snapshot && Object.keys(group.actionRecord.snapshot).length
+      ? group.actionRecord.snapshot
+      : null;
+    const eventSnapshot = group.snapshot && Object.keys(group.snapshot).length
+      ? group.snapshot
+      : null;
+    const baseRow = currentBaseRow || buildSdeCancellationSnapshotBaseRow(
+      actionRecordSnapshot || eventSnapshot || group.actionRecord?.replacementSnapshot,
+      group.actionRecord,
+      needKey,
+      canonicalOutcomeKey
+    ) || buildSdeCancellationSnapshotBaseRow(
+      group.actionRecord?.replacementSnapshot,
+      group.actionRecord,
+      needKey,
+      canonicalOutcomeKey
+    );
     if(!baseRow) return;
+
+    const completedAfterLatestCancellation = needKeys.some(key => {
+      const completedAtMs = completedNeedTimes.get(key) || 0;
+      return completedAtMs > 0 && completedAtMs >= Number(group.latestCancelledAtMs || 0);
+    });
+    if(completedAfterLatestCancellation && !isSdeCancellationNeedStillPhysicallyUnresolved(baseRow)) return;
+
+    const transitionIdentity = [
+      canonicalOutcomeKey,
+      String(group.event?.key || ""),
+      String(group.event?.time || group.actionRecord?.time || ""),
+      String(group.roundNumber || 1)
+    ].join("|");
 
     if(group.actionRecord?.replacementWasFailClosed === true && !group.snapshot?.isSdeCancellationFailClosed){
       const failClosedRow = buildSdeCancellationFailClosedRow(
@@ -23799,6 +23989,10 @@ function buildSdeCancelledReplacementMoves(baseMoves){
         needKey,
         group.roundNumber,
         canonicalOutcomeKey
+      );
+      failClosedRow.stableActionKey = getSdeAvailableCancellationActionKey(
+        failClosedRow.stableActionKey,
+        `${transitionIdentity}|failclosed`
       );
       replacements.push(failClosedRow);
       authorityChanged = bindSdeCancellationReplacementAuthority(
@@ -23845,7 +24039,10 @@ function buildSdeCancelledReplacementMoves(baseMoves){
     });
     let remainingAlternativeSource = group.alternatives;
 
-    if(!nextAlternative){
+    if(
+      !nextAlternative
+      && (!baseRow.sdeCancellationSnapshotFallback || baseRow.sdeCancellationSnapshotSupportsFreshCandidates)
+    ){
       nextAlternative = getFreshSdeWrongTrackReplacementAlternative(
         baseRow,
         group.rejectedSlots,
@@ -23861,6 +24058,10 @@ function buildSdeCancelledReplacementMoves(baseMoves){
         needKey,
         group.roundNumber,
         canonicalOutcomeKey
+      );
+      failClosedRow.stableActionKey = getSdeAvailableCancellationActionKey(
+        failClosedRow.stableActionKey,
+        `${transitionIdentity}|failclosed`
       );
       replacements.push(failClosedRow);
       authorityChanged = bindSdeCancellationReplacementAuthority(
@@ -23882,9 +24083,13 @@ function buildSdeCancelledReplacementMoves(baseMoves){
         slot:normalizeSlot(alt.slot)
       }));
 
+    const legacyReplacementKey = `sde-cancel-replacement|${getSdeShiftSnapshotHash(canonicalOutcomeKey)}|r${group.roundNumber}|${nextSlot}`;
     const replacement = {
       ...baseRow,
-      stableActionKey:`sde-cancel-replacement|${getSdeShiftSnapshotHash(canonicalOutcomeKey)}|r${group.roundNumber}|${nextSlot}`,
+      stableActionKey:getSdeAvailableCancellationActionKey(
+        legacyReplacementKey,
+        `${transitionIdentity}|${nextSlot}`
+      ),
       sdeNightPlacementGeneratedActionKey:"",
       sdeNightPlacementOriginalActionKey:"",
       sdeCanonicalOutcomeKey:canonicalOutcomeKey,
@@ -23905,18 +24110,16 @@ function buildSdeCancelledReplacementMoves(baseMoves){
       isSdeCancellationReplacementMove:true
     };
 
-    if(!isSdeMoveActioned(replacement)){
-      replacements.push(replacement);
-      authorityChanged = bindSdeCancellationReplacementAuthority(
-        group.actionRecord,
-        canonicalOutcomeKey,
-        replacement
-      ) || authorityChanged;
+    replacements.push(replacement);
+    authorityChanged = bindSdeCancellationReplacementAuthority(
+      group.actionRecord,
+      canonicalOutcomeKey,
+      replacement
+    ) || authorityChanged;
 
-      const reservedOutcomeKeys = reservedTargetSlotsByOutcomeKey.get(nextSlot) || new Set();
-      reservedOutcomeKeys.add(canonicalOutcomeKey);
-      reservedTargetSlotsByOutcomeKey.set(nextSlot, reservedOutcomeKeys);
-    }
+    const reservedOutcomeKeys = reservedTargetSlotsByOutcomeKey.get(nextSlot) || new Set();
+    reservedOutcomeKeys.add(canonicalOutcomeKey);
+    reservedTargetSlotsByOutcomeKey.set(nextSlot, reservedOutcomeKeys);
   });
 
   if(authorityChanged){
