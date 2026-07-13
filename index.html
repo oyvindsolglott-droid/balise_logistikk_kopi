@@ -21838,6 +21838,133 @@ function getSdeCanonicalPhysicalStepSignature(row, actualSlotByVehicle=new Map()
   };
 }
 
+const SDE_CANONICAL_SINGLE_SET_PENDULUM_VEHICLE_TOKENS = new Set(["74-39"]);
+
+function getSdeCanonicalPendulumPlatformTrack(row={}){
+  const rawTrack = String(
+    row.baliseTrack
+    || row.platformTrack
+    || row.track
+    || row.spor
+    || row.raw?.baliseTrack
+    || row.raw?.platformTrack
+    || row.raw?.track
+    || row.raw?.spor
+    || ""
+  ).trim().toUpperCase();
+  const match = rawTrack.match(/^(?:SPOR\s*)?([23])$/);
+  return match ? match[1] : "";
+}
+
+function getSdeCanonicalPendulumOccurrenceSequenceMinutes(row={}){
+  const explicit = Number(row.sequenceMinutes ?? row.operationalSequenceMinutes ?? row.sortMinutes);
+  if(Number.isFinite(explicit) && explicit >= 0) return explicit;
+  return getSdeArrivalLatestSequenceMinutes({
+    displayTime:row.displayTime || row.arrivalTime,
+    arrivalTime:row.arrivalTime,
+    time:row.time,
+    nextDay:row.nextDay
+  });
+}
+
+function selectSdeCanonicalPendulumActualOccurrence(input={}){
+  const vehicleId = sanitizeVehicleValue(input.vehicleId);
+  const vehicleToken = normalizeSdeCanonicalToken(vehicleId);
+  const snapshotSequenceMinutes = Number(input.snapshotSequenceMinutes);
+  const occurrences = sortSdeCanonicalObjects((Array.isArray(input.occurrences) ? input.occurrences : []).flatMap(row=>{
+    const rowVehicleId = sanitizeVehicleValue(row?.vehicleId || row?.vehicle || row?.mat);
+    const rowVehicleToken = normalizeSdeCanonicalToken(rowVehicleId);
+    const train = String(row?.displayTrain || row?.train || "").trim();
+    const sequenceMinutes = getSdeCanonicalPendulumOccurrenceSequenceMinutes(row);
+    if(!rowVehicleToken || rowVehicleToken !== vehicleToken || !/^9?24\d{2}$/.test(train) || sequenceMinutes < 0) return [];
+    return [{
+      vehicleId:rowVehicleId,
+      vehicleToken:rowVehicleToken,
+      train:String(row?.train || train).trim(),
+      displayTrain:String(row?.displayTrain || train).trim(),
+      arrivalTime:String(row?.arrivalTime || row?.displayTime || row?.time || "").trim(),
+      serviceDate:String(row?.serviceDate || "").trim(),
+      sequenceMinutes,
+      baliseTrack:getSdeCanonicalPendulumPlatformTrack(row),
+      singleSet:row?.singleSet !== false,
+      provenance:String(row?.provenance || "balise_skien_arrival_occurrence").trim()
+    }];
+  }));
+  const base = {vehicleId,vehicleToken,snapshotSequenceMinutes:Number.isFinite(snapshotSequenceMinutes) ? snapshotSequenceMinutes : null,occurrences};
+  if(!vehicleToken || !SDE_CANONICAL_SINGLE_SET_PENDULUM_VEHICLE_TOKENS.has(vehicleToken)){
+    return {...base,status:"not_applicable",reason:"vehicle_not_locked_single_set_pendulum",selectedOccurrence:null,sourceSlot:""};
+  }
+  if(!Number.isFinite(snapshotSequenceMinutes)){
+    return {...base,status:"ambiguous",reason:"snapshot_time_missing",selectedOccurrence:null,sourceSlot:""};
+  }
+  const eligible = occurrences.filter(row=>row.singleSet && row.sequenceMinutes <= snapshotSequenceMinutes);
+  if(!eligible.length){
+    return {...base,status:"ambiguous",reason:"no_time_relevant_occurrence",selectedOccurrence:null,sourceSlot:""};
+  }
+  const latestSequenceMinutes = Math.max(...eligible.map(row=>row.sequenceMinutes));
+  const latest = eligible.filter(row=>row.sequenceMinutes === latestSequenceMinutes);
+  const distinctLatest = Array.from(new Map(latest.map(row=>[
+    `${row.train}|${row.displayTrain}|${row.arrivalTime}|${row.baliseTrack || "unknown-track"}`,
+    row
+  ])).values());
+  const tracks = sortSdeCanonicalStrings(distinctLatest.map(row=>row.baliseTrack).filter(Boolean));
+  if(distinctLatest.length !== 1 || tracks.length !== 1){
+    return {
+      ...base,
+      status:"ambiguous",
+      reason:tracks.length ? "multiple_equally_current_occurrences" : "current_occurrence_missing_explicit_balise_track",
+      latestOccurrences:distinctLatest,
+      selectedOccurrence:null,
+      sourceSlot:""
+    };
+  }
+  const selectedOccurrence = distinctLatest[0];
+  const sourceSlot = selectedOccurrence.baliseTrack === "2" ? "2S" : selectedOccurrence.baliseTrack === "3" ? "3S" : "";
+  if(!sourceSlot){
+    return {...base,status:"ambiguous",reason:"current_occurrence_has_invalid_balise_track",latestOccurrences:distinctLatest,selectedOccurrence:null,sourceSlot:""};
+  }
+  return {
+    ...base,
+    status:"resolved",
+    reason:"latest_time_relevant_balise_occurrence",
+    latestOccurrences:distinctLatest,
+    selectedOccurrence,
+    sourceSlot,
+    baliseTrack:selectedOccurrence.baliseTrack
+  };
+}
+
+function captureSdeCanonicalPendulumOccurrences(){
+  const arrivals = getArrivalMapByMode("idag") || {};
+  const serviceDate = String(state.baliseMetaToday?.date || state.apiBalise?.date || "").trim();
+  return sortSdeCanonicalObjects(Object.entries(arrivals).flatMap(([rawTrain,rawInfo])=>{
+    const train = normalizeTognr(rawTrain);
+    const info = rawInfo && typeof rawInfo === "object" ? rawInfo : {time:rawInfo};
+    const cellInfo = getTursattVehicleCellInfo(train,"arrival","idag");
+    const vehicles = splitVehicleNumbers(cellInfo.baseValue).filter(Boolean);
+    if(!isTursattBratsbergTrain(train) || vehicles.length !== 1) return [];
+    return [{
+      vehicleId:vehicles[0],
+      train,
+      displayTrain:getDisplayTrainNumberForOppstilling(train,"arrival","idag"),
+      arrivalTime:normalizeTimeString(info.time),
+      displayTime:`${normalizeTimeString(info.time)}${info.nextDay ? " +1" : ""}`,
+      nextDay:Boolean(info.nextDay),
+      sequenceMinutes:getSdeArrivalLatestSequenceMinutes({time:info.time,displayTime:`${info.time || ""}${info.nextDay ? " +1" : ""}`}),
+      serviceDate,
+      baliseTrack:getSdeCanonicalPendulumPlatformTrack(info),
+      singleSet:true,
+      provenance:"balise_skien_arrival_occurrence"
+    }];
+  }));
+}
+
+function getSdeCanonicalRuntimeSnapshotSequenceMinutes(){
+  const now = new Date();
+  const minutes = (now.getHours() * 60) + now.getMinutes();
+  return minutes < (3 * 60) ? minutes + 1440 : minutes;
+}
+
 function buildSdeCanonicalActualStateReconciliation(input={}){
   const sharedDraftRevision = Number(input.sharedDraftRevision);
   const normalizeRows = (rows,source) => sortSdeCanonicalObjects((Array.isArray(rows) ? rows : []).flatMap(row=>{
@@ -21847,9 +21974,22 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
     if(!slot || !vehicleId || !vehicleToken) return [];
     return [{source,slot,vehicleId,vehicleToken}];
   }));
-  const sharedCandidates = normalizeRows(input.sharedDraftRows,"shared_draft");
-  const computedCandidates = normalizeRows(input.computedActualRows,"computed_live");
-  const sharedDraftActive = input.sharedDraftActive === true || (input.sharedDraftActive !== false && (sharedCandidates.length > 0 || (Number.isFinite(sharedDraftRevision) && sharedDraftRevision > 0)));
+  const rawSharedCandidates = normalizeRows(input.sharedDraftRows,"shared_draft");
+  const rawComputedCandidates = normalizeRows(input.computedActualRows,"computed_live");
+  const pendulumContextProvided = Object.prototype.hasOwnProperty.call(input,"pendulumOccurrences");
+  const pendulumOccurrences = cloneSdeCanonicalValue(Array.isArray(input.pendulumOccurrences) ? input.pendulumOccurrences : []) || [];
+  const pendulumVehicleTokens = new Set(pendulumContextProvided ? SDE_CANONICAL_SINGLE_SET_PENDULUM_VEHICLE_TOKENS : []);
+  const pendulumResults = sortSdeCanonicalStrings(Array.from(pendulumVehicleTokens)).map(vehicleToken=>{
+    const matchingOccurrence = pendulumOccurrences.find(row=>normalizeSdeCanonicalToken(row?.vehicleId || row?.vehicle || row?.mat) === vehicleToken);
+    return selectSdeCanonicalPendulumActualOccurrence({
+      vehicleId:matchingOccurrence?.vehicleId || matchingOccurrence?.vehicle || matchingOccurrence?.mat || vehicleToken,
+      occurrences:pendulumOccurrences,
+      snapshotSequenceMinutes:input.snapshotSequenceMinutes
+    });
+  });
+  const sharedCandidates = rawSharedCandidates.filter(row=>!pendulumVehicleTokens.has(row.vehicleToken));
+  const computedCandidates = rawComputedCandidates.filter(row=>!pendulumVehicleTokens.has(row.vehicleToken));
+  const sharedDraftActive = input.sharedDraftActive === true || (input.sharedDraftActive !== false && (rawSharedCandidates.length > 0 || (Number.isFinite(sharedDraftRevision) && sharedDraftRevision > 0)));
   const conflicts = [];
   const diagnostics = [];
   const conflictKeys = new Set();
@@ -21867,6 +22007,38 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
     groups.get(key).push(row);
     return groups;
   },new Map());
+  pendulumResults.forEach(result=>{
+    if(result.status === "resolved"){
+      diagnostics.push({
+        classification:"PENDULUM_CURRENT_OCCURRENCE_RESOLVED",
+        severity:"info",
+        vehicleId:result.vehicleId,
+        train:result.selectedOccurrence?.displayTrain || result.selectedOccurrence?.train || "",
+        arrivalTime:result.selectedOccurrence?.arrivalTime || "",
+        baliseTrack:result.baliseTrack,
+        slot:result.sourceSlot,
+        provenance:"balise_pendulum_current_occurrence"
+      });
+      return;
+    }
+    if(result.status === "ambiguous"){
+      addConflict("PENDULUM_CURRENT_OCCURRENCE_AMBIGUOUS",{
+        vehicleId:result.vehicleId,
+        reason:result.reason,
+        snapshotSequenceMinutes:result.snapshotSequenceMinutes,
+        latestOccurrences:result.latestOccurrences || [],
+        message:"Aktuell enkeltsettpendel-forekomst kan ikke knyttes entydig til Balise-spor 2 eller 3; ingen canonical actual-plassering opprettes."
+      },"warning");
+    }
+  });
+  [...rawSharedCandidates,...rawComputedCandidates]
+    .filter(row=>pendulumVehicleTokens.has(row.vehicleToken) && ["2N","3N","3M"].includes(row.slot))
+    .forEach(row=>addConflict("PENDULUM_STALE_NORTH_SOURCE_REJECTED",{
+      vehicleId:row.vehicleId,
+      source:row.source,
+      rejectedSlot:row.slot,
+      message:`${row.vehicleId} kan ikke bruke ${row.slot} som actual source for enkeltsettpendelen.`
+    },"warning"));
   const unsafeSharedVehicles = new Set();
   const unsafeSharedSlots = new Set();
   groupBy(sharedCandidates,row=>row.vehicleToken).forEach((rows,vehicleToken)=>{
@@ -21913,18 +22085,58 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
     conflictStatus:"none"
   }));
   const supplementedPlacements = [];
+  const resolvedPendulumResults = pendulumResults.filter(result=>result.status === "resolved");
+  const pendulumSlotCounts = resolvedPendulumResults.reduce((counts,result)=>{
+    counts.set(result.sourceSlot,(counts.get(result.sourceSlot) || 0) + 1);
+    return counts;
+  },new Map());
+  resolvedPendulumResults.forEach(result=>{
+    if((pendulumSlotCounts.get(result.sourceSlot) || 0) > 1){
+      addConflict("ACTUAL_SLOT_COLLISION",{
+        source:"balise_pendulum_current_occurrence",
+        slot:result.sourceSlot,
+        vehicleId:result.vehicleId
+      });
+      return;
+    }
+    const explicitSlot = sharedBySlot.get(result.sourceSlot);
+    if(explicitSlot && explicitSlot.vehicleToken !== result.vehicleToken){
+      addConflict("ACTUAL_SLOT_COLLISION",{
+        slot:result.sourceSlot,
+        sharedDraftVehicleId:explicitSlot.vehicleId,
+        pendulumVehicleId:result.vehicleId
+      });
+      return;
+    }
+    const placement = {
+      vehicleId:result.vehicleId,
+      slot:result.sourceSlot,
+      provenance:"balise_pendulum_current_occurrence",
+      sourceRevision:null,
+      confidence:"time_and_track_exact",
+      supplemented:sharedDraftActive,
+      conflictStatus:"none",
+      sourceTrain:result.selectedOccurrence?.displayTrain || result.selectedOccurrence?.train || "",
+      sourceTime:result.selectedOccurrence?.arrivalTime || "",
+      baliseTrack:result.baliseTrack
+    };
+    actualPlacements.push(placement);
+    if(sharedDraftActive) supplementedPlacements.push(placement);
+  });
+  const canonicalActualByVehicle = new Map(actualPlacements.map(row=>[normalizeSdeCanonicalToken(row.vehicleId),row]));
+  const canonicalActualBySlot = new Map(actualPlacements.map(row=>[row.slot,{...row,vehicleToken:normalizeSdeCanonicalToken(row.vehicleId)}]));
   safeComputed.forEach(row=>{
     if(unsafeSharedVehicles.has(row.vehicleToken) || unsafeSharedSlots.has(row.slot)) return;
-    const explicitVehicle = sharedByVehicle.get(row.vehicleToken);
+    const explicitVehicle = canonicalActualByVehicle.get(row.vehicleToken);
     if(explicitVehicle){
       if(explicitVehicle.slot !== row.slot){
-        addConflict("ACTUAL_SOURCE_MISMATCH",{vehicleId:row.vehicleId,sharedDraftSlot:explicitVehicle.slot,computedSlot:row.slot});
+        addConflict("ACTUAL_SOURCE_MISMATCH",{vehicleId:row.vehicleId,canonicalSlot:explicitVehicle.slot,computedSlot:row.slot});
       }
       return;
     }
-    const explicitSlot = sharedBySlot.get(row.slot);
+    const explicitSlot = canonicalActualBySlot.get(row.slot);
     if(explicitSlot && explicitSlot.vehicleToken !== row.vehicleToken){
-      addConflict("ACTUAL_SLOT_COLLISION",{slot:row.slot,sharedDraftVehicleId:explicitSlot.vehicleId,computedVehicleId:row.vehicleId});
+      addConflict("ACTUAL_SLOT_COLLISION",{slot:row.slot,canonicalVehicleId:explicitSlot.vehicleId,computedVehicleId:row.vehicleId});
       return;
     }
     const placement = {
@@ -21937,6 +22149,8 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
       conflictStatus:"none"
     };
     actualPlacements.push(placement);
+    canonicalActualByVehicle.set(row.vehicleToken,placement);
+    canonicalActualBySlot.set(row.slot,{...placement,vehicleToken:row.vehicleToken});
     if(sharedDraftActive){
       supplementedPlacements.push(placement);
       diagnostics.push({classification:"PARTIAL_SHARED_DRAFT_SUPPLEMENTED",severity:"info",vehicleId:row.vehicleId,slot:row.slot});
@@ -21949,7 +22163,8 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
     actualPlacements:sortedPlacements,
     placementsByVehicle,
     placementsBySlot,
-    sourceCandidates:sortSdeCanonicalObjects([...sharedCandidates,...computedCandidates]),
+    sourceCandidates:sortSdeCanonicalObjects([...rawSharedCandidates,...rawComputedCandidates]),
+    pendulumOccurrenceResults:sortSdeCanonicalObjects(pendulumResults),
     supplementedPlacements:sortSdeCanonicalObjects(supplementedPlacements),
     conflicts:sortSdeCanonicalObjects(conflicts),
     diagnostics:sortSdeCanonicalObjects(diagnostics),
@@ -21959,6 +22174,8 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
       sharedDraftRevision:Number.isFinite(sharedDraftRevision) && sharedDraftRevision > 0 ? sharedDraftRevision : null,
       sharedDraftPlacementCount:safeShared.length,
       computedCandidateCount:computedCandidates.length,
+      pendulumResolvedCount:pendulumResults.filter(result=>result.status === "resolved").length,
+      pendulumAmbiguousCount:pendulumResults.filter(result=>result.status === "ambiguous").length,
       supplementedPlacementCount:supplementedPlacements.length,
       conflictCount:conflicts.length,
       sideEffectPolicy:"pure-shadow-readmodel"
@@ -22167,6 +22384,8 @@ function buildSdeCanonicalPlan(input={}){
   [...candidateOutcomes].sort((left,right)=>sequenceOrder(left) - sequenceOrder(right) || left.candidateOutcomeId.localeCompare(right.candidateOutcomeId)).forEach(candidate=>{
     const actualSourceSlot = normalizeSlot(candidate.actualSourceSlot);
     const statedSourceSlot = normalizeSlot(candidate.statedSourceSlot);
+    const pendulumStaleNorthSource = SDE_CANONICAL_SINGLE_SET_PENDULUM_VEHICLE_TOKENS.has(candidate.vehicleToken)
+      && ["2N","3N","3M"].includes(statedSourceSlot);
     const directSourceValid = Boolean(actualSourceSlot && (!statedSourceSlot || actualSourceSlot === statedSourceSlot));
     const closure = dependencyClosure(candidate);
     const chainId = String(candidate.chainId || candidate.chainScope || "").trim();
@@ -22179,11 +22398,11 @@ function buildSdeCanonicalPlan(input={}){
       && producer.sourceValidation?.valid === true
       && closure.has(producer.candidateOutcomeId)
     ) : null;
-    const sourceValid = directSourceValid || Boolean(simulatedProducer);
-    candidate.canonicalSourceSlot = directSourceValid ? actualSourceSlot : simulatedProducer ? statedSourceSlot : "";
+    const sourceValid = !pendulumStaleNorthSource && (directSourceValid || Boolean(simulatedProducer));
+    candidate.canonicalSourceSlot = pendulumStaleNorthSource ? "" : directSourceValid ? actualSourceSlot : simulatedProducer ? statedSourceSlot : "";
     candidate.sourceValidation = {
       valid:sourceValid,
-      mode:directSourceValid ? "canonical_actual" : simulatedProducer ? "simulated_chain" : "unresolved",
+      mode:pendulumStaleNorthSource ? "pendulum_stale_source" : directSourceValid ? "canonical_actual" : simulatedProducer ? "simulated_chain" : "unresolved",
       canonicalSourceSlot:candidate.canonicalSourceSlot,
       actualSourceSlot,
       statedSourceSlot,
@@ -22192,8 +22411,10 @@ function buildSdeCanonicalPlan(input={}){
     candidate.activeEligible = candidate.eligibilityBase && sourceValid;
     if(sourceValid || candidate.status === "exiting") return;
     const staleOverride = staleSourceProducers.has(candidate.producer) || /graphic|drag|manual|override/.test(String(candidate.producer || ""));
-    const code = staleOverride
-      ? "stale_graphic_override_source"
+    const code = pendulumStaleNorthSource
+      ? "pendulum_stale_north_source"
+      : staleOverride
+        ? "stale_graphic_override_source"
       : actualSourceSlot && statedSourceSlot && actualSourceSlot !== statedSourceSlot
         ? "candidate_source_conflict"
         : "candidate_source_not_canonical";
@@ -22208,12 +22429,14 @@ function buildSdeCanonicalPlan(input={}){
       actualSource:actualSourceSlot,
       statedSource:statedSourceSlot,
       producer:candidate.producer
-    }, staleOverride
-      ? "Grafisk eller manuell override hevder en source som ikke finnes i canonical actual-state."
+    }, pendulumStaleNorthSource
+      ? "Enkeltsettpendelen kan ikke bruke 2N, 3N eller 3M som canonical source."
+      : staleOverride
+        ? "Grafisk eller manuell override hevder en source som ikke finnes i canonical actual-state."
       : actualSourceSlot
         ? "Kandidatens oppgitte source avviker fra canonical actual-state."
         : "Kandidaten mangler en bekreftet canonical actual source.");
-    if(!staleOverride && actualSourceSlot && statedSourceSlot && actualSourceSlot !== statedSourceSlot){
+    if(!pendulumStaleNorthSource && !staleOverride && actualSourceSlot && statedSourceSlot && actualSourceSlot !== statedSourceSlot){
       recordConflict({
         code:"stale_actual_source",
         type:"actual_state",
@@ -22603,7 +22826,7 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
   const blockingConflictCodes = new Set([
     "competing_targets", "ambiguous_obligation", "ambiguous_step", "multiple_authorities",
     "authority_target_missing", "physically_invalid_authority", "overlapping_target_reservation",
-    "legacy_identity_collision", "candidate_source_not_canonical", "candidate_source_conflict",
+    "legacy_identity_collision", "candidate_source_not_canonical", "candidate_source_conflict", "pendulum_stale_north_source",
     "stale_graphic_override_source"
   ]);
   const getAliases = rows => sortSdeCanonicalObjects(rows.flatMap(row=>row.legacyAliases || []));
@@ -22727,6 +22950,7 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
     let severity = "warning";
     if(cyclic.length){ diagnosticType = "cyclic_dependency"; severity = "error"; }
     else if(blockingConflicts.some(conflict=>conflict.code === "stale_graphic_override_source")){ diagnosticType = "stale_or_inconsistent_override"; }
+    else if(blockingConflicts.some(conflict=>conflict.code === "pendulum_stale_north_source")){ diagnosticType = "pendulum_stale_north_source"; }
     else if(blockingConflicts.some(conflict=>conflict.code === "candidate_source_conflict")){ diagnosticType = "candidate_source_conflict"; }
     else if(blockingConflicts.some(conflict=>conflict.code === "candidate_source_not_canonical")){ diagnosticType = "missing_actual_source"; }
     else if(blockingConflicts.some(conflict=>conflict.code === "competing_targets")){ diagnosticType = "competing_targets"; severity = "error"; }
@@ -22744,6 +22968,7 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
       identity_ambiguity:"Canonical identitet eller authority er tvetydig for steget.",
       slot_conflict:"Canonical målspor har en konflikt som sperrer kortprojeksjon.",
       stale_or_inconsistent_override:"En eldre grafisk eller manuell override har ikke en source i canonical actual-state og beholdes bare som diagnostikk.",
+      pendulum_stale_north_source:"Enkeltsettpendelen har en foreldet source i 2N, 3N eller 3M og kan ikke bli handlingskort.",
       candidate_source_conflict:"Kandidatens source avviker fra canonical actual-state og kan ikke bli handlingskort.",
       missing_actual_source:"Faktisk source mangler; behovet kan ikke bli handlingskort.",
       physically_invalid:"Kandidaten er fysisk ugyldig og beholdes bare som diagnostikk.",
@@ -22939,7 +23164,7 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
     }
     if(!outcome || outcome.physicalValidation?.valid === false || outcome.status === "exiting" || outcome.sourceValidation?.valid !== true || !outcome.canonicalSourceSlot) return [];
     const actualSourceMismatch = (plan.conflicts || []).some(conflict=>
-      ["actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","stale_graphic_override_source"].includes(conflict.code)
+      ["actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","pendulum_stale_north_source","stale_graphic_override_source"].includes(conflict.code)
       && (conflict.candidateOutcomeId === card.activeOutcomeId || conflict.vehicleId === card.vehicleId)
     );
     if(actualSourceMismatch){
@@ -22990,7 +23215,7 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
     recordConflict("TARGET_INTERVAL_OVERLAP", [], {targetSlot:conflict.targetSlot, activeOutcomeIds:sortSdeCanonicalStrings(conflict.candidateOutcomeIds || [])});
     if(chainIds.length > 1) recordConflict("OVERLAPPING_CHAIN_TARGET", [], {targetSlot:conflict.targetSlot, chainIds});
   });
-  (plan.conflicts || []).filter(conflict=>["candidate_source_not_canonical","candidate_source_conflict","stale_graphic_override_source"].includes(conflict.code)).forEach(conflict=>{
+  (plan.conflicts || []).filter(conflict=>["candidate_source_not_canonical","candidate_source_conflict","pendulum_stale_north_source","stale_graphic_override_source"].includes(conflict.code)).forEach(conflict=>{
     recordConflict("ACTUAL_OCCUPANCY_CONFLICT", [], {
       activeOutcomeId:conflict.candidateOutcomeId || "",
       stepId:conflict.stepId || "",
@@ -23272,7 +23497,7 @@ function buildSdeCanonicalGraphicProjection(canonicalPlan={}, cardProjection={},
     "actual_source_mismatch", "stale_actual_source", "competing_targets", "ambiguous_obligation",
     "ambiguous_step", "multiple_authorities", "authority_target_missing", "physically_invalid_authority",
     "physically_invalid_candidate", "overlapping_target_reservation", "legacy_identity_collision",
-    "candidate_source_not_canonical", "candidate_source_conflict", "stale_graphic_override_source"
+    "candidate_source_not_canonical", "candidate_source_conflict", "pendulum_stale_north_source", "stale_graphic_override_source"
   ]);
   const hasBlockingPlanConflict = (card,outcome) => (plan.conflicts || []).some(conflict=>
     blockingPlanCodes.has(conflict.code)
@@ -23679,7 +23904,7 @@ function buildSdeCanonicalIntegrityReport(input={}){
   const actionableIds = new Set(actionableCards.map(item=>item.activeOutcomeId));
   const reservationIds = new Set(targetReservations.map(item=>item.activeOutcomeId));
   const overlayIds = new Set(activeOverlays.map(item=>item.activeOutcomeId));
-  const nonExecutableCodes = new Set(["competing_targets","overlapping_target_reservation","actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","stale_graphic_override_source"]);
+  const nonExecutableCodes = new Set(["competing_targets","overlapping_target_reservation","actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","pendulum_stale_north_source","stale_graphic_override_source"]);
   const diagnosticResults = sortSdeCanonicalObjects(candidates.flatMap(candidate=>{
     const unresolvedDependencies = (candidate.dependencies || []).filter(item=>!resolveDependency(item));
     const reasons = sortSdeCanonicalStrings([
@@ -23812,7 +24037,7 @@ function buildSdeCanonicalLegacyMigrationReadiness(integrityReport={}, legacy={}
   const recoveryDeviationCount = (report.recoveryResults || []).filter(item=>item.status !== "PASS").length;
   const actualStateMismatchKeys = new Set([
     ...(report.conflicts || []).filter(item=>["ACTUAL_VEHICLE_IN_MULTIPLE_SLOTS","ACTUAL_SLOT_MULTIPLE_OCCUPANCY","ACTUAL_STATE_PROJECTION_MISMATCH","ACTIVE_SOURCE_MISSING_FROM_ACTUAL_OR_CHAIN","PLAN_TARGET_REPRESENTED_AS_ACTUAL"].includes(item.classification)).map(item=>`${item.obligationId || "global"}|${item.stepId || item.classification}`),
-    ...(report.diagnosticResults || []).filter(item=>item.reasons?.some?.(reason=>["actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","stale_graphic_override_source"].includes(reason))).map(item=>`${item.obligationId}|${item.stepId}`)
+    ...(report.diagnosticResults || []).filter(item=>item.reasons?.some?.(reason=>["actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","pendulum_stale_north_source","stale_graphic_override_source"].includes(reason))).map(item=>`${item.obligationId}|${item.stepId}`)
   ]);
   const actualStateMismatchCount = actualStateMismatchKeys.size;
   const failCount = report.summary?.failObligationCount || 0;
@@ -23929,11 +24154,15 @@ function captureSdeCanonicalShadowRuntimeSnapshot(){
     const parkedWhereRows = computeSharedSporplanDraftRowsForCommonView()
       .filter(row => sanitizeVehicleValue(row?.mat));
     const computedRows = computeInndata().filter(row => sanitizeVehicleValue(row?.mat));
+    const pendulumOccurrences = captureSdeCanonicalPendulumOccurrences();
+    const snapshotSequenceMinutes = getSdeCanonicalRuntimeSnapshotSequenceMinutes();
     const actualStateReconciliation = buildSdeCanonicalActualStateReconciliation({
       sharedDraftRows:isSharedSporplanDraftActiveForCommonView() ? parkedWhereRows : [],
       computedActualRows:computedRows,
       sharedDraftRevision:state.sharedSporplanDraftAppliedRevision,
-      sharedDraftActive:isSharedSporplanDraftActiveForCommonView()
+      sharedDraftActive:isSharedSporplanDraftActiveForCommonView(),
+      pendulumOccurrences,
+      snapshotSequenceMinutes
     });
     const actions = state.sdeMoveActions || {};
     return buildSdeCanonicalShadowRuntimeSnapshot({
@@ -24070,7 +24299,7 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
     if(activeCards.some(card=>!card.physicalValid)) classifications.add("LEGACY_PHYSICALLY_INVALID_CARD");
     if(activeCards.some(card=>card.targetSlot && !overlays.some(overlay=>normalizeSlot(overlay.targetSlot || overlay.slot) === card.targetSlot))) classifications.add("LEGACY_CARD_MISSING_OVERLAY");
     if(overlays.some(overlay=>!activeCards.some(card=>card.targetSlot === normalizeSlot(overlay.targetSlot || overlay.slot)))) classifications.add("LEGACY_OVERLAY_WITHOUT_CARD");
-    if(groupConflicts.some(conflict=>["actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","stale_graphic_override_source"].includes(conflict.code))) classifications.add("ACTUAL_SOURCE_MISMATCH");
+    if(groupConflicts.some(conflict=>["actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","pendulum_stale_north_source","stale_graphic_override_source"].includes(conflict.code))) classifications.add("ACTUAL_SOURCE_MISMATCH");
     if(groupConflicts.some(conflict=>["competing_targets","ambiguous_step","multiple_authorities","authority_target_missing"].includes(conflict.code))) classifications.add("CANONICAL_AMBIGUITY");
     if(groupConflicts.some(conflict=>["ambiguous_obligation","ambiguous_step","legacy_identity_split","legacy_identity_collision"].includes(conflict.code))) classifications.add("CANONICAL_IDENTITY_CONFLICT");
     if((obligationStepCounts.get(group.obligationId) || 0) > 1) classifications.add("LEGITIMATE_CHAIN_DIFFERENCE");
@@ -24131,7 +24360,7 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
     globalClassifications.add("LEGACY_OVERLAY_WITHOUT_CARD");
     overlayDifferences.push({classification:"LEGACY_OVERLAY_WITHOUT_CARD", overlay});
   });
-  const actualStateDifferences = canonicalPlan.diagnostics.filter(item=>["actual_source_mismatch","stale_actual_source","missing_canonical_actual_source","candidate_source_not_canonical","candidate_source_conflict","stale_graphic_override_source"].includes(item.code));
+  const actualStateDifferences = canonicalPlan.diagnostics.filter(item=>["actual_source_mismatch","stale_actual_source","missing_canonical_actual_source","candidate_source_not_canonical","candidate_source_conflict","pendulum_stale_north_source","stale_graphic_override_source"].includes(item.code));
   if(actualStateDifferences.some(item=>item.code !== "missing_canonical_actual_source" && item.code !== "candidate_source_not_canonical")) globalClassifications.add("ACTUAL_SOURCE_MISMATCH");
   const comparisonMs = getSdeCanonicalShadowNow() - comparisonStarted - canonicalMs - cardProjectionMs - cardProjectionComparisonMs - reservationProjectionMs - reservationProjectionComparisonMs - graphicProjectionMs - graphicProjectionComparisonMs - integrityReportMs - migrationReadinessMs;
   const snapshotMs = Number(options.snapshotMs || 0);
@@ -24214,6 +24443,18 @@ function isSdeCanonicalCardPreviewRequested(locationLike = typeof window !== "un
   return new URLSearchParams(String(locationLike?.search || "")).get("sdeCanonicalCardPreview") === "1";
 }
 
+function buildSdeCanonicalPendulumPreviewDiagnostics(actualStateReconciliation={}){
+  return sortSdeCanonicalObjects((actualStateReconciliation.diagnostics || [])
+    .filter(item=>["PENDULUM_CURRENT_OCCURRENCE_AMBIGUOUS","PENDULUM_STALE_NORTH_SOURCE_REJECTED"].includes(item.classification))
+    .map(item=>({
+      diagnosticType:String(item.classification || "pendulum_actual_state_diagnostic").toLowerCase(),
+      severity:item.severity || "warning",
+      vehicleId:item.vehicleId || "",
+      sourceSlot:item.rejectedSlot || item.slot || "",
+      explanation:item.message || item.reason || "Aktuell enkeltsettpendel-plassering kan ikke brukes som canonical actual-state."
+    })));
+}
+
 function buildSdeCanonicalCardPreviewSource(runtimeSnapshot){
   const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || buildSdeCanonicalShadowRuntimeSnapshot();
   const activeAuthorities = Object.fromEntries(Object.entries(snapshot.runtimeState?.activeAuthorities || {}).map(([key,value])=>[
@@ -24230,7 +24471,12 @@ function buildSdeCanonicalCardPreviewSource(runtimeSnapshot){
   const graphicProjection = buildSdeCanonicalGraphicProjection(canonicalPlan, cardProjection, reservationProjection);
   const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection});
   const legacyMigrationReadiness = buildSdeCanonicalLegacyMigrationReadiness(integrityReport,snapshot.legacy);
-  return {canonicalPlan,cardProjection,integrityReport,legacyMigrationReadiness};
+  const previewCardProjection = cloneSdeCanonicalValue(cardProjection) || {};
+  previewCardProjection.diagnostics = sortSdeCanonicalObjects([
+    ...(previewCardProjection.diagnostics || []),
+    ...buildSdeCanonicalPendulumPreviewDiagnostics(snapshot.actualStateReconciliation || {})
+  ]);
+  return {canonicalPlan,cardProjection:previewCardProjection,integrityReport,legacyMigrationReadiness};
 }
 
 function buildSdeCanonicalCardPreviewModel(input={}){
@@ -24238,6 +24484,7 @@ function buildSdeCanonicalCardPreviewModel(input={}){
   const cardProjection = cloneSdeCanonicalValue(input.cardProjection || {}) || {};
   const integrityReport = cloneSdeCanonicalValue(input.integrityReport || {}) || {};
   const legacyMigrationReadiness = cloneSdeCanonicalValue(input.legacyMigrationReadiness || {}) || {};
+  const actualStateReconciliation = cloneSdeCanonicalValue(input.actualStateReconciliation || {}) || {};
   const requiredSchemasPresent = Boolean(
     canonicalPlan.metadata?.schemaVersion
     && cardProjection.metadata?.schemaVersion
@@ -24281,7 +24528,10 @@ function buildSdeCanonicalCardPreviewModel(input={}){
     chains.push({chainId,stepCount:projectedByChain.get(chainId).length,cards:sortChainCards(projectedByChain.get(chainId)),completedSteps:[]});
   });
   const standaloneCards = sortSdeCanonicalObjects([...actionableCards,...blockedChainCards].filter(card=>!card.chainId));
-  const diagnostics = [...(cardProjection.diagnostics || [])];
+  const diagnostics = [
+    ...(cardProjection.diagnostics || []),
+    ...buildSdeCanonicalPendulumPreviewDiagnostics(actualStateReconciliation)
+  ];
   (integrityReport.obligationResults || []).filter(result=>result.status === "AMBIGUOUS").forEach(result=>{
     if(diagnostics.some(item=>item.stepId === result.stepId || item.obligationStepKey === result.stepId)) return;
     diagnostics.push({
