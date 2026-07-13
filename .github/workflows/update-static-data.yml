@@ -11,7 +11,7 @@ on:
 
     # Kritiske Oslo-vinduer: forste forsok syv minutter etter timeskiftet,
     # deretter kontrollerte retry-forsok gjennom samme time.
-    - cron: "7,22,37,52 4,7,15 * * *"
+    - cron: "7,22,37,52 4,7,15,21 * * *"
       timezone: "Europe/Oslo"
 
 permissions:
@@ -97,7 +97,7 @@ jobs:
               and imorgen_departure_vehicle_count == 0
           )
 
-          operational_hour = f"{now.hour:02d}" in {"04", "07", "15"}
+          operational_hour = f"{now.hour:02d}" in {"04", "07", "15", "21"}
 
           updated_values = [
               str(idag.get("updatedAt") or ""),
