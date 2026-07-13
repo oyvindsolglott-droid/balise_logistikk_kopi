@@ -22111,6 +22111,311 @@ function compareSdeCanonicalPlanWithLegacy(canonicalPlan, legacy={}){
   };
 }
 
+const SDE_CANONICAL_SHADOW_CLASSIFICATIONS = [
+  "MATCH", "LEGACY_DUPLICATE_CARD", "LEGACY_DUPLICATE_TARGET",
+  "LEGACY_DUPLICATE_RESERVATION", "LEGACY_DUPLICATE_OVERLAY",
+  "LEGACY_TARGETLESS_ACTION_CARD", "LEGACY_PHYSICALLY_INVALID_CARD",
+  "LEGACY_CARD_MISSING_OVERLAY", "LEGACY_OVERLAY_WITHOUT_CARD",
+  "ACTUAL_SOURCE_MISMATCH", "CANONICAL_AMBIGUITY",
+  "CANONICAL_IDENTITY_CONFLICT", "LEGITIMATE_CHAIN_DIFFERENCE",
+  "EXITING_CARD_ONLY", "LEGACY_ONLY", "CANONICAL_ONLY"
+];
+
+function getSdeCanonicalShadowNow(){
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
+
+function isSdeCanonicalShadowAnalysisRequested(){
+  if(typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("sdeCanonicalShadow") === "1";
+}
+
+function getSdeCanonicalShadowCardId(row){
+  const explicit = String(
+    row?.sdeActiveOutcomeId || row?.cardId || row?.stableActionKey || row?.actionKey ||
+    row?.sdeNightPlacementGeneratedActionKey || ""
+  ).trim();
+  return explicit || `legacy-row-${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue(row || {}))}`;
+}
+
+function buildSdeCanonicalShadowRuntimeSnapshot(input={}){
+  const overview = input.legacyOverview || {};
+  const overlays = Array.isArray(input.legacyOverlays)
+    ? input.legacyOverlays
+    : Object.keys(overview.slots || {}).sort().flatMap(slot =>
+        (Array.isArray(overview.slots?.[slot]?.proposals) ? overview.slots[slot].proposals : []).map(proposal=>({
+          targetSlot:normalizeSlot(slot),
+          sourceSlot:normalizeSlot(proposal?.fromSlot),
+          vehicle:sanitizeVehicleValue(proposal?.vehicle),
+          activeOutcomeId:String(proposal?.activeOutcomeId || "").trim()
+        }))
+      );
+  const runtimeState = input.runtimeState || {};
+  return {
+    schemaVersion:"sde-canonical-shadow-runtime-v1",
+    actualSources:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.actualSources || [])),
+    rawMoves:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.rawMoves || input.data?.moves || [])),
+    legacy:{
+      finalCards:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.finalCards || [])),
+      activeCards:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.activeCards || [])),
+      activeCount:Number(input.activeCount || 0),
+      reservations:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.legacyReservations || overview.activeReservations || [])),
+      overlays:sortSdeCanonicalObjects(cloneSdeCanonicalValue(overlays))
+    },
+    runtimeState:{
+      actions:cloneSdeCanonicalValue(runtimeState.actions || {}),
+      actionHistory:sortSdeCanonicalObjects(cloneSdeCanonicalValue(runtimeState.actionHistory || [])),
+      cancellations:sortSdeCanonicalObjects(cloneSdeCanonicalValue(runtimeState.cancellations || [])),
+      manualOverrides:cloneSdeCanonicalValue(runtimeState.manualOverrides || {}),
+      nightPlacementManualOverrides:cloneSdeCanonicalValue(runtimeState.nightPlacementManualOverrides || {}),
+      vnRecoveryObligations:cloneSdeCanonicalValue(runtimeState.vnRecoveryObligations || {}),
+      deletedMoveCards:cloneSdeCanonicalValue(runtimeState.deletedMoveCards || {}),
+      activeAuthorities:cloneSdeCanonicalValue(runtimeState.activeAuthorities || {}),
+      physicalReleaseReplans:cloneSdeCanonicalValue(runtimeState.physicalReleaseReplans || {}),
+      blockedMoveRequest:cloneSdeCanonicalValue(runtimeState.blockedMoveRequest || null)
+    },
+    infrastructure:cloneSdeCanonicalValue(input.infrastructure || {})
+  };
+}
+
+function captureSdeCanonicalShadowRuntimeSnapshot(){
+  const liveState = state;
+  state = cloneSdeCanonicalValue(liveState) || {};
+  try{
+    const data = getSdeShiftShowcaseData();
+    const finalCards = buildSdeFinalCardRowsForData(data);
+    const activeCards = getSdeActiveNightPlacementResultRows(finalCards);
+    const overview = buildSdeNightPlacementOverviewData(data);
+    const selectedActualRows = computeCanonicalActualPlacementRows();
+    const parkedWhereRows = computeSharedSporplanDraftRowsForCommonView()
+      .filter(row => sanitizeVehicleValue(row?.mat));
+    const computedRows = computeInndata().filter(row => sanitizeVehicleValue(row?.mat));
+    const actions = state.sdeMoveActions || {};
+    return buildSdeCanonicalShadowRuntimeSnapshot({
+      data,
+      rawMoves:data.moves,
+      finalCards,
+      activeCards,
+      activeCount:getSdeActiveProposalCount(finalCards),
+      legacyOverview:overview,
+      actualSources:[
+        {source:"canonical-actual", provenance:"computeCanonicalActualPlacementRows", selected:true, rows:selectedActualRows},
+        {source:"parked-where", provenance:"computeSharedSporplanDraftRowsForCommonView", rows:parkedWhereRows},
+        {source:"computed-input", provenance:"computeInndata", rows:computedRows}
+      ],
+      runtimeState:{
+        actions,
+        actionHistory:state.sdeMoveLearningLog,
+        cancellations:Object.values(actions).filter(record=>record?.action === "cancelled"),
+        manualOverrides:state.sdeManualMoveOverrides,
+        nightPlacementManualOverrides:state.sdeNightPlacementManualOverrides,
+        vnRecoveryObligations:state.sdeVnRecoveryObligations,
+        deletedMoveCards:state.sdeDeletedMoveCards,
+        activeAuthorities:state.sdeActiveMoveOutcomes,
+        physicalReleaseReplans:state.sdePhysicalReleaseReplans,
+        blockedMoveRequest:sdeNightPlacementBlockedMoveRequest
+      },
+      infrastructure:{
+        unavailable:state.txpUnavailableInfrastructure,
+        grunnoppstilling:state.grunnoppstilling,
+        grunnoppstillingRep:state.grunnoppstillingRep,
+        sharedDraftAppliedRevision:state.sharedSporplanDraftAppliedRevision,
+        dataReadiness:getSdeTomorrowJsonReadinessForScore()
+      }
+    });
+  }finally{
+    state = liveState;
+  }
+}
+
+function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
+  const comparisonStarted = getSdeCanonicalShadowNow();
+  const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || buildSdeCanonicalShadowRuntimeSnapshot();
+  const authorityIds = Object.fromEntries(Object.entries(snapshot.runtimeState?.activeAuthorities || {}).map(([key,value])=>[
+    key,
+    typeof value === "string" ? value : String(value?.activeOutcomeId || "").trim()
+  ]));
+  const canonicalStarted = getSdeCanonicalShadowNow();
+  const canonicalPlan = buildSdeCanonicalPlan({
+    actualSources:snapshot.actualSources,
+    candidateRows:snapshot.legacy?.finalCards,
+    activeAuthorities:authorityIds
+  });
+  const canonicalMs = getSdeCanonicalShadowNow() - canonicalStarted;
+  const activeSignatures = new Set((snapshot.legacy?.activeCards || []).map(stableStringifySdeCanonicalValue));
+  const activeIds = new Set((snapshot.legacy?.activeCards || []).map(getSdeCanonicalShadowCardId));
+  const candidateActive = candidate => activeSignatures.has(stableStringifySdeCanonicalValue(candidate.raw))
+    || activeIds.has(candidate.legacyCardId || candidate.actionKey || candidate.candidateId);
+  const compactCard = candidate => ({
+    cardId:candidate.legacyCardId || candidate.actionKey || candidate.candidateId,
+    candidateOutcomeId:candidate.candidateOutcomeId,
+    vehicleId:candidate.vehicleId,
+    sourceSlot:candidate.sourceSlot,
+    statedSourceSlot:candidate.statedSourceSlot,
+    targetSlot:candidate.targetSlot,
+    chainId:candidate.chainId || candidate.chainScope,
+    sequenceStep:candidate.sequenceStep,
+    dependencies:candidate.dependencies,
+    status:candidate.status,
+    targetless:!candidate.targetSlot,
+    physicalValid:candidate.physicalValidation?.valid !== false
+  });
+  const obligationStepCounts = new Map();
+  canonicalPlan.obligations.forEach(obligation=>obligationStepCounts.set(obligation.obligationId, obligation.stepIds.length));
+  const globalClassifications = new Set();
+  const cardDifferences = [];
+  const reservationDifferences = [];
+  const overlayDifferences = [];
+
+  const obligationComparisons = canonicalPlan.outcomesByObligationStep.map(group=>{
+    const rawCards = group.candidates.map(compactCard);
+    const activeCards = group.candidates.filter(candidateActive).map(compactCard);
+    const exitingCards = group.candidates.filter(candidate=>candidate.status === "exiting").map(compactCard);
+    const cardIds = new Set(rawCards.flatMap(card=>[card.cardId, card.candidateOutcomeId]).filter(Boolean));
+    const activeTargets = sortSdeCanonicalStrings(activeCards.map(card=>card.targetSlot));
+    const belongsToStep = item => cardIds.has(String(item?.activeOutcomeId || item?.candidateOutcomeId || "").trim())
+      || activeCards.some(card=>card.vehicleId === sanitizeVehicleValue(item?.vehicle || item?.vehicleId)
+        && card.targetSlot === normalizeSlot(item?.targetSlot || item?.slot));
+    const reservations = sortSdeCanonicalObjects((snapshot.legacy?.reservations || []).filter(belongsToStep));
+    const overlays = sortSdeCanonicalObjects((snapshot.legacy?.overlays || []).filter(belongsToStep));
+    const canonicalActive = canonicalPlan.activeOutcomes.filter(outcome=>outcome.stepId === group.stepId).map(outcome=>({
+      candidateOutcomeId:outcome.candidateOutcomeId,
+      targetSlot:outcome.targetSlot,
+      vehicleId:outcome.vehicleId,
+      selectionReason:outcome.selectionReason
+    }));
+    const groupVehicleId = group.candidates[0]?.vehicleId || "";
+    const groupConflicts = canonicalPlan.conflicts.filter(conflict=>conflict.stepId === group.stepId
+      || conflict.obligationId === group.obligationId
+      || (groupVehicleId && conflict.vehicleId === groupVehicleId));
+    const classifications = new Set();
+    if(activeCards.length > 1) classifications.add("LEGACY_DUPLICATE_CARD");
+    if(activeTargets.length > 1) classifications.add("LEGACY_DUPLICATE_TARGET");
+    if(reservations.length > 1) classifications.add("LEGACY_DUPLICATE_RESERVATION");
+    if(overlays.length > 1) classifications.add("LEGACY_DUPLICATE_OVERLAY");
+    if(activeCards.some(card=>card.targetless)) classifications.add("LEGACY_TARGETLESS_ACTION_CARD");
+    if(activeCards.some(card=>!card.physicalValid)) classifications.add("LEGACY_PHYSICALLY_INVALID_CARD");
+    if(activeCards.some(card=>card.targetSlot && !overlays.some(overlay=>normalizeSlot(overlay.targetSlot || overlay.slot) === card.targetSlot))) classifications.add("LEGACY_CARD_MISSING_OVERLAY");
+    if(overlays.some(overlay=>!activeCards.some(card=>card.targetSlot === normalizeSlot(overlay.targetSlot || overlay.slot)))) classifications.add("LEGACY_OVERLAY_WITHOUT_CARD");
+    if(groupConflicts.some(conflict=>["actual_source_mismatch","stale_actual_source"].includes(conflict.code))) classifications.add("ACTUAL_SOURCE_MISMATCH");
+    if(groupConflicts.some(conflict=>["competing_targets","ambiguous_step","multiple_authorities","authority_target_missing"].includes(conflict.code))) classifications.add("CANONICAL_AMBIGUITY");
+    if(groupConflicts.some(conflict=>["ambiguous_obligation","ambiguous_step","legacy_identity_split","legacy_identity_collision"].includes(conflict.code))) classifications.add("CANONICAL_IDENTITY_CONFLICT");
+    if((obligationStepCounts.get(group.obligationId) || 0) > 1) classifications.add("LEGITIMATE_CHAIN_DIFFERENCE");
+    if(exitingCards.length) classifications.add("EXITING_CARD_ONLY");
+    if(activeCards.length && !canonicalActive.length) classifications.add("LEGACY_ONLY");
+    if(!activeCards.length && canonicalActive.length) classifications.add("CANONICAL_ONLY");
+    if(!classifications.size && stableStringifySdeCanonicalValue(activeTargets) === stableStringifySdeCanonicalValue(sortSdeCanonicalStrings(canonicalActive.map(item=>item.targetSlot)))) classifications.add("MATCH");
+    classifications.forEach(classification=>globalClassifications.add(classification));
+    classifications.forEach(classification=>{
+      if(["LEGACY_DUPLICATE_RESERVATION"].includes(classification)) reservationDifferences.push({classification, obligationId:group.obligationId, stepId:group.stepId, reservations});
+      else if(["LEGACY_DUPLICATE_OVERLAY","LEGACY_CARD_MISSING_OVERLAY","LEGACY_OVERLAY_WITHOUT_CARD"].includes(classification)) overlayDifferences.push({classification, obligationId:group.obligationId, stepId:group.stepId, overlays});
+      else if(classification !== "MATCH" && classification !== "LEGITIMATE_CHAIN_DIFFERENCE") cardDifferences.push({classification, obligationId:group.obligationId, stepId:group.stepId, legacyCardIds:rawCards.map(card=>card.cardId), canonicalActiveOutcomeIds:canonicalActive.map(item=>item.candidateOutcomeId)});
+    });
+    return {
+      obligationId:group.obligationId,
+      stepId:group.stepId,
+      sequenceStep:group.sequenceStep,
+      classifications:Array.from(classifications).sort(),
+      legacy:{
+        rawCards,
+        activeCards,
+        completionReadyCards:activeCards.filter(card=>card.targetSlot && card.physicalValid && !card.dependencies.length),
+        cancellationReadyCards:activeCards.filter(card=>card.status !== "exiting"),
+        targets:activeTargets,
+        reservations,
+        overlays,
+        actualSource:rawCards[0]?.sourceSlot || "",
+        targetless:activeCards.some(card=>card.targetless)
+      },
+      canonical:{
+        candidateOutcomes:group.candidates.map(candidate=>({
+          candidateOutcomeId:candidate.candidateOutcomeId,
+          targetSlot:candidate.targetSlot,
+          status:candidate.status,
+          activeEligible:candidate.activeEligible,
+          dependencies:candidate.dependencies
+        })),
+        activeOutcome:canonicalActive[0] || null,
+        reservations:canonicalPlan.reservationsPreview.filter(item=>item.stepId === group.stepId),
+        overlays:canonicalPlan.overlaysPreview.filter(item=>item.stepId === group.stepId),
+        actualSource:group.candidates[0]?.sourceSlot || "",
+        exitingCards:exitingCards.map(card=>card.cardId),
+        diagnostics:canonicalPlan.diagnostics.filter(item=>item.stepId === group.stepId
+          || item.obligationStepKey === group.stepId
+          || (groupVehicleId && item.vehicleId === groupVehicleId)),
+        conflicts:groupConflicts
+      }
+    };
+  });
+
+  (snapshot.legacy?.overlays || []).filter(overlay=>{
+    const overlayId = String(overlay?.activeOutcomeId || "").trim();
+    const target = normalizeSlot(overlay?.targetSlot || overlay?.slot);
+    const vehicle = sanitizeVehicleValue(overlay?.vehicle || overlay?.vehicleId);
+    return !canonicalPlan.candidateOutcomes.some(candidate=>(overlayId && [candidate.legacyCardId,candidate.actionKey,candidate.candidateId].includes(overlayId))
+      || (candidate.targetSlot === target && candidate.vehicleId === vehicle));
+  }).forEach(overlay=>{
+    globalClassifications.add("LEGACY_OVERLAY_WITHOUT_CARD");
+    overlayDifferences.push({classification:"LEGACY_OVERLAY_WITHOUT_CARD", overlay});
+  });
+  const actualStateDifferences = canonicalPlan.diagnostics.filter(item=>["actual_source_mismatch","stale_actual_source","missing_canonical_actual_source"].includes(item.code));
+  if(actualStateDifferences.some(item=>item.code !== "missing_canonical_actual_source")) globalClassifications.add("ACTUAL_SOURCE_MISMATCH");
+  const comparisonMs = getSdeCanonicalShadowNow() - comparisonStarted - canonicalMs;
+  const snapshotMs = Number(options.snapshotMs || 0);
+  const report = {
+    generatedAt:String(options.generatedAt || new Date().toISOString()),
+    inputSignature:getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue(snapshot)),
+    classifications:Array.from(globalClassifications).filter(code=>SDE_CANONICAL_SHADOW_CLASSIFICATIONS.includes(code)).sort(),
+    canonicalMetadata:canonicalPlan.metadata,
+    legacySummary:{
+      rawMoveCount:snapshot.rawMoves.length,
+      cardCount:snapshot.legacy.finalCards.length,
+      activeCardCount:snapshot.legacy.activeCards.length,
+      activeProposalCount:snapshot.legacy.activeCount,
+      reservationCount:snapshot.legacy.reservations.length,
+      overlayCount:snapshot.legacy.overlays.length
+    },
+    canonicalSummary:{
+      obligationCount:canonicalPlan.obligations.length,
+      stepCount:canonicalPlan.outcomesByObligationStep.length,
+      candidateCount:canonicalPlan.candidateOutcomes.length,
+      activeOutcomeCount:canonicalPlan.activeOutcomes.length,
+      reservationCount:canonicalPlan.reservationsPreview.length,
+      overlayCount:canonicalPlan.overlaysPreview.length,
+      exitingCardCount:canonicalPlan.exitingCards.length
+    },
+    obligationComparisons:sortSdeCanonicalObjects(obligationComparisons),
+    cardDifferences:sortSdeCanonicalObjects(cardDifferences),
+    reservationDifferences:sortSdeCanonicalObjects(reservationDifferences),
+    overlayDifferences:sortSdeCanonicalObjects(overlayDifferences),
+    actualStateDifferences:sortSdeCanonicalObjects(actualStateDifferences),
+    diagnostics:canonicalPlan.diagnostics,
+    conflicts:canonicalPlan.conflicts,
+    performance:{snapshotMs, canonicalMs, comparisonMs, totalMs:snapshotMs + canonicalMs + comparisonMs}
+  };
+  return report;
+}
+
+function runSdeCanonicalShadowAnalysis(options={}){
+  const started = getSdeCanonicalShadowNow();
+  const snapshot = options.snapshot
+    ? cloneSdeCanonicalValue(options.snapshot)
+    : captureSdeCanonicalShadowRuntimeSnapshot();
+  const snapshotMs = getSdeCanonicalShadowNow() - started;
+  const report = buildSdeCanonicalShadowReport(snapshot, {...options, snapshotMs});
+  if(options.publish !== false && typeof window !== "undefined"){
+    window.__sdeCanonicalShadowReport = report;
+  }
+  return report;
+}
+
+if(typeof window !== "undefined"){
+  window.runSdeCanonicalShadowAnalysis = runSdeCanonicalShadowAnalysis;
+  window.getSdeCanonicalShadowReport = () => cloneSdeCanonicalValue(window.__sdeCanonicalShadowReport || null);
+}
+
 function getSdeMoveCardDisplayIndex(actionKey){
   const key = String(actionKey || "").trim();
   if(!key) return -1;
@@ -36381,6 +36686,7 @@ if(!isPublicGithubPagesApp()){
   fetchServerStatusForDisplay();
   startBaliseFreshnessWatchdog();
 }
+if(isSdeCanonicalShadowAnalysisRequested()) runSdeCanonicalShadowAnalysis();
 </script>
 
 <div class="rights-notice" id="rightsNotice">
