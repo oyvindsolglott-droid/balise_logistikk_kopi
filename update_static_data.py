@@ -7,6 +7,7 @@ import argparse
 import tempfile
 import time
 from datetime import date, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
@@ -332,15 +333,26 @@ def first_time_value(text: object) -> Optional[str]:
     return match.group(0) if match else None
 
 
+def normalize_balise_platform_track(value: object) -> Optional[str]:
+    match = re.fullmatch(r"(?:spor\s*)?([23])", str(value or "").strip(), re.IGNORECASE)
+    return match.group(1) if match else None
+
+
 def extract_skien_station_stop(text: str) -> Dict[str, Optional[str]]:
-    """Returner planlagt ankomst/avgang fra Balise-raden for Skien/SKN."""
-    result: Dict[str, Optional[str]] = {"arrival": None, "departure": None}
+    """Returner bakoverkompatible tider og eksplisitt spor fra Skien-raden."""
+    result: Dict[str, Optional[str]] = {
+        "arrival": None,
+        "departure": None,
+        "platformTrack": None,
+        "rawTrackField": None,
+        "rawTrackValue": None,
+    }
     if not text:
         return result
 
     for raw_line in text.splitlines():
         parts = [part.strip() for part in str(raw_line or "").split("\t")]
-        if len(parts) < 5:
+        if len(parts) < 2:
             continue
 
         for index, part in enumerate(parts):
@@ -348,8 +360,14 @@ def extract_skien_station_stop(text: str) -> Dict[str, Optional[str]]:
             if station not in {"skien", "skn"}:
                 continue
 
+            track_index = index + 1
             arrival_index = index + 2
             departure_index = index + 4
+            if track_index < len(parts):
+                raw_track = parts[track_index]
+                result["rawTrackField"] = "stop_track" if raw_track else None
+                result["rawTrackValue"] = raw_track or None
+                result["platformTrack"] = normalize_balise_platform_track(raw_track)
             if arrival_index < len(parts):
                 result["arrival"] = first_time_value(parts[arrival_index])
             if departure_index < len(parts):
@@ -357,6 +375,131 @@ def extract_skien_station_stop(text: str) -> Dict[str, Optional[str]]:
             return result
 
     return result
+
+
+def extract_balise_route_info(html: str) -> Dict[str, str]:
+    """Les den forekomstspesifikke ruteidentiteten fra Balise-sidepayloaden."""
+    source = str(html or "")
+
+    def string_field(name: str) -> str:
+        match = re.search(rf"\b{re.escape(name)}:\s*\"([^\"]*)\"", source)
+        return match.group(1).strip() if match else ""
+
+    def number_field(name: str) -> str:
+        match = re.search(rf"\b{re.escape(name)}:\s*(\d+)", source)
+        return match.group(1) if match else ""
+
+    return {
+        "routeId": string_field("route_id"),
+        "trainNumber": number_field("route_number"),
+        "operationalDate": string_field("route_date"),
+        "origin": string_field("origin"),
+        "destination": string_field("destination"),
+    }
+
+
+def normalize_balise_source_datetime(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = parsedate_to_datetime(raw)
+    except (TypeError, ValueError):
+        return raw
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=OSLO_TZ)
+    return parsed.astimezone(OSLO_TZ).isoformat(timespec="seconds")
+
+
+def fetch_balise_route_stops(
+    page,
+    route_id: str,
+    deadline_at: Optional[float] = None,
+) -> Tuple[List[Dict[str, object]], str]:
+    """Hent read-only stoppdata for nøyaktig ruteidentitet."""
+    clean_route_id = str(route_id or "").strip()
+    if not clean_route_id:
+        return [], ""
+
+    response = page.context.request.get(
+        f"https://balise.no/api/train/stops?route={clean_route_id}",
+        timeout=remaining_timeout_ms(deadline_at),
+    )
+    try:
+        if not response.ok:
+            return [], ""
+        payload = response.json()
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        source_updated_at = normalize_balise_source_datetime(response.headers.get("date"))
+        return ([row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []), source_updated_at
+    finally:
+        response.dispose()
+
+
+def build_skien_movement_context(
+    route_info: Dict[str, str],
+    stops: Iterable[Dict[str, object]],
+    source_observed_at: str,
+    source_updated_at: str = "",
+) -> Optional[Dict[str, object]]:
+    """Bind faktisk Skien-spor til én rute- og stoppforekomst, ellers fail-close."""
+    skien_stops = [
+        row
+        for row in stops
+        if str(row.get("station_ref") or "").strip().upper() == "SKN"
+        or str(row.get("station_name") or "").strip().lower() == "skien"
+    ]
+    if len(skien_stops) != 1:
+        return None
+
+    stop = skien_stops[0]
+    route_id = str(route_info.get("routeId") or "").strip()
+    train_number = normalize_train_no(route_info.get("trainNumber"))
+    operational_date = str(route_info.get("operationalDate") or "").strip()
+    stop_id = str(stop.get("stop_id") or "").strip()
+    planned_arrival = str(stop.get("stop_planned_arrival") or "").strip()
+    planned_arrival_time = first_time_value(planned_arrival)
+    if not route_id or not train_number or not operational_date or not stop_id or not planned_arrival_time:
+        return None
+
+    raw_track = str(stop.get("stop_track") or "").strip()
+    actual_arrival = str(stop.get("stop_actual_arrival") or "").strip()
+    estimated_arrival = str(stop.get("stop_estimated_arrival") or "").strip()
+    actual_departure = str(stop.get("stop_actual_departure") or "").strip()
+    estimated_departure = str(stop.get("stop_estimated_departure") or "").strip()
+    planned_departure = str(stop.get("stop_planned_departure") or "").strip()
+    movement_status = (
+        "actual_arrival"
+        if actual_arrival
+        else "estimated_arrival"
+        if estimated_arrival
+        else "planned_arrival"
+    )
+
+    return {
+        "operationalDate": operational_date,
+        "trainNumber": train_number,
+        "occurrenceId": f"{operational_date}|arrival|{train_number}|{planned_arrival_time}",
+        "routeId": route_id,
+        "stopId": stop_id,
+        "stationName": str(stop.get("station_name") or "").strip(),
+        "stationRef": str(stop.get("station_ref") or "").strip().upper(),
+        "origin": str(route_info.get("origin") or "").strip(),
+        "destination": str(route_info.get("destination") or "").strip(),
+        "plannedArrival": planned_arrival,
+        "estimatedArrival": estimated_arrival or None,
+        "actualArrival": actual_arrival or None,
+        "plannedDeparture": planned_departure or None,
+        "estimatedDeparture": estimated_departure or None,
+        "actualDeparture": actual_departure or None,
+        "platformTrack": normalize_balise_platform_track(raw_track),
+        "rawTrackField": "stop_track",
+        "rawTrackValue": raw_track or None,
+        "movementStatus": movement_status,
+        "sourceObservedAt": str(source_observed_at or "").strip(),
+        "sourceUpdatedAt": str(source_updated_at or "").strip() or None,
+        "trackProvenance": "balise.no/api/train/stops.stop_track",
+    }
 
 
 def has_arrival_stop_at_skien(text: str) -> bool:
@@ -484,6 +627,7 @@ def fetch_vehicle_maps_for_trains(
     Dict[str, str],
     Dict[str, str],
     Dict[str, str],
+    Dict[str, Dict[str, object]],
 ]:
     vehicles: Dict[str, str] = {}
     departure_vehicles: Dict[str, str] = {}
@@ -494,6 +638,7 @@ def fetch_vehicle_maps_for_trains(
     validated_arrival_display_numbers: Dict[str, str] = {}
     departure_times: Dict[str, str] = {}
     arrival_times: Dict[str, str] = {}
+    arrival_movement_contexts: Dict[str, Dict[str, object]] = {}
 
     train_list = [normalize_train_no(train) for train in train_numbers]
     train_list = [train for train in train_list if train]
@@ -509,6 +654,7 @@ def fetch_vehicle_maps_for_trains(
             validated_arrival_display_numbers,
             departure_times,
             arrival_times,
+            arrival_movement_contexts,
         )
 
     with sync_playwright() as p:
@@ -525,12 +671,37 @@ def fetch_vehicle_maps_for_trains(
                 url = f"https://balise.no/tog/{lookup_train_no}/{run_date.isoformat()}"
 
                 try:
-                    page.goto(url, wait_until="networkidle", timeout=timeout_ms)
+                    navigation_response = page.goto(url, wait_until="networkidle", timeout=timeout_ms)
                     text = page.locator("body").inner_text()
-
                     general_hits, departure_hits, arrival_hits = extract_vehicle_hits_from_balise_text(text)
                     has_train_content = has_balise_train_content(text)
                     skien_stop = extract_skien_station_stop(text)
+                    route_info = extract_balise_route_info(
+                        navigation_response.text() if navigation_response is not None else page.content()
+                    )
+                    movement_context = None
+                    if skien_stop.get("arrival") and route_info.get("routeId"):
+                        try:
+                            route_stops, source_updated_at = fetch_balise_route_stops(
+                                page,
+                                route_info["routeId"],
+                                deadline_at=deadline_at,
+                            )
+                            movement_context = build_skien_movement_context(
+                                route_info,
+                                route_stops,
+                                datetime.now(OSLO_TZ).isoformat(timespec="seconds"),
+                                source_updated_at,
+                            )
+                            if movement_context:
+                                skien_stop["arrival"] = first_time_value(movement_context.get("plannedArrival"))
+                                planned_departure = first_time_value(movement_context.get("plannedDeparture"))
+                                if planned_departure:
+                                    skien_stop["departure"] = planned_departure
+                        except Exception:  # noqa: BLE001
+                            # Rå stoppdata er et valgfritt canonical-tillegg. Legacy-feltene
+                            # fra den ferdig lastede siden skal fortsatt publiseres ved feil.
+                            movement_context = None
 
                     if general_hits or departure_hits or arrival_hits or has_train_content:
                         candidate_results.append(
@@ -542,6 +713,8 @@ def fetch_vehicle_maps_for_trains(
                                 "has_train_content": has_train_content,
                                 "skien_arrival_time": skien_stop.get("arrival"),
                                 "skien_departure_time": skien_stop.get("departure"),
+                                "skien_platform_track": skien_stop.get("platformTrack"),
+                                "skien_movement_context": movement_context,
                             }
                         )
 
@@ -577,6 +750,18 @@ def fetch_vehicle_maps_for_trains(
                     arrival_hits = selected["arrival_hits"] or selected["general_hits"]
                     if arrival_hits:
                         arrival_vehicles[train_no] = ", ".join(arrival_hits)
+                    movement_context = selected.get("skien_movement_context")
+                    if isinstance(movement_context, dict):
+                        exact_context = dict(movement_context)
+                        exact_context["vehicleIds"] = list(arrival_hits)
+                        exact_context["consistContext"] = (
+                            "single_set"
+                            if len(arrival_hits) == 1
+                            else "double_set"
+                            if len(arrival_hits) > 1
+                            else "unknown"
+                        )
+                        arrival_movement_contexts[train_no] = exact_context
 
             if (
                 train_no not in vehicles
@@ -604,6 +789,7 @@ def fetch_vehicle_maps_for_trains(
         validated_arrival_display_numbers,
         departure_times,
         arrival_times,
+        arrival_movement_contexts,
     )
 
 
@@ -625,30 +811,50 @@ def build_payload(mode: str, deadline_at: Optional[float] = None) -> Dict[str, o
     operational_dates = get_operational_tursatt_dates()
     run_date = operational_dates["departure_date"] if mode == "imorgen" else operational_dates["arrival_date"]
     trains = all_relevant_trains()
-    (
-        vehicles,
-        departure_vehicles,
-        arrival_vehicles,
-        vehicle_errors,
-        display_train_numbers,
-        validated_departure_display_numbers,
-        validated_arrival_display_numbers,
-        departure_times,
-        arrival_times,
-    ) = fetch_vehicle_maps_for_trains(trains, run_date, deadline_at=deadline_at)
+    fetched = fetch_vehicle_maps_for_trains(trains, run_date, deadline_at=deadline_at)
+    if len(fetched) == 10:
+        (
+            vehicles,
+            departure_vehicles,
+            arrival_vehicles,
+            vehicle_errors,
+            display_train_numbers,
+            validated_departure_display_numbers,
+            validated_arrival_display_numbers,
+            departure_times,
+            arrival_times,
+            arrival_movement_contexts,
+        ) = fetched
+    else:
+        (
+            vehicles,
+            departure_vehicles,
+            arrival_vehicles,
+            vehicle_errors,
+            display_train_numbers,
+            validated_departure_display_numbers,
+            validated_arrival_display_numbers,
+            departure_times,
+            arrival_times,
+        ) = fetched
+        arrival_movement_contexts = {}
     validated_departures = {
         train_no: departure_times[train_no]
         for train_no in HARDCODED_DEPARTURES
         if train_no in validated_departure_display_numbers
     }
-    validated_arrivals = {
-        train_no: {
+    validated_arrivals = {}
+    for train_no in HARDCODED_ARRIVALS:
+        if train_no not in validated_arrival_display_numbers:
+            continue
+        arrival_payload = {
             "time": arrival_times[train_no],
             "nextDay": bool(HARDCODED_ARRIVALS.get(train_no, {}).get("nextDay", False)),
         }
-        for train_no in HARDCODED_ARRIVALS
-        if train_no in validated_arrival_display_numbers
-    }
+        movement_context = arrival_movement_contexts.get(train_no)
+        if isinstance(movement_context, dict):
+            arrival_payload["movementContext"] = movement_context
+        validated_arrivals[train_no] = arrival_payload
     departure_display_map = {
         train_no: display_train
         for train_no, display_train in validated_departure_display_numbers.items()

@@ -21934,16 +21934,42 @@ function getSdeCanonicalPendulumDepartureSequenceMinutes(row={}, arrivalSequence
   return sequenceMinutes >= 0 ? sequenceMinutes : null;
 }
 
+function getSdeCanonicalMovementClock(value){
+  const match = String(value || "").match(/(?:^|[ T])(\d{1,2}):(\d{2})(?::\d{2})?(?:$|[+Z.-])/);
+  if(!match) return normalizeTimeString(value || "");
+  return `${String(match[1]).padStart(2,"0")}:${match[2]}`;
+}
+
+function getSdeCanonicalLocalDateTimeStamp(value){
+  const match = String(value || "").trim().match(/^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if(!match) return "";
+  return `${match[1]} ${String(match[2]).padStart(2,"0")}:${match[3]}:${match[4] || "00"}`;
+}
+
+function isSdeCanonicalSourceObservedAfterActual(sourceObservedAt,actualArrival){
+  const observedStamp = getSdeCanonicalLocalDateTimeStamp(sourceObservedAt);
+  const actualStamp = getSdeCanonicalLocalDateTimeStamp(actualArrival);
+  return Boolean(observedStamp && actualStamp && observedStamp >= actualStamp);
+}
+
 function normalizeSdeCanonicalTrainMovement(row={}){
   const trainNumber = normalizeSdeCanonicalTrainNumber(row.trainNumber || row.train || "");
   const displayTrainNumber = getSdeCanonicalPendulumMovementTrainNumber(row) || trainNumber;
   const operationalDate = String(row.operationalDate || row.serviceDate || "").trim();
-  const arrivalTime = String(row.arrivalTime || row.displayTime || row.time || "").trim();
+  const plannedArrival = String(row.plannedArrival || "").trim();
+  const estimatedArrival = String(row.estimatedArrival || "").trim();
+  const actualArrival = String(row.actualArrival || "").trim();
+  const arrivalTime = getSdeCanonicalMovementClock(row.arrivalTime || plannedArrival || row.displayTime || row.time || "");
   const arrivalSequenceMinutes = getSdeCanonicalPendulumOccurrenceSequenceMinutes(row);
-  const departureTime = String(row.departureTime || row.departure || "").trim();
+  const plannedDeparture = String(row.plannedDeparture || "").trim();
+  const estimatedDeparture = String(row.estimatedDeparture || "").trim();
+  const actualDeparture = String(row.actualDeparture || "").trim();
+  const departureTime = getSdeCanonicalMovementClock(row.departureTime || actualDeparture || estimatedDeparture || plannedDeparture || row.departure || "");
   const departureSequenceMinutes = getSdeCanonicalPendulumDepartureSequenceMinutes(row,arrivalSequenceMinutes);
   const platformTrack = getSdeCanonicalPendulumPlatformTrack(row);
   const vehicleIds = getSdeCanonicalTrainMovementParticipants(row);
+  const sourceVehicleIds = sortSdeCanonicalStrings(Array.from(new Set((Array.isArray(row.sourceVehicleIds) ? row.sourceVehicleIds : [])
+    .map(sanitizeVehicleValue).filter(Boolean))));
   const consistContext = getSdeCanonicalPendulumConsistContext({...row,vehicleIds});
   const occurrenceId = String(row.occurrenceId || [operationalDate,"arrival",displayTrainNumber,arrivalTime].join("|")).trim();
   return {
@@ -21955,7 +21981,29 @@ function normalizeSdeCanonicalTrainMovement(row={}){
     departureTime,
     arrivalSequenceMinutes,
     departureSequenceMinutes,
+    plannedArrival,
+    estimatedArrival,
+    actualArrival,
+    plannedDeparture,
+    estimatedDeparture,
+    actualDeparture,
     platformTrack,
+    routeId:String(row.routeId || "").trim(),
+    stopId:String(row.stopId || "").trim(),
+    stationName:String(row.stationName || "").trim(),
+    stationRef:String(row.stationRef || "").trim().toUpperCase(),
+    origin:String(row.origin || "").trim(),
+    destination:String(row.destination || "").trim(),
+    movementStatus:String(row.movementStatus || "").trim(),
+    sourceObservedAt:String(row.sourceObservedAt || "").trim(),
+    sourceUpdatedAt:String(row.sourceUpdatedAt || "").trim(),
+    rawTrackField:String(row.rawTrackField || "").trim(),
+    rawTrackValue:String(row.rawTrackValue || "").trim(),
+    trackProvenance:String(row.trackProvenance || "").trim(),
+    payloadOperationalDate:String(row.payloadOperationalDate || "").trim(),
+    payloadTrainNumber:normalizeSdeCanonicalTrainNumber(row.payloadTrainNumber || ""),
+    sourceVehicleIds,
+    sourceConsistContext:String(row.sourceConsistContext || "").trim(),
     serviceContext:String(row.serviceContext || (isSdeCanonicalExistingPendulumTrainNumber(displayTrainNumber) ? "bratsberg_existing_train_mapping" : "")).trim(),
     consistContext,
     vehicleIds,
@@ -21972,8 +22020,33 @@ function resolveCanonicalPlatformSlotForTrainMovement(input={}){
   if(movement.consistContext !== "single_set"){
     return {...base,status:"not_applicable",reason:"movement_not_explicit_single_set"};
   }
-  if(!movement.operationalDate || !movement.occurrenceId || movement.arrivalSequenceMinutes < 0){
+  if(!movement.operationalDate || !movement.occurrenceId || !movement.routeId || !movement.stopId || movement.arrivalSequenceMinutes < 0){
     return {...base,status:"ambiguous",reason:"movement_identity_or_time_missing"};
+  }
+  if(movement.payloadOperationalDate !== movement.operationalDate || movement.payloadTrainNumber !== movement.displayTrainNumber){
+    return {...base,status:"ambiguous",reason:"movement_payload_identity_mismatch"};
+  }
+  if(movement.stationRef !== "SKN" && movement.stationName.toLowerCase() !== "skien"){
+    return {...base,status:"ambiguous",reason:"movement_stop_not_skien"};
+  }
+  const expectedOccurrenceId = [movement.operationalDate,"arrival",movement.displayTrainNumber,getSdeCanonicalMovementClock(movement.plannedArrival)].join("|");
+  if(!movement.plannedArrival || movement.occurrenceId !== expectedOccurrenceId){
+    return {...base,status:"ambiguous",reason:"movement_occurrence_identity_mismatch"};
+  }
+  if(!movement.sourceVehicleIds.length || stableStringifySdeCanonicalValue(movement.sourceVehicleIds) !== stableStringifySdeCanonicalValue(movement.vehicleIds)){
+    return {...base,status:"ambiguous",reason:"movement_vehicle_identity_mismatch"};
+  }
+  if(movement.sourceConsistContext !== movement.consistContext){
+    return {...base,status:"ambiguous",reason:"movement_consist_identity_mismatch"};
+  }
+  if(!movement.actualArrival || movement.movementStatus !== "actual_arrival"){
+    return {...base,status:"ambiguous",reason:"movement_planned_not_actual"};
+  }
+  if(!isSdeCanonicalSourceObservedAfterActual(movement.sourceObservedAt,movement.actualArrival)){
+    return {...base,status:"ambiguous",reason:"movement_observed_before_actual_arrival"};
+  }
+  if(movement.rawTrackField !== "stop_track" || !movement.trackProvenance.endsWith(".stop_track")){
+    return {...base,status:"ambiguous",reason:"movement_track_provenance_missing"};
   }
   if(!movement.platformTrack){
     return {...base,status:"ambiguous",reason:"current_movement_missing_explicit_platform_track"};
@@ -21998,11 +22071,16 @@ function selectSdeCanonicalCurrentPendulumMovement(input={}){
   };
   if(!vehicleToken) return {...base,status:"ambiguous",reason:"movement_participant_missing",selectedMovement:null,selectedOccurrence:null,sourceSlot:""};
   if(!Number.isFinite(snapshotSequenceMinutes)) return {...base,status:"ambiguous",reason:"snapshot_time_missing",selectedMovement:null,selectedOccurrence:null,sourceSlot:""};
-  const currentMovements = Array.from(new Map(occurrences
-    .filter(row=>row.arrivalSequenceMinutes >= 0
-      && row.arrivalSequenceMinutes <= snapshotSequenceMinutes
-      && (!Number.isFinite(row.departureSequenceMinutes) || snapshotSequenceMinutes < row.departureSequenceMinutes))
-    .map(row=>[row.occurrenceId,row])).values());
+  const arrivedMovements = occurrences.filter(row=>row.arrivalSequenceMinutes >= 0 && row.arrivalSequenceMinutes <= snapshotSequenceMinutes);
+  const latestArrivalSequenceMinutes = arrivedMovements.length
+    ? Math.max(...arrivedMovements.map(row=>row.arrivalSequenceMinutes))
+    : null;
+  const latestMovements = latestArrivalSequenceMinutes === null
+    ? []
+    : Array.from(new Map(arrivedMovements
+      .filter(row=>row.arrivalSequenceMinutes === latestArrivalSequenceMinutes)
+      .map(row=>[row.occurrenceId,row])).values());
+  const currentMovements = latestMovements.filter(row=>!Number.isFinite(row.departureSequenceMinutes) || snapshotSequenceMinutes < row.departureSequenceMinutes);
   const discardedMovements = occurrences.filter(row=>!currentMovements.some(current=>current.occurrenceId === row.occurrenceId));
   const pendulumCurrentMovements = currentMovements.filter(row=>
     isSdeCanonicalExistingPendulumTrainNumber(row.displayTrainNumber)
@@ -22060,23 +22138,55 @@ function captureSdeCanonicalPendulumOccurrences(){
     const vehicles = splitVehicleNumbers(cellInfo.baseValue).filter(Boolean);
     if(!train || !vehicles.length) return [];
     const displayTrainNumber = getDisplayTrainNumberForOppstilling(train,"arrival","idag");
-    const departureTime = normalizeTimeString(departures[displayTrainNumber] || departures[train] || "");
-    const arrivalTime = normalizeTimeString(info.time);
+    const movementContext = info.movementContext && typeof info.movementContext === "object" ? info.movementContext : {};
+    const movementTrainNumber = normalizeSdeCanonicalTrainNumber(movementContext.trainNumber || displayTrainNumber);
+    const plannedArrival = String(movementContext.plannedArrival || "").trim();
+    const departureTime = getSdeCanonicalMovementClock(
+      movementContext.actualDeparture
+      || movementContext.estimatedDeparture
+      || movementContext.plannedDeparture
+      || departures[displayTrainNumber]
+      || departures[train]
+      || ""
+    );
+    const arrivalTime = getSdeCanonicalMovementClock(plannedArrival || info.time);
     return [{
-      occurrenceId:[serviceDate,"arrival",displayTrainNumber,arrivalTime].join("|"),
-      operationalDate:serviceDate,
-      trainNumber:train,
-      displayTrainNumber,
+      occurrenceId:String(movementContext.occurrenceId || [serviceDate,"arrival",displayTrainNumber,arrivalTime].join("|")).trim(),
+      operationalDate:String(movementContext.operationalDate || serviceDate).trim(),
+      trainNumber:movementTrainNumber || train,
+      displayTrainNumber:movementTrainNumber || displayTrainNumber,
       arrivalTime,
       departureTime,
       displayTime:`${arrivalTime}${info.nextDay ? " +1" : ""}`,
       nextDay:Boolean(info.nextDay),
       sequenceMinutes:getSdeArrivalLatestSequenceMinutes({time:info.time,displayTime:`${info.time || ""}${info.nextDay ? " +1" : ""}`}),
-      platformTrack:getSdeCanonicalPendulumPlatformTrack(info),
-      serviceContext:isSdeCanonicalExistingPendulumTrainNumber(displayTrainNumber) ? "bratsberg_existing_train_mapping" : "",
+      plannedArrival,
+      estimatedArrival:String(movementContext.estimatedArrival || "").trim(),
+      actualArrival:String(movementContext.actualArrival || "").trim(),
+      plannedDeparture:String(movementContext.plannedDeparture || "").trim(),
+      estimatedDeparture:String(movementContext.estimatedDeparture || "").trim(),
+      actualDeparture:String(movementContext.actualDeparture || "").trim(),
+      platformTrack:getSdeCanonicalPendulumPlatformTrack(movementContext),
+      routeId:String(movementContext.routeId || "").trim(),
+      stopId:String(movementContext.stopId || "").trim(),
+      stationName:String(movementContext.stationName || "").trim(),
+      stationRef:String(movementContext.stationRef || "").trim(),
+      origin:String(movementContext.origin || "").trim(),
+      destination:String(movementContext.destination || "").trim(),
+      movementStatus:String(movementContext.movementStatus || "").trim(),
+      sourceObservedAt:String(movementContext.sourceObservedAt || "").trim(),
+      sourceUpdatedAt:String(movementContext.sourceUpdatedAt || "").trim(),
+      rawTrackField:String(movementContext.rawTrackField || "").trim(),
+      rawTrackValue:String(movementContext.rawTrackValue || "").trim(),
+      trackProvenance:String(movementContext.trackProvenance || "").trim(),
+      payloadOperationalDate:serviceDate,
+      payloadTrainNumber:displayTrainNumber,
+      sourceVehicleIds:Array.isArray(movementContext.vehicleIds) ? movementContext.vehicleIds : [],
+      sourceConsistContext:String(movementContext.consistContext || "").trim(),
+      serviceContext:isSdeCanonicalExistingPendulumTrainNumber(movementTrainNumber || displayTrainNumber) ? "bratsberg_existing_train_mapping" : "",
       consistContext:vehicles.length === 1 ? "single_set" : "double_set",
       vehicleIds:vehicles,
-      provenance:"balise_skien_train_movement"
+      provenance:String(movementContext.trackProvenance || "balise_skien_train_movement").trim()
     }];
   }));
 }
@@ -37731,6 +37841,39 @@ function normalizeApiDepartureMap(raw){
 }
 
 
+function normalizeBaliseArrivalMovementContext(raw){
+  if(!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const vehicleIds = Array.from(new Set((Array.isArray(raw.vehicleIds) ? raw.vehicleIds : [])
+    .map(sanitizeVehicleValue).filter(Boolean))).sort((a,b)=>a.localeCompare(b,"nb"));
+  return {
+    operationalDate:String(raw.operationalDate || "").trim(),
+    trainNumber:normalizeTognr(raw.trainNumber || ""),
+    occurrenceId:String(raw.occurrenceId || "").trim(),
+    routeId:String(raw.routeId || "").trim(),
+    stopId:String(raw.stopId || "").trim(),
+    stationName:String(raw.stationName || "").trim(),
+    stationRef:String(raw.stationRef || "").trim().toUpperCase(),
+    origin:String(raw.origin || "").trim(),
+    destination:String(raw.destination || "").trim(),
+    plannedArrival:String(raw.plannedArrival || "").trim(),
+    estimatedArrival:String(raw.estimatedArrival || "").trim(),
+    actualArrival:String(raw.actualArrival || "").trim(),
+    plannedDeparture:String(raw.plannedDeparture || "").trim(),
+    estimatedDeparture:String(raw.estimatedDeparture || "").trim(),
+    actualDeparture:String(raw.actualDeparture || "").trim(),
+    platformTrack:getSdeCanonicalPendulumPlatformTrack(raw),
+    rawTrackField:String(raw.rawTrackField || "").trim(),
+    rawTrackValue:String(raw.rawTrackValue || "").trim(),
+    movementStatus:String(raw.movementStatus || "").trim(),
+    sourceObservedAt:String(raw.sourceObservedAt || "").trim(),
+    sourceUpdatedAt:String(raw.sourceUpdatedAt || "").trim(),
+    trackProvenance:String(raw.trackProvenance || "").trim(),
+    vehicleIds,
+    consistContext:String(raw.consistContext || "").trim()
+  };
+}
+
+
 function normalizeApiArrivalMap(raw){
   const map = {};
   if(!raw || typeof raw !== "object") return map;
@@ -37745,9 +37888,11 @@ function normalizeApiArrivalMap(raw){
     if(!time) return;
 
 
+    const movementContext = normalizeBaliseArrivalMovementContext(value.movementContext);
     map[tog] = {
       time,
-      nextDay:Boolean(value.nextDay)
+      nextDay:Boolean(value.nextDay),
+      ...(movementContext ? {movementContext} : {})
     };
   });
 
