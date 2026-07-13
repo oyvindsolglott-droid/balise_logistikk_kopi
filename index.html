@@ -22111,6 +22111,287 @@ function compareSdeCanonicalPlanWithLegacy(canonicalPlan, legacy={}){
   };
 }
 
+function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
+  const plan = cloneSdeCanonicalValue(canonicalPlan) || {};
+  const actionRecords = cloneSdeCanonicalValue(options.actionRecords || {});
+  const candidates = Array.isArray(plan.candidateOutcomes) ? plan.candidateOutcomes : [];
+  const groups = Array.isArray(plan.outcomesByObligationStep) ? plan.outcomesByObligationStep : [];
+  const conflicts = Array.isArray(plan.conflicts) ? plan.conflicts : [];
+  const activeOutcomes = Array.isArray(plan.activeOutcomes) ? plan.activeOutcomes : [];
+  const actionKeyToOutcomeId = new Map(candidates.map(candidate=>[candidate.actionKey, candidate.candidateOutcomeId]).filter(([key])=>key));
+  const dependencyGraph = new Map(candidates.map(candidate=>[
+    candidate.candidateOutcomeId,
+    (candidate.dependencies || []).map(key=>actionKeyToOutcomeId.get(key)).filter(Boolean)
+  ]));
+  const cyclicOutcomeIds = new Set();
+  const visitState = new Map();
+  const stack = [];
+  const visit = outcomeId => {
+    const stateValue = visitState.get(outcomeId) || 0;
+    if(stateValue === 2) return;
+    if(stateValue === 1){
+      const cycleStart = stack.indexOf(outcomeId);
+      stack.slice(cycleStart).forEach(id=>cyclicOutcomeIds.add(id));
+      return;
+    }
+    visitState.set(outcomeId, 1);
+    stack.push(outcomeId);
+    (dependencyGraph.get(outcomeId) || []).forEach(visit);
+    stack.pop();
+    visitState.set(outcomeId, 2);
+  };
+  Array.from(dependencyGraph.keys()).sort().forEach(visit);
+
+  const conflictAppliesToGroup = (conflict,group) => conflict?.stepId === group.stepId
+    || conflict?.obligationStepKey === group.stepId
+    || conflict?.obligationId === group.obligationId
+    || (Array.isArray(conflict?.stepIds) && conflict.stepIds.includes(group.stepId));
+  const blockingConflictCodes = new Set([
+    "competing_targets", "ambiguous_obligation", "ambiguous_step", "multiple_authorities",
+    "authority_target_missing", "physically_invalid_authority", "overlapping_target_reservation",
+    "legacy_identity_collision"
+  ]);
+  const getAliases = rows => sortSdeCanonicalObjects(rows.flatMap(row=>row.legacyAliases || []));
+  const getChainId = outcome => String(outcome?.chainId || outcome?.chainScope || "").trim();
+  const isRecovery = outcome => Boolean(
+    outcome?.obligationKind === "vn-recovery"
+    || outcome?.raw?.sdeVnRecoveryRequired
+    || outcome?.raw?.isSdePhysicalVnRecoveryMove
+  );
+  const buildCardBase = outcome => {
+    const recoveryRequired = isRecovery(outcome);
+    return {
+      canonicalCardId:`sde-canonical-card-v1|${outcome.candidateOutcomeId}`,
+      obligationId:outcome.obligationId,
+      stepId:outcome.stepId,
+      activeOutcomeId:outcome.candidateOutcomeId,
+      vehicleId:outcome.vehicleId,
+      sourceSlot:outcome.sourceSlot,
+      targetSlot:outcome.targetSlot,
+      chainId:getChainId(outcome),
+      sequenceStep:outcome.sequenceStep,
+      dependencyIds:sortSdeCanonicalStrings(outcome.dependencies || []),
+      producerProvenance:{producer:outcome.producer, provenance:outcome.provenance},
+      legacyAliases:sortSdeCanonicalObjects(outcome.legacyAliases || []),
+      legacyCardId:outcome.legacyCardId || "",
+      recoveryRequired,
+      vnEntryToken:String(outcome.raw?.sdeVnEntryToken || "").trim(),
+      activeRecoveryMode:String(outcome.raw?.sdeVnRecoveryStatus || outcome.raw?.sdePhysicalResolutionContext || (recoveryRequired ? "authoritative_recovery" : "")).trim()
+    };
+  };
+  const hasBlockingConflict = outcome => conflicts.some(conflict=>
+    blockingConflictCodes.has(conflict.code)
+    && (conflict.stepId === outcome.stepId
+      || conflict.obligationStepKey === outcome.stepId
+      || conflict.obligationId === outcome.obligationId
+      || conflict.candidateOutcomeId === outcome.candidateOutcomeId
+      || conflict.candidateOutcomeIds?.includes?.(outcome.candidateOutcomeId))
+  );
+  const actionableCards = activeOutcomes.filter(outcome=>
+    outcome?.targetSlot
+    && outcome?.actualSourceSlot
+    && outcome?.identitySafe
+    && outcome?.physicalValidation?.valid !== false
+    && outcome?.status !== "exiting"
+    && !cyclicOutcomeIds.has(outcome.candidateOutcomeId)
+    && !hasBlockingConflict(outcome)
+  ).map(outcome=>{
+    const base = buildCardBase(outcome);
+    const localStandalone = Boolean(
+      outcome.raw?.isNightPlacementGenerated
+      || outcome.raw?.manualPlanOverrideActive
+      || outcome.raw?.manualOverrideActive
+      || outcome.raw?.sdeNightPlacementDragOverrideActive
+    );
+    const canDelete = Boolean(
+      localStandalone
+      && !base.chainId
+      && !base.dependencyIds.length
+      && !base.recoveryRequired
+      && !outcome.raw?.isSdePhysicalBlockerFreeingMove
+      && !outcome.raw?.isSdePhysicalBlockerReturnMove
+    );
+    return {
+      ...base,
+      status:"actionable",
+      active:true,
+      canComplete:true,
+      canCancel:!base.recoveryRequired && !outcome.raw?.isSdePhysicalBlockerReturnMove,
+      canDelete,
+      explanation:`Canonical active outcome (${outcome.selectionReason || "validated"}) er fysisk validert og gjeldende for steget.`
+    };
+  });
+  const actionableIds = new Set(actionableCards.map(card=>card.activeOutcomeId));
+  const blockedChainCards = [];
+  const diagnostics = [];
+
+  groups.forEach(group=>{
+    const groupCandidates = Array.isArray(group.candidates) ? group.candidates : [];
+    const operative = groupCandidates.filter(candidate=>candidate.status !== "exiting" && candidate.status !== "completed" && candidate.status !== "superseded");
+    const activeCard = actionableCards.find(card=>card.stepId === group.stepId) || null;
+    const groupConflicts = conflicts.filter(conflict=>conflictAppliesToGroup(conflict, group));
+    const blockingConflicts = groupConflicts.filter(conflict=>blockingConflictCodes.has(conflict.code));
+    const futureCandidates = operative.filter(candidate=>
+      candidate.targetSlot
+      && candidate.actualSourceSlot
+      && candidate.identitySafe
+      && candidate.physicalValidation?.valid !== false
+      && (candidate.status === "future" || candidate.unmetDependencies?.length)
+      && !cyclicOutcomeIds.has(candidate.candidateOutcomeId)
+    );
+    let blockedCard = null;
+    if(!activeCard && futureCandidates.length === 1 && getChainId(futureCandidates[0]) && !blockingConflicts.length){
+      const candidate = futureCandidates[0];
+      blockedCard = {
+        ...buildCardBase(candidate),
+        status:"blocked_chain_step",
+        active:false,
+        canComplete:false,
+        canCancel:false,
+        canDelete:false,
+        blockedBy:sortSdeCanonicalStrings(candidate.unmetDependencies || candidate.dependencies || []),
+        explanation:"Canonical kjedesteg er fysisk validert, men sperret til dependencies er Utført."
+      };
+      blockedChainCards.push(blockedCard);
+    }
+
+    const nonSelected = operative.filter(candidate=>!actionableIds.has(candidate.candidateOutcomeId) && candidate.candidateOutcomeId !== blockedCard?.activeOutcomeId);
+    const targetless = nonSelected.filter(candidate=>!candidate.targetSlot);
+    const physicallyInvalid = nonSelected.filter(candidate=>candidate.physicalValidation?.valid === false);
+    const missingActual = nonSelected.filter(candidate=>!candidate.actualSourceSlot);
+    const cyclic = nonSelected.filter(candidate=>cyclicOutcomeIds.has(candidate.candidateOutcomeId));
+    const exitingOnly = !activeCard && !blockedCard && groupCandidates.some(candidate=>candidate.status === "exiting") && !operative.length;
+    const needsDiagnostic = Boolean(
+      blockingConflicts.length || targetless.length || physicallyInvalid.length || missingActual.length || cyclic.length
+      || exitingOnly || (!activeCard && !blockedCard && operative.length) || (activeCard && nonSelected.length)
+    );
+    if(!needsDiagnostic) return;
+    let diagnosticType = "no_actionable_outcome";
+    let severity = "warning";
+    if(cyclic.length){ diagnosticType = "cyclic_dependency"; severity = "error"; }
+    else if(blockingConflicts.some(conflict=>conflict.code === "competing_targets")){ diagnosticType = "competing_targets"; severity = "error"; }
+    else if(blockingConflicts.some(conflict=>["ambiguous_obligation","ambiguous_step","multiple_authorities","legacy_identity_collision"].includes(conflict.code))){ diagnosticType = "identity_ambiguity"; severity = "error"; }
+    else if(blockingConflicts.some(conflict=>conflict.code === "overlapping_target_reservation")){ diagnosticType = "slot_conflict"; severity = "error"; }
+    else if(missingActual.length){ diagnosticType = "missing_actual_source"; severity = "error"; }
+    else if(physicallyInvalid.length){ diagnosticType = "physically_invalid"; severity = "error"; }
+    else if(targetless.some(candidate=>candidate.raw?.isSdeCancellationFailClosed)){ diagnosticType = "fail_closed_after_cancellation"; }
+    else if(targetless.length){ diagnosticType = activeCard ? "suppressed_targetless_candidate" : "targetless"; }
+    else if(exitingOnly){ diagnosticType = "missing_replacement"; severity = "error"; }
+    else if(activeCard){ diagnosticType = "suppressed_alternative"; severity = "info"; }
+    const explanations = {
+      cyclic_dependency:"Dependency-kjeden er syklisk og kan ikke projiseres som handlingskort.",
+      competing_targets:"Flere fysisk mulige targets konkurrerer uten entydig canonical authority.",
+      identity_ambiguity:"Canonical identitet eller authority er tvetydig for steget.",
+      slot_conflict:"Canonical målspor har en konflikt som sperrer kortprojeksjon.",
+      missing_actual_source:"Faktisk source mangler; behovet kan ikke bli handlingskort.",
+      physically_invalid:"Kandidaten er fysisk ugyldig og beholdes bare som diagnostikk.",
+      fail_closed_after_cancellation:"Ingen trygg replacement finnes etter Annullert; fail-closed-resultatet er diagnostikk.",
+      suppressed_targetless_candidate:"Et konkret recoveryutfall er valgt; targetless fallback beholdes bare som diagnostikk.",
+      targetless:"Resultatet mangler konkret target og kan ikke bli handlingskort.",
+      missing_replacement:"Det annullerte kortet mangler et nytt fysisk gyldig replacement.",
+      suppressed_alternative:"Canonical authority har valgt ett outcome; øvrige kandidater er undertrykte alternativer.",
+      no_actionable_outcome:"Ingen kandidat oppfyller kravene til et canonical handlingskort."
+    };
+    diagnostics.push({
+      obligationId:group.obligationId,
+      stepId:group.stepId,
+      vehicleId:groupCandidates[0]?.vehicleId || "",
+      sourceSlot:groupCandidates[0]?.sourceSlot || "",
+      diagnosticType,
+      explanation:explanations[diagnosticType],
+      severity,
+      candidateSummary:sortSdeCanonicalObjects(nonSelected.length ? nonSelected.map(candidate=>({
+        candidateOutcomeId:candidate.candidateOutcomeId,
+        targetSlot:candidate.targetSlot,
+        status:candidate.status,
+        physicalValid:candidate.physicalValidation?.valid !== false,
+        unmetDependencies:sortSdeCanonicalStrings(candidate.unmetDependencies || [])
+      })) : groupCandidates.map(candidate=>({candidateOutcomeId:candidate.candidateOutcomeId, targetSlot:candidate.targetSlot, status:candidate.status}))),
+      legacyAliases:getAliases(groupCandidates)
+    });
+  });
+
+  const exitingCards = (Array.isArray(plan.exitingCards) ? plan.exitingCards : []).map(outcome=>{
+    const actionRecord = actionRecords[outcome.legacyCardId] || actionRecords[outcome.actionKey] || {};
+    return {
+      ...buildCardBase(outcome),
+      canonicalCardId:`sde-canonical-exiting-card-v1|${outcome.candidateOutcomeId}`,
+      status:"exiting",
+      active:false,
+      canComplete:false,
+      canCancel:false,
+      canDelete:false,
+      visualText:String(outcome.raw?.recommendationReason || "Annullert. Kortet avsluttes.").trim(),
+      previousSourceSlot:outcome.statedSourceSlot || outcome.sourceSlot,
+      previousTargetSlot:outcome.targetSlot,
+      cancelledAt:String(actionRecord.cancelledAt || actionRecord.time || "").trim(),
+      exitStartsAt:String(actionRecord.exitStartedAt || "").trim(),
+      removeAt:String(actionRecord.removeAt || "").trim(),
+      reservation:null,
+      overlay:null
+    };
+  });
+  const allCards = sortSdeCanonicalObjects([...actionableCards, ...blockedChainCards, ...exitingCards]);
+  const cardByOutcomeId = Object.fromEntries(allCards.map(card=>[card.activeOutcomeId, card]).sort(([left],[right])=>left.localeCompare(right)));
+  const chains = sortSdeCanonicalObjects((Array.isArray(plan.activeChains) ? plan.activeChains : []).map(chain=>({
+    chainId:chain.chainId,
+    activeProposalUnitId:`chain|${chain.chainId}`,
+    stepCount:chain.steps.length,
+    activeStepOutcomeIds:sortSdeCanonicalStrings(actionableCards.filter(card=>card.chainId === chain.chainId).map(card=>card.activeOutcomeId)),
+    blockedStepOutcomeIds:sortSdeCanonicalStrings(blockedChainCards.filter(card=>card.chainId === chain.chainId).map(card=>card.activeOutcomeId)),
+    steps:sortSdeCanonicalObjects(chain.steps)
+  })));
+  const activeProposalUnits = new Set(actionableCards.map(card=>card.chainId ? `chain|${card.chainId}` : `card|${card.canonicalCardId}`));
+  const enabledButtonCount = actionableCards.reduce((count,card)=>count + Number(card.canComplete) + Number(card.canCancel) + Number(card.canDelete), 0);
+  return {
+    actionableCards:sortSdeCanonicalObjects(actionableCards),
+    blockedChainCards:sortSdeCanonicalObjects(blockedChainCards),
+    exitingCards:sortSdeCanonicalObjects(exitingCards),
+    diagnostics:sortSdeCanonicalObjects(diagnostics),
+    activeProposalCount:activeProposalUnits.size,
+    chains,
+    cardByOutcomeId,
+    metadata:{
+      schemaVersion:"sde-canonical-card-projection-v1",
+      activeProposalCountRule:"one-per-active-chain-or-standalone-actionable-card",
+      actionableCardCount:actionableCards.length,
+      blockedChainCardCount:blockedChainCards.length,
+      exitingCardCount:exitingCards.length,
+      diagnosticCount:diagnostics.length,
+      enabledButtonCount
+    }
+  };
+}
+
+function compareSdeCanonicalCardProjectionWithLegacy(cardProjection, legacy={}){
+  const visibleCards = Array.isArray(legacy.visibleCards) ? legacy.visibleCards : [];
+  const activeCards = Array.isArray(legacy.activeCards) ? legacy.activeCards : [];
+  const actionableCards = Array.isArray(cardProjection?.actionableCards) ? cardProjection.actionableCards : [];
+  const classifications = new Set();
+  const legacyStepCounts = new Map();
+  activeCards.forEach(row=>{
+    const key = [normalizeSdeCanonicalToken(row?.vehicle || row?.vehicleId), normalizeSlot(row?.fromSlot || row?.arrivalSlot), getSdeCanonicalSequenceStep(row)].join("|");
+    legacyStepCounts.set(key, (legacyStepCounts.get(key) || 0) + 1);
+  });
+  if(Array.from(legacyStepCounts.values()).some(count=>count > 1)) classifications.add("LEGACY_DUPLICATE_ACTIONABLE_CARD");
+  if(activeCards.some(row=>!normalizeSlot(row?.recommendedSlot || row?.toSlot))) classifications.add("LEGACY_TARGETLESS_ACTION_CARD");
+  if(activeCards.some(row=>row?.sdeCancellationDismissalCard || ["cancelled","dismissing"].includes(String(row?.status || "").toLowerCase()))) classifications.add("LEGACY_CANCELLED_CARD_STILL_ACTIONABLE");
+  if((cardProjection?.diagnostics || []).some(item=>item.diagnosticType === "missing_replacement")) classifications.add("LEGACY_MISSING_REPLACEMENT");
+  if(Number(legacy.activeButtonCount || 0) > Number(cardProjection?.metadata?.enabledButtonCount || 0)) classifications.add("LEGACY_EXTRA_ACTION_BUTTON");
+  if(Number(legacy.activeCount || 0) !== Number(cardProjection?.activeProposalCount || 0)) classifications.add("LEGACY_ACTIVE_COUNT_MISMATCH");
+  if((cardProjection?.chains || []).some(chain=>chain.stepCount > 1) && visibleCards.length !== actionableCards.length) classifications.add("LEGITIMATE_CHAIN_CARD_DIFFERENCE");
+  if((cardProjection?.diagnostics || []).length && !actionableCards.length) classifications.add("CANONICAL_DIAGNOSTIC_ONLY");
+  const legacyTargets = sortSdeCanonicalStrings(activeCards.map(row=>normalizeSlot(row?.recommendedSlot || row?.toSlot)));
+  const canonicalTargets = sortSdeCanonicalStrings(actionableCards.map(card=>card.targetSlot));
+  if(!classifications.size && stableStringifySdeCanonicalValue(legacyTargets) === stableStringifySdeCanonicalValue(canonicalTargets)) classifications.add("CARD_PROJECTION_MATCH");
+  return {
+    classifications:Array.from(classifications).sort(),
+    legacy:{visibleCardCount:visibleCards.length, activeCardCount:activeCards.length, activeButtonCount:Number(legacy.activeButtonCount || 0), activeProposalCount:Number(legacy.activeCount || 0), targets:legacyTargets},
+    canonical:{actionableCardCount:actionableCards.length, exitingCardCount:cardProjection?.exitingCards?.length || 0, diagnosticCount:cardProjection?.diagnostics?.length || 0, enabledButtonCount:cardProjection?.metadata?.enabledButtonCount || 0, activeProposalCount:cardProjection?.activeProposalCount || 0, targets:canonicalTargets},
+    differences:{legacyOnlyTargets:legacyTargets.filter(target=>!canonicalTargets.includes(target)), canonicalOnlyTargets:canonicalTargets.filter(target=>!legacyTargets.includes(target))}
+  };
+}
+
 const SDE_CANONICAL_SHADOW_CLASSIFICATIONS = [
   "MATCH", "LEGACY_DUPLICATE_CARD", "LEGACY_DUPLICATE_TARGET",
   "LEGACY_DUPLICATE_RESERVATION", "LEGACY_DUPLICATE_OVERLAY",
@@ -22160,6 +22441,8 @@ function buildSdeCanonicalShadowRuntimeSnapshot(input={}){
     legacy:{
       finalCards:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.finalCards || [])),
       activeCards:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.activeCards || [])),
+      visibleCards:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.visibleCards || input.finalCards || [])),
+      activeButtonCount:Number(input.activeButtonCount || 0),
       activeCount:Number(input.activeCount || 0),
       reservations:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.legacyReservations || overview.activeReservations || [])),
       overlays:sortSdeCanonicalObjects(cloneSdeCanonicalValue(overlays))
@@ -22187,6 +22470,11 @@ function captureSdeCanonicalShadowRuntimeSnapshot(){
     const data = getSdeShiftShowcaseData();
     const finalCards = buildSdeFinalCardRowsForData(data);
     const activeCards = getSdeActiveNightPlacementResultRows(finalCards);
+    const visibleCards = buildSdeVisibleCardMoveEntries(finalCards).slice(0, 20).map(({row})=>row);
+    const activeButtonCount = visibleCards.reduce((count,row)=>{
+      const controls = buildSdeShiftMoveActionControlsHtml(row, encodeURIComponent(getSdeMoveActionKey(row)), {wrap:false});
+      return count + (controls.match(/<button\b(?![^>]*\bdisabled\b)[^>]*>/g) || []).length;
+    }, 0);
     const overview = buildSdeNightPlacementOverviewData(data);
     const selectedActualRows = computeCanonicalActualPlacementRows();
     const parkedWhereRows = computeSharedSporplanDraftRowsForCommonView()
@@ -22198,6 +22486,8 @@ function captureSdeCanonicalShadowRuntimeSnapshot(){
       rawMoves:data.moves,
       finalCards,
       activeCards,
+      visibleCards,
+      activeButtonCount,
       activeCount:getSdeActiveProposalCount(finalCards),
       legacyOverview:overview,
       actualSources:[
@@ -22244,6 +22534,12 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
     activeAuthorities:authorityIds
   });
   const canonicalMs = getSdeCanonicalShadowNow() - canonicalStarted;
+  const cardProjectionStarted = getSdeCanonicalShadowNow();
+  const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
+  const cardProjectionMs = getSdeCanonicalShadowNow() - cardProjectionStarted;
+  const cardProjectionComparisonStarted = getSdeCanonicalShadowNow();
+  const cardProjectionComparison = compareSdeCanonicalCardProjectionWithLegacy(cardProjection, snapshot.legacy);
+  const cardProjectionComparisonMs = getSdeCanonicalShadowNow() - cardProjectionComparisonStarted;
   const activeSignatures = new Set((snapshot.legacy?.activeCards || []).map(stableStringifySdeCanonicalValue));
   const activeIds = new Set((snapshot.legacy?.activeCards || []).map(getSdeCanonicalShadowCardId));
   const candidateActive = candidate => activeSignatures.has(stableStringifySdeCanonicalValue(candidate.raw))
@@ -22362,7 +22658,7 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
   });
   const actualStateDifferences = canonicalPlan.diagnostics.filter(item=>["actual_source_mismatch","stale_actual_source","missing_canonical_actual_source"].includes(item.code));
   if(actualStateDifferences.some(item=>item.code !== "missing_canonical_actual_source")) globalClassifications.add("ACTUAL_SOURCE_MISMATCH");
-  const comparisonMs = getSdeCanonicalShadowNow() - comparisonStarted - canonicalMs;
+  const comparisonMs = getSdeCanonicalShadowNow() - comparisonStarted - canonicalMs - cardProjectionMs - cardProjectionComparisonMs;
   const snapshotMs = Number(options.snapshotMs || 0);
   const report = {
     generatedAt:String(options.generatedAt || new Date().toISOString()),
@@ -22384,8 +22680,12 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
       activeOutcomeCount:canonicalPlan.activeOutcomes.length,
       reservationCount:canonicalPlan.reservationsPreview.length,
       overlayCount:canonicalPlan.overlaysPreview.length,
-      exitingCardCount:canonicalPlan.exitingCards.length
+      exitingCardCount:canonicalPlan.exitingCards.length,
+      projectedActionableCardCount:cardProjection.actionableCards.length,
+      projectedActiveProposalCount:cardProjection.activeProposalCount
     },
+    cardProjection,
+    cardProjectionComparison,
     obligationComparisons:sortSdeCanonicalObjects(obligationComparisons),
     cardDifferences:sortSdeCanonicalObjects(cardDifferences),
     reservationDifferences:sortSdeCanonicalObjects(reservationDifferences),
@@ -22393,7 +22693,7 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
     actualStateDifferences:sortSdeCanonicalObjects(actualStateDifferences),
     diagnostics:canonicalPlan.diagnostics,
     conflicts:canonicalPlan.conflicts,
-    performance:{snapshotMs, canonicalMs, comparisonMs, totalMs:snapshotMs + canonicalMs + comparisonMs}
+    performance:{snapshotMs, canonicalMs, cardProjectionMs, cardProjectionComparisonMs, comparisonMs, totalMs:snapshotMs + canonicalMs + cardProjectionMs + cardProjectionComparisonMs + comparisonMs}
   };
   return report;
 }
