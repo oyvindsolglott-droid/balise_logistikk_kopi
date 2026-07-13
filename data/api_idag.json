@@ -1,8 +1,8 @@
 {
   "ok": true,
-  "updatedAt": "12.07.2026 23:09:26",
+  "updatedAt": "13.07.2026 07:05:55",
   "mode": "idag",
-  "date": "2026-07-12",
+  "date": "2026-07-13",
   "source": "balise.no",
   "requestedTrains": [
     "802",
@@ -73,19 +73,41 @@
     "2489"
   ],
   "vehicles": {
-    "837": "74-16"
+    "92470": "74-39",
+    "92473": "74-39",
+    "92474": "74-39",
+    "92477": "74-39",
+    "92478": "74-39",
+    "92481": "74-39",
+    "92482": "74-39",
+    "92485": "74-39",
+    "92486": "74-39",
+    "2489": "74-39"
   },
-  "departureVehicles": {},
-  "arrivalVehicles": {},
+  "departureVehicles": {
+    "92470": "74-39",
+    "92473": "74-39",
+    "92474": "74-39",
+    "92477": "74-39",
+    "92478": "74-39",
+    "92481": "74-39",
+    "92482": "74-39",
+    "92485": "74-39",
+    "92486": "74-39"
+  },
+  "arrivalVehicles": {
+    "2470": "74-39",
+    "92473": "74-39",
+    "92474": "74-39",
+    "92477": "74-39",
+    "92478": "74-39",
+    "92481": "74-39",
+    "92482": "74-39",
+    "92485": "74-39",
+    "92486": "74-39",
+    "92489": "74-39"
+  },
   "vehicleErrors": {
-    "802": "Fant ingen kjøretøy i siden 90802",
-    "803": "Fant ingen kjøretøy i siden 90803",
-    "804": "Fant ingen kjøretøy i siden 90804",
-    "805": "Fant ingen kjøretøy i siden 90805",
-    "808": "Fant ingen kjøretøy i siden 90808",
-    "809": "Fant ingen kjøretøy i siden 90809",
-    "812": "Fant ingen kjøretøy i siden 90812",
-    "813": "Fant ingen kjøretøy i siden 90813",
     "851": "Fant ingen kjøretøy i siden 90851",
     "852": "Fant ingen kjøretøy i siden 90852",
     "853": "Fant ingen kjøretøy i siden 90853",
@@ -96,35 +118,37 @@
     "862": "Fant ingen kjøretøy i siden 90862",
     "863": "Fant ingen kjøretøy i siden 90863",
     "864": "Fant ingen kjøretøy i siden 90864",
-    "873": "Fant ingen kjøretøy i siden 90873",
-    "2470": "Fant ingen kjøretøy i siden 12470",
     "2472": "Fant ingen kjøretøy i siden 12472",
-    "2473": "Fant ingen kjøretøy i siden 12473",
-    "2474": "Fant ingen kjøretøy i siden 12474",
     "2475": "Fant ingen kjøretøy i siden 12475",
-    "2477": "Fant ingen kjøretøy i siden 12477",
-    "2478": "Fant ingen kjøretøy i siden 12478",
     "2480": "Fant ingen kjøretøy i siden 12480",
-    "2481": "Fant ingen kjøretøy i siden 12481",
-    "2482": "Fant ingen kjøretøy i siden 12482",
     "2483": "Fant ingen kjøretøy i siden 12483",
     "2484": "Fant ingen kjøretøy i siden 12484",
-    "2485": "Fant ingen kjøretøy i siden 12485",
-    "2486": "Fant ingen kjøretøy i siden 12486",
-    "2487": "Fant ingen kjøretøy i siden 12487",
-    "2489": "Fant ingen kjøretøy i siden 12489"
+    "2487": "Fant ingen kjøretøy i siden 12487"
   },
   "departures": {
+    "802": "04:10",
+    "804": "05:11",
+    "92470": "05:15",
     "806": "06:07",
+    "808": "07:09",
+    "92473": "07:30",
+    "92474": "08:03",
     "810": "08:09",
+    "812": "09:09",
+    "92477": "09:55",
     "814": "10:09",
     "816": "11:09",
+    "92478": "12:03",
     "818": "12:09",
     "820": "13:09",
+    "92481": "13:55",
     "822": "14:09",
+    "92482": "15:03",
     "824": "15:09",
     "826": "16:08",
+    "92485": "16:56",
     "828": "17:08",
+    "92486": "18:03",
     "830": "18:08",
     "832": "19:09",
     "834": "20:09",
@@ -132,18 +156,72 @@
     "838": "22:09",
     "840": "23:09"
   },
-  "arrivalDisplayTrainNumbers": {},
+  "arrivalDisplayTrainNumbers": {
+    "2473": "92473",
+    "2474": "92474",
+    "2477": "92477",
+    "2478": "92478",
+    "2481": "92481",
+    "2482": "92482",
+    "2485": "92485",
+    "2486": "92486",
+    "2489": "92489"
+  },
   "arrivals": {
+    "92473": {
+      "time": "07:27",
+      "nextDay": false
+    },
+    "873": {
+      "time": "07:42",
+      "nextDay": false
+    },
+    "92474": {
+      "time": "08:02",
+      "nextDay": false
+    },
+    "803": {
+      "time": "08:07",
+      "nextDay": false
+    },
+    "805": {
+      "time": "08:53",
+      "nextDay": false
+    },
     "807": {
       "time": "09:53",
+      "nextDay": false
+    },
+    "92477": {
+      "time": "09:54",
+      "nextDay": false
+    },
+    "809": {
+      "time": "10:53",
       "nextDay": false
     },
     "811": {
       "time": "11:53",
       "nextDay": false
     },
+    "92478": {
+      "time": "12:02",
+      "nextDay": false
+    },
+    "813": {
+      "time": "12:53",
+      "nextDay": false
+    },
     "815": {
       "time": "13:53",
+      "nextDay": false
+    },
+    "92481": {
+      "time": "13:54",
+      "nextDay": false
+    },
+    "92482": {
+      "time": "15:02",
       "nextDay": false
     },
     "817": {
@@ -158,8 +236,16 @@
       "time": "16:53",
       "nextDay": false
     },
+    "92485": {
+      "time": "16:55",
+      "nextDay": false
+    },
     "823": {
       "time": "17:53",
+      "nextDay": false
+    },
+    "92486": {
+      "time": "18:02",
       "nextDay": false
     },
     "825": {
@@ -174,6 +260,10 @@
       "time": "20:53",
       "nextDay": false
     },
+    "92489": {
+      "time": "20:51",
+      "nextDay": false
+    },
     "831": {
       "time": "21:53",
       "nextDay": false
@@ -185,6 +275,10 @@
     "835": {
       "time": "23:53",
       "nextDay": false
+    },
+    "837": {
+      "time": "00:50",
+      "nextDay": true
     },
     "839": {
       "time": "01:45",
