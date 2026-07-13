@@ -11567,6 +11567,11 @@ function buildSdeTursattVehicleBindings(){
 
     const fieldKey = partIndex === 1 ? "vehicle2" : "vehicle1";
     const vehicles = createOppstillingVehicleCells(train, side, row?.mode);
+    const displayTrain = getDisplayTrainNumberForOppstilling(train, side, row?.mode);
+    const operationalDate = side === "arrival"
+      ? String(state.baliseMetaToday?.date || state.apiBalise?.date || "").trim()
+      : String(row?.serviceDate || getTursattDepartureServiceDateForMode(row?.mode) || "").trim();
+    const consistContext = vehicles.vehicle1 && !vehicles.vehicle2 ? "single_set" : vehicles.vehicle1 && vehicles.vehicle2 ? "double_set" : "unknown";
     const slot = side === "arrival"
       ? getOppstillingSlotText(train, side, partIndex, vehicles)
       : "";
@@ -11575,10 +11580,13 @@ function buildSdeTursattVehicleBindings(){
       source:"Tursatt",
       role:side,
       train,
-      displayTrain:getDisplayTrainNumberForOppstilling(train, side, row?.mode),
+      displayTrain,
       time:String(row?.time || "").trim(),
       displayTime:String(row?.displayTime || row?.time || "").trim(),
       sortMinutes:row?.sortMinutes ?? 9999,
+      operationalDate,
+      occurrenceId:[operationalDate,side,displayTrain,String(row?.time || "").trim()].join("|"),
+      consistContext,
       vehicle:cleanVehicle,
       part:String(partIndex + 1),
       fieldKey,
@@ -20710,6 +20718,9 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
       arrivalDisplayTrain,
       arrivalPart:arrival.part,
       arrivalTime:arrival.displayTime || arrival.time,
+      arrivalOperationalDate:arrival.operationalDate || "",
+      arrivalOccurrenceId:arrival.occurrenceId || "",
+      arrivalConsistContext:arrival.consistContext || "unknown",
       showcaseArrivalLabel:arrivalDisplayTrain
         ? `${arrivalDisplayTrain}${arrivalPartText}`
         : "",
@@ -21838,8 +21849,6 @@ function getSdeCanonicalPhysicalStepSignature(row, actualSlotByVehicle=new Map()
   };
 }
 
-const SDE_CANONICAL_SINGLE_SET_PENDULUM_VEHICLE_TOKENS = new Set(["74-39"]);
-
 function getSdeCanonicalPendulumPlatformTrack(row={}){
   const rawTrack = String(
     row.baliseTrack
@@ -21856,6 +21865,17 @@ function getSdeCanonicalPendulumPlatformTrack(row={}){
   return match ? match[1] : "";
 }
 
+function normalizeSdeCanonicalTrainNumber(value){
+  return typeof normalizeTognr === "function"
+    ? normalizeTognr(value)
+    : String(value || "").replace(/\D/g,"");
+}
+
+function isSdeCanonicalExistingPendulumTrainNumber(value){
+  return typeof isTursattBratsbergTrain === "function"
+    && isTursattBratsbergTrain(normalizeSdeCanonicalTrainNumber(value));
+}
+
 function getSdeCanonicalPendulumOccurrenceSequenceMinutes(row={}){
   const explicit = Number(row.sequenceMinutes ?? row.operationalSequenceMinutes ?? row.sortMinutes);
   if(Number.isFinite(explicit) && explicit >= 0) return explicit;
@@ -21867,94 +21887,196 @@ function getSdeCanonicalPendulumOccurrenceSequenceMinutes(row={}){
   });
 }
 
-function selectSdeCanonicalPendulumActualOccurrence(input={}){
-  const vehicleId = sanitizeVehicleValue(input.vehicleId);
+function getSdeCanonicalPendulumMovementTrainNumber(row={}){
+  return normalizeSdeCanonicalTrainNumber(
+    row.displayTrainNumber
+    || row.displayTrain
+    || row.trainNumber
+    || row.train
+    || row.arrivalDisplayTrain
+    || row.arrivalTrain
+    || ""
+  );
+}
+
+function getSdeCanonicalTrainMovementParticipants(row={}){
+  const rawVehicles = Array.isArray(row.vehicleIds)
+    ? row.vehicleIds
+    : Array.isArray(row.vehicles)
+      ? row.vehicles
+      : [row.vehicleId || row.vehicle || row.mat];
+  return sortSdeCanonicalStrings(Array.from(new Set(rawVehicles.map(sanitizeVehicleValue).filter(Boolean))));
+}
+
+function getSdeCanonicalPendulumConsistContext(row={}){
+  const explicit = String(row.consistContext || row.arrivalConsistContext || row.consistType || "").trim().toLowerCase();
+  if(["single_set","single-set","single","enk","enkeltsett"].includes(explicit)) return "single_set";
+  if(["double_set","double-set","double","dobb","dobbeltsett"].includes(explicit)) return "double_set";
+  if(row.singleSet === true) return "single_set";
+  if(row.singleSet === false || row.hasTwoVehicles === true) return "double_set";
+  const participants = getSdeCanonicalTrainMovementParticipants(row);
+  if(participants.length === 1) return "single_set";
+  if(participants.length > 1) return "double_set";
+  return "unknown";
+}
+
+function getSdeCanonicalPendulumDepartureSequenceMinutes(row={}, arrivalSequenceMinutes=-1){
+  const explicit = Number(row.departureSequenceMinutes);
+  if(Number.isFinite(explicit) && explicit >= 0) return explicit;
+  const departureTime = String(row.departureTime || row.departure || "").trim();
+  if(!departureTime) return null;
+  let sequenceMinutes = getSdeArrivalLatestSequenceMinutes({
+    time:departureTime,
+    displayTime:departureTime,
+    nextDay:Boolean(row.departureNextDay)
+  });
+  if(sequenceMinutes >= 0 && arrivalSequenceMinutes >= 0 && sequenceMinutes < arrivalSequenceMinutes) sequenceMinutes += 1440;
+  return sequenceMinutes >= 0 ? sequenceMinutes : null;
+}
+
+function normalizeSdeCanonicalTrainMovement(row={}){
+  const trainNumber = normalizeSdeCanonicalTrainNumber(row.trainNumber || row.train || "");
+  const displayTrainNumber = getSdeCanonicalPendulumMovementTrainNumber(row) || trainNumber;
+  const operationalDate = String(row.operationalDate || row.serviceDate || "").trim();
+  const arrivalTime = String(row.arrivalTime || row.displayTime || row.time || "").trim();
+  const arrivalSequenceMinutes = getSdeCanonicalPendulumOccurrenceSequenceMinutes(row);
+  const departureTime = String(row.departureTime || row.departure || "").trim();
+  const departureSequenceMinutes = getSdeCanonicalPendulumDepartureSequenceMinutes(row,arrivalSequenceMinutes);
+  const platformTrack = getSdeCanonicalPendulumPlatformTrack(row);
+  const vehicleIds = getSdeCanonicalTrainMovementParticipants(row);
+  const consistContext = getSdeCanonicalPendulumConsistContext({...row,vehicleIds});
+  const occurrenceId = String(row.occurrenceId || [operationalDate,"arrival",displayTrainNumber,arrivalTime].join("|")).trim();
+  return {
+    occurrenceId,
+    operationalDate,
+    trainNumber:trainNumber || displayTrainNumber,
+    displayTrainNumber,
+    arrivalTime,
+    departureTime,
+    arrivalSequenceMinutes,
+    departureSequenceMinutes,
+    platformTrack,
+    serviceContext:String(row.serviceContext || (isSdeCanonicalExistingPendulumTrainNumber(displayTrainNumber) ? "bratsberg_existing_train_mapping" : "")).trim(),
+    consistContext,
+    vehicleIds,
+    provenance:String(row.provenance || "balise_skien_train_movement").trim()
+  };
+}
+
+function resolveCanonicalPlatformSlotForTrainMovement(input={}){
+  const movement = normalizeSdeCanonicalTrainMovement(input);
+  const base = {...movement,sourceSlot:""};
+  if(!movement.displayTrainNumber || !isSdeCanonicalExistingPendulumTrainNumber(movement.displayTrainNumber)){
+    return {...base,status:"not_applicable",reason:"train_not_existing_bratsberg_pendulum_mapping"};
+  }
+  if(movement.consistContext !== "single_set"){
+    return {...base,status:"not_applicable",reason:"movement_not_explicit_single_set"};
+  }
+  if(!movement.operationalDate || !movement.occurrenceId || movement.arrivalSequenceMinutes < 0){
+    return {...base,status:"ambiguous",reason:"movement_identity_or_time_missing"};
+  }
+  if(!movement.platformTrack){
+    return {...base,status:"ambiguous",reason:"current_movement_missing_explicit_platform_track"};
+  }
+  const sourceSlot = movement.platformTrack === "2" ? "2S" : movement.platformTrack === "3" ? "3S" : "";
+  if(!sourceSlot) return {...base,status:"ambiguous",reason:"current_movement_has_invalid_platform_track"};
+  return {...base,status:"resolved",reason:"train_movement_time_track_and_consist_exact",sourceSlot};
+}
+
+function selectSdeCanonicalCurrentPendulumMovement(input={}){
+  const vehicleId = sanitizeVehicleValue(input.participantVehicleId || input.vehicleId);
   const vehicleToken = normalizeSdeCanonicalToken(vehicleId);
   const snapshotSequenceMinutes = Number(input.snapshotSequenceMinutes);
-  const occurrences = sortSdeCanonicalObjects((Array.isArray(input.occurrences) ? input.occurrences : []).flatMap(row=>{
-    const rowVehicleId = sanitizeVehicleValue(row?.vehicleId || row?.vehicle || row?.mat);
-    const rowVehicleToken = normalizeSdeCanonicalToken(rowVehicleId);
-    const train = String(row?.displayTrain || row?.train || "").trim();
-    const sequenceMinutes = getSdeCanonicalPendulumOccurrenceSequenceMinutes(row);
-    if(!rowVehicleToken || rowVehicleToken !== vehicleToken || !/^9?24\d{2}$/.test(train) || sequenceMinutes < 0) return [];
-    return [{
-      vehicleId:rowVehicleId,
-      vehicleToken:rowVehicleToken,
-      train:String(row?.train || train).trim(),
-      displayTrain:String(row?.displayTrain || train).trim(),
-      arrivalTime:String(row?.arrivalTime || row?.displayTime || row?.time || "").trim(),
-      serviceDate:String(row?.serviceDate || "").trim(),
-      sequenceMinutes,
-      baliseTrack:getSdeCanonicalPendulumPlatformTrack(row),
-      singleSet:row?.singleSet !== false,
-      provenance:String(row?.provenance || "balise_skien_arrival_occurrence").trim()
-    }];
-  }));
-  const base = {vehicleId,vehicleToken,snapshotSequenceMinutes:Number.isFinite(snapshotSequenceMinutes) ? snapshotSequenceMinutes : null,occurrences};
-  if(!vehicleToken || !SDE_CANONICAL_SINGLE_SET_PENDULUM_VEHICLE_TOKENS.has(vehicleToken)){
-    return {...base,status:"not_applicable",reason:"vehicle_not_locked_single_set_pendulum",selectedOccurrence:null,sourceSlot:""};
-  }
-  if(!Number.isFinite(snapshotSequenceMinutes)){
-    return {...base,status:"ambiguous",reason:"snapshot_time_missing",selectedOccurrence:null,sourceSlot:""};
-  }
-  const eligible = occurrences.filter(row=>row.singleSet && row.sequenceMinutes <= snapshotSequenceMinutes);
-  if(!eligible.length){
-    return {...base,status:"ambiguous",reason:"no_time_relevant_occurrence",selectedOccurrence:null,sourceSlot:""};
-  }
-  const latestSequenceMinutes = Math.max(...eligible.map(row=>row.sequenceMinutes));
-  const latest = eligible.filter(row=>row.sequenceMinutes === latestSequenceMinutes);
-  const distinctLatest = Array.from(new Map(latest.map(row=>[
-    `${row.train}|${row.displayTrain}|${row.arrivalTime}|${row.baliseTrack || "unknown-track"}`,
-    row
-  ])).values());
-  const tracks = sortSdeCanonicalStrings(distinctLatest.map(row=>row.baliseTrack).filter(Boolean));
-  if(distinctLatest.length !== 1 || tracks.length !== 1){
+  const occurrences = sortSdeCanonicalObjects((Array.isArray(input.occurrences) ? input.occurrences : [])
+    .map(normalizeSdeCanonicalTrainMovement)
+    .filter(row=>!vehicleToken || row.vehicleIds.some(vehicle=>normalizeSdeCanonicalToken(vehicle) === vehicleToken)));
+  const base = {
+    vehicleId,
+    vehicleToken,
+    snapshotSequenceMinutes:Number.isFinite(snapshotSequenceMinutes) ? snapshotSequenceMinutes : null,
+    occurrences
+  };
+  if(!vehicleToken) return {...base,status:"ambiguous",reason:"movement_participant_missing",selectedMovement:null,selectedOccurrence:null,sourceSlot:""};
+  if(!Number.isFinite(snapshotSequenceMinutes)) return {...base,status:"ambiguous",reason:"snapshot_time_missing",selectedMovement:null,selectedOccurrence:null,sourceSlot:""};
+  const currentMovements = Array.from(new Map(occurrences
+    .filter(row=>row.arrivalSequenceMinutes >= 0
+      && row.arrivalSequenceMinutes <= snapshotSequenceMinutes
+      && (!Number.isFinite(row.departureSequenceMinutes) || snapshotSequenceMinutes < row.departureSequenceMinutes))
+    .map(row=>[row.occurrenceId,row])).values());
+  const discardedMovements = occurrences.filter(row=>!currentMovements.some(current=>current.occurrenceId === row.occurrenceId));
+  const pendulumCurrentMovements = currentMovements.filter(row=>
+    isSdeCanonicalExistingPendulumTrainNumber(row.displayTrainNumber)
+    && row.consistContext === "single_set"
+  );
+  if(!currentMovements.length){
+    const hasPendulumHistory = occurrences.some(row=>isSdeCanonicalExistingPendulumTrainNumber(row.displayTrainNumber) && row.consistContext === "single_set");
     return {
       ...base,
-      status:"ambiguous",
-      reason:tracks.length ? "multiple_equally_current_occurrences" : "current_occurrence_missing_explicit_balise_track",
-      latestOccurrences:distinctLatest,
+      status:hasPendulumHistory ? "ambiguous" : "not_applicable",
+      reason:hasPendulumHistory ? "no_active_current_train_movement" : "no_pendulum_train_movement",
+      currentMovements,
+      discardedMovements,
+      selectedMovement:null,
       selectedOccurrence:null,
       sourceSlot:""
     };
   }
-  const selectedOccurrence = distinctLatest[0];
-  const sourceSlot = selectedOccurrence.baliseTrack === "2" ? "2S" : selectedOccurrence.baliseTrack === "3" ? "3S" : "";
-  if(!sourceSlot){
-    return {...base,status:"ambiguous",reason:"current_occurrence_has_invalid_balise_track",latestOccurrences:distinctLatest,selectedOccurrence:null,sourceSlot:""};
+  if(currentMovements.length !== 1){
+    return {
+      ...base,
+      status:pendulumCurrentMovements.length ? "ambiguous" : "not_applicable",
+      reason:pendulumCurrentMovements.length ? "multiple_current_train_movements" : "current_movements_not_pendulum",
+      currentMovements,
+      discardedMovements,
+      selectedMovement:null,
+      selectedOccurrence:null,
+      sourceSlot:""
+    };
   }
+  const selectedMovement = currentMovements[0];
+  const resolved = resolveCanonicalPlatformSlotForTrainMovement(selectedMovement);
   return {
     ...base,
-    status:"resolved",
-    reason:"latest_time_relevant_balise_occurrence",
-    latestOccurrences:distinctLatest,
-    selectedOccurrence,
-    sourceSlot,
-    baliseTrack:selectedOccurrence.baliseTrack
+    status:resolved.status,
+    reason:resolved.reason,
+    currentMovements,
+    discardedMovements,
+    selectedMovement,
+    selectedOccurrence:selectedMovement,
+    sourceSlot:resolved.sourceSlot,
+    platformTrack:resolved.platformTrack,
+    baliseTrack:resolved.platformTrack
   };
 }
 
 function captureSdeCanonicalPendulumOccurrences(){
   const arrivals = getArrivalMapByMode("idag") || {};
+  const departures = getDepartureMapByMode("idag") || {};
   const serviceDate = String(state.baliseMetaToday?.date || state.apiBalise?.date || "").trim();
   return sortSdeCanonicalObjects(Object.entries(arrivals).flatMap(([rawTrain,rawInfo])=>{
-    const train = normalizeTognr(rawTrain);
+    const train = normalizeSdeCanonicalTrainNumber(rawTrain);
     const info = rawInfo && typeof rawInfo === "object" ? rawInfo : {time:rawInfo};
     const cellInfo = getTursattVehicleCellInfo(train,"arrival","idag");
     const vehicles = splitVehicleNumbers(cellInfo.baseValue).filter(Boolean);
-    if(!isTursattBratsbergTrain(train) || vehicles.length !== 1) return [];
+    if(!train || !vehicles.length) return [];
+    const displayTrainNumber = getDisplayTrainNumberForOppstilling(train,"arrival","idag");
+    const departureTime = normalizeTimeString(departures[displayTrainNumber] || departures[train] || "");
+    const arrivalTime = normalizeTimeString(info.time);
     return [{
-      vehicleId:vehicles[0],
-      train,
-      displayTrain:getDisplayTrainNumberForOppstilling(train,"arrival","idag"),
-      arrivalTime:normalizeTimeString(info.time),
-      displayTime:`${normalizeTimeString(info.time)}${info.nextDay ? " +1" : ""}`,
+      occurrenceId:[serviceDate,"arrival",displayTrainNumber,arrivalTime].join("|"),
+      operationalDate:serviceDate,
+      trainNumber:train,
+      displayTrainNumber,
+      arrivalTime,
+      departureTime,
+      displayTime:`${arrivalTime}${info.nextDay ? " +1" : ""}`,
       nextDay:Boolean(info.nextDay),
       sequenceMinutes:getSdeArrivalLatestSequenceMinutes({time:info.time,displayTime:`${info.time || ""}${info.nextDay ? " +1" : ""}`}),
-      serviceDate,
-      baliseTrack:getSdeCanonicalPendulumPlatformTrack(info),
-      singleSet:true,
-      provenance:"balise_skien_arrival_occurrence"
+      platformTrack:getSdeCanonicalPendulumPlatformTrack(info),
+      serviceContext:isSdeCanonicalExistingPendulumTrainNumber(displayTrainNumber) ? "bratsberg_existing_train_mapping" : "",
+      consistContext:vehicles.length === 1 ? "single_set" : "double_set",
+      vehicleIds:vehicles,
+      provenance:"balise_skien_train_movement"
     }];
   }));
 }
@@ -21978,15 +22100,22 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
   const rawComputedCandidates = normalizeRows(input.computedActualRows,"computed_live");
   const pendulumContextProvided = Object.prototype.hasOwnProperty.call(input,"pendulumOccurrences");
   const pendulumOccurrences = cloneSdeCanonicalValue(Array.isArray(input.pendulumOccurrences) ? input.pendulumOccurrences : []) || [];
-  const pendulumVehicleTokens = new Set(pendulumContextProvided ? SDE_CANONICAL_SINGLE_SET_PENDULUM_VEHICLE_TOKENS : []);
-  const pendulumResults = sortSdeCanonicalStrings(Array.from(pendulumVehicleTokens)).map(vehicleToken=>{
-    const matchingOccurrence = pendulumOccurrences.find(row=>normalizeSdeCanonicalToken(row?.vehicleId || row?.vehicle || row?.mat) === vehicleToken);
-    return selectSdeCanonicalPendulumActualOccurrence({
-      vehicleId:matchingOccurrence?.vehicleId || matchingOccurrence?.vehicle || matchingOccurrence?.mat || vehicleToken,
+  const normalizedPendulumOccurrences = pendulumOccurrences.map(normalizeSdeCanonicalTrainMovement);
+  const pendulumParticipantVehicles = pendulumContextProvided
+    ? sortSdeCanonicalStrings(Array.from(new Set(normalizedPendulumOccurrences
+      .filter(row=>isSdeCanonicalExistingPendulumTrainNumber(row.displayTrainNumber) && row.consistContext === "single_set")
+      .flatMap(row=>row.vehicleIds))))
+    : [];
+  const pendulumResults = pendulumParticipantVehicles.map(vehicleId=>
+    selectSdeCanonicalCurrentPendulumMovement({
+      participantVehicleId:vehicleId,
       occurrences:pendulumOccurrences,
       snapshotSequenceMinutes:input.snapshotSequenceMinutes
-    });
-  });
+    })
+  );
+  const pendulumVehicleTokens = new Set(pendulumResults
+    .filter(result=>result.status === "resolved" || result.status === "ambiguous")
+    .map(result=>result.vehicleToken));
   const sharedCandidates = rawSharedCandidates.filter(row=>!pendulumVehicleTokens.has(row.vehicleToken));
   const computedCandidates = rawComputedCandidates.filter(row=>!pendulumVehicleTokens.has(row.vehicleToken));
   const sharedDraftActive = input.sharedDraftActive === true || (input.sharedDraftActive !== false && (rawSharedCandidates.length > 0 || (Number.isFinite(sharedDraftRevision) && sharedDraftRevision > 0)));
@@ -22010,24 +22139,28 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
   pendulumResults.forEach(result=>{
     if(result.status === "resolved"){
       diagnostics.push({
-        classification:"PENDULUM_CURRENT_OCCURRENCE_RESOLVED",
+        classification:"PENDULUM_CURRENT_TRAIN_MOVEMENT_RESOLVED",
         severity:"info",
         vehicleId:result.vehicleId,
-        train:result.selectedOccurrence?.displayTrain || result.selectedOccurrence?.train || "",
-        arrivalTime:result.selectedOccurrence?.arrivalTime || "",
-        baliseTrack:result.baliseTrack,
+        occurrenceId:result.selectedMovement?.occurrenceId || "",
+        trainNumber:result.selectedMovement?.displayTrainNumber || result.selectedMovement?.trainNumber || "",
+        operationalDate:result.selectedMovement?.operationalDate || "",
+        arrivalTime:result.selectedMovement?.arrivalTime || "",
+        departureTime:result.selectedMovement?.departureTime || "",
+        platformTrack:result.platformTrack,
         slot:result.sourceSlot,
-        provenance:"balise_pendulum_current_occurrence"
+        provenance:"balise_pendulum_current_train_movement"
       });
       return;
     }
     if(result.status === "ambiguous"){
-      addConflict("PENDULUM_CURRENT_OCCURRENCE_AMBIGUOUS",{
+      addConflict("AMBIGUOUS_CURRENT_TRAIN_MOVEMENT",{
         vehicleId:result.vehicleId,
         reason:result.reason,
         snapshotSequenceMinutes:result.snapshotSequenceMinutes,
-        latestOccurrences:result.latestOccurrences || [],
-        message:"Aktuell enkeltsettpendel-forekomst kan ikke knyttes entydig til Balise-spor 2 eller 3; ingen canonical actual-plassering opprettes."
+        currentMovements:result.currentMovements || [],
+        discardedMovements:result.discardedMovements || [],
+        message:"Aktuell enkeltsettpendel-bevegelse kan ikke bevises entydig med tognummer, operativ dato, tidspunkt og plattformspor; ingen canonical actual-plassering opprettes."
       },"warning");
     }
   });
@@ -22093,7 +22226,7 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
   resolvedPendulumResults.forEach(result=>{
     if((pendulumSlotCounts.get(result.sourceSlot) || 0) > 1){
       addConflict("ACTUAL_SLOT_COLLISION",{
-        source:"balise_pendulum_current_occurrence",
+        source:"balise_pendulum_current_train_movement",
         slot:result.sourceSlot,
         vehicleId:result.vehicleId
       });
@@ -22111,14 +22244,16 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
     const placement = {
       vehicleId:result.vehicleId,
       slot:result.sourceSlot,
-      provenance:"balise_pendulum_current_occurrence",
+      provenance:"balise_pendulum_current_train_movement",
       sourceRevision:null,
       confidence:"time_and_track_exact",
       supplemented:sharedDraftActive,
       conflictStatus:"none",
-      sourceTrain:result.selectedOccurrence?.displayTrain || result.selectedOccurrence?.train || "",
-      sourceTime:result.selectedOccurrence?.arrivalTime || "",
-      baliseTrack:result.baliseTrack
+      sourceTrain:result.selectedMovement?.displayTrainNumber || result.selectedMovement?.trainNumber || "",
+      sourceOccurrenceId:result.selectedMovement?.occurrenceId || "",
+      sourceOperationalDate:result.selectedMovement?.operationalDate || "",
+      sourceTime:result.selectedMovement?.arrivalTime || "",
+      platformTrack:result.platformTrack
     };
     actualPlacements.push(placement);
     if(sharedDraftActive) supplementedPlacements.push(placement);
@@ -22384,8 +22519,18 @@ function buildSdeCanonicalPlan(input={}){
   [...candidateOutcomes].sort((left,right)=>sequenceOrder(left) - sequenceOrder(right) || left.candidateOutcomeId.localeCompare(right.candidateOutcomeId)).forEach(candidate=>{
     const actualSourceSlot = normalizeSlot(candidate.actualSourceSlot);
     const statedSourceSlot = normalizeSlot(candidate.statedSourceSlot);
-    const pendulumStaleNorthSource = SDE_CANONICAL_SINGLE_SET_PENDULUM_VEHICLE_TOKENS.has(candidate.vehicleToken)
-      && ["2N","3N","3M"].includes(statedSourceSlot);
+    const candidateMovementTrainNumber = getSdeCanonicalPendulumMovementTrainNumber({
+      trainNumber:candidate.raw?.arrivalTrain || candidate.raw?.trainNumber || candidate.raw?.train,
+      displayTrainNumber:candidate.raw?.arrivalDisplayTrain || candidate.raw?.displayTrainNumber || candidate.raw?.displayTrain
+    });
+    const candidateConsistContext = getSdeCanonicalPendulumConsistContext({
+      consistContext:candidate.raw?.arrivalConsistContext || candidate.raw?.consistContext,
+      singleSet:candidate.raw?.singleSet
+    });
+    const pendulumStaleNorthSource = isSdeCanonicalExistingPendulumTrainNumber(candidateMovementTrainNumber)
+      && candidateConsistContext === "single_set"
+      && ((actualSourceSlot === "2S" && statedSourceSlot === "2N")
+        || (actualSourceSlot === "3S" && ["3N","3M"].includes(statedSourceSlot)));
     const directSourceValid = Boolean(actualSourceSlot && (!statedSourceSlot || actualSourceSlot === statedSourceSlot));
     const closure = dependencyClosure(candidate);
     const chainId = String(candidate.chainId || candidate.chainScope || "").trim();
@@ -24445,7 +24590,7 @@ function isSdeCanonicalCardPreviewRequested(locationLike = typeof window !== "un
 
 function buildSdeCanonicalPendulumPreviewDiagnostics(actualStateReconciliation={}){
   return sortSdeCanonicalObjects((actualStateReconciliation.diagnostics || [])
-    .filter(item=>["PENDULUM_CURRENT_OCCURRENCE_AMBIGUOUS","PENDULUM_STALE_NORTH_SOURCE_REJECTED"].includes(item.classification))
+    .filter(item=>["AMBIGUOUS_CURRENT_TRAIN_MOVEMENT","PENDULUM_STALE_NORTH_SOURCE_REJECTED"].includes(item.classification))
     .map(item=>({
       diagnosticType:String(item.classification || "pendulum_actual_state_diagnostic").toLowerCase(),
       severity:item.severity || "warning",
