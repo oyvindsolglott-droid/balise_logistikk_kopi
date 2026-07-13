@@ -22727,6 +22727,336 @@ function compareSdeCanonicalReservationProjectionWithLegacy(reservationProjectio
   };
 }
 
+function buildSdeCanonicalGraphicProjection(canonicalPlan={}, cardProjection={}, reservationProjection={}){
+  const plan = cloneSdeCanonicalValue(canonicalPlan) || {};
+  const cards = cloneSdeCanonicalValue(cardProjection) || {};
+  const reservationsModel = cloneSdeCanonicalValue(reservationProjection) || {};
+  const candidates = Array.isArray(plan.candidateOutcomes) ? plan.candidateOutcomes : [];
+  const reservations = Array.isArray(reservationsModel.reservations) ? reservationsModel.reservations : [];
+  const outcomeById = new Map(candidates.map(outcome=>[outcome.candidateOutcomeId,outcome]));
+  const reservationByOutcomeId = new Map(reservations.map(reservation=>[reservation.activeOutcomeId,reservation]));
+  const conflictKeys = new Set();
+  const conflicts = [];
+  const recordConflict = (classification,details={}) => {
+    const conflict = {classification, severity:"error", ...cloneSdeCanonicalValue(details)};
+    const key = stableStringifySdeCanonicalValue(conflict);
+    if(conflictKeys.has(key)) return;
+    conflictKeys.add(key);
+    conflicts.push(conflict);
+  };
+  const actualSlots = sortSdeCanonicalObjects((reservationsModel.actualOccupancies || plan.actualPlacements || []).map(item=>({
+    slot:normalizeSlot(item.targetSlot || item.slot),
+    vehicleId:sanitizeVehicleValue(item.vehicleId || item.vehicle),
+    reservationId:String(item.reservationId || "").trim(),
+    status:"actual_occupancy",
+    provenance:cloneSdeCanonicalValue(item.producerProvenance || {
+      producer:"canonical_actual",
+      provenance:item.provenance || item.source || plan.metadata?.selectedActualSource || "canonical_actual"
+    })
+  })).filter(item=>item.slot && item.vehicleId));
+  const actualBySlot = new Map();
+  actualSlots.forEach(item=>{
+    if(!actualBySlot.has(item.slot)) actualBySlot.set(item.slot, []);
+    actualBySlot.get(item.slot).push(item);
+  });
+  actualBySlot.forEach((items,slot)=>{
+    if(items.length > 1) recordConflict("ACTUAL_SLOT_MULTIPLE_OCCUPANCY", {slot, vehicleIds:sortSdeCanonicalStrings(items.map(item=>item.vehicleId))});
+  });
+
+  const diagnosticRows = [];
+  const addDiagnostic = (source,item) => {
+    if(!item || (source === "reservation" && item.classification === "LEGITIMATE_SEQUENTIAL_REUSE")) return;
+    const targetSlots = sortSdeCanonicalStrings([
+      item.targetSlot,
+      ...(Array.isArray(item.targetSlots) ? item.targetSlots : []),
+      ...(Array.isArray(item.candidateSummary) ? item.candidateSummary.map(candidate=>candidate.targetSlot) : [])
+    ]);
+    const candidateOutcomeIds = sortSdeCanonicalStrings([
+      item.candidateOutcomeId,
+      item.activeOutcomeId,
+      ...(Array.isArray(item.candidateOutcomeIds) ? item.candidateOutcomeIds : []),
+      ...(Array.isArray(item.candidateSummary) ? item.candidateSummary.map(candidate=>candidate.candidateOutcomeId) : [])
+    ]);
+    const normalized = {
+      source,
+      diagnosticType:String(item.diagnosticType || item.code || item.classification || "unresolved").trim(),
+      severity:String(item.severity || "warning").trim(),
+      obligationId:String(item.obligationId || "").trim(),
+      stepId:String(item.stepId || item.obligationStepKey || "").trim(),
+      vehicleId:sanitizeVehicleValue(item.vehicleId),
+      sourceSlot:normalizeSlot(item.sourceSlot || item.actualSource || item.selectedSlot),
+      targetSlots,
+      candidateOutcomeIds,
+      message:String(item.message || item.explanation || item.reason || "").trim()
+    };
+    normalized.diagnosticId = `sde-canonical-graphic-diagnostic-v1|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue(normalized))}`;
+    diagnosticRows.push(normalized);
+  };
+  (plan.diagnostics || []).forEach(item=>addDiagnostic("plan",item));
+  (cards.diagnostics || []).forEach(item=>addDiagnostic("card",item));
+  (reservationsModel.diagnostics || []).forEach(item=>addDiagnostic("reservation",item));
+  (reservationsModel.conflicts || []).forEach(item=>addDiagnostic("reservation_conflict",item));
+
+  const diagnosticOutcomeIds = new Set(diagnosticRows.flatMap(item=>item.candidateOutcomeIds));
+  const blockingPlanCodes = new Set([
+    "actual_source_mismatch", "stale_actual_source", "competing_targets", "ambiguous_obligation",
+    "ambiguous_step", "multiple_authorities", "authority_target_missing", "physically_invalid_authority",
+    "physically_invalid_candidate", "overlapping_target_reservation", "legacy_identity_collision"
+  ]);
+  const hasBlockingPlanConflict = (card,outcome) => (plan.conflicts || []).some(conflict=>
+    blockingPlanCodes.has(conflict.code)
+    && (conflict.candidateOutcomeId === card.activeOutcomeId
+      || conflict.candidateOutcomeIds?.includes?.(card.activeOutcomeId)
+      || conflict.stepId === card.stepId
+      || conflict.obligationStepKey === card.stepId
+      || conflict.obligationId === card.obligationId
+      || (conflict.vehicleId && conflict.vehicleId === card.vehicleId))
+  );
+  const buildOverlay = (card,kind) => {
+    const reservation = reservationByOutcomeId.get(card.activeOutcomeId);
+    const outcome = outcomeById.get(card.activeOutcomeId);
+    if(!reservation){
+      recordConflict(kind === "active" ? "ACTIONABLE_CARD_WITHOUT_RESERVATION" : "DEFERRED_CARD_WITHOUT_RESERVATION", {
+        activeOutcomeId:card.activeOutcomeId, obligationId:card.obligationId, stepId:card.stepId, targetSlot:card.targetSlot
+      });
+      return null;
+    }
+    if(!outcome){
+      recordConflict("RESERVATION_OUTCOME_MISSING", {reservationId:reservation.reservationId, activeOutcomeId:card.activeOutcomeId});
+      return null;
+    }
+    const invalidStatus = ["exiting","cancelled","dismissing","completed","superseded","inactive"].includes(String(outcome.status || card.status || "").toLowerCase());
+    if(invalidStatus || outcome.physicalValidation?.valid === false){
+      recordConflict("EXITING_OR_INVALID_OUTCOME_WITH_OVERLAY", {activeOutcomeId:card.activeOutcomeId, status:outcome.status});
+      return null;
+    }
+    if(!card.targetSlot || !reservation.targetSlot || card.targetSlot !== reservation.targetSlot || card.vehicleId !== reservation.vehicleId){
+      recordConflict("CARD_RESERVATION_MISMATCH", {
+        activeOutcomeId:card.activeOutcomeId,
+        cardTargetSlot:card.targetSlot,
+        reservationTargetSlot:reservation.targetSlot,
+        cardVehicleId:card.vehicleId,
+        reservationVehicleId:reservation.vehicleId
+      });
+      return null;
+    }
+    if(hasBlockingPlanConflict(card,outcome)){
+      recordConflict("BLOCKING_CONFLICT_WITH_OVERLAY", {activeOutcomeId:card.activeOutcomeId, obligationId:card.obligationId, stepId:card.stepId});
+      return null;
+    }
+    if(kind === "active" && (outcome.unmetDependencies || []).length){
+      recordConflict("ACTIVE_OVERLAY_WITH_UNMET_DEPENDENCY", {activeOutcomeId:card.activeOutcomeId, dependencyIds:sortSdeCanonicalStrings(outcome.unmetDependencies)});
+      return null;
+    }
+    if(kind === "active" && card.status !== "actionable"){
+      recordConflict("NON_ACTIONABLE_CARD_WITH_ACTIVE_OVERLAY", {activeOutcomeId:card.activeOutcomeId, status:card.status});
+      return null;
+    }
+    if(kind === "deferred" && !(card.dependencyIds || []).length){
+      recordConflict("DEFERRED_OVERLAY_WITHOUT_DEPENDENCY", {activeOutcomeId:card.activeOutcomeId});
+      return null;
+    }
+    if(kind === "deferred" && card.status !== "blocked_chain_step"){
+      recordConflict("NON_BLOCKED_CARD_WITH_DEFERRED_OVERLAY", {activeOutcomeId:card.activeOutcomeId, status:card.status});
+      return null;
+    }
+    if(diagnosticOutcomeIds.has(card.activeOutcomeId)){
+      recordConflict("DIAGNOSTIC_OUTCOME_WITH_OVERLAY", {activeOutcomeId:card.activeOutcomeId, obligationId:card.obligationId, stepId:card.stepId});
+      return null;
+    }
+    return {
+      overlayId:`sde-canonical-graphic-overlay-v1|${card.activeOutcomeId}`,
+      obligationId:card.obligationId,
+      stepId:card.stepId,
+      activeOutcomeId:card.activeOutcomeId,
+      canonicalCardId:card.canonicalCardId,
+      reservationId:reservation.reservationId,
+      vehicleId:card.vehicleId,
+      sourceSlot:normalizeSlot(reservation.sourceSlot || card.sourceSlot),
+      targetSlot:normalizeSlot(reservation.targetSlot),
+      chainId:String(card.chainId || reservation.chainId || "").trim(),
+      sequenceStep:String(card.sequenceStep || reservation.sequenceStep || "").trim(),
+      overlayKind:kind === "active" ? "active_plan_overlay" : "deferred_dependency_overlay",
+      dependencyIds:sortSdeCanonicalStrings(card.dependencyIds || reservation.dependencyIds || []),
+      status:kind === "active" ? "active" : "deferred",
+      provenance:{
+        canonicalPlanSchema:plan.metadata?.schemaVersion || "",
+        cardProjectionSchema:cards.metadata?.schemaVersion || "",
+        reservationProjectionSchema:reservationsModel.metadata?.schemaVersion || "",
+        producer:card.producerProvenance?.producer || reservation.producerProvenance?.producer || "",
+        source:card.producerProvenance?.provenance || reservation.producerProvenance?.provenance || ""
+      },
+      legacyAliases:sortSdeCanonicalObjects(card.legacyAliases || reservation.legacyAliases || [])
+    };
+  };
+  const activeCandidates = (cards.actionableCards || []).map(card=>buildOverlay(card,"active")).filter(Boolean);
+  const deferredCandidates = (cards.blockedChainCards || []).map(card=>buildOverlay(card,"deferred")).filter(Boolean);
+  const allCandidateOverlays = [...activeCandidates,...deferredCandidates];
+  const invalidOverlayIds = new Set();
+  const collectDuplicates = (classification,keyFor) => {
+    const groups = new Map();
+    allCandidateOverlays.forEach(overlay=>{
+      const key = keyFor(overlay);
+      if(!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(overlay);
+    });
+    groups.forEach((items,key)=>{
+      if(items.length <= 1) return;
+      items.forEach(item=>invalidOverlayIds.add(item.overlayId));
+      recordConflict(classification, {key, overlayIds:sortSdeCanonicalStrings(items.map(item=>item.overlayId))});
+    });
+  };
+  collectDuplicates("MULTIPLE_OVERLAYS_FOR_OUTCOME", overlay=>overlay.activeOutcomeId);
+  collectDuplicates("MULTIPLE_OVERLAYS_FOR_OBLIGATION_STEP", overlay=>`${overlay.obligationId}|${overlay.stepId}`);
+  const activeOverlays = sortSdeCanonicalObjects(activeCandidates.filter(item=>!invalidOverlayIds.has(item.overlayId)));
+  const deferredOverlays = sortSdeCanonicalObjects(deferredCandidates.filter(item=>!invalidOverlayIds.has(item.overlayId)));
+  const allOverlays = [...activeOverlays,...deferredOverlays];
+  const overlayOutcomeIds = new Set(allOverlays.map(item=>item.activeOutcomeId));
+  reservations.forEach(reservation=>{
+    if(!overlayOutcomeIds.has(reservation.activeOutcomeId)){
+      recordConflict("RESERVATION_WITHOUT_OVERLAY", {reservationId:reservation.reservationId, activeOutcomeId:reservation.activeOutcomeId, stepId:reservation.stepId, targetSlot:reservation.targetSlot});
+    }
+  });
+  allOverlays.forEach(overlay=>{
+    if(!reservationByOutcomeId.has(overlay.activeOutcomeId)) recordConflict("OVERLAY_WITHOUT_RESERVATION", {overlayId:overlay.overlayId, activeOutcomeId:overlay.activeOutcomeId});
+  });
+  (cards.exitingCards || []).forEach(card=>{
+    if(overlayOutcomeIds.has(card.activeOutcomeId)) recordConflict("EXITING_OUTCOME_WITH_OVERLAY", {activeOutcomeId:card.activeOutcomeId});
+  });
+  conflicts.forEach(item=>addDiagnostic("graphic_conflict",item));
+  const unresolvedDiagnostics = sortSdeCanonicalObjects(Array.from(new Map(diagnosticRows.map(item=>[item.diagnosticId,item])).values()));
+  const overlaysByOutcomeId = Object.fromEntries(allOverlays
+    .map(item=>[item.activeOutcomeId,item])
+    .sort(([left],[right])=>left.localeCompare(right)));
+  const overlaySlots = sortSdeCanonicalStrings(allOverlays.map(item=>item.targetSlot));
+  const overlaysBySlot = Object.fromEntries(overlaySlots.map(slot=>[
+    slot,
+    sortSdeCanonicalObjects(allOverlays.filter(item=>item.targetSlot === slot))
+  ]));
+  const renderSlots = sortSdeCanonicalStrings([
+    ...actualSlots.map(item=>item.slot),
+    ...allOverlays.flatMap(item=>[item.sourceSlot,item.targetSlot]),
+    ...unresolvedDiagnostics.flatMap(item=>[item.sourceSlot,...item.targetSlots])
+  ]);
+  const slotRenderModels = renderSlots.map(slot=>{
+    const slotConflicts = conflicts.filter(item=>item.slot === slot || item.targetSlot === slot || item.sourceSlot === slot);
+    const actualOccupancies = sortSdeCanonicalObjects(actualBySlot.get(slot) || []);
+    const active = sortSdeCanonicalObjects(activeOverlays.filter(item=>item.targetSlot === slot));
+    const deferred = sortSdeCanonicalObjects(deferredOverlays.filter(item=>item.targetSlot === slot));
+    return {
+      slot,
+      actualOccupancies,
+      activeOverlays:active,
+      deferredOverlays:deferred,
+      unresolvedDiagnosticIds:sortSdeCanonicalStrings(unresolvedDiagnostics
+        .filter(item=>item.sourceSlot === slot || item.targetSlots.includes(slot))
+        .map(item=>item.diagnosticId)),
+      status:slotConflicts.length
+        ? "conflict"
+        : actualOccupancies.length && active.length ? "actual_with_active_plan"
+        : actualOccupancies.length && deferred.length ? "actual_with_deferred_plan"
+        : active.length ? "active_plan_only"
+        : deferred.length ? "deferred_plan_only"
+        : actualOccupancies.length ? "actual_only"
+        : "diagnostic_only"
+    };
+  });
+  return {
+    actualSlots,
+    activeOverlays,
+    deferredOverlays,
+    unresolvedDiagnostics,
+    slotRenderModels,
+    overlaysByOutcomeId,
+    overlaysBySlot,
+    conflicts:sortSdeCanonicalObjects(conflicts),
+    metadata:{
+      schemaVersion:"sde-canonical-graphic-projection-v1",
+      actualPlanSeparationRule:"actual-occupancy-is-never-replaced-by-planned-overlay",
+      activeOverlayRule:"one-actionable-card-plus-one-accepted-reservation-per-outcome",
+      actualSlotCount:actualSlots.length,
+      activeOverlayCount:activeOverlays.length,
+      deferredOverlayCount:deferredOverlays.length,
+      unresolvedDiagnosticCount:unresolvedDiagnostics.length,
+      conflictCount:conflicts.length
+    }
+  };
+}
+
+function compareSdeCanonicalGraphicProjectionWithLegacy(graphicProjection={}, legacy={}){
+  const projection = cloneSdeCanonicalValue(graphicProjection) || {};
+  const normalizeActual = item=>({
+    slot:normalizeSlot(item?.slot || item?.sourceSlot || item?.targetSlot),
+    vehicleId:sanitizeVehicleValue(item?.vehicleId || item?.vehicle || item?.mat)
+  });
+  const normalizeOverlay = item=>({
+    sourceSlot:normalizeSlot(item?.sourceSlot || item?.fromSlot),
+    targetSlot:normalizeSlot(item?.targetSlot || item?.slot || item?.recommendedSlot),
+    vehicleId:sanitizeVehicleValue(item?.vehicleId || item?.vehicle || item?.mat),
+    activeOutcomeId:String(item?.activeOutcomeId || item?.candidateOutcomeId || "").trim()
+  });
+  const legacyActual = sortSdeCanonicalObjects((legacy.actualSlots || legacy.actualPlacements || []).map(normalizeActual).filter(item=>item.slot && item.vehicleId));
+  const canonicalActual = sortSdeCanonicalObjects((projection.actualSlots || []).map(normalizeActual).filter(item=>item.slot && item.vehicleId));
+  const legacyOverlays = sortSdeCanonicalObjects((legacy.overlays || []).map(normalizeOverlay).filter(item=>item.targetSlot && item.vehicleId));
+  const canonicalOverlays = sortSdeCanonicalObjects((projection.activeOverlays || []).map(normalizeOverlay).filter(item=>item.targetSlot && item.vehicleId));
+  const normalizeMarker = item=>({
+    diagnosticType:String(item?.diagnosticType || item?.code || item?.classification || "unresolved").trim(),
+    vehicleId:sanitizeVehicleValue(item?.vehicleId || item?.vehicle),
+    sourceSlot:normalizeSlot(item?.sourceSlot || item?.actualSource),
+    targetSlots:sortSdeCanonicalStrings([item?.targetSlot,...(Array.isArray(item?.targetSlots) ? item.targetSlots : [])])
+  });
+  const legacyMarkers = sortSdeCanonicalObjects((legacy.unresolvedMarkers || []).map(normalizeMarker));
+  const canonicalMarkers = sortSdeCanonicalObjects((projection.unresolvedDiagnostics || []).map(normalizeMarker));
+  const overlayKey = item=>`${normalizeSdeCanonicalToken(item.vehicleId)}|${item.sourceSlot}|${item.targetSlot}`;
+  const actualKey = item=>`${normalizeSdeCanonicalToken(item.vehicleId)}|${item.slot}`;
+  const legacyOverlayKeys = legacyOverlays.map(overlayKey);
+  const canonicalOverlayKeys = canonicalOverlays.map(overlayKey);
+  const legacyActualKeys = legacyActual.map(actualKey);
+  const canonicalActualKeys = canonicalActual.map(actualKey);
+  const markerKey = item=>stableStringifySdeCanonicalValue(item);
+  const legacyMarkerKeys = legacyMarkers.map(markerKey);
+  const canonicalMarkerKeys = canonicalMarkers.map(markerKey);
+  const legacyOnlyOverlays = legacyOverlays.filter(item=>!canonicalOverlayKeys.includes(overlayKey(item)));
+  const canonicalOnlyOverlays = canonicalOverlays.filter(item=>!legacyOverlayKeys.includes(overlayKey(item)));
+  const legacyOnlyMarkers = legacyMarkers.filter(item=>!canonicalMarkerKeys.includes(markerKey(item)));
+  const canonicalOnlyMarkers = canonicalMarkers.filter(item=>!legacyMarkerKeys.includes(markerKey(item)));
+  const classifications = new Set();
+  if(new Set(legacyOverlayKeys).size !== legacyOverlayKeys.length) classifications.add("LEGACY_DUPLICATE_OVERLAY");
+  if(legacyOnlyOverlays.length) classifications.add("LEGACY_EXTRA_OVERLAY");
+  if(canonicalOnlyOverlays.length) classifications.add("LEGACY_MISSING_OVERLAY");
+  const diagnosticTargets = new Set((projection.unresolvedDiagnostics || []).flatMap(item=>item.targetSlots || []));
+  if(legacyOnlyOverlays.some(item=>diagnosticTargets.has(item.targetSlot))) classifications.add("LEGACY_OVERLAY_FOR_DIAGNOSTIC");
+  canonicalActual.forEach(actual=>{
+    const legacyForVehicle = legacyActual.find(item=>normalizeSdeCanonicalToken(item.vehicleId) === normalizeSdeCanonicalToken(actual.vehicleId));
+    if(!legacyForVehicle){
+      classifications.add("LEGACY_ACTUAL_SOURCE_MISSING");
+      return;
+    }
+    const plannedTarget = canonicalOverlays.find(item=>normalizeSdeCanonicalToken(item.vehicleId) === normalizeSdeCanonicalToken(actual.vehicleId))?.targetSlot || "";
+    if(legacyForVehicle.slot !== actual.slot && plannedTarget && legacyForVehicle.slot === plannedTarget) classifications.add("LEGACY_ACTUAL_SOURCE_REPLACED_BY_PLAN");
+  });
+  if((projection.deferredOverlays || []).length) classifications.add("CANONICAL_DEFERRED_OVERLAY_ONLY");
+  if((projection.deferredOverlays || []).some(item=>item.chainId)) classifications.add("LEGITIMATE_CHAIN_OVERLAY_DIFFERENCE");
+  if(canonicalOnlyMarkers.length) classifications.add("CANONICAL_DIAGNOSTIC_ONLY");
+  const sameActual = stableStringifySdeCanonicalValue([...legacyActualKeys].sort()) === stableStringifySdeCanonicalValue([...canonicalActualKeys].sort());
+  const sameOverlays = stableStringifySdeCanonicalValue([...legacyOverlayKeys].sort()) === stableStringifySdeCanonicalValue([...canonicalOverlayKeys].sort());
+  const sameMarkers = stableStringifySdeCanonicalValue([...legacyMarkerKeys].sort()) === stableStringifySdeCanonicalValue([...canonicalMarkerKeys].sort());
+  if(sameActual && sameOverlays && sameMarkers && !classifications.size) classifications.add("GRAPHIC_PROJECTION_MATCH");
+  return {
+    classifications:Array.from(classifications).sort(),
+    legacy:{actualSlots:legacyActual, activeOverlays:legacyOverlays, unresolvedMarkers:legacyMarkers},
+    canonical:{actualSlots:canonicalActual, activeOverlays:canonicalOverlays, deferredOverlays:sortSdeCanonicalObjects(projection.deferredOverlays || []), unresolvedDiagnostics:canonicalMarkers},
+    differences:{
+      legacyOnlyActual:legacyActual.filter(item=>!canonicalActualKeys.includes(actualKey(item))),
+      canonicalOnlyActual:canonicalActual.filter(item=>!legacyActualKeys.includes(actualKey(item))),
+      legacyOnlyOverlays,
+      canonicalOnlyOverlays,
+      legacyOnlyUnresolvedMarkers:legacyOnlyMarkers,
+      canonicalOnlyUnresolvedDiagnostics:canonicalOnlyMarkers
+    }
+  };
+}
+
 const SDE_CANONICAL_SHADOW_CLASSIFICATIONS = [
   "MATCH", "LEGACY_DUPLICATE_CARD", "LEGACY_DUPLICATE_TARGET",
   "LEGACY_DUPLICATE_RESERVATION", "LEGACY_DUPLICATE_OVERLAY",
@@ -22758,6 +23088,9 @@ function getSdeCanonicalShadowCardId(row){
 
 function buildSdeCanonicalShadowRuntimeSnapshot(input={}){
   const overview = input.legacyOverview || {};
+  const actualSources = sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.actualSources || []));
+  const selectedActualSource = actualSources.find(source=>source?.selected) || actualSources[0] || {rows:[]};
+  const legacyActualRows = Array.isArray(input.legacyActualSlots) ? input.legacyActualSlots : selectedActualSource.rows || [];
   const overlays = Array.isArray(input.legacyOverlays)
     ? input.legacyOverlays
     : Object.keys(overview.slots || {}).sort().flatMap(slot =>
@@ -22771,7 +23104,7 @@ function buildSdeCanonicalShadowRuntimeSnapshot(input={}){
   const runtimeState = input.runtimeState || {};
   return {
     schemaVersion:"sde-canonical-shadow-runtime-v1",
-    actualSources:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.actualSources || [])),
+    actualSources,
     rawMoves:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.rawMoves || input.data?.moves || [])),
     legacy:{
       finalCards:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.finalCards || [])),
@@ -22780,7 +23113,9 @@ function buildSdeCanonicalShadowRuntimeSnapshot(input={}){
       activeButtonCount:Number(input.activeButtonCount || 0),
       activeCount:Number(input.activeCount || 0),
       reservations:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.legacyReservations || overview.activeReservations || [])),
-      overlays:sortSdeCanonicalObjects(cloneSdeCanonicalValue(overlays))
+      overlays:sortSdeCanonicalObjects(cloneSdeCanonicalValue(overlays)),
+      actualSlots:sortSdeCanonicalObjects(cloneSdeCanonicalValue(legacyActualRows)),
+      unresolvedMarkers:sortSdeCanonicalObjects(cloneSdeCanonicalValue(input.legacyUnresolvedMarkers || []))
     },
     runtimeState:{
       actions:cloneSdeCanonicalValue(runtimeState.actions || {}),
@@ -22830,6 +23165,7 @@ function captureSdeCanonicalShadowRuntimeSnapshot(){
         {source:"parked-where", provenance:"computeSharedSporplanDraftRowsForCommonView", rows:parkedWhereRows},
         {source:"computed-input", provenance:"computeInndata", rows:computedRows}
       ],
+      legacyActualSlots:selectedActualRows,
       runtimeState:{
         actions,
         actionHistory:state.sdeMoveLearningLog,
@@ -22881,6 +23217,12 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
   const reservationProjectionComparisonStarted = getSdeCanonicalShadowNow();
   const reservationProjectionComparison = compareSdeCanonicalReservationProjectionWithLegacy(reservationProjection, snapshot.legacy);
   const reservationProjectionComparisonMs = getSdeCanonicalShadowNow() - reservationProjectionComparisonStarted;
+  const graphicProjectionStarted = getSdeCanonicalShadowNow();
+  const graphicProjection = buildSdeCanonicalGraphicProjection(canonicalPlan, cardProjection, reservationProjection);
+  const graphicProjectionMs = getSdeCanonicalShadowNow() - graphicProjectionStarted;
+  const graphicProjectionComparisonStarted = getSdeCanonicalShadowNow();
+  const graphicProjectionComparison = compareSdeCanonicalGraphicProjectionWithLegacy(graphicProjection, snapshot.legacy);
+  const graphicProjectionComparisonMs = getSdeCanonicalShadowNow() - graphicProjectionComparisonStarted;
   const activeSignatures = new Set((snapshot.legacy?.activeCards || []).map(stableStringifySdeCanonicalValue));
   const activeIds = new Set((snapshot.legacy?.activeCards || []).map(getSdeCanonicalShadowCardId));
   const candidateActive = candidate => activeSignatures.has(stableStringifySdeCanonicalValue(candidate.raw))
@@ -22999,7 +23341,7 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
   });
   const actualStateDifferences = canonicalPlan.diagnostics.filter(item=>["actual_source_mismatch","stale_actual_source","missing_canonical_actual_source"].includes(item.code));
   if(actualStateDifferences.some(item=>item.code !== "missing_canonical_actual_source")) globalClassifications.add("ACTUAL_SOURCE_MISMATCH");
-  const comparisonMs = getSdeCanonicalShadowNow() - comparisonStarted - canonicalMs - cardProjectionMs - cardProjectionComparisonMs - reservationProjectionMs - reservationProjectionComparisonMs;
+  const comparisonMs = getSdeCanonicalShadowNow() - comparisonStarted - canonicalMs - cardProjectionMs - cardProjectionComparisonMs - reservationProjectionMs - reservationProjectionComparisonMs - graphicProjectionMs - graphicProjectionComparisonMs;
   const snapshotMs = Number(options.snapshotMs || 0);
   const report = {
     generatedAt:String(options.generatedAt || new Date().toISOString()),
@@ -23025,12 +23367,17 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
       projectedActionableCardCount:cardProjection.actionableCards.length,
       projectedActiveProposalCount:cardProjection.activeProposalCount,
       projectedActualOccupancyCount:reservationProjection.actualOccupancies.length,
-      projectedReservationCount:reservationProjection.reservations.length
+      projectedReservationCount:reservationProjection.reservations.length,
+      projectedActualSlotCount:graphicProjection.actualSlots.length,
+      projectedActiveOverlayCount:graphicProjection.activeOverlays.length,
+      projectedDeferredOverlayCount:graphicProjection.deferredOverlays.length
     },
     cardProjection,
     cardProjectionComparison,
     reservationProjection,
     reservationProjectionComparison,
+    graphicProjection,
+    graphicProjectionComparison,
     obligationComparisons:sortSdeCanonicalObjects(obligationComparisons),
     cardDifferences:sortSdeCanonicalObjects(cardDifferences),
     reservationDifferences:sortSdeCanonicalObjects(reservationDifferences),
@@ -23038,7 +23385,7 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
     actualStateDifferences:sortSdeCanonicalObjects(actualStateDifferences),
     diagnostics:canonicalPlan.diagnostics,
     conflicts:canonicalPlan.conflicts,
-    performance:{snapshotMs, canonicalMs, cardProjectionMs, cardProjectionComparisonMs, reservationProjectionMs, reservationProjectionComparisonMs, comparisonMs, totalMs:snapshotMs + canonicalMs + cardProjectionMs + cardProjectionComparisonMs + reservationProjectionMs + reservationProjectionComparisonMs + comparisonMs}
+    performance:{snapshotMs, canonicalMs, cardProjectionMs, cardProjectionComparisonMs, reservationProjectionMs, reservationProjectionComparisonMs, graphicProjectionMs, graphicProjectionComparisonMs, comparisonMs, totalMs:snapshotMs + canonicalMs + cardProjectionMs + cardProjectionComparisonMs + reservationProjectionMs + reservationProjectionComparisonMs + graphicProjectionMs + graphicProjectionComparisonMs + comparisonMs}
   };
   return report;
 }
