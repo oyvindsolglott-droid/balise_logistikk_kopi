@@ -21447,6 +21447,65 @@ function cloneSdeCanonicalValue(value){
   return JSON.parse(JSON.stringify(value));
 }
 
+function stableStringifySdeCanonicalValue(value){
+  if(Array.isArray(value)) return `[${value.map(item=>stableStringifySdeCanonicalValue(item)).join(",")}]`;
+  if(value && typeof value === "object"){
+    return `{${Object.keys(value).sort().map(key=>`${JSON.stringify(key)}:${stableStringifySdeCanonicalValue(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value === undefined ? null : value);
+}
+
+function sortSdeCanonicalStrings(values=[]){
+  return Array.from(new Set(values.map(value=>String(value || "").trim()).filter(Boolean))).sort();
+}
+
+function sortSdeCanonicalObjects(values=[]){
+  return [...values].sort((left,right)=>{
+    const leftValue = stableStringifySdeCanonicalValue(left);
+    const rightValue = stableStringifySdeCanonicalValue(right);
+    return leftValue < rightValue ? -1 : leftValue > rightValue ? 1 : 0;
+  });
+}
+
+function getSdeCanonicalPurpose(row, obligationKind){
+  const explicit = String(row?.canonicalPurpose || row?.operationalPurpose || row?.sdeOperationalPurpose || row?.obligationPurpose || row?.movePurpose || "").trim();
+  if(explicit) return normalizeSdeCanonicalToken(explicit).toLowerCase();
+  if(obligationKind === "vn-recovery") return "vn-recovery";
+  if(obligationKind === "physical-chain") return "physical-chain";
+  if(obligationKind === "workshop-relocation") return "workshop-relocation";
+  if(obligationKind === "spor3-production") return "spor3-production";
+  return "vehicle-relocation";
+}
+
+function getSdeCanonicalOperationalContext(row){
+  const contextFields = [
+    ["operation", row?.canonicalOperationalContext || row?.operationalContext], ["train", row?.canonicalTrainContext || row?.trainContext],
+    ["time", row?.canonicalTimeContext || row?.timeContext], ["service", row?.canonicalServiceContext || row?.serviceContext]
+  ];
+  return contextFields.flatMap(([type,value])=>{
+    const token = normalizeSdeCanonicalToken(value);
+    return token ? [{type, value:String(value).trim(), token}] : [];
+  });
+}
+
+function getSdeCanonicalLegacyAliases(row){
+  const aliases = [
+    ["needKey", row?.needKey || row?.sdeCancellationNeedKey || row?.sdeNightPlacementGeneratedNeedKey],
+    ["planningObligationId", row?.planningObligationId || row?.sdePlanningObligationId],
+    ["cardId", row?.cardId || row?.stableActionKey || row?.sdeNightPlacementGeneratedActionKey],
+    ["actionKey", row?.actionKey || row?.stableActionKey],
+    ["activeOutcomeId", row?.sdeOutcomeKey || row?.sdeCanonicalOutcomeKey || row?.activeOutcomeId],
+    ["chainId", row?.sdePhysicalChainId || row?.chainId],
+    ["replanKey", row?.replanKey || row?.sdeReplanKey || row?.sdeCancellationReplanKey],
+    ["vnObligationId", row?.sdeVnRecoveryObligationId || row?.sdeVnEntryToken],
+    ["manualGraphicIdentity", row?.manualPlanId || row?.manualOverrideId || row?.sdeNightPlacementDragIdentity]
+  ].flatMap(([type,value])=>{
+    const normalizedValue = normalizeSdeCanonicalToken(value);
+    return normalizedValue ? [{type, value:String(value).trim(), normalizedValue}] : [];
+  });
+  return sortSdeCanonicalObjects(Array.from(new Map(aliases.map(alias=>[`${alias.type}|${alias.normalizedValue}`, alias])).values()));
+}
+
 function getSdeCanonicalProducer(row){
   const explicit = String(row?.canonicalProducer || row?.producer || "").trim();
   if(explicit) return explicit;
@@ -21506,24 +21565,42 @@ function getSdeCanonicalPhysicalStepSignature(row, actualSlotByVehicle=new Map()
   const obligationKind = getSdeCanonicalObligationKind(row);
   const chainScope = getSdeCanonicalChainScope(row, obligationKind);
   const sequenceStep = getSdeCanonicalSequenceStep(row);
-  const obligationKey = ["sde-obligation", obligationKind, vehicleToken || "unknown-vehicle", sourceSlot || "unknown-source", chainScope || "no-chain"].join("|");
+  const purpose = getSdeCanonicalPurpose(row, obligationKind);
+  const operationalContext = getSdeCanonicalOperationalContext(row);
+  const operationalContextToken = operationalContext.map(item=>`${item.type}:${item.token}`).join(",");
+  const identityComponents = {obligationKind, vehicleId:vehicleToken || "unknown-vehicle", actualSource:sourceSlot || "unknown-source", purpose, operationalContext, chainScope:chainScope || ""};
+  const identityConfidence = vehicleToken && sourceSlot && purpose ? "high" : vehicleToken && purpose ? "medium" : "low";
+  const obligationId = ["sde-obligation-v2", obligationKind, vehicleToken || "unknown-vehicle", sourceSlot || "unknown-source", purpose, operationalContextToken || "no-context", chainScope || "no-chain"].join("|");
+  const stepSourceSlot = chainScope ? statedSourceSlot || sourceSlot : sourceSlot;
+  const stepPurpose = normalizeSdeCanonicalToken(row?.canonicalStepPurpose || row?.sdePhysicalDependencyRole || sequenceStep).toLowerCase();
+  const stepId = [obligationId, "step", normalizeSdeCanonicalToken(sequenceStep).toLowerCase(), stepSourceSlot || "unknown-step-source", stepPurpose || "unknown-step-purpose"].join("|");
   return {
-    obligationKey,
-    obligationStepKey:`${obligationKey}|${sequenceStep}`,
+    obligationId,
+    obligationKey:obligationId,
+    stepId,
+    obligationStepKey:stepId,
+    identityVersion:"sde-canonical-identity-v2",
+    identityComponents,
+    identityConfidence,
+    identitySafe:identityConfidence === "high",
     obligationKind,
+    purpose,
     vehicleId,
     vehicleToken,
     sourceSlot,
     statedSourceSlot,
     actualSourceSlot,
+    stepSourceSlot,
+    operationalContext,
     chainScope,
-    sequenceStep
+    sequenceStep,
+    stepPurpose
   };
 }
 
 function buildSdeCanonicalActualState(actualSources=[]){
-  const sources = (Array.isArray(actualSources) ? actualSources : []).map((source,index)=>{
-    const name = String(source?.source || source?.name || `actual-source-${index + 1}`).trim();
+  const sources = (Array.isArray(actualSources) ? actualSources : []).map(source=>{
+    const name = String(source?.source || source?.name || "actual-source").trim();
     const provenance = String(source?.provenance || name).trim();
     const seenSlots = new Set();
     const seenVehicles = new Set();
@@ -21536,10 +21613,10 @@ function buildSdeCanonicalActualState(actualSources=[]){
       seenVehicles.add(token);
       return [{slot, vehicleId, source:name, provenance}];
     });
-    return {name, provenance, selected:source?.selected === true, placements};
-  });
-  const selected = sources.find(source=>source.selected) || sources[0] || {name:"none", provenance:"none", placements:[]};
-  const actualPlacements = selected.placements.map(item=>({...item}));
+    return {name, provenance, selected:source?.selected === true, placements:sortSdeCanonicalObjects(placements)};
+  }).sort((left,right)=>stableStringifySdeCanonicalValue(left).localeCompare(stableStringifySdeCanonicalValue(right)));
+  const selected = sources.filter(source=>source.selected)[0] || sources[0] || {name:"none", provenance:"none", placements:[]};
+  const actualPlacements = sortSdeCanonicalObjects(selected.placements.map(item=>({...item})));
   const selectedByVehicle = new Map(actualPlacements.map(item=>[normalizeSdeCanonicalToken(item.vehicleId), item]));
   const diagnostics = [];
   const conflicts = [];
@@ -21566,7 +21643,13 @@ function buildSdeCanonicalActualState(actualSources=[]){
     });
   });
 
-  return {actualPlacements, selectedSource:selected.name, sources, diagnostics, conflicts};
+  return {
+    actualPlacements,
+    selectedSource:selected.name,
+    sources,
+    diagnostics:sortSdeCanonicalObjects(diagnostics),
+    conflicts:sortSdeCanonicalObjects(conflicts)
+  };
 }
 
 function getSdeCanonicalCandidateRank(row){
@@ -21586,7 +21669,7 @@ function buildSdeCanonicalPlan(input={}){
   const activeAuthorities = input.activeAuthorities && typeof input.activeAuthorities === "object" && !Array.isArray(input.activeAuthorities)
     ? input.activeAuthorities
     : {};
-  const rawRows = Array.isArray(input.candidateRows) ? input.candidateRows : [];
+  const rawRows = sortSdeCanonicalObjects((Array.isArray(input.candidateRows) ? input.candidateRows : []).map(row=>cloneSdeCanonicalValue(row) || {}));
   rawRows.forEach(row=>{
     const key = String(row?.actionKey || row?.stableActionKey || row?.cardId || "").trim();
     if(key && String(row?.actionStatus || row?.status || "").toLowerCase() === "completed") completedActionKeys.add(key);
@@ -21594,18 +21677,28 @@ function buildSdeCanonicalPlan(input={}){
   const diagnostics = actualState.diagnostics.map(item=>({...item}));
   const conflicts = actualState.conflicts.map(item=>({...item}));
   const exitingCards = [];
+  const candidateOccurrences = new Map();
+  const recordConflict = (conflict,message)=>{
+    conflicts.push(conflict);
+    diagnostics.push({...conflict, message});
+  };
 
-  const candidateOutcomes = rawRows.map((sourceRow,index)=>{
-    const row = cloneSdeCanonicalValue(sourceRow) || {};
+  const candidateOutcomes = rawRows.map(row=>{
     const signature = getSdeCanonicalPhysicalStepSignature(row, actualSlotByVehicle);
     const legacyCardId = String(row.cardId || row.stableActionKey || row.actionKey || row.sdeNightPlacementGeneratedActionKey || "").trim();
-    const candidateId = legacyCardId || `canonical-candidate-${index + 1}`;
     const targetSlot = normalizeSlot(row.targetSlot || row.recommendedSlot || row.toSlot);
     const producer = getSdeCanonicalProducer(row);
     const status = String(row.actionStatus || row.status || (row.sdeOutcomeActive === false ? "superseded" : "active")).toLowerCase();
     const exiting = Boolean(row.sdeCancellationDismissalCard || status === "cancelled" || status === "dismissing");
-    const dependencies = (Array.isArray(row.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : Array.isArray(row.dependsOn) ? row.dependsOn : [])
-      .map(value=>String(value || "").trim()).filter(Boolean);
+    const aliases = getSdeCanonicalLegacyAliases(row);
+    const candidateBaseId = ["sde-candidate-v2", signature.stepId, normalizeSdeCanonicalToken(producer).toLowerCase() || "other", targetSlot || "targetless", exiting ? "exiting" : "operative"].join("|");
+    const occurrence = (candidateOccurrences.get(candidateBaseId) || 0) + 1;
+    candidateOccurrences.set(candidateBaseId, occurrence);
+    const candidateOutcomeId = `${candidateBaseId}|occurrence-${occurrence}`;
+    const candidateId = legacyCardId || candidateOutcomeId;
+    const dependencies = sortSdeCanonicalStrings(
+      Array.isArray(row.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : Array.isArray(row.dependsOn) ? row.dependsOn : []
+    );
     const unmetDependencies = dependencies.filter(key=>!completedActionKeys.has(key));
     const physicalInvalidReason = String(
       row.canonicalPhysicalInvalidReason || row.sdePhysicalSequenceConflictReason ||
@@ -21613,15 +21706,17 @@ function buildSdeCanonicalPlan(input={}){
       (row.sdePhysicalHardBlocked && !row.isSdePhysicalBlockerFreeingMove ? row.sdePhysicalHardBlockState?.reason || "Fysisk blokkert." : "")
     ).trim();
     const physicalValid = row.canonicalPhysicalValid !== false && !physicalInvalidReason;
-    const activeEligible = !exiting && status !== "completed" && status !== "superseded" && status !== "inactive" && Boolean(targetSlot) && physicalValid && unmetDependencies.length === 0;
+    const activeEligible = signature.identitySafe && !exiting && status !== "completed" && status !== "superseded" && status !== "inactive" && Boolean(targetSlot) && physicalValid && unmetDependencies.length === 0;
     const outcome = {
       candidateId,
+      candidateOutcomeId,
       legacyCardId,
       actionKey:String(row.actionKey || row.stableActionKey || legacyCardId).trim(),
       needKey:String(row.needKey || row.sdeCancellationNeedKey || row.sdeNightPlacementGeneratedNeedKey || "").trim(),
       planningObligationId:String(row.planningObligationId || row.sdePlanningObligationId || "").trim(),
       legacyOutcomeKey:String(row.sdeOutcomeKey || row.sdeCanonicalOutcomeKey || "").trim(),
       activeAuthorityId:String(row.sdeActiveOutcomeId || row.activeOutcomeId || "").trim(),
+      legacyAliases:aliases,
       producer,
       provenance:String(row.provenance || row.source || producer).trim(),
       ...signature,
@@ -21631,6 +21726,7 @@ function buildSdeCanonicalPlan(input={}){
       unmetDependencies,
       status:exiting ? "exiting" : unmetDependencies.length ? "future" : status,
       activeEligible,
+      canonicalChainStepActive:Boolean(row.canonicalChainStepActive || row.sdePhysicalStepActive || row.sdeChainStepActive),
       physicalValidation:{valid:physicalValid, reason:physicalInvalidReason},
       rank:getSdeCanonicalCandidateRank(row),
       raw:row
@@ -21652,77 +21748,214 @@ function buildSdeCanonicalPlan(input={}){
     if(!signature.actualSourceSlot){
       diagnostics.push({code:"missing_canonical_actual_source", severity:"warning", obligationStepKey:signature.obligationStepKey, candidateId, vehicleId:signature.vehicleId, statedSourceSlot:signature.statedSourceSlot});
     }
+    if(!signature.identitySafe){
+      recordConflict(
+        {code:"ambiguous_obligation", type:"identity", severity:"error", obligationId:signature.obligationId, stepId:signature.stepId, candidateOutcomeId, identityConfidence:signature.identityConfidence},
+        "Canonical obligation kan ikke identifiseres trygt uten kjøretøy, faktisk source og formål."
+      );
+    }
+    if(signature.obligationKind === "physical-chain" && signature.chainScope && signature.sequenceStep === "direct-1"){
+      recordConflict(
+        {code:"ambiguous_step", type:"identity", severity:"error", obligationId:signature.obligationId, stepId:signature.stepId, candidateOutcomeId, chainScope:signature.chainScope},
+        "Kjedekandidaten mangler et eksplisitt stabilt sequence step."
+      );
+    }
+    if(signature.actualSourceSlot && signature.statedSourceSlot && signature.actualSourceSlot !== signature.statedSourceSlot && (!signature.chainScope || signature.sequenceStep === "physical-1")){
+      recordConflict(
+        {code:"stale_actual_source", type:"actual_state", severity:"warning", obligationId:signature.obligationId, stepId:signature.stepId, candidateOutcomeId, actualSource:signature.actualSourceSlot, statedSource:signature.statedSourceSlot},
+        "Kandidatens oppgitte source avviker fra canonical actual-state."
+      );
+    }
     return outcome;
+  });
+  candidateOutcomes.sort((left,right)=>{
+    const leftKey = `${left.stepId}|${left.candidateOutcomeId}`;
+    const rightKey = `${right.stepId}|${right.candidateOutcomeId}`;
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
   });
 
   const groups = new Map();
-  candidateOutcomes.filter(candidate=>candidate.status !== "exiting").forEach(candidate=>{
-    if(!groups.has(candidate.obligationStepKey)) groups.set(candidate.obligationStepKey, []);
-    groups.get(candidate.obligationStepKey).push(candidate);
-  });
   const obligations = new Map();
+  candidateOutcomes.forEach(candidate=>{
+    if(!groups.has(candidate.stepId)) groups.set(candidate.stepId, []);
+    groups.get(candidate.stepId).push(candidate);
+    if(!obligations.has(candidate.obligationId)){
+      obligations.set(candidate.obligationId, {
+        obligationId:candidate.obligationId,
+        obligationKey:candidate.obligationId,
+        identityVersion:candidate.identityVersion,
+        identityComponents:candidate.identityComponents,
+        identityConfidence:candidate.identityConfidence,
+        obligationKind:candidate.obligationKind,
+        vehicleId:candidate.vehicleId,
+        actualSource:candidate.sourceSlot,
+        sourceSlot:candidate.sourceSlot,
+        purpose:candidate.purpose,
+        chainScope:candidate.chainScope,
+        legacyAliases:new Map(),
+        producerSet:new Set(),
+        stepIds:new Set(),
+        sequenceSteps:new Set()
+      });
+    }
+    const obligation = obligations.get(candidate.obligationId);
+    candidate.legacyAliases.forEach(alias=>obligation.legacyAliases.set(`${alias.type}|${alias.normalizedValue}`, alias));
+    obligation.producerSet.add(candidate.producer);
+    obligation.stepIds.add(candidate.stepId);
+    obligation.sequenceSteps.add(candidate.sequenceStep);
+    if(candidate.identityConfidence !== "high") obligation.identityConfidence = candidate.identityConfidence;
+  });
   const outcomesByObligationStep = [];
   const provisionalActive = [];
 
-  groups.forEach((candidates, obligationStepKey)=>{
+  Array.from(groups.keys()).sort().forEach(stepId=>{
+    const candidates = groups.get(stepId);
     const first = candidates[0];
-    if(!obligations.has(first.obligationKey)){
-      obligations.set(first.obligationKey, {
-        obligationKey:first.obligationKey,
-        obligationKind:first.obligationKind,
-        vehicleId:first.vehicleId,
-        sourceSlot:first.sourceSlot,
-        chainScope:first.chainScope,
-        sequenceSteps:[]
-      });
-    }
-    obligations.get(first.obligationKey).sequenceSteps.push(first.sequenceStep);
-    const targets = Array.from(new Set(candidates.map(candidate=>candidate.targetSlot).filter(Boolean))).sort();
-    const identityVariants = Array.from(new Set(candidates.flatMap(candidate=>[
-      candidate.needKey && `need:${candidate.needKey}`,
-      candidate.planningObligationId && `planning:${candidate.planningObligationId}`,
-      candidate.legacyOutcomeKey && `outcome:${candidate.legacyOutcomeKey}`
-    ].filter(Boolean)))).sort();
+    const operativeCandidates = candidates.filter(candidate=>candidate.status !== "exiting");
+    const targets = sortSdeCanonicalStrings(operativeCandidates.map(candidate=>candidate.targetSlot));
+    const rejectedTargets = sortSdeCanonicalStrings(candidates.filter(candidate=>candidate.status === "exiting").map(candidate=>candidate.targetSlot));
+    const identityAliases = candidates.flatMap(candidate=>candidate.legacyAliases).filter(alias=>[
+      "needKey","planningObligationId","activeOutcomeId","replanKey","vnObligationId","manualGraphicIdentity"
+    ].includes(alias.type));
+    const identityVariants = sortSdeCanonicalStrings(identityAliases.map(alias=>`${alias.type}:${alias.normalizedValue}`));
     const eligible = candidates.filter(candidate=>candidate.activeEligible);
     let activeOutcome = null;
     let selectionReason = "no_eligible_candidate";
-    const authorityIds = Array.from(new Set([
+    const authorityIds = sortSdeCanonicalStrings([
       ...candidates.map(candidate=>candidate.activeAuthorityId),
-      activeAuthorities[obligationStepKey],
+      activeAuthorities[stepId],
+      activeAuthorities[first.obligationId],
       ...candidates.map(candidate=>candidate.legacyOutcomeKey ? activeAuthorities[candidate.legacyOutcomeKey] : "")
-    ].map(value=>String(value || "").trim()).filter(Boolean)));
-    const authorityMatches = eligible.filter(candidate=>authorityIds.includes(candidate.candidateId) || authorityIds.includes(candidate.legacyCardId));
+    ]);
+    const matchesAuthority = (candidate,authorityId)=>{
+      const authorityToken = normalizeSdeCanonicalToken(authorityId);
+      return [
+        candidate.candidateId,
+        candidate.candidateOutcomeId,
+        candidate.legacyCardId,
+        candidate.actionKey,
+        ...candidate.legacyAliases.map(alias=>alias.value)
+      ].some(value=>normalizeSdeCanonicalToken(value) === authorityToken);
+    };
 
-    if(authorityMatches.length === 1){
-      activeOutcome = authorityMatches[0];
-      selectionReason = "unambiguous_existing_authority";
+    if(authorityIds.length > 1){
+      selectionReason = "multiple_authorities";
+      recordConflict(
+        {code:"multiple_authorities", type:"authority", severity:"error", obligationId:first.obligationId, stepId, authorityIds},
+        "Flere aktive authorities peker på samme canonical steg."
+      );
+    }else if(authorityIds.length === 1){
+      const authorityMatches = candidates.filter(candidate=>matchesAuthority(candidate, authorityIds[0]));
+      if(authorityMatches.length === 0){
+        selectionReason = "authority_target_missing";
+        recordConflict(
+          {code:"authority_target_missing", type:"authority", severity:"error", obligationId:first.obligationId, stepId, authorityId:authorityIds[0]},
+          "Aktiv authority peker ikke på en kandidat i canonical steget."
+        );
+      }else if(authorityMatches.length > 1){
+        selectionReason = "multiple_authorities";
+        recordConflict(
+          {code:"multiple_authorities", type:"authority", severity:"error", obligationId:first.obligationId, stepId, authorityId:authorityIds[0], candidateOutcomeIds:authorityMatches.map(candidate=>candidate.candidateOutcomeId)},
+          "Authority-aliaset peker på flere kandidater og er ikke entydig."
+        );
+      }else if(!authorityMatches[0].physicalValidation.valid){
+        selectionReason = "physically_invalid_authority";
+        recordConflict(
+          {code:"physically_invalid_authority", type:"authority", severity:"error", obligationId:first.obligationId, stepId, authorityId:authorityIds[0], candidateOutcomeId:authorityMatches[0].candidateOutcomeId},
+          "Aktiv authority peker på en fysisk ugyldig kandidat."
+        );
+      }else if(!authorityMatches[0].activeEligible){
+        selectionReason = "authority_target_missing";
+        recordConflict(
+          {code:"authority_target_missing", type:"authority", severity:"error", obligationId:first.obligationId, stepId, authorityId:authorityIds[0], candidateOutcomeId:authorityMatches[0].candidateOutcomeId},
+          "Authority-kandidaten mangler target, trygg identitet eller oppfylte dependencies."
+        );
+      }else{
+        activeOutcome = authorityMatches[0];
+        selectionReason = "unambiguous_existing_authority";
+      }
+    }else if(eligible.filter(candidate=>candidate.canonicalChainStepActive).length === 1){
+      activeOutcome = eligible.find(candidate=>candidate.canonicalChainStepActive);
+      selectionReason = "validated_active_chain_step";
+    }else if(eligible.filter(candidate=>candidate.canonicalChainStepActive).length > 1){
+      selectionReason = "ambiguous_step";
+      recordConflict(
+        {code:"ambiguous_step", type:"authority", severity:"error", obligationId:first.obligationId, stepId, candidateOutcomeIds:eligible.filter(candidate=>candidate.canonicalChainStepActive).map(candidate=>candidate.candidateOutcomeId)},
+        "Flere kandidater hevder å være aktivt steg i samme chain."
+      );
     }else if(eligible.length === 1){
       activeOutcome = eligible[0];
       selectionReason = "single_eligible_candidate";
     }else if(eligible.length > 1 && targets.length === 1){
-      const equivalent = [...eligible].sort((left,right)=>left.candidateId.localeCompare(right.candidateId));
-      activeOutcome = {...equivalent[0], equivalentCandidateIds:equivalent.map(candidate=>candidate.candidateId)};
+      const equivalent = [...eligible].sort((left,right)=>left.candidateOutcomeId.localeCompare(right.candidateOutcomeId));
+      activeOutcome = {
+        ...equivalent[0],
+        equivalentCandidateIds:equivalent.map(candidate=>candidate.candidateId),
+        equivalentCandidateOutcomeIds:equivalent.map(candidate=>candidate.candidateOutcomeId)
+      };
       selectionReason = "equivalent_target_merge";
     }else if(eligible.length > 1){
-      const ranked = eligible.filter(candidate=>candidate.rank !== null).sort((left,right)=>right.rank - left.rank);
+      const ranked = eligible.filter(candidate=>candidate.rank !== null).sort((left,right)=>right.rank - left.rank || left.candidateOutcomeId.localeCompare(right.candidateOutcomeId));
       if(ranked.length && (ranked.length === 1 || ranked[0].rank > ranked[1].rank)){
         activeOutcome = ranked[0];
         selectionReason = "unique_existing_rank";
       }else{
         selectionReason = "canonical_ambiguity";
-        const conflict = {code:"competing_targets", type:"obligation_step", severity:"error", obligationStepKey, vehicleId:first.vehicleId, sourceSlot:first.sourceSlot, targets, candidateIds:eligible.map(candidate=>candidate.candidateId)};
-        conflicts.push(conflict);
-        diagnostics.push({...conflict, message:"Flere kandidater konkurrerer for samme fysiske behov/steg uten entydig authority eller rangering."});
+        const code = targets.length > 1 ? "competing_targets" : "ambiguous_step";
+        recordConflict(
+          {code, type:"obligation_step", severity:"error", obligationId:first.obligationId, stepId, obligationStepKey:stepId, vehicleId:first.vehicleId, sourceSlot:first.sourceSlot, targets, candidateIds:eligible.map(candidate=>candidate.candidateId), candidateOutcomeIds:eligible.map(candidate=>candidate.candidateOutcomeId)},
+          "Flere kandidater konkurrerer for samme fysiske behov/steg uten entydig authority eller rangering."
+        );
       }
     }
     if(identityVariants.length > 1){
-      const conflict = {code:"legacy_identity_ambiguity", type:"identity", severity:"warning", obligationStepKey, identityVariants};
-      conflicts.push(conflict);
-      diagnostics.push({...conflict, message:"Legacy-produsentene bruker flere identiteter for samme canonical behov/steg."});
+      recordConflict(
+        {code:"legacy_identity_split", type:"identity", severity:"warning", obligationId:first.obligationId, stepId, identityVariants},
+        "Flere legacy-identiteter er slått sammen til samme canonical behov/steg."
+      );
+      recordConflict(
+        {code:"legacy_identity_ambiguity", type:"identity", severity:"warning", obligationStepKey:stepId, identityVariants},
+        "Legacy-produsentene bruker flere identiteter for samme canonical behov/steg."
+      );
     }
-    const group = {obligationStepKey, obligationKey:first.obligationKey, sequenceStep:first.sequenceStep, targets, identityVariants, candidates, activeOutcome, selectionReason};
+    const group = {
+      obligationId:first.obligationId, obligationKey:first.obligationId, stepId, obligationStepKey:stepId,
+      sequenceStep:first.sequenceStep, targets, rejectedTargets,
+      rejectionMetadata:{rejectedTargets, exitingCandidateOutcomeIds:candidates.filter(candidate=>candidate.status === "exiting").map(candidate=>candidate.candidateOutcomeId)},
+      identityVariants, authorityIds, candidates, activeOutcome, selectionReason
+    };
     outcomesByObligationStep.push(group);
     if(activeOutcome) provisionalActive.push({...activeOutcome, selectionReason});
+  });
+
+  const aliasCrosswalk = new Map();
+  candidateOutcomes.forEach(candidate=>{
+    candidate.legacyAliases.forEach(alias=>{
+      const key = `${alias.type}|${alias.normalizedValue}`;
+      if(!aliasCrosswalk.has(key)){
+        aliasCrosswalk.set(key, {aliasType:alias.type, aliasValue:alias.value, normalizedValue:alias.normalizedValue, obligationIds:new Set(), stepIds:new Set(), candidateOutcomeIds:new Set(), producers:new Set()});
+      }
+      const entry = aliasCrosswalk.get(key);
+      entry.obligationIds.add(candidate.obligationId);
+      entry.stepIds.add(candidate.stepId);
+      entry.candidateOutcomeIds.add(candidate.candidateOutcomeId);
+      entry.producers.add(candidate.producer);
+    });
+  });
+  const identityCrosswalk = Array.from(aliasCrosswalk.values()).map(entry=>({
+    aliasType:entry.aliasType,
+    aliasValue:entry.aliasValue,
+    normalizedValue:entry.normalizedValue,
+    obligationIds:sortSdeCanonicalStrings(Array.from(entry.obligationIds)),
+    stepIds:sortSdeCanonicalStrings(Array.from(entry.stepIds)),
+    candidateOutcomeIds:sortSdeCanonicalStrings(Array.from(entry.candidateOutcomeIds)),
+    producers:sortSdeCanonicalStrings(Array.from(entry.producers))
+  })).sort((left,right)=>`${left.aliasType}|${left.normalizedValue}`.localeCompare(`${right.aliasType}|${right.normalizedValue}`));
+  identityCrosswalk.filter(entry=>entry.obligationIds.length > 1).forEach(entry=>{
+    recordConflict(
+      {code:"legacy_identity_collision", type:"identity", severity:"error", aliasType:entry.aliasType, aliasValue:entry.aliasValue, obligationIds:entry.obligationIds, stepIds:entry.stepIds},
+      "Ett legacy-alias peker til flere canonical obligations."
+    );
   });
 
   const activeByTarget = new Map();
@@ -21737,46 +21970,74 @@ function buildSdeCanonicalPlan(input={}){
     const sameChain = outcomes.every(outcome=>outcome.chainId && outcome.chainId === outcomes[0].chainId);
     const dependencyOrdered = outcomes.every((outcome,index)=>index === 0 || outcome.dependencies.includes(outcomes[index - 1].actionKey));
     if(sameChain && dependencyOrdered) return;
-    outcomes.forEach(outcome=>overlappingOutcomeIds.add(outcome.candidateId));
-    const conflict = {code:"overlapping_target_reservation", type:"reservation", severity:"error", targetSlot, candidateIds:outcomes.map(outcome=>outcome.candidateId), obligationStepKeys:outcomes.map(outcome=>outcome.obligationStepKey)};
-    conflicts.push(conflict);
-    diagnostics.push({...conflict, message:`${targetSlot} brukes overlappende av flere canonical behov.`});
+    outcomes.forEach(outcome=>overlappingOutcomeIds.add(outcome.candidateOutcomeId));
+    recordConflict(
+      {code:"overlapping_target_reservation", type:"reservation", severity:"error", targetSlot, candidateIds:outcomes.map(outcome=>outcome.candidateId), candidateOutcomeIds:outcomes.map(outcome=>outcome.candidateOutcomeId), stepIds:outcomes.map(outcome=>outcome.stepId)},
+      `${targetSlot} brukes overlappende av flere canonical behov.`
+    );
   });
-  const activeOutcomes = provisionalActive.filter(outcome=>!overlappingOutcomeIds.has(outcome.candidateId));
+  const activeOutcomes = provisionalActive.filter(outcome=>!overlappingOutcomeIds.has(outcome.candidateOutcomeId));
   const reservationsPreview = activeOutcomes.filter(outcome=>outcome.targetSlot).map(outcome=>({
     targetSlot:outcome.targetSlot,
     vehicleId:outcome.vehicleId,
+    obligationId:outcome.obligationId,
+    stepId:outcome.stepId,
     obligationStepKey:outcome.obligationStepKey,
     candidateId:outcome.candidateId,
+    candidateOutcomeId:outcome.candidateOutcomeId,
     chainId:outcome.chainId,
     sequenceStep:outcome.sequenceStep
   }));
   const overlaysPreview = reservationsPreview.map(reservation=>({
-    sourceSlot:activeOutcomes.find(outcome=>outcome.candidateId === reservation.candidateId)?.sourceSlot || "",
+    sourceSlot:activeOutcomes.find(outcome=>outcome.candidateOutcomeId === reservation.candidateOutcomeId)?.sourceSlot || "",
     targetSlot:reservation.targetSlot,
     vehicleId:reservation.vehicleId,
+    obligationId:reservation.obligationId,
+    stepId:reservation.stepId,
     obligationStepKey:reservation.obligationStepKey,
-    candidateId:reservation.candidateId
+    candidateId:reservation.candidateId,
+    candidateOutcomeId:reservation.candidateOutcomeId
   }));
-  const activeChains = Array.from(new Set(candidateOutcomes.map(candidate=>candidate.chainId).filter(Boolean))).sort().map(chainId=>({
+  const activeChains = sortSdeCanonicalStrings(candidateOutcomes.map(candidate=>candidate.chainId || candidate.chainScope)).map(chainId=>({
     chainId,
-    steps:candidateOutcomes.filter(candidate=>candidate.chainId === chainId).sort((left,right)=>left.sequenceStep.localeCompare(right.sequenceStep)).map(candidate=>({candidateId:candidate.candidateId, sequenceStep:candidate.sequenceStep, status:candidate.status, active:activeOutcomes.some(outcome=>outcome.candidateId === candidate.candidateId)}))
+    steps:candidateOutcomes
+      .filter(candidate=>(candidate.chainId || candidate.chainScope) === chainId)
+      .sort((left,right)=>left.stepId.localeCompare(right.stepId) || left.candidateOutcomeId.localeCompare(right.candidateOutcomeId))
+      .map(candidate=>({
+        obligationId:candidate.obligationId,
+        stepId:candidate.stepId,
+        candidateId:candidate.candidateId,
+        candidateOutcomeId:candidate.candidateOutcomeId,
+        sequenceStep:candidate.sequenceStep,
+        dependencies:candidate.dependencies,
+        status:candidate.status,
+        active:activeOutcomes.some(outcome=>outcome.candidateOutcomeId === candidate.candidateOutcomeId)
+      }))
+  }));
+  const canonicalObligations = Array.from(obligations.values()).map(obligation=>({
+    ...obligation,
+    legacyAliases:sortSdeCanonicalObjects(Array.from(obligation.legacyAliases.values())),
+    producerSet:sortSdeCanonicalStrings(Array.from(obligation.producerSet)),
+    stepIds:sortSdeCanonicalStrings(Array.from(obligation.stepIds)),
+    sequenceSteps:sortSdeCanonicalStrings(Array.from(obligation.sequenceSteps))
   }));
 
   const plan = {
     actualPlacements:actualState.actualPlacements,
-    obligations:Array.from(obligations.values()).map(obligation=>({...obligation, sequenceSteps:Array.from(new Set(obligation.sequenceSteps)).sort()})),
+    obligations:canonicalObligations,
     candidateOutcomes,
     outcomesByObligationStep,
+    identityCrosswalk,
     activeOutcomes,
     activeChains,
     reservationsPreview,
     overlaysPreview,
-    diagnostics,
-    exitingCards,
-    conflicts,
+    diagnostics:sortSdeCanonicalObjects(diagnostics),
+    exitingCards:sortSdeCanonicalObjects(exitingCards),
+    conflicts:sortSdeCanonicalObjects(conflicts),
     metadata:{
-      schemaVersion:"sde-canonical-plan-readmodel-v1",
+      schemaVersion:"sde-canonical-plan-readmodel-v2",
+      identityVersion:"sde-canonical-identity-v2",
       selectedActualSource:actualState.selectedSource,
       actualSourceCount:actualState.sources.length,
       rawCandidateCount:rawRows.length,
@@ -21795,6 +22056,8 @@ function buildSdeCanonicalPlan(input={}){
         plan.conflicts.push(conflict);
         plan.diagnostics.push({...conflict, message:`Legacy og canonical read-model avviker: ${code}.`});
       });
+    plan.conflicts = sortSdeCanonicalObjects(plan.conflicts);
+    plan.diagnostics = sortSdeCanonicalObjects(plan.diagnostics);
     plan.metadata.conflictCount = plan.conflicts.length;
     plan.metadata.diagnosticCount = plan.diagnostics.length;
   }
@@ -21811,22 +22074,34 @@ function compareSdeCanonicalPlanWithLegacy(canonicalPlan, legacy={}){
   const overlayTargets = new Set(legacyOverlays.map(row=>normalizeSlot(row?.targetSlot || row?.slot)).filter(Boolean));
   const canonicalTargets = new Set((canonicalPlan?.activeOutcomes || []).map(row=>normalizeSlot(row.targetSlot)).filter(Boolean));
   const duplicateKeys = new Map();
+  const legacyIdentityByPhysicalStep = new Map();
   legacyCards.forEach(row=>{
     const key = [normalizeSdeCanonicalToken(row?.vehicle || row?.vehicleId), normalizeSlot(row?.sourceSlot || row?.fromSlot || row?.arrivalSlot), String(row?.sequenceStep || getSdeCanonicalSequenceStep(row))].join("|");
     if(!duplicateKeys.has(key)) duplicateKeys.set(key, new Set());
+    if(!legacyIdentityByPhysicalStep.has(key)) legacyIdentityByPhysicalStep.set(key, new Set());
     const target = normalizeSlot(row?.targetSlot || row?.recommendedSlot || row?.toSlot);
     if(target) duplicateKeys.get(key).add(target);
     else classifications.add("legacy_targetless_card");
+    [
+      row?.needKey || row?.sdeCancellationNeedKey,
+      row?.planningObligationId || row?.sdePlanningObligationId,
+      row?.sdeOutcomeKey || row?.sdeCanonicalOutcomeKey
+    ].map(value=>String(value || "").trim()).filter(Boolean).forEach(value=>legacyIdentityByPhysicalStep.get(key).add(value));
   });
   if(Array.from(duplicateKeys.values()).some(targets=>targets.size > 1)) classifications.add("legacy_duplicate");
+  if(Array.from(legacyIdentityByPhysicalStep.values()).some(identities=>identities.size > 1)) classifications.add("legacy_obligation_split");
+  if(legacyReservations.length > reservationTargets.size) classifications.add("legacy_duplicate_reservations");
+  if(legacyOverlays.length > overlayTargets.size) classifications.add("legacy_duplicate_overlays");
   if(Array.from(legacyTargets).some(target=>!overlayTargets.has(target))) classifications.add("legacy_missing_overlay");
   if(Array.from(overlayTargets).some(target=>!legacyTargets.has(target))) classifications.add("legacy_extra_overlay");
   if((canonicalPlan?.conflicts || []).some(conflict=>conflict.code === "actual_source_mismatch")) classifications.add("legacy_actual_source_mismatch");
-  if((canonicalPlan?.conflicts || []).some(conflict=>conflict.code === "competing_targets")) classifications.add("canonical_ambiguity");
+  if((canonicalPlan?.conflicts || []).some(conflict=>["competing_targets","ambiguous_obligation","ambiguous_step","multiple_authorities"].includes(conflict.code))) classifications.add("canonical_ambiguity");
+  if((canonicalPlan?.conflicts || []).some(conflict=>conflict.code === "legacy_identity_split")) classifications.add("legacy_obligation_split");
+  if((canonicalPlan?.obligations || []).some(obligation=>(obligation.producerSet || []).length > 1)) classifications.add("canonical_multi_producer_merge");
   if((canonicalPlan?.activeChains || []).some(chain=>chain.steps.length > 1)) classifications.add("legitimate_sequence_difference");
   const sameTargets = legacyTargets.size === canonicalTargets.size && Array.from(legacyTargets).every(target=>canonicalTargets.has(target));
   const sameReservations = reservationTargets.size === canonicalTargets.size && Array.from(reservationTargets).every(target=>canonicalTargets.has(target));
-  const concerning = ["legacy_duplicate","legacy_targetless_card","legacy_missing_overlay","legacy_extra_overlay","legacy_actual_source_mismatch","canonical_ambiguity"];
+  const concerning = ["legacy_duplicate","legacy_duplicate_reservations","legacy_duplicate_overlays","legacy_targetless_card","legacy_missing_overlay","legacy_extra_overlay","legacy_actual_source_mismatch","canonical_ambiguity"];
   if(sameTargets && sameReservations && !concerning.some(item=>classifications.has(item))) classifications.add("identical");
   return {
     classifications:Array.from(classifications).sort(),
