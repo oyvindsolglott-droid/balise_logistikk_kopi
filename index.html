@@ -3172,6 +3172,246 @@ button{padding:12px 12px}
   color:#f8e9bf;
 }
 
+.sde-canonical-preview{
+  display:grid;
+  gap:18px;
+  color:#eef7ff;
+}
+
+.sde-canonical-preview-banner{
+  display:flex;
+  justify-content:space-between;
+  gap:18px;
+  align-items:flex-start;
+  border:1px solid rgba(56,189,248,.48);
+  border-radius:20px;
+  padding:18px;
+  background:linear-gradient(135deg, rgba(7,89,133,.62), rgba(15,23,42,.92));
+  box-shadow:0 16px 34px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.11);
+}
+
+.sde-canonical-preview-kicker{
+  color:#7dd3fc;
+  font-size:12px;
+  font-weight:950;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.sde-canonical-preview-title{
+  margin-top:5px;
+  font-size:clamp(20px, 3vw, 32px);
+  font-weight:1000;
+  letter-spacing:-.035em;
+}
+
+.sde-canonical-preview-subtitle{
+  max-width:760px;
+  margin-top:7px;
+  color:#c7d8ea;
+  font-size:13px;
+  line-height:1.45;
+}
+
+.sde-canonical-preview-lock{
+  flex:0 0 auto;
+  border:1px solid rgba(134,239,172,.38);
+  border-radius:999px;
+  padding:8px 12px;
+  background:rgba(20,83,45,.42);
+  color:#bbf7d0;
+  font-size:12px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.sde-canonical-preview-kpis{
+  display:grid;
+  grid-template-columns:repeat(4, minmax(0, 1fr));
+  gap:10px;
+}
+
+.sde-canonical-preview-kpi{
+  border:1px solid rgba(255,255,255,.13);
+  border-radius:16px;
+  padding:13px 14px;
+  background:rgba(15,23,42,.72);
+}
+
+.sde-canonical-preview-kpi strong{
+  display:block;
+  color:#fff;
+  font-size:24px;
+  line-height:1;
+}
+
+.sde-canonical-preview-kpi span{
+  display:block;
+  margin-top:6px;
+  color:#aebfd2;
+  font-size:12px;
+  line-height:1.35;
+}
+
+.sde-canonical-preview-section{
+  display:grid;
+  gap:11px;
+}
+
+.sde-canonical-preview-section-head{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:baseline;
+  font-size:18px;
+  font-weight:950;
+}
+
+.sde-canonical-preview-section-head span{
+  color:#9fb4cd;
+  font-size:12px;
+  font-weight:800;
+}
+
+.sde-canonical-preview-chain{
+  display:grid;
+  gap:11px;
+  border:1px solid rgba(125,211,252,.22);
+  border-radius:20px;
+  padding:14px;
+  background:rgba(15,23,42,.48);
+}
+
+.sde-canonical-preview-chain-title{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  color:#bae6fd;
+  font-size:13px;
+  font-weight:950;
+}
+
+.sde-canonical-preview-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+  gap:12px;
+}
+
+.sde-canonical-preview-card{
+  display:grid;
+  gap:11px;
+  min-width:0;
+  border:1px solid rgba(74,222,128,.35);
+  border-radius:18px;
+  padding:15px;
+  background:linear-gradient(145deg, rgba(20,83,45,.34), rgba(15,23,42,.86));
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
+  cursor:default;
+}
+
+.sde-canonical-preview-card.blocked{
+  border-color:rgba(148,163,184,.30);
+  background:linear-gradient(145deg, rgba(51,65,85,.48), rgba(15,23,42,.86));
+  opacity:.78;
+}
+
+.sde-canonical-preview-card.exiting{
+  border-color:rgba(248,113,113,.55);
+  background:linear-gradient(145deg, rgba(127,29,29,.60), rgba(38,12,20,.90));
+}
+
+.sde-canonical-preview-card-top,
+.sde-canonical-preview-route,
+.sde-canonical-preview-tags{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.sde-canonical-preview-vehicle{
+  margin-right:auto;
+  color:#fff;
+  font-size:clamp(25px, 3vw, 38px);
+  font-weight:1000;
+  letter-spacing:-.055em;
+}
+
+.sde-canonical-preview-state,
+.sde-canonical-preview-tag{
+  border:1px solid rgba(255,255,255,.14);
+  border-radius:999px;
+  padding:5px 8px;
+  background:rgba(255,255,255,.08);
+  color:#dbeafe;
+  font-size:11px;
+  font-weight:900;
+}
+
+.sde-canonical-preview-route strong{
+  flex:1 1 90px;
+  border:1px solid rgba(255,255,255,.13);
+  border-radius:13px;
+  padding:10px;
+  background:rgba(255,255,255,.07);
+  text-align:center;
+  font-size:21px;
+}
+
+.sde-canonical-preview-route b{
+  color:#7dd3fc;
+  font-size:20px;
+}
+
+.sde-canonical-preview-explanation{
+  color:#c9d8e8;
+  font-size:12px;
+  line-height:1.45;
+}
+
+.sde-canonical-preview-completed,
+.sde-canonical-preview-empty,
+.sde-canonical-preview-gate{
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:14px;
+  padding:11px 13px;
+  background:rgba(15,23,42,.62);
+  color:#cbd5e1;
+  font-size:12px;
+  line-height:1.45;
+}
+
+.sde-canonical-preview-gate{
+  border-color:rgba(248,113,113,.55);
+  background:rgba(127,29,29,.42);
+  color:#fee2e2;
+}
+
+.sde-canonical-preview-diagnostics{
+  display:grid;
+  gap:8px;
+  border:1px solid rgba(251,191,36,.30);
+  border-radius:18px;
+  padding:14px;
+  background:rgba(120,53,15,.18);
+}
+
+.sde-canonical-preview-diagnostic{
+  border-left:3px solid rgba(251,191,36,.72);
+  padding:7px 10px;
+  background:rgba(15,23,42,.50);
+  color:#fdecc8;
+  font-size:12px;
+  line-height:1.45;
+}
+
+@media (max-width:720px){
+  .sde-canonical-preview-banner{flex-direction:column;}
+  .sde-canonical-preview-kpis{grid-template-columns:repeat(2, minmax(0, 1fr));}
+  .sde-canonical-preview-grid{grid-template-columns:1fr;}
+  .sde-canonical-preview-route strong{font-size:18px;}
+}
+
 .sde-shift-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));
@@ -23726,6 +23966,181 @@ function getSdeMoveCardDisplayIndex(actionKey){
     .findIndex(card => String(card?.dataset?.sdeCardKey || "").trim() === key);
 }
 
+function isSdeCanonicalCardPreviewRequested(locationLike = typeof window !== "undefined" ? window.location : {search:""}){
+  return new URLSearchParams(String(locationLike?.search || "")).get("sdeCanonicalCardPreview") === "1";
+}
+
+function buildSdeCanonicalCardPreviewSource(runtimeSnapshot){
+  const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || buildSdeCanonicalShadowRuntimeSnapshot();
+  const activeAuthorities = Object.fromEntries(Object.entries(snapshot.runtimeState?.activeAuthorities || {}).map(([key,value])=>[
+    key,
+    typeof value === "string" ? value : String(value?.activeOutcomeId || "").trim()
+  ]));
+  const canonicalPlan = buildSdeCanonicalPlan({
+    actualSources:snapshot.actualSources,
+    candidateRows:snapshot.legacy?.finalCards,
+    activeAuthorities
+  });
+  const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
+  const reservationProjection = buildSdeCanonicalReservationProjection(canonicalPlan, cardProjection);
+  const graphicProjection = buildSdeCanonicalGraphicProjection(canonicalPlan, cardProjection, reservationProjection);
+  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection});
+  const legacyMigrationReadiness = buildSdeCanonicalLegacyMigrationReadiness(integrityReport,snapshot.legacy);
+  return {canonicalPlan,cardProjection,integrityReport,legacyMigrationReadiness};
+}
+
+function buildSdeCanonicalCardPreviewModel(input={}){
+  const canonicalPlan = cloneSdeCanonicalValue(input.canonicalPlan || {}) || {};
+  const cardProjection = cloneSdeCanonicalValue(input.cardProjection || {}) || {};
+  const integrityReport = cloneSdeCanonicalValue(input.integrityReport || {}) || {};
+  const legacyMigrationReadiness = cloneSdeCanonicalValue(input.legacyMigrationReadiness || {}) || {};
+  const requiredSchemasPresent = Boolean(
+    canonicalPlan.metadata?.schemaVersion
+    && cardProjection.metadata?.schemaVersion
+    && integrityReport.metadata?.schemaVersion
+    && legacyMigrationReadiness.metadata?.schemaVersion
+  );
+  const integrityByStep = new Map((integrityReport.obligationResults || []).map(result=>[result.stepId,result]));
+  const projectedCards = [
+    ...(cardProjection.actionableCards || []),
+    ...(cardProjection.blockedChainCards || []),
+    ...(cardProjection.exitingCards || [])
+  ];
+  const missingIntegrityCoverage = projectedCards.some(card=>!integrityByStep.has(card.stepId));
+  const gateOpen = requiredSchemasPresent && !missingIntegrityCoverage && integrityReport.status !== "FAIL";
+  const isReadable = card => integrityByStep.get(card.stepId)?.status === "PASS";
+  const actionableCards = gateOpen ? sortSdeCanonicalObjects((cardProjection.actionableCards || []).filter(isReadable)) : [];
+  const blockedChainCards = gateOpen ? sortSdeCanonicalObjects((cardProjection.blockedChainCards || []).filter(isReadable)) : [];
+  const exitingCards = gateOpen ? (cardProjection.exitingCards || []).filter(isReadable) : [];
+  const projectedByChain = [...actionableCards,...blockedChainCards].reduce((groups,card)=>{
+    const chainId = String(card.chainId || "").trim();
+    if(!chainId) return groups;
+    if(!groups.has(chainId)) groups.set(chainId,[]);
+    groups.get(chainId).push(card);
+    return groups;
+  },new Map());
+  const sortChainCards = rows => sortSdeCanonicalObjects(rows).sort((left,right)=>{
+    const leftStep = String(left.sequenceStep || "");
+    const rightStep = String(right.sequenceStep || "");
+    const leftOrder = Number(leftStep.match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+    const rightOrder = Number(rightStep.match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+    return leftOrder - rightOrder || leftStep.localeCompare(rightStep) || String(left.activeOutcomeId || "").localeCompare(String(right.activeOutcomeId || ""));
+  });
+  const chains = (cardProjection.chains || []).flatMap(chain=>{
+    const cards = sortChainCards(projectedByChain.get(chain.chainId) || []);
+    const completedSteps = sortSdeCanonicalObjects((chain.steps || []).filter(step=>String(step.status || "").toLowerCase() === "completed")
+      .filter((step,index,rows)=>rows.findIndex(item=>item.stepId === step.stepId) === index));
+    return cards.length || completedSteps.length ? [{chainId:chain.chainId,activeProposalUnitId:chain.activeProposalUnitId,stepCount:chain.stepCount,cards,completedSteps}] : [];
+  });
+  const knownChainIds = new Set(chains.map(chain=>chain.chainId));
+  sortSdeCanonicalStrings(Array.from(projectedByChain.keys())).filter(chainId=>!knownChainIds.has(chainId)).forEach(chainId=>{
+    chains.push({chainId,stepCount:projectedByChain.get(chainId).length,cards:sortChainCards(projectedByChain.get(chainId)),completedSteps:[]});
+  });
+  const standaloneCards = sortSdeCanonicalObjects([...actionableCards,...blockedChainCards].filter(card=>!card.chainId));
+  const diagnostics = [...(cardProjection.diagnostics || [])];
+  (integrityReport.obligationResults || []).filter(result=>result.status === "AMBIGUOUS").forEach(result=>{
+    if(diagnostics.some(item=>item.stepId === result.stepId || item.obligationStepKey === result.stepId)) return;
+    diagnostics.push({
+      obligationId:result.obligationId,
+      stepId:result.stepId,
+      diagnosticType:"integrity_ambiguous",
+      severity:"warning",
+      explanation:`Canonical obligation er AMBIGUOUS og vises derfor bare som diagnostikk (${(result.conflictClassifications || []).join(", ") || "uklar integritet"}).`
+    });
+  });
+  return {
+    gateOpen,
+    gateReason:!requiredSchemasPresent ? "Nødvendig canonical struktur mangler."
+      : missingIntegrityCoverage ? "Integritetsrapporten dekker ikke alle projiserte kort."
+      : integrityReport.status === "FAIL" ? "Canonical integritetskontroll har status FAIL."
+      : "",
+    integrityStatus:String(integrityReport.status || "MISSING"),
+    integrityConflicts:sortSdeCanonicalObjects(integrityReport.conflicts || []),
+    activeProposalCount:gateOpen ? Number(cardProjection.activeProposalCount || 0) : 0,
+    actionableCards,
+    blockedChainCards,
+    exitingCards:sortSdeCanonicalObjects(exitingCards),
+    standaloneCards,
+    chains:sortSdeCanonicalObjects(chains),
+    diagnostics:sortSdeCanonicalObjects(diagnostics),
+    legacyMigrationReadiness,
+    metadata:{
+      schemaVersion:"sde-canonical-card-preview-v1",
+      sourcePlanSchema:canonicalPlan.metadata?.schemaVersion || "",
+      sourceCardSchema:cardProjection.metadata?.schemaVersion || "",
+      readyForCardReaderMigration:legacyMigrationReadiness.readyForCardReaderMigration === true,
+      sideEffectPolicy:"read-only-no-handlers-no-persistence"
+    }
+  };
+}
+
+function buildSdeCanonicalCardPreviewCardHtml(card, variant="actionable"){
+  const stateLabel = variant === "blocked" ? "Fremtidig – dependency-sperret" : variant === "exiting" ? "Annullert – inaktiv historikk" : "Gjeldende canonical steg";
+  const dependencies = sortSdeCanonicalStrings(card.blockedBy || card.dependencyIds || []);
+  const sourceSlot = card.sourceSlot || card.previousSourceSlot || "Ukjent";
+  const targetSlot = card.targetSlot || card.previousTargetSlot || "Ukjent";
+  return `<article class="sde-canonical-preview-card ${escapeHtml(variant)}" data-sde-canonical-preview-card="${escapeHtml(card.canonicalCardId || card.activeOutcomeId || "")}" aria-disabled="true">
+    <div class="sde-canonical-preview-card-top">
+      <div class="sde-canonical-preview-vehicle">${escapeHtml(card.vehicleId || "Ukjent")}</div>
+      <span class="sde-canonical-preview-state">${escapeHtml(stateLabel)}</span>
+    </div>
+    <div class="sde-canonical-preview-route" aria-label="Canonical source og target">
+      <strong>${escapeHtml(sourceSlot)}</strong><b>→</b><strong>${escapeHtml(targetSlot)}</strong>
+    </div>
+    <div class="sde-canonical-preview-tags">
+      <span class="sde-canonical-preview-tag">Steg ${escapeHtml(card.sequenceStep || "ukjent")}</span>
+      ${card.chainId ? `<span class="sde-canonical-preview-tag">Kjede ${escapeHtml(card.chainId)}</span>` : ""}
+      ${card.recoveryRequired ? `<span class="sde-canonical-preview-tag">VN recovery · kan ikke slettes</span>` : ""}
+      <span class="sde-canonical-preview-tag">Dependencies ${escapeHtml(dependencies.length ? dependencies.join(", ") : "oppfylt")}</span>
+    </div>
+    <div class="sde-canonical-preview-explanation">${escapeHtml(card.explanation || card.visualText || "Canonical read-only kortprojeksjon.")}</div>
+    <div class="sde-canonical-preview-explanation">${escapeHtml(card.producerProvenance?.producer || "canonical")} · ${escapeHtml(card.producerProvenance?.provenance || "canonical cardProjection")} · Ingen handlinger i denne visningen.</div>
+  </article>`;
+}
+
+function buildSdeCanonicalCardPreviewHtml(model={}){
+  const readiness = model.legacyMigrationReadiness || {};
+  const diagnosticHtml = (model.diagnostics || []).length
+    ? `<section class="sde-canonical-preview-section" data-sde-canonical-preview-diagnostics>
+        <div class="sde-canonical-preview-section-head">Canonical diagnostikk <span>${model.diagnostics.length} funn · teller ikke som forslag</span></div>
+        <div class="sde-canonical-preview-diagnostics">${model.diagnostics.map(item=>`<div class="sde-canonical-preview-diagnostic"><strong>${escapeHtml(item.vehicleId || "Canonical behov")}</strong> · ${escapeHtml(item.sourceSlot || item.actualSource || "source ukjent")}<br>${escapeHtml(item.diagnosticType || item.code || item.severity || "diagnostic")}: ${escapeHtml(item.explanation || item.message || "Må vurderes diagnostisk.")}</div>`).join("")}</div>
+      </section>`
+    : "";
+  const gateHtml = model.gateOpen ? "" : `<div class="sde-canonical-preview-gate" data-sde-canonical-preview-gate><strong>Canonical forhåndsvisning kan ikke vises fordi integritetskontrollen feilet.</strong><br>${escapeHtml(model.gateReason || "Ukjent integritetsfeil.")} ${escapeHtml((model.integrityConflicts || []).slice(0,4).map(item=>item.classification).join(", "))}</div>`;
+  const chainsHtml = model.gateOpen && (model.chains || []).length
+    ? `<section class="sde-canonical-preview-section"><div class="sde-canonical-preview-section-head">Canonical kjeder <span>${model.chains.length} kjeder</span></div>${model.chains.map(chain=>`<div class="sde-canonical-preview-chain" data-sde-canonical-preview-chain="${escapeHtml(chain.chainId)}"><div class="sde-canonical-preview-chain-title"><span>Kjede ${escapeHtml(chain.chainId)}</span><span>${escapeHtml(String(chain.stepCount || chain.cards.length))} steg · én aktiv forpliktelse</span></div>${(chain.completedSteps || []).map(step=>`<div class="sde-canonical-preview-completed">Steg ${escapeHtml(step.sequenceStep || "ukjent")} · Fullført – ikke aktivt kort</div>`).join("")}<div class="sde-canonical-preview-grid">${(chain.cards || []).map(card=>buildSdeCanonicalCardPreviewCardHtml(card,card.status === "blocked_chain_step" ? "blocked" : "actionable")).join("")}</div></div>`).join("")}</section>`
+    : "";
+  const standaloneHtml = model.gateOpen
+    ? `<section class="sde-canonical-preview-section"><div class="sde-canonical-preview-section-head">Canonical skiftekort <span>${model.standaloneCards.length} frittstående</span></div>${model.standaloneCards.length ? `<div class="sde-canonical-preview-grid">${model.standaloneCards.map(card=>buildSdeCanonicalCardPreviewCardHtml(card,card.status === "blocked_chain_step" ? "blocked" : "actionable")).join("")}</div>` : `<div class="sde-canonical-preview-empty">Ingen frittstående actionable canonical kort.</div>`}</section>`
+    : "";
+  const exitingHtml = model.gateOpen && (model.exitingCards || []).length
+    ? `<section class="sde-canonical-preview-section"><div class="sde-canonical-preview-section-head">Annullert livssyklus <span>${model.exitingCards.length} inaktive kort</span></div><div class="sde-canonical-preview-grid">${model.exitingCards.map(card=>buildSdeCanonicalCardPreviewCardHtml(card,"exiting")).join("")}</div></section>`
+    : "";
+  return `<section class="sde-canonical-preview" data-sde-canonical-card-preview data-sde-integrity-status="${escapeHtml(model.integrityStatus || "MISSING")}">
+    <header class="sde-canonical-preview-banner">
+      <div><div class="sde-canonical-preview-kicker">Intern testmodus</div><div class="sde-canonical-preview-title">CANONICAL FORHÅNDSVISNING – SKRIVEBESKYTTET</div><div class="sde-canonical-preview-subtitle">Ren lesing av canonicalPlan, cardProjection, integrityReport og legacyMigrationReadiness. Ingen operative handlers, drag/drop eller persistens er koblet til denne visningen.</div></div>
+      <div class="sde-canonical-preview-lock">🔒 Kun lesing</div>
+    </header>
+    <div class="sde-canonical-preview-kpis">
+      <div class="sde-canonical-preview-kpi"><strong>${escapeHtml(String(model.activeProposalCount || 0))}</strong><span>Canonical aktive forslag</span></div>
+      <div class="sde-canonical-preview-kpi"><strong>${escapeHtml(model.integrityStatus || "MISSING")}</strong><span>Canonical integritetsstatus</span></div>
+      <div class="sde-canonical-preview-kpi"><strong>${escapeHtml(String(readiness.legacyTargetlessActionCards || 0))}</strong><span>Legacy targetless handlingskort</span></div>
+      <div class="sde-canonical-preview-kpi"><strong>${readiness.readyForCardReaderMigration === true ? "JA" : "NEI"}</strong><span>Migration readiness · kun metadata</span></div>
+    </div>
+    <div class="sde-canonical-preview-empty">Legacy-sammenligning: ${escapeHtml(String(readiness.legacyDuplicateCards || 0))} duplikatkort · ${escapeHtml(String(readiness.legacyDuplicateReservations || 0))} duplikatreservasjoner · ${escapeHtml(String(readiness.legacyDuplicateOverlays || 0))} duplikatoverlays · ${escapeHtml(String(readiness.legacyMissingOverlays || 0))} manglende overlays.</div>
+    ${gateHtml}${chainsHtml}${standaloneHtml}${exitingHtml}${diagnosticHtml}
+  </section>`;
+}
+
+function renderSdeCanonicalCardPreview(){
+  const root = document.getElementById("sdeSkiftebevegelserDashboard");
+  if(!root) return null;
+  const source = buildSdeCanonicalCardPreviewSource(captureSdeCanonicalShadowRuntimeSnapshot());
+  const model = buildSdeCanonicalCardPreviewModel(source);
+  root.innerHTML = buildSdeCanonicalCardPreviewHtml(model);
+  return model;
+}
+
 function getSdeMoveNeedKey(row){
   if(!row) return "";
   const cancellationNeedKey = String(row.sdeCancellationNeedKey || "").trim();
@@ -32200,6 +32615,7 @@ function setupSdeNightPlacementDragAndDrop(){
 
 
 function renderSdeSkiftebevegelser(){
+  if(isSdeCanonicalCardPreviewRequested()) return renderSdeCanonicalCardPreview();
   return withComputeInndataCache(renderSdeSkiftebevegelserInner);
 }
 
