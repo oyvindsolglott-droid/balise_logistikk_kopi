@@ -22392,6 +22392,341 @@ function compareSdeCanonicalCardProjectionWithLegacy(cardProjection, legacy={}){
   };
 }
 
+function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection={}){
+  const plan = cloneSdeCanonicalValue(canonicalPlan) || {};
+  const cards = cloneSdeCanonicalValue(cardProjection) || {};
+  const candidates = Array.isArray(plan.candidateOutcomes) ? plan.candidateOutcomes : [];
+  const outcomeById = new Map(candidates.map(outcome=>[outcome.candidateOutcomeId, outcome]));
+  const actionKeyToOutcomeId = new Map(candidates.flatMap(outcome=>[
+    [String(outcome.actionKey || "").trim(), outcome.candidateOutcomeId],
+    [String(outcome.candidateId || "").trim(), outcome.candidateOutcomeId],
+    [String(outcome.legacyCardId || "").trim(), outcome.candidateOutcomeId]
+  ]).filter(([key])=>key));
+  const resolveDependency = value => {
+    const key = String(value || "").trim();
+    return outcomeById.has(key) ? key : actionKeyToOutcomeId.get(key) || "";
+  };
+  const dependenciesByOutcomeId = new Map(candidates.map(outcome=>[
+    outcome.candidateOutcomeId,
+    sortSdeCanonicalStrings((outcome.dependencies || []).map(resolveDependency).filter(Boolean))
+  ]));
+  const ancestorCache = new Map();
+  const getAncestors = outcomeId => {
+    if(ancestorCache.has(outcomeId)) return ancestorCache.get(outcomeId);
+    const ancestors = new Set();
+    const visit = dependencyId => {
+      if(!dependencyId || ancestors.has(dependencyId)) return;
+      ancestors.add(dependencyId);
+      (dependenciesByOutcomeId.get(dependencyId) || []).forEach(visit);
+    };
+    (dependenciesByOutcomeId.get(outcomeId) || []).forEach(visit);
+    ancestorCache.set(outcomeId, ancestors);
+    return ancestors;
+  };
+  const isOrderedBefore = (earlierId,laterId) => Boolean(earlierId && laterId && getAncestors(laterId).has(earlierId));
+  const rankCache = new Map();
+  const getRank = (outcomeId,visiting=new Set()) => {
+    if(rankCache.has(outcomeId)) return rankCache.get(outcomeId);
+    if(visiting.has(outcomeId)) return 0;
+    const nextVisiting = new Set(visiting).add(outcomeId);
+    const dependencies = dependenciesByOutcomeId.get(outcomeId) || [];
+    const rank = dependencies.length ? 1 + Math.max(...dependencies.map(id=>getRank(id,nextVisiting))) : 0;
+    rankCache.set(outcomeId, rank);
+    return rank;
+  };
+  const actionableIds = new Set((cards.actionableCards || []).map(card=>card.activeOutcomeId));
+  const blockedIds = new Set((cards.blockedChainCards || []).map(card=>card.activeOutcomeId));
+  const projectionCards = sortSdeCanonicalObjects([
+    ...(cards.actionableCards || []),
+    ...(cards.blockedChainCards || [])
+  ]);
+  const diagnostics = sortSdeCanonicalObjects((cards.diagnostics || []).map(item=>({
+    classification:"DIAGNOSTIC_WITHOUT_RESERVATION",
+    severity:item.severity || "warning",
+    diagnosticType:item.diagnosticType || "no_actionable_outcome",
+    obligationId:item.obligationId || "",
+    stepId:item.stepId || "",
+    vehicleId:item.vehicleId || "",
+    targetSlots:sortSdeCanonicalStrings((item.candidateSummary || []).map(candidate=>candidate.targetSlot))
+  })));
+  const conflicts = [];
+  const conflictKeys = new Set();
+  const rejectedReservationIds = new Set();
+  const recordConflict = (classification,reservations=[],details={}) => {
+    const reservationIds = sortSdeCanonicalStrings(reservations.map(item=>typeof item === "string" ? item : item.reservationId));
+    const key = `${classification}|${reservationIds.join(",")}|${stableStringifySdeCanonicalValue(details)}`;
+    if(conflictKeys.has(key)) return;
+    conflictKeys.add(key);
+    conflicts.push({classification, severity:"error", reservationIds, ...details});
+    reservations.forEach(item=>rejectedReservationIds.add(typeof item === "string" ? item : item.reservationId));
+  };
+  const reservationKindFor = (card,outcome) => {
+    const raw = outcome?.raw || {};
+    if(card.recoveryRequired || outcome?.obligationKind === "vn-recovery") return "vn_recovery_target";
+    if(blockedIds.has(card.activeOutcomeId)) return "future_chain_target";
+    if(raw.isSdePhysicalBlockerFreeingMove || raw.sdePhysicalDependencyRole === "prerequisite") return "prerequisite_target";
+    if(card.targetSlot === "VN") return "vn_temporary_target";
+    if(card.chainId) return "main_target";
+    return "direct_target";
+  };
+  const proposalEntries = projectionCards.flatMap(card=>{
+    const outcome = outcomeById.get(card.activeOutcomeId);
+    if(!card.targetSlot){
+      recordConflict("TARGETLESS_RESERVATION_ATTEMPT", [], {activeOutcomeId:card.activeOutcomeId, stepId:card.stepId});
+      return [];
+    }
+    if(!outcome || outcome.physicalValidation?.valid === false || outcome.status === "exiting" || !outcome.actualSourceSlot) return [];
+    const actualSourceMismatch = (plan.conflicts || []).some(conflict=>
+      ["actual_source_mismatch","stale_actual_source"].includes(conflict.code)
+      && (conflict.candidateOutcomeId === card.activeOutcomeId || conflict.vehicleId === card.vehicleId)
+    );
+    if(actualSourceMismatch){
+      recordConflict("ACTUAL_OCCUPANCY_CONFLICT", [], {activeOutcomeId:card.activeOutcomeId, stepId:card.stepId, reason:"actual_source_mismatch"});
+      return [];
+    }
+    const dependencyIds = sortSdeCanonicalStrings(card.dependencyIds || outcome.dependencies || []);
+    const resolvedDependencyOutcomeIds = sortSdeCanonicalStrings(dependencyIds.map(resolveDependency).filter(Boolean));
+    if(dependencyIds.length !== resolvedDependencyOutcomeIds.length){
+      recordConflict("MISSING_DEPENDENCY", [], {activeOutcomeId:card.activeOutcomeId, stepId:card.stepId, dependencyIds});
+      return [];
+    }
+    const sourceSlot = card.chainId ? outcome.stepSourceSlot || outcome.statedSourceSlot || card.sourceSlot : card.sourceSlot;
+    const reservationKind = reservationKindFor(card,outcome);
+    const routeResources = (card.recoveryRequired || [sourceSlot,card.targetSlot].some(slot=>["VN","VS"].includes(slot))) ? ["VN","VS"] : [];
+    return [{
+      reservationId:`sde-canonical-reservation-v1|${card.activeOutcomeId}`,
+      reservationKind,
+      obligationId:card.obligationId,
+      stepId:card.stepId,
+      activeOutcomeId:card.activeOutcomeId,
+      canonicalCardId:card.canonicalCardId,
+      vehicleId:card.vehicleId,
+      sourceSlot,
+      targetSlot:card.targetSlot,
+      chainId:card.chainId,
+      sequenceStep:card.sequenceStep,
+      status:card.status,
+      dependencyIds,
+      resolvedDependencyOutcomeIds,
+      reservedFromStep:card.stepId,
+      releasedAfterStep:"",
+      releaseOutcomeId:"",
+      startOrder:getRank(card.activeOutcomeId),
+      endOrder:null,
+      routeResources,
+      physicalValidation:cloneSdeCanonicalValue(outcome.physicalValidation || {valid:true}),
+      producerProvenance:cloneSdeCanonicalValue(card.producerProvenance || {producer:outcome.producer, provenance:outcome.provenance}),
+      legacyAliases:sortSdeCanonicalObjects(card.legacyAliases || outcome.legacyAliases || [])
+    }];
+  });
+  (plan.reservationsPreview || []).filter(preview=>!proposalEntries.some(item=>item.activeOutcomeId === preview.candidateOutcomeId)).forEach(preview=>{
+    recordConflict("RESERVATION_WITHOUT_ACTIONABLE_OUTCOME", [], {activeOutcomeId:preview.candidateOutcomeId, stepId:preview.stepId, targetSlot:preview.targetSlot});
+  });
+  (plan.conflicts || []).filter(conflict=>conflict.code === "overlapping_target_reservation").forEach(conflict=>{
+    const candidateOutcomes = (conflict.candidateOutcomeIds || []).map(id=>outcomeById.get(id)).filter(Boolean);
+    const chainIds = sortSdeCanonicalStrings(candidateOutcomes.map(outcome=>outcome.chainId || outcome.chainScope));
+    recordConflict("TARGET_INTERVAL_OVERLAP", [], {targetSlot:conflict.targetSlot, activeOutcomeIds:sortSdeCanonicalStrings(conflict.candidateOutcomeIds || [])});
+    if(chainIds.length > 1) recordConflict("OVERLAPPING_CHAIN_TARGET", [], {targetSlot:conflict.targetSlot, chainIds});
+  });
+  sortSdeCanonicalStrings(proposalEntries.map(item=>item.chainId)).forEach(chainId=>{
+    const chainEntries = proposalEntries.filter(item=>item.chainId === chainId).sort((left,right)=>left.startOrder - right.startOrder || left.activeOutcomeId.localeCompare(right.activeOutcomeId));
+    chainEntries.slice(1).forEach((entry,index)=>{
+      const previous = chainEntries[index];
+      if(!isOrderedBefore(previous.activeOutcomeId,entry.activeOutcomeId)) recordConflict("MISSING_DEPENDENCY", [entry], {chainId, previousOutcomeId:previous.activeOutcomeId, activeOutcomeId:entry.activeOutcomeId});
+    });
+  });
+  const findReleaseEntry = (vehicleId,slot,afterOutcomeId="") => {
+    const eligible = proposalEntries.filter(item=>
+      !rejectedReservationIds.has(item.reservationId)
+      &&
+      item.vehicleId === vehicleId
+      && item.sourceSlot === slot
+      && item.activeOutcomeId !== afterOutcomeId
+      && (!afterOutcomeId || isOrderedBefore(afterOutcomeId,item.activeOutcomeId))
+    ).sort((left,right)=>left.startOrder - right.startOrder || left.activeOutcomeId.localeCompare(right.activeOutcomeId));
+    if(!eligible.length) return null;
+    const first = eligible[0];
+    if(eligible.slice(1).some(item=>!isOrderedBefore(first.activeOutcomeId,item.activeOutcomeId))) return null;
+    return first;
+  };
+  proposalEntries.forEach(reservation=>{
+    const release = findReleaseEntry(reservation.vehicleId,reservation.targetSlot,reservation.activeOutcomeId);
+    if(!release) return;
+    reservation.releasedAfterStep = release.stepId;
+    reservation.releaseOutcomeId = release.activeOutcomeId;
+    reservation.endOrder = release.startOrder;
+  });
+  const actualOccupancies = sortSdeCanonicalObjects((plan.actualPlacements || []).map(placement=>{
+    const slot = normalizeSlot(placement.slot);
+    const vehicleId = sanitizeVehicleValue(placement.vehicleId);
+    const release = findReleaseEntry(vehicleId,slot);
+    return {
+      reservationId:`sde-canonical-actual-v1|${normalizeSdeCanonicalToken(vehicleId)}|${slot}`,
+      reservationKind:"actual_occupancy",
+      obligationId:"",
+      stepId:"actual",
+      activeOutcomeId:"",
+      canonicalCardId:"",
+      vehicleId,
+      sourceSlot:slot,
+      targetSlot:slot,
+      chainId:"",
+      sequenceStep:"actual",
+      status:"actual_occupancy",
+      dependencyIds:[],
+      reservedFromStep:"actual",
+      releasedAfterStep:release?.stepId || "",
+      releaseOutcomeId:release?.activeOutcomeId || "",
+      startOrder:-1,
+      endOrder:release ? release.startOrder : null,
+      physicalValidation:{valid:true, reason:"canonical_actual_placement"},
+      producerProvenance:{producer:"canonical_actual", provenance:placement.provenance || placement.source || plan.metadata?.selectedActualSource || "canonical_actual"},
+      legacyAliases:[]
+    };
+  }));
+  const recordSequentialReuse = (earlier,later,slot,reason) => {
+    diagnostics.push({
+      classification:"LEGITIMATE_SEQUENTIAL_REUSE",
+      severity:"info",
+      slot,
+      earlierReservationId:earlier.reservationId,
+      laterReservationId:later.reservationId,
+      reason
+    });
+  };
+  const releasesBefore = (earlier,later) => Boolean(
+    earlier.releaseOutcomeId && (earlier.releaseOutcomeId === later.activeOutcomeId || isOrderedBefore(earlier.releaseOutcomeId,later.activeOutcomeId))
+  );
+  for(let leftIndex=0; leftIndex<proposalEntries.length; leftIndex+=1){
+    for(let rightIndex=leftIndex + 1; rightIndex<proposalEntries.length; rightIndex+=1){
+      const left = proposalEntries[leftIndex];
+      const right = proposalEntries[rightIndex];
+      if(left.targetSlot === right.targetSlot){
+        if(releasesBefore(left,right)) recordSequentialReuse(left,right,left.targetSlot,"dependency_validated_release");
+        else if(releasesBefore(right,left)) recordSequentialReuse(right,left,left.targetSlot,"dependency_validated_release");
+        else{
+          recordConflict("TARGET_INTERVAL_OVERLAP", [left,right], {targetSlot:left.targetSlot});
+          if(left.chainId && right.chainId && left.chainId !== right.chainId) recordConflict("OVERLAPPING_CHAIN_TARGET", [left,right], {targetSlot:left.targetSlot, chainIds:sortSdeCanonicalStrings([left.chainId,right.chainId])});
+          if(!left.releaseOutcomeId && !right.releaseOutcomeId) recordConflict("MISSING_RELEASE_STEP", [left,right], {targetSlot:left.targetSlot});
+          else recordConflict("MISSING_DEPENDENCY", [left,right], {targetSlot:left.targetSlot});
+        }
+      }
+      if(left.vehicleId === right.vehicleId && left.targetSlot !== right.targetSlot){
+        const leftBeforeRight = left.targetSlot === right.sourceSlot && isOrderedBefore(left.activeOutcomeId,right.activeOutcomeId);
+        const rightBeforeLeft = right.targetSlot === left.sourceSlot && isOrderedBefore(right.activeOutcomeId,left.activeOutcomeId);
+        if(!leftBeforeRight && !rightBeforeLeft) recordConflict("VEHICLE_INTERVAL_OVERLAP", [left,right], {vehicleId:left.vehicleId, targetSlots:sortSdeCanonicalStrings([left.targetSlot,right.targetSlot])});
+      }
+      const sharedResources = left.routeResources.filter(resource=>right.routeResources.includes(resource));
+      const resourceOrdered = isOrderedBefore(left.activeOutcomeId,right.activeOutcomeId) || isOrderedBefore(right.activeOutcomeId,left.activeOutcomeId);
+      if(sharedResources.length && (!left.chainId || !right.chainId || left.chainId !== right.chainId || !resourceOrdered)){
+        sharedResources.forEach(resource=>recordConflict(`${resource}_RESOURCE_OVERLAP`, [left,right], {resource, chainIds:sortSdeCanonicalStrings([left.chainId,right.chainId])}));
+      }
+    }
+  }
+  actualOccupancies.forEach(occupancy=>{
+    proposalEntries.filter(reservation=>reservation.targetSlot === occupancy.targetSlot && reservation.vehicleId !== occupancy.vehicleId).forEach(reservation=>{
+      if(occupancy.releaseOutcomeId && isOrderedBefore(occupancy.releaseOutcomeId,reservation.activeOutcomeId)){
+        recordSequentialReuse(occupancy,reservation,occupancy.targetSlot,"actual_occupancy_released_by_dependency");
+        return;
+      }
+      recordConflict("ACTUAL_OCCUPANCY_CONFLICT", [reservation], {targetSlot:occupancy.targetSlot, occupyingVehicleId:occupancy.vehicleId});
+      recordConflict(occupancy.releaseOutcomeId ? "MISSING_DEPENDENCY" : "MISSING_RELEASE_STEP", [reservation], {targetSlot:occupancy.targetSlot, occupyingVehicleId:occupancy.vehicleId});
+    });
+  });
+  const reservations = sortSdeCanonicalObjects(proposalEntries.filter(item=>!rejectedReservationIds.has(item.reservationId)));
+  const acceptedIds = new Set(reservations.map(item=>item.activeOutcomeId));
+  actionableIds.forEach(activeOutcomeId=>{
+    const card = (cards.actionableCards || []).find(item=>item.activeOutcomeId === activeOutcomeId);
+    if(card?.targetSlot && !acceptedIds.has(activeOutcomeId)) recordConflict("ACTIONABLE_OUTCOME_WITHOUT_RESERVATION", [], {activeOutcomeId, stepId:card.stepId, targetSlot:card.targetSlot});
+  });
+  const reservationsBySlot = Object.fromEntries(sortSdeCanonicalStrings(reservations.map(item=>item.targetSlot)).map(slot=>[
+    slot,
+    sortSdeCanonicalObjects(reservations.filter(item=>item.targetSlot === slot))
+  ]));
+  const reservationsByOutcomeId = Object.fromEntries(reservations.map(item=>[item.activeOutcomeId,item]).sort(([left],[right])=>left.localeCompare(right)));
+  const chainTimelines = sortSdeCanonicalObjects((plan.activeChains || []).map(chain=>({
+    chainId:chain.chainId,
+    steps:sortSdeCanonicalObjects(projectionCards.filter(card=>card.chainId === chain.chainId).map(card=>{
+      const reservation = proposalEntries.find(item=>item.activeOutcomeId === card.activeOutcomeId);
+      return {
+        activeOutcomeId:card.activeOutcomeId,
+        stepId:card.stepId,
+        sequenceStep:card.sequenceStep,
+        sourceSlot:reservation?.sourceSlot || card.sourceSlot,
+        targetSlot:card.targetSlot,
+        dependencyIds:sortSdeCanonicalStrings(card.dependencyIds || []),
+        reservationId:reservation?.reservationId || "",
+        reservedFromStep:reservation?.reservedFromStep || "",
+        releasedAfterStep:reservation?.releasedAfterStep || "",
+        startOrder:reservation?.startOrder ?? null,
+        accepted:Boolean(reservation && !rejectedReservationIds.has(reservation.reservationId)),
+        routeResources:reservation?.routeResources || []
+      };
+    }))
+  })));
+  return {
+    actualOccupancies,
+    reservations,
+    reservationsBySlot,
+    reservationsByOutcomeId,
+    chainTimelines,
+    conflicts:sortSdeCanonicalObjects(conflicts),
+    diagnostics:sortSdeCanonicalObjects(diagnostics),
+    metadata:{
+      schemaVersion:"sde-canonical-reservation-projection-v1",
+      intervalRule:"target-held-from-arrival-until-explicit-dependent-release",
+      actualOccupancyCount:actualOccupancies.length,
+      proposedReservationCount:proposalEntries.length,
+      acceptedReservationCount:reservations.length,
+      rejectedReservationCount:rejectedReservationIds.size,
+      conflictCount:conflicts.length,
+      diagnosticCount:diagnostics.length
+    }
+  };
+}
+
+function compareSdeCanonicalReservationProjectionWithLegacy(reservationProjection, legacy={}){
+  const legacyReservations = Array.isArray(legacy.reservations) ? legacy.reservations : [];
+  const canonicalReservations = Array.isArray(reservationProjection?.reservations) ? reservationProjection.reservations : [];
+  const legacyEntries = legacyReservations.map(item=>({
+    targetSlot:normalizeSlot(item?.targetSlot || item?.slot || item?.recommendation?.slot),
+    vehicleId:sanitizeVehicleValue(item?.vehicle || item?.vehicleId || item?.need?.vehicle),
+    activeOutcomeId:String(item?.activeOutcomeId || item?.candidateOutcomeId || "").trim()
+  })).filter(item=>item.targetSlot);
+  const canonicalEntries = canonicalReservations.map(item=>({targetSlot:item.targetSlot, vehicleId:item.vehicleId, activeOutcomeId:item.activeOutcomeId}));
+  const classifications = new Set();
+  const legacyBySlot = new Map();
+  legacyEntries.forEach(item=>legacyBySlot.set(item.targetSlot,[...(legacyBySlot.get(item.targetSlot) || []),item]));
+  if(Array.from(legacyBySlot.values()).some(items=>items.length > 1)){
+    classifications.add("LEGACY_DUPLICATE_RESERVATION");
+    classifications.add("LEGACY_OVERLAPPING_TARGET");
+  }
+  const entryKey = item=>`${item.targetSlot}|${normalizeSdeCanonicalToken(item.vehicleId)}`;
+  const legacyKeys = legacyEntries.map(entryKey);
+  const canonicalKeys = canonicalEntries.map(entryKey);
+  const legacyOnly = legacyEntries.filter(item=>!canonicalKeys.includes(entryKey(item)));
+  const canonicalOnly = canonicalEntries.filter(item=>!legacyKeys.includes(entryKey(item)));
+  if(legacyOnly.length) classifications.add("LEGACY_EXTRA_RESERVATION");
+  if(canonicalOnly.length) classifications.add("LEGACY_MISSING_RESERVATION");
+  const diagnosticTargets = sortSdeCanonicalStrings((reservationProjection?.diagnostics || []).flatMap(item=>item.targetSlots || []));
+  if(legacyOnly.some(item=>(reservationProjection?.conflicts || []).some(conflict=>conflict.targetSlot === item.targetSlot) || diagnosticTargets.includes(item.targetSlot))) classifications.add("LEGACY_RESERVATION_FOR_DIAGNOSTIC");
+  const sequentialReuse = (reservationProjection?.diagnostics || []).filter(item=>item.classification === "LEGITIMATE_SEQUENTIAL_REUSE");
+  if(sequentialReuse.length){
+    classifications.add("CANONICAL_SEQUENCE_ONLY");
+    classifications.add("LEGITIMATE_SEQUENTIAL_DIFFERENCE");
+  }
+  if(!classifications.size && stableStringifySdeCanonicalValue([...legacyKeys].sort()) === stableStringifySdeCanonicalValue([...canonicalKeys].sort())){
+    classifications.add("RESERVATION_PROJECTION_MATCH");
+  }
+  return {
+    classifications:Array.from(classifications).sort(),
+    legacy:{reservationCount:legacyEntries.length, entries:sortSdeCanonicalObjects(legacyEntries)},
+    canonical:{actualOccupancyCount:reservationProjection?.actualOccupancies?.length || 0, reservationCount:canonicalEntries.length, entries:sortSdeCanonicalObjects(canonicalEntries), conflictCount:reservationProjection?.conflicts?.length || 0},
+    differences:{legacyOnly:sortSdeCanonicalObjects(legacyOnly), canonicalOnly:sortSdeCanonicalObjects(canonicalOnly)},
+    sequentialReuse
+  };
+}
+
 const SDE_CANONICAL_SHADOW_CLASSIFICATIONS = [
   "MATCH", "LEGACY_DUPLICATE_CARD", "LEGACY_DUPLICATE_TARGET",
   "LEGACY_DUPLICATE_RESERVATION", "LEGACY_DUPLICATE_OVERLAY",
@@ -22540,6 +22875,12 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
   const cardProjectionComparisonStarted = getSdeCanonicalShadowNow();
   const cardProjectionComparison = compareSdeCanonicalCardProjectionWithLegacy(cardProjection, snapshot.legacy);
   const cardProjectionComparisonMs = getSdeCanonicalShadowNow() - cardProjectionComparisonStarted;
+  const reservationProjectionStarted = getSdeCanonicalShadowNow();
+  const reservationProjection = buildSdeCanonicalReservationProjection(canonicalPlan, cardProjection);
+  const reservationProjectionMs = getSdeCanonicalShadowNow() - reservationProjectionStarted;
+  const reservationProjectionComparisonStarted = getSdeCanonicalShadowNow();
+  const reservationProjectionComparison = compareSdeCanonicalReservationProjectionWithLegacy(reservationProjection, snapshot.legacy);
+  const reservationProjectionComparisonMs = getSdeCanonicalShadowNow() - reservationProjectionComparisonStarted;
   const activeSignatures = new Set((snapshot.legacy?.activeCards || []).map(stableStringifySdeCanonicalValue));
   const activeIds = new Set((snapshot.legacy?.activeCards || []).map(getSdeCanonicalShadowCardId));
   const candidateActive = candidate => activeSignatures.has(stableStringifySdeCanonicalValue(candidate.raw))
@@ -22658,7 +22999,7 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
   });
   const actualStateDifferences = canonicalPlan.diagnostics.filter(item=>["actual_source_mismatch","stale_actual_source","missing_canonical_actual_source"].includes(item.code));
   if(actualStateDifferences.some(item=>item.code !== "missing_canonical_actual_source")) globalClassifications.add("ACTUAL_SOURCE_MISMATCH");
-  const comparisonMs = getSdeCanonicalShadowNow() - comparisonStarted - canonicalMs - cardProjectionMs - cardProjectionComparisonMs;
+  const comparisonMs = getSdeCanonicalShadowNow() - comparisonStarted - canonicalMs - cardProjectionMs - cardProjectionComparisonMs - reservationProjectionMs - reservationProjectionComparisonMs;
   const snapshotMs = Number(options.snapshotMs || 0);
   const report = {
     generatedAt:String(options.generatedAt || new Date().toISOString()),
@@ -22682,10 +23023,14 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
       overlayCount:canonicalPlan.overlaysPreview.length,
       exitingCardCount:canonicalPlan.exitingCards.length,
       projectedActionableCardCount:cardProjection.actionableCards.length,
-      projectedActiveProposalCount:cardProjection.activeProposalCount
+      projectedActiveProposalCount:cardProjection.activeProposalCount,
+      projectedActualOccupancyCount:reservationProjection.actualOccupancies.length,
+      projectedReservationCount:reservationProjection.reservations.length
     },
     cardProjection,
     cardProjectionComparison,
+    reservationProjection,
+    reservationProjectionComparison,
     obligationComparisons:sortSdeCanonicalObjects(obligationComparisons),
     cardDifferences:sortSdeCanonicalObjects(cardDifferences),
     reservationDifferences:sortSdeCanonicalObjects(reservationDifferences),
@@ -22693,7 +23038,7 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
     actualStateDifferences:sortSdeCanonicalObjects(actualStateDifferences),
     diagnostics:canonicalPlan.diagnostics,
     conflicts:canonicalPlan.conflicts,
-    performance:{snapshotMs, canonicalMs, cardProjectionMs, cardProjectionComparisonMs, comparisonMs, totalMs:snapshotMs + canonicalMs + cardProjectionMs + cardProjectionComparisonMs + comparisonMs}
+    performance:{snapshotMs, canonicalMs, cardProjectionMs, cardProjectionComparisonMs, reservationProjectionMs, reservationProjectionComparisonMs, comparisonMs, totalMs:snapshotMs + canonicalMs + cardProjectionMs + cardProjectionComparisonMs + reservationProjectionMs + reservationProjectionComparisonMs + comparisonMs}
   };
   return report;
 }
