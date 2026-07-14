@@ -2823,6 +2823,25 @@ button{padding:12px 12px}
   font-weight:800;
 }
 
+.sde-shift-score-number.unavailable{
+  display:grid;
+  align-content:end;
+  gap:8px;
+}
+
+.sde-shift-score-number.unavailable strong{
+  font-size:clamp(26px, 4vw, 46px);
+  line-height:1;
+  letter-spacing:-.035em;
+}
+
+.sde-shift-score-number.unavailable span{
+  max-width:260px;
+  padding-bottom:0;
+  font-size:14px;
+  line-height:1.35;
+}
+
 .sde-shift-score.good strong{ color:#6dffbd; text-shadow:0 0 28px rgba(109,255,189,.45); }
 .sde-shift-score.warn strong{ color:#ffd166; text-shadow:0 0 28px rgba(255,209,102,.40); }
 .sde-shift-score.bad strong{ color:#ff6b6b; text-shadow:0 0 28px rgba(255,107,107,.42); }
@@ -33729,6 +33748,24 @@ function buildSdeCanonicalProductionDiagnostics(reader){
   ])).values()));
 }
 
+function buildSdeCanonicalProductionScorePresentation(reader={}, diagnostics=[], score=null){
+  const actionableCount = Array.isArray(reader?.cardProjection?.actionableCards)
+    ? reader.cardProjection.actionableCards.length
+    : 0;
+  const diagnosticCount = Array.isArray(diagnostics) ? diagnostics.length : 0;
+  const numericScore = Number(score);
+  const calculated = actionableCount > 0 && Number.isFinite(numericScore);
+  return calculated
+    ? {calculated:true, label:String(numericScore), detail:"/ 100"}
+    : {
+        calculated:false,
+        label:"Ikke beregnet",
+        detail:diagnosticCount > 0
+          ? "Ingen gjennomførbar plan"
+          : "Ingen gjennomførbar canonical plan"
+      };
+}
+
 function buildSdeCanonicalGraphicOverviewData(reader){
   const layoutRows = getSdeNightPlacementLayoutRows();
   const washSlots = washMachineSlots.map(normalizeSlot).filter(Boolean);
@@ -33804,15 +33841,6 @@ function buildSdeCanonicalGraphicOverviewData(reader){
   };
   (reader.graphicProjection.activeOverlays || []).forEach(overlay=>addOverlay(overlay,"active"));
   (reader.graphicProjection.deferredOverlays || []).forEach(overlay=>addOverlay(overlay,"deferred"));
-  (reader.graphicProjection.unresolvedDiagnostics || []).forEach(item=>{
-    const displaySlot = [item.sourceSlot,...(item.targetSlots || [])].map(normalizeSlot).find(slot=>slots[slot]);
-    if(!displaySlot) return;
-    slots[displaySlot].unresolvedRows.push({
-      vehicle:sanitizeVehicleValue(item.vehicleId),
-      reason:item.message || item.diagnosticType || "Canonical diagnostic",
-      activeOutcomeId:(item.candidateOutcomeIds || [])[0] || ""
-    });
-  });
   (reader.graphicProjection.conflicts || []).forEach(item=>{
     warnings.push({
       code:item.classification || "canonical_graphic_conflict",
@@ -33838,7 +33866,7 @@ function buildSdeCanonicalGraphicOverviewData(reader){
       empty:ordinarySlots.size - ordinaryOccupied,
       activeMoves:(reader.cardProjection.actionableCards || []).length,
       overlays:allOverlays.length,
-      unresolved:(reader.graphicProjection.unresolvedDiagnostics || []).length
+      unresolved:0
     }
   };
 }
@@ -33904,7 +33932,7 @@ function buildSdeCanonicalDiagnosticsHtml(diagnostics, integrityStatus){
   return buildSdeDiagnosticSectionHtml({
     id:"canonical-production-diagnostics",
     title:"Canonical diagnostics",
-    count:`${diagnostics.length} · integritet ${integrityStatus || "ukjent"}`,
+    count:`${diagnostics.length} · Teknisk integritet: ${integrityStatus || "ukjent"}`,
     bodyHtml:diagnostics.map(item=>`<div class="sde-shift-unresolved-item" data-sde-canonical-diagnostic="${escapeHtml(item.diagnosticType)}"><strong>${escapeHtml(item.vehicleId || "Canonical behov")} · ${escapeHtml(item.diagnosticType)}</strong><br>${escapeHtml(item.sourceSlot || "source ukjent")}${item.targetSlots?.length ? ` → ${escapeHtml(item.targetSlots.join(", "))}` : ""}<br>${escapeHtml(item.explanation)}</div>`).join("")
   });
 }
@@ -33962,12 +33990,13 @@ function renderSdeCanonicalProductionReader(){
   const cardsHtml = projectedCards.map((card,index)=>buildSdeCanonicalProductionCardHtml(card,reader,index)).filter(Boolean).join("")
     || `<div class="sde-shift-empty">Ingen actionable canonical skiftekort. Se canonical diagnostics for behov som er stanset.</div>`;
   const diagnosticsHtml = buildSdeCanonicalDiagnosticsHtml(diagnostics, reader.integrityReport.status);
+  const scorePresentation = buildSdeCanonicalProductionScorePresentation(reader, diagnostics, data.score);
   const nightPlacementOverviewHtml = graphicPlanVisible
     ? renderSdeNightPlacementOverview(data, {overview:graphicOverview, readerMode:"canonical"})
     : "";
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
   const activeProposalCount = Number(reader.cardProjection.activeProposalCount || 0);
-  const scoreClass = getSdeShiftScoreClass(data.score);
+  const scoreClass = scorePresentation.calculated ? getSdeShiftScoreClass(data.score) : "warn";
   sdeShiftLastRenderedData = data;
   sdeShiftLastDiagnosticContext = null;
   root.onclick = event=>{
@@ -33977,7 +34006,7 @@ function renderSdeCanonicalProductionReader(){
   root.innerHTML = `
     ${buildSdeProductionReaderStatusHtml("canonical")}
     <div class="sde-shift-hero">
-      <div class="sde-shift-score ${scoreClass}"><div class="sde-shift-eyebrow">SDE-resultat</div><div class="sde-shift-title">Skiftebevegelser</div><div class="sde-shift-score-number"><strong>${escapeHtml(String(data.score))}</strong><span>/ 100</span></div></div>
+      <div class="sde-shift-score ${scoreClass}"><div class="sde-shift-eyebrow">SDE-resultat</div><div class="sde-shift-title">Skiftebevegelser</div><div class="sde-shift-score-number${scorePresentation.calculated ? "" : " unavailable"}" data-sde-canonical-score-state="${scorePresentation.calculated ? "calculated" : "not-calculated"}"><strong>${escapeHtml(scorePresentation.label)}</strong><span>${escapeHtml(scorePresentation.detail)}</span></div></div>
       <div class="sde-shift-kpis">
         <div class="sde-shift-kpi"><strong>${escapeHtml(String(activeProposalCount))}</strong><span>canonical aktive forslag</span></div>
         <div class="sde-shift-kpi"><strong>${escapeHtml(String(reader.cardProjection.actionableCards.length))}</strong><span>actionable kort</span></div>
