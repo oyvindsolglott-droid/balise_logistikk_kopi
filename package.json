@@ -4,7 +4,13 @@
   "private": true,
   "description": "Permanent test-only firewall for the SDE canonical A-W contracts.",
   "scripts": {
-    "test": "node --test --test-concurrency=1 tests/sde/firewall.test.cjs"
+    "test": "npm run test:sde:strict",
+    "test:sde:strict": "node tests/sde/strict/strict-runner.cjs",
+    "test:sde:baseline-audit": "node tests/sde/strict/baseline-audit.cjs",
+    "test:sde:determinism": "node tests/sde/strict/determinism-audit.cjs",
+    "test:sde:mutations": "node tests/sde/strict/mutation-audit.cjs",
+    "test:sde:contracts": "node --test --test-concurrency=1 tests/sde/firewall.test.cjs",
+    "test:sde:qualification": "npm run test:sde:determinism && npm run test:sde:contracts && npm run test:sde:mutations"
   },
   "engines": {
     "node": ">=24"
