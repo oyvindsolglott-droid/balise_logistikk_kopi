@@ -1,0 +1,12 @@
+{
+  "name": "sde-permanent-regression-firewall",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Permanent test-only firewall for the SDE canonical A-W contracts.",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/sde/firewall.test.cjs"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
