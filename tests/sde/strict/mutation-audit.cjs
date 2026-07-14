@@ -62,6 +62,10 @@ function applySemanticStrategy(value, strategies, name) {
         name: edit.name,
         beforeSnippetSha256: sha256(edit.before),
         afterSnippetSha256: sha256(edit.after),
+        ...(strategy.reportSnippets ? {
+          beforeSnippet: edit.before,
+          afterSnippet: edit.after,
+        } : {}),
       })),
     },
   };
@@ -91,6 +95,20 @@ const canonicalLocalFirstReturn = "return Array.from(new Set([...ordinaryCandida
 const forcedVnFirstReturn = "return preferDedicatedVn ? [\"VN\", ...ordinaryCandidates.filter(slot=>slot !== \"VN\")] : ordinaryCandidates; /* mutation: force VN before local relief */";
 const localReturnValidation = "if(!returnAccessOption) return null;";
 const bypassedLocalReturnValidation = "if(false && !returnAccessOption) return null; /* mutation: bypass mandatory local return validation */";
+const legacyProjectedCardOrder = "...(reader.cardProjection.actionableCards || []),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || []),\n    ...(reader.cardProjection.exitingCards || [])";
+const reversedLegacyProjectedCardOrder = "...(reader.cardProjection.actionableCards || []).reverse(),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || []),\n    ...(reader.cardProjection.exitingCards || []).reverse()";
+const reorderedLegacyPlaceholderCards = "...(reader.cardProjection.exitingCards || []),\n    ...(reader.cardProjection.actionableCards || []),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || [])";
+const legacyProjectedCardsFunction = `function getSdeCanonicalProductionProjectedCards(reader){
+  return [
+    ${legacyProjectedCardOrder}
+  ];
+}`;
+const reversedLegacyProjectedCardsFunction = legacyProjectedCardsFunction.replace(legacyProjectedCardOrder, reversedLegacyProjectedCardOrder);
+const reorderedLegacyPlaceholderCardsFunction = legacyProjectedCardsFunction.replace(legacyProjectedCardOrder, reorderedLegacyPlaceholderCards);
+const canonicalFinalCardOrder = "if(left.exiting !== right.exiting) return left.exiting ? -1 : 1;\n    if(left.exiting && right.exiting && left.cancelledAtMs !== right.cancelledAtMs){\n      return left.cancelledAtMs - right.cancelledAtMs;\n    }";
+const reversedCanonicalFinalCardOrder = "if(left.exiting !== right.exiting) return left.exiting ? 1 : -1; /* mutation: replacement before exiting */\n    if(left.exiting && right.exiting && left.cancelledAtMs !== right.cancelledAtMs){\n      return right.cancelledAtMs - left.cancelledAtMs; /* mutation: newest exiting first */\n    }";
+const removedCancelledCard = 'if(cancelledUiState.hidden) return "";';
+const retainedCancelledCardPlaceholder = 'if(cancelledUiState.hidden) return `<article class="sde-shift-card sde-mutation-placeholder" data-sde-canonical-card-id="${card.canonicalCardId}" data-sde-placeholder="true" style="display:block;min-width:240px;min-height:1px"></article>`;';
 
 const mutations = [
   {
@@ -150,16 +168,61 @@ const mutations = [
   },
   {
     id: "H-reverse-card-order",
-    apply: html => replaceOnce(html, "...(reader.cardProjection.actionableCards || []),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || []),\n    ...(reader.cardProjection.exitingCards || [])", "...(reader.cardProjection.actionableCards || []).reverse(),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || []),\n    ...(reader.cardProjection.exitingCards || []).reverse()", "card order"),
+    apply: html => applySemanticStrategy(html, [
+      {
+        id: "legacy-projected-array-order",
+        functionName: "getSdeCanonicalProductionProjectedCards",
+        reportSnippets: true,
+        matches: sourceValue => countOccurrences(sourceValue, legacyProjectedCardsFunction) === 1
+          && countOccurrences(sourceValue, canonicalFinalCardOrder) === 0,
+        edits: [{
+          name: "legacy projected card order",
+          before: legacyProjectedCardsFunction,
+          after: reversedLegacyProjectedCardsFunction,
+        }],
+      },
+      {
+        id: "canonical-final-local-card-order",
+        functionName: "orderSdeCanonicalProductionProjectedCards",
+        reportSnippets: true,
+        matches: sourceValue => countOccurrences(sourceValue, canonicalFinalCardOrder) === 1,
+        edits: [{
+          name: "final local exiting and replacement order",
+          before: canonicalFinalCardOrder,
+          after: reversedCanonicalFinalCardOrder,
+        }],
+      },
+    ], "card order"),
     catches: ["INV-CANCEL-010", "INV-CANCEL-011"],
   },
   {
     id: "I-keep-placeholder-after-removeAt",
-    apply: html => {
-      let changed = replaceOnce(html, "...(reader.cardProjection.actionableCards || []),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || []),\n    ...(reader.cardProjection.exitingCards || [])", "...(reader.cardProjection.exitingCards || []),\n    ...(reader.cardProjection.actionableCards || []),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || [])", "placeholder order");
-      changed = replaceOnce(changed, 'if(cancelledUiState.hidden) return "";', 'if(cancelledUiState.hidden) return `<article data-sde-canonical-card-id="${card.canonicalCardId}" data-sde-placeholder="true"></article>`;', "placeholder");
-      return replaceOnce(changed, "const cardsHtml = projectedCards.map((card,index)=>", "const cardsHtml = projectedCards.reverse().map((card,index)=>", "placeholder render order");
-    },
+    apply: html => applySemanticStrategy(html, [
+      {
+        id: "legacy-placeholder-and-render-order",
+        functionName: "getSdeCanonicalProductionProjectedCards + buildSdeCanonicalProductionCardHtml + renderSdeCanonicalProductionReader",
+        reportSnippets: true,
+        matches: sourceValue => countOccurrences(sourceValue, legacyProjectedCardsFunction) === 1
+          && countOccurrences(sourceValue, canonicalFinalCardOrder) === 0,
+        edits: [
+          {name: "legacy placeholder order", before: legacyProjectedCardsFunction, after: reorderedLegacyPlaceholderCardsFunction},
+          {name: "legacy placeholder", before: removedCancelledCard, after: 'if(cancelledUiState.hidden) return `<article data-sde-canonical-card-id="${card.canonicalCardId}" data-sde-placeholder="true"></article>`;'},
+          {name: "legacy placeholder render order", before: "const cardsHtml = projectedCards.map((card,index)=>", after: "const cardsHtml = projectedCards.reverse().map((card,index)=>"},
+        ],
+      },
+      {
+        id: "canonical-layout-placeholder-after-removeAt",
+        functionName: "buildSdeCanonicalProductionCardHtml",
+        reportSnippets: true,
+        matches: sourceValue => countOccurrences(sourceValue, canonicalFinalCardOrder) === 1
+          && countOccurrences(sourceValue, removedCancelledCard) === 1,
+        edits: [{
+          name: "retain measurable cancelled-card layout placeholder",
+          before: removedCancelledCard,
+          after: retainedCancelledCardPlaceholder,
+        }],
+      },
+    ], "placeholder after removeAt"),
     catches: ["INV-CANCEL-012", "INV-CANCEL-013"],
   },
   {
