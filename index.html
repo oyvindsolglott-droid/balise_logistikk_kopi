@@ -14616,6 +14616,7 @@ function getSdeBestPhysicalBlockerReleaseTarget(vehicle, fromSlot, blockedFromSl
 }
 
 const SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT = "butt_track_n_blocker_temporary_vn_relief";
+const SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT = "target_access_temporary_relief";
 
 function getSdeButtTrackTemporaryVnPair(blockedFromSlot, blockerSlot){
   const blockedFrom = normalizeSlot(blockedFromSlot);
@@ -14758,6 +14759,36 @@ function getSdePhysicalBlockerReleaseCandidateOrder(vehicle, fromSlot, blockedFr
     .map(candidate=>candidate.slot);
 }
 
+function isSdeSafePhysicalBlockerAccessReliefMove(vehicle, fromSlot, toSlot, accessEnd, blockedFromSlot="", options={}){
+  const vehicleText = sanitizeVehicleValue(vehicle);
+  const from = normalizeSlot(fromSlot);
+  const to = normalizeSlot(toSlot);
+  const blockedFrom = normalizeSlot(blockedFromSlot);
+  const end = String(accessEnd || "").trim();
+  const avoidSlots = new Set((Array.isArray(options?.avoidSlots) ? options.avoidSlots : []).map(normalizeSlot).filter(Boolean));
+  if(!vehicleText || !from || !to || !end || from === to || to === blockedFrom || avoidSlots.has(to)) return false;
+  if(!inputSlots.includes(from) || !inputSlots.includes(to) || getSdeVehicleInSlot(to)) return false;
+  if(isSdeDiscouragedPlatformToPlatformMove(from,to)) return false;
+  if(typeof isTxpUnavailableSlot === "function" && (isTxpUnavailableSlot(from) || isTxpUnavailableSlot(to))) return false;
+  const sourceAccess = getSdeAccessOptionsForSlot(from,"source").find(option=>option?.end === end && option?.clear === true);
+  const targetAccess = getSdeAccessOptionsForSlot(to,"target").filter(option=>option?.clear === true);
+  if(!sourceAccess || !targetAccess.length) return false;
+  if(getSdeInternalBlockersBetweenSlots(from,to).length) return false;
+  return true;
+}
+
+function getSdePhysicalBlockerAccessReliefCandidateOrder(vehicle, fromSlot, blockedFromSlot="", accessEnd="", options={}){
+  const from = normalizeSlot(fromSlot);
+  const blockedFrom = normalizeSlot(blockedFromSlot);
+  const avoidSlots = new Set([blockedFrom,...(Array.isArray(options?.avoidSlots) ? options.avoidSlots : [])].map(normalizeSlot).filter(Boolean));
+  return getSdeResolutionCandidateSlots(from,blockedFrom)
+    .filter(slot=>!avoidSlots.has(slot))
+    .filter(slot=>isSdeSafePhysicalBlockerAccessReliefMove(vehicle,from,slot,accessEnd,blockedFrom,{avoidSlots:[...avoidSlots]}))
+    .map(slot=>({slot,score:scoreSdeResolutionTarget(slot)}))
+    .sort((left,right)=>right.score-left.score || left.slot.localeCompare(right.slot))
+    .map(item=>item.slot);
+}
+
 function buildSdePhysicalBlockerReturnAssessment(blockerVehicle, originSlot, freeingTarget, blockedVehicle, blockedFromSlot){
   const origin = normalizeSlot(originSlot);
   const target = normalizeSlot(freeingTarget);
@@ -14780,9 +14811,9 @@ function buildSdePhysicalBlockerReturnAssessment(blockerVehicle, originSlot, fre
 }
 
 function getSdePhysicalBlockerReturnPlanSummary(row){
-  const plan = row?.sdePhysicalVnReliefChain || row?.sdePhysicalVnReliefAssessment;
+  const plan = row?.sdePhysicalVnReliefChain || row?.sdePhysicalAccessReliefChain || row?.sdePhysicalVnReliefAssessment;
   const returnSlot = normalizeSlot(plan?.returnTargetSlot || plan?.returnSlot);
-  return row?.sdePhysicalResolutionContext === SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT && returnSlot
+  return [SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT,SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT].includes(row?.sdePhysicalResolutionContext) && returnSlot
     ? `Retur til ${returnSlot} er sekvensplanlagt etter hovedflyttingen.`
     : "Retur må vurderes etter utført frigjøring.";
 }
@@ -14864,12 +14895,21 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
     }
   );
   const lockedButtTrackVnRelief = Boolean(vnReliefAssessment.pair);
-  const ordinaryCandidateOrder = getSdePhysicalBlockerReleaseCandidateOrder(
-    blockerVehicle,
-    blockerSlot,
-    normalizeSlot(context.avoidSlot || blockedFromSlot),
-    {avoidSlots:baseAvoidSlots}
-  );
+  const accessReliefEnd = String(context?.accessReliefEnd || "").trim();
+  const ordinaryCandidateOrder = accessReliefEnd
+    ? getSdePhysicalBlockerAccessReliefCandidateOrder(
+        blockerVehicle,
+        blockerSlot,
+        normalizeSlot(context.avoidSlot || blockedFromSlot),
+        accessReliefEnd,
+        {avoidSlots:baseAvoidSlots}
+      )
+    : getSdePhysicalBlockerReleaseCandidateOrder(
+        blockerVehicle,
+        blockerSlot,
+        normalizeSlot(context.avoidSlot || blockedFromSlot),
+        {avoidSlots:baseAvoidSlots}
+      );
   const completeCandidateOrder = lockedButtTrackVnRelief
     ? (vnReliefAssessment.eligible ? ["VN"] : [])
     : Array.from(new Set(ordinaryCandidateOrder));
@@ -14932,7 +14972,9 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
     !avoidSlots.has(preferredTarget) &&
     (preferredTarget === "VN"
       ? vnReliefAssessment.eligible
-      : isSdeSafePhysicalBlockerReleaseMove(blockerVehicle, blockerSlot, preferredTarget, avoidSlot || blockedFromSlot, {avoidSlots:[...avoidSlots]}))
+      : accessReliefEnd
+        ? isSdeSafePhysicalBlockerAccessReliefMove(blockerVehicle, blockerSlot, preferredTarget, accessReliefEnd, avoidSlot || blockedFromSlot, {avoidSlots:[...avoidSlots]})
+        : isSdeSafePhysicalBlockerReleaseMove(blockerVehicle, blockerSlot, preferredTarget, avoidSlot || blockedFromSlot, {avoidSlots:[...avoidSlots]}))
       ? preferredTarget
       : "";
   const freeingTarget = safePreferredTarget || completeCandidateOrder.find(slot=>!rejectedTargets.has(slot)) || "";
@@ -14976,6 +15018,7 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
     );
   }
 
+  if(context?.allowNested === false) return null;
   const nestedBlockers = getSdePhysicalBlockersForReleaseQueue(blockerSlot, [blockedFromSlot, blockerSlot]);
   for(const nestedBlocker of nestedBlockers){
     const nestedVehicle = sanitizeVehicleValue(nestedBlocker.vehicle);
@@ -14994,6 +15037,7 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
       avoidSlot:blockerSlot,
       avoidSlots:[...avoidSlots, blockerSlot],
       sequenceReservedSlots:Array.isArray(context?.sequenceReservedSlots) ? context.sequenceReservedSlots : [],
+      allowNested:context?.allowNested !== false,
       annotation
     });
     if(nestedMove) return nestedMove;
@@ -15009,17 +15053,35 @@ function buildSdePhysicalBlockerFreeingMove(blockedRow, blockState, rows=[], con
   const contextAvoidSlots = Array.isArray(context?.avoidSlots)
     ? context.avoidSlots.map(normalizeSlot).filter(Boolean)
     : [];
+  const sequenceReservedSlots = new Set(
+    (Array.isArray(context?.sequenceReservedSlots) ? context.sequenceReservedSlots : contextAvoidSlots)
+      .map(normalizeSlot)
+      .filter(Boolean)
+  );
   const rankedBlockers = blockers
     .map((blocker,index)=>{
+      const returnTargetReserved = Boolean(
+        blockState?.accessAssessment?.targetAccessBlocked
+        && sequenceReservedSlots.has(normalizeSlot(blocker?.slot))
+      );
       const rejectedTargets = getSdePhysicalReleaseRejectedTargetsForBlocker(blockedRow, blockState, blocker);
-      const target = getSdeBestPhysicalBlockerReleaseTarget(blocker?.vehicle, blocker?.slot, blockState?.fromSlot, {
-        avoidSlots:[blockState?.fromSlot, blockState?.toSlot, ...contextAvoidSlots, ...rejectedTargets]
-      });
+      const accessReliefEnd = blockState?.accessAssessment?.targetAccessBlocked
+        ? String(blocker?.accessEnd || "").trim()
+        : "";
+      const target = accessReliefEnd
+        ? getSdePhysicalBlockerAccessReliefCandidateOrder(blocker?.vehicle, blocker?.slot, blockState?.fromSlot, accessReliefEnd, {
+            avoidSlots:[blockState?.fromSlot, blockState?.toSlot, ...contextAvoidSlots, ...rejectedTargets]
+          })[0] || ""
+        : getSdeBestPhysicalBlockerReleaseTarget(blocker?.vehicle, blocker?.slot, blockState?.fromSlot, {
+            avoidSlots:[blockState?.fromSlot, blockState?.toSlot, ...contextAvoidSlots, ...rejectedTargets]
+          });
       return {
         blocker,
         index,
         target,
-        score:target ? scoreSdeResolutionTarget(target) : -1
+        accessReliefEnd,
+        returnTargetReserved,
+        score:target && !returnTargetReserved ? scoreSdeResolutionTarget(target) : -1
       };
     })
     .sort((a,b)=>
@@ -15028,12 +15090,15 @@ function buildSdePhysicalBlockerFreeingMove(blockedRow, blockState, rows=[], con
       a.index - b.index
     );
 
-  for(const {blocker, target} of rankedBlockers){
+  for(const {blocker, target, accessReliefEnd, returnTargetReserved} of rankedBlockers){
+    if(returnTargetReserved) continue;
     const freeingMove = buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, blocker, rows, {
       visited:new Set(),
       avoidSlot:blockState.fromSlot,
       avoidSlots:[blockState.fromSlot, blockState.toSlot, ...contextAvoidSlots],
       sequenceReservedSlots:Array.isArray(context?.sequenceReservedSlots) ? context.sequenceReservedSlots : contextAvoidSlots,
+      allowNested:blockState?.accessAssessment?.targetAccessBlocked !== true,
+      accessReliefEnd,
       preferredTarget:target
     });
     if(freeingMove) return freeingMove;
@@ -15171,6 +15236,184 @@ function buildSdeTemporaryVnReliefChainPlan(blockedRow, blockState, freeingMove,
     recoveryTargetSlot:blockerFromSlot,
     sequenceStepCount:3
   };
+}
+
+function buildSdeTemporaryAccessReliefChainPlan(blockedRow, blockState, freeingMove, chainId, context={}){
+  if(
+    !blockedRow
+    || !blockState?.hardBlocked
+    || blockState?.accessAssessment?.targetAccessBlocked !== true
+    || freeingMove?.sdePhysicalResolutionContext === SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT
+  ) return null;
+
+  const releaseActionKey = getSdeMoveActionKey(freeingMove);
+  const mainActionKey = getSdeMoveActionKey(blockedRow);
+  const blockerVehicle = sanitizeVehicleValue(freeingMove?.vehicle);
+  const blockerFromSlot = normalizeSlot(freeingMove?.fromSlot || freeingMove?.arrivalSlot);
+  const holdingSlot = normalizeSlot(freeingMove?.recommendedSlot || freeingMove?.toSlot);
+  const blockedVehicle = sanitizeVehicleValue(blockState?.vehicle || blockedRow?.vehicle);
+  const blockedFromSlot = normalizeSlot(blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot);
+  const mainTargetSlot = normalizeSlot(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot);
+  const accessOption = (blockState?.accessAssessment?.targetAccessOptions || []).find(option=>
+    (option?.blockers || []).some(item=>
+      normalizeSlot(item?.slot) === blockerFromSlot
+      && haveSameSdeVehicleTokens(item?.vehicle, blockerVehicle)
+    )
+  );
+  const accessEnd = String(accessOption?.end || "").trim();
+  const targetTrack = String(accessOption?.track || getSdeSlotTrack(mainTargetSlot) || "").trim();
+  const reservedSlots = new Set(
+    (Array.isArray(context?.reservedSlots) ? context.reservedSlots : [])
+      .map(normalizeSlot)
+      .filter(Boolean)
+  );
+  if(
+    !releaseActionKey || !mainActionKey || !blockerVehicle || !blockerFromSlot || !holdingSlot
+    || !blockedVehicle || !blockedFromSlot || !mainTargetSlot || !accessEnd || !targetTrack
+    || holdingSlot === mainTargetSlot || holdingSlot === blockerFromSlot
+    || reservedSlots.has(blockerFromSlot)
+  ) return null;
+  if(getSdeVehicleInSlot(mainTargetSlot)) return null;
+
+  const returnAccessOption = getSdeAccessOptionsForSlot(blockerFromSlot, "target")
+    .find(option=>option?.end === accessEnd && option?.clear === true);
+  if(!returnAccessOption) return null;
+
+  const returnActionKey = [
+    "physical-access-return",
+    normalizeVehicleToken(blockerVehicle),
+    holdingSlot,
+    blockerFromSlot,
+    normalizeVehicleToken(blockedVehicle),
+    mainTargetSlot
+  ].join("|");
+  return {
+    context:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
+    chainId:String(chainId || "").trim(),
+    releaseActionKey,
+    mainActionKey,
+    returnActionKey,
+    blockerVehicle,
+    blockerFromSlot,
+    holdingSlot,
+    blockedVehicle,
+    blockedFromSlot,
+    mainTargetSlot,
+    returnTargetSlot:blockerFromSlot,
+    targetTrack,
+    accessEnd,
+    accessResource:`track-access|${targetTrack}|${accessEnd}`,
+    sequenceStepCount:3
+  };
+}
+
+function annotateSdeTemporaryAccessReliefMainRow(row, plan){
+  if(!row || !plan) return row;
+  return {
+    ...row,
+    sdePhysicalChainId:plan.chainId,
+    sdePhysicalChainStep:2,
+    sdePhysicalChainStepCount:3,
+    sdePhysicalDependsOn:[plan.releaseActionKey],
+    sdePhysicalDependencyLabel:`Steg 2 av 3 venter på midlertidig frigjøring: ${plan.blockerVehicle} ${plan.blockerFromSlot} → ${plan.holdingSlot}.`,
+    sdePhysicalDependencyRole:"dependent",
+    sdePhysicalResolutionContext:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
+    sdePhysicalAccessReliefChain:{...plan}
+  };
+}
+
+function buildSdeTemporaryAccessReturnRow(plan){
+  if(!plan || plan.context !== SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT) return null;
+  const targetSlot = normalizeSlot(plan.returnTargetSlot);
+  const holdingSlot = normalizeSlot(plan.holdingSlot);
+  if(!targetSlot || !holdingSlot || !plan.mainActionKey || !plan.returnActionKey) return null;
+  const mainAction = getSdeMoveActionRecord(plan.mainActionKey)?.action;
+  const recoveryAfterCancelledMain = mainAction === "cancelled";
+  const dependencyKey = recoveryAfterCancelledMain ? plan.releaseActionKey : plan.mainActionKey;
+  const shouldValidateLiveRoute = mainAction === "completed" || recoveryAfterCancelledMain;
+  const recoveryConflict = shouldValidateLiveRoute
+    ? (()=>{
+        if(!haveSameSdeVehicleTokens(getSdeVehicleInSlot(holdingSlot), plan.blockerVehicle)){
+          return `${plan.blockerVehicle} står ikke i ${holdingSlot}. Returplikten beholdes til fysisk state er avklart.`;
+        }
+        const targetVehicle = getSdeVehicleInSlot(targetSlot);
+        if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle, plan.blockerVehicle)){
+          return `${targetSlot} er opptatt av ${targetVehicle}. Returkortet beholdes fail-closed.`;
+        }
+        const accessOption = getSdeAccessOptionsForSlot(targetSlot, "target")
+          .find(option=>option?.end === plan.accessEnd && option?.clear === true);
+        return accessOption ? "" : `${targetSlot} har ikke lenger validert adkomst via ${plan.accessEnd}. Returkortet beholdes fail-closed.`;
+      })()
+    : "";
+  return {
+    vehicle:plan.blockerVehicle,
+    fromSlot:holdingSlot,
+    arrivalSlot:holdingSlot,
+    recommendedSlot:targetSlot,
+    toSlot:targetSlot,
+    source:"SDE midlertidig adkomstretur",
+    stableActionKey:plan.returnActionKey,
+    arrivalTrainText:recoveryAfterCancelledMain ? "Recovery etter annullert hovedflytting" : "Retur fra midlertidig frigjøringsslot",
+    departureTrainText:`Fullfør adkomstfrigjøring for ${plan.blockedVehicle}`,
+    arrivalTime:"",
+    nextDepartureText:"Kontrollert retur etter hovedflytting",
+    nextDepartureTrain:"",
+    nextDeparturePart:"",
+    recommendationAlternatives:[],
+    recommendationConfidence:"high",
+    recommendationScore:"Sekvensvalidert",
+    parkingStrategy:"Obligatorisk retur etter adkomstfrigjøring",
+    parkingInstruction:recoveryAfterCancelledMain
+      ? `Hovedflyttingen ble annullert. Før ${plan.blockerVehicle} fra ${holdingSlot} tilbake til ${targetSlot}.`
+      : `Før ${plan.blockerVehicle} fra ${holdingSlot} tilbake til ${targetSlot} etter at ${plan.blockedVehicle} er flyttet til ${plan.mainTargetSlot}.`,
+    recommendationReason:`Midlertidig frigjøringsslot er ikke endelig parkering. ${plan.blockerVehicle} returneres til opprinnelig endeslot ${targetSlot} via validert ${plan.accessEnd}-adkomst.`,
+    isManualOnly:true,
+    isSdePhysicalBlockerReturnMove:true,
+    sdePhysicalChainId:plan.chainId,
+    sdePhysicalChainStep:3,
+    sdePhysicalChainStepCount:3,
+    sdePhysicalDependsOn:[dependencyKey],
+    sdePhysicalDependencyLabel:recoveryAfterCancelledMain
+      ? `Recovery venter på at frigjøringen ${plan.blockerFromSlot} → ${plan.holdingSlot} er Utført.`
+      : `Steg 3 av 3 venter på hovedflyttingen ${plan.blockedVehicle} ${plan.blockedFromSlot} → ${plan.mainTargetSlot}.`,
+    sdePhysicalDependencyRole:"return",
+    sdePhysicalDeferredOverlayUntilDependenciesCompleted:true,
+    sdePhysicalResolutionContext:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
+    sdePhysicalAccessReliefChain:{...plan},
+    sdePhysicalSequenceConflictReason:recoveryConflict
+  };
+}
+
+function getSdeCompletedTemporaryAccessReliefPlanForMainRow(row){
+  const mainActionKey = getSdeMoveActionKey(row);
+  if(!mainActionKey) return null;
+  for(const [releaseActionKey,action] of Object.entries(state.sdeMoveActions || {})){
+    if(action?.action !== "completed") continue;
+    const plan = action?.snapshot?.sdePhysicalAccessReliefChain;
+    if(!plan || plan.context !== SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT) continue;
+    if(String(plan.mainActionKey || "") !== mainActionKey) continue;
+    if(String(plan.releaseActionKey || "") !== releaseActionKey) continue;
+    return {...plan};
+  }
+  return null;
+}
+
+function buildSdePersistentTemporaryAccessReliefRows(){
+  const rows = [];
+  const seen = new Set();
+  Object.entries(state.sdeMoveActions || {}).forEach(([releaseActionKey,action])=>{
+    if(action?.action !== "completed") return;
+    const plan = action?.snapshot?.sdePhysicalAccessReliefChain;
+    if(!plan || plan.context !== SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT) return;
+    if(String(plan.releaseActionKey || "") !== releaseActionKey) return;
+    if(getSdeMoveActionRecord(plan.returnActionKey)?.action === "completed") return;
+    const row = buildSdeTemporaryAccessReturnRow(plan);
+    const key = getSdeMoveActionKey(row);
+    if(!row || !key || seen.has(key)) return;
+    seen.add(key);
+    rows.push(row);
+  });
+  return rows;
 }
 
 function ensureSdeVnRecoveryObligations(){
@@ -16533,12 +16776,12 @@ function buildSdeShiftMoveActionControlsHtml(row, encodedActionKey, options={}){
     ? `<button class="sde-shift-action-btn done" type="button" disabled title="${escapeHtml(blockReason)}">Utført sperret</button>`
     : `<button class="sde-shift-action-btn done" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'completed')">Utført</button>`;
   const cancelButtonHtml = row?.isSdePhysicalBlockerReturnMove
-    ? `<button class="sde-shift-action-btn cancel" type="button" disabled title="Retur-/recovery-kortet beholdes fail-closed slik at kjøretøyet ikke blir stående uten exit-plan i VN.">Annullert sperret</button>`
+    ? `<button class="sde-shift-action-btn cancel" type="button" disabled title="Retur-/recovery-kortet beholdes fail-closed slik at kjøretøyet ikke blir stående i en midlertidig slot.">Annullert sperret</button>`
     : `<button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeShiftMoveAction('${actionKey}', 'cancelled')">Annullert</button>`;
   const hint = isSdePhysicalBlockerFreeingRow(row)
     ? `<div class="sde-night-card-override"><strong>Frigjøringskort kan kvitteres</strong><span>Utført/Annullert gjelder bare denne planlagte forutsetningen. Hovedkortet åpnes først når frigjøringssteget er kvittert Utført og sporstatus fortsatt stemmer.</span></div>`
     : row?.isSdePhysicalBlockerReturnMove
-      ? `<div class="sde-night-card-override"><strong>Returplan beholdes fail-closed</strong><span>Retur-/recovery-kortet kan ikke annulleres bort mens kjøretøyet står i VN.</span></div>`
+      ? `<div class="sde-night-card-override"><strong>Returplan beholdes fail-closed</strong><span>Retur-/recovery-kortet kan ikke annulleres bort mens kjøretøyet står i en midlertidig slot.</span></div>`
       : "";
 
   if(options.wrap === false){
@@ -16574,6 +16817,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
   const insertedRecoveryKeys = new Set();
   const reservedSlots = getSdePhysicalGuardReservedTargetSlots(sourceRows);
   const persistentRecoveryRows = buildSdePersistentVnRecoveryRows(sourceRows);
+  const persistentAccessReliefRows = buildSdePersistentTemporaryAccessReliefRows();
   persistentRecoveryRows.forEach(row=>{
     reservedSlots.add("VN");
     const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
@@ -16634,6 +16878,19 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
       return;
     }
 
+    const persistedAccessPlan = getSdeCompletedTemporaryAccessReliefPlanForMainRow(row);
+    if(persistedAccessPlan){
+      const persistedMain = annotateSdeTemporaryAccessReliefMainRow(row, persistedAccessPlan);
+      const persistedReturn = buildSdeTemporaryAccessReturnRow(persistedAccessPlan);
+      guarded.push(persistedMain);
+      if(persistedReturn){
+        guarded.push(persistedReturn);
+        const returnKey = getSdeMoveActionKey(persistedReturn);
+        if(returnKey) insertedRecoveryKeys.add(returnKey);
+      }
+      return;
+    }
+
     if(isSdeMoveActioned(row)){
       guarded.push(row);
       return;
@@ -16648,13 +16905,25 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
           .map(([, target]) => target)
           .filter(Boolean)
         : [];
-      const freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, sourceRows, {
+      let freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, sourceRows, {
         avoidSlots:[...reservedSlots, ...otherStableReleaseTargets, ...getVnClaimAvoidSlots(rowKey, blockState)],
         sequenceReservedSlots:[...reservedSlots, ...getVnClaimAvoidSlots(rowKey, blockState)]
       });
-      const freeingKey = getSdeMoveActionKey(freeingMove);
+      let freeingKey = getSdeMoveActionKey(freeingMove);
       const chainId = getSdePhysicalDependencyChainId(row, blockState, freeingMove);
       const vnChainPlan = buildSdeTemporaryVnReliefChainPlan(row, blockState, freeingMove, chainId);
+      const accessChainPlan = vnChainPlan ? null : buildSdeTemporaryAccessReliefChainPlan(
+        row,
+        blockState,
+        freeingMove,
+        chainId,
+        {reservedSlots:[...reservedSlots]}
+      );
+      const completeChainPlan = vnChainPlan || accessChainPlan;
+      if(blockState?.accessAssessment?.targetAccessBlocked && !completeChainPlan){
+        freeingMove = null;
+        freeingKey = "";
+      }
       const rejectedRowHistory = (Array.isArray(blockState.blockers) ? blockState.blockers : [])
         .flatMap(blocker => buildSdeRejectedPhysicalReleaseRows(row, blockState, blocker, {chainId}));
       const rejectedRows = rejectedRowHistory.map((rejectedRow, index) => {
@@ -16701,7 +16970,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
           ...freeingMove,
           sdePhysicalChainId:chainId,
           sdePhysicalChainStep:1,
-          sdePhysicalChainStepCount:vnChainPlan ? 3 : 2,
+          sdePhysicalChainStepCount:completeChainPlan ? 3 : 2,
           sdePhysicalPrerequisiteFor:blockedKey,
           sdePhysicalDependsOn:[],
           canonicalChainStepActive:true,
@@ -16712,6 +16981,11 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
             sdePhysicalVnReliefChain:{...vnChainPlan},
             parkingStrategy:"Midlertidig VN-frigjøring",
             parkingInstruction:`Midlertidig frigjøring til VN. Retur er planlagt etter at ${vnChainPlan.blockedVehicle} har forlatt ${vnChainPlan.blockedFromSlot}.`
+          } : accessChainPlan ? {
+            sdePhysicalResolutionContext:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
+            sdePhysicalAccessReliefChain:{...accessChainPlan},
+            parkingStrategy:"Midlertidig adkomstfrigjøring",
+            parkingInstruction:`Midlertidig frigjøring til ${accessChainPlan.holdingSlot}. Retur til ${accessChainPlan.returnTargetSlot} er obligatorisk etter hovedflyttingen.`
           } : {})
         };
         const freeingParts = getSdePhysicalMoveParts(guardedFreeingMove);
@@ -16730,6 +17004,8 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
       }
       const guardedMainRow = vnChainPlan
         ? annotateSdeTemporaryVnReliefMainRow(row, vnChainPlan)
+        : accessChainPlan
+          ? annotateSdeTemporaryAccessReliefMainRow(row, accessChainPlan)
         : {
             ...row,
             sdePhysicalChainId:chainId,
@@ -16753,6 +17029,13 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
           const returnKey = getSdeMoveActionKey(returnRow);
           if(returnKey) insertedRecoveryKeys.add(returnKey);
         }
+      }else if(accessChainPlan){
+        const returnRow = buildSdeTemporaryAccessReturnRow(accessChainPlan);
+        if(returnRow){
+          guarded.push(returnRow);
+          const returnKey = getSdeMoveActionKey(returnRow);
+          if(returnKey) insertedRecoveryKeys.add(returnKey);
+        }
       }
       return;
     }
@@ -16763,6 +17046,13 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
   });
 
   persistentRecoveryRows.forEach(row=>{
+    const key = getSdeMoveActionKey(row);
+    if(!key || insertedRecoveryKeys.has(key)) return;
+    guarded.push(row);
+    insertedRecoveryKeys.add(key);
+  });
+
+  persistentAccessReliefRows.forEach(row=>{
     const key = getSdeMoveActionKey(row);
     if(!key || insertedRecoveryKeys.has(key)) return;
     guarded.push(row);
@@ -21276,6 +21566,9 @@ function getSdeMoveActionSnapshot(row){
   const vnReliefChain = row?.sdePhysicalVnReliefChain && typeof row.sdePhysicalVnReliefChain === "object"
     ? {...row.sdePhysicalVnReliefChain}
     : null;
+  const accessReliefChain = row?.sdePhysicalAccessReliefChain && typeof row.sdePhysicalAccessReliefChain === "object"
+    ? {...row.sdePhysicalAccessReliefChain}
+    : null;
 
   return {
     sdeCancellationSnapshotVersion:2,
@@ -21313,6 +21606,7 @@ function getSdeMoveActionSnapshot(row){
     sdeVnEntryToken:String(row.sdeVnEntryToken || "").trim(),
     sdePhysicalResolutionContext:String(row.sdePhysicalResolutionContext || "").trim(),
     sdePhysicalVnReliefChain:vnReliefChain,
+    sdePhysicalAccessReliefChain:accessReliefChain,
     isSdePhysicalBlockerFreeingMove:Boolean(row.isSdePhysicalBlockerFreeingMove),
     isSdePhysicalBlockerReturnMove:Boolean(row.isSdePhysicalBlockerReturnMove),
     sdeVnRecoveryRequired:Boolean(row.sdeVnRecoveryRequired),
@@ -23294,6 +23588,7 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
     outcome?.obligationKind === "vn-recovery"
     || outcome?.raw?.sdeVnRecoveryRequired
     || outcome?.raw?.isSdePhysicalVnRecoveryMove
+    || outcome?.raw?.isSdePhysicalBlockerReturnMove
   );
   const buildCardBase = outcome => {
     const recoveryRequired = isRecovery(outcome);
@@ -23608,7 +23903,8 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
   };
   const reservationKindFor = (card,outcome) => {
     const raw = outcome?.raw || {};
-    if(card.recoveryRequired || outcome?.obligationKind === "vn-recovery") return "vn_recovery_target";
+    if(raw.sdePhysicalResolutionContext === "target_access_temporary_relief" && raw.isSdePhysicalBlockerReturnMove) return "physical_recovery_target";
+    if(outcome?.obligationKind === "vn-recovery" || raw.sdeVnRecoveryRequired || raw.isSdePhysicalVnRecoveryMove) return "vn_recovery_target";
     if(blockedIds.has(card.activeOutcomeId)) return "future_chain_target";
     if(raw.isSdePhysicalBlockerFreeingMove || raw.sdePhysicalDependencyRole === "prerequisite") return "prerequisite_target";
     if(card.targetSlot === "VN") return "vn_temporary_target";
@@ -23640,7 +23936,12 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
     }
     const sourceSlot = card.chainId ? outcome.stepSourceSlot || outcome.statedSourceSlot || card.sourceSlot : card.sourceSlot;
     const reservationKind = reservationKindFor(card,outcome);
-    const routeResources = (card.recoveryRequired || [sourceSlot,card.targetSlot].some(slot=>["VN","VS"].includes(slot))) ? ["VN","VS"] : [];
+    const accessReliefPlan = outcome?.raw?.sdePhysicalAccessReliefChain;
+    const routeResources = accessReliefPlan?.context === "target_access_temporary_relief"
+      ? [String(accessReliefPlan.accessResource || `track-access|${accessReliefPlan.targetTrack || "unknown"}|${accessReliefPlan.accessEnd || "unknown"}`)]
+      : (outcome?.obligationKind === "vn-recovery" || outcome?.raw?.sdeVnRecoveryRequired || outcome?.raw?.isSdePhysicalVnRecoveryMove || [sourceSlot,card.targetSlot].some(slot=>["VN","VS"].includes(slot)))
+        ? ["VN","VS"]
+        : [];
     return [{
       reservationId:`sde-canonical-reservation-v1|${card.activeOutcomeId}`,
       reservationKind,
@@ -25063,7 +25364,7 @@ function buildSdeCanonicalCardPreviewCardHtml(card, variant="actionable"){
     <div class="sde-canonical-preview-tags">
       <span class="sde-canonical-preview-tag">Steg ${escapeHtml(card.sequenceStep || "ukjent")}</span>
       ${card.chainId ? `<span class="sde-canonical-preview-tag">Kjede ${escapeHtml(card.chainId)}</span>` : ""}
-      ${card.recoveryRequired ? `<span class="sde-canonical-preview-tag">VN recovery · kan ikke slettes</span>` : ""}
+      ${card.recoveryRequired ? `<span class="sde-canonical-preview-tag">${escapeHtml(card.activeRecoveryMode === "target_access_temporary_relief" ? "Obligatorisk retur" : "VN recovery")} · kan ikke slettes</span>` : ""}
       <span class="sde-canonical-preview-tag">Dependencies ${escapeHtml(dependencies.length ? dependencies.join(", ") : "oppfylt")}</span>
     </div>
     <div class="sde-canonical-preview-explanation">${escapeHtml(card.explanation || card.visualText || "Canonical read-only kortprojeksjon.")}</div>
@@ -26906,6 +27207,27 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
   </div>`;
 }
 
+function doesSdeCanonicalActionAuthorityMatch(row, currentOutcomeAuthority, adapterContext={}){
+  const canonicalCardId = String(adapterContext?.canonicalCardId || "").trim();
+  const activeOutcomeId = String(adapterContext?.activeOutcomeId || "").trim();
+  const obligationId = String(adapterContext?.obligationId || "").trim();
+  const stepId = String(adapterContext?.stepId || "").trim();
+  const actionKey = getSdeMoveActionKey(row);
+  if(!canonicalCardId || !activeOutcomeId || !obligationId || !stepId || !actionKey) return false;
+  if(String(adapterContext?.actionKey || "").trim() !== actionKey) return false;
+  if(currentOutcomeAuthority?.obligationId && String(currentOutcomeAuthority.obligationId).trim() !== obligationId) return false;
+  if(currentOutcomeAuthority?.stepId && String(currentOutcomeAuthority.stepId).trim() !== stepId) return false;
+  if(currentOutcomeAuthority?.legacyActionKey && String(currentOutcomeAuthority.legacyActionKey).trim() !== actionKey) return false;
+  if(currentOutcomeAuthority){
+    const authorityOutcomeIds = [
+      currentOutcomeAuthority.activeOutcomeId,
+      currentOutcomeAuthority.canonicalActiveOutcomeId
+    ].map(value=>String(value || "").trim()).filter(Boolean);
+    if(!authorityOutcomeIds.length || authorityOutcomeIds.some(value=>value !== activeOutcomeId)) return false;
+  }
+  return true;
+}
+
 async function handleSdeShiftMoveAction(encodedKey, action, adapterContext={}){
   const key = decodeURIComponent(String(encodedKey || ""));
   const actionType = String(action || "").trim();
@@ -26952,8 +27274,10 @@ async function handleSdeShiftMoveAction(encodedKey, action, adapterContext={}){
   }
   const currentOutcomeKey = getSdeMoveObligationStepKey(row);
   const currentOutcomeAuthority = getSdeActiveOutcomeAuthority(currentOutcomeKey);
+  const canonicalAuthorityMatches = doesSdeCanonicalActionAuthorityMatch(row, currentOutcomeAuthority, adapterContext);
   if(
     currentOutcomeAuthority
+    && !canonicalAuthorityMatches
     && (!currentOutcomeAuthority.activeOutcomeId || currentOutcomeAuthority.activeOutcomeId !== getSdeMoveActionKey(row))
   ){
     alert("SDE-kortet er erstattet og er ikke lenger det aktive utfallet for dette skiftebehovet.");
@@ -27026,7 +27350,7 @@ async function handleSdeShiftMoveAction(encodedKey, action, adapterContext={}){
 
   if(actionType === "cancelled"){
     if(row?.isSdePhysicalBlockerReturnMove){
-      alert("Retur-/recovery-kortet kan ikke annulleres bort mens kjøretøyet står i VN. Fullfør sikker retur eller avklar fysisk state manuelt.");
+      alert("Retur-/recovery-kortet kan ikke annulleres bort mens kjøretøyet står i en midlertidig slot. Fullfør sikker retur eller avklar fysisk state manuelt.");
       return;
     }
     if(window.sdeMoveActionPendingKey) return;
@@ -32233,6 +32557,40 @@ function removeSdeActiveOutcomeAuthoritiesForPhysicalStep(vehicle, fromSlot){
   return changed;
 }
 
+function removeSdeStaleCanonicalGraphicAuthoritiesForVehicle(vehicle, currentSourceSlot){
+  const vehicleToken = normalizeVehicleToken(vehicle);
+  const sourceSlot = normalizeSlot(currentSourceSlot);
+  if(!vehicleToken || !sourceSlot) return false;
+  const authorities = getSdeActiveMoveOutcomes();
+  let changed = false;
+  Object.keys(authorities).forEach(key=>{
+    const authority = authorities[key];
+    if(normalizeVehicleToken(authority?.vehicle || authority?.vehicleId) !== vehicleToken) return;
+    if(normalizeSlot(authority?.physicalFromSlot || authority?.canonicalSourceSlot) === sourceSlot) return;
+    if(String(authority?.producer || "").trim() !== "graphic_drag_generated_move") return;
+    delete authorities[key];
+    changed = true;
+  });
+  return changed;
+}
+
+function removeSdeStaleCanonicalGraphicOverridesForVehicle(vehicle, currentSourceSlot){
+  const vehicleToken = normalizeVehicleToken(vehicle);
+  const sourceSlot = normalizeSlot(currentSourceSlot);
+  if(!vehicleToken || !sourceSlot) return false;
+  const overrides = getSdeNightPlacementManualOverrides();
+  let changed = false;
+  Object.keys(overrides).forEach(key=>{
+    const override = overrides[key];
+    if(normalizeVehicleToken(override?.vehicle) !== vehicleToken) return;
+    if(override?.sdeCanonicalGraphicDragOrder !== true) return;
+    if(normalizeSlot(override?.originalFromSlot || override?.fromSlot) === sourceSlot) return;
+    delete overrides[key];
+    changed = true;
+  });
+  return changed;
+}
+
 function inspectSdeCanonicalGraphicDragOrder(reader, expected={}){
   const vehicleId = sanitizeVehicleValue(expected.vehicle);
   const sourceSlot = normalizeSlot(expected.sourceSlot);
@@ -32432,6 +32790,156 @@ function inspectSdeCanonicalGraphicDragVnReliefChain(reader, expected={}){
   };
 }
 
+function inspectSdeCanonicalGraphicDragAccessReliefChain(reader, expected={}){
+  const vehicleId = sanitizeVehicleValue(expected.vehicle);
+  const sourceSlot = normalizeSlot(expected.sourceSlot);
+  const targetSlot = normalizeSlot(expected.targetSlot);
+  const actionKey = String(expected.actionKey || "").trim();
+  const candidates = Array.isArray(reader?.canonicalPlan?.candidateOutcomes)
+    ? reader.canonicalPlan.candidateOutcomes
+    : [];
+  const mainCandidates = candidates.filter(outcome=>
+    sanitizeVehicleValue(outcome?.vehicleId) === vehicleId
+    && normalizeSlot(outcome?.canonicalSourceSlot) === sourceSlot
+    && normalizeSlot(outcome?.targetSlot) === targetSlot
+    && String(outcome?.producer || "").trim() === "graphic_drag_generated_move"
+    && String(outcome?.sequenceStep || "").trim() === "physical-2"
+    && outcome?.raw?.sdePhysicalResolutionContext === "target_access_temporary_relief"
+    && (!actionKey || String(outcome?.actionKey || "").trim() === actionKey)
+  );
+  const mainOutcome = mainCandidates.length === 1 ? mainCandidates[0] : null;
+  const plan = mainOutcome?.raw?.sdePhysicalAccessReliefChain || null;
+  const chainId = String(mainOutcome?.chainId || mainOutcome?.chainScope || "").trim();
+  const chainOutcomes = chainId
+    ? candidates.filter(outcome=>String(outcome?.chainId || outcome?.chainScope || "").trim() === chainId)
+    : [];
+  const releaseOutcomes = chainOutcomes.filter(outcome=>
+    String(outcome?.sequenceStep || "").trim() === "physical-1"
+    && String(outcome?.actionKey || "").trim() === String(plan?.releaseActionKey || "").trim()
+    && normalizeSlot(outcome?.targetSlot) === normalizeSlot(plan?.holdingSlot)
+  );
+  const returnOutcomes = chainOutcomes.filter(outcome=>
+    String(outcome?.sequenceStep || "").trim() === "physical-3"
+    && String(outcome?.actionKey || "").trim() === String(plan?.returnActionKey || "").trim()
+    && normalizeSlot(outcome?.canonicalSourceSlot) === normalizeSlot(plan?.holdingSlot)
+    && normalizeSlot(outcome?.targetSlot) === normalizeSlot(plan?.returnTargetSlot)
+  );
+  const releaseOutcome = releaseOutcomes.length === 1 ? releaseOutcomes[0] : null;
+  const returnOutcome = returnOutcomes.length === 1 ? returnOutcomes[0] : null;
+  const dependenciesMatch = Boolean(
+    releaseOutcome && mainOutcome && returnOutcome
+    && mainOutcome.dependencies?.length === 1
+    && mainOutcome.dependencies[0] === releaseOutcome.actionKey
+    && returnOutcome.dependencies?.length === 1
+    && returnOutcome.dependencies[0] === mainOutcome.actionKey
+  );
+  const actionableCards = (reader?.cardProjection?.actionableCards || []).filter(card=>card?.chainId === chainId);
+  const blockedCards = (reader?.cardProjection?.blockedChainCards || []).filter(card=>card?.chainId === chainId);
+  const chainCards = [...actionableCards,...blockedCards];
+  const reservations = (reader?.reservationProjection?.reservations || []).filter(item=>item?.chainId === chainId);
+  const activeOverlays = (reader?.graphicProjection?.activeOverlays || []).filter(item=>item?.chainId === chainId);
+  const deferredOverlays = (reader?.graphicProjection?.deferredOverlays || []).filter(item=>item?.chainId === chainId);
+  const cardByOutcomeId = new Map(chainCards.map(card=>[card.activeOutcomeId,card]));
+  const adapterByOutcomeId = new Map(chainCards.map(card=>reader?.handlerAdapters?.[card.canonicalCardId] || null).filter(Boolean).map(adapter=>[adapter.activeOutcomeId,adapter]));
+  const releaseCard = cardByOutcomeId.get(releaseOutcome?.candidateOutcomeId) || null;
+  const mainCard = cardByOutcomeId.get(mainOutcome?.candidateOutcomeId) || null;
+  const returnCard = cardByOutcomeId.get(returnOutcome?.candidateOutcomeId) || null;
+  const releaseAdapter = adapterByOutcomeId.get(releaseOutcome?.candidateOutcomeId) || null;
+  const mainAdapter = adapterByOutcomeId.get(mainOutcome?.candidateOutcomeId) || null;
+  const returnAdapter = adapterByOutcomeId.get(returnOutcome?.candidateOutcomeId) || null;
+  const expectedRouteResource = String(plan?.accessResource || "").trim();
+  const routeResourcesMatch = Boolean(
+    expectedRouteResource
+    && reservations.length === 3
+    && reservations.every(item=>Array.isArray(item.routeResources) && item.routeResources.includes(expectedRouteResource))
+  );
+  const chainReservationIds = new Set(reservations.map(item=>item.reservationId));
+  const reservationConflicts = (reader?.reservationProjection?.conflicts || []).filter(conflict=>
+    (conflict.reservationIds || []).some(id=>chainReservationIds.has(id))
+    || (conflict.chainIds || []).includes?.(chainId)
+  );
+  const actualSlots = reader?.graphicProjection?.actualSlots || [];
+  const actualUnchanged = Boolean(
+    releaseOutcome
+    && actualSlots.some(item=>sanitizeVehicleValue(item.vehicleId) === sanitizeVehicleValue(releaseOutcome.vehicleId) && normalizeSlot(item.slot) === normalizeSlot(releaseOutcome.actualSourceSlot || releaseOutcome.sourceSlot))
+    && actualSlots.some(item=>sanitizeVehicleValue(item.vehicleId) === vehicleId && normalizeSlot(item.slot) === sourceSlot)
+  );
+  const chainRecords = (reader?.cardProjection?.chains || []).filter(chain=>chain?.chainId === chainId);
+  const activeOutcomeIds = new Set((reader?.canonicalPlan?.activeOutcomes || [])
+    .filter(outcome=>String(outcome?.chainId || outcome?.chainScope || "").trim() === chainId)
+    .map(outcome=>outcome.candidateOutcomeId));
+  const exactIdentities = chainOutcomes.length === 3
+    && new Set(chainOutcomes.map(outcome=>outcome.stepId)).size === 3
+    && new Set(chainOutcomes.map(outcome=>outcome.candidateOutcomeId)).size === 3;
+  const adapters = [releaseAdapter,mainAdapter,returnAdapter];
+  const ok = Boolean(
+    plan?.context === "target_access_temporary_relief"
+    && releaseOutcome && mainOutcome && returnOutcome
+    && chainRecords.length === 1
+    && exactIdentities
+    && dependenciesMatch
+    && actionableCards.length === 1
+    && actionableCards[0].activeOutcomeId === releaseOutcome.candidateOutcomeId
+    && blockedCards.length === 2
+    && reservations.length === 3
+    && activeOverlays.length === 1
+    && deferredOverlays.length === 2
+    && activeOutcomeIds.size === 1
+    && activeOutcomeIds.has(releaseOutcome.candidateOutcomeId)
+    && routeResourcesMatch
+    && !reservationConflicts.length
+    && actualUnchanged
+    && adapters.every(Boolean)
+    && new Set(adapters.map(adapter=>adapter.actionKey)).size === 3
+    && releaseAdapter?.ready === true
+    && mainAdapter?.ready === false
+    && returnAdapter?.ready === false
+    && mainCard?.canComplete === false
+    && returnCard?.canComplete === false
+    && returnCard?.canCancel === false
+    && returnCard?.canDelete === false
+  );
+  const reason = ok ? "" : [
+    `main=${mainCandidates.length}`,
+    `chainOutcomes=${chainOutcomes.length}`,
+    `release=${releaseOutcomes.length}`,
+    `return=${returnOutcomes.length}`,
+    `dependencies=${dependenciesMatch ? "ok" : "mismatch"}`,
+    `actionable=${actionableCards.length}`,
+    `blocked=${blockedCards.length}`,
+    `reservations=${reservations.length}`,
+    `overlays=${activeOverlays.length}+${deferredOverlays.length}`,
+    `routeResources=${routeResourcesMatch ? "ok" : "mismatch"}`,
+    `reservationConflicts=${reservationConflicts.length}`,
+    `actual=${actualUnchanged ? "unchanged" : "mismatch"}`,
+    `adapters=${adapters.filter(Boolean).length}/3`
+  ].join("; ");
+  return {
+    ok,
+    reason,
+    chainId,
+    chain:chainRecords[0] || null,
+    plan,
+    outcomes:{release:releaseOutcome,main:mainOutcome,return:returnOutcome},
+    cards:{release:releaseCard,main:mainCard,return:returnCard},
+    reservations,
+    overlays:{active:activeOverlays,deferred:deferredOverlays},
+    adapters:{release:releaseAdapter,main:mainAdapter,return:returnAdapter}
+  };
+}
+
+function inspectSdeCanonicalGraphicDragPhysicalReliefChain(reader, expected={}){
+  const vn = inspectSdeCanonicalGraphicDragVnReliefChain(reader, expected);
+  if(vn.ok) return {...vn, reliefKind:"vn"};
+  const access = inspectSdeCanonicalGraphicDragAccessReliefChain(reader, expected);
+  if(access.ok) return {...access, reliefKind:"target_access"};
+  return {
+    ...access,
+    reason:`VN: ${vn.reason || "ikke relevant"}; adkomst: ${access.reason || "ikke relevant"}`,
+    reliefKind:""
+  };
+}
+
 function stageSdeCanonicalGraphicDragOrder(override){
   const generatedMove = buildSdeNightPlacementGeneratedMove(override);
   if(!generatedMove) throw new Error("Canonical drag-rad kunne ikke bygges.");
@@ -32448,8 +32956,8 @@ function stageSdeCanonicalGraphicDragOrder(override){
       actionKey
     };
     const provisionalReader = buildSdeCanonicalProductionReader();
-    const provisional = inspectSdeCanonicalGraphicDragVnReliefChain(provisionalReader, expected);
-    if(!provisional.ok) throw new Error(`Canonical VN-frigjøringskjede er ufullstendig: ${provisional.reason}`);
+    const provisional = inspectSdeCanonicalGraphicDragPhysicalReliefChain(provisionalReader, expected);
+    if(!provisional.ok) throw new Error(`Canonical fysisk frigjøringskjede er ufullstendig: ${provisional.reason}`);
     override.sdeCanonicalManualAuthority = {
       authorityMode:"requested_target_with_physical_guard",
       vehicle:generatedMove.vehicle,
@@ -32462,8 +32970,8 @@ function stageSdeCanonicalGraphicDragOrder(override){
       updatedAt:String(override.updatedAt || override.createdAt || "")
     };
     const committedReader = buildSdeCanonicalProductionReader();
-    const committed = inspectSdeCanonicalGraphicDragVnReliefChain(committedReader, expected);
-    if(!committed.ok) throw new Error(`Canonical VN-frigjøringskjede er ikke stabil: ${committed.reason}`);
+    const committed = inspectSdeCanonicalGraphicDragPhysicalReliefChain(committedReader, expected);
+    if(!committed.ok) throw new Error(`Canonical fysisk frigjøringskjede er ikke stabil: ${committed.reason}`);
     return {
       reader:committedReader,
       authority:override.sdeCanonicalManualAuthority,
@@ -32584,7 +33092,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
           actionKey:existingActionKey
         };
         existingOrder = existingSameTargetOverride.hardPhysicalBlocked
-          ? inspectSdeCanonicalGraphicDragVnReliefChain(existingReader, existingExpected)
+          ? inspectSdeCanonicalGraphicDragPhysicalReliefChain(existingReader, existingExpected)
           : inspectSdeCanonicalGraphicDragOrder(existingReader, existingExpected);
       }catch(_error){
         existingOrder = null;
@@ -32706,6 +33214,15 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     const previousAuthorities = cloneSdeCanonicalValue(getSdeActiveMoveOutcomes()) || {};
     const previousBlockedRequest = sdeNightPlacementBlockedMoveRequest;
     try{
+      const physicalSourceSlot = getSdePhysicalSlotForVehicle(assessment.vehicle);
+      if(
+        !assessment.isProjectedSource
+        && physicalSourceSlot
+        && physicalSourceSlot === originalFromSlot
+      ){
+        removeSdeStaleCanonicalGraphicOverridesForVehicle(assessment.vehicle, physicalSourceSlot);
+        removeSdeStaleCanonicalGraphicAuthoritiesForVehicle(assessment.vehicle, physicalSourceSlot);
+      }
       removeSdeNightPlacementOverridesForVehicleStep(assessment.vehicle, originalFromSlot);
       getSdeNightPlacementManualOverrides()[key] = override;
       const order = stageSdeCanonicalGraphicDragOrder(override);
@@ -32715,7 +33232,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
         type:"info",
         slot:assessment.toSlot,
         text:assessment.hardPhysicalBlocked
-          ? `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Fysisk VN-frigjøringskjede er validert; bare første steg er handlingsklart.`
+          ? `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Fysisk frigjøringskjede med obligatorisk retur er validert; bare første steg er handlingsklart.`
           : `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Canonical kort, reservasjon, planoverlay og handleradapter er entydige.`,
         timeStatus:assessment.timeStatus
       };
@@ -34090,7 +34607,9 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   const reservationProjection = buildSdeCanonicalReservationProjection(canonicalPlan, cardProjection);
   const graphicProjection = buildSdeCanonicalGraphicProjection(canonicalPlan, cardProjection, reservationProjection);
   const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection});
+  const planRevision = getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue(snapshot));
   return assertSdeCanonicalProductionReaderContract({
+    planRevision,
     runtimeSnapshot:snapshot,
     canonicalPlan,
     cardProjection,
@@ -34185,6 +34704,7 @@ function buildSdeCanonicalHandlerAdapter(card, reader){
   const uniqueReasons = Array.from(new Set(reasons));
   const ready = uniqueReasons.length === 0 && Boolean(actionKey);
   return {
+    planRevision:String(reader?.planRevision || "").trim(),
     canonicalCardId:card.canonicalCardId,
     activeOutcomeId:card.activeOutcomeId,
     ready,
@@ -34498,7 +35018,7 @@ function buildSdeCanonicalGraphicOverviewData(reader){
   };
 }
 
-function buildSdeCanonicalCardActionControlsHtml(card, adapter){
+function buildSdeCanonicalCardActionControlsHtml(card, adapter, reader=null){
   if(card.status === "handler_adapter_blocked"){
     const reason = (adapter?.reasons || card.handlerBlockReasons || ["Canonical handleradapter krever avklaring."]).join("; ");
     return `<div class="sde-canonical-handler-block">${escapeHtml(reason)}</div><div class="sde-shift-actions" aria-label="Handling krever avklaring"><button class="sde-shift-action-btn cancel" type="button" disabled>Handling krever avklaring</button></div>`;
@@ -34508,12 +35028,13 @@ function buildSdeCanonicalCardActionControlsHtml(card, adapter){
     return `<div class="sde-shift-actions" aria-label="Inaktivt canonical skiftekort"><button class="sde-shift-action-btn cancel" type="button" disabled>${escapeHtml(label)}</button></div>`;
   }
   const encodedCardId = encodeURIComponent(card.canonicalCardId || "");
+  const encodedPlanRevision = encodeURIComponent(String(reader?.planRevision || adapter?.planRevision || ""));
   const reason = (adapter?.reasons || []).join("; ") || "Canonical kortregel sperrer handlingen.";
   const completeHtml = adapter?.canComplete
-    ? `<button class="sde-shift-action-btn done" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'completed')">Utført</button>`
+    ? `<button class="sde-shift-action-btn done" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'completed', '${escapeHtml(encodedPlanRevision)}')">Utført</button>`
     : `<button class="sde-shift-action-btn done" type="button" disabled title="${escapeHtml(reason)}">Utført sperret</button>`;
   const cancelHtml = adapter?.canCancel
-    ? `<button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'cancelled')">Annullert</button>`
+    ? `<button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'cancelled', '${escapeHtml(encodedPlanRevision)}')">Annullert</button>`
     : `<button class="sde-shift-action-btn cancel" type="button" disabled title="${escapeHtml(reason)}">Annullert sperret</button>`;
   return `${adapter?.ready ? "" : `<div class="sde-canonical-handler-block">${escapeHtml(reason)}</div>`}<div class="sde-shift-actions" aria-label="Kvitter canonical skifteforslag">${completeHtml}${cancelHtml}</div>`;
 }
@@ -34534,7 +35055,7 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
   const dependencies = sortSdeCanonicalStrings(card.blockedBy || card.dependencyIds || []);
   const stateLabel = exiting ? "Exiting" : handlerBlocked ? "Handling krever avklaring" : blocked ? "Avventer dependency" : "Canonical aktiv";
   const actionKey = adapter?.actionKey || getSdeMoveActionKey(row) || card.canonicalCardId;
-  return `<article class="sde-shift-card ${priorityClass}${blocked ? " canonical-blocked" : ""}${exiting ? " sde-release-cancelled" : ""}${cancelledCardUi.className}" data-sde-card-key="${escapeHtml(actionKey)}" data-sde-canonical-card-id="${escapeHtml(card.canonicalCardId)}" data-sde-active-outcome-id="${escapeHtml(card.activeOutcomeId)}" data-sde-obligation-id="${escapeHtml(card.obligationId)}" data-sde-step-id="${escapeHtml(card.stepId)}" data-sde-reservation-id="${escapeHtml(adapter?.reservation?.reservationId || "")}" data-sde-overlay-id="${escapeHtml(adapter?.overlay?.overlayId || "")}" data-sde-canonical-card-status="${escapeHtml(card.status)}"${cancelledCardUi.attributes} style="--delay:${index * 55}ms">
+  return `<article class="sde-shift-card ${priorityClass}${blocked ? " canonical-blocked" : ""}${exiting ? " sde-release-cancelled" : ""}${cancelledCardUi.className}" data-sde-card-key="${escapeHtml(actionKey)}" data-sde-canonical-card-id="${escapeHtml(card.canonicalCardId)}" data-sde-active-outcome-id="${escapeHtml(card.activeOutcomeId)}" data-sde-obligation-id="${escapeHtml(card.obligationId)}" data-sde-step-id="${escapeHtml(card.stepId)}" data-sde-plan-revision="${escapeHtml(reader.planRevision || "")}" data-sde-reservation-id="${escapeHtml(adapter?.reservation?.reservationId || "")}" data-sde-overlay-id="${escapeHtml(adapter?.overlay?.overlayId || "")}" data-sde-canonical-card-status="${escapeHtml(card.status)}"${cancelledCardUi.attributes} style="--delay:${index * 55}ms">
     <div class="sde-shift-card-top">
       <div><div class="sde-shift-eyebrow">Kjøretøy</div><div class="sde-shift-vehicle">${escapeHtml(card.vehicleId || "Ukjent")}</div></div>
       <div class="sde-shift-trains">
@@ -34549,14 +35070,14 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
       <span class="sde-shift-badge">Steg ${escapeHtml(card.sequenceStep || "ukjent")}</span>
       ${card.chainId ? `<span class="sde-shift-badge">Kjede ${escapeHtml(card.chainId)}</span>` : ""}
       ${dependencies.length ? `<span class="sde-shift-badge">Dependency ${escapeHtml(dependencies.join(", "))}</span>` : ""}
-      ${card.recoveryRequired ? `<span class="sde-shift-badge sde-night-card-override-badge">VN RECOVERY</span>` : ""}
+      ${card.recoveryRequired ? `<span class="sde-shift-badge sde-night-card-override-badge">${escapeHtml(row?.sdePhysicalResolutionContext === "target_access_temporary_relief" ? "OBLIGATORISK RETUR" : "VN RECOVERY")}</span>` : ""}
       ${adapter?.canDelete ? `<span class="sde-shift-badge">Slett kort tillatt i Annullert-dialog</span>` : ""}
     </div>
     ${exiting ? `<span class="sde-release-cancelled-message">${escapeHtml(card.visualText || "Annullert. Kortet avsluttes.")}</span>` : ""}
     ${blocked && !handlerBlocked ? `<div class="sde-night-card-override"><strong>Fremtidig kjedesteg</strong><span>${escapeHtml(card.explanation || "Steget åpnes når dependencies er Utført.")}</span><span>Sperret av: ${escapeHtml(dependencies.join(", ") || "ukjent dependency")}</span></div>` : ""}
     ${handlerBlocked ? `<div class="sde-night-card-override"><strong>Handling krever avklaring</strong><span>${escapeHtml(card.explanation || "Canonical handleradapter er ikke entydig og klar.")}</span></div>` : ""}
     <div class="sde-shift-details"><div class="sde-shift-reason">${escapeHtml(card.explanation || row.recommendationReason || "Canonical projeksjon.")}</div><div class="sde-shift-alternatives">${escapeHtml(card.producerProvenance?.producer || "canonical")} · ${escapeHtml(card.producerProvenance?.provenance || "canonical projection")}</div></div>
-    ${buildSdeCanonicalCardActionControlsHtml(card, adapter)}
+    ${buildSdeCanonicalCardActionControlsHtml(card, adapter, reader)}
   </article>`;
 }
 
@@ -34570,8 +35091,9 @@ function buildSdeCanonicalDiagnosticsHtml(diagnostics, integrityStatus){
   });
 }
 
-async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action){
+async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action, encodedPlanRevision=""){
   const canonicalCardId = decodeURIComponent(String(encodedCanonicalCardId || ""));
+  const renderedPlanRevision = decodeURIComponent(String(encodedPlanRevision || ""));
   const actionType = String(action || "").trim();
   let reader = null;
   try{
@@ -34581,15 +35103,26 @@ async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action){
     renderSdeSkiftebevegelser();
     return;
   }
+  if(!renderedPlanRevision || renderedPlanRevision !== String(reader.planRevision || "")){
+    renderSdeSkiftebevegelser();
+    alert("Canonical-kortet er oppdatert siden det ble vist. Den gjeldende aktive planen er rendret på nytt uten operativ handling.");
+    return;
+  }
   const card = (reader.cardProjection.actionableCards || []).find(item=>item.canonicalCardId === canonicalCardId);
   const adapter = card ? reader.handlerAdapters?.[card.canonicalCardId] : null;
   const allowed = actionType === "completed" ? adapter?.canComplete : actionType === "cancelled" ? adapter?.canCancel : false;
   if(!card || !adapter?.ready || !allowed){
+    renderSdeSkiftebevegelser();
     alert(`Canonical-kortet kan ikke behandles: ${(adapter?.reasons || ["kortet er ikke lenger aktivt eller handlingen er sperret"]).join("; ")}`);
     return;
   }
   await handleSdeShiftMoveAction(encodeURIComponent(adapter.actionKey), actionType, {
     canonicalCardId,
+    planRevision:reader.planRevision,
+    activeOutcomeId:card.activeOutcomeId,
+    obligationId:card.obligationId,
+    stepId:card.stepId,
+    actionKey:adapter.actionKey,
     canonicalCanDelete:adapter.canDelete === true
   });
 }
