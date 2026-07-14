@@ -14863,16 +14863,16 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
       reservedSlots:Array.isArray(context?.sequenceReservedSlots) ? context.sequenceReservedSlots : []
     }
   );
+  const lockedButtTrackVnRelief = Boolean(vnReliefAssessment.pair);
   const ordinaryCandidateOrder = getSdePhysicalBlockerReleaseCandidateOrder(
     blockerVehicle,
     blockerSlot,
     normalizeSlot(context.avoidSlot || blockedFromSlot),
     {avoidSlots:baseAvoidSlots}
   );
-  const completeCandidateOrder = Array.from(new Set([
-    ...(vnReliefAssessment.eligible ? ["VN"] : []),
-    ...ordinaryCandidateOrder
-  ]));
+  const completeCandidateOrder = lockedButtTrackVnRelief
+    ? (vnReliefAssessment.eligible ? ["VN"] : [])
+    : Array.from(new Set(ordinaryCandidateOrder));
   const planningStateSignature = getSdePhysicalPlanningStateSignature(sourceRows);
   const roundRecord = prepareSdePhysicalReleaseRound(
     getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker),
@@ -14900,7 +14900,14 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
     if(normalizeSlot(row.fromSlot || row.arrivalSlot) !== blockerSlot) return false;
     if(isSdeMoveActioned(row)) return false;
     const target = normalizeSlot(row.recommendedSlot || row.toSlot);
-    if(!target || avoidSlots.has(target)) return false;
+    if(!target || [blockedFromSlot, normalizeSlot(blockState?.toSlot), normalizeSlot(context.avoidSlot)].filter(Boolean).includes(target)) return false;
+    const reservedByOtherRow = sourceRows.some(candidate=>
+      candidate
+      && candidate !== row
+      && !isSdeMoveActioned(candidate)
+      && normalizeSlot(candidate.recommendedSlot || candidate.toSlot) === target
+    );
+    if(avoidSlots.has(target) && reservedByOtherRow) return false;
     return !getSdeHardPhysicalBlockStateForMove(row).hardBlocked;
   });
 
@@ -14916,7 +14923,11 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
   }
 
   const vnPreferred = vnReliefAssessment.eligible && !rejectedTargets.has("VN");
-  const preferredTarget = normalizeSlot(vnPreferred ? "VN" : (roundRecord.activeTarget || context.preferredTarget));
+  const preferredTarget = normalizeSlot(
+    lockedButtTrackVnRelief
+      ? (vnPreferred ? "VN" : "")
+      : (roundRecord.activeTarget || context.preferredTarget)
+  );
   const safePreferredTarget = preferredTarget &&
     !avoidSlots.has(preferredTarget) &&
     (preferredTarget === "VN"
@@ -16568,6 +16579,26 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
     const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
     if(targetSlot) reservedSlots.add(targetSlot);
   });
+  const vnClaimCandidates = sourceRows.map(row=>{
+    const rowKey = getSdeMoveActionKey(row);
+    if(!rowKey || isSdeMoveActioned(row)) return null;
+    const blockState = getSdeHardPhysicalBlockStateForMove(row);
+    const blockers = Array.isArray(blockState.blockers) ? blockState.blockers : [];
+    if(!blockState.hardBlocked || blockers.length !== 1) return null;
+    const blocker = blockers[0];
+    if(!getSdeButtTrackTemporaryVnPair(blockState.fromSlot, blocker?.slot)) return null;
+    const assessment = buildSdeButtTrackTemporaryVnReliefAssessment(row, blockState, blocker, sourceRows, {
+      avoidSlots:[...reservedSlots],
+      reservedSlots:[...reservedSlots]
+    });
+    return assessment.eligible ? {rowKey,blockState} : null;
+  }).filter(Boolean).sort((left,right)=>left.rowKey.localeCompare(right.rowKey));
+  const vnClaimWinnerKey = vnClaimCandidates[0]?.rowKey || "";
+  const getVnClaimAvoidSlots = (rowKey,blockState) => {
+    if(!vnClaimWinnerKey || rowKey === vnClaimWinnerKey) return [];
+    const blockers = Array.isArray(blockState?.blockers) ? blockState.blockers : [];
+    return blockers.some(blocker=>getSdeButtTrackTemporaryVnPair(blockState?.fromSlot, blocker?.slot)) ? ["VN"] : [];
+  };
   const stableReleaseTargetsByRowKey = new Map();
 
   sourceRows.forEach(row=>{
@@ -16576,8 +16607,10 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
     if(isSdeMoveActioned(row)) return;
     const blockState = getSdeHardPhysicalBlockStateForMove(row);
     if(!blockState.hardBlocked) return;
+    const vnClaimAvoidSlots = getVnClaimAvoidSlots(rowKey, blockState);
     const stableTarget = getSdeStablePhysicalReleaseTargetForRow(row, blockState, sourceRows, [
-      ...reservedSlots
+      ...reservedSlots,
+      ...vnClaimAvoidSlots
     ]);
     if(stableTarget) stableReleaseTargetsByRowKey.set(rowKey, stableTarget);
   });
@@ -16616,8 +16649,8 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
           .filter(Boolean)
         : [];
       const freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, sourceRows, {
-        avoidSlots:[...reservedSlots, ...otherStableReleaseTargets],
-        sequenceReservedSlots:[...reservedSlots]
+        avoidSlots:[...reservedSlots, ...otherStableReleaseTargets, ...getVnClaimAvoidSlots(rowKey, blockState)],
+        sequenceReservedSlots:[...reservedSlots, ...getVnClaimAvoidSlots(rowKey, blockState)]
       });
       const freeingKey = getSdeMoveActionKey(freeingMove);
       const chainId = getSdePhysicalDependencyChainId(row, blockState, freeingMove);
@@ -16664,13 +16697,14 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
         if(rejectedKey) insertedFreeingKeys.add(rejectedKey);
       });
       if(freeingMove && freeingKey && !insertedFreeingKeys.has(freeingKey)){
-        guarded.push({
+        const guardedFreeingMove = {
           ...freeingMove,
           sdePhysicalChainId:chainId,
           sdePhysicalChainStep:1,
           sdePhysicalChainStepCount:vnChainPlan ? 3 : 2,
           sdePhysicalPrerequisiteFor:blockedKey,
           sdePhysicalDependsOn:[],
+          canonicalChainStepActive:true,
           sdePhysicalDependencyLabel:"Frigjøringssteg før blokkert hovedflytting.",
           sdePhysicalDependencyRole:"prerequisite",
           ...(vnChainPlan ? {
@@ -16679,7 +16713,17 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
             parkingStrategy:"Midlertidig VN-frigjøring",
             parkingInstruction:`Midlertidig frigjøring til VN. Retur er planlagt etter at ${vnChainPlan.blockedVehicle} har forlatt ${vnChainPlan.blockedFromSlot}.`
           } : {})
+        };
+        const freeingParts = getSdePhysicalMoveParts(guardedFreeingMove);
+        const existingGuardedIndex = guarded.findIndex(candidate=>{
+          if(getSdeMoveActionKey(candidate) === freeingKey) return true;
+          const candidateParts = getSdePhysicalMoveParts(candidate);
+          return haveSameSdeVehicleTokens(candidateParts.vehicle, freeingParts.vehicle)
+            && candidateParts.fromSlot === freeingParts.fromSlot
+            && candidateParts.toSlot === freeingParts.toSlot;
         });
+        if(existingGuardedIndex >= 0) guarded[existingGuardedIndex] = guardedFreeingMove;
+        else guarded.push(guardedFreeingMove);
         insertedFreeingKeys.add(freeingKey);
         const freeingTarget = normalizeSlot(freeingMove.recommendedSlot || freeingMove.toSlot);
         if(freeingTarget) reservedSlots.add(freeingTarget);
@@ -21949,7 +21993,7 @@ function getSdeCanonicalSequenceStep(row){
 
 function getSdeCanonicalChainScope(row, obligationKind){
   if(obligationKind === "vn-recovery"){
-    return String(row?.sdeVnRecoveryObligationId || row?.sdeVnEntryToken || row?.canonicalChainId || "").trim();
+    return String(row?.sdeVnRecoveryObligationId || row?.sdeVnEntryToken || row?.sdePhysicalChainId || row?.canonicalChainId || "").trim();
   }
   if(obligationKind === "physical-chain"){
     return String(row?.sdePhysicalChainId || row?.chainId || row?.canonicalChainId || "").trim();
@@ -22688,11 +22732,18 @@ function buildSdeCanonicalPlan(input={}){
     const dependencies = sortSdeCanonicalStrings(
       Array.isArray(row.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : Array.isArray(row.dependsOn) ? row.dependsOn : []
     );
+    const completedDependencies = dependencies.filter(key=>completedActionKeys.has(key));
     const unmetDependencies = dependencies.filter(key=>!completedActionKeys.has(key));
+    const isValidatedPhysicalChainDependent = Boolean(
+      String(row.sdePhysicalChainId || "").trim()
+      && String(row.sdePhysicalDependencyRole || "").trim() === "dependent"
+      && Array.isArray(row.sdePhysicalDependsOn)
+      && row.sdePhysicalDependsOn.map(value=>String(value || "").trim()).filter(Boolean).length
+    );
     const physicalInvalidReason = String(
       row.canonicalPhysicalInvalidReason || row.sdePhysicalSequenceConflictReason ||
       (row.sdePhysicalNoSafeReleaseMove ? row.sdePhysicalNoSafeReleaseReason || "Ingen trygg fysisk frigjøring." : "") ||
-      (row.sdePhysicalHardBlocked && !row.isSdePhysicalBlockerFreeingMove ? row.sdePhysicalHardBlockState?.reason || "Fysisk blokkert." : "")
+      (row.sdePhysicalHardBlocked && !row.isSdePhysicalBlockerFreeingMove && !isValidatedPhysicalChainDependent ? row.sdePhysicalHardBlockState?.reason || "Fysisk blokkert." : "")
     ).trim();
     const physicalValid = row.canonicalPhysicalValid !== false && !physicalInvalidReason;
     const eligibilityBase = signature.identitySafe && !exiting && status !== "completed" && status !== "superseded" && status !== "inactive" && Boolean(targetSlot) && physicalValid && unmetDependencies.length === 0;
@@ -22712,6 +22763,7 @@ function buildSdeCanonicalPlan(input={}){
       targetSlot,
       chainId:String(row.sdePhysicalChainId || row.chainId || "").trim(),
       dependencies,
+      completedDependencies,
       unmetDependencies,
       status:exiting ? "exiting" : unmetDependencies.length ? "future" : status,
       eligibilityBase,
@@ -23033,7 +23085,7 @@ function buildSdeCanonicalPlan(input={}){
     candidateOutcomeIds:sortSdeCanonicalStrings(Array.from(entry.candidateOutcomeIds)),
     producers:sortSdeCanonicalStrings(Array.from(entry.producers))
   })).sort((left,right)=>`${left.aliasType}|${left.normalizedValue}`.localeCompare(`${right.aliasType}|${right.normalizedValue}`));
-  identityCrosswalk.filter(entry=>entry.obligationIds.length > 1).forEach(entry=>{
+  identityCrosswalk.filter(entry=>entry.aliasType !== "chainId" && entry.obligationIds.length > 1).forEach(entry=>{
     recordConflict(
       {code:"legacy_identity_collision", type:"identity", severity:"error", aliasType:entry.aliasType, aliasValue:entry.aliasValue, obligationIds:entry.obligationIds, stepIds:entry.stepIds},
       "Ett legacy-alias peker til flere canonical obligations."
@@ -23578,8 +23630,10 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
     }
     const dependencyIds = sortSdeCanonicalStrings(card.dependencyIds || outcome.dependencies || []);
     const resolvedDependencyOutcomeIds = sortSdeCanonicalStrings(dependencyIds.map(resolveDependency).filter(Boolean));
-    if(dependencyIds.length !== resolvedDependencyOutcomeIds.length){
-      recordConflict("MISSING_DEPENDENCY", [], {activeOutcomeId:card.activeOutcomeId, stepId:card.stepId, dependencyIds});
+    const completedDependencyIds = new Set((outcome.completedDependencies || []).map(value=>String(value || "").trim()).filter(Boolean));
+    const missingDependencyIds = dependencyIds.filter(value=>!resolveDependency(value) && !completedDependencyIds.has(value));
+    if(missingDependencyIds.length){
+      recordConflict("MISSING_DEPENDENCY", [], {activeOutcomeId:card.activeOutcomeId, stepId:card.stepId, dependencyIds:missingDependencyIds});
       return [];
     }
     const sourceSlot = card.chainId ? outcome.stepSourceSlot || outcome.statedSourceSlot || card.sourceSlot : card.sourceSlot;
@@ -24869,7 +24923,10 @@ function buildSdeCanonicalCardPreviewSource(runtimeSnapshot){
   const canonicalPlan = buildSdeCanonicalPlan({
     actualSources:snapshot.actualSources,
     candidateRows:snapshot.legacy?.finalCards,
-    activeAuthorities
+    activeAuthorities,
+    completedActionKeys:Object.entries(snapshot.runtimeState?.actions || {})
+      .filter(([,record])=>record?.action === "completed")
+      .map(([key])=>key)
   });
   const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
   const reservationProjection = buildSdeCanonicalReservationProjection(canonicalPlan, cardProjection);
@@ -32205,12 +32262,202 @@ function inspectSdeCanonicalGraphicDragOrder(reader, expected={}){
   return {ok,reason,outcome,card,reservation:reservations[0] || null,overlay:overlays[0] || null,adapter};
 }
 
+function inspectSdeCanonicalGraphicDragVnReliefChain(reader, expected={}){
+  const vehicleId = sanitizeVehicleValue(expected.vehicle);
+  const sourceSlot = normalizeSlot(expected.sourceSlot);
+  const targetSlot = normalizeSlot(expected.targetSlot);
+  const actionKey = String(expected.actionKey || "").trim();
+  const candidateOutcomes = Array.isArray(reader?.canonicalPlan?.candidateOutcomes)
+    ? reader.canonicalPlan.candidateOutcomes
+    : [];
+  const mainCandidates = candidateOutcomes.filter(outcome=>
+    sanitizeVehicleValue(outcome?.vehicleId) === vehicleId
+    && normalizeSlot(outcome?.canonicalSourceSlot) === sourceSlot
+    && normalizeSlot(outcome?.targetSlot) === targetSlot
+    && String(outcome?.producer || "").trim() === "graphic_drag_generated_move"
+    && String(outcome?.sequenceStep || "").trim() === "physical-2"
+    && (!actionKey || String(outcome?.actionKey || "").trim() === actionKey)
+  );
+  const mainOutcome = mainCandidates.length === 1 ? mainCandidates[0] : null;
+  const chainId = String(mainOutcome?.chainId || mainOutcome?.chainScope || "").trim();
+  const chainOutcomes = chainId
+    ? candidateOutcomes.filter(outcome=>String(outcome?.chainId || outcome?.chainScope || "").trim() === chainId)
+    : [];
+  const releaseOutcomes = chainOutcomes.filter(outcome=>
+    String(outcome?.sequenceStep || "").trim() === "physical-1"
+    && normalizeSlot(outcome?.targetSlot) === "VN"
+  );
+  const returnOutcomes = chainOutcomes.filter(outcome=>
+    String(outcome?.sequenceStep || "").trim() === "physical-3"
+    && normalizeSlot(outcome?.canonicalSourceSlot) === "VN"
+    && normalizeSlot(outcome?.targetSlot) === sourceSlot
+  );
+  const releaseOutcome = releaseOutcomes.length === 1 ? releaseOutcomes[0] : null;
+  const returnOutcome = returnOutcomes.length === 1 ? returnOutcomes[0] : null;
+  const releaseActionKey = String(releaseOutcome?.actionKey || "").trim();
+  const returnActionKey = String(returnOutcome?.actionKey || "").trim();
+  const mainDependencies = Array.isArray(mainOutcome?.dependencies) ? mainOutcome.dependencies : [];
+  const returnDependencies = Array.isArray(returnOutcome?.dependencies) ? returnOutcome.dependencies : [];
+  const dependenciesMatch = Boolean(
+    releaseActionKey
+    && actionKey
+    && mainDependencies.length === 1
+    && mainDependencies[0] === releaseActionKey
+    && returnDependencies.length === 1
+    && returnDependencies[0] === actionKey
+  );
+
+  const actionableCards = (reader?.cardProjection?.actionableCards || []).filter(card=>card?.chainId === chainId);
+  const blockedCards = (reader?.cardProjection?.blockedChainCards || []).filter(card=>card?.chainId === chainId);
+  const chainCards = [...actionableCards,...blockedCards];
+  const reservations = (reader?.reservationProjection?.reservations || []).filter(item=>item?.chainId === chainId);
+  const activeOverlays = (reader?.graphicProjection?.activeOverlays || []).filter(item=>item?.chainId === chainId);
+  const deferredOverlays = (reader?.graphicProjection?.deferredOverlays || []).filter(item=>item?.chainId === chainId);
+  const cardByOutcomeId = new Map(chainCards.map(card=>[card.activeOutcomeId,card]));
+  const reservationByOutcomeId = new Map(reservations.map(item=>[item.activeOutcomeId,item]));
+  const activeOverlayByOutcomeId = new Map(activeOverlays.map(item=>[item.activeOutcomeId,item]));
+  const deferredOverlayByOutcomeId = new Map(deferredOverlays.map(item=>[item.activeOutcomeId,item]));
+  const releaseCard = cardByOutcomeId.get(releaseOutcome?.candidateOutcomeId) || null;
+  const mainCard = cardByOutcomeId.get(mainOutcome?.candidateOutcomeId) || null;
+  const returnCard = cardByOutcomeId.get(returnOutcome?.candidateOutcomeId) || null;
+  const adapters = chainCards.map(card=>reader?.handlerAdapters?.[card.canonicalCardId] || null);
+  const adapterByOutcomeId = new Map(adapters.filter(Boolean).map(adapter=>[adapter.activeOutcomeId,adapter]));
+  const releaseAdapter = adapterByOutcomeId.get(releaseOutcome?.candidateOutcomeId) || null;
+  const mainAdapter = adapterByOutcomeId.get(mainOutcome?.candidateOutcomeId) || null;
+  const returnAdapter = adapterByOutcomeId.get(returnOutcome?.candidateOutcomeId) || null;
+  const routeReservations = [
+    reservationByOutcomeId.get(releaseOutcome?.candidateOutcomeId),
+    reservationByOutcomeId.get(returnOutcome?.candidateOutcomeId)
+  ].filter(Boolean);
+  const routeResourcesMatch = routeReservations.length === 2 && routeReservations.every(item=>
+    Array.isArray(item.routeResources)
+    && item.routeResources.includes("VN")
+    && item.routeResources.includes("VS")
+  );
+  const chainReservationIds = new Set(reservations.map(item=>item.reservationId));
+  const reservationConflicts = (reader?.reservationProjection?.conflicts || []).filter(conflict=>
+    (conflict.reservationIds || []).some(id=>chainReservationIds.has(id))
+    || (conflict.chainIds || []).includes?.(chainId)
+  );
+  const actualSlots = reader?.graphicProjection?.actualSlots || [];
+  const actualUnchanged = Boolean(
+    releaseOutcome
+    && actualSlots.some(item=>sanitizeVehicleValue(item.vehicleId) === sanitizeVehicleValue(releaseOutcome.vehicleId) && normalizeSlot(item.slot) === normalizeSlot(releaseOutcome.canonicalSourceSlot))
+    && actualSlots.some(item=>sanitizeVehicleValue(item.vehicleId) === vehicleId && normalizeSlot(item.slot) === sourceSlot)
+  );
+  const chainRecord = (reader?.cardProjection?.chains || []).filter(chain=>chain?.chainId === chainId);
+  const activeOutcomeIds = new Set((reader?.canonicalPlan?.activeOutcomes || [])
+    .filter(outcome=>String(outcome?.chainId || outcome?.chainScope || "").trim() === chainId)
+    .map(outcome=>outcome.candidateOutcomeId));
+  const exactStepIdentities = chainOutcomes.length === 3
+    && new Set(chainOutcomes.map(outcome=>outcome.stepId)).size === 3
+    && new Set(chainOutcomes.map(outcome=>outcome.candidateOutcomeId)).size === 3
+    && chainOutcomes.every(outcome=>outcome.obligationId && outcome.stepId && outcome.candidateOutcomeId);
+  const ok = Boolean(
+    mainOutcome
+    && releaseOutcome
+    && returnOutcome
+    && chainRecord.length === 1
+    && exactStepIdentities
+    && dependenciesMatch
+    && actionableCards.length === 1
+    && actionableCards[0].activeOutcomeId === releaseOutcome.candidateOutcomeId
+    && blockedCards.length === 2
+    && blockedCards.every(card=>[mainOutcome.candidateOutcomeId,returnOutcome.candidateOutcomeId].includes(card.activeOutcomeId))
+    && reservations.length === 3
+    && activeOverlays.length === 1
+    && activeOverlayByOutcomeId.has(releaseOutcome.candidateOutcomeId)
+    && deferredOverlays.length === 2
+    && deferredOverlayByOutcomeId.has(mainOutcome.candidateOutcomeId)
+    && deferredOverlayByOutcomeId.has(returnOutcome.candidateOutcomeId)
+    && activeOutcomeIds.size === 1
+    && activeOutcomeIds.has(releaseOutcome.candidateOutcomeId)
+    && routeResourcesMatch
+    && !reservationConflicts.length
+    && actualUnchanged
+    && adapters.length === 3
+    && adapters.every(Boolean)
+    && new Set(adapters.map(adapter=>adapter.actionKey)).size === 3
+    && releaseAdapter?.ready === true
+    && mainAdapter?.ready === false
+    && returnAdapter?.ready === false
+    && mainCard?.canComplete === false
+    && returnCard?.canComplete === false
+    && returnCard?.canDelete === false
+  );
+  const reason = ok ? "" : [
+    `main=${mainCandidates.length}`,
+    `chainOutcomes=${chainOutcomes.length}`,
+    `release=${releaseOutcomes.length}`,
+    `return=${returnOutcomes.length}`,
+    `dependencies=${dependenciesMatch ? "ok" : "mismatch"}`,
+    `actionable=${actionableCards.length}`,
+    `blocked=${blockedCards.length}`,
+    `reservations=${reservations.length}`,
+    `activeOverlays=${activeOverlays.length}`,
+    `deferredOverlays=${deferredOverlays.length}`,
+    `routeResources=${routeResourcesMatch ? "ok" : "mismatch"}`,
+    `reservationConflicts=${reservationConflicts.length}`,
+    `actual=${actualUnchanged ? "unchanged" : "mismatch"}`,
+    `adapters=${adapters.filter(Boolean).length}/3`,
+    `activeAdapter=${releaseAdapter?.ready === true ? "ready" : "blocked"}`
+  ].join("; ");
+  return {
+    ok,
+    reason,
+    chainId,
+    chain:chainRecord[0] || null,
+    outcomes:{release:releaseOutcome,main:mainOutcome,return:returnOutcome},
+    cards:{release:releaseCard,main:mainCard,return:returnCard},
+    reservations,
+    overlays:{active:activeOverlays,deferred:deferredOverlays},
+    adapters:{release:releaseAdapter,main:mainAdapter,return:returnAdapter}
+  };
+}
+
 function stageSdeCanonicalGraphicDragOrder(override){
   const generatedMove = buildSdeNightPlacementGeneratedMove(override);
   if(!generatedMove) throw new Error("Canonical drag-rad kunne ikke bygges.");
   const outcomeKey = getSdeMoveObligationStepKey(generatedMove);
   const actionKey = getSdeMoveActionKey(generatedMove);
   if(!outcomeKey || !actionKey) throw new Error("Canonical drag-identitet mangler.");
+
+  if(override?.hardPhysicalBlocked){
+    removeSdeActiveOutcomeAuthoritiesForPhysicalStep(generatedMove.vehicle, generatedMove.fromSlot);
+    const expected = {
+      vehicle:generatedMove.vehicle,
+      sourceSlot:generatedMove.fromSlot,
+      targetSlot:generatedMove.toSlot,
+      actionKey
+    };
+    const provisionalReader = buildSdeCanonicalProductionReader();
+    const provisional = inspectSdeCanonicalGraphicDragVnReliefChain(provisionalReader, expected);
+    if(!provisional.ok) throw new Error(`Canonical VN-frigjøringskjede er ufullstendig: ${provisional.reason}`);
+    override.sdeCanonicalManualAuthority = {
+      authorityMode:"requested_target_with_physical_guard",
+      vehicle:generatedMove.vehicle,
+      physicalFromSlot:generatedMove.fromSlot,
+      requestedTarget:generatedMove.toSlot,
+      mainActionKey:actionKey,
+      chainId:provisional.chainId,
+      activePrerequisiteOutcomeId:provisional.outcomes.release.candidateOutcomeId,
+      createdAt:String(override.createdAt || ""),
+      updatedAt:String(override.updatedAt || override.createdAt || "")
+    };
+    const committedReader = buildSdeCanonicalProductionReader();
+    const committed = inspectSdeCanonicalGraphicDragVnReliefChain(committedReader, expected);
+    if(!committed.ok) throw new Error(`Canonical VN-frigjøringskjede er ikke stabil: ${committed.reason}`);
+    return {
+      reader:committedReader,
+      authority:override.sdeCanonicalManualAuthority,
+      outcome:committed.outcomes.release,
+      card:committed.cards.release,
+      reservation:committed.reservations.find(item=>item.activeOutcomeId === committed.outcomes.release.candidateOutcomeId) || null,
+      overlay:committed.overlays.active[0] || null,
+      adapter:committed.adapters.release,
+      chain:committed
+    };
+  }
 
   removeSdeActiveOutcomeAuthoritiesForPhysicalStep(generatedMove.vehicle, generatedMove.fromSlot);
   const authority = setSdeActiveOutcomeAuthority(outcomeKey, generatedMove, {
@@ -32254,6 +32501,9 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   sdeNightPlacementBlockedMoveRequest = null;
   const assessment = buildSdeNightPlacementDropAssessment(payload, toSlot, data);
   const targetSlot = normalizeSlot(toSlot);
+  const canonicalReaderMode = getSdeProductionReaderMode(window.location, {
+    technicalFailure:Boolean(sdeProductionReaderFallbackError) || isSdeCanonicalReaderTechnicalFailureTestRequested()
+  }) === "canonical";
 
   if(assessment.noOp){
     sdeNightPlacementBlockedMoveRequest = null;
@@ -32276,7 +32526,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     return false;
   }
 
-  if(assessment.hardPhysicalBlocked){
+  if(assessment.hardPhysicalBlocked && !canonicalReaderMode){
     sdeNightPlacementBlockedMoveRequest = assessment.blockedMoveRequest || null;
     sdeNightPlacementDropMessage = {
       type:"warning",
@@ -32303,21 +32553,22 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   }
 
   const currentFromSlot = normalizeSlot(assessment.currentFromSlot || assessment.fromSlot || payload?.slot || payload?.fromSlot);
-  const canonicalReaderMode = getSdeProductionReaderMode(window.location, {
-    technicalFailure:Boolean(sdeProductionReaderFallbackError) || isSdeCanonicalReaderTechnicalFailureTestRequested()
-  }) === "canonical";
   const existingSameTargetOverride = findSdeNightPlacementActiveOverrideForStep(assessment.vehicle, assessment.fromSlot);
   if(existingSameTargetOverride && normalizeSlot(existingSameTargetOverride.toSlot) === assessment.toSlot){
     const existingActionKey = getSdeNightPlacementOverrideActionKey(existingSameTargetOverride);
     let existingOrder = null;
     if(canonicalReaderMode && existingSameTargetOverride.sdeCanonicalGraphicDragOrder){
       try{
-        existingOrder = inspectSdeCanonicalGraphicDragOrder(buildSdeCanonicalProductionReader(), {
+        const existingReader = buildSdeCanonicalProductionReader();
+        const existingExpected = {
           vehicle:assessment.vehicle,
           sourceSlot:assessment.fromSlot,
           targetSlot:assessment.toSlot,
           actionKey:existingActionKey
-        });
+        };
+        existingOrder = existingSameTargetOverride.hardPhysicalBlocked
+          ? inspectSdeCanonicalGraphicDragVnReliefChain(existingReader, existingExpected)
+          : inspectSdeCanonicalGraphicDragOrder(existingReader, existingExpected);
       }catch(_error){
         existingOrder = null;
       }
@@ -32424,6 +32675,9 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
       canonicalProducer:"graphic_drag_generated_move",
       canonicalPurpose:"vehicle-relocation",
       sdeCanonicalGraphicDragOrder:true,
+      canonicalAuthorityMode:assessment.hardPhysicalBlocked
+        ? "requested_target_with_physical_guard"
+        : "direct_active_outcome",
       dragRequestId:generatedId,
       sdeNightPlacementDragIdentity:generatedId,
       manualPlanId:`manual-graphic-order|${generatedId}`
@@ -32443,7 +32697,9 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
       sdeNightPlacementDropMessage = {
         type:"info",
         slot:assessment.toSlot,
-        text:`Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Canonical kort, reservasjon, planoverlay og handleradapter er entydige.`,
+        text:assessment.hardPhysicalBlocked
+          ? `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Fysisk VN-frigjøringskjede er validert; bare første steg er handlingsklart.`
+          : `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Canonical kort, reservasjon, planoverlay og handleradapter er entydige.`,
         timeStatus:assessment.timeStatus
       };
       persist(true);
@@ -33804,7 +34060,10 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   const canonicalPlan = buildSdeCanonicalPlan({
     actualSources:snapshot.actualSources,
     candidateRows:snapshot.legacy?.finalCards,
-    activeAuthorities
+    activeAuthorities,
+    completedActionKeys:Object.entries(snapshot.runtimeState?.actions || {})
+      .filter(([,record])=>record?.action === "completed")
+      .map(([key])=>key)
   });
   const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
   cardProjection.diagnostics = sortSdeCanonicalObjects([
