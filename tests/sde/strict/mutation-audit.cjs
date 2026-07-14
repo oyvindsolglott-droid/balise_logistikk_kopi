@@ -1,6 +1,7 @@
 "use strict";
 
 const childProcess = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -16,6 +17,56 @@ function replaceOnce(value, search, replacement, name) {
   return value.slice(0, index) + replacement + value.slice(index + search.length);
 }
 
+function countOccurrences(value, search) {
+  if (!search) return 0;
+  return value.split(search).length - 1;
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function applySemanticStrategy(value, strategies, name) {
+  const matching = strategies.filter(strategy => strategy.matches(value));
+  if (matching.length !== 1) {
+    throw new Error(`${name}: expected exactly one semantic strategy, got ${matching.length}`);
+  }
+
+  const strategy = matching[0];
+  const beforeSnippets = [];
+  const afterSnippets = [];
+  let changed = value;
+  let changedOccurrences = 0;
+
+  for (const edit of strategy.edits) {
+    const occurrences = countOccurrences(changed, edit.before);
+    if (occurrences !== 1) {
+      throw new Error(`${name}/${strategy.id}/${edit.name}: expected exactly one occurrence, got ${occurrences}`);
+    }
+    changed = replaceOnce(changed, edit.before, edit.after, `${name}/${strategy.id}/${edit.name}`);
+    beforeSnippets.push(edit.before);
+    afterSnippets.push(edit.after);
+    changedOccurrences += occurrences;
+  }
+
+  if (changed === value) throw new Error(`${name}/${strategy.id}: mutation changed no source`);
+  return {
+    html: changed,
+    metadata: {
+      strategy: strategy.id,
+      functionName: strategy.functionName,
+      changedOccurrences,
+      beforeSnippetSha256: sha256(beforeSnippets.join("\n---\n")),
+      afterSnippetSha256: sha256(afterSnippets.join("\n---\n")),
+      edits: strategy.edits.map(edit => ({
+        name: edit.name,
+        beforeSnippetSha256: sha256(edit.before),
+        afterSnippetSha256: sha256(edit.after),
+      })),
+    },
+  };
+}
+
 function strictReport(html, name) {
   const target = path.join(temporary, `${name}.html`);
   fs.writeFileSync(target, html);
@@ -26,8 +77,20 @@ function strictReport(html, name) {
     maxBuffer: 64 * 1024 * 1024,
   });
   if (run.error || ![0, 1].includes(run.status)) throw new Error(`${name} crashed: ${run.error || run.stderr || run.stdout}`);
-  return JSON.parse(String(run.stdout).trim().split(/\n/).filter(Boolean).at(-1));
+  const report = JSON.parse(String(run.stdout).trim().split(/\n/).filter(Boolean).at(-1));
+  if (report?.counts?.total !== 37 || !Array.isArray(report?.failIds)) {
+    throw new Error(`${name} returned an incomplete strict report`);
+  }
+  return {...report, strictExitCode: run.status};
 }
+
+const legacyOccupiedTargetGuard = "if(getSdeVehicleInSlot(mainTargetSlot)) return null;";
+const canonicalOccupiedTargetGate = "const targetOccupiedByOtherVehicle = targetOccupiedByOtherVehicleBeforeSequence";
+const legacyVnFirstReturn = "return Array.from(new Set([...(preferDedicatedVn ? [\"VN\"] : []),...ordinaryCandidates]));";
+const canonicalLocalFirstReturn = "return Array.from(new Set([...ordinaryCandidates,...(preferDedicatedVn ? [\"VN\"] : [])]));";
+const forcedVnFirstReturn = "return preferDedicatedVn ? [\"VN\", ...ordinaryCandidates.filter(slot=>slot !== \"VN\")] : ordinaryCandidates; /* mutation: force VN before local relief */";
+const localReturnValidation = "if(!returnAccessOption) return null;";
+const bypassedLocalReturnValidation = "if(false && !returnAccessOption) return null; /* mutation: bypass mandatory local return validation */";
 
 const mutations = [
   {
@@ -101,17 +164,55 @@ const mutations = [
   },
   {
     id: "G-allow-occupied-target-card",
-    apply: html => replaceOnce(html, "if(getSdeVehicleInSlot(mainTargetSlot)) return null;", "if(false && getSdeVehicleInSlot(mainTargetSlot)) return null;", "occupied target guard"),
+    apply: html => applySemanticStrategy(html, [
+      {
+        id: "legacy-late-access-relief-guard",
+        functionName: "buildSdeTemporaryAccessReliefChainPlan",
+        matches: sourceValue => countOccurrences(sourceValue, legacyOccupiedTargetGuard) === 1
+          && countOccurrences(sourceValue, canonicalOccupiedTargetGate) === 0,
+        edits: [{
+          name: "late occupied-target guard",
+          before: legacyOccupiedTargetGuard,
+          after: "if(false && getSdeVehicleInSlot(mainTargetSlot)) return null; /* mutation: allow occupied target */",
+        }],
+      },
+      {
+        id: "canonical-early-target-occupancy-gate",
+        functionName: "buildSdeCanonicalPlan",
+        matches: sourceValue => countOccurrences(sourceValue, canonicalOccupiedTargetGate) === 1,
+        edits: [{
+          name: "early canonical occupied-target gate",
+          before: canonicalOccupiedTargetGate,
+          after: "const targetOccupiedByOtherVehicle = false && targetOccupiedByOtherVehicleBeforeSequence",
+        }],
+      },
+    ], "occupied target guard"),
     catches: ["INV-TARGET-004", "INV-TARGET-007", "INV-TARGET-008"],
   },
   {
     id: "H-rank-VN-before-local-south",
-    apply: html => replaceOnce(
-      replaceOnce(html, "Array.from(new Set([...(preferDedicatedVn ? [\"VN\"] : []),...ordinaryCandidates]))", "Array.from(new Set([...(preferDedicatedVn ? [\"VN\"] : []),...ordinaryCandidates])) /* explicit VN-first mutation */", "VN rank"),
-      "if(!returnAccessOption) return null;",
-      "if(false && !returnAccessOption) return null; /* mutation also bypasses mandatory local return validation */",
-      "local return validation",
-    ),
+    apply: html => applySemanticStrategy(html, [
+      {
+        id: "legacy-vn-first-ranking",
+        functionName: "getSdePhysicalBlockerAccessReliefCandidateOrder + buildSdeTemporaryAccessReliefChainPlan",
+        matches: sourceValue => countOccurrences(sourceValue, legacyVnFirstReturn) === 1
+          && countOccurrences(sourceValue, canonicalLocalFirstReturn) === 0,
+        edits: [
+          {name: "candidate ranking", before: legacyVnFirstReturn, after: forcedVnFirstReturn},
+          {name: "local return validation", before: localReturnValidation, after: bypassedLocalReturnValidation},
+        ],
+      },
+      {
+        id: "canonical-local-first-ranking",
+        functionName: "getSdePhysicalBlockerAccessReliefCandidateOrder + buildSdeTemporaryAccessReliefChainPlan",
+        matches: sourceValue => countOccurrences(sourceValue, canonicalLocalFirstReturn) === 1
+          && countOccurrences(sourceValue, legacyVnFirstReturn) === 0,
+        edits: [
+          {name: "candidate ranking", before: canonicalLocalFirstReturn, after: forcedVnFirstReturn},
+          {name: "local return validation", before: localReturnValidation, after: bypassedLocalReturnValidation},
+        ],
+      },
+    ], "VN rank"),
     catches: ["INV-RELIEF-001", "INV-RELIEF-002", "INV-RELIEF-003", "INV-RELIEF-007"],
   },
   {
@@ -124,11 +225,22 @@ const mutations = [
 const reports = [];
 try {
   for (const mutation of mutations) {
-    const report = strictReport(mutation.apply(source), mutation.id);
+    const applied = mutation.apply(source);
+    const mutatedSource = typeof applied === "string" ? applied : applied.html;
+    const metadata = typeof applied === "string" ? null : applied.metadata;
+    if (mutatedSource === source) throw new Error(`${mutation.id}: mutation changed no source`);
+    const report = strictReport(mutatedSource, mutation.id);
     const caught = mutation.any
       ? mutation.catches.some(id => report.failIds.includes(id))
       : mutation.catches.every(id => report.failIds.includes(id));
-    reports.push({id: mutation.id, status: caught ? "PASS" : "FAIL", expectedRedIds: mutation.catches, actualFailIds: report.failIds});
+    reports.push({
+      id: mutation.id,
+      status: caught ? "PASS" : "FAIL",
+      expectedRedIds: mutation.catches,
+      actualFailIds: report.failIds,
+      strictExitCode: report.strictExitCode,
+      ...(metadata || {}),
+    });
   }
 
   const expectedPath = path.join(__dirname, "baseline-expected-failures.json");
