@@ -22956,7 +22956,9 @@ function buildSdeCanonicalPlan(input={}){
     let activeOutcome = null;
     let selectionReason = "no_eligible_candidate";
     const authorityIds = sortSdeCanonicalStrings([
-      ...candidates.map(candidate=>candidate.activeAuthorityId),
+      ...candidates
+        .filter(candidate=>candidate.activeEligible)
+        .map(candidate=>candidate.activeAuthorityId),
       activeAuthorities[stepId],
       activeAuthorities[first.obligationId],
       ...candidates.map(candidate=>candidate.legacyOutcomeKey ? activeAuthorities[candidate.legacyOutcomeKey] : "")
@@ -24417,18 +24419,33 @@ function buildSdeCanonicalIntegrityReport(input={}){
     const sequenceOrder = stepId => Number(String(chainCandidates.find(item=>item.stepId === stepId)?.sequenceStep || "").match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
     const chainStepIds = sortSdeCanonicalStrings(chainCandidates.map(item=>item.stepId)).sort((left,right)=>sequenceOrder(left) - sequenceOrder(right) || left.localeCompare(right));
     const sequenceSteps = chainStepIds.map(stepId=>chainCandidates.find(item=>item.stepId === stepId)?.sequenceStep || "");
+    const declaredStepCounts = Array.from(new Set(chainCandidates
+      .map(candidate=>Number(candidate.raw?.sdePhysicalChainStepCount))
+      .filter(value=>Number.isInteger(value) && value > 0)))
+      .sort((left,right)=>left - right);
+    const sequenceNumbers = sequenceSteps
+      .map(value=>Number(String(value || "").match(/\d+/)?.[0]))
+      .filter(value=>Number.isInteger(value) && value > 0);
     const missingDependencies = sortSdeCanonicalStrings(chainCandidates.flatMap(candidate=>(candidate.dependencies || []).filter(item=>!resolveDependency(item))));
     const cyclic = chainCandidates.filter(candidate=>cyclicOutcomeIds.has(candidate.candidateOutcomeId)).map(candidate=>candidate.candidateOutcomeId);
     const active = actionableCards.filter(card=>card.chainId === chainId);
     const completedActive = chainCandidates.filter(candidate=>candidate.status === "completed" && active.some(card=>card.activeOutcomeId === candidate.candidateOutcomeId));
     const localProblems = [];
     if(new Set(sequenceSteps).size !== sequenceSteps.length) localProblems.push("CHAIN_DUPLICATE_SEQUENCE_STEP");
+    if(declaredStepCounts.length > 1) localProblems.push("CHAIN_INCONSISTENT_DECLARED_STEP_COUNT");
+    if(declaredStepCounts.length === 1){
+      const declaredStepCount = declaredStepCounts[0];
+      const expectedSequenceNumbers = Array.from({length:declaredStepCount},(_,index)=>index + 1);
+      if(chainStepIds.length !== declaredStepCount || stableStringifySdeCanonicalValue(sequenceNumbers) !== stableStringifySdeCanonicalValue(expectedSequenceNumbers)){
+        localProblems.push("CHAIN_INCOMPLETE_DECLARED_SEQUENCE");
+      }
+    }
     if(missingDependencies.length) localProblems.push("CHAIN_MISSING_DEPENDENCY");
     if(cyclic.length) localProblems.push("CHAIN_CYCLIC_DEPENDENCY");
     if(active.length > 1) localProblems.push("CHAIN_MULTIPLE_ACTIVE_STEPS");
     if(completedActive.length) localProblems.push("CHAIN_COMPLETED_STEP_ACTIVE");
-    localProblems.forEach(classification=>addConflict(classification,{chainId,missingDependencies,cyclicOutcomeIds:cyclic,activeOutcomeIds:active.map(item=>item.activeOutcomeId)}));
-    return {chainId,status:localProblems.length ? "FAIL" : "PASS",sequenceSteps,stepIds:chainStepIds,activeOutcomeIds:sortSdeCanonicalStrings(active.map(item=>item.activeOutcomeId)),blockedOutcomeIds:sortSdeCanonicalStrings(blockedCards.filter(card=>card.chainId === chainId).map(item=>item.activeOutcomeId)),missingDependencies,cyclicOutcomeIds:sortSdeCanonicalStrings(cyclic),conflictClassifications:localProblems.sort()};
+    localProblems.forEach(classification=>addConflict(classification,{chainId,declaredStepCounts,sequenceSteps,missingDependencies,cyclicOutcomeIds:cyclic,activeOutcomeIds:active.map(item=>item.activeOutcomeId)}));
+    return {chainId,status:localProblems.length ? "FAIL" : "PASS",declaredStepCounts,sequenceSteps,stepIds:chainStepIds,activeOutcomeIds:sortSdeCanonicalStrings(active.map(item=>item.activeOutcomeId)),blockedOutcomeIds:sortSdeCanonicalStrings(blockedCards.filter(card=>card.chainId === chainId).map(item=>item.activeOutcomeId)),missingDependencies,cyclicOutcomeIds:sortSdeCanonicalStrings(cyclic),conflictClassifications:localProblems.sort()};
   });
   const recoveryCandidates = candidates.filter(candidate=>candidate.raw?.sdeVnRecoveryRequired || candidate.raw?.isSdePhysicalVnRecoveryMove || (candidate.obligationKind === "vn-recovery" && candidate.actualSourceSlot === "VN"));
   const recoveryResults = sortSdeCanonicalStrings(recoveryCandidates.map(item=>item.vehicleId)).map(vehicleId=>{
