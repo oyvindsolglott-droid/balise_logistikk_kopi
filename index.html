@@ -4368,6 +4368,7 @@ button{padding:12px 12px}
 }
 .sde-night-placement-reserve,
 .sde-night-placement-warnings,
+.sde-night-placement-confirmation,
 .sde-night-placement-slot-info{
   margin:0 20px 18px;
   display:grid;
@@ -4401,6 +4402,16 @@ button{padding:12px 12px}
   border-color:rgba(248,113,113,.42);
   background:rgba(248,113,113,.14);
   color:#fee2e2;
+}
+.sde-night-placement-confirmation{
+  border:1px solid rgba(45,212,191,.42);
+  border-radius:12px;
+  padding:10px 12px;
+  background:rgba(13,148,136,.16);
+  color:#ccfbf1;
+  font-size:12px;
+  font-weight:900;
+  line-height:1.35;
 }
 .sde-night-placement-slot-info{
   padding:12px 14px;
@@ -21541,6 +21552,9 @@ function getSdeMoveOutcomePhysicalFromSlot(row){
 
 function getSdeCancelledOutcomeAlias(row){
   if(!row) return "";
+  if(row.sdeCanonicalGraphicDragOrder || row.sdeNightPlacementDragIdentity){
+    return "";
+  }
   const vehicleToken = normalizeVehicleToken(row.vehicle);
   const physicalFromSlot = getSdeMoveOutcomePhysicalFromSlot(row);
   const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
@@ -21678,13 +21692,26 @@ function getSdeActiveOutcomeAuthority(outcomeKey){
 function setSdeActiveOutcomeAuthority(outcomeKey, activeRow, options={}){
   const key = String(outcomeKey || "").trim();
   const activeOutcomeId = String(options.activeOutcomeId || getSdeMoveActionKey(activeRow) || "").trim();
+  const legacyActionKey = String(options.legacyActionKey || getSdeMoveActionKey(activeRow) || activeOutcomeId).trim();
   if(!key || !activeOutcomeId) return null;
+  const vehicleId = sanitizeVehicleValue(activeRow?.vehicle || options.vehicleId || options.vehicle);
+  const canonicalSourceSlot = getSdeMoveOutcomePhysicalFromSlot(activeRow) || normalizeSlot(options.canonicalSourceSlot || options.physicalFromSlot);
   const authority = {
     outcomeKey:key,
     activeOutcomeId,
+    legacyActionKey,
+    canonicalActiveOutcomeId:String(options.canonicalActiveOutcomeId || "").trim(),
     activeChainId:String(activeRow?.sdePhysicalChainId || options.activeChainId || "").trim(),
-    vehicle:sanitizeVehicleValue(activeRow?.vehicle || options.vehicle),
-    physicalFromSlot:getSdeMoveOutcomePhysicalFromSlot(activeRow) || normalizeSlot(options.physicalFromSlot),
+    vehicleId,
+    vehicle:vehicleId,
+    canonicalSourceSlot,
+    physicalFromSlot:canonicalSourceSlot,
+    requestedTarget:normalizeSlot(activeRow?.recommendedSlot || activeRow?.toSlot || options.requestedTarget),
+    obligationId:String(options.obligationId || "").trim(),
+    stepId:String(options.stepId || "").trim(),
+    producer:String(options.producer || "").trim(),
+    dragRequestId:String(options.dragRequestId || "").trim(),
+    createdAt:String(options.createdAt || options.updatedAt || new Date().toISOString()),
     sequenceStep:getSdeMoveOutcomeSequenceStep(activeRow),
     updatedAt:String(options.updatedAt || new Date().toISOString()),
     source:String(options.source || "sde_cancel_replacement")
@@ -21703,7 +21730,8 @@ function isSdeVisualDismissalRow(row){
 function getSdeActiveOutcomeCandidatePriority(row, outcomeKey){
   const cardId = getSdeMoveActionKey(row);
   const authority = getSdeActiveOutcomeAuthority(outcomeKey);
-  if(authority?.activeOutcomeId === cardId) return 1000000;
+  const authorityActionKey = String(authority?.legacyActionKey || authority?.activeOutcomeId || "").trim();
+  if(authorityActionKey === cardId) return 1000000;
 
   let priority = 0;
   if(row?.isSdeCancellationFailClosed) priority += 90000;
@@ -21728,7 +21756,8 @@ function getSdeAuthoritativeActiveOutcomeRows(rows=[]){
     const authority = getSdeActiveOutcomeAuthority(outcomeKey);
     const cardId = getSdeMoveActionKey(row);
     if(authority){
-      if(!authority.activeOutcomeId || authority.activeOutcomeId !== cardId) return;
+      const authorityActionKey = String(authority.legacyActionKey || authority.activeOutcomeId || "").trim();
+      if(!authorityActionKey || authorityActionKey !== cardId) return;
       winners.set(outcomeKey, {row, index, priority:Number.MAX_SAFE_INTEGER, outcomeKey});
       return;
     }
@@ -21783,9 +21812,10 @@ function isSdeAuthoritativeActiveOutcome(row){
   const outcomeKey = getSdeMoveObligationStepKey(row);
   const authority = getSdeActiveOutcomeAuthority(outcomeKey);
   if(authority){
+    const authorityActionKey = String(authority.legacyActionKey || authority.activeOutcomeId || "").trim();
     return Boolean(
-      authority.activeOutcomeId
-      && authority.activeOutcomeId === getSdeMoveActionKey(row)
+      authorityActionKey
+      && authorityActionKey === getSdeMoveActionKey(row)
     );
   }
   return row.sdeOutcomeActive !== false;
@@ -31234,6 +31264,11 @@ function buildSdeNightPlacementGeneratedMove(override){
     currentFromSlot:normalizeSlot(override?.currentFromSlot || override?.payloadSlot || override?.fromSlot),
     source:"night-placement-drag",
     originalSource:"SDE Grafisk planverktøy",
+    canonicalProducer:String(override?.canonicalProducer || "").trim(),
+    canonicalPurpose:String(override?.canonicalPurpose || "").trim(),
+    sdeCanonicalGraphicDragOrder:Boolean(override?.sdeCanonicalGraphicDragOrder),
+    sdeNightPlacementDragIdentity:String(override?.dragRequestId || override?.sdeNightPlacementDragIdentity || "").trim(),
+    manualPlanId:String(override?.manualPlanId || override?.dragRequestId || "").trim(),
     isNightPlacementGenerated:true,
     isManualSimulated:true,
     isManualOnly:true,
@@ -31674,8 +31709,13 @@ function buildSdeNightPlacementDragOverrideMoves(baseRows){
       affectedVehicles:Array.isArray(override.affectedVehicles) ? override.affectedVehicles : []
     };
 
+    const isCanonicalGraphicDragOrder = Boolean(override.sdeCanonicalGraphicDragOrder);
+    const canonicalGeneratedMove = isCanonicalGraphicDragOrder
+      ? buildSdeNightPlacementGeneratedMove(override)
+      : null;
+
     return {
-      ...(match || {}),
+      ...(isCanonicalGraphicDragOrder ? canonicalGeneratedMove || {} : match || {}),
       vehicle,
       fromSlot:fromSlot || normalizeSlot(match?.fromSlot || match?.arrivalSlot) || "",
       arrivalSlot:fromSlot || normalizeSlot(match?.arrivalSlot || match?.fromSlot) || "",
@@ -31686,6 +31726,11 @@ function buildSdeNightPlacementDragOverrideMoves(baseRows){
       needKey,
       moveKey,
       stableActionKey:String(override.stableActionKey || ""),
+      canonicalProducer:isCanonicalGraphicDragOrder ? "graphic_drag_generated_move" : String(match?.canonicalProducer || ""),
+      canonicalPurpose:isCanonicalGraphicDragOrder ? "vehicle-relocation" : String(match?.canonicalPurpose || ""),
+      sdeCanonicalGraphicDragOrder:isCanonicalGraphicDragOrder,
+      sdeNightPlacementDragIdentity:String(override.dragRequestId || override.sdeNightPlacementDragIdentity || "").trim(),
+      manualPlanId:String(override.manualPlanId || override.dragRequestId || "").trim(),
       sdeNightPlacementDragOverrideActive:true,
       sdeNightPlacementOverrideId:String(override.id || ""),
       sdeNightPlacementOverrideCreatedAt:String(override.createdAt || ""),
@@ -32098,6 +32143,112 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
   };
 }
 
+function removeSdeActiveOutcomeAuthoritiesForPhysicalStep(vehicle, fromSlot){
+  const vehicleToken = normalizeVehicleToken(vehicle);
+  const physicalFromSlot = normalizeSlot(fromSlot);
+  if(!vehicleToken || !physicalFromSlot) return false;
+  const authorities = getSdeActiveMoveOutcomes();
+  let changed = false;
+  Object.keys(authorities).forEach(key=>{
+    const authority = authorities[key];
+    if(normalizeVehicleToken(authority?.vehicle) !== vehicleToken) return;
+    if(normalizeSlot(authority?.physicalFromSlot) !== physicalFromSlot) return;
+    delete authorities[key];
+    changed = true;
+  });
+  return changed;
+}
+
+function inspectSdeCanonicalGraphicDragOrder(reader, expected={}){
+  const vehicleId = sanitizeVehicleValue(expected.vehicle);
+  const sourceSlot = normalizeSlot(expected.sourceSlot);
+  const targetSlot = normalizeSlot(expected.targetSlot);
+  const actionKey = String(expected.actionKey || "").trim();
+  const activeOutcomes = (reader?.canonicalPlan?.activeOutcomes || []).filter(outcome=>
+    sanitizeVehicleValue(outcome?.vehicleId) === vehicleId
+    && normalizeSlot(outcome?.canonicalSourceSlot) === sourceSlot
+    && normalizeSlot(outcome?.targetSlot) === targetSlot
+    && String(outcome?.producer || "").trim() === "graphic_drag_generated_move"
+    && (!actionKey || String(outcome?.actionKey || "").trim() === actionKey)
+  );
+  const outcome = activeOutcomes.length === 1 ? activeOutcomes[0] : null;
+  const outcomeId = String(outcome?.candidateOutcomeId || "").trim();
+  const cards = (reader?.cardProjection?.actionableCards || []).filter(card=>card?.activeOutcomeId === outcomeId);
+  const reservations = (reader?.reservationProjection?.reservations || []).filter(item=>item?.activeOutcomeId === outcomeId);
+  const overlays = (reader?.graphicProjection?.activeOverlays || []).filter(item=>item?.activeOutcomeId === outcomeId);
+  const card = cards.length === 1 ? cards[0] : null;
+  const adapter = card ? reader?.handlerAdapters?.[card.canonicalCardId] || null : null;
+  const identities = [outcome, card, reservations[0], overlays[0]].filter(Boolean);
+  const identityMatches = identities.length === 4 && identities.every(item=>
+    sanitizeVehicleValue(item.vehicleId) === vehicleId
+    && normalizeSlot(item.targetSlot) === targetSlot
+    && String(item.obligationId || "").trim() === String(outcome?.obligationId || "").trim()
+    && String(item.stepId || "").trim() === String(outcome?.stepId || "").trim()
+  ) && [card, reservations[0], overlays[0]].every(item=>item.activeOutcomeId === outcomeId);
+  const ok = Boolean(
+    outcome
+    && cards.length === 1
+    && reservations.length === 1
+    && overlays.length === 1
+    && identityMatches
+    && adapter?.ready === true
+    && adapter?.actionKey === actionKey
+  );
+  const reason = ok ? "" : [
+    `activeOutcome=${activeOutcomes.length}`,
+    `actionableCard=${cards.length}`,
+    `reservation=${reservations.length}`,
+    `overlay=${overlays.length}`,
+    `identity=${identityMatches ? "ok" : "mismatch"}`,
+    `adapter=${adapter?.ready === true ? "ready" : (adapter?.reasons || ["missing"]).join(", ")}`
+  ].join("; ");
+  return {ok,reason,outcome,card,reservation:reservations[0] || null,overlay:overlays[0] || null,adapter};
+}
+
+function stageSdeCanonicalGraphicDragOrder(override){
+  const generatedMove = buildSdeNightPlacementGeneratedMove(override);
+  if(!generatedMove) throw new Error("Canonical drag-rad kunne ikke bygges.");
+  const outcomeKey = getSdeMoveObligationStepKey(generatedMove);
+  const actionKey = getSdeMoveActionKey(generatedMove);
+  if(!outcomeKey || !actionKey) throw new Error("Canonical drag-identitet mangler.");
+
+  removeSdeActiveOutcomeAuthoritiesForPhysicalStep(generatedMove.vehicle, generatedMove.fromSlot);
+  const authority = setSdeActiveOutcomeAuthority(outcomeKey, generatedMove, {
+    activeOutcomeId:actionKey,
+    legacyActionKey:actionKey,
+    vehicle:generatedMove.vehicle,
+    physicalFromSlot:generatedMove.fromSlot,
+    requestedTarget:generatedMove.toSlot,
+    producer:"graphic_drag_generated_move",
+    dragRequestId:override.dragRequestId,
+    createdAt:override.createdAt,
+    updatedAt:override.updatedAt,
+    source:"graphic_drag_generated_move"
+  });
+  if(!authority) throw new Error("Canonical manual authority kunne ikke opprettes.");
+
+  const expected = {
+    vehicle:generatedMove.vehicle,
+    sourceSlot:generatedMove.fromSlot,
+    targetSlot:generatedMove.toSlot,
+    actionKey
+  };
+  const provisionalReader = buildSdeCanonicalProductionReader();
+  const provisional = inspectSdeCanonicalGraphicDragOrder(provisionalReader, expected);
+  if(!provisional.ok) throw new Error(`Canonical bestillingskjede er ufullstendig: ${provisional.reason}`);
+
+  authority.activeOutcomeId = provisional.outcome.candidateOutcomeId;
+  authority.canonicalActiveOutcomeId = provisional.outcome.candidateOutcomeId;
+  authority.obligationId = provisional.outcome.obligationId;
+  authority.stepId = provisional.outcome.stepId;
+  authority.updatedAt = override.updatedAt;
+
+  const committedReader = buildSdeCanonicalProductionReader();
+  const committed = inspectSdeCanonicalGraphicDragOrder(committedReader, expected);
+  if(!committed.ok) throw new Error(`Canonical authority er ikke stabil: ${committed.reason}`);
+  return {reader:committed,authority,outcome:committed.outcome,card:committed.card,reservation:committed.reservation,overlay:committed.overlay,adapter:committed.adapter};
+}
+
 function applySdeNightPlacementDragOverride(payload, toSlot){
   const data = sdeShiftLastRenderedData || getSdeShiftShowcaseData();
   sdeNightPlacementBlockedMoveRequest = null;
@@ -32152,17 +32303,36 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   }
 
   const currentFromSlot = normalizeSlot(assessment.currentFromSlot || assessment.fromSlot || payload?.slot || payload?.fromSlot);
+  const canonicalReaderMode = getSdeProductionReaderMode(window.location, {
+    technicalFailure:Boolean(sdeProductionReaderFallbackError) || isSdeCanonicalReaderTechnicalFailureTestRequested()
+  }) === "canonical";
   const existingSameTargetOverride = findSdeNightPlacementActiveOverrideForStep(assessment.vehicle, assessment.fromSlot);
   if(existingSameTargetOverride && normalizeSlot(existingSameTargetOverride.toSlot) === assessment.toSlot){
-    sdeNightPlacementBlockedMoveRequest = null;
-    sdeNightPlacementDropMessage = {
-      type:"info",
-      slot:assessment.toSlot,
-      text:`Planforslag finnes allerede for ${assessment.vehicle}: ${normalizeSlot(existingSameTargetOverride.fromSlot || assessment.fromSlot)} → ${assessment.toSlot}. Ingen duplikatkjede ble opprettet.`,
-      timeStatus:String(existingSameTargetOverride.timeStatus || assessment.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW")
-    };
-    renderSdeSkiftebevegelser();
-    return true;
+    const existingActionKey = getSdeNightPlacementOverrideActionKey(existingSameTargetOverride);
+    let existingOrder = null;
+    if(canonicalReaderMode && existingSameTargetOverride.sdeCanonicalGraphicDragOrder){
+      try{
+        existingOrder = inspectSdeCanonicalGraphicDragOrder(buildSdeCanonicalProductionReader(), {
+          vehicle:assessment.vehicle,
+          sourceSlot:assessment.fromSlot,
+          targetSlot:assessment.toSlot,
+          actionKey:existingActionKey
+        });
+      }catch(_error){
+        existingOrder = null;
+      }
+    }
+    if(!canonicalReaderMode || existingOrder?.ok){
+      sdeNightPlacementBlockedMoveRequest = null;
+      sdeNightPlacementDropMessage = {
+        type:"info",
+        slot:assessment.toSlot,
+        text:`Planforslag finnes allerede for ${assessment.vehicle}: ${normalizeSlot(existingSameTargetOverride.fromSlot || assessment.fromSlot)} → ${assessment.toSlot}. Ingen duplikatkjede ble opprettet.`,
+        timeStatus:String(existingSameTargetOverride.timeStatus || assessment.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW")
+      };
+      renderSdeSkiftebevegelser();
+      return true;
+    }
   }
   const backtrackOverride = findSdeNightPlacementBacktrackOverride(assessment.vehicle, currentFromSlot, assessment.toSlot);
   if(backtrackOverride){
@@ -32193,43 +32363,49 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     getSdeNightPlacementOriginalFromSlot(assessment.vehicle, payload?.fromSlot || payload?.slot)
   );
   const generatedId = `night-drag-${Date.now()}`;
-  let generatedActionKey = existingOverride?.stableActionKey || "";
-  if(!generatedActionKey || getSdeMoveActionRecord(generatedActionKey)){
+  let generatedActionKey = canonicalReaderMode
+    ? `night-placement-drag|${normalizeVehicleToken(assessment.vehicle)}|${originalFromSlot}|${assessment.toSlot}|${generatedId}`
+    : existingOverride?.stableActionKey || "";
+  if(!canonicalReaderMode && (!generatedActionKey || getSdeMoveActionRecord(generatedActionKey))){
     generatedActionKey = row
       ? getSdeMoveActionKey(row)
       : `night-placement-drag|${normalizeVehicleToken(assessment.vehicle)}|${originalFromSlot}|${assessment.toSlot}|${generatedId}`;
   }
   const canReusePayloadKeys = Boolean(row || !assessment.isProjectedSource);
-  const needKey = row
-    ? getSdeMoveNeedKey(row)
-    : canReusePayloadKeys && isSdeNightPlacementUsableOverrideKey(payloadNeedKey)
-      ? payloadNeedKey
-      : `night-placement-drag-need|${generatedActionKey}`;
-  const moveKey = row
-    ? getSdeMoveActionKey(row)
-    : canReusePayloadKeys && isSdeNightPlacementUsableOverrideKey(payloadMoveKey)
-      ? payloadMoveKey
-      : generatedActionKey;
+  const needKey = canonicalReaderMode
+    ? `night-placement-drag-need|${generatedActionKey}`
+    : row
+      ? getSdeMoveNeedKey(row)
+      : canReusePayloadKeys && isSdeNightPlacementUsableOverrideKey(payloadNeedKey)
+        ? payloadNeedKey
+        : `night-placement-drag-need|${generatedActionKey}`;
+  const moveKey = canonicalReaderMode
+    ? generatedActionKey
+    : row
+      ? getSdeMoveActionKey(row)
+      : canReusePayloadKeys && isSdeNightPlacementUsableOverrideKey(payloadMoveKey)
+        ? payloadMoveKey
+        : generatedActionKey;
   const key = getSdeNightPlacementOverrideKeyFromParts(
     assessment.vehicle,
     originalFromSlot,
     needKey
   );
   const override = {
-    id:existingOverride?.id || generatedId,
+    id:canonicalReaderMode ? generatedId : existingOverride?.id || generatedId,
     vehicle:assessment.vehicle,
     originalFromSlot,
     fromSlot:originalFromSlot,
     currentFromSlot:assessment.currentFromSlot || normalizeSlot(payload?.slot || payload?.fromSlot),
     toSlot:assessment.toSlot,
-    createdAt:existingOverride?.createdAt || now,
+    createdAt:canonicalReaderMode ? now : existingOverride?.createdAt || now,
     updatedAt:now,
     source:"night-placement-drag",
     stableActionKey:generatedActionKey,
     needKey,
     moveKey,
-    hasMatchedSdeMove:Boolean(row),
-    isManualOnly:!row,
+    hasMatchedSdeMove:canonicalReaderMode ? false : Boolean(row),
+    isManualOnly:canonicalReaderMode ? true : !row,
     payloadFromSlot:normalizeSlot(payload?.fromSlot || payload?.slot),
     payloadSlot:normalizeSlot(payload?.slot),
     earliestMoveTime:assessment.earliestMoveTime,
@@ -32243,8 +32419,51 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     hardPhysicalBlocked:Boolean(assessment.hardPhysicalBlocked),
     noSafeReleaseMove:Boolean(assessment.noSafeReleaseMove),
     physicalBlockReason:String(assessment.physicalBlockState?.reason || ""),
-    note:"simulert ønsket sluttplassering"
+    note:"simulert ønsket sluttplassering",
+    ...(canonicalReaderMode ? {
+      canonicalProducer:"graphic_drag_generated_move",
+      canonicalPurpose:"vehicle-relocation",
+      sdeCanonicalGraphicDragOrder:true,
+      dragRequestId:generatedId,
+      sdeNightPlacementDragIdentity:generatedId,
+      manualPlanId:`manual-graphic-order|${generatedId}`
+    } : {})
   };
+
+  if(canonicalReaderMode){
+    const previousOverrides = cloneSdeCanonicalValue(getSdeNightPlacementManualOverrides()) || {};
+    const previousAuthorities = cloneSdeCanonicalValue(getSdeActiveMoveOutcomes()) || {};
+    const previousBlockedRequest = sdeNightPlacementBlockedMoveRequest;
+    try{
+      removeSdeNightPlacementOverridesForVehicleStep(assessment.vehicle, originalFromSlot);
+      getSdeNightPlacementManualOverrides()[key] = override;
+      const order = stageSdeCanonicalGraphicDragOrder(override);
+      sdeNightPlacementBlockedMoveRequest = null;
+      sdeNightPlacementSelectedSlot = "";
+      sdeNightPlacementDropMessage = {
+        type:"info",
+        slot:assessment.toSlot,
+        text:`Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Canonical kort, reservasjon, planoverlay og handleradapter er entydige.`,
+        timeStatus:assessment.timeStatus
+      };
+      persist(true);
+      renderSdeSkiftebevegelser();
+      return Boolean(order?.adapter?.ready);
+    }catch(error){
+      state.sdeNightPlacementManualOverrides = previousOverrides;
+      state.sdeActiveMoveOutcomes = previousAuthorities;
+      sdeNightPlacementBlockedMoveRequest = previousBlockedRequest;
+      sdeNightPlacementSelectedSlot = "";
+      sdeNightPlacementDropMessage = {
+        type:"error",
+        slot:assessment.toSlot,
+        text:`Bestilling avvist: ${error instanceof Error ? error.message : String(error || "canonical bestillingskjede kunne ikke opprettes")}`,
+        timeStatus:"UNKNOWN_TIME_MANUAL_REVIEW"
+      };
+      renderSdeSkiftebevegelser();
+      return false;
+    }
+  }
 
   getSdeNightPlacementManualOverrides()[key] = override;
   sdeNightPlacementBlockedMoveRequest = null;
@@ -33261,6 +33480,9 @@ function renderSdeNightPlacementOverview(data, options={}){
         ${overview.warnings.map(item => `<div class="sde-night-placement-warning ${item.severity === "error" ? "error" : ""}">${escapeHtml(item.text)}</div>`).join("")}
       </div>`
     : "";
+  const confirmationHtml = overview.confirmation?.text
+    ? `<div class="sde-night-placement-confirmation" role="status">${escapeHtml(overview.confirmation.text)}</div>`
+    : "";
   const selectedSlot = normalizeSlot(sdeNightPlacementSelectedSlot);
   const selectedInfoHtml = selectedSlot
     ? buildSdeOccupiedSlotInfoHtml(selectedSlot, overview.slots[selectedSlot])
@@ -33297,6 +33519,7 @@ function renderSdeNightPlacementOverview(data, options={}){
     <div class="sde-night-placement-actions">
       <button class="sde-night-placement-action-btn" type="button" data-sde-night-placement-clear-overrides ${hasManualDragOverrides ? "" : "disabled"}>Nullstill manuelle planplasseringer</button>
     </div>
+    ${confirmationHtml}
     ${selectedInfoHtml}
     <div class="sde-night-placement-yard-wrap">
       ${washMachineHtml}
@@ -33965,6 +34188,16 @@ function buildSdeCanonicalGraphicOverviewData(reader){
       text:`Canonical grafikk: ${item.classification || "konflikt"}. Ingen ekstra overlay opprettes.`
     });
   });
+  const dropMessage = typeof sdeNightPlacementDropMessage !== "undefined" && sdeNightPlacementDropMessage?.text
+    ? {
+        text:String(sdeNightPlacementDropMessage.text),
+        type:String(sdeNightPlacementDropMessage.type || "warning"),
+        slot:normalizeSlot(sdeNightPlacementDropMessage.slot)
+      }
+    : null;
+  if(dropMessage?.type === "error"){
+    warnings.push({code:"canonical_drag_order_rejected", severity:"error", text:dropMessage.text, slot:dropMessage.slot});
+  }
   const ordinaryOccupied = Array.from(ordinarySlots).filter(slot=>Boolean(slots[slot]?.vehicle)).length;
   const allOverlays = [...(reader.graphicProjection.activeOverlays || []),...(reader.graphicProjection.deferredOverlays || [])];
   return {
@@ -33976,7 +34209,8 @@ function buildSdeCanonicalGraphicOverviewData(reader){
     activeReservations:reader.reservationProjection.reservations || [],
     reservePlacements:[],
     warnings,
-    rejectedSlot:"",
+    confirmation:dropMessage && dropMessage.type !== "error" ? dropMessage : null,
+    rejectedSlot:dropMessage?.type === "error" ? dropMessage.slot : "",
     counts:{
       ordinarySlots:ordinarySlots.size,
       occupied:Object.values(slots).filter(entry=>Boolean(entry.vehicle)).length,
