@@ -36,27 +36,62 @@ const mutations = [
     catches: ["INV-CANCEL-001"],
   },
   {
-    id: "B-remove-learning-metadata",
-    apply: html => replaceOnce(html, "reasonCode:primaryReason.code,", 'reasonCode:"no_reason",', "learning metadata"),
+    id: "B-mutate-cancellation-state-before-save",
+    apply: html => replaceOnce(
+      html,
+      'const learningReason = await getSdeMoveLearningReason("cancelled", {',
+      'state.sdeMoveActions.__mutation_before_save={action:"cancelled"}; /* mutation */ const learningReason = await getSdeMoveLearningReason("cancelled", {',
+      "before-save state",
+    ),
+    catches: ["INV-CANCEL-002"],
+  },
+  {
+    id: "C-mutate-state-on-modal-cancel",
+    apply: html => replaceOnce(
+      html,
+      "const cancel = () => finish(null);",
+      'const cancel = () => { state.sdeMoveActions.__mutation_cancel={action:"cancelled"}; finish(null); };',
+      "modal Cancel state",
+    ),
+    catches: ["INV-CANCEL-003"],
+  },
+  {
+    id: "D-remove-learning-reason-and-comment",
+    apply: html => replaceOnce(
+      replaceOnce(html, "reasonCode:primaryReason.code,", 'reasonCode:"no_reason",', "learning reason"),
+      "commentText,\n      reasonCatalogVersion:1",
+      'commentText:"",\n      reasonCatalogVersion:1',
+      "learning comment",
+    ),
     catches: ["INV-CANCEL-004"],
   },
   {
-    id: "C-remove-exiting-status",
+    id: "E-remove-exiting-status",
     apply: html => replaceOnce(html, 'status:"dismissing",', 'status:"removed",', "exiting status"),
     catches: ["INV-CANCEL-005"],
   },
   {
-    id: "D-change-5-plus-2",
+    id: "F-remove-replacement-authority",
+    apply: html => replaceOnce(
+      html,
+      "cancellationRecord.replacedByCardId = replacementKey;",
+      'cancellationRecord.replacedByCardId = ""; /* mutation */',
+      "replacement authority",
+    ),
+    catches: ["INV-CANCEL-006"],
+  },
+  {
+    id: "G-change-5-plus-2",
     apply: html => replaceOnce(replaceOnce(html, "const SDE_RELEASE_CANCELLED_HOLD_MS = 5000;", "const SDE_RELEASE_CANCELLED_HOLD_MS = 4000;", "hold time"), "const SDE_RELEASE_CANCELLED_EXIT_MS = 2000;", "const SDE_RELEASE_CANCELLED_EXIT_MS = 1000;", "exit time"),
     catches: ["INV-CANCEL-007", "INV-CANCEL-008"],
   },
   {
-    id: "E-reverse-card-order",
+    id: "H-reverse-card-order",
     apply: html => replaceOnce(html, "...(reader.cardProjection.actionableCards || []),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || []),\n    ...(reader.cardProjection.exitingCards || [])", "...(reader.cardProjection.actionableCards || []).reverse(),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || []),\n    ...(reader.cardProjection.exitingCards || []).reverse()", "card order"),
     catches: ["INV-CANCEL-010", "INV-CANCEL-011"],
   },
   {
-    id: "F-keep-placeholder-after-removeAt",
+    id: "I-keep-placeholder-after-removeAt",
     apply: html => {
       let changed = replaceOnce(html, "...(reader.cardProjection.actionableCards || []),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || []),\n    ...(reader.cardProjection.exitingCards || [])", "...(reader.cardProjection.exitingCards || []),\n    ...(reader.cardProjection.actionableCards || []),\n    ...(reader.cardProjection.handlerBlockedCards || []),\n    ...(reader.cardProjection.blockedChainCards || [])", "placeholder order");
       changed = replaceOnce(changed, 'if(cancelledUiState.hidden) return "";', 'if(cancelledUiState.hidden) return `<article data-sde-canonical-card-id="${card.canonicalCardId}" data-sde-placeholder="true"></article>`;', "placeholder");

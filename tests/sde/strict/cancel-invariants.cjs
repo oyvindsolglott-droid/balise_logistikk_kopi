@@ -66,60 +66,222 @@ eval(prefix + String.raw`
   ctx.document.body=body;
   ctx.document.createElement=()=>createModalElement();
 
-  // Call the real modal implementation and prove its form data and presentation contract.
-  const savePromise=ctx.openSdeMoveLearningReasonModal("cancelled",{row:{vehicle:"TEST"},activeRows:[],canonicalCanDelete:true});
-  const saveBackdrop=ctx.sdeMoveLearningReasonModal?.backdrop;
-  const saveHtml=saveBackdrop?.innerHTML || "";
-  const wrong=saveBackdrop?.controls.get("checkbox:wrong_track");
-  if(wrong) wrong.checked=true;
-  const comment=saveBackdrop?.controls.get("textarea");
-  if(comment) comment.value="Kontrollert kommentar";
-  saveBackdrop?.controls.get("save")?.click();
-  const modalReason=await savePromise;
-  const saveIndex=saveHtml.indexOf("data-sde-learning-save");
-  const deleteIndex=saveHtml.indexOf("data-sde-learning-delete");
-  const cancelIndex=saveHtml.indexOf("data-sde-learning-cancel");
-  put("INV-CANCEL-014",saveIndex>=0 && saveIndex<deleteIndex && deleteIndex<cancelIndex,"real modal action order is Save/Delete/Cancel");
-  put("INV-CANCEL-015",/\.sde-learning-modal-actions\.has-delete\s*\{[\s\S]*?grid-template-columns\s*:\s*minmax\(0,\s*2fr\)\s+minmax\(0,\s*1fr\)\s+minmax\(0,\s*2fr\)/.test(html),"production CSS has 2:1:2 action columns");
+  function setRenderedMoves(moves){
+    ctx.__cancelData={moves};
+    vm.runInContext("sdeShiftLastRenderedData=__cancelData",ctx);
+  }
 
-  const cancelPromise=ctx.openSdeMoveLearningReasonModal("cancelled",{row:{vehicle:"TEST"},activeRows:[],canonicalCanDelete:true});
-  const cancelBackdrop=ctx.sdeMoveLearningReasonModal?.backdrop;
-  cancelBackdrop?.controls.get("cancel")?.click();
-  const cancelledModalValue=await cancelPromise;
+  function resetCancelScenario(placements,moves){
+    resetState(placements);
+    appState.sdeMoveLearningLog=[];
+    appState.sdeDeletedMoveCards={};
+    delete appState.sdeResetSnapshot;
+    ctx.sdeMoveActionPendingKey="";
+    ctx.sdeMoveLearningReasonModal=null;
+    body.children=[];
+    setRenderedMoves(moves);
+    ctx.persist=()=>{};
+    ctx.refreshSdeAfterMoveAction=()=>{};
+  }
 
-  // Exercise the real physical-release cancellation handler. The current regression bypasses the modal.
-  const placements=[["10N","BLOCKER"],["10S","MAIN"]];
-  resetState(placements);
-  const main=makeMain("10","MAIN","8N","strict-cancel");
-  const guarded=ctx.buildSdePhysicalBlockerGuardMoves([main]);
-  const release=guarded.find(row=>row.sdePhysicalDependencyRole==="prerequisite");
-  const releaseKey=ctx.getSdeMoveActionKey(release);
-  ctx.__cancelData={moves:guarded};
-  vm.runInContext("sdeShiftLastRenderedData=__cancelData",ctx);
-  ctx.persist=()=>{};
-  ctx.refreshSdeAfterMoveAction=()=>{};
-  let modalCalls=0;
-  const realLearning=ctx.getSdeMoveLearningReason;
-  ctx.getSdeMoveLearningReason=async(...args)=>{modalCalls+=1; return realLearning(...args);};
-  const before=JSON.stringify(appState.sdeMoveActions || {});
-  await ctx.handleSdeShiftMoveAction(encodeURIComponent(releaseKey),"cancelled",{canonicalCanDelete:true});
-  const after=JSON.stringify(appState.sdeMoveActions || {});
-  const actionRecord=ctx.getSdeMoveActionRecord(releaseKey) || {};
-  const learning=(appState.sdeMoveLearningLog || []).find(event=>event.actionKey===releaseKey) || {};
-  put("INV-CANCEL-001",modalCalls===1,"physical canCancel handler must call the real learning modal");
-  put("INV-CANCEL-002",modalCalls===1 && before===after && cancelledModalValue===null,"no cancellation before Save; direct modal Cancel returns null");
-  put("INV-CANCEL-004",modalCalls===1 && learning.reasonCode===modalReason?.reasonCode && learning.commentText===modalReason?.commentText,"wrong_track and comment must reach the physical cancellation learning event");
-  put("INV-CANCEL-005",actionRecord.action==="cancelled" && actionRecord.status==="dismissing","old card receives cancelled/dismissing lifecycle");
-  put("INV-CANCEL-006",actionRecord.dismissalState==="annulled_and_replaced" && Boolean(actionRecord.replacedByCardId),"old card exits while replacement is active");
-  const cancelledAt=Date.parse(actionRecord.cancelledAt || actionRecord.time || "");
-  const uiRow={...release,sdePhysicalRejectedReleaseMove:true};
+  function makePhysicalCancelFixture(label){
+    const placements=[["10N","BLOCKER"],["10S","MAIN"]];
+    resetCancelScenario(placements,[]);
+    const main=makeMain("10","MAIN","8N",label);
+    const rows=ctx.buildSdePhysicalBlockerGuardMoves([main]);
+    const row=rows.find(candidate=>candidate.sdePhysicalDependencyRole==="prerequisite");
+    setRenderedMoves(rows);
+    return {placements,main,rows,row,key:ctx.getSdeMoveActionKey(row)};
+  }
+
+  function makeDirectCancelFixture(label,vehicle="DIRECT-"+label){
+    const placements=[["10S",vehicle]];
+    const row=makeMain("10",vehicle,"8N",label);
+    resetCancelScenario(placements,[row]);
+    return {placements,rows:[row],row,key:ctx.getSdeMoveActionKey(row)};
+  }
+
+  async function waitForLearningModal(){
+    for(let attempt=0;attempt<8;attempt+=1){
+      const modal=ctx.sdeMoveLearningReasonModal;
+      if(modal?.backdrop?.parentNode) return modal;
+      await Promise.resolve();
+    }
+    return null;
+  }
+
+  function startCancellation(fixture){
+    return ctx.handleSdeShiftMoveAction(
+      encodeURIComponent(fixture.key),
+      "cancelled",
+      {canonicalCardId:"strict-card-"+fixture.key,canonicalCanDelete:true}
+    );
+  }
+
+  function hasReplacementState(actionRecord={}){
+    return Boolean(
+      actionRecord.replacedByCardId
+      || actionRecord.activeOutcomeId
+      || Object.keys(appState.sdeActiveMoveOutcomes || {}).length
+    );
+  }
+
+  // Scenario A: start the real physical cancellation and inspect state while its real modal promise is pending.
+  const beforeSaveFixture=makePhysicalCancelFixture("strict-cancel-before-save");
+  const beforeSaveActions=JSON.stringify(appState.sdeMoveActions || {});
+  const beforeSavePromise=startCancellation(beforeSaveFixture);
+  const beforeSaveModal=await waitForLearningModal();
+  const beforeSaveHtml=beforeSaveModal?.backdrop?.innerHTML || "";
+  const beforeSaveRecord=ctx.getSdeMoveActionRecord(beforeSaveFixture.key) || {};
+  const beforeSaveUnchanged=beforeSaveActions===JSON.stringify(appState.sdeMoveActions || {});
+  const beforeSaveLearning=(appState.sdeMoveLearningLog || []).filter(event=>event.key===beforeSaveFixture.key);
+  put(
+    "INV-CANCEL-001",
+    Boolean(beforeSaveModal)
+      && beforeSaveHtml.includes("Hvorfor ble SDE-forslaget annullert?")
+      && beforeSaveHtml.includes("Feil spor")
+      && beforeSaveModal.backdrop.controls.has("save")
+      && beforeSaveModal.backdrop.controls.has("cancel"),
+    "physical canCancel handler opens the real reason modal with question and choices"
+  );
+  put(
+    "INV-CANCEL-002",
+    Boolean(beforeSaveModal)
+      && beforeSaveUnchanged
+      && !beforeSaveRecord.action
+      && !hasReplacementState(beforeSaveRecord)
+      && beforeSaveLearning.length===0,
+    "physical cancellation state, replacement and learning remain unchanged before Save"
+  );
+  beforeSaveModal?.backdrop?.controls.get("cancel")?.click();
+  await beforeSavePromise;
+
+  // Scenario B: a fresh cancellable card uses the real Cancel button and leaves all cancellation state untouched.
+  const cancelFixture=makeDirectCancelFixture("strict-cancel-abort");
+  const cancelActionsBefore=JSON.stringify(appState.sdeMoveActions || {});
+  const cancelAuthoritiesBefore=JSON.stringify(appState.sdeActiveMoveOutcomes || {});
+  const cancelDeletedBefore=JSON.stringify(appState.sdeDeletedMoveCards || {});
+  const cancelLearningBefore=JSON.stringify(appState.sdeMoveLearningLog || []);
+  const realSetTimeout=ctx.setTimeout;
+  const cancelTimers=[];
+  ctx.setTimeout=(callback,delay)=>{cancelTimers.push(delay); return 1;};
+  const cancelPromise=startCancellation(cancelFixture);
+  const cancelModal=await waitForLearningModal();
+  cancelModal?.backdrop?.controls.get("cancel")?.click();
+  await cancelPromise;
+  ctx.setTimeout=realSetTimeout;
+  put(
+    "INV-CANCEL-003",
+    Boolean(cancelModal)
+      && ctx.sdeMoveLearningReasonModal===null
+      && cancelActionsBefore===JSON.stringify(appState.sdeMoveActions || {})
+      && cancelAuthoritiesBefore===JSON.stringify(appState.sdeActiveMoveOutcomes || {})
+      && cancelDeletedBefore===JSON.stringify(appState.sdeDeletedMoveCards || {})
+      && cancelLearningBefore===JSON.stringify(appState.sdeMoveLearningLog || [])
+      && cancelTimers.length===0,
+    "real Cancel closes the modal without cancellation, replacement, learning or timers"
+  );
+
+  // Scenario C: select the real wrong-track reason, enter a comment, click Save, then await the handler.
+  const saveFixture=makePhysicalCancelFixture("strict-cancel-save");
+  const savePromise=startCancellation(saveFixture);
+  const saveModal=await waitForLearningModal();
+  const wrongTrack=saveModal?.backdrop?.controls.get("checkbox:wrong_track");
+  if(wrongTrack) wrongTrack.checked=true;
+  const saveComment=saveModal?.backdrop?.controls.get("textarea");
+  if(saveComment) saveComment.value="Kontrollert kommentar";
+  const saveButton=saveModal?.backdrop?.controls.get("save");
+  saveButton?.click();
+  await savePromise;
+  const actionRecord=ctx.getSdeMoveActionRecord(saveFixture.key) || {};
+  const learning=(appState.sdeMoveLearningLog || []).find(event=>event.key===saveFixture.key && event.action==="cancelled") || {};
+  put(
+    "INV-CANCEL-004",
+    Boolean(saveModal && saveButton)
+      && learning.key===saveFixture.key
+      && learning.reasonCode==="wrong_track"
+      && learning.commentText==="Kontrollert kommentar"
+      && learning.snapshot?.vehicle===saveFixture.row.vehicle
+      && learning.snapshot?.fromSlot===saveFixture.row.fromSlot
+      && learning.snapshot?.toSlot===saveFixture.row.toSlot,
+    "real wrong_track and comment reach the physical cancellation learning record through event.key"
+  );
+  put(
+    "INV-CANCEL-006",
+    Boolean(saveModal && saveButton)
+      && actionRecord.dismissalState==="annulled_and_replaced"
+      && Boolean(actionRecord.replacedByCardId)
+      && actionRecord.activeOutcomeId===actionRecord.replacedByCardId
+      && actionRecord.authorityPending===false,
+    "after Save the old card exits while one replacement owns active authority"
+  );
+  put(
+    "INV-CANCEL-016",
+    Boolean(saveModal && saveButton)
+      && learning.key===saveFixture.key
+      && learning.reasonCodes?.includes("wrong_track")
+      && learning.commentText==="Kontrollert kommentar",
+    "existing learning metadata receives real modal reason fields through event.key"
+  );
+
+  // Run the 5+2 clock assertions only after a separate real Save path has completed.
+  const clockFixture=makeDirectCancelFixture("strict-cancel-clock","CLOCK");
+  const clockPromise=startCancellation(clockFixture);
+  const clockModal=await waitForLearningModal();
+  clockModal?.backdrop?.controls.get("checkbox:wrong_track") && (clockModal.backdrop.controls.get("checkbox:wrong_track").checked=true);
+  const clockComment=clockModal?.backdrop?.controls.get("textarea");
+  if(clockComment) clockComment.value="Klokkekontroll";
+  const clockSave=clockModal?.backdrop?.controls.get("save");
+  clockSave?.click();
+  await clockPromise;
+  const clockRecord=ctx.getSdeMoveActionRecord(clockFixture.key) || {};
+  put(
+    "INV-CANCEL-005",
+    Boolean(clockModal && clockSave)
+      && clockRecord.action==="cancelled"
+      && clockRecord.status==="dismissing"
+      && actionRecord.action==="cancelled"
+      && actionRecord.status==="dismissing",
+    "a completed real Save path and the physical old card both receive cancelled/dismissing lifecycle"
+  );
+  const cancelledAt=Date.parse(clockRecord.cancelledAt || clockRecord.time || "");
+  const uiRow={...clockFixture.row,sdePhysicalRejectedReleaseMove:true};
   const hold=ctx.getSdePhysicalReleaseCancelledUiState(uiRow,cancelledAt+4999);
   const exit=ctx.getSdePhysicalReleaseCancelledUiState(uiRow,cancelledAt+5000);
   const beforeRemoval=ctx.getSdePhysicalReleaseCancelledUiState(uiRow,cancelledAt+6999);
   const removed=ctx.getSdePhysicalReleaseCancelledUiState(uiRow,cancelledAt+7000);
-  put("INV-CANCEL-007",hold.phase==="hold" && !hold.hidden && exit.phase==="exit","real fake clock observes the 5000ms hold boundary");
-  put("INV-CANCEL-008",beforeRemoval.phase==="exit" && !beforeRemoval.hidden && removed.hidden,"real fake clock observes the 2000ms exit boundary");
-  put("INV-CANCEL-016",modalCalls===1 && learning.reasonCodes?.includes("wrong_track") && learning.commentText==="Kontrollert kommentar","existing learning metadata receives modal reason fields");
+  put("INV-CANCEL-007",Boolean(clockModal && clockSave) && hold.phase==="hold" && !hold.hidden && exit.phase==="exit","real fake clock observes the 5000ms hold boundary after Save");
+  put("INV-CANCEL-008",Boolean(clockModal && clockSave) && beforeRemoval.phase==="exit" && !beforeRemoval.hidden && removed.hidden,"real fake clock observes the 2000ms exit boundary after Save");
+
+  // Scenario D: a fresh deletable card uses the real Delete button and its separate deletion contract.
+  const deleteFixture=makeDirectCancelFixture("strict-cancel-delete","DELETE");
+  const deleteActionsBefore=JSON.stringify(appState.sdeMoveActions || {});
+  const deleteLearningBefore=JSON.stringify(appState.sdeMoveLearningLog || []);
+  const deleteTimers=[];
+  ctx.setTimeout=(callback,delay)=>{deleteTimers.push(delay); return 1;};
+  const deletePromise=startCancellation(deleteFixture);
+  const deleteModal=await waitForLearningModal();
+  const deleteHtml=deleteModal?.backdrop?.innerHTML || "";
+  const saveIndex=deleteHtml.indexOf("data-sde-learning-save");
+  const deleteIndex=deleteHtml.indexOf("data-sde-learning-delete");
+  const cancelIndex=deleteHtml.indexOf("data-sde-learning-cancel");
+  const deleteButton=deleteModal?.backdrop?.controls.get("delete");
+  deleteButton?.click();
+  await deletePromise;
+  ctx.setTimeout=realSetTimeout;
+  const deletedKeys=Object.keys(appState.sdeDeletedMoveCards || {});
+  put("INV-CANCEL-014",saveIndex>=0 && saveIndex<deleteIndex && deleteIndex<cancelIndex,"real modal action order is Save/Delete/Cancel");
+  put("INV-CANCEL-015",/\.sde-learning-modal-actions\.has-delete\s*\{[\s\S]*?grid-template-columns\s*:\s*minmax\(0,\s*2fr\)\s+minmax\(0,\s*1fr\)\s+minmax\(0,\s*2fr\)/.test(html),"production CSS has 2:1:2 action columns");
+  put(
+    "INV-CANCEL-017",
+    Boolean(deleteModal && deleteButton)
+      && ctx.sdeMoveLearningReasonModal===null
+      && deletedKeys.includes(deleteFixture.key)
+      && deleteActionsBefore===JSON.stringify(appState.sdeMoveActions || {})
+      && deleteLearningBefore===JSON.stringify(appState.sdeMoveLearningLog || [])
+      && deleteTimers.length===0,
+    "real Delete uses deletion markers without cancellation learning or 5+2 lifecycle"
+  );
 
   // Exercise the real renderer with a production reader fixture. Only external data/render dependencies are fixtures.
   const now=Date.now();
@@ -178,10 +340,12 @@ eval(prefix + String.raw`
   put("INV-CANCEL-013",firstCard==="replacement","replacement shifts left after exiting cards are removed");
 
   // No safe replacement remains fail-closed and non-actionable.
-  resetState(placements);
+  const closedPlacements=[["10N","BLOCKER"],["10S","MAIN"]];
+  resetCancelScenario(closedPlacements,[]);
+  const closedMain=makeMain("10","MAIN","8N","strict-cancel-closed");
   const all=vm.runInContext("inputSlots",ctx).filter(slot=>!["10N","10S","8N"].includes(slot));
   all.forEach((slot,index)=>{appState.grunnoppstilling[slot]="FULL-"+index;});
-  const closedRows=ctx.buildSdePhysicalBlockerGuardMoves([main]);
+  const closedRows=ctx.buildSdePhysicalBlockerGuardMoves([closedMain]);
   const closedReader=ctx.buildSdeCanonicalProductionReader(snapshot(closedRows,Object.entries(appState.grunnoppstilling).map(([slot,vehicle])=>[slot,vehicle])));
   const closedActionable=closedReader.cardProjection.actionableCards.filter(item=>item.vehicleId==="BLOCKER");
   const closedReservations=closedReader.reservationProjection.reservations.filter(item=>item.vehicleId==="BLOCKER");
