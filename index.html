@@ -3405,6 +3405,89 @@ button{padding:12px 12px}
   line-height:1.45;
 }
 
+.sde-reader-status{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:max-content;
+  max-width:100%;
+  margin:0 0 10px auto;
+  border:1px solid rgba(125,211,252,.28);
+  border-radius:999px;
+  padding:5px 10px;
+  background:rgba(15,23,42,.62);
+  color:#dbeafe;
+  font-size:11px;
+  font-weight:900;
+  line-height:1.2;
+}
+
+.sde-reader-status::before{
+  content:"";
+  width:7px;
+  height:7px;
+  flex:0 0 auto;
+  border-radius:999px;
+  background:#34d399;
+  box-shadow:0 0 10px rgba(52,211,153,.68);
+}
+
+.sde-reader-status.legacy-forced{
+  border-color:rgba(251,191,36,.34);
+  color:#fde68a;
+}
+
+.sde-reader-status.legacy-forced::before{
+  background:#fbbf24;
+  box-shadow:0 0 10px rgba(251,191,36,.62);
+}
+
+.sde-reader-status.legacy-fallback{
+  border-color:rgba(248,113,113,.42);
+  color:#fecaca;
+}
+
+.sde-reader-status.legacy-fallback::before{
+  background:#f87171;
+  box-shadow:0 0 10px rgba(248,113,113,.62);
+}
+
+.sde-shift-card.canonical-blocked{
+  border-style:dashed;
+  border-color:rgba(251,191,36,.48);
+  background:
+    linear-gradient(145deg, rgba(120,53,15,.20), rgba(255,255,255,.035)),
+    rgba(10,18,32,.82);
+}
+
+.sde-canonical-card-state{
+  border:1px solid rgba(125,211,252,.28);
+  border-radius:999px;
+  padding:6px 9px;
+  color:#bae6fd;
+  background:rgba(14,116,144,.14);
+  font-size:10px;
+  font-weight:950;
+  line-height:1.2;
+  text-transform:uppercase;
+}
+
+.sde-shift-card.canonical-blocked .sde-canonical-card-state{
+  border-color:rgba(251,191,36,.38);
+  color:#fde68a;
+  background:rgba(120,53,15,.20);
+}
+
+.sde-canonical-handler-block{
+  margin-top:10px;
+  border-left:3px solid rgba(248,113,113,.65);
+  padding:7px 10px;
+  background:rgba(127,29,29,.22);
+  color:#fecaca;
+  font-size:11px;
+  line-height:1.4;
+}
+
 @media (max-width:720px){
   .sde-canonical-preview-banner{flex-direction:column;}
   .sde-canonical-preview-kpis{grid-template-columns:repeat(2, minmax(0, 1fr));}
@@ -4096,6 +4179,17 @@ button{padding:12px 12px}
   border-radius:8px;
   padding:4px 5px;
   background:rgba(13,148,136,.13);
+}
+
+.sde-night-placement-plan-overlays .sde-night-placement-proposal.deferred{
+  border-color:rgba(251,191,36,.48);
+  background:rgba(120,53,15,.18);
+  color:#fde68a;
+  opacity:.82;
+}
+
+.sde-night-placement-plan-overlays .sde-night-placement-proposal.deferred strong{
+  color:#fef3c7;
 }
 .sde-night-placement-unresolved{
   min-width:0;
@@ -4905,10 +4999,17 @@ button{padding:12px 12px}
 
 @media (max-width: 560px){
   .sde-shift-showcase{ padding:16px; border-radius:20px; }
+  .sde-shift-section-title{ flex-wrap:wrap; align-items:stretch; }
+  .sde-shift-section-title-main{ flex:1 0 100%; overflow-wrap:anywhere; }
+  .sde-shift-section-title .sde-night-placement-toggle{ flex:1 1 190px; max-width:100%; }
+  .sde-shift-section-title-count{ flex:1 1 auto; align-self:center; }
+  .sde-shift-grid{ grid-template-columns:minmax(0, 1fr); }
+  .sde-shift-card{ min-width:0; }
   .sde-shift-card-top{ flex-direction:column; }
-  .sde-shift-trains{ text-align:left; }
+  .sde-shift-trains{ width:100%; min-width:0; max-width:none; text-align:left; }
   .sde-shift-route{ grid-template-columns:1fr; }
   .sde-shift-arrow{ transform:rotate(90deg); text-align:center; }
+  .sde-diagnostic-section-title{ overflow-wrap:anywhere; }
 }
 
 #sdeVaktplanTable{
@@ -26282,7 +26383,9 @@ function openSdeMoveLearningReasonModal(actionType, context={}){
   const showDeleteAction = actionType === "cancelled" && context?.row;
   const activeRows = Array.isArray(context?.activeRows) ? context.activeRows : [];
   const deleteBlockReason = showDeleteAction
-    ? getSdeMoveCardDeleteBlockReason(context.row, activeRows)
+    ? context?.canonicalCanDelete === false
+      ? "Canonical kortregel tillater ikke Slett kort for denne forpliktelsen."
+      : getSdeMoveCardDeleteBlockReason(context.row, activeRows)
     : "";
   const deleteDisabled = deleteBlockReason ? " disabled" : "";
   const deleteTitle = deleteBlockReason || "Slett kort";
@@ -26680,7 +26783,7 @@ function buildSdeMoveLearningDiagnosticsHtml(diagnostics){
   </div>`;
 }
 
-async function handleSdeShiftMoveAction(encodedKey, action){
+async function handleSdeShiftMoveAction(encodedKey, action, adapterContext={}){
   const key = decodeURIComponent(String(encodedKey || ""));
   const actionType = String(action || "").trim();
 
@@ -26897,7 +27000,11 @@ async function handleSdeShiftMoveAction(encodedKey, action){
       }
 
       const activeRows = buildSdeShiftCardMoves(data);
-      const learningReason = await getSdeMoveLearningReason("cancelled", {row, activeRows});
+      const learningReason = await getSdeMoveLearningReason("cancelled", {
+        row,
+        activeRows,
+        canonicalCanDelete:adapterContext?.canonicalCardId ? adapterContext.canonicalCanDelete === true : undefined
+      });
       if(learningReason === null) return;
       if(learningReason?.sdeMoveCardAction === "delete"){
         deleteSdeLocalMoveCard(row, activeRows);
@@ -32951,8 +33058,9 @@ function buildSdeNightPlacementSlotTitle(slot, entry, context={}){
   return lines.filter(Boolean).join("\n");
 }
 
-function renderSdeNightPlacementOverview(data){
-  const overview = buildSdeNightPlacementOverviewData(data);
+function renderSdeNightPlacementOverview(data, options={}){
+  const overview = options?.overview || buildSdeNightPlacementOverviewData(data);
+  const canonicalReader = options?.readerMode === "canonical";
   const limitedPlanningMode = Boolean(data?.limitedPlanningMode);
   const columnLabels = ["12","11","10","9","8","7","","6","5","4","3","","2","1"];
   const headerHtml = columnLabels
@@ -33071,8 +33179,13 @@ function renderSdeNightPlacementOverview(data){
           const activeOutcomeId = String(proposal?.activeOutcomeId || "").trim();
           const proposalNeedKey = getSdeMoveNeedKey(proposal?.row) || proposal?.row?.needKey || "";
           const proposalMoveKey = getSdeMoveActionKey(proposal?.row) || proposal?.row?.moveKey || "";
-          return `<div class="sde-night-placement-proposal" draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(proposal?.vehicle || "")}" data-sde-night-placement-current-slot="${escapeHtml(slot)}" data-sde-night-placement-from-slot="${escapeHtml(proposalFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(proposalNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(proposalMoveKey)}" data-sde-night-placement-source-kind="plan" data-sde-plan-overlay="1" data-sde-active-outcome-id="${escapeHtml(activeOutcomeId)}" data-sde-plan-vehicle="${escapeHtml(proposal?.vehicle || "")}" data-sde-plan-from-slot="${escapeHtml(proposalFromSlot)}" data-sde-plan-target-slot="${escapeHtml(slot)}">
-            <span>Forslag</span>
+          const deferred = proposal?.status === "deferred";
+          const proposalDraggable = !deferred && proposal?.draggable !== false;
+          const proposalDragAttributes = proposalDraggable
+            ? ` draggable="true" data-sde-night-placement-draggable="1"`
+            : ` aria-disabled="true"`;
+          return `<div class="sde-night-placement-proposal${deferred ? " deferred" : ""}"${proposalDragAttributes} data-sde-night-placement-vehicle="${escapeHtml(proposal?.vehicle || "")}" data-sde-night-placement-current-slot="${escapeHtml(slot)}" data-sde-night-placement-from-slot="${escapeHtml(proposalFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(proposalNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(proposalMoveKey)}" data-sde-night-placement-source-kind="plan" data-sde-plan-overlay="1" data-sde-overlay-kind="${deferred ? "deferred" : "active"}" data-sde-overlay-id="${escapeHtml(proposal?.overlayId || "")}" data-sde-reservation-id="${escapeHtml(proposal?.reservationId || "")}" data-sde-active-outcome-id="${escapeHtml(activeOutcomeId)}" data-sde-plan-vehicle="${escapeHtml(proposal?.vehicle || "")}" data-sde-plan-from-slot="${escapeHtml(proposalFromSlot)}" data-sde-plan-target-slot="${escapeHtml(slot)}">
+            <span>${deferred ? "Avventer dependency" : "Forslag"}</span>
             <strong>${escapeHtml(proposal?.vehicle || "Ukjent")}</strong>
             <span>${escapeHtml(proposalFromSlot ? `${proposalFromSlot} → ${slot}` : proposalSource)}</span>
           </div>`;
@@ -33135,10 +33248,14 @@ function renderSdeNightPlacementOverview(data){
     : "";
   const hasManualDragOverrides = Object.keys(getSdeNightPlacementManualOverrides()).length > 0;
 
-  const overviewSubtitle = limitedPlanningMode
+  const overviewSubtitle = canonicalReader
+    ? "Canonical faktisk sporplan med aktive og dependency-utsatte planoverlays som separate lag."
+    : limitedPlanningMode
     ? "Faktisk fysisk sporplan med aktive lokale planforslag som separat overlay."
     : "Faktisk fysisk sporplan med aktive SDE-planforslag som separat overlay.";
-  const activeMovesLabel = limitedPlanningMode
+  const activeMovesLabel = canonicalReader
+    ? "canonical aktive resultater"
+    : limitedPlanningMode
     ? "aktive manuelle resultater"
     : "aktive SDE-resultater";
 
@@ -33363,9 +33480,563 @@ function setupSdeNightPlacementDragAndDrop(){
 }
 
 
+let sdeProductionReaderFallbackError = null;
+
+function getSdeProductionReaderMode(
+  locationLike=typeof window !== "undefined" ? window.location : {search:""},
+  options={}
+){
+  const requestedReader = new URLSearchParams(String(locationLike?.search || "")).get("sdeReader");
+  if(requestedReader === "legacy") return "legacy_forced";
+  if(options?.technicalFailure) return "legacy_fallback";
+  return "canonical";
+}
+
+function isSdeCanonicalReaderTechnicalFailureTestRequested(
+  locationLike=typeof window !== "undefined" ? window.location : {search:"",hostname:""}
+){
+  const hostname = String(locationLike?.hostname || "").toLowerCase();
+  if(!["localhost","127.0.0.1","::1"].includes(hostname)) return false;
+  return new URLSearchParams(String(locationLike?.search || "")).get("sdeReaderTechnicalFailureTest") === "1";
+}
+
+function buildSdeProductionReaderStatusHtml(mode){
+  const status = mode === "legacy_forced"
+    ? {label:"Legacy – manuelt valgt", className:"legacy-forced", detail:"Legacy gjelder bare denne sideinnlastingen."}
+    : mode === "legacy_fallback"
+      ? {label:"Legacy – automatisk fallback", className:"legacy-fallback", detail:"Canonical kunne ikke fullføre teknisk; legacy vises fail-safe."}
+      : {label:"Canonical", className:"canonical", detail:"Canonical er aktiv produksjonsleser."};
+  return `<div class="sde-reader-status ${status.className}" data-sde-reader-status="${escapeHtml(mode)}" title="${escapeHtml(status.detail)}">${escapeHtml(status.label)}</div>`;
+}
+
+function applySdeProductionReaderStatus(mode){
+  const root = document.getElementById("sdeSkiftebevegelserDashboard");
+  if(!root) return;
+  root.querySelectorAll("[data-sde-reader-status]").forEach(item=>item.remove());
+  root.insertAdjacentHTML("afterbegin", buildSdeProductionReaderStatusHtml(mode));
+  root.dataset.sdeReaderMode = mode;
+}
+
+function assertSdeCanonicalProductionReaderContract(reader){
+  const requiredModels = [
+    ["canonicalPlan", reader?.canonicalPlan, ["candidateOutcomes","activeOutcomes","diagnostics","conflicts"]],
+    ["cardProjection", reader?.cardProjection, ["actionableCards","blockedChainCards","exitingCards","diagnostics","chains"]],
+    ["reservationProjection", reader?.reservationProjection, ["actualOccupancies","reservations","conflicts","diagnostics"]],
+    ["graphicProjection", reader?.graphicProjection, ["actualSlots","activeOverlays","deferredOverlays","unresolvedDiagnostics","slotRenderModels","conflicts"]],
+    ["integrityReport", reader?.integrityReport, ["invariantResults","obligationResults","conflicts"]]
+  ];
+  requiredModels.forEach(([name,model,arrayFields])=>{
+    if(!model || typeof model !== "object" || Array.isArray(model)){
+      throw new TypeError(`Canonical reader mangler ${name}.`);
+    }
+    if(!String(model.metadata?.schemaVersion || "").trim()){
+      throw new TypeError(`Canonical reader mangler schema for ${name}.`);
+    }
+    arrayFields.forEach(field=>{
+      if(!Array.isArray(model[field])){
+        throw new TypeError(`Canonical reader har ugyldig ${name}.${field}.`);
+      }
+    });
+  });
+  if(!Number.isFinite(Number(reader.cardProjection.activeProposalCount))){
+    throw new TypeError("Canonical reader har ugyldig activeProposalCount.");
+  }
+  if(!reader.reservationProjection.reservationsByOutcomeId || typeof reader.reservationProjection.reservationsByOutcomeId !== "object" || Array.isArray(reader.reservationProjection.reservationsByOutcomeId)){
+    throw new TypeError("Canonical reader mangler reservationsByOutcomeId.");
+  }
+  if(!reader.graphicProjection.overlaysByOutcomeId || typeof reader.graphicProjection.overlaysByOutcomeId !== "object" || Array.isArray(reader.graphicProjection.overlaysByOutcomeId)){
+    throw new TypeError("Canonical reader mangler overlaysByOutcomeId.");
+  }
+  if(!String(reader.integrityReport.status || "").trim()){
+    throw new TypeError("Canonical reader mangler integrity status.");
+  }
+  return reader;
+}
+
+function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
+  const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || captureSdeCanonicalShadowRuntimeSnapshot();
+  const activeAuthorities = Object.fromEntries(Object.entries(snapshot.runtimeState?.activeAuthorities || {}).map(([key,value])=>[
+    key,
+    typeof value === "string" ? value : String(value?.activeOutcomeId || "").trim()
+  ]));
+  const canonicalPlan = buildSdeCanonicalPlan({
+    actualSources:snapshot.actualSources,
+    candidateRows:snapshot.legacy?.finalCards,
+    activeAuthorities
+  });
+  const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
+  cardProjection.diagnostics = sortSdeCanonicalObjects([
+    ...(cardProjection.diagnostics || []),
+    ...buildSdeCanonicalPendulumPreviewDiagnostics(snapshot.actualStateReconciliation || {})
+  ]);
+  const reservationProjection = buildSdeCanonicalReservationProjection(canonicalPlan, cardProjection);
+  const graphicProjection = buildSdeCanonicalGraphicProjection(canonicalPlan, cardProjection, reservationProjection);
+  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection});
+  return assertSdeCanonicalProductionReaderContract({
+    runtimeSnapshot:snapshot,
+    canonicalPlan,
+    cardProjection,
+    reservationProjection,
+    graphicProjection,
+    integrityReport
+  });
+}
+
+function getSdeCanonicalHandlerMatchKeys(row={}){
+  return new Set([
+    getSdeMoveActionKey(row),
+    ...getSdeMoveActionLookupKeys(row),
+    row.actionKey,
+    row.stableActionKey,
+    row.cardId,
+    row.sdeNightPlacementGeneratedActionKey,
+    row.sdeNightPlacementOriginalActionKey,
+    row.sdeActiveOutcomeId,
+    row.activeOutcomeId
+  ].map(value=>String(value || "").trim()).filter(Boolean));
+}
+
+function buildSdeCanonicalHandlerAdapter(card, reader){
+  const outcomes = (reader.canonicalPlan.candidateOutcomes || [])
+    .filter(outcome=>outcome.candidateOutcomeId === card.activeOutcomeId);
+  const outcome = outcomes.length === 1 ? outcomes[0] : null;
+  const outcomeKeys = new Set([
+    outcome?.actionKey,
+    outcome?.legacyCardId,
+    outcome?.candidateId,
+    ...(outcome?.legacyAliases || []).map(alias=>alias?.value)
+  ].map(value=>String(value || "").trim()).filter(Boolean));
+  const rawFingerprint = outcome?.raw ? stableStringifySdeCanonicalValue(outcome.raw) : "";
+  const matchingRows = (reader.runtimeSnapshot.legacy?.finalCards || []).filter(row=>{
+    if(rawFingerprint && stableStringifySdeCanonicalValue(row) === rawFingerprint) return true;
+    return Array.from(getSdeCanonicalHandlerMatchKeys(row)).some(key=>outcomeKeys.has(key));
+  });
+  const row = matchingRows.length === 1 ? matchingRows[0] : null;
+  const actualSlotByVehicle = new Map((reader.canonicalPlan.actualPlacements || []).map(item=>[
+    normalizeSdeCanonicalToken(item.vehicleId),
+    normalizeSlot(item.slot)
+  ]));
+  const rowSignature = row ? getSdeCanonicalPhysicalStepSignature(row, actualSlotByVehicle) : null;
+  const reservations = (reader.reservationProjection.reservations || [])
+    .filter(item=>item.activeOutcomeId === card.activeOutcomeId);
+  const overlays = (reader.graphicProjection.activeOverlays || [])
+    .filter(item=>item.activeOutcomeId === card.activeOutcomeId);
+  const relatedConflictCodes = new Set([
+    "competing_targets","ambiguous_obligation","ambiguous_step","multiple_authorities",
+    "legacy_identity_collision","candidate_source_not_canonical","candidate_source_conflict",
+    "pendulum_stale_north_source","stale_graphic_override_source","actual_source_mismatch",
+    "stale_actual_source","physically_invalid_authority","physically_invalid_candidate",
+    "overlapping_target_reservation"
+  ]);
+  const blockingConflicts = (reader.canonicalPlan.conflicts || []).filter(conflict=>
+    relatedConflictCodes.has(conflict.code)
+    && (conflict.candidateOutcomeId === card.activeOutcomeId
+      || conflict.candidateOutcomeIds?.includes?.(card.activeOutcomeId)
+      || conflict.obligationId === card.obligationId
+      || conflict.stepId === card.stepId
+      || conflict.obligationStepKey === card.stepId)
+  );
+  const reasons = [];
+  if(outcomes.length !== 1) reasons.push("activeOutcome peker ikke til nøyaktig ett canonical outcome");
+  if(matchingRows.length !== 1) reasons.push("canonical-kortet har ikke nøyaktig ett legacy handlingsgrunnlag");
+  if(row && sanitizeVehicleValue(row.vehicle) !== sanitizeVehicleValue(card.vehicleId)) reasons.push("kjøretøy samsvarer ikke");
+  if(rowSignature && normalizeSlot(rowSignature.sourceSlot) !== normalizeSlot(card.sourceSlot)) reasons.push("source samsvarer ikke");
+  if(row && normalizeSlot(row.recommendedSlot || row.toSlot) !== normalizeSlot(card.targetSlot)) reasons.push("target samsvarer ikke");
+  if(rowSignature && rowSignature.obligationId !== card.obligationId) reasons.push("obligationId samsvarer ikke");
+  if(rowSignature && rowSignature.stepId !== card.stepId) reasons.push("stepId samsvarer ikke");
+  if(outcome?.identitySafe !== true) reasons.push("canonical identitet er ikke entydig");
+  if(outcome?.sourceValidation?.valid !== true) reasons.push("canonical source er ikke gyldig");
+  if(outcome?.physicalValidation?.valid === false) reasons.push("canonical outcome er fysisk ugyldig");
+  if((outcome?.unmetDependencies || []).length) reasons.push("dependencies er ikke oppfylt");
+  if(blockingConflicts.length) reasons.push(`canonical konflikt: ${blockingConflicts.map(item=>item.code).join(", ")}`);
+  if(card.status === "actionable" && reservations.length !== 1) reasons.push("target har ikke nøyaktig én canonical reservasjon");
+  if(card.status === "actionable" && overlays.length !== 1) reasons.push("target har ikke nøyaktig ett canonical overlay");
+  if(reservations.length === 1 && (reservations[0].vehicleId !== card.vehicleId || reservations[0].targetSlot !== card.targetSlot)) reasons.push("reservasjonen samsvarer ikke med kortet");
+  if(overlays.length === 1 && (overlays[0].vehicleId !== card.vehicleId || overlays[0].targetSlot !== card.targetSlot)) reasons.push("overlay samsvarer ikke med kortet");
+  const actionKey = row ? String(row.sdeNightPlacementOriginalActionKey || getSdeMoveActionKey(row)).trim() : "";
+  const actionRecord = actionKey ? reader.runtimeSnapshot.runtimeState?.actions?.[actionKey] : null;
+  if(actionRecord?.action === "completed" || actionRecord?.action === "cancelled") reasons.push("legacy handlingsgrunnlag er allerede behandlet");
+  const deleteBlockReason = row && card.canDelete
+    ? getSdeMoveCardDeleteBlockReason(row, reader.runtimeSnapshot.legacy?.activeCards || [])
+    : "";
+  if(card.canDelete && deleteBlockReason) reasons.push(deleteBlockReason);
+  const ready = reasons.length === 0 && Boolean(actionKey);
+  return {
+    canonicalCardId:card.canonicalCardId,
+    activeOutcomeId:card.activeOutcomeId,
+    ready,
+    row,
+    outcome,
+    actionKey,
+    reservation:reservations.length === 1 ? reservations[0] : null,
+    overlay:overlays.length === 1 ? overlays[0] : null,
+    blockingConflicts,
+    reasons,
+    canComplete:Boolean(ready && card.canComplete),
+    canCancel:Boolean(ready && card.canCancel),
+    canDelete:Boolean(ready && card.canDelete && !deleteBlockReason)
+  };
+}
+
+function buildSdeCanonicalProductionReader(runtimeSnapshot=null){
+  const reader = buildSdeCanonicalProductionReaderSource(runtimeSnapshot);
+  const projectedCards = [
+    ...(reader.cardProjection.actionableCards || []),
+    ...(reader.cardProjection.blockedChainCards || []),
+    ...(reader.cardProjection.exitingCards || [])
+  ];
+  reader.handlerAdapters = Object.fromEntries(projectedCards.map(card=>[
+    card.canonicalCardId,
+    buildSdeCanonicalHandlerAdapter(card, reader)
+  ]));
+  return reader;
+}
+
+function buildSdeCanonicalProductionDiagnostics(reader){
+  const rows = [
+    ...(reader.cardProjection.diagnostics || []).map(item=>({...item, diagnosticSource:"cardProjection"})),
+    ...(reader.graphicProjection.unresolvedDiagnostics || []).map(item=>({...item, diagnosticSource:item.source || "graphicProjection"})),
+    ...(reader.integrityReport.conflicts || []).map(item=>({...item, diagnosticType:item.classification || "integrity_conflict", diagnosticSource:"integrityReport"})),
+    ...(reader.cardProjection.actionableCards || []).flatMap(card=>{
+      const adapter = reader.handlerAdapters?.[card.canonicalCardId];
+      return adapter?.ready ? [] : [{
+        diagnosticType:"handler_adapter_blocked",
+        severity:"error",
+        obligationId:card.obligationId,
+        stepId:card.stepId,
+        vehicleId:card.vehicleId,
+        sourceSlot:card.sourceSlot,
+        targetSlots:[card.targetSlot],
+        explanation:`Operative knapper er sperret: ${(adapter?.reasons || ["ukjent adapterfeil"]).join("; ")}`,
+        diagnosticSource:"handlerAdapter"
+      }];
+    })
+  ];
+  const normalized = rows.map(item=>({
+    diagnosticType:String(item.diagnosticType || item.code || item.classification || "canonical_diagnostic").trim(),
+    severity:String(item.severity || "warning").trim(),
+    obligationId:String(item.obligationId || "").trim(),
+    stepId:String(item.stepId || item.obligationStepKey || "").trim(),
+    vehicleId:sanitizeVehicleValue(item.vehicleId),
+    sourceSlot:normalizeSlot(item.sourceSlot || item.actualSource || item.selectedSlot),
+    targetSlots:sortSdeCanonicalStrings([item.targetSlot,...(Array.isArray(item.targetSlots) ? item.targetSlots : [])]),
+    explanation:String(item.explanation || item.message || item.reason || "Canonical behov er sperret og krever diagnostisk vurdering.").trim(),
+    diagnosticSource:String(item.diagnosticSource || "canonical").trim()
+  }));
+  return sortSdeCanonicalObjects(Array.from(new Map(normalized.map(item=>[
+    [item.diagnosticType,item.obligationId,item.stepId,item.vehicleId,item.sourceSlot,item.targetSlots.join(","),item.explanation].join("|"),
+    item
+  ])).values()));
+}
+
+function buildSdeCanonicalGraphicOverviewData(reader){
+  const layoutRows = getSdeNightPlacementLayoutRows();
+  const washSlots = washMachineSlots.map(normalizeSlot).filter(Boolean);
+  const ordinarySlots = new Set();
+  layoutRows.forEach(row=>row.forEach(cell=>{
+    if(isSdeNightPlacementOrdinarySlot(cell)) ordinarySlots.add(normalizeSlot(cell));
+  }));
+  const slots = {};
+  [...ordinarySlots,...washSlots].forEach(slot=>{
+    slots[slot] = {
+      slot, vehicle:"", trainLabel:"", source:"Tom", sourceKind:"empty",
+      plannedSlot:"", plannedVehicle:"", plannedTargets:[], proposedVehicle:"",
+      proposedSource:"", proposedFromSlot:"", proposedRow:null, proposals:[], unresolvedRows:[],
+      physicalSlot:"", row:null, collisionVehicles:[], stepRole:"", nextSlot:"",
+      routeStepIndex:null, routeStepCount:0
+    };
+  });
+  const warnings = [];
+  const physicalOccupants = {};
+  (reader.graphicProjection.actualSlots || []).forEach(actual=>{
+    const slot = normalizeSlot(actual.slot);
+    const vehicle = sanitizeVehicleValue(actual.vehicleId);
+    const entry = slots[slot];
+    if(!entry){
+      warnings.push({code:"canonical_actual_slot_missing", severity:"error", text:`Canonical actual ${vehicle || "ukjent kjøretøy"} er knyttet til ukjent slot ${slot || "ukjent"}.`});
+      return;
+    }
+    if(entry.vehicle && !haveSameSdeVehicleTokens(entry.vehicle, vehicle)){
+      entry.collisionVehicles = Array.from(new Set([entry.vehicle,...entry.collisionVehicles,vehicle].filter(Boolean)));
+    }else{
+      entry.vehicle = vehicle;
+      entry.collisionVehicles = vehicle ? [vehicle] : [];
+    }
+    entry.source = "Canonical actual";
+    entry.sourceKind = "standing";
+    entry.physicalSlot = slot;
+    physicalOccupants[slot] = entry.vehicle;
+  });
+  const addOverlay = (overlay,status)=>{
+    const targetSlot = normalizeSlot(overlay.targetSlot);
+    const sourceSlot = normalizeSlot(overlay.sourceSlot);
+    const entry = slots[targetSlot];
+    if(!entry){
+      warnings.push({code:"canonical_overlay_slot_missing", severity:"error", text:`Canonical ${status} overlay for ${overlay.vehicleId || "ukjent kjøretøy"} peker til ukjent slot ${targetSlot || "ukjent"}.`});
+      return;
+    }
+    const card = reader.cardProjection.cardByOutcomeId?.[overlay.activeOutcomeId] || null;
+    const adapter = card ? reader.handlerAdapters?.[card.canonicalCardId] : null;
+    const proposal = {
+      vehicle:sanitizeVehicleValue(overlay.vehicleId),
+      source:status === "deferred" ? "Canonical deferred" : "Canonical active",
+      fromSlot:sourceSlot,
+      row:adapter?.row || null,
+      activeOutcomeId:String(overlay.activeOutcomeId || "").trim(),
+      overlayId:String(overlay.overlayId || "").trim(),
+      reservationId:String(overlay.reservationId || "").trim(),
+      status,
+      draggable:status === "active" && adapter?.ready === true
+    };
+    entry.proposals.push(proposal);
+    if(!entry.proposedVehicle){
+      entry.proposedVehicle = proposal.vehicle;
+      entry.proposedSource = proposal.source;
+      entry.proposedFromSlot = proposal.fromSlot;
+      entry.proposedRow = proposal.row;
+    }
+    const sourceEntry = slots[sourceSlot];
+    if(sourceEntry){
+      sourceEntry.plannedTargets.push({slot:targetSlot, vehicle:proposal.vehicle, activeOutcomeId:proposal.activeOutcomeId, status});
+      sourceEntry.plannedSlot = sourceEntry.plannedSlot || targetSlot;
+      sourceEntry.plannedVehicle = sourceEntry.plannedVehicle || proposal.vehicle;
+    }
+  };
+  (reader.graphicProjection.activeOverlays || []).forEach(overlay=>addOverlay(overlay,"active"));
+  (reader.graphicProjection.deferredOverlays || []).forEach(overlay=>addOverlay(overlay,"deferred"));
+  (reader.graphicProjection.unresolvedDiagnostics || []).forEach(item=>{
+    const displaySlot = [item.sourceSlot,...(item.targetSlots || [])].map(normalizeSlot).find(slot=>slots[slot]);
+    if(!displaySlot) return;
+    slots[displaySlot].unresolvedRows.push({
+      vehicle:sanitizeVehicleValue(item.vehicleId),
+      reason:item.message || item.diagnosticType || "Canonical diagnostic",
+      activeOutcomeId:(item.candidateOutcomeIds || [])[0] || ""
+    });
+  });
+  (reader.graphicProjection.conflicts || []).forEach(item=>{
+    warnings.push({
+      code:item.classification || "canonical_graphic_conflict",
+      severity:item.severity || "error",
+      text:`Canonical grafikk: ${item.classification || "konflikt"}. Ingen ekstra overlay opprettes.`
+    });
+  });
+  const ordinaryOccupied = Array.from(ordinarySlots).filter(slot=>Boolean(slots[slot]?.vehicle)).length;
+  const allOverlays = [...(reader.graphicProjection.activeOverlays || []),...(reader.graphicProjection.deferredOverlays || [])];
+  return {
+    layoutRows,
+    washSlots,
+    slots,
+    physicalOccupants,
+    activeResults:reader.cardProjection.actionableCards || [],
+    activeReservations:reader.reservationProjection.reservations || [],
+    reservePlacements:[],
+    warnings,
+    rejectedSlot:"",
+    counts:{
+      ordinarySlots:ordinarySlots.size,
+      occupied:Object.values(slots).filter(entry=>Boolean(entry.vehicle)).length,
+      empty:ordinarySlots.size - ordinaryOccupied,
+      activeMoves:(reader.cardProjection.actionableCards || []).length,
+      overlays:allOverlays.length,
+      unresolved:(reader.graphicProjection.unresolvedDiagnostics || []).length
+    }
+  };
+}
+
+function buildSdeCanonicalCardActionControlsHtml(card, adapter){
+  if(card.status !== "actionable"){
+    const label = card.status === "exiting" ? "Annullert – avsluttes" : "Dependency-sperret";
+    return `<div class="sde-shift-actions" aria-label="Inaktivt canonical skiftekort"><button class="sde-shift-action-btn cancel" type="button" disabled>${escapeHtml(label)}</button></div>`;
+  }
+  const encodedCardId = encodeURIComponent(card.canonicalCardId || "");
+  const reason = (adapter?.reasons || []).join("; ") || "Canonical kortregel sperrer handlingen.";
+  const completeHtml = adapter?.canComplete
+    ? `<button class="sde-shift-action-btn done" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'completed')">Utført</button>`
+    : `<button class="sde-shift-action-btn done" type="button" disabled title="${escapeHtml(reason)}">Utført sperret</button>`;
+  const cancelHtml = adapter?.canCancel
+    ? `<button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'cancelled')">Annullert</button>`
+    : `<button class="sde-shift-action-btn cancel" type="button" disabled title="${escapeHtml(reason)}">Annullert sperret</button>`;
+  return `${adapter?.ready ? "" : `<div class="sde-canonical-handler-block">${escapeHtml(reason)}</div>`}<div class="sde-shift-actions" aria-label="Kvitter canonical skifteforslag">${completeHtml}${cancelHtml}</div>`;
+}
+
+function buildSdeCanonicalProductionCardHtml(card, reader, index){
+  const adapter = reader.handlerAdapters?.[card.canonicalCardId] || null;
+  const outcome = adapter?.outcome || (reader.canonicalPlan.candidateOutcomes || []).find(item=>item.candidateOutcomeId === card.activeOutcomeId) || null;
+  const row = adapter?.row || outcome?.raw || {};
+  const exiting = card.status === "exiting";
+  const blocked = card.status === "blocked_chain_step";
+  const cancelledUiState = exiting ? getSdePhysicalReleaseCancelledUiState(row) : {managed:false,hidden:false};
+  if(cancelledUiState.hidden) return "";
+  const cancelledCardUi = exiting ? buildSdePhysicalReleaseCancelledCardUi(row, cancelledUiState) : {className:"",attributes:""};
+  const priorityClass = exiting || row.recommendationConfidence === "low" ? "low" : row.recommendationConfidence === "medium" ? "medium" : "high";
+  const sourceSlot = normalizeSlot(card.sourceSlot || card.previousSourceSlot) || "Ukjent";
+  const targetSlot = normalizeSlot(card.targetSlot || card.previousTargetSlot) || "Ukjent";
+  const dependencies = sortSdeCanonicalStrings(card.blockedBy || card.dependencyIds || []);
+  const stateLabel = exiting ? "Exiting" : blocked ? "Avventer dependency" : "Canonical aktiv";
+  const actionKey = adapter?.actionKey || getSdeMoveActionKey(row) || card.canonicalCardId;
+  return `<article class="sde-shift-card ${priorityClass}${blocked ? " canonical-blocked" : ""}${exiting ? " sde-release-cancelled" : ""}${cancelledCardUi.className}" data-sde-card-key="${escapeHtml(actionKey)}" data-sde-canonical-card-id="${escapeHtml(card.canonicalCardId)}" data-sde-active-outcome-id="${escapeHtml(card.activeOutcomeId)}" data-sde-obligation-id="${escapeHtml(card.obligationId)}" data-sde-step-id="${escapeHtml(card.stepId)}" data-sde-reservation-id="${escapeHtml(adapter?.reservation?.reservationId || "")}" data-sde-overlay-id="${escapeHtml(adapter?.overlay?.overlayId || "")}" data-sde-canonical-card-status="${escapeHtml(card.status)}"${cancelledCardUi.attributes} style="--delay:${index * 55}ms">
+    <div class="sde-shift-card-top">
+      <div><div class="sde-shift-eyebrow">Kjøretøy</div><div class="sde-shift-vehicle">${escapeHtml(card.vehicleId || "Ukjent")}</div></div>
+      <div class="sde-shift-trains">
+        <span class="sde-canonical-card-state">${escapeHtml(stateLabel)}</span>
+        <div class="sde-shift-train-pill"><b>Ankomst</b> ${escapeHtml(row.arrivalTrainText || row.arrivalTrain || "Ikke oppgitt")}</div>
+        <div class="sde-shift-train-pill"><b>Avgang</b> ${escapeHtml(row.departureTrainText || row.nextDepartureText || row.nextDepartureTrain || "Ikke oppgitt")}</div>
+      </div>
+    </div>
+    <div class="sde-shift-route" aria-label="Canonical skiftebevegelse"><div class="sde-shift-slot from">${escapeHtml(sourceSlot)}</div><div class="sde-shift-arrow">→</div><div class="sde-shift-slot to">${escapeHtml(targetSlot)}</div></div>
+    <div class="sde-shift-meta">
+      <span class="sde-shift-badge">Canonical</span>
+      <span class="sde-shift-badge">Steg ${escapeHtml(card.sequenceStep || "ukjent")}</span>
+      ${card.chainId ? `<span class="sde-shift-badge">Kjede ${escapeHtml(card.chainId)}</span>` : ""}
+      ${dependencies.length ? `<span class="sde-shift-badge">Dependency ${escapeHtml(dependencies.join(", "))}</span>` : ""}
+      ${card.recoveryRequired ? `<span class="sde-shift-badge sde-night-card-override-badge">VN RECOVERY</span>` : ""}
+      ${adapter?.canDelete ? `<span class="sde-shift-badge">Slett kort tillatt i Annullert-dialog</span>` : ""}
+    </div>
+    ${exiting ? `<span class="sde-release-cancelled-message">${escapeHtml(card.visualText || "Annullert. Kortet avsluttes.")}</span>` : ""}
+    ${blocked ? `<div class="sde-night-card-override"><strong>Fremtidig kjedesteg</strong><span>${escapeHtml(card.explanation || "Steget åpnes når dependencies er Utført.")}</span><span>Sperret av: ${escapeHtml(dependencies.join(", ") || "ukjent dependency")}</span></div>` : ""}
+    <div class="sde-shift-details"><div class="sde-shift-reason">${escapeHtml(card.explanation || row.recommendationReason || "Canonical projeksjon.")}</div><div class="sde-shift-alternatives">${escapeHtml(card.producerProvenance?.producer || "canonical")} · ${escapeHtml(card.producerProvenance?.provenance || "canonical projection")}</div></div>
+    ${buildSdeCanonicalCardActionControlsHtml(card, adapter)}
+  </article>`;
+}
+
+function buildSdeCanonicalDiagnosticsHtml(diagnostics, integrityStatus){
+  if(!diagnostics.length) return "";
+  return buildSdeDiagnosticSectionHtml({
+    id:"canonical-production-diagnostics",
+    title:"Canonical diagnostics",
+    count:`${diagnostics.length} · integritet ${integrityStatus || "ukjent"}`,
+    bodyHtml:diagnostics.map(item=>`<div class="sde-shift-unresolved-item" data-sde-canonical-diagnostic="${escapeHtml(item.diagnosticType)}"><strong>${escapeHtml(item.vehicleId || "Canonical behov")} · ${escapeHtml(item.diagnosticType)}</strong><br>${escapeHtml(item.sourceSlot || "source ukjent")}${item.targetSlots?.length ? ` → ${escapeHtml(item.targetSlots.join(", "))}` : ""}<br>${escapeHtml(item.explanation)}</div>`).join("")
+  });
+}
+
+async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action){
+  const canonicalCardId = decodeURIComponent(String(encodedCanonicalCardId || ""));
+  const actionType = String(action || "").trim();
+  let reader = null;
+  try{
+    reader = buildSdeCanonicalProductionReader();
+  }catch(error){
+    sdeProductionReaderFallbackError = error instanceof Error ? error : new Error(String(error || "Canonical handleradapter feilet."));
+    renderSdeSkiftebevegelser();
+    return;
+  }
+  const card = (reader.cardProjection.actionableCards || []).find(item=>item.canonicalCardId === canonicalCardId);
+  const adapter = card ? reader.handlerAdapters?.[card.canonicalCardId] : null;
+  const allowed = actionType === "completed" ? adapter?.canComplete : actionType === "cancelled" ? adapter?.canCancel : false;
+  if(!card || !adapter?.ready || !allowed){
+    alert(`Canonical-kortet kan ikke behandles: ${(adapter?.reasons || ["kortet er ikke lenger aktivt eller handlingen er sperret"]).join("; ")}`);
+    return;
+  }
+  await handleSdeShiftMoveAction(encodeURIComponent(adapter.actionKey), actionType, {
+    canonicalCardId,
+    canonicalCanDelete:adapter.canDelete === true
+  });
+}
+
+function renderSdeCanonicalProductionReader(){
+  const root = document.getElementById("sdeSkiftebevegelserDashboard");
+  if(!root) return null;
+  const readiness = getSdeTomorrowJsonReadinessForScore();
+  if(!readiness.ready || readiness.reason === "FRESH_NO_TURSATT_ASSIGNMENTS"){
+    renderSdeLimitedPlanningMode(root, {
+      reason:readiness.reason || "DATA_NOT_READY",
+      title:readiness.reason === "FRESH_NO_TURSATT_ASSIGNMENTS" ? "Datagrunnlag oppdatert" : "Avventer datagrunnlag",
+      text:readiness.reason === "FRESH_NO_TURSATT_ASSIGNMENTS" ? `${getSdeFreshNoTursattAssignmentsText()} ${getSdeLimitedPlanningText()}` : getSdeLimitedPlanningText(),
+      pendingText:readiness.reason === "FRESH_NO_TURSATT_ASSIGNMENTS" ? getSdeFreshNoTursattAssignmentsText() : `${getSdeTomorrowJsonPendingText()} Automatiske SDE-forslag avventer datagrunnlag.`,
+      diagnosticTitle:"Canonical datagrunnlag ikke komplett"
+    });
+    applySdeProductionReaderStatus("canonical");
+    return {mode:"canonical", limitedPlanningMode:true};
+  }
+  const data = getSdeShiftShowcaseData();
+  const reader = buildSdeCanonicalProductionReader();
+  const diagnostics = buildSdeCanonicalProductionDiagnostics(reader);
+  const graphicOverview = buildSdeCanonicalGraphicOverviewData(reader);
+  const graphicPlanVisible = isSdeGraphicPlanViewMode();
+  const viewToggleText = graphicPlanVisible ? "Til Skifte-kort" : "SDE Grafisk planverktøy";
+  const projectedCards = [
+    ...(reader.cardProjection.actionableCards || []),
+    ...(reader.cardProjection.blockedChainCards || []),
+    ...(reader.cardProjection.exitingCards || [])
+  ];
+  const cardsHtml = projectedCards.map((card,index)=>buildSdeCanonicalProductionCardHtml(card,reader,index)).filter(Boolean).join("")
+    || `<div class="sde-shift-empty">Ingen actionable canonical skiftekort. Se canonical diagnostics for behov som er stanset.</div>`;
+  const diagnosticsHtml = buildSdeCanonicalDiagnosticsHtml(diagnostics, reader.integrityReport.status);
+  const nightPlacementOverviewHtml = graphicPlanVisible
+    ? renderSdeNightPlacementOverview(data, {overview:graphicOverview, readerMode:"canonical"})
+    : "";
+  const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
+  const activeProposalCount = Number(reader.cardProjection.activeProposalCount || 0);
+  const scoreClass = getSdeShiftScoreClass(data.score);
+  sdeShiftLastRenderedData = data;
+  sdeShiftLastDiagnosticContext = null;
+  root.onclick = event=>{
+    const toggle = event.target.closest("[data-sde-diagnostic-toggle]");
+    if(toggle && root.contains(toggle)) toggleSdeDiagnosticSection(toggle.dataset.sdeDiagnosticToggle);
+  };
+  root.innerHTML = `
+    ${buildSdeProductionReaderStatusHtml("canonical")}
+    <div class="sde-shift-hero">
+      <div class="sde-shift-score ${scoreClass}"><div class="sde-shift-eyebrow">SDE-resultat</div><div class="sde-shift-title">Skiftebevegelser</div><div class="sde-shift-score-number"><strong>${escapeHtml(String(data.score))}</strong><span>/ 100</span></div></div>
+      <div class="sde-shift-kpis">
+        <div class="sde-shift-kpi"><strong>${escapeHtml(String(activeProposalCount))}</strong><span>canonical aktive forslag</span></div>
+        <div class="sde-shift-kpi"><strong>${escapeHtml(String(reader.cardProjection.actionableCards.length))}</strong><span>actionable kort</span></div>
+        <div class="sde-shift-kpi"><strong>${escapeHtml(String(reader.cardProjection.blockedChainCards.length))}</strong><span>dependency-sperrede steg</span></div>
+        <div class="sde-shift-kpi"><strong>${escapeHtml(String(diagnostics.length))}</strong><span>canonical diagnostics</span></div>
+      </div>
+    </div>
+    <div class="sde-shift-section-title">
+      <span class="sde-shift-section-title-main">Canonical skiftebevegelser</span>
+      <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="${graphicPlanVisible ? "true" : "false"}" aria-label="${escapeHtml(viewToggleText)}" title="${escapeHtml(viewToggleText)}">${escapeHtml(viewToggleText)}</button>
+      <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
+      <span class="sde-shift-section-title-count">${escapeHtml(String(activeProposalCount))} forslag</span>
+    </div>
+    ${nightPlacementOverviewHtml}
+    ${graphicPlanVisible ? "" : `<div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>`}
+    ${diagnosticsHtml}
+  `;
+  root.dataset.sdeReaderMode = "canonical";
+  scheduleSdePhysicalReleaseCardDismissals(root);
+  const detailsToggle = document.getElementById("sdeShiftDetailsToggle");
+  if(detailsToggle){
+    detailsToggle.addEventListener("click", toggleSdeShiftDetails);
+    detailsToggle.classList.toggle("active", sdeShiftDetailsExpanded);
+    detailsToggle.setAttribute("aria-pressed", sdeShiftDetailsExpanded ? "true" : "false");
+  }
+  const nightPlacementToggle = document.getElementById("sdeNightPlacementToggle");
+  if(nightPlacementToggle){
+    nightPlacementToggle.addEventListener("click", ()=>toggleSdeNightPlacement());
+    nightPlacementToggle.classList.toggle("active", graphicPlanVisible);
+  }
+  document.querySelector("[data-sde-night-placement-close]")?.addEventListener("click", ()=>toggleSdeNightPlacement(false));
+  if(graphicPlanVisible) setupSdeNightPlacementDragAndDrop();
+  document.querySelectorAll(".sde-shift-details").forEach(el=>el.classList.toggle("show", sdeShiftDetailsExpanded));
+  renderSdeNightPlacementOperationalStatePayloadPreview();
+  return reader;
+}
+
+function renderSdeLegacyProductionReader(mode, error=null){
+  const result = renderSdeSkiftebevegelserInner();
+  applySdeProductionReaderStatus(mode || (error ? "legacy_fallback" : "legacy_forced"));
+  return result;
+}
+
 function renderSdeSkiftebevegelser(){
   if(isSdeCanonicalCardPreviewRequested()) return renderSdeCanonicalCardPreview();
-  return withComputeInndataCache(renderSdeSkiftebevegelserInner);
+  return withComputeInndataCache(()=>{
+    const requestedMode = getSdeProductionReaderMode(window.location, {technicalFailure:Boolean(sdeProductionReaderFallbackError)});
+    if(requestedMode === "legacy_forced") return renderSdeLegacyProductionReader("legacy_forced");
+    if(requestedMode === "legacy_fallback") return renderSdeLegacyProductionReader("legacy_fallback", sdeProductionReaderFallbackError);
+    try{
+      if(isSdeCanonicalReaderTechnicalFailureTestRequested()){
+        throw new Error("Isolert teknisk canonical reader-test.");
+      }
+      return renderSdeCanonicalProductionReader();
+    }catch(error){
+      sdeProductionReaderFallbackError = error instanceof Error ? error : new Error(String(error || "Canonical reader feilet."));
+      return renderSdeLegacyProductionReader("legacy_fallback", sdeProductionReaderFallbackError);
+    }
+  });
 }
 
 function buildSdeLimitedPlanningData(reason, text){
