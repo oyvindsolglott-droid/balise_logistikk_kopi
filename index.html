@@ -15718,6 +15718,7 @@ function getSdeCompletedTemporaryAccessReliefPlanForMainRow(row){
     if(action?.action !== "completed") continue;
     const plan = action?.snapshot?.sdePhysicalAccessReliefChain;
     if(!plan || plan.context !== SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT) continue;
+    if(plan.sdeTrappedEgressChain === true) continue;
     if(String(plan.mainActionKey || "") !== mainActionKey) continue;
     if(String(plan.releaseActionKey || "") !== releaseActionKey) continue;
     return {...plan};
@@ -15732,6 +15733,7 @@ function buildSdePersistentTemporaryAccessReliefRows(){
     if(action?.action !== "completed") return;
     const plan = action?.snapshot?.sdePhysicalAccessReliefChain;
     if(!plan || plan.context !== SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT) return;
+    if(plan.sdeTrappedEgressChain === true) return;
     if(String(plan.releaseActionKey || "") !== releaseActionKey) return;
     if(getSdeMoveActionRecord(plan.returnActionKey)?.action === "completed") return;
     const row = buildSdeTemporaryAccessReturnRow(plan);
@@ -16628,10 +16630,10 @@ function getSdeCanonicalPhysicalReleaseRetargetContext(blockedRow, blockState, b
     contextKey,
     role:"release",
     blockerVehicle:normalizeVehicleToken(blockerVehicle),
-    blockerActualSlot:normalizeSlot(getSdeCurrentSlotForVehicle(blockerVehicle)),
+    blockerActualSlot:normalizeSlot(getSdeCurrentSlotForVehicle(blockerVehicle) || blocker?.slot),
     blockerSourceSlot:normalizeSlot(blocker?.slot),
     blockedVehicle:normalizeVehicleToken(blockedVehicle),
-    blockedActualSlot:normalizeSlot(getSdeCurrentSlotForVehicle(blockedVehicle)),
+    blockedActualSlot:normalizeSlot(getSdeCurrentSlotForVehicle(blockedVehicle) || blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot),
     blockedSourceSlot:normalizeSlot(blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot),
     mainTargetSlot:normalizeSlot(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot)
   }) : "";
@@ -16647,10 +16649,10 @@ function getSdeCanonicalRetargetContextSignature(row={}){
       contextKey,
       role:"release",
       blockerVehicle:normalizeVehicleToken(blockerVehicle),
-      blockerActualSlot:normalizeSlot(getSdeCurrentSlotForVehicle(blockerVehicle)),
+      blockerActualSlot:normalizeSlot(getSdeCurrentSlotForVehicle(blockerVehicle) || row?.fromSlot || row?.arrivalSlot),
       blockerSourceSlot:normalizeSlot(row?.fromSlot || row?.arrivalSlot),
       blockedVehicle:normalizeVehicleToken(blockedVehicle),
-      blockedActualSlot:normalizeSlot(getSdeCurrentSlotForVehicle(blockedVehicle)),
+      blockedActualSlot:normalizeSlot(getSdeCurrentSlotForVehicle(blockedVehicle) || row?.sdePhysicalBlockerForSlot),
       blockedSourceSlot:normalizeSlot(row?.sdePhysicalBlockerForSlot),
       mainTargetSlot:normalizeSlot(row?.sdePhysicalBlockerOriginalTarget)
     }) : "";
@@ -16781,7 +16783,7 @@ function applySdeCanonicalRetargetIntentToRow(row={}){
     ...(vnPlan ? {sdePhysicalVnReliefChain:vnPlan} : {}),
     ...(accessPlan ? {sdePhysicalAccessReliefChain:accessPlan} : {}),
     ...(isRecovery ? {
-      sdeVnRecoveryRequired:true,
+      ...(row?.sdeTrappedEgressChainStep ? {} : {sdeVnRecoveryRequired:true}),
       recommendationReason:`Brukerutpekt mandatory recovery fra ${normalizeSlot(row?.fromSlot || row?.arrivalSlot)} til ${targetSlot}. Hele canonical planrevisionen er validert på nytt.`
     } : {})
   };
@@ -17347,6 +17349,588 @@ function buildSdeShiftMoveActionControlsHtml(row, encodedActionKey, options={}){
   </div>`;
 }
 
+function getSdeTrappedEgressActualOccupancy(){
+  const source = state.grunnoppstilling || {}; // SDE_EGRESS_FRESH_ACTUAL
+  const occupancy = new Map();
+  Object.entries(source).forEach(([slotValue,vehicleValue])=>{
+    const slot = normalizeSlot(slotValue);
+    const vehicle = sanitizeVehicleValue(vehicleValue);
+    if(slot && vehicle) occupancy.set(slot,vehicle);
+  });
+  return occupancy;
+}
+
+function cloneSdeTrappedEgressOccupancy(occupancy){
+  return new Map(occupancy instanceof Map ? occupancy : []);
+}
+
+function getSdeTrappedEgressVehicleSlot(occupancy, vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token || !(occupancy instanceof Map)) return "";
+  for(const [slot,occupant] of occupancy.entries()){
+    if(normalizeVehicleToken(occupant) === token) return normalizeSlot(slot);
+  }
+  return "";
+}
+
+function getSdeTrappedEgressOccupancySignature(occupancy){
+  return stableStringifySdeCanonicalValue(
+    Array.from(occupancy instanceof Map ? occupancy.entries() : [])
+      .map(([slot,vehicle])=>[normalizeSlot(slot),normalizeVehicleToken(vehicle)])
+      .filter(([slot,vehicle])=>slot && vehicle)
+      .sort((left,right)=>left[0].localeCompare(right[0]) || left[1].localeCompare(right[1]))
+  );
+}
+
+function getSdeTrappedEgressAccessOptions(occupancy, slot, allowedEnds=null){
+  const targetSlot = normalizeSlot(slot);
+  const track = getSdeSlotTrack(targetSlot);
+  const ends = getSdeSameTrackOpenEnds(track);
+  if(!targetSlot) return [];
+  if(!ends.length){
+    return [{slot:targetSlot,track:track || targetSlot,end:"yard",pathSlots:[],blockers:[],clear:true}];
+  }
+  return ends.filter(end=>!Array.isArray(allowedEnds) || allowedEnds.includes(end)).map(end=>{
+    const pathSlots = getSdeSlotPathToOpenEnd(targetSlot,end) || [];
+    const blockers = pathSlots.flatMap(pathSlot=>{
+      const vehicle = sanitizeVehicleValue(occupancy.get(pathSlot));
+      return vehicle ? [{slot:pathSlot,vehicle}] : [];
+    });
+    return {slot:targetSlot,track,end,pathSlots,blockers,clear:blockers.length === 0};
+  });
+}
+
+function getSdeTrappedEgressInternalBlockers(occupancy, fromSlot, toSlot){
+  const from = normalizeSlot(fromSlot);
+  const to = normalizeSlot(toSlot);
+  const track = getSdeSlotTrack(from);
+  if(!from || !to || !track || track !== getSdeSlotTrack(to)) return [];
+  const order = getSdeSameTrackSlotOrder(track);
+  const fromIndex = order.indexOf(from);
+  const toIndex = order.indexOf(to);
+  if(fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return [];
+  return order
+    .slice(Math.min(fromIndex,toIndex) + 1,Math.max(fromIndex,toIndex))
+    .filter(slot=>sanitizeVehicleValue(occupancy.get(slot)));
+}
+
+function assessSdeTrappedEgressVirtualMove(occupancy, vehicle, fromSlot, toSlot, options={}){
+  const from = normalizeSlot(fromSlot);
+  const to = normalizeSlot(toSlot);
+  const vehicleId = sanitizeVehicleValue(vehicle);
+  if(!vehicleId || !from || !to || from === to || !inputSlots.includes(from) || !inputSlots.includes(to)) return {valid:false};
+  if(normalizeVehicleToken(occupancy.get(from)) !== normalizeVehicleToken(vehicleId)) return {valid:false};
+  const targetVehicle = sanitizeVehicleValue(occupancy.get(to));
+  if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle,vehicleId)) return {valid:false};
+  if(isSdeDiscouragedPlatformToPlatformMove(from,to)) return {valid:false};
+  if(getSdeTrappedEgressInternalBlockers(occupancy,from,to).length) return {valid:false};
+  const sourceOption = getSdeTrappedEgressAccessOptions(occupancy,from,options?.sourceEnds).find(option=>option.clear);
+  if(!sourceOption) return {valid:false};
+  const afterDeparture = cloneSdeTrappedEgressOccupancy(occupancy);
+  afterDeparture.delete(from);
+  const targetOption = getSdeTrappedEgressAccessOptions(afterDeparture,to).find(option=>option.clear);
+  if(!targetOption) return {valid:false};
+  return {valid:true,sourceOption,targetOption};
+}
+
+function getSdeTrappedEgressMainSourceEnds(sourceSlot, targetSlot=""){
+  const source = normalizeSlot(sourceSlot);
+  const target = normalizeSlot(targetSlot);
+  const sourceTrack = getSdeSlotTrack(source);
+  const targetTrack = getSdeSlotTrack(target);
+  const order = getSdeSameTrackSlotOrder(sourceTrack);
+  const sourceIndex = order.indexOf(source);
+  if(!source || !target || !sourceTrack || sourceTrack === targetTrack || order.length < 3 || sourceIndex < 0) return null;
+  if(sourceIndex === 0) return ["north"];
+  if(sourceIndex === order.length - 1) return ["south"];
+  return null;
+}
+
+function getSdeCompleteTrappedEgressBlockState(row, existingState=null){
+  const original = existingState || getSdeHardPhysicalBlockStateForMove(row);
+  if(original?.hardBlocked) return original;
+  const {vehicle,fromSlot,toSlot} = getSdePhysicalMoveParts(row);
+  const occupancy = getSdeTrappedEgressActualOccupancy();
+  const sourceOptions = getSdeTrappedEgressAccessOptions(
+    occupancy,fromSlot,getSdeTrappedEgressMainSourceEnds(fromSlot,toSlot)
+  );
+  if(!sourceOptions.length || sourceOptions.some(option=>option.clear)) return original;
+  const blockers = [];
+  const seen = new Set();
+  sourceOptions.forEach(option=>option.blockers.forEach(blocker=>{
+    const slot = normalizeSlot(blocker.slot);
+    if(!slot || seen.has(slot) || haveSameSdeVehicleTokens(blocker.vehicle,vehicle)) return;
+    seen.add(slot);
+    blockers.push({...blocker,accessEnd:option.end,reason:`blokkerer fysisk adkomst ut fra ${fromSlot}`});
+  }));
+  if(!blockers.length) return original;
+  return {
+    ...original,
+    hardBlocked:true,
+    kind:"physical_blocked",
+    vehicle,
+    fromSlot,
+    toSlot,
+    blockers,
+    accessAssessment:{
+      ...(original?.accessAssessment || {}),
+      sourceAccessOptions:sourceOptions,
+      sourceClearOptions:[],
+      sourceAccessBlocked:true,
+      targetAccessBlocked:false,
+      blockers
+    },
+    reason:`Hard stopp: ${vehicle} i ${fromSlot} mangler fri fysisk egress. ${blockers.map(item=>`${item.slot} (${item.vehicle})`).join(", ")} må inngå i en komplett frigjøringskjede.`
+  };
+}
+
+function applySdeTrappedEgressVirtualMove(occupancy, vehicle, fromSlot, toSlot){
+  const next = cloneSdeTrappedEgressOccupancy(occupancy);
+  next.delete(normalizeSlot(fromSlot));
+  next.set(normalizeSlot(toSlot),sanitizeVehicleValue(vehicle));
+  return next;
+}
+
+function getSdeTrappedEgressRouteResources(step, chainId){
+  const sourceTrack = getSdeSlotTrack(step.fromSlot) || step.fromSlot;
+  const targetTrack = getSdeSlotTrack(step.toSlot) || step.toSlot;
+  return sortSdeCanonicalStrings([
+    `trapped-egress|${chainId}`,
+    `slot|${step.fromSlot}`,
+    `slot|${step.toSlot}`,
+    `track-access|${sourceTrack}|${step.sourceOption?.end || "yard"}`,
+    `track-access|${targetTrack}|${step.targetOption?.end || "yard"}`
+  ]);
+}
+
+function getSdeTrappedEgressTemporaryCandidateOrder(fromSlot, excludedSlots=[]){
+  const excluded = new Set((Array.isArray(excludedSlots) ? excludedSlots : []).map(normalizeSlot).filter(Boolean));
+  return Array.from(new Set([
+    ...getSdeResolutionCandidateSlots(fromSlot,""),
+    "9"
+  ].map(normalizeSlot).filter(Boolean)))
+    .filter(slot=>!excluded.has(slot) && slot !== "VS")
+    .sort((left,right)=>scoreSdeResolutionTarget(right) - scoreSdeResolutionTarget(left) || left.localeCompare(right));
+}
+
+function expandSdeTrappedEgressRecursiveBlockers(occupancy, blockers=[], mainVehicle=""){
+  const mainToken = normalizeVehicleToken(mainVehicle);
+  const byVehicle = new Map();
+  const queue = [];
+  const add = blocker=>{
+    const vehicle = sanitizeVehicleValue(blocker?.vehicle);
+    const token = normalizeVehicleToken(vehicle);
+    const slot = normalizeSlot(blocker?.slot || getSdeTrappedEgressVehicleSlot(occupancy,vehicle));
+    if(!vehicle || !token || !slot || token === mainToken || byVehicle.has(token)) return;
+    const normalized = {...blocker,vehicle,slot};
+    byVehicle.set(token,normalized);
+    queue.push(normalized);
+  };
+  (Array.isArray(blockers) ? blockers : []).forEach(add);
+  while(queue.length){
+    queue.sort((left,right)=>left.slot.localeCompare(right.slot) || left.vehicle.localeCompare(right.vehicle));
+    const blocker = queue.shift();
+    const accessOptions = getSdeTrappedEgressAccessOptions(occupancy,blocker.slot);
+    if(!accessOptions.length || accessOptions.some(option=>option.clear)) continue;
+    accessOptions.forEach(option=>(option.blockers || []).forEach(nested=>{
+      if(haveSameSdeVehicleTokens(nested.vehicle,blocker.vehicle)) return;
+      add({
+        ...nested,
+        accessEnd:option.end,
+        reason:`rekursivt blokkerer egress for ${blocker.vehicle} fra ${blocker.slot}`
+      });
+    }));
+  }
+  return [...byVehicle.values()].sort((left,right)=>left.slot.localeCompare(right.slot) || left.vehicle.localeCompare(right.vehicle));
+}
+
+function getSdeTrappedEgressRecoveryActionKey(chainId, index, step){
+  return `sde-trapped-egress|${chainId}|recovery-${index + 1}|${normalizeVehicleToken(step?.vehicle)}|${normalizeSlot(step?.fromSlot)}|${normalizeSlot(step?.toSlot)}`;
+}
+
+function getSdeTrappedEgressCarriedReleases(row, occupancy){
+  const mainSource = normalizeSlot(row?.fromSlot || row?.arrivalSlot || row?.originalFromSlot);
+  const mainNeedKey = String(getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row) || "").trim();
+  const sourcePathSlots = new Set(
+    getSdeTrappedEgressAccessOptions(
+      occupancy,mainSource,getSdeTrappedEgressMainSourceEnds(mainSource,row?.recommendedSlot || row?.toSlot)
+    )
+      .flatMap(option=>option.pathSlots || [])
+      .map(normalizeSlot)
+      .filter(Boolean)
+  );
+  return Object.entries(state.sdeMoveActions || {}).flatMap(([actionKey,record])=>{
+    if(record?.action !== "completed") return [];
+    const storedPlan = record?.snapshot?.sdePhysicalAccessReliefChain || {};
+    const match = String(actionKey || "").match(/^sde-trapped-egress\|(.+)\|release-\d+\|([^|]+)\|([^|]+)\|([^|]+)$/);
+    if(storedPlan?.sdeTrappedEgressChain !== true && !match) return [];
+    const vehicle = sanitizeVehicleValue(storedPlan.blockerVehicle || record?.vehicle || match?.[2]);
+    const fromSlot = normalizeSlot(storedPlan.blockerFromSlot || record?.fromSlot || match?.[3]);
+    const toSlot = normalizeSlot(storedPlan.holdingSlot || record?.toSlot || match?.[4]);
+    const actualSlot = getSdeTrappedEgressVehicleSlot(occupancy,vehicle);
+    const planNeedKey = String(storedPlan.mainObligationKey || "").trim();
+    if(!vehicle || !fromSlot || !toSlot || actualSlot !== toSlot) return [];
+    if(planNeedKey && mainNeedKey && planNeedKey !== mainNeedKey) return [];
+    if(!sourcePathSlots.has(fromSlot)) return [];
+    if(storedPlan.returnActionKey && getSdeMoveActionRecord(storedPlan.returnActionKey)?.action === "completed") return [];
+    return [{
+      vehicle,
+      fromSlot,
+      toSlot,
+      originalBlockerSlot:fromSlot,
+      candidateOrder:Array.isArray(storedPlan.candidateOrder) ? [...storedPlan.candidateOrder] : [],
+      carriedCompletedRelease:true,
+      completedActionKey:actionKey
+    }];
+  }).sort((left,right)=>left.fromSlot.localeCompare(right.fromSlot) || left.vehicle.localeCompare(right.vehicle));
+}
+
+function validateSdeTrappedEgressRecovery(occupancy, mainStep, releaseSteps, recoveryTargetsByVehicle=new Map()){
+  const mainAssessment = assessSdeTrappedEgressVirtualMove(
+    occupancy,mainStep.vehicle,mainStep.fromSlot,mainStep.toSlot,
+    {sourceEnds:getSdeTrappedEgressMainSourceEnds(mainStep.fromSlot,mainStep.toSlot)}
+  );
+  if(!mainAssessment.valid) return null;
+  let simulated = applySdeTrappedEgressVirtualMove(
+    occupancy,mainStep.vehicle,mainStep.fromSlot,mainStep.toSlot
+  );
+  const recoverySteps = releaseSteps.slice().reverse(); // SDE_EGRESS_MANDATORY_RECOVERY
+  const recoveries = [];
+  for(const release of recoverySteps){
+    const target = normalizeSlot(recoveryTargetsByVehicle.get(normalizeVehicleToken(release.vehicle)) || release.fromSlot);
+    const assessment = assessSdeTrappedEgressVirtualMove(simulated,release.vehicle,release.toSlot,target);
+    if(!assessment.valid) return null;
+    const recovery = {
+      vehicle:release.vehicle,
+      fromSlot:release.toSlot,
+      toSlot:target,
+      sourceOption:assessment.sourceOption,
+      targetOption:assessment.targetOption,
+      releaseFromSlot:release.fromSlot
+    };
+    recoveries.push(recovery);
+    simulated = applySdeTrappedEgressVirtualMove(simulated,recovery.vehicle,recovery.fromSlot,recovery.toSlot);
+  }
+  return {mainAssessment,recoverySteps:recoveries,finalOccupancy:simulated};
+}
+
+function buildSdeCompleteTrappedEgressPlan(row, blockState, sourceRows=[], options={}){
+  const requestedTarget = normalizeSlot(row?.recommendedSlot || row?.toSlot); // SDE_EGRESS_REQUESTED_TARGET
+  if(options?.targetOnly === true) return {requestedTarget};
+  const mainVehicle = sanitizeVehicleValue(blockState?.vehicle || row?.vehicle);
+  const mainSource = normalizeSlot(blockState?.fromSlot || row?.fromSlot || row?.arrivalSlot);
+  const occupancy = getSdeTrappedEgressActualOccupancy();
+  if(!mainVehicle || !mainSource || !requestedTarget) return null;
+  if(normalizeVehicleToken(occupancy.get(mainSource)) !== normalizeVehicleToken(mainVehicle)) return null;
+  if(sanitizeVehicleValue(occupancy.get(requestedTarget))) return null;
+
+  const carriedReleases = getSdeTrappedEgressCarriedReleases(row,occupancy);
+  const initialBlockingItems = Array.isArray(blockState?.blockers) ? blockState.blockers : [];
+  const blockingItems = expandSdeTrappedEgressRecursiveBlockers(occupancy,initialBlockingItems,mainVehicle);
+  const candidateBlockers = [...blockingItems]; // SDE_EGRESS_ALL_BLOCKERS
+  const blockerByVehicle = new Map(candidateBlockers.map(blocker=>[
+    normalizeVehicleToken(blocker?.vehicle),
+    {vehicle:sanitizeVehicleValue(blocker?.vehicle),slot:normalizeSlot(blocker?.slot),...blocker}
+  ]).filter(([token,blocker])=>token && blocker.vehicle && blocker.slot));
+  if(!blockerByVehicle.size && !carriedReleases.length) return null;
+
+  const sourcePathSlots = getSdeTrappedEgressAccessOptions(
+    occupancy,mainSource,getSdeTrappedEgressMainSourceEnds(mainSource,requestedTarget)
+  )
+    .flatMap(option=>option.pathSlots || []);
+  const reservedSlots = Array.isArray(options?.reservedSlots) ? options.reservedSlots : [];
+  const excludedTargets = Array.from(new Set([
+    mainSource,requestedTarget,...sourcePathSlots,...reservedSlots
+  ].map(normalizeSlot).filter(Boolean)));
+  const releaseIntents = new Map();
+  blockerByVehicle.forEach((blocker,token)=>{
+    const intent = getSdeCanonicalPhysicalReleaseRetargetIntent(row,blockState,blocker);
+    if(intent) releaseIntents.set(token,intent);
+  });
+  const mainStep = {vehicle:mainVehicle,fromSlot:mainSource,toSlot:requestedTarget};
+  const initial = {
+    occupancy,
+    releases:[...carriedReleases],
+    movedTokens:new Set(carriedReleases.map(step=>normalizeVehicleToken(step.vehicle)).filter(Boolean))
+  };
+  const queue = [initial];
+  const visited = new Set([`${getSdeTrappedEgressOccupancySignature(occupancy)}|${Array.from(initial.movedTokens).sort().join(",")}`]);
+  let completed = null;
+
+  while(queue.length){
+    const current = queue.shift();
+    const recovery = validateSdeTrappedEgressRecovery(current.occupancy,mainStep,current.releases);
+    if(recovery && current.releases.length){
+      completed = {...current,recovery};
+      break;
+    }
+    for(const [token,blocker] of blockerByVehicle.entries()){
+      if(current.movedTokens.has(token)) continue;
+      const fromSlot = getSdeTrappedEgressVehicleSlot(current.occupancy,blocker.vehicle);
+      if(!fromSlot) continue;
+      const intent = releaseIntents.get(token);
+      const rejectedTargets = new Set((intent?.rejectedTargets || []).map(normalizeSlot).filter(Boolean));
+      const candidateOrder = getSdeTrappedEgressTemporaryCandidateOrder(fromSlot,excludedTargets)
+        .filter(slot=>!rejectedTargets.has(slot));
+      const explicitTarget = normalizeSlot(intent?.explicitTarget);
+      const selectionOrder = explicitTarget ? candidateOrder.filter(slot=>slot === explicitTarget) : candidateOrder;
+      for(const targetSlot of selectionOrder){
+        if(sanitizeVehicleValue(current.occupancy.get(targetSlot))) continue;
+        const assessment = assessSdeTrappedEgressVirtualMove(current.occupancy,blocker.vehicle,fromSlot,targetSlot);
+        if(!assessment.valid) continue;
+        const step = {
+          vehicle:blocker.vehicle,
+          fromSlot,
+          toSlot:targetSlot,
+          originalBlockerSlot:blocker.slot,
+          sourceOption:assessment.sourceOption,
+          targetOption:assessment.targetOption,
+          candidateOrder,
+          intent
+        };
+        const nextOccupancy = applySdeTrappedEgressVirtualMove(current.occupancy,blocker.vehicle,fromSlot,targetSlot);
+        const nextMoved = new Set(current.movedTokens).add(token);
+        const signature = `${getSdeTrappedEgressOccupancySignature(nextOccupancy)}|${Array.from(nextMoved).sort().join(",")}`;
+        if(visited.has(signature)) continue;
+        visited.add(signature);
+        queue.push({occupancy:nextOccupancy,releases:[...current.releases,step],movedTokens:nextMoved});
+      }
+    }
+  }
+  if(!completed) return null;
+
+  const chainId = `sde-trapped-egress-v1|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+    mainVehicle:normalizeVehicleToken(mainVehicle),
+    mainSource,
+    initialOccupancy:getSdeTrappedEgressOccupancySignature(occupancy),
+    needKey:getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row)
+  }))}`;
+  const releaseSteps = completed.releases.map(step=>({...step,routeResources:getSdeTrappedEgressRouteResources(step,chainId)}));
+  const mainWithRoute = {
+    ...mainStep,
+    sourceOption:completed.recovery.mainAssessment.sourceOption,
+    targetOption:completed.recovery.mainAssessment.targetOption
+  };
+  mainWithRoute.routeResources = getSdeTrappedEgressRouteResources(mainWithRoute,chainId);
+  const recoverySteps = completed.recovery.recoverySteps.map(step=>({...step,routeResources:getSdeTrappedEgressRouteResources(step,chainId)}));
+  return {
+    chainId,
+    releaseSteps,
+    mainStep:mainWithRoute,
+    recoverySteps,
+    temporaryTargets:releaseSteps.map(step=>step.toSlot),
+    sourceStateSignature:getSdeTrappedEgressOccupancySignature(occupancy),
+    sourceRowsCount:Array.isArray(sourceRows) ? sourceRows.length : 0
+  };
+}
+
+function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], options={}){
+  const plan = buildSdeCompleteTrappedEgressPlan(row,blockState,sourceRows,options);
+  if(!plan) return null;
+  if(plan.releaseSteps.length < 1 || plan.recoverySteps.length !== plan.releaseSteps.length){
+    return {
+      plan,
+      rows:[{
+        ...buildSdeTrappedEgressDiagnosticRow(row,blockState),
+        sdePhysicalDependencyRole:"prerequisite",
+        sdeTrappedEgressIncompletePlan:true
+      }]
+    };
+  }
+  const pendingReleaseSteps = plan.releaseSteps.filter(step=>step.carriedCompletedRelease !== true);
+  const totalSteps = pendingReleaseSteps.length + 1 + plan.recoverySteps.length;
+  const releaseRows = [];
+  pendingReleaseSteps.forEach((step,index)=>{
+    const stableActionKey = `sde-trapped-egress|${plan.chainId}|release-${index + 1}|${normalizeVehicleToken(step.vehicle)}|${step.fromSlot}|${step.toSlot}`;
+    const recoveryIndex = plan.recoverySteps.findIndex(recovery=>
+      haveSameSdeVehicleTokens(recovery.vehicle,step.vehicle)
+      && normalizeSlot(recovery.fromSlot) === normalizeSlot(step.toSlot)
+    );
+    const recoveryStep = plan.recoverySteps[recoveryIndex];
+    const releasePlan = {
+      context:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
+      chainId:plan.chainId,
+      sdeTrappedEgressChain:true,
+      mainObligationKey:String(getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row) || "").trim(),
+      releaseActionKey:stableActionKey,
+      mainActionKey:getSdeMoveActionKey(row),
+      returnActionKey:recoveryStep ? getSdeTrappedEgressRecoveryActionKey(plan.chainId,recoveryIndex,recoveryStep) : "",
+      blockerVehicle:step.vehicle,
+      blockerFromSlot:step.fromSlot,
+      holdingSlot:step.toSlot,
+      returnTargetSlot:step.fromSlot,
+      blockedVehicle:blockState.vehicle,
+      blockedFromSlot:blockState.fromSlot,
+      mainTargetSlot:plan.mainStep.toSlot,
+      candidateOrder:[...step.candidateOrder],
+      sequenceStepCount:totalSteps,
+      targetTrack:getSdeSlotTrack(step.toSlot),
+      accessEnd:step.targetOption?.end || "yard",
+      accessResource:`track-access|${getSdeSlotTrack(step.toSlot) || step.toSlot}|${step.targetOption?.end || "yard"}`,
+      routeResources:[...step.routeResources]
+    };
+    releaseRows.push(annotateSdePhysicalBlockerFreeingMove({
+      ...row,
+      vehicle:step.vehicle,
+      fromSlot:step.fromSlot,
+      arrivalSlot:step.fromSlot,
+      originalFromSlot:step.fromSlot,
+      recommendedSlot:step.toSlot,
+      toSlot:step.toSlot,
+      stableActionKey,
+      sdeNightPlacementGeneratedActionKey:"",
+      sdeNightPlacementGeneratedNeedKey:"",
+      needKey:`sde-trapped-egress-need|${stableActionKey}`,
+      sdeNightPlacementDragIdentity:"",
+      manualPlanId:"",
+      sdeNightPlacementDragOverrideActive:false,
+      isNightPlacementGenerated:false,
+      sdePhysicalChainId:plan.chainId,
+      sdePhysicalChainStep:index + 1,
+      sdePhysicalChainStepCount:totalSteps,
+      sdePhysicalDependsOn:index ? [getSdeMoveActionKey(releaseRows[index - 1])] : [],
+      sdePhysicalDependencyRole:"prerequisite",
+      canonicalChainStepActive:true,
+      canonicalProducer:"physical_blocker_guard",
+      sdePhysicalReleaseReplanKey:getSdePhysicalReleaseReplanKeyFromParts(
+        blockState.vehicle,blockState.fromSlot,blockState.toSlot,step.vehicle,step.originalBlockerSlot
+      ),
+      sdePhysicalReleaseCandidateOrder:[...step.candidateOrder],
+      sdePhysicalPlanningStateSignature:plan.sourceStateSignature,
+      sdePhysicalAccessReliefChain:releasePlan,
+      sdeTrappedEgressChainStep:true,
+      sdeTrappedEgressRouteResources:[...step.routeResources], // SDE_EGRESS_COMPLETE_RESOURCES
+      ...(step.intent ? {
+        sdeCanonicalRetargetIntentId:step.intent.revision,
+        sdeCanonicalRetargetOriginalTarget:step.intent.originalTarget || step.toSlot,
+        sdeCanonicalRetargetRequestedTarget:step.toSlot,
+        sdeCanonicalRetargetUserDirected:true
+      } : {})
+    },row,blockState,{vehicle:step.vehicle,slot:step.originalBlockerSlot},"",{
+      immediateBlockedVehicle:blockState.vehicle,
+      releaseReason:`Komplett frigjøringskjede: flytt ${step.vehicle} ${step.fromSlot} → ${step.toSlot}; retur er obligatorisk etter hovedflyttingen.`
+    }));
+  });
+  const mainDependencies = releaseRows.length ? [getSdeMoveActionKey(releaseRows.at(-1))] : []; // SDE_EGRESS_MAIN_DEPENDENCIES
+  const mainRow = {
+    ...row,
+    fromSlot:plan.mainStep.fromSlot,
+    arrivalSlot:plan.mainStep.fromSlot,
+    recommendedSlot:plan.mainStep.toSlot,
+    toSlot:plan.mainStep.toSlot,
+    sdePhysicalChainId:plan.chainId,
+    sdePhysicalChainStep:releaseRows.length + 1,
+    sdePhysicalChainStepCount:totalSteps,
+    sdePhysicalDependsOn:mainDependencies,
+    sdePhysicalDependencyRole:"dependent",
+    sdePhysicalDependencyLabel:"Venter på at hele frigjøringsprefikset er Utført.",
+    canonicalChainStepActive:true,
+    sdePhysicalHardBlocked:true,
+    sdePhysicalHardBlockState:blockState,
+    sdePhysicalAccessReliefChain:{
+      context:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
+      chainId:plan.chainId,
+      holdingSlot:plan.mainStep.toSlot,
+      returnTargetSlot:plan.mainStep.toSlot,
+      targetTrack:getSdeSlotTrack(plan.mainStep.toSlot),
+      accessEnd:plan.mainStep.targetOption?.end || "yard",
+      accessResource:`track-access|${getSdeSlotTrack(plan.mainStep.toSlot) || plan.mainStep.toSlot}|${plan.mainStep.targetOption?.end || "yard"}`,
+      routeResources:[...plan.mainStep.routeResources]
+    },
+    sdeTrappedEgressChainStep:true,
+    sdeTrappedEgressRouteResources:[...plan.mainStep.routeResources]
+  };
+  const rows = [...releaseRows,mainRow];
+  plan.recoverySteps.forEach((step,index)=>{
+    const previousKey = getSdeMoveActionKey(rows.at(-1));
+    const chainStep = releaseRows.length + 2 + index;
+    const releaseIndex = plan.releaseSteps.findIndex(release=>
+      haveSameSdeVehicleTokens(release.vehicle,step.vehicle)
+      && release.toSlot === step.fromSlot
+    );
+    const release = plan.releaseSteps[releaseIndex];
+    rows.push({
+      ...row,
+      vehicle:step.vehicle,
+      fromSlot:step.fromSlot,
+      arrivalSlot:step.fromSlot,
+      originalFromSlot:step.fromSlot,
+      recommendedSlot:step.toSlot,
+      toSlot:step.toSlot,
+      stableActionKey:getSdeTrappedEgressRecoveryActionKey(plan.chainId,index,step),
+      sdeNightPlacementGeneratedActionKey:"",
+      sdeNightPlacementGeneratedNeedKey:"",
+      needKey:`sde-trapped-egress-recovery-need|${plan.chainId}|${normalizeVehicleToken(step.vehicle)}|${step.fromSlot}`,
+      sdeNightPlacementDragIdentity:"",
+      manualPlanId:"",
+      sdeNightPlacementDragOverrideActive:false,
+      isNightPlacementGenerated:false,
+      source:"SDE obligatorisk frigjøringsretur",
+      canonicalProducer:"physical_blocker_guard",
+      sdePhysicalChainId:plan.chainId,
+      sdePhysicalChainStep:chainStep,
+      sdePhysicalChainStepCount:totalSteps,
+      sdePhysicalDependsOn:[previousKey],
+      sdePhysicalDependencyRole:"return",
+      sdePhysicalDependencyLabel:"Obligatorisk retur etter fullført hovedflytting.",
+      canonicalChainStepActive:true,
+      isSdePhysicalBlockerReturnMove:true,
+      sdePhysicalBlockerForVehicle:blockState.vehicle,
+      sdePhysicalBlockerForSlot:blockState.fromSlot,
+      sdePhysicalBlockerOriginalTarget:blockState.toSlot,
+      sdePhysicalReleaseReplanKey:release ? getSdePhysicalReleaseReplanKeyFromParts(
+        blockState.vehicle,blockState.fromSlot,blockState.toSlot,release.vehicle,release.originalBlockerSlot
+      ) : "",
+      sdePhysicalReleaseCandidateOrder:release ? [...release.candidateOrder] : [],
+      sdePhysicalAccessReliefChain:{
+        context:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
+        chainId:plan.chainId,
+        holdingSlot:step.fromSlot,
+        returnTargetSlot:step.toSlot,
+        targetTrack:getSdeSlotTrack(step.toSlot),
+        accessEnd:step.targetOption?.end || "yard",
+        accessResource:`track-access|${getSdeSlotTrack(step.toSlot) || step.toSlot}|${step.targetOption?.end || "yard"}`,
+        routeResources:[...step.routeResources]
+      },
+      sdeTrappedEgressChainStep:true,
+      sdeTrappedEgressRouteResources:[...step.routeResources],
+      parkingStrategy:"Obligatorisk frigjøringsretur",
+      parkingInstruction:`Returner ${step.vehicle} fra ${step.fromSlot} til ${step.toSlot}.`,
+      recommendationReason:`Mandatory recovery for komplett frigjøringskjede ${plan.chainId}.`
+    });
+  });
+  return {plan,rows};
+}
+
+function buildSdeTrappedEgressDiagnosticRow(row, blockState){
+  const diagnosticCode = "trapped_vehicle_no_safe_egress_plan";
+  const reason = "Ingen komplett fysisk frigjøringskjede med hovedflytting og obligatorisk retur kan valideres fra fersk actual-state.";
+  const blockers = Array.isArray(blockState?.blockers) ? blockState.blockers : [];
+  const diagnostic = {
+    mainVehicleId:sanitizeVehicleValue(blockState?.vehicle || row?.vehicle),
+    source:normalizeSlot(blockState?.fromSlot || row?.fromSlot || row?.arrivalSlot),
+    requestedTarget:normalizeSlot(blockState?.toSlot || row?.recommendedSlot || row?.toSlot),
+    blockingVehicleIds:sortSdeCanonicalStrings(blockers.map(item=>sanitizeVehicleValue(item?.vehicle))),
+    blockingResources:sortSdeCanonicalStrings(blockers.flatMap(item=>[
+      normalizeSlot(item?.slot),
+      item?.accessEnd ? `track-access|${getSdeSlotTrack(item?.slot) || "unknown"}|${item.accessEnd}` : ""
+    ])),
+    rejectedCandidateReasons:["occupied_or_reserved","route_or_egress_blocked","mandatory_recovery_not_complete"]
+  };
+  return {
+    ...row,
+    sdePhysicalHardBlocked:true,
+    sdePhysicalHardBlockState:blockState,
+    sdePhysicalNoSafeReleaseMove:true,
+    sdePhysicalNoSafeReleaseReason:reason,
+    canonicalPhysicalValid:false,
+    canonicalPhysicalInvalidReason:reason,
+    sdeCanonicalRetargetDiagnostic:diagnosticCode,
+    sdeTrappedEgressDiagnosticOnly:true,
+    sdeTrappedEgressDiagnostic:diagnostic
+  };
+}
+
 function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
   const rawRows = applySdeCanonicalRetargetIntentsToRows(Array.isArray(rows) ? rows : []);
   const sourceRows = options?.reconcileActive === false
@@ -17447,8 +18031,72 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
       return;
     }
 
-    const blockState = getSdeHardPhysicalBlockStateForMove(row);
+    const targetProbeSource = normalizeSlot(row?.fromSlot || row?.arrivalSlot);
+    const verifiesGraphicDragTarget = Boolean(
+      (row?.sdeCanonicalGraphicDragOrder === true
+        || String(row?.canonicalProducer || "").trim() === "graphic_drag_generated_move")
+      && getSdeSameTrackSlotOrder(getSdeSlotTrack(targetProbeSource)).length >= 3
+    );
+    const declaredTarget = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+    const targetProbe = verifiesGraphicDragTarget
+      ? buildSdeCompleteTrappedEgressPlan(row,{},sourceRows,{targetOnly:true})
+      : null;
+    if(verifiesGraphicDragTarget && targetProbe?.requestedTarget !== declaredTarget){
+      const parts = getSdePhysicalMoveParts(row);
+      guarded.push({
+        ...buildSdeTrappedEgressDiagnosticRow(row,{
+          hardBlocked:true,
+          kind:"requested_target_integrity_failure",
+          ...parts,
+          blockers:[],
+          reason:"Canonical requested target ble ikke bevart eksakt gjennom frigjøringsplanneren."
+        }),
+        sdePhysicalChainId:"sde-trapped-egress-target-integrity-failure"
+      });
+      return;
+    }
+
+    let blockState = getSdeCompleteTrappedEgressBlockState(
+      row,getSdeHardPhysicalBlockStateForMove(row)
+    );
+    const carriedEgressReleases = getSdeTrappedEgressCarriedReleases(
+      row,getSdeTrappedEgressActualOccupancy()
+    );
+    if(!blockState.hardBlocked && carriedEgressReleases.length){
+      const parts = getSdePhysicalMoveParts(row);
+      blockState = {
+        ...blockState,
+        hardBlocked:true,
+        kind:"trapped_egress_recovery_pending",
+        ...parts,
+        blockers:[],
+        accessAssessment:{sourceAccessBlocked:true,targetAccessBlocked:false,blockers:[]},
+        reason:"Tidligere frigjøringssteg er fullført; hovedflytting og alle obligatoriske returer må fortsatt materialiseres samlet."
+      };
+    }
     if(blockState.hardBlocked){
+      const trappedSourceAccess = blockState?.accessAssessment?.sourceAccessBlocked === true || carriedEgressReleases.length > 0;
+      const singleBlocker = (Array.isArray(blockState.blockers) ? blockState.blockers : [])[0] || null;
+      const specializedButtTrackChain = (blockState.blockers || []).length === 1
+        && getSdeButtTrackTemporaryVnPair(blockState.fromSlot,singleBlocker?.slot);
+      if(trappedSourceAccess && !specializedButtTrackChain){
+        const completeEgress = buildSdeCompleteTrappedEgressRows(row,blockState,sourceRows,{
+          reservedSlots:[...reservedSlots,...getVnClaimAvoidSlots(rowKey)]
+        });
+        if(completeEgress?.rows?.length){
+          completeEgress.rows.forEach(chainRow=>{
+            guarded.push(chainRow);
+            const key = getSdeMoveActionKey(chainRow);
+            if(chainRow.sdePhysicalDependencyRole === "prerequisite" && key) insertedFreeingKeys.add(key);
+            if(chainRow.sdePhysicalDependencyRole === "return" && key) insertedRecoveryKeys.add(key);
+          });
+          completeEgress.plan.temporaryTargets.forEach(slot=>reservedSlots.add(slot));
+          reservedSlots.add(completeEgress.plan.mainStep.toSlot);
+        }else{
+          guarded.push(buildSdeTrappedEgressDiagnosticRow(row,blockState));
+        }
+        return;
+      }
       const shouldYieldToStableReleaseTargets = hasSdePhysicalReleaseReplanHistoryForRow(row, blockState);
       const otherStableReleaseTargets = shouldYieldToStableReleaseTargets
         ? Array.from(stableReleaseTargetsByRowKey.entries())
@@ -23681,6 +24329,7 @@ function buildSdeCanonicalPlan(input={}){
       activeEligible:false,
       canonicalChainStepActive:Boolean(row.canonicalChainStepActive || row.sdePhysicalStepActive || row.sdeChainStepActive),
       physicalValidation:{valid:physicalValid, reason:physicalInvalidReason},
+      routeResources:sortSdeCanonicalStrings(row.sdeTrappedEgressRouteResources || []),
       rank:getSdeCanonicalCandidateRank(row),
       raw:row
     };
@@ -23721,6 +24370,20 @@ function buildSdeCanonicalPlan(input={}){
       }else if(!targetOccupiedByOtherVehicle){
         diagnostics.push({code:"physically_invalid_candidate", severity:"error", obligationStepKey:signature.obligationStepKey, candidateId, vehicleId:signature.vehicleId, message:physicalInvalidReason});
       }
+    }
+    if(row?.sdeTrappedEgressDiagnosticOnly){
+      diagnostics.push({
+        code:String(row.sdeCanonicalRetargetDiagnostic || "trapped_vehicle_no_safe_egress_plan"),
+        severity:"warning",
+        ...(cloneSdeCanonicalValue(row.sdeTrappedEgressDiagnostic || {}) || {}),
+        obligationId:signature.obligationId,
+        stepId:signature.stepId,
+        candidateOutcomeId,
+        vehicleId:signature.vehicleId,
+        sourceSlot:signature.sourceSlot,
+        targetSlot,
+        message:String(row.sdePhysicalNoSafeReleaseReason || physicalInvalidReason || "Ingen komplett sikker frigjøringskjede finnes.")
+      });
     }
     if(!signature.identitySafe){
       recordConflict(
@@ -24289,6 +24952,7 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
     && !hasBlockingConflict(outcome)
   ).map(outcome=>{
     const base = buildCardBase(outcome);
+    const recoveryRequired = Boolean(base.recoveryRequired || outcome.raw?.sdeTrappedEgressChainStep);
     const canRetarget = resolveCanRetarget(outcome);
     const localStandalone = Boolean(
       outcome.raw?.isNightPlacementGenerated
@@ -24626,7 +25290,12 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
     const sourceSlot = card.chainId ? outcome.stepSourceSlot || outcome.statedSourceSlot || card.sourceSlot : card.sourceSlot;
     const reservationKind = reservationKindFor(card,outcome);
     const accessReliefPlan = outcome?.raw?.sdePhysicalAccessReliefChain;
-    const routeResources = accessReliefPlan?.context === "target_access_temporary_relief"
+    const trappedEgressRouteResources = Array.isArray(outcome?.raw?.sdeTrappedEgressRouteResources)
+      ? sortSdeCanonicalStrings(outcome.raw.sdeTrappedEgressRouteResources)
+      : [];
+    const routeResources = trappedEgressRouteResources.length
+      ? trappedEgressRouteResources
+      : accessReliefPlan?.context === "target_access_temporary_relief"
       ? sortSdeCanonicalStrings([
           String(accessReliefPlan.accessResource || `track-access|${accessReliefPlan.targetTrack || "unknown"}|${accessReliefPlan.accessEnd || "unknown"}`),
           ...(Array.isArray(accessReliefPlan.routeResources) ? accessReliefPlan.routeResources : []),
@@ -33636,14 +34305,177 @@ function inspectSdeCanonicalGraphicDragAccessReliefChain(reader, expected={}){
   };
 }
 
+function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
+  const vehicleId = sanitizeVehicleValue(expected.vehicle);
+  const sourceSlot = normalizeSlot(expected.sourceSlot);
+  const targetSlot = normalizeSlot(expected.targetSlot);
+  const actionKey = String(expected.actionKey || "").trim();
+  const candidates = Array.isArray(reader?.canonicalPlan?.candidateOutcomes)
+    ? reader.canonicalPlan.candidateOutcomes
+    : [];
+  const mainCandidates = candidates.filter(outcome=>
+    sanitizeVehicleValue(outcome?.vehicleId) === vehicleId
+    && normalizeSlot(outcome?.canonicalSourceSlot) === sourceSlot
+    && normalizeSlot(outcome?.targetSlot) === targetSlot
+    && String(outcome?.producer || "").trim() === "graphic_drag_generated_move"
+    && outcome?.raw?.sdeTrappedEgressChainStep === true
+    && String(outcome?.raw?.sdePhysicalDependencyRole || "").trim() === "dependent"
+    && (!actionKey || String(outcome?.actionKey || "").trim() === actionKey)
+  );
+  const mainOutcome = mainCandidates.length === 1 ? mainCandidates[0] : null;
+  const chainId = String(mainOutcome?.chainId || mainOutcome?.chainScope || "").trim();
+  const chainOutcomes = chainId
+    ? candidates.filter(outcome=>
+        String(outcome?.chainId || outcome?.chainScope || "").trim() === chainId
+        && outcome?.raw?.sdeTrappedEgressChainStep === true
+      ).sort((left,right)=>Number(left?.raw?.sdePhysicalChainStep || 0) - Number(right?.raw?.sdePhysicalChainStep || 0))
+    : [];
+  const releaseOutcomes = chainOutcomes.filter(outcome=>String(outcome?.raw?.sdePhysicalDependencyRole || "").trim() === "prerequisite");
+  const returnOutcomes = chainOutcomes.filter(outcome=>String(outcome?.raw?.sdePhysicalDependencyRole || "").trim() === "return");
+  const expectedStepCount = releaseOutcomes.length * 2 + 1;
+  const exactSequence = Boolean(
+    releaseOutcomes.length >= 1
+    && returnOutcomes.length === releaseOutcomes.length
+    && chainOutcomes.length === expectedStepCount
+    && chainOutcomes.every((outcome,index)=>
+      Number(outcome?.raw?.sdePhysicalChainStep || 0) === index + 1
+      && Number(outcome?.raw?.sdePhysicalChainStepCount || 0) === expectedStepCount
+    )
+  );
+  const dependenciesMatch = Boolean(exactSequence && chainOutcomes.every((outcome,index)=>{
+    const dependencies = Array.isArray(outcome?.dependencies) ? outcome.dependencies : [];
+    if(index === 0) return dependencies.length === 0;
+    return dependencies.length === 1 && dependencies[0] === String(chainOutcomes[index - 1]?.actionKey || "").trim();
+  }));
+  const recoveryPairing = Boolean(
+    returnOutcomes.length === releaseOutcomes.length
+    && releaseOutcomes.every(release=>returnOutcomes.some(recovery=>
+      sanitizeVehicleValue(recovery?.vehicleId) === sanitizeVehicleValue(release?.vehicleId)
+      && normalizeSlot(recovery?.canonicalSourceSlot) === normalizeSlot(release?.targetSlot)
+      && normalizeSlot(recovery?.targetSlot) === normalizeSlot(release?.canonicalSourceSlot)
+    ))
+  );
+
+  const actionableCards = (reader?.cardProjection?.actionableCards || []).filter(card=>card?.chainId === chainId);
+  const blockedCards = (reader?.cardProjection?.blockedChainCards || []).filter(card=>card?.chainId === chainId);
+  const chainCards = [...actionableCards,...blockedCards];
+  const reservations = (reader?.reservationProjection?.reservations || []).filter(item=>item?.chainId === chainId);
+  const activeOverlays = (reader?.graphicProjection?.activeOverlays || []).filter(item=>item?.chainId === chainId);
+  const deferredOverlays = (reader?.graphicProjection?.deferredOverlays || []).filter(item=>item?.chainId === chainId);
+  const cardByOutcomeId = new Map(chainCards.map(card=>[card.activeOutcomeId,card]));
+  const adapterByOutcomeId = new Map(chainCards.map(card=>reader?.handlerAdapters?.[card.canonicalCardId] || null).filter(Boolean).map(adapter=>[adapter.activeOutcomeId,adapter]));
+  const allProjectionIds = new Set(chainOutcomes.map(outcome=>outcome.candidateOutcomeId));
+  const exactProjection = Boolean(
+    chainCards.length === expectedStepCount
+    && reservations.length === expectedStepCount
+    && activeOverlays.length === 1
+    && deferredOverlays.length === expectedStepCount - 1
+    && chainOutcomes.every(outcome=>{
+      const outcomeId = outcome.candidateOutcomeId;
+      return cardByOutcomeId.has(outcomeId)
+        && reservations.some(item=>item.activeOutcomeId === outcomeId)
+        && [...activeOverlays,...deferredOverlays].some(item=>item.activeOutcomeId === outcomeId)
+        && adapterByOutcomeId.has(outcomeId)
+        && Array.isArray(outcome.routeResources)
+        && outcome.routeResources.length > 0;
+    })
+    && reservations.every(item=>allProjectionIds.has(item.activeOutcomeId) && Array.isArray(item.routeResources) && item.routeResources.length > 0)
+  );
+  const firstOutcome = chainOutcomes[0] || null;
+  const firstCard = cardByOutcomeId.get(firstOutcome?.candidateOutcomeId) || null;
+  const firstAdapter = adapterByOutcomeId.get(firstOutcome?.candidateOutcomeId) || null;
+  const readinessMatch = Boolean(
+    actionableCards.length === 1
+    && actionableCards[0]?.activeOutcomeId === firstOutcome?.candidateOutcomeId
+    && blockedCards.length === expectedStepCount - 1
+    && blockedCards.every(card=>card.canComplete === false)
+    && chainCards.every(card=>card.canRetarget === true)
+    && returnOutcomes.every(outcome=>{
+      const card = cardByOutcomeId.get(outcome.candidateOutcomeId);
+      return card?.canCancel === false && card?.canDelete === false;
+    })
+    && firstAdapter?.ready === true
+    && chainOutcomes.slice(1).every(outcome=>adapterByOutcomeId.get(outcome.candidateOutcomeId)?.ready === false)
+  );
+  const chainReservationIds = new Set(reservations.map(item=>item.reservationId));
+  const reservationConflicts = (reader?.reservationProjection?.conflicts || []).filter(conflict=>
+    (conflict.reservationIds || []).some(id=>chainReservationIds.has(id))
+    || (conflict.chainIds || []).includes?.(chainId)
+  );
+  const actualSlots = reader?.graphicProjection?.actualSlots || [];
+  const actualUnchanged = Boolean(
+    mainOutcome
+    && [mainOutcome,...releaseOutcomes].every(outcome=>actualSlots.some(item=>
+      sanitizeVehicleValue(item.vehicleId) === sanitizeVehicleValue(outcome.vehicleId)
+      && normalizeSlot(item.slot) === normalizeSlot(outcome.canonicalSourceSlot)
+    ))
+  );
+  const chainRecords = (reader?.cardProjection?.chains || []).filter(chain=>chain?.chainId === chainId);
+  const activeOutcomeIds = new Set((reader?.canonicalPlan?.activeOutcomes || [])
+    .filter(outcome=>String(outcome?.chainId || outcome?.chainScope || "").trim() === chainId)
+    .map(outcome=>outcome.candidateOutcomeId));
+  const exactIdentities = Boolean(
+    chainOutcomes.length === expectedStepCount
+    && new Set(chainOutcomes.map(outcome=>outcome.stepId)).size === expectedStepCount
+    && new Set(chainOutcomes.map(outcome=>outcome.candidateOutcomeId)).size === expectedStepCount
+    && chainOutcomes.every(outcome=>outcome.obligationId && outcome.stepId && outcome.candidateOutcomeId)
+  );
+  const ok = Boolean(
+    mainOutcome
+    && chainRecords.length === 1
+    && exactSequence
+    && exactIdentities
+    && dependenciesMatch
+    && recoveryPairing
+    && exactProjection
+    && readinessMatch
+    && activeOutcomeIds.size === 1
+    && activeOutcomeIds.has(firstOutcome?.candidateOutcomeId)
+    && !reservationConflicts.length
+    && actualUnchanged
+    && reader?.integrityReport?.status === "PASS"
+  );
+  const reason = ok ? "" : [
+    `main=${mainCandidates.length}`,
+    `steps=${chainOutcomes.length}/${expectedStepCount}`,
+    `release=${releaseOutcomes.length}`,
+    `return=${returnOutcomes.length}`,
+    `sequence=${exactSequence ? "ok" : "mismatch"}`,
+    `dependencies=${dependenciesMatch ? "ok" : "mismatch"}`,
+    `recovery=${recoveryPairing ? "paired" : "mismatch"}`,
+    `identities=${exactIdentities ? "exact" : "mismatch"}`,
+    `projection=${exactProjection ? "complete" : "incomplete"}`,
+    `readiness=${readinessMatch ? "ok" : "mismatch"}`,
+    `chainRecords=${chainRecords.length}`,
+    `activeOutcomes=${activeOutcomeIds.size}`,
+    `reservationConflicts=${reservationConflicts.length}`,
+    `actual=${actualUnchanged ? "unchanged" : "mismatch"}`,
+    `integrity=${reader?.integrityReport?.status || "missing"}`
+  ].join("; ");
+  return {
+    ok,
+    reason,
+    chainId,
+    chain:chainRecords[0] || null,
+    plan:mainOutcome?.raw?.sdePhysicalAccessReliefChain || null,
+    outcomes:{release:firstOutcome,main:mainOutcome,return:returnOutcomes[0] || null,releases:releaseOutcomes,returns:returnOutcomes,all:chainOutcomes},
+    cards:{release:firstCard,main:cardByOutcomeId.get(mainOutcome?.candidateOutcomeId) || null,return:cardByOutcomeId.get(returnOutcomes[0]?.candidateOutcomeId) || null,all:chainCards},
+    reservations,
+    overlays:{active:activeOverlays,deferred:deferredOverlays},
+    adapters:{release:firstAdapter,main:adapterByOutcomeId.get(mainOutcome?.candidateOutcomeId) || null,return:adapterByOutcomeId.get(returnOutcomes[0]?.candidateOutcomeId) || null,all:[...adapterByOutcomeId.values()]}
+  };
+}
+
 function inspectSdeCanonicalGraphicDragPhysicalReliefChain(reader, expected={}){
+  const trapped = inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected);
+  if(trapped.ok) return {...trapped, reliefKind:"trapped_egress"};
   const vn = inspectSdeCanonicalGraphicDragVnReliefChain(reader, expected);
   if(vn.ok) return {...vn, reliefKind:"vn"};
   const access = inspectSdeCanonicalGraphicDragAccessReliefChain(reader, expected);
   if(access.ok) return {...access, reliefKind:"target_access"};
   return {
     ...access,
-    reason:`VN: ${vn.reason || "ikke relevant"}; adkomst: ${access.reason || "ikke relevant"}`,
+    reason:`innestengt: ${trapped.reason || "ikke relevant"}; VN: ${vn.reason || "ikke relevant"}; adkomst: ${access.reason || "ikke relevant"}`,
     reliefKind:""
   };
 }
