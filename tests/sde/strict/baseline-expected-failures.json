@@ -1,6 +1,9 @@
 {
-  "schemaVersion": "sde-baseline-expected-failures-v1",
-  "expectedFailIds": [
+  "schemaVersion": "sde-historical-baseline-failures-v2",
+  "active": false,
+  "baselineCommit": "8b9f122d47c9c6d5639382281b30bb997229575c",
+  "purpose": "Historical evidence only; never an active qualification expectation.",
+  "historicalFailIds": [
     "INV-CANCEL-001",
     "INV-CANCEL-002",
     "INV-CANCEL-004",

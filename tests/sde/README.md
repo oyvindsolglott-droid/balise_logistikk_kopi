@@ -9,17 +9,20 @@ npm test
 npm run test:sde:strict
 ```
 
-Strict returnerer non-zero for hver brutt invariant og er med hensikt rød på
-den låste production-baselinen. Den separate analysekommandoen kjører nøyaktig
-samme strict-tester og blir grønn bare når det faktiske FAIL-settet er identisk
-med den versjonerte baseline-listen:
+Strict returnerer non-zero for hver brutt invariant. Den aktive lukkede
+baselinen er 37/37 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
+tre ganger og blir bare grønn når alle kjøringene har exit 0, eksakt samme
+normaliserte semantikk, unike invariant-ID-er og 37/37 PASS:
 
 ```sh
 npm run test:sde:baseline-audit
 ```
 
-Baseline-audit er aldri en CI-statuskontroll. Historiske A–W-kontrakter og deres
-negative historiske snapshots er bevart separat:
+De 13 feilene fra production-commit `8b9f122d…` er bevart som inaktivt,
+historisk bevis i `strict/baseline-expected-failures.json`; de er aldri en aktiv
+godkjenningsliste. Fail-closed-semantikken til qualification-porten verifiseres
+permanent av `strict/qualification-contract-meta.cjs` og inngår i determinism-
+og mutation-auditene:
 
 ```sh
 npm run test:sde:contracts

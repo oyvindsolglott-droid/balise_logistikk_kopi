@@ -306,18 +306,21 @@ try {
     });
   }
 
-  const expectedPath = path.join(__dirname, "baseline-expected-failures.json");
-  const expected = JSON.parse(fs.readFileSync(expectedPath, "utf8"));
-  const baselineVariants = [
-    {name: "remove-one", ids: expected.expectedFailIds.slice(1)},
-    {name: "add-false", ids: [...expected.expectedFailIds, "INV-FALSE-999"]},
+  const metaRun = childProcess.spawnSync(process.execPath, [path.join(__dirname, "qualification-contract-meta.cjs")], {cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 64 * 1024 * 1024});
+  const metaReport = JSON.parse(String(metaRun.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
+  const positive = metaReport.scenarios?.find(item => item.id === "valid-closed-baseline-passes");
+  const negativeIds = [
+    "nonzero-strict-is-rejected",
+    "fail-id-is-rejected",
+    "malformed-strict-output-is-rejected",
+    "count-mismatch-is-rejected",
+    "duplicate-invariant-id-is-rejected",
+    "one-of-three-semantic-differences-is-rejected",
+    "baseline-exit-one-makes-determinism-red",
   ];
-  for (const variant of baselineVariants) {
-    const target = path.join(temporary, `${variant.name}.json`);
-    fs.writeFileSync(target, `${JSON.stringify({schemaVersion: expected.schemaVersion, expectedFailIds: variant.ids}, null, 2)}\n`);
-    const run = childProcess.spawnSync(process.execPath, [path.join(__dirname, "baseline-audit.cjs"), sourcePath, target], {cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 64 * 1024 * 1024});
-    reports.push({id: `baseline-${variant.name}`, status: run.status === 1 ? "PASS" : "FAIL", expectedExitCode: 1, actualExitCode: run.status});
-  }
+  const negatives = negativeIds.map(id => metaReport.scenarios?.find(item => item.id === id));
+  reports.push({id: "qualification-contract-positive", status: metaRun.status === 0 && positive?.status === "PASS" ? "PASS" : "FAIL", expectedExitCode: 0, actualExitCode: metaRun.status});
+  reports.push({id: "qualification-contract-fail-closed-negatives", status: metaRun.status === 0 && negatives.every(item => item?.status === "PASS") ? "PASS" : "FAIL", expectedExitCode: 0, actualExitCode: metaRun.status, scenarios: negativeIds});
 } finally {
   fs.rmSync(temporary, {recursive: true, force: true});
 }
