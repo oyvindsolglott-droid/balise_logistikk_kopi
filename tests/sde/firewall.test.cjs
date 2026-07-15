@@ -226,15 +226,17 @@ test("H — card preview stays explicit, fail-closed and non-interactive", () =>
   );
 });
 
-test("I/L audits and executable R/X coverage cannot disappear silently", () => {
+test("I/L audits and executable R/X/Y coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
-  assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWX".split(""));
+  assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXY".split(""));
   assert.equal(coverage.I.status, "audit-only");
   assert.equal(coverage.L.status, "audit-only");
   assert.equal(coverage.R.status, "implemented");
   assert.deepEqual(coverage.R.invariants, ["INV-CANCEL-010", "INV-CANCEL-011", "INV-CANCEL-012", "INV-CANCEL-013"]);
   assert.equal(coverage.X.status, "implemented");
   assert.deepEqual(coverage.X.invariants, ["INV-REROUTE-001", "INV-REROUTE-002", "INV-REROUTE-003", "INV-REROUTE-004", "INV-REROUTE-005", "INV-REROUTE-006", "INV-REROUTE-007", "INV-REROUTE-008"]);
+  assert.equal(coverage.Y.status, "implemented");
+  assert.deepEqual(coverage.Y.invariants, ["INV-EGRESS-001", "INV-EGRESS-002", "INV-EGRESS-003", "INV-EGRESS-004", "INV-EGRESS-005", "INV-EGRESS-006", "INV-EGRESS-007", "INV-EGRESS-008", "INV-EGRESS-009", "INV-EGRESS-010", "INV-EGRESS-011", "INV-EGRESS-012"]);
   for(const phase of Object.keys(coverage).filter(letter => !["I", "L"].includes(letter))){
     assert.equal(coverage[phase].status, "implemented", `${phase} must remain implemented`);
   }
@@ -265,6 +267,16 @@ registerHarnessTest({
   name: "pendulum source uses the time-bound train movement and maps platform 2/3 to S",
   harness: "sde-canonical-pendel-slot-mapping-k-harness.js",
   baseline: "3495bcfffb38012a94bcfd315b211650884a278e",
+});
+
+test("Y — complete trapped-egress chains and unresolved-step retarget stay atomic", () => {
+  const result = runHarness("sde-trapped-egress-chain-harness.js");
+  assertPassed(result, "Y trapped-egress harness");
+  const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
+  assert.equal(report?.schemaVersion, "sde-trapped-egress-harness-v1");
+  assert.deepEqual(report?.counts, {total:12,pass:12,fail:0});
+  assert.deepEqual(report?.results?.map(item=>item.id), Array.from({length:12},(_,index)=>`INV-EGRESS-${String(index+1).padStart(3,"0")}`));
+  for(const fixture of "ABCDEFGHIJKL") assert.ok(report?.scenarios?.[fixture] || ["H","I","J","K"].includes(fixture), `missing fixture ${fixture}`);
 });
 
 registerHarnessTest({

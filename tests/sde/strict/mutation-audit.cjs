@@ -82,7 +82,7 @@ function strictReport(html, name) {
   });
   if (run.error || ![0, 1].includes(run.status)) throw new Error(`${name} crashed: ${run.error || run.stderr || run.stdout}`);
   const report = JSON.parse(String(run.stdout).trim().split(/\n/).filter(Boolean).at(-1));
-  if (report?.counts?.total !== 45 || !Array.isArray(report?.failIds)) {
+  if (report?.counts?.total !== 57 || !Array.isArray(report?.failIds)) {
     throw new Error(`${name} returned an incomplete strict report`);
   }
   return {...report, strictExitCode: run.status};
@@ -334,6 +334,76 @@ const mutations = [
     catches: ["INV-REROUTE-002", "INV-REROUTE-004"],
     any: true,
   },
+  {
+    id: "Y1-SINGLE-BLOCKER-CAP",
+    apply: html => replaceOnce(
+      html,
+      "const candidateBlockers = [...blockingItems]; // SDE_EGRESS_ALL_BLOCKERS",
+      "const candidateBlockers = [...blockingItems].slice(0,1); // mutation: single blocker cap",
+      "all recursive blockers",
+    ),
+    catches: ["INV-EGRESS-002", "INV-EGRESS-003"],
+  },
+  {
+    id: "Y2-OMIT-RELEASE-OR-RECOVERY",
+    apply: html => replaceOnce(
+      html,
+      "const recoverySteps = releaseSteps.slice().reverse(); // SDE_EGRESS_MANDATORY_RECOVERY",
+      "const recoverySteps = []; // mutation: omit mandatory recovery",
+      "mandatory trapped recovery",
+    ),
+    catches: ["INV-EGRESS-001", "INV-EGRESS-005", "INV-EGRESS-006", "INV-EGRESS-010"],
+  },
+  {
+    id: "Y3-WRONG-DEPENDENCY-ORDER",
+    apply: html => replaceOnce(
+      html,
+      "const mainDependencies = releaseRows.length ? [getSdeMoveActionKey(releaseRows.at(-1))] : []; // SDE_EGRESS_MAIN_DEPENDENCIES",
+      "const mainDependencies = []; // mutation: main becomes actionable before prerequisites",
+      "trapped dependency order",
+    ),
+    catches: ["INV-EGRESS-004", "INV-EGRESS-005"],
+  },
+  {
+    id: "Y4-PARTIAL-RESOURCE-PROJECTION",
+    apply: html => replaceOnce(
+      html,
+      "sdeTrappedEgressRouteResources:[...step.routeResources], // SDE_EGRESS_COMPLETE_RESOURCES",
+      "sdeTrappedEgressRouteResources:[], // mutation: partial resource projection",
+      "trapped route resources",
+    ),
+    catches: ["INV-EGRESS-005", "INV-EGRESS-010", "INV-EGRESS-011"],
+  },
+  {
+    id: "Y5-ORIGINAL-SNAPSHOT-AFTER-PROGRESS",
+    apply: html => replaceOnce(
+      html,
+      "const source = state.grunnoppstilling || {}; // SDE_EGRESS_FRESH_ACTUAL",
+      "const source = globalThis.__sdeEgressOriginalSnapshot || (globalThis.__sdeEgressOriginalSnapshot={...(state.grunnoppstilling||{})}); // mutation: original snapshot",
+      "fresh trapped actual state",
+    ),
+    catches: ["INV-EGRESS-009", "INV-EGRESS-011"],
+  },
+  {
+    id: "Y6-RETARGET-BOUND-TO-CANCEL",
+    apply: html => replaceOnce(
+      html,
+      "canRetarget:Boolean(canRetarget), // SDE_RETARGET_CAPABILITY_INDEPENDENT",
+      "canRetarget:Boolean(canRetarget && !recoveryRequired && !(outcome.dependencies||[]).length), // mutation: bind retarget to cancel/actionable",
+      "nested retarget independence",
+    ),
+    catches: ["INV-EGRESS-008", "INV-EGRESS-009"],
+  },
+  {
+    id: "Y7-UNSAFE-CANDIDATE-OR-TARGET-OVERRIDE",
+    apply: html => replaceOnce(
+      html,
+      "const requestedTarget = normalizeSlot(row?.recommendedSlot || row?.toSlot); // SDE_EGRESS_REQUESTED_TARGET",
+      "const requestedTarget = getSdeResolutionCandidateSlots(row?.fromSlot||row?.arrivalSlot)[0] || normalizeSlot(row?.recommendedSlot||row?.toSlot); // mutation: override user target",
+      "requested trapped target",
+    ),
+    catches: ["INV-EGRESS-007", "INV-EGRESS-010", "INV-EGRESS-012"],
+  },
 ];
 
 const reports = [];
@@ -377,5 +447,6 @@ try {
 }
 
 const failed = reports.filter(item => item.status === "FAIL");
-process.stdout.write(`${JSON.stringify({schemaVersion: "sde-mutation-audit-v1", counts: {total: reports.length, pass: reports.length - failed.length, fail: failed.length}, reports})}\n`);
+const mutationReports = reports.filter(item=>!item.id.startsWith("qualification-contract-"));
+process.stdout.write(`${JSON.stringify({schemaVersion: "sde-mutation-audit-v1", mutationCounts:{total:mutationReports.length,pass:mutationReports.filter(item=>item.status==="PASS").length,fail:mutationReports.filter(item=>item.status==="FAIL").length}, counts: {total: reports.length, pass: reports.length - failed.length, fail: failed.length}, reports})}\n`);
 process.exit(failed.length ? 1 : 0);

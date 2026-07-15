@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "sde-trapped-egress-fixtures-v1",
+  "fixtures": {
+    "A": {
+      "name": "screenshot-4m-to-5m",
+      "placements": [["11S", "74-11"], ["10S", "74-12"], ["4N", "75-10"], ["4M", "75-01"], ["4S", "75-09"]],
+      "main": {"vehicle": "75-01", "sourceSlot": "4M", "requestedTarget": "5M", "requestId": "egress-a"},
+      "physicalRelation": "4M has two yard ends; 4S blocks the south path and 4N blocks the north path. Moving either blocking vehicle to a validated temporary slot opens one egress end; that temporary move requires recovery after 75-01 reaches 5M."
+    },
+    "B": {
+      "name": "source-5m",
+      "placements": [["5S", "B-5S"], ["5M", "B-MAIN"], ["5N", "B-5N"]],
+      "main": {"vehicle": "B-MAIN", "sourceSlot": "5M", "requestedTarget": "4M", "requestId": "egress-b"},
+      "physicalRelation": "5S and 5N occupy both open paths from 5M; one validated temporary release opens egress and must be recovered."
+    },
+    "C": {
+      "name": "source-6s",
+      "placements": [["6SS", "C-6SS"], ["6S", "C-MAIN"], ["6N", "C-6N"]],
+      "main": {"vehicle": "C-MAIN", "sourceSlot": "6S", "requestedTarget": "5M", "requestId": "egress-c"},
+      "physicalRelation": "6SS blocks the south path and 6N blocks the north path from 6S; a temporary release and recovery are required."
+    },
+    "D": {
+      "name": "source-7s",
+      "placements": [["7SS", "D-7SS"], ["7S", "D-MAIN"], ["7N", "D-7N"]],
+      "main": {"vehicle": "D-MAIN", "sourceSlot": "7S", "requestedTarget": "5M", "requestId": "egress-d"},
+      "physicalRelation": "7SS and 7N occupy both physical egress paths from 7S; a complete temporary release/main/recovery chain is possible."
+    },
+    "E": {
+      "name": "source-8s",
+      "placements": [["8SS", "E-8SS"], ["8S", "E-MAIN"], ["8N", "E-8N"]],
+      "main": {"vehicle": "E-MAIN", "sourceSlot": "8S", "requestedTarget": "5M", "requestId": "egress-e"},
+      "physicalRelation": "8SS and 8N occupy both egress paths from 8S; a complete temporary release/main/recovery chain is possible."
+    },
+    "F": {
+      "name": "recursive-two-blocker",
+      "placements": [["4S", "F-MAIN"], ["4M", "F-INNER"], ["4N", "F-OUTER"]],
+      "main": {"vehicle": "F-MAIN", "sourceSlot": "4S", "requestedTarget": "5M", "requestId": "egress-f"},
+      "physicalRelation": "4S has only the north egress path. F-INNER in 4M and F-OUTER in 4N both block it; F-INNER is itself blocked north by F-OUTER and south by the main vehicle, so F-OUTER must move before F-INNER."
+    },
+    "G": {
+      "name": "no-complete-solution",
+      "placements": [["4S", "G-4S"], ["4M", "G-MAIN"], ["4N", "G-4N"], ["1S", "G-1S"], ["1N", "G-1N"], ["5S", "G-5S"], ["5N", "G-5N"], ["6S", "G-6S"], ["6N", "G-6N"], ["10S", "G-10S"], ["10N", "G-10N"], ["11S", "G-11S"], ["11N", "G-11N"], ["12S", "G-12S"], ["12N", "G-12N"], ["9", "G-9"], ["VN", "G-VN"]],
+      "main": {"vehicle": "G-MAIN", "sourceSlot": "4M", "requestedTarget": "5M", "requestId": "egress-g"},
+      "physicalRelation": "Both 4M egress paths are blocked and every ordinary temporary holding candidate plus VN is occupied; no complete release/recovery plan exists."
+    },
+    "H": {"name": "retarget-before-first", "baseFixture": "F", "physicalRelation": "The unresolved recursive chain is recomputed atomically when a prerequisite, main or recovery target changes."},
+    "I": {"name": "mid-chain-retarget", "baseFixture": "F", "physicalRelation": "After the first prerequisite is physically completed, its destination is actual state and only the unresolved suffix is replanned."},
+    "J": {"name": "independent-plan", "baseFixture": "A", "independent": {"vehicle": "J-INDEPENDENT", "sourceSlot": "12S", "requestedTarget": "9", "requestId": "egress-j-independent"}, "physicalRelation": "The second plan is on a non-conflicting track/resource and remains identity-stable during trapped-chain retarget."},
+    "K": {"name": "nested-vn-rejection", "baseFixture": "A", "physicalRelation": "VN rejection is contextual to the unresolved release step; a complete safe local alternative is selected when available."},
+    "L": {"name": "direct-untrapped", "placements": [["4M", "L-MAIN"]], "main": {"vehicle": "L-MAIN", "sourceSlot": "4M", "requestedTarget": "5M", "requestId": "egress-l"}, "physicalRelation": "At least one 4M egress end and one 5M ingress end are clear, so the direct move needs no release or recovery."}
+  }
+}
