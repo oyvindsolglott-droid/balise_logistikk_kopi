@@ -2,7 +2,7 @@
 
 const crypto = require("node:crypto");
 
-const STRICT_TOTAL = 37;
+const STRICT_TOTAL = 45;
 const DETERMINISM_RUNS = 3;
 
 function canonical(value) {
@@ -98,7 +98,7 @@ function validateBaselineReport(report) {
   if (report?.strictRunCount !== DETERMINISM_RUNS) errors.push(`baseline-audit must run strict ${DETERMINISM_RUNS} times`);
   if (report?.strictExitCode !== 0) errors.push("baseline-audit strictExitCode must be 0");
   if (!Array.isArray(report?.strictExitCodes) || report.strictExitCodes.length !== DETERMINISM_RUNS || report.strictExitCodes.some(code => code !== 0)) errors.push("baseline-audit strictExitCodes must all be 0");
-  if (report?.counts?.total !== STRICT_TOTAL || report?.counts?.pass !== STRICT_TOTAL || report?.counts?.fail !== 0) errors.push("baseline-audit counts must be 37/37/0");
+  if (report?.counts?.total !== STRICT_TOTAL || report?.counts?.pass !== STRICT_TOTAL || report?.counts?.fail !== 0) errors.push(`baseline-audit counts must be ${STRICT_TOTAL}/${STRICT_TOTAL}/0`);
   if (!Array.isArray(report?.failIds) || report.failIds.length !== 0) errors.push("baseline-audit failIds must be empty");
   if (!Array.isArray(report?.strictSemanticSha256) || report.strictSemanticSha256.length !== DETERMINISM_RUNS || new Set(report.strictSemanticSha256).size !== 1) errors.push("baseline-audit strict semantics must be deterministic");
   if (!Array.isArray(report?.validationErrors) || report.validationErrors.length !== 0) errors.push("baseline-audit validationErrors must be empty");

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "sde-user-reroute-vn-fixtures-v1",
+  "fixtures": {
+    "A": {
+      "name": "pending-vn-chain",
+      "placements": [["10N", "74-11"], ["10S", "74-12"], ["4M", "FIXTURE-OCCUPIED"]],
+      "main": {"vehicle": "74-12", "sourceSlot": "10S", "requestedTarget": "8N", "requestId": "fixture-a-pending-vn"},
+      "blocker": {"vehicle": "74-11", "sourceSlot": "10N"},
+      "expected": {"initialTemporaryTarget": "VN", "invalidTarget": "4M"}
+    },
+    "B": {
+      "name": "already-in-vn",
+      "placements": [["VN", "74-11"], ["8N", "74-12"]],
+      "recovery": {"vehicle": "74-11", "sourceSlot": "VN", "currentTarget": "10N", "alternateTarget": "4M"},
+      "expected": {"canCancel": false, "canDelete": false, "canRetarget": true}
+    },
+    "C": {
+      "name": "no-safe-alternative",
+      "placements": [["10N", "74-11"], ["10S", "74-12"]],
+      "main": {"vehicle": "74-12", "sourceSlot": "10S", "requestedTarget": "8N", "requestId": "fixture-c-no-alternative"},
+      "expected": {"rejectedTarget": "VN", "mode": "diagnostic-only"}
+    },
+    "D": {
+      "name": "dependency-target-change",
+      "placements": [["10N", "74-11"], ["10S", "74-12"]],
+      "main": {"vehicle": "74-12", "sourceSlot": "10S", "requestedTarget": "8N", "alternateTarget": "12N", "requestId": "fixture-d-future-target"},
+      "expected": {"dependencyBlocked": true, "wholeChainRevision": true}
+    },
+    "E": {
+      "name": "independent-plans",
+      "placements": [["10N", "74-11"], ["10S", "74-12"], ["11S", "75-20"]],
+      "affected": {"vehicle": "74-12", "sourceSlot": "10S", "requestedTarget": "8N", "requestId": "fixture-e-affected"},
+      "independent": {"vehicle": "75-20", "sourceSlot": "11S", "requestedTarget": "12N", "requestId": "fixture-e-independent"},
+      "expected": {"independentPlanUnchanged": true}
+    }
+  }
+}

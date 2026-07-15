@@ -82,7 +82,7 @@ function strictReport(html, name) {
   });
   if (run.error || ![0, 1].includes(run.status)) throw new Error(`${name} crashed: ${run.error || run.stderr || run.stdout}`);
   const report = JSON.parse(String(run.stdout).trim().split(/\n/).filter(Boolean).at(-1));
-  if (report?.counts?.total !== 37 || !Array.isArray(report?.failIds)) {
+  if (report?.counts?.total !== 45 || !Array.isArray(report?.failIds)) {
     throw new Error(`${name} returned an incomplete strict report`);
   }
   return {...report, strictExitCode: run.status};
@@ -282,6 +282,57 @@ const mutations = [
     id: "I-remove-mandatory-recovery",
     apply: html => replaceOnce(html, "function buildSdeTemporaryAccessReturnRow(plan){\n  if(", "function buildSdeTemporaryAccessReturnRow(plan){\n  return null;\n  if(", "mandatory recovery"),
     catches: ["INV-RELIEF-009"],
+  },
+  {
+    id: "X1-bind-canRetarget-to-canCancel",
+    apply: html => replaceOnce(
+      html,
+      "const canRetarget = isSdeCanonicalRetargetableOutcome(outcome);",
+      "const canRetarget = isSdeCanonicalRetargetableOutcome(outcome) && !isRecovery(outcome); /* mutation: bind retarget to cancellation */",
+      "independent canRetarget",
+    ),
+    catches: ["INV-REROUTE-001", "INV-REROUTE-004", "INV-REROUTE-008"],
+  },
+  {
+    id: "X2-ignore-contextual-rejected-target",
+    apply: html => replaceOnce(
+      html,
+      "const manualRejectedTargets = new Set(retargetIntent?.rejectedTargets || []);",
+      "const manualRejectedTargets = new Set(); /* mutation: ignore user rejection */",
+      "contextual rejected target",
+    ),
+    catches: ["INV-REROUTE-002", "INV-REROUTE-006"],
+  },
+  {
+    id: "X3-bypass-whole-chain-target-filter",
+    apply: html => replaceOnce(
+      html,
+      "if(!candidateOrder.includes(targetSlot)) return {ok:false,reason:`${targetSlot} er ikke en fysisk og tidsmessig validert kandidat i denne kjeden.`};",
+      "if(false && !candidateOrder.includes(targetSlot)) return {ok:false,reason:`${targetSlot} er ikke en fysisk og tidsmessig validert kandidat i denne kjeden.`}; /* mutation */",
+      "whole-chain candidate filter",
+    ),
+    catches: ["INV-REROUTE-003"],
+  },
+  {
+    id: "X4-retain-old-retarget-resource-identity",
+    apply: html => replaceOnce(
+      html,
+      "normalizeSdeCanonicalToken(producer).toLowerCase() || \"other\", targetSlot || \"targetless\", exiting ? \"exiting\" : \"operative\"",
+      "normalizeSdeCanonicalToken(producer).toLowerCase() || \"other\", row?.sdeCanonicalRetargetOriginalTarget || targetSlot || \"targetless\", exiting ? \"exiting\" : \"operative\" /* mutation: retain old resource identity */",
+      "retarget resource identity",
+    ),
+    catches: ["INV-REROUTE-005"],
+  },
+  {
+    id: "X5-drop-mandatory-retarget-recovery",
+    apply: html => replaceOnce(
+      html,
+      "function buildSdeCanonicalAlternateReliefReturnRow(plan){\n  if(",
+      "function buildSdeCanonicalAlternateReliefReturnRow(plan){\n  return null; /* mutation: drop recovery */\n  if(",
+      "retarget mandatory recovery",
+    ),
+    catches: ["INV-REROUTE-002", "INV-REROUTE-004"],
+    any: true,
   },
 ];
 

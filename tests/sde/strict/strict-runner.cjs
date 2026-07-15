@@ -11,6 +11,7 @@ const drivers = [
   "cancel-invariants.cjs",
   "target-invariants.cjs",
   "relief-invariants.cjs",
+  "reroute-invariants.cjs",
 ];
 
 function runDriver(driver) {

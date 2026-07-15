@@ -226,13 +226,15 @@ test("H — card preview stays explicit, fail-closed and non-interactive", () =>
   );
 });
 
-test("I/L audits and executable R coverage cannot disappear silently", () => {
+test("I/L audits and executable R/X coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
-  assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVW".split(""));
+  assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWX".split(""));
   assert.equal(coverage.I.status, "audit-only");
   assert.equal(coverage.L.status, "audit-only");
   assert.equal(coverage.R.status, "implemented");
   assert.deepEqual(coverage.R.invariants, ["INV-CANCEL-010", "INV-CANCEL-011", "INV-CANCEL-012", "INV-CANCEL-013"]);
+  assert.equal(coverage.X.status, "implemented");
+  assert.deepEqual(coverage.X.invariants, ["INV-REROUTE-001", "INV-REROUTE-002", "INV-REROUTE-003", "INV-REROUTE-004", "INV-REROUTE-005", "INV-REROUTE-006", "INV-REROUTE-007", "INV-REROUTE-008"]);
   for(const phase of Object.keys(coverage).filter(letter => !["I", "L"].includes(letter))){
     assert.equal(coverage[phase].status, "implemented", `${phase} must remain implemented`);
   }
