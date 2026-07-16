@@ -16947,6 +16947,299 @@ function findSdePhysicalReleaseReplacementRow(cancelledRow, data){
     }) || null;
 }
 
+function getSdePrerequisiteCancellationParentIntent(cancelledRow, data){
+  const sourceRows = Array.isArray(data?.moves) ? data.moves : [];
+  const cancelledChainId = String(cancelledRow?.sdePhysicalChainId || "").trim();
+  const releasePlan = cancelledRow?.sdePhysicalAccessReliefChain || {};
+  const mainActionKey = String(releasePlan.mainActionKey || "").trim();
+  const mainVehicle = sanitizeVehicleValue(
+    releasePlan.blockedVehicle || cancelledRow?.sdePhysicalBlockerForVehicle
+  );
+  const mainSource = normalizeSlot(
+    releasePlan.blockedFromSlot || cancelledRow?.sdePhysicalBlockerForSlot
+  );
+  const originalRequestedTarget = normalizeSlot(
+    releasePlan.mainTargetSlot || cancelledRow?.sdePhysicalBlockerOriginalTarget
+  );
+  const mainRow = sourceRows.find(candidate=>
+    String(candidate?.sdePhysicalDependencyRole || "").trim() === "dependent"
+    && (
+      (mainActionKey && getSdeMoveActionKey(candidate) === mainActionKey)
+      || (cancelledChainId && String(candidate?.sdePhysicalChainId || "").trim() === cancelledChainId)
+    )
+  ) || sourceRows.find(candidate=>
+    mainVehicle && mainSource
+    && haveSameSdeVehicleTokens(candidate?.vehicle, mainVehicle)
+    && normalizeSlot(candidate?.fromSlot || candidate?.arrivalSlot) === mainSource
+    && (!originalRequestedTarget || normalizeSlot(candidate?.recommendedSlot || candidate?.toSlot) === originalRequestedTarget)
+  ) || null;
+  const overrideEntries = Object.entries(getSdeNightPlacementManualOverrides());
+  const overrideEntry = overrideEntries.find(([,override])=>
+    override && (
+      (mainActionKey && getSdeNightPlacementOverrideActionKey(override) === mainActionKey)
+      || (
+        mainVehicle && mainSource
+        && haveSameSdeVehicleTokens(override.vehicle, mainVehicle)
+        && getSdeNightPlacementOverrideFromSlot(override) === mainSource
+      )
+    )
+  ) || null;
+  const override = overrideEntry?.[1] || null;
+  const effectiveMainRow = mainRow || buildSdeNightPlacementGeneratedMove(override);
+  if(!effectiveMainRow || !overrideEntry) return null;
+  const resolvedVehicle = sanitizeVehicleValue(effectiveMainRow.vehicle || mainVehicle);
+  const resolvedSource = normalizeSlot(effectiveMainRow.fromSlot || effectiveMainRow.arrivalSlot || mainSource);
+  const resolvedTarget = normalizeSlot(
+    originalRequestedTarget || effectiveMainRow.recommendedSlot || effectiveMainRow.toSlot || override?.toSlot
+  );
+  if(!resolvedVehicle || !resolvedSource || !resolvedTarget) return null;
+  return {
+    mainRow:effectiveMainRow,
+    overrideKey:overrideEntry[0],
+    override,
+    mainActionKey:String(mainActionKey || getSdeMoveActionKey(effectiveMainRow)).trim(),
+    mainIntentId:String(
+      override?.sdePrerequisiteCancelReplacementIntentId
+      || override?.dragRequestId
+      || override?.id
+      || getSdeMoveActionKey(effectiveMainRow)
+      || ""
+    ).trim(),
+    mainVehicleId:resolvedVehicle,
+    sourceSlot:resolvedSource,
+    originalRequestedTarget:resolvedTarget,
+    mainObligationId:getSdeMovePlanningObligationId(effectiveMainRow),
+    chainId:cancelledChainId,
+    sourceRows
+  };
+}
+
+function getSdePrerequisiteCancellationStaleOutcomeIds(cancelledRow, parentIntent, data){
+  const sourceRows = Array.isArray(data?.moves) ? data.moves : [];
+  const chainId = String(cancelledRow?.sdePhysicalChainId || parentIntent?.chainId || "").trim();
+  const chainRows = chainId
+    ? sourceRows.filter(row=>String(row?.sdePhysicalChainId || "").trim() === chainId)
+    : [];
+  return sortSdeCanonicalStrings(Array.from(new Set([
+    ...chainRows.flatMap(row=>[
+      getSdeMoveActionKey(row),
+      getSdeMoveObligationStepKey(row)
+    ]),
+    getSdeMoveActionKey(cancelledRow),
+    getSdeMoveObligationStepKey(cancelledRow),
+    parentIntent?.mainActionKey
+  ].map(value=>String(value || "").trim()).filter(Boolean))));
+}
+
+function getSdePrerequisiteCancellationTargetCandidates(parentIntent){
+  const originalTarget = normalizeSlot(parentIntent?.originalRequestedTarget);
+  const sourceSlot = normalizeSlot(parentIntent?.sourceSlot);
+  const alternatives = getSdeResolutionCandidateSlots(sourceSlot, originalTarget)
+    .filter(slot=>slot !== "VN" && slot !== "VS");
+  return Array.from(new Set([originalTarget, ...alternatives].map(normalizeSlot).filter(Boolean)));
+}
+
+function buildSdePrerequisiteCancellationOverride(parentIntent, targetSlot, actualStateFingerprint){
+  const target = normalizeSlot(targetSlot);
+  const originalTarget = normalizeSlot(parentIntent?.originalRequestedTarget);
+  const fallback = target !== originalTarget;
+  const base = cloneSdeCanonicalValue(parentIntent?.override) || {};
+  if(!fallback) return base;
+  const replacementIntentId = getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+    kind:"prerequisite_cancel_fallback",
+    supersedes:parentIntent?.mainIntentId,
+    vehicle:normalizeVehicleToken(parentIntent?.mainVehicleId),
+    source:parentIntent?.sourceSlot,
+    originalTarget,
+    target,
+    actualStateFingerprint
+  }));
+  const stableActionKey = `night-placement-drag|${normalizeVehicleToken(parentIntent?.mainVehicleId)}|${parentIntent?.sourceSlot}|${target}|prerequisite-cancel-${replacementIntentId}`;
+  return {
+    ...base,
+    id:`prerequisite-cancel-${replacementIntentId}`,
+    toSlot:target,
+    stableActionKey,
+    moveKey:stableActionKey,
+    needKey:`night-placement-drag-need|${stableActionKey}`,
+    dragRequestId:`prerequisite-cancel-${replacementIntentId}`,
+    sdeNightPlacementDragIdentity:`prerequisite-cancel-${replacementIntentId}`,
+    manualPlanId:`manual-graphic-order|prerequisite-cancel-${replacementIntentId}`,
+    updatedAt:new Date().toISOString(),
+    targetSelectionSource:"prerequisite_cancel_fallback",
+    sdePrerequisiteCancelTargetSelectionSource:"prerequisite_cancel_fallback",
+    sdePrerequisiteCancelOriginalRequestedTarget:originalTarget,
+    sdePrerequisiteCancelSupersedesIntentId:String(parentIntent?.mainIntentId || "").trim(),
+    sdePrerequisiteCancelReplacementIntentId:replacementIntentId
+  };
+}
+
+function restoreSdePrerequisiteCancellationPlanningState(snapshot){
+  state.sdeNightPlacementManualOverrides = cloneSdeCanonicalValue(snapshot?.overrides) || {};
+  state.sdeActiveMoveOutcomes = cloneSdeCanonicalValue(snapshot?.authorities) || {};
+  sdeProductionReaderFallbackError = snapshot?.fallbackError || null;
+}
+
+function trySdePrerequisiteCancellationTarget(parentIntent, targetSlot, actualStateFingerprint){
+  const target = normalizeSlot(targetSlot);
+  if(!target || sanitizeVehicleValue(getSdeVehicleInSlot(target))) return null;
+  const attemptSnapshot = {
+    overrides:cloneSdeCanonicalValue(getSdeNightPlacementManualOverrides()) || {},
+    authorities:cloneSdeCanonicalValue(getSdeActiveMoveOutcomes()) || {},
+    fallbackError:sdeProductionReaderFallbackError
+  };
+  const override = buildSdePrerequisiteCancellationOverride(parentIntent,target,actualStateFingerprint);
+  getSdeNightPlacementManualOverrides()[parentIntent.overrideKey] = override;
+  try{
+    const order = stageSdeCanonicalGraphicDragOrder(override);
+    const rows = buildSdeFinalCardRowsForData({moves:[]}).filter(row=>
+      !row?.sdeCancellationDismissalCard
+      && !row?.sdeTrappedEgressDiagnosticOnly
+      && !row?.isSdeCancellationFailClosed
+    );
+    const releases = rows.filter(row=>row?.sdePhysicalDependencyRole === "prerequisite");
+    const mains = rows.filter(row=>row?.sdePhysicalDependencyRole === "dependent");
+    const recoveries = rows.filter(row=>row?.sdePhysicalDependencyRole === "return");
+    const complete = Boolean(
+      order?.chain?.ok
+      && order?.reader?.integrityReport?.status === "PASS"
+      && releases.length >= 1
+      && mains.length === 1
+      && recoveries.length === releases.length
+      && normalizeSlot(mains[0]?.toSlot) === target
+    );
+    if(!complete) throw new Error("Canonical replacement-kjeden er ikke komplett.");
+    return {kind:"complete",targetSlot:target,override,order,rows,releases,mains,recoveries};
+  }catch(_error){
+    restoreSdePrerequisiteCancellationPlanningState(attemptSnapshot);
+    return null;
+  }
+}
+
+function buildSdePrerequisiteCancellationReplacement(cancelledRow, parentIntent, data, actualStateFingerprint){
+  const rejectedTarget = normalizeSlot(cancelledRow?.recommendedSlot || cancelledRow?.toSlot);
+  const rejection = setSdeCanonicalRetargetIntent(cancelledRow, {mode:"reject_target", rejectedTarget}); // SDE_PREREQUISITE_CANCEL_CONTEXTUAL_REJECTION
+  if(!rejection?.ok) return null;
+  const consideredAlternatives = [];
+  const rejectionReasons = [];
+  for(const targetSlot of getSdePrerequisiteCancellationTargetCandidates(parentIntent)){
+    consideredAlternatives.push(targetSlot);
+    if(sanitizeVehicleValue(getSdeVehicleInSlot(targetSlot))){
+      rejectionReasons.push(`${targetSlot}:occupied`);
+      continue;
+    }
+    const replacement = trySdePrerequisiteCancellationTarget(parentIntent,targetSlot,actualStateFingerprint);
+    if(replacement){
+      return {...replacement,rejection,consideredAlternatives,rejectionReasons};
+    }
+    rejectionReasons.push(`${targetSlot}:no_complete_chain`);
+  }
+  return {
+    kind:"diagnostic",
+    rows:[],
+    rejection,
+    consideredAlternatives,
+    rejectionReasons
+  };
+}
+
+function isSdePrerequisiteCancellationReplacementAtomic(replacement){
+  if(replacement?.kind === "diagnostic") return Array.isArray(replacement.rows) && replacement.rows.length === 0;
+  if(replacement?.kind !== "complete" || replacement?.order?.reader?.integrityReport?.status !== "PASS") return false;
+  const rows = Array.isArray(replacement.rows) ? replacement.rows : [];
+  const releases = rows.filter(row=>row?.sdePhysicalDependencyRole === "prerequisite");
+  const mains = rows.filter(row=>row?.sdePhysicalDependencyRole === "dependent");
+  const recoveries = rows.filter(row=>row?.sdePhysicalDependencyRole === "return");
+  return releases.length >= 1 && mains.length === 1 && recoveries.length === releases.length;
+}
+
+function finalizeSdePrerequisiteCancellationTransientDragState(){
+  sdeNightPlacementBlockedMoveRequest = null;
+  sdeNightPlacementDragPayload = null;
+  sdeNightPlacementSelectedSlot = "";
+  if(sdeNightPlacementDropMessage?.type === "error") sdeNightPlacementDropMessage = null;
+  try{
+    buildSdeCanonicalProductionReader();
+    sdeProductionReaderFallbackError = null;
+  }catch(error){
+    sdeProductionReaderFallbackError = error instanceof Error
+      ? error
+      : new Error(String(error || "Canonical reader feilet etter prerequisite-annullering."));
+  }
+}
+
+function commitSdeLegacyPhysicalReleaseCancellation(row, key, vehicle, targetSlot, data, learningReason){
+  ensureSdeResetSnapshot();
+  const cardDisplayIndex = getSdeMoveCardDisplayIndex(key);
+  const outcomeKey = getSdeMoveObligationStepKey(row);
+  const actionTime = new Date().toISOString();
+  const cancelledAtMs = Date.parse(actionTime);
+  const exitDurationMs = prefersReducedSdeReleaseMotion()
+    ? SDE_RELEASE_CANCELLED_REDUCED_EXIT_MS
+    : SDE_RELEASE_CANCELLED_EXIT_MS;
+  const exitStartedAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS).toISOString();
+  const removeAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS + exitDurationMs).toISOString();
+  const replanRecord = recordSdePhysicalReleaseRejectedTarget(row,key);
+  const cancellationRecord = {
+    action:"cancelled",
+    vehicle,
+    fromSlot:normalizeSlot(row.fromSlot || row.arrivalSlot),
+    toSlot:targetSlot,
+    time:actionTime,
+    replanKey:replanRecord?.key || getSdePhysicalReleaseReplanKey(row),
+    needKey:getSdeMoveNeedKey(row),
+    roundNumber:Math.max(1,Number(row.sdePhysicalReleaseRoundNumber || 1)),
+    rejectedTargetSlot:targetSlot,
+    cancelledAt:actionTime,
+    dismissScheduledAt:actionTime,
+    dismissAt:exitStartedAt,
+    exitStartedAt,
+    removeAt,
+    exitDurationMs,
+    cardDisplayIndex,
+    outcomeKey,
+    physicalFromSlot:getSdeMoveOutcomePhysicalFromSlot(row),
+    sequenceStep:getSdeMoveOutcomeSequenceStep(row),
+    active:false,
+    status:"dismissing",
+    authorityPending:true,
+    activeOutcomeId:"",
+    supersededBy:"",
+    removedFromActiveLayout:false,
+    dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
+    replacedByCardId:"",
+    replacementCreatedAt:"",
+    snapshot:getSdeMoveActionSnapshot(row)
+  };
+  state.sdeMoveActions[key] = cancellationRecord;
+  updateSdeVnRecoveryObligationForMove(row,"cancelled",actionTime);
+  const replacementCandidate = findSdePhysicalReleaseReplacementRow(row,data);
+  const replacementRow = replacementCandidate ? {...replacementCandidate,sdeCanonicalOutcomeKey:outcomeKey} : null;
+  const replacementKey = getSdeMoveActionKey(replacementRow);
+  if(replacementRow && replacementKey){
+    cancellationRecord.dismissalState = SDE_RELEASE_DISMISSAL_REPLACED;
+    cancellationRecord.replacedByCardId = replacementKey;
+    cancellationRecord.replacementCreatedAt = actionTime;
+    cancellationRecord.activeOutcomeId = replacementKey;
+    cancellationRecord.supersededBy = replacementKey;
+    cancellationRecord.authorityPending = false;
+    cancellationRecord.replacementSnapshot = getSdeMoveActionSnapshot(replacementRow);
+    setSdeActiveOutcomeAuthority(outcomeKey,replacementRow,{
+      activeOutcomeId:replacementKey,
+      updatedAt:actionTime,
+      source:"physical_release_cancel_replacement"
+    });
+  }else{
+    const failClosedRow = buildSdeCancellationFailClosedRow(
+      row,cancellationRecord.needKey,cancellationRecord.roundNumber,outcomeKey
+    );
+    bindSdeCancellationReplacementAuthority(cancellationRecord,outcomeKey,failClosedRow,actionTime);
+  }
+  recordSdeMoveLearningEvent(key,"cancelled",row,actionTime,learningReason);
+  persist(true);
+  refreshSdeAfterMoveAction();
+}
+
 function buildSdeRejectedPhysicalReleaseRows(blockedRow, blockState, blocker, context={}){
   const replanKey = getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker);
   const rejectedProposals = getSdePhysicalReleaseRejectedProposals(replanKey);
@@ -17903,13 +18196,36 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
 }
 
 function buildSdeTrappedEgressDiagnosticRow(row, blockState){
-  const diagnosticCode = "trapped_vehicle_no_safe_egress_plan";
-  const reason = "Ingen komplett fysisk frigjøringskjede med hovedflytting og obligatorisk retur kan valideres fra fersk actual-state.";
+  const mainVehicleId = sanitizeVehicleValue(blockState?.vehicle || row?.vehicle);
+  const source = normalizeSlot(blockState?.fromSlot || row?.fromSlot || row?.arrivalSlot);
+  const requestedTarget = normalizeSlot(blockState?.toSlot || row?.recommendedSlot || row?.toSlot);
+  const prerequisiteCancellationDiagnostic = Object.values(state.sdePhysicalReleaseReplans || {})
+    .map(record=>record?.prerequisiteCancellationDiagnostic)
+    .find(item=>
+      item
+      && haveSameSdeVehicleTokens(item.mainVehicleId,mainVehicleId)
+      && normalizeSlot(item.source) === source
+      && normalizeSlot(item.originalRequestedTarget) === requestedTarget
+    ) || null;
+  const diagnosticCode = prerequisiteCancellationDiagnostic
+    ? "prerequisite_cancelled_no_safe_replacement"
+    : "trapped_vehicle_no_safe_egress_plan";
+  const reason = prerequisiteCancellationDiagnostic
+    ? "Annullert prerequisite er forkastet, men ingen komplett sikker erstatningskjede kan valideres fra fersk actual-state. Hovedbestillingen beholdes som scoped diagnostic-only."
+    : "Ingen komplett fysisk frigjøringskjede med hovedflytting og obligatorisk retur kan valideres fra fersk actual-state.";
   const blockers = Array.isArray(blockState?.blockers) ? blockState.blockers : [];
-  const diagnostic = {
-    mainVehicleId:sanitizeVehicleValue(blockState?.vehicle || row?.vehicle),
-    source:normalizeSlot(blockState?.fromSlot || row?.fromSlot || row?.arrivalSlot),
-    requestedTarget:normalizeSlot(blockState?.toSlot || row?.recommendedSlot || row?.toSlot),
+  const diagnostic = prerequisiteCancellationDiagnostic ? {
+    ...prerequisiteCancellationDiagnostic,
+    code:diagnosticCode,
+    diagnosticType:diagnosticCode,
+    mainVehicleId,
+    source,
+    requestedTarget,
+    originalRequestedTarget:normalizeSlot(prerequisiteCancellationDiagnostic.originalRequestedTarget || requestedTarget)
+  } : {
+    mainVehicleId,
+    source,
+    requestedTarget,
     blockingVehicleIds:sortSdeCanonicalStrings(blockers.map(item=>sanitizeVehicleValue(item?.vehicle))),
     blockingResources:sortSdeCanonicalStrings(blockers.flatMap(item=>[
       normalizeSlot(item?.slot),
@@ -18474,6 +18790,7 @@ function buildSdeCancelledDismissalRows(){
       sdeCanonicalOutcomeKey:String(actionRecord.outcomeKey || "").trim(),
       sdeCancellationNeedKey:String(actionRecord.needKey || snapshot.needKey || "").trim(),
       sdeCancellationRoundNumber:Number(actionRecord.roundNumber || snapshot.sdeCancellationRoundNumber || 1),
+      sdePrerequisiteCancellationSupersededToDifferentChain:Boolean(actionRecord.prerequisiteCancellationSupersededToDifferentChain),
       recommendationReason:String(snapshot.reason || "Annullert skifteforslag. Samme behov vurderes på nytt.").trim(),
       recommendationAlternatives:Array.isArray(snapshot.alternatives) ? snapshot.alternatives : [],
       sdeCancellationDismissalCard:true,
@@ -22807,6 +23124,11 @@ function getSdeMoveActionSnapshot(row){
     sdeCancellationSnapshotVersion:2,
     needKey:getSdeMoveNeedKey(row),
     source:String(row.source || "").trim(),
+    canonicalProducer:String(row.canonicalProducer || "").trim(),
+    canonicalPurpose:String(row.canonicalPurpose || "").trim(),
+    sdeCanonicalGraphicDragOrder:Boolean(row.sdeCanonicalGraphicDragOrder),
+    sdeNightPlacementDragIdentity:String(row.sdeNightPlacementDragIdentity || "").trim(),
+    manualPlanId:String(row.manualPlanId || "").trim(),
     vehicle:sanitizeVehicleValue(row.vehicle),
     arrivalTrain:normalizeTognr(row.arrivalTrain),
     arrivalPart:String(row.arrivalPart || "").trim(),
@@ -23244,6 +23566,7 @@ function getSdeActiveOutcomeAuthority(outcomeKey){
 
   return Object.values(state.sdeMoveActions || {})
     .filter(record => record?.action === "cancelled")
+    .filter(record => record?.prerequisiteCancellationSupersededToDifferentChain !== true)
     .filter(record => getSdeMoveOutcomeKeyFromActionRecord(record) === key)
     .filter(record => Boolean(
       String(record.activeOutcomeId || record.replacedByCardId || "").trim()
@@ -25023,6 +25346,9 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
     const invalidSource = nonSelected.filter(candidate=>candidate.sourceValidation?.valid !== true);
     const cyclic = nonSelected.filter(candidate=>cyclicOutcomeIds.has(candidate.candidateOutcomeId));
     const exitingOnly = !activeCard && !blockedCard && groupCandidates.some(candidate=>candidate.status === "exiting") && !operative.length;
+    const supersededRevisionOnly = exitingOnly && groupCandidates.every(candidate=>
+      candidate.status !== "exiting" || candidate.raw?.sdePrerequisiteCancellationSupersededToDifferentChain === true
+    );
     const needsDiagnostic = Boolean(
       blockingConflicts.length || targetless.length || physicallyInvalid.length || invalidSource.length || cyclic.length
       || exitingOnly || (!activeCard && !blockedCard && operative.length) || (activeCard && nonSelected.length)
@@ -25042,6 +25368,7 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
     else if(physicallyInvalid.length){ diagnosticType = "physically_invalid"; severity = "error"; }
     else if(targetless.some(candidate=>candidate.raw?.isSdeCancellationFailClosed)){ diagnosticType = "fail_closed_after_cancellation"; }
     else if(targetless.length){ diagnosticType = activeCard ? "suppressed_targetless_candidate" : "targetless"; }
+    else if(supersededRevisionOnly){ diagnosticType = "superseded_revision"; severity = "info"; }
     else if(exitingOnly){ diagnosticType = "missing_replacement"; severity = "error"; }
     else if(activeCard){ diagnosticType = "suppressed_alternative"; severity = "info"; }
     const explanations = {
@@ -25057,6 +25384,7 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
       fail_closed_after_cancellation:"Ingen trygg replacement finnes etter Annullert; fail-closed-resultatet er diagnostikk.",
       suppressed_targetless_candidate:"Et konkret recoveryutfall er valgt; targetless fallback beholdes bare som diagnostikk.",
       targetless:"Resultatet mangler konkret target og kan ikke bli handlingskort.",
+      superseded_revision:"Det annullerte prerequisite-steget tilhører en eldre planrevision; hovedbestillingen er replassert i en ny komplett kjede.",
       missing_replacement:"Det annullerte kortet mangler et nytt fysisk gyldig replacement.",
       suppressed_alternative:"Canonical authority har valgt ett outcome; øvrige kandidater er undertrykte alternativer.",
       no_actionable_outcome:"Ingen kandidat oppfyller kravene til et canonical handlingskort."
@@ -26079,9 +26407,27 @@ function buildSdeCanonicalIntegrityReport(input={}){
     if(actualForVehicle.includes(normalizeSlot(card.targetSlot)) && normalizeSlot(card.targetSlot) !== normalizeSlot(card.sourceSlot)) addConflict("PLAN_TARGET_REPRESENTED_AS_ACTUAL",{obligationId:card.obligationId,stepId:card.stepId,vehicleId:card.vehicleId,targetSlot:card.targetSlot});
     actualStateResults.push({obligationId:card.obligationId,stepId:card.stepId,vehicleId:card.vehicleId,sourceSlot:card.sourceSlot,targetSlot:card.targetSlot,status:sourcePresent || simulatedSource ? "PASS" : "FAIL",sourceMode:sourcePresent ? "actual" : simulatedSource ? "simulated_chain" : "missing"});
   });
-  const chainIds = sortSdeCanonicalStrings(candidates.map(candidate=>candidate.chainId || candidate.chainScope));
+  const activeIntegrityChainIds = new Set([
+    ...activeOutcomes,
+    ...blockedCards
+  ].map(item=>String(item?.chainId || item?.chainScope || "").trim()).filter(Boolean));
+  const inactiveIntegrityStatuses = new Set([
+    "exiting", "cancelled", "dismissing", "superseded", "inactive", "stale",
+    "historical", "historical-only", "diagnostic", "diagnostic-only"
+  ]);
+  const integrityChainCandidates = candidates.filter(candidate=>{
+    const chainId = String(candidate?.chainId || candidate?.chainScope || "").trim();
+    const status = String(candidate?.status || "").trim().toLowerCase().replaceAll("_","-");
+    return activeIntegrityChainIds.has(chainId)
+      && !inactiveIntegrityStatuses.has(status)
+      && candidate.raw?.sdeCancellationDismissalCard !== true
+      && candidate.raw?.sdePhysicalRejectedReleaseMove !== true
+      && candidate.raw?.sdeTrappedEgressDiagnosticOnly !== true
+      && candidate.raw?.isSdeCancellationFailClosed !== true;
+  });
+  const chainIds = sortSdeCanonicalStrings(integrityChainCandidates.map(candidate=>candidate.chainId || candidate.chainScope));
   const chainResults = chainIds.map(chainId=>{
-    const chainCandidates = candidates.filter(candidate=>(candidate.chainId || candidate.chainScope) === chainId);
+    const chainCandidates = integrityChainCandidates.filter(candidate=>(candidate.chainId || candidate.chainScope) === chainId);
     const sequenceOrder = stepId => Number(String(chainCandidates.find(item=>item.stepId === stepId)?.sequenceStep || "").match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
     const chainStepIds = sortSdeCanonicalStrings(chainCandidates.map(item=>item.stepId)).sort((left,right)=>sequenceOrder(left) - sequenceOrder(right) || left.localeCompare(right));
     const sequenceSteps = chainStepIds.map(stepId=>chainCandidates.find(item=>item.stepId === stepId)?.sequenceStep || "");
@@ -28747,7 +29093,44 @@ async function handleSdeShiftMoveAction(encodedKey, action, adapterContext={}){
 
       if(isSdePhysicalBlockerFreeingRow(row)){
         ensureSdeResetSnapshot();
-
+        const cancelledRow = row;
+        const prerequisitePlanningSnapshot = {
+          overrides:cloneSdeCanonicalValue(getSdeNightPlacementManualOverrides()) || {},
+          authorities:cloneSdeCanonicalValue(getSdeActiveMoveOutcomes()) || {},
+          replans:cloneSdeCanonicalValue(state.sdePhysicalReleaseReplans || {}) || {},
+          retargetIntents:cloneSdeCanonicalValue(state.sdeCanonicalRetargetIntents || {}) || {},
+          fallbackError:sdeProductionReaderFallbackError
+        };
+        const parentIntent = getSdePrerequisiteCancellationParentIntent(cancelledRow, data); // SDE_PREREQUISITE_CANCEL_PRESERVE_PARENT
+        if(!parentIntent){
+          commitSdeLegacyPhysicalReleaseCancellation(row,key,vehicle,targetSlot,data,learningReason);
+          return;
+        }
+        const actualStateFingerprint = getSdeTrappedEgressOccupancySignature(getSdeTrappedEgressActualOccupancy());
+        const staleOutcomeIds = getSdePrerequisiteCancellationStaleOutcomeIds(cancelledRow, parentIntent, data); // SDE_PREREQUISITE_CANCEL_STALE_RESOURCES
+        const rejectedChainFingerprint = getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+          chainId:String(cancelledRow.sdePhysicalChainId || "").trim(),
+          rejectedTarget:targetSlot,
+          staleOutcomeIds,
+          actualStateFingerprint
+        }));
+        const replanRecord = recordSdePhysicalReleaseRejectedTarget(cancelledRow, key);
+        const replacement = buildSdePrerequisiteCancellationReplacement(
+          cancelledRow,
+          parentIntent,
+          data,
+          actualStateFingerprint
+        );
+        const atomicReplacement = replacement; // SDE_PREREQUISITE_CANCEL_ATOMIC_PLAN
+        if(!isSdePrerequisiteCancellationReplacementAtomic(atomicReplacement)){
+          state.sdeNightPlacementManualOverrides = prerequisitePlanningSnapshot.overrides;
+          state.sdeActiveMoveOutcomes = prerequisitePlanningSnapshot.authorities;
+          state.sdePhysicalReleaseReplans = prerequisitePlanningSnapshot.replans;
+          state.sdeCanonicalRetargetIntents = prerequisitePlanningSnapshot.retargetIntents;
+          sdeProductionReaderFallbackError = prerequisitePlanningSnapshot.fallbackError;
+          alert("Annulleringen ga ikke én komplett canonical planrevision. Gjeldende plan er beholdt uendret.");
+          return;
+        }
         const cardDisplayIndex = getSdeMoveCardDisplayIndex(key);
         const outcomeKey = getSdeMoveObligationStepKey(row);
         const actionTime = new Date().toISOString();
@@ -28757,7 +29140,6 @@ async function handleSdeShiftMoveAction(encodedKey, action, adapterContext={}){
           : SDE_RELEASE_CANCELLED_EXIT_MS;
         const exitStartedAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS).toISOString();
         const removeAt = new Date(cancelledAtMs + SDE_RELEASE_CANCELLED_HOLD_MS + exitDurationMs).toISOString();
-        const replanRecord = recordSdePhysicalReleaseRejectedTarget(row, key);
         const cancellationRecord = {
           action:"cancelled",
           vehicle,
@@ -28787,13 +29169,24 @@ async function handleSdeShiftMoveAction(encodedKey, action, adapterContext={}){
           dismissalState:SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE,
           replacedByCardId:"",
           replacementCreatedAt:"",
+          prerequisiteCancellation:true,
+          mainCancellation:false,
+          mainIntentId:parentIntent.mainIntentId,
+          mainVehicleId:parentIntent.mainVehicleId,
+          mainSourceSlot:parentIntent.sourceSlot,
+          originalRequestedTarget:parentIntent.originalRequestedTarget,
+          rejectedTemporaryTarget:targetSlot,
+          rejectedChainFingerprint,
+          cancelledPlanRevision:String(adapterContext?.planRevision || "").trim(),
+          actualStateFingerprint,
+          staleOutcomeIds,
+          replacementWasFailClosed:false,
           snapshot:getSdeMoveActionSnapshot(row)
         };
         state.sdeMoveActions[key] = cancellationRecord;
         updateSdeVnRecoveryObligationForMove(row, "cancelled", actionTime);
-        const replacementCandidate = findSdePhysicalReleaseReplacementRow(row, data);
-        const replacementRow = replacementCandidate
-          ? {...replacementCandidate, sdeCanonicalOutcomeKey:outcomeKey}
+        const replacementRow = atomicReplacement.kind === "complete"
+          ? atomicReplacement.releases[0] || null
           : null;
         const replacementKey = getSdeMoveActionKey(replacementRow);
         if(replacementRow && replacementKey){
@@ -28803,26 +29196,53 @@ async function handleSdeShiftMoveAction(encodedKey, action, adapterContext={}){
           cancellationRecord.activeOutcomeId = replacementKey;
           cancellationRecord.supersededBy = replacementKey;
           cancellationRecord.authorityPending = false;
+          cancellationRecord.replacementTargetSlot = normalizeSlot(replacementRow.recommendedSlot || replacementRow.toSlot);
+          cancellationRecord.replacementPlanRevision = String(atomicReplacement.order?.reader?.planRevision || "").trim();
+          cancellationRecord.replacementChainId = String(replacementRow.sdePhysicalChainId || "").trim();
           cancellationRecord.replacementSnapshot = getSdeMoveActionSnapshot(replacementRow);
-          setSdeActiveOutcomeAuthority(outcomeKey, replacementRow, {
-            activeOutcomeId:replacementKey,
-            updatedAt:actionTime,
-            source:"physical_release_cancel_replacement"
-          });
+          const replacementUsesDifferentChain = Boolean(
+            String(cancelledRow.sdePhysicalChainId || "").trim()
+            && cancellationRecord.replacementChainId
+            && String(cancelledRow.sdePhysicalChainId || "").trim() !== cancellationRecord.replacementChainId
+          );
+          cancellationRecord.prerequisiteCancellationSupersededToDifferentChain = replacementUsesDifferentChain;
+          if(replacementUsesDifferentChain){
+            delete getSdeActiveMoveOutcomes()[outcomeKey];
+          }else{
+            setSdeActiveOutcomeAuthority(outcomeKey, replacementRow, {
+              activeOutcomeId:replacementKey,
+              updatedAt:actionTime,
+              source:"physical_release_cancel_replacement"
+            });
+          }
         }else{
-          const failClosedRow = buildSdeCancellationFailClosedRow(
-            row,
-            cancellationRecord.needKey,
-            cancellationRecord.roundNumber,
-            outcomeKey
-          );
-          bindSdeCancellationReplacementAuthority(
-            cancellationRecord,
-            outcomeKey,
-            failClosedRow,
-            actionTime
-          );
+          cancellationRecord.authorityPending = false;
+          cancellationRecord.prerequisiteCancelNoSafeReplacement = true;
+          cancellationRecord.dismissalState = SDE_RELEASE_DISMISSAL_NO_ALTERNATIVE;
+          delete getSdeActiveMoveOutcomes()[outcomeKey];
+          const diagnostic = {
+            code:"prerequisite_cancelled_no_safe_replacement",
+            diagnosticType:"prerequisite_cancelled_no_safe_replacement",
+            mainVehicleId:parentIntent.mainVehicleId,
+            source:parentIntent.sourceSlot,
+            originalRequestedTarget:parentIntent.originalRequestedTarget,
+            cancelledStepId:getSdeMoveOutcomeSequenceStep(cancelledRow),
+            cancelledOutcomeId:String(adapterContext?.activeOutcomeId || outcomeKey || key).trim(),
+            rejectedTarget:targetSlot,
+            rejectedChainFingerprint,
+            blockingVehicleIds:sortSdeCanonicalStrings(Array.from(getSdeTrappedEgressActualOccupancy().values()).map(sanitizeVehicleValue)),
+            consideredAlternatives:[...(atomicReplacement.consideredAlternatives || [])],
+            rejectionReasons:[...(atomicReplacement.rejectionReasons || [])],
+            actualStateFingerprint
+          };
+          const diagnosticReplanKey = String(replanRecord?.key || getSdePhysicalReleaseReplanKey(cancelledRow) || "").trim();
+          if(diagnosticReplanKey){
+            const storedReplan = ensureSdePhysicalReleaseReplans()[diagnosticReplanKey] || replanRecord || {};
+            storedReplan.prerequisiteCancellationDiagnostic = diagnostic;
+            ensureSdePhysicalReleaseReplans()[diagnosticReplanKey] = storedReplan;
+          }
         }
+        finalizeSdePrerequisiteCancellationTransientDragState(); // SDE_PREREQUISITE_CANCEL_DRAG_CLEANUP
         recordSdeMoveLearningEvent(
           key,
           "cancelled",
@@ -33055,6 +33475,11 @@ function buildSdeNightPlacementGeneratedMove(override){
     sdeNightPlacementOverrideId:String(override.id || ""),
     sdeNightPlacementOverrideCreatedAt:String(override.createdAt || ""),
     sdeNightPlacementOverrideUpdatedAt:String(override.updatedAt || override.createdAt || ""),
+    targetSelectionSource:String(override.targetSelectionSource || "").trim(),
+    sdePrerequisiteCancelTargetSelectionSource:String(override.sdePrerequisiteCancelTargetSelectionSource || "").trim(),
+    sdePrerequisiteCancelOriginalRequestedTarget:normalizeSlot(override.sdePrerequisiteCancelOriginalRequestedTarget),
+    sdePrerequisiteCancelSupersedesIntentId:String(override.sdePrerequisiteCancelSupersedesIntentId || "").trim(),
+    sdePrerequisiteCancelReplacementIntentId:String(override.sdePrerequisiteCancelReplacementIntentId || "").trim(),
     earliestMoveTime:String(override.earliestMoveTime || ""),
     latestMoveTime:String(override.latestMoveTime || ""),
     sourceEvent:String(override.sourceEvent || "SDE Grafisk planverktøy"),
@@ -36168,18 +36593,40 @@ function assertSdeCanonicalProductionReaderContract(reader){
 
 function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || captureSdeCanonicalShadowRuntimeSnapshot();
+  const diagnosticOnlyRows = (snapshot.legacy?.finalCards || []).filter(row=>row?.sdeTrappedEgressDiagnosticOnly === true);
   const activeAuthorities = Object.fromEntries(Object.entries(snapshot.runtimeState?.activeAuthorities || {}).map(([key,value])=>[
     key,
     typeof value === "string" ? value : String(value?.activeOutcomeId || "").trim()
   ]));
   const canonicalPlan = buildSdeCanonicalPlan({
     actualSources:snapshot.actualSources,
-    candidateRows:snapshot.legacy?.finalCards,
+    candidateRows:(snapshot.legacy?.finalCards || []).filter(row=>row?.sdeTrappedEgressDiagnosticOnly !== true),
     activeAuthorities,
     completedActionKeys:Object.entries(snapshot.runtimeState?.actions || {})
       .filter(([,record])=>record?.action === "completed")
       .map(([key])=>key)
   });
+  canonicalPlan.diagnostics = sortSdeCanonicalObjects([
+    ...(canonicalPlan.diagnostics || []),
+    ...diagnosticOnlyRows.map(row=>{
+      const diagnostic = row.sdeTrappedEgressDiagnostic || {};
+      return {
+        ...diagnostic,
+        code:String(row.sdeCanonicalRetargetDiagnostic || diagnostic.code || "trapped_vehicle_no_safe_egress_plan").trim(),
+        diagnosticType:String(row.sdeCanonicalRetargetDiagnostic || diagnostic.diagnosticType || diagnostic.code || "trapped_vehicle_no_safe_egress_plan").trim(),
+        severity:String(diagnostic.severity || "warning").trim(),
+        vehicleId:sanitizeVehicleValue(diagnostic.mainVehicleId || row.vehicle),
+        sourceSlot:normalizeSlot(diagnostic.source || row.fromSlot || row.arrivalSlot),
+        targetSlot:normalizeSlot(diagnostic.originalRequestedTarget || diagnostic.requestedTarget || row.recommendedSlot || row.toSlot),
+        message:String(row.sdePhysicalNoSafeReleaseReason || row.canonicalPhysicalInvalidReason || "Canonical plan er diagnostic-only.").trim()
+      };
+    })
+  ]);
+  canonicalPlan.metadata = {
+    ...(canonicalPlan.metadata || {}),
+    diagnosticCount:canonicalPlan.diagnostics.length,
+    diagnosticOnlyRowCount:diagnosticOnlyRows.length
+  };
   const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
   cardProjection.diagnostics = sortSdeCanonicalObjects([
     ...(cardProjection.diagnostics || []),
@@ -36755,12 +37202,22 @@ function applySdeCanonicalHandlerActionableGate(reader, initialAdapters){
 
 function buildSdeCanonicalProductionReader(runtimeSnapshot=null){
   const reader = buildSdeCanonicalProductionReaderSource(runtimeSnapshot);
-  const initialAdapters = Object.fromEntries(getSdeCanonicalProductionProjectedCards(reader).map(card=>[
+  const needsHandlerAdapter = card=>{
+    if(card?.status !== "exiting") return true;
+    const recordKeys = [card?.legacyCardId,card?.actionKey,card?.canonicalCardId]
+      .map(value=>String(value || "").trim())
+      .filter(Boolean);
+    const actionRecord = typeof getSdeMoveActionRecord === "function"
+      ? recordKeys.map(getSdeMoveActionRecord).find(Boolean) || {}
+      : recordKeys.map(key=>reader.runtimeSnapshot?.runtimeState?.actions?.[key]).find(Boolean) || {};
+    return actionRecord.prerequisiteCancelNoSafeReplacement !== true;
+  };
+  const initialAdapters = Object.fromEntries(getSdeCanonicalProductionProjectedCards(reader).filter(needsHandlerAdapter).map(card=>[
     card.canonicalCardId,
     buildSdeCanonicalHandlerAdapter(card, reader)
   ]));
   applySdeCanonicalHandlerActionableGate(reader, initialAdapters);
-  reader.handlerAdapters = Object.fromEntries(getSdeCanonicalProductionProjectedCards(reader).map(card=>[
+  reader.handlerAdapters = Object.fromEntries(getSdeCanonicalProductionProjectedCards(reader).filter(needsHandlerAdapter).map(card=>[
     card.canonicalCardId,
     buildSdeCanonicalHandlerAdapter(card, reader)
   ]));
