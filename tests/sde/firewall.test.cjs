@@ -238,6 +238,37 @@ test("H — card preview stays explicit, fail-closed and non-interactive", () =>
   );
 });
 
+test("Production UI — shows only executable shift cards and no retarget menu", () => {
+  const contract = source => {
+    const visibleCards = extractFunction(source, "getSdeCanonicalProductionVisibleCards");
+    assert.ok(visibleCards.includes("reader.cardProjection.actionableCards"));
+    assert.ok(visibleCards.includes("adapter?.ready === true"));
+    assert.ok(visibleCards.includes("adapter.canComplete === true || adapter.canCancel === true"));
+    for(const forbidden of ["blockedChainCards", "handlerBlockedCards", "exitingCards"]){
+      assert.equal(visibleCards.includes(forbidden), false, `production visible cards include ${forbidden}`);
+    }
+
+    const controls = extractFunction(source, "buildSdeCanonicalCardActionControlsHtml");
+    for(const forbidden of ["Velg annet spor", "Avslå VN og velg annet spor", "data-sde-canonical-retarget-action", "beginSdeCanonicalRetarget"]){
+      assert.equal(controls.includes(forbidden), false, `production card controls expose ${forbidden}`);
+    }
+
+    const render = extractFunction(source, "renderSdeCanonicalProductionReader");
+    assert.ok(render.includes("const projectedCards = getSdeCanonicalProductionVisibleCards(reader);"));
+
+    const graphic = extractFunction(source, "renderSdeNightPlacementOverview");
+    for(const forbidden of ["sdeCanonicalRetargetSelection", "retargetPair", "retargetHtml", "data-sde-canonical-retarget"]){
+      assert.equal(graphic.includes(forbidden), false, `production graphic view exposes ${forbidden}`);
+    }
+  };
+  assertHistoricalContractFailure(
+    "production executable-only UI",
+    currentHtml,
+    "a9a68b4a4eb20fbef9b556d839a73dd0b3aacef4",
+    contract,
+  );
+});
+
 test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
   assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));

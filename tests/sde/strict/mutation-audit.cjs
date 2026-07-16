@@ -345,6 +345,25 @@ const canonicalFinalCardOrder = "if(left.exiting !== right.exiting) return left.
 const reversedCanonicalFinalCardOrder = "if(left.exiting !== right.exiting) return left.exiting ? 1 : -1; /* mutation: replacement before exiting */\n    if(left.exiting && right.exiting && left.cancelledAtMs !== right.cancelledAtMs){\n      return right.cancelledAtMs - left.cancelledAtMs; /* mutation: newest exiting first */\n    }";
 const removedCancelledCard = 'if(cancelledUiState.hidden) return "";';
 const retainedCancelledCardPlaceholder = 'if(cancelledUiState.hidden) return `<article class="sde-shift-card sde-mutation-placeholder" data-sde-canonical-card-id="${card.canonicalCardId}" data-sde-placeholder="true" style="display:block;min-width:240px;min-height:1px"></article>`;';
+const executableOnlyVisibleCardsFunction = `function getSdeCanonicalProductionVisibleCards(reader){
+  return orderSdeCanonicalProductionProjectedCards(
+    (reader.cardProjection.actionableCards || []).filter(card=>{
+      const adapter = reader.handlerAdapters?.[card.canonicalCardId];
+      return card.status === "actionable"
+        && adapter?.ready === true
+        && (adapter.canComplete === true || adapter.canCancel === true);
+    })
+  );
+}`;
+const exposedExitingVisibleCardsFunction = `function getSdeCanonicalProductionVisibleCards(reader){
+  return orderSdeCanonicalProductionProjectedCards([
+    ...(reader.cardProjection.exitingCards || []),
+    ...(reader.cardProjection.actionableCards || [])
+  ]);
+}`;
+const exposedAllProjectedCardsFunction = `function getSdeCanonicalProductionVisibleCards(reader){
+  return getSdeCanonicalProductionProjectedCards(reader);
+}`;
 
 const mutations = [
   {
@@ -404,61 +423,32 @@ const mutations = [
   },
   {
     id: "H-reverse-card-order",
-    apply: html => applySemanticStrategy(html, [
-      {
-        id: "legacy-projected-array-order",
-        functionName: "getSdeCanonicalProductionProjectedCards",
-        reportSnippets: true,
-        matches: sourceValue => countOccurrences(sourceValue, legacyProjectedCardsFunction) === 1
-          && countOccurrences(sourceValue, canonicalFinalCardOrder) === 0,
-        edits: [{
-          name: "legacy projected card order",
-          before: legacyProjectedCardsFunction,
-          after: reversedLegacyProjectedCardsFunction,
-        }],
-      },
-      {
-        id: "canonical-final-local-card-order",
-        functionName: "orderSdeCanonicalProductionProjectedCards",
-        reportSnippets: true,
-        matches: sourceValue => countOccurrences(sourceValue, canonicalFinalCardOrder) === 1,
-        edits: [{
-          name: "final local exiting and replacement order",
-          before: canonicalFinalCardOrder,
-          after: reversedCanonicalFinalCardOrder,
-        }],
-      },
-    ], "card order"),
+    apply: html => applySemanticStrategy(html, [{
+      id: "expose-exiting-production-cards",
+      functionName: "getSdeCanonicalProductionVisibleCards",
+      reportSnippets: true,
+      matches: sourceValue => countOccurrences(sourceValue, executableOnlyVisibleCardsFunction) === 1,
+      edits: [{
+        name: "expose exiting cards before replacement",
+        before: executableOnlyVisibleCardsFunction,
+        after: exposedExitingVisibleCardsFunction,
+      }],
+    }], "executable-only card visibility"),
     catches: ["INV-CANCEL-010", "INV-CANCEL-011"],
   },
   {
     id: "I-keep-placeholder-after-removeAt",
-    apply: html => applySemanticStrategy(html, [
-      {
-        id: "legacy-placeholder-and-render-order",
-        functionName: "getSdeCanonicalProductionProjectedCards + buildSdeCanonicalProductionCardHtml + renderSdeCanonicalProductionReader",
-        reportSnippets: true,
-        matches: sourceValue => countOccurrences(sourceValue, legacyProjectedCardsFunction) === 1
-          && countOccurrences(sourceValue, canonicalFinalCardOrder) === 0,
-        edits: [
-          {name: "legacy placeholder order", before: legacyProjectedCardsFunction, after: reorderedLegacyPlaceholderCardsFunction},
-          {name: "legacy placeholder", before: removedCancelledCard, after: 'if(cancelledUiState.hidden) return `<article data-sde-canonical-card-id="${card.canonicalCardId}" data-sde-placeholder="true"></article>`;'},
-          {name: "legacy placeholder render order", before: "const cardsHtml = projectedCards.map((card,index)=>", after: "const cardsHtml = projectedCards.reverse().map((card,index)=>"},
-        ],
-      },
-      {
-        id: "canonical-layout-placeholder-after-removeAt",
-        functionName: "buildSdeCanonicalProductionCardHtml",
-        reportSnippets: true,
-        matches: sourceValue => countOccurrences(sourceValue, canonicalFinalCardOrder) === 1
-          && countOccurrences(sourceValue, removedCancelledCard) === 1,
-        edits: [{
-          name: "retain measurable cancelled-card layout placeholder",
-          before: removedCancelledCard,
-          after: retainedCancelledCardPlaceholder,
-        }],
-      },
-    ], "placeholder after removeAt"),
+    apply: html => applySemanticStrategy(html, [{
+      id: "expose-all-cards-and-retain-placeholder",
+      functionName: "getSdeCanonicalProductionVisibleCards + buildSdeCanonicalProductionCardHtml",
+      reportSnippets: true,
+      matches: sourceValue => countOccurrences(sourceValue, executableOnlyVisibleCardsFunction) === 1
+        && countOccurrences(sourceValue, removedCancelledCard) === 1,
+      edits: [
+        {name: "expose all projected cards", before: executableOnlyVisibleCardsFunction, after: exposedAllProjectedCardsFunction},
+        {name: "retain measurable cancelled-card layout placeholder", before: removedCancelledCard, after: retainedCancelledCardPlaceholder},
+      ],
+    }], "placeholder after removeAt"),
     catches: ["INV-CANCEL-012", "INV-CANCEL-013"],
   },
   {

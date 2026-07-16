@@ -49,6 +49,13 @@ annullert frigjøringssteg for 74-12 kan ikke gjenbrukes som aktiv identitet.
 Planleggeren må velge en ny komplett release/main/recovery-kjede og bevare det
 eksakte brukerbestilte hovedmålet.
 
+Produksjons-UI-kontrakten er strengere enn den interne kjedeprojeksjonen: bare
+kort med `status=actionable`, klar handleradapter og minst én tillatt operativ
+handling kan rendres i hovedlisten. Dependency-sperrede, handler-sperrede og
+avsluttede kort beholdes bare som intern integritet/diagnostikk. Retarget kan
+fortsatt valideres i canonical-modellen, men produksjonskortene og det grafiske
+verktøyet eksponerer ingen «Velg annet spor»-meny eller retarget-mål.
+
 ```sh
 npm run test:sde:contracts
 npm run test:sde:mutations

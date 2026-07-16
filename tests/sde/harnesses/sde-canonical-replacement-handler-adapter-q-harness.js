@@ -172,8 +172,8 @@ const blockedAdapter = duplicateReader.handlerAdapters[blockedCard.canonicalCard
 assert.equal(blockedAdapter.ready,false);
 assert.ok(blockedAdapter.reasons.some(reason=>reason.includes("nøyaktig ett legacy handlingsgrunnlag")));
 const blockedControls = buildSdeCanonicalCardActionControlsHtml(blockedCard,blockedAdapter);
-assert.match(blockedControls,/Handling krever avklaring/);
-assert.doesNotMatch(blockedControls,/>Utført|>Annullert/);
+assert.equal(blockedControls,"","handler-blocked cards must expose no production controls");
+assert.equal(getSdeCanonicalProductionVisibleCards(duplicateReader).length,0,"handler-blocked cards must stay out of the production card list");
 assert.deepEqual(buildSdeCanonicalProductionScorePresentation(duplicateReader,buildSdeCanonicalProductionDiagnostics(duplicateReader),100),{
   calculated:false,label:"Ikke beregnet",detail:"Ingen gjennomførbar plan"
 });
@@ -228,7 +228,8 @@ console.log(JSON.stringify({
     newTarget:replacementOutcome.targetSlot,
     activeOutcomeId:replacementOutcome.candidateOutcomeId,
     handlerActionKey:replacementAdapter.actionKey,
-    visibleCards:firstReader.cardProjection.actionableCards.length + firstReader.cardProjection.exitingCards.length,
+    productionVisibleCards:getSdeCanonicalProductionVisibleCards(firstReader).length,
+    internalProjectedCards:firstReader.cardProjection.actionableCards.length + firstReader.cardProjection.exitingCards.length,
     actionableCards:firstReader.cardProjection.actionableCards.length,
     reservations:firstReader.reservationProjection.reservations.length,
     overlays:firstReader.graphicProjection.activeOverlays.length,
@@ -237,9 +238,9 @@ console.log(JSON.stringify({
     canCancel:replacementAdapter.canCancel,
     canDelete:replacementAdapter.canDelete
   },
-  afterLifecycle:{visibleCards:postLifecycleReader.cardProjection.actionableCards.length,adapterReady:true},
+  afterLifecycle:{productionVisibleCards:getSdeCanonicalProductionVisibleCards(postLifecycleReader).length,adapterReady:true},
   secondReplacement:{oldTarget:"1S",newTarget:"2S",firstTargetReturned:false,actionableCards:1,reservations:1,overlays:1,adapterReady:true},
-  failClosedGate:{actionableCards:duplicateReader.cardProjection.actionableCards.length,handlerBlockedCards:duplicateReader.cardProjection.handlerBlockedCards.length,reservations:0,overlays:0,label:"Handling krever avklaring"},
+  failClosedGate:{productionVisibleCards:getSdeCanonicalProductionVisibleCards(duplicateReader).length,actionableCards:duplicateReader.cardProjection.actionableCards.length,handlerBlockedCards:duplicateReader.cardProjection.handlerBlockedCards.length,reservations:0,overlays:0,diagnostic:"handler_adapter_blocked"},
   invalidAdapters:["null","multiple","old-target-alias","source-mismatch","reservation-missing","overlay-missing","dependency-unmet"],
   lifecycle:"5+2 unchanged",
   sideEffects:"no new persist/fetch/localStorage in reader"

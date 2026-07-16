@@ -36077,15 +36077,6 @@ function buildSdeNightPlacementSlotTitle(slot, entry, context={}){
 function renderSdeNightPlacementOverview(data, options={}){
   const overview = options?.overview || buildSdeNightPlacementOverviewData(data);
   const canonicalReader = options?.readerMode === "canonical";
-  const retargetReader = options?.reader || null;
-  const retargetPair = canonicalReader && sdeCanonicalRetargetSelection && retargetReader
-    ? getSdeCanonicalRetargetCardAdapterPair(
-        retargetReader,
-        sdeCanonicalRetargetSelection.executionDescriptor,
-        sdeCanonicalRetargetSelection.canonicalCardId
-      )
-    : null;
-  const retargetRow = retargetPair?.adapter?.row || null;
   const limitedPlanningMode = Boolean(data?.limitedPlanningMode);
   const columnLabels = ["12","11","10","9","8","7","","6","5","4","3","","2","1"];
   const headerHtml = columnLabels
@@ -36159,12 +36150,6 @@ function renderSdeNightPlacementOverview(data, options={}){
     const slotInfoAttr = (isHardOccupied || isTemporary) && hasVehicle && !hasCollision
       ? ` data-sde-night-placement-info="1"${isHardOccupied ? ` data-sde-night-placement-locked-info="1"` : ""}`
       : "";
-    const retargetAssessment = retargetRow
-      ? getSdeCanonicalRetargetTargetAssessment(retargetRow,slot,retargetReader)
-      : null;
-    const retargetTargetAttr = retargetAssessment
-      ? ` data-sde-canonical-retarget-target="${escapeHtml(slot)}" data-sde-canonical-retarget-selectable="${retargetAssessment.selectable ? "1" : "0"}"`
-      : "";
     const compactTrainText = getSdeNightPlacementCompactTrainText(entry, hasCollision);
     const compactBadges = getSdeNightPlacementCompactBadges(entry, row, {hasCollision});
     const compactBadgesHtml = compactBadges.length
@@ -36172,7 +36157,7 @@ function renderSdeNightPlacementOverview(data, options={}){
       : "";
     const slotTitle = buildSdeNightPlacementSlotTitle(slot, entry, {
       hasCollision,
-      layerNote:[layerNote,retargetAssessment?.reason].filter(Boolean).join(" · "),
+      layerNote,
       timeStatusText,
       lockedText:isHardOccupied ? "Ikke tilgjengelig for nytt kjøretøy" : ""
     });
@@ -36190,7 +36175,6 @@ function renderSdeNightPlacementOverview(data, options={}){
       hasProposal && !hasVehicle ? "planned-proposal" : "",
       hasUnresolved ? "unresolved" : "",
       isSimulated ? "simulated" : "",
-      retargetAssessment?.selectable ? "retarget-selectable" : retargetAssessment ? "retarget-invalid" : "",
       overview.rejectedSlot === slot ? "drop-rejected" : ""
     ].filter(Boolean).join(" ");
 
@@ -36238,7 +36222,7 @@ function renderSdeNightPlacementOverview(data, options={}){
           : hasVehicle
             ? "Faktisk fysisk"
             : "Ledig";
-    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}"${retargetTargetAttr}${slotInfoAttr}${draggableAttr}${titleAttr}>
+    return `<div class="${classes}" data-sde-night-placement-slot="${escapeHtml(slot)}"${slotInfoAttr}${draggableAttr}${titleAttr}>
       <div class="sde-night-placement-address">${escapeHtml(slot)}</div>
       <div class="sde-night-placement-layers">
         ${actualLayerHtml}
@@ -36282,17 +36266,6 @@ function renderSdeNightPlacementOverview(data, options={}){
     ? buildSdeOccupiedSlotInfoHtml(selectedSlot, overview.slots[selectedSlot])
     : "";
   const hasManualDragOverrides = Object.keys(getSdeNightPlacementManualOverrides()).length > 0;
-  const retargetHtml = retargetPair
-    ? `<div class="sde-night-card-override sde-canonical-retarget-panel" data-sde-canonical-retarget-panel="1">
-        <strong>Velg annet spor</strong>
-        <span>${escapeHtml(retargetPair.card.vehicleId)} · actual source ${escapeHtml(retargetPair.card.sourceSlot)} · nåværende target ${escapeHtml(retargetPair.card.targetSlot)}</span>
-        <span>Grønne slots er valgbare. Ugyldige slots beholder gjeldende plan uendret.</span>
-        <button class="sde-night-placement-action-btn" type="button" data-sde-canonical-retarget-auto="1">Finn beste annet spor</button>
-      </div>`
-    : "";
-  const retargetFeedbackHtml = sdeCanonicalRetargetFeedback?.text
-    ? `<div class="sde-night-placement-confirmation ${sdeCanonicalRetargetFeedback.status === "error" ? "error" : ""}" role="status" data-sde-canonical-retarget-feedback="${escapeHtml(sdeCanonicalRetargetFeedback.status || "info")}">${escapeHtml(sdeCanonicalRetargetFeedback.text)}</div>`
-    : "";
 
   const overviewSubtitle = canonicalReader
     ? "Canonical faktisk sporplan med aktive og dependency-utsatte planoverlays som separate lag."
@@ -36324,8 +36297,6 @@ function renderSdeNightPlacementOverview(data, options={}){
     <div class="sde-night-placement-actions">
       <button class="sde-night-placement-action-btn" type="button" data-sde-night-placement-clear-overrides ${hasManualDragOverrides ? "" : "disabled"}>Nullstill manuelle planplasseringer</button>
     </div>
-    ${retargetHtml}
-    ${retargetFeedbackHtml}
     ${confirmationHtml}
     ${selectedInfoHtml}
     <div class="sde-night-placement-yard-wrap">
@@ -37119,6 +37090,17 @@ function getSdeCanonicalProductionProjectedCards(reader){
   ]);
 }
 
+function getSdeCanonicalProductionVisibleCards(reader){
+  return orderSdeCanonicalProductionProjectedCards(
+    (reader.cardProjection.actionableCards || []).filter(card=>{
+      const adapter = reader.handlerAdapters?.[card.canonicalCardId];
+      return card.status === "actionable"
+        && adapter?.ready === true
+        && (adapter.canComplete === true || adapter.canCancel === true);
+    })
+  );
+}
+
 function applySdeCanonicalHandlerActionableGate(reader, initialAdapters){
   const blockedCards = (reader.cardProjection.actionableCards || []).flatMap(card=>{
     const adapter = initialAdapters[card.canonicalCardId];
@@ -37613,29 +37595,14 @@ function buildSdeCanonicalGraphicOverviewData(reader){
 function buildSdeCanonicalCardActionControlsHtml(card, adapter, reader=null){
   const encodedCardId = encodeURIComponent(card.canonicalCardId || "");
   const encodedExecutionDescriptor = encodeURIComponent(JSON.stringify(adapter?.executionDescriptor || {}));
-  const retargetMode = normalizeSlot(card.targetSlot) === "VN" && adapter?.row?.sdePhysicalDependencyRole === "prerequisite"
-    ? "reject_vn"
-    : "select";
-  const retargetLabel = retargetMode === "reject_vn" ? "Avslå VN og velg annet spor" : "Velg annet spor";
-  const retargetHtml = adapter?.canRetarget
-    ? `<div class="sde-canonical-retarget-actions"><button class="sde-night-placement-action-btn sde-canonical-retarget-btn" type="button" data-sde-canonical-retarget-action="${escapeHtml(retargetMode)}" onclick="beginSdeCanonicalRetarget('${escapeHtml(encodedCardId)}','${escapeHtml(encodedExecutionDescriptor)}','${escapeHtml(retargetMode)}')">${escapeHtml(retargetLabel)}</button></div>`
-    : "";
-  if(card.status === "handler_adapter_blocked"){
-    const reason = (adapter?.reasons || card.handlerBlockReasons || ["Canonical handleradapter krever avklaring."]).join("; ");
-    return `<div class="sde-canonical-handler-block">${escapeHtml(reason)}</div><div class="sde-shift-actions" aria-label="Handling krever avklaring"><button class="sde-shift-action-btn cancel" type="button" disabled>Handling krever avklaring</button></div>`;
-  }
-  if(card.status !== "actionable"){
-    const label = card.status === "exiting" ? "Annullert – avsluttes" : "Dependency-sperret";
-    return `${retargetHtml}<div class="sde-shift-actions" aria-label="Inaktivt canonical skiftekort"><button class="sde-shift-action-btn cancel" type="button" disabled>${escapeHtml(label)}</button></div>`;
-  }
-  const reason = (adapter?.reasons || []).join("; ") || "Canonical kortregel sperrer handlingen.";
+  if(card.status !== "actionable" || adapter?.ready !== true) return "";
   const completeHtml = adapter?.canComplete
     ? `<button class="sde-shift-action-btn done" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'completed', '${escapeHtml(encodedExecutionDescriptor)}')">Utført</button>`
-    : `<button class="sde-shift-action-btn done" type="button" disabled title="${escapeHtml(reason)}">Utført sperret</button>`;
+    : "";
   const cancelHtml = adapter?.canCancel
     ? `<button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'cancelled', '${escapeHtml(encodedExecutionDescriptor)}')">Annullert</button>`
-    : `<button class="sde-shift-action-btn cancel" type="button" disabled title="${escapeHtml(reason)}">Annullert sperret</button>`;
-  return `${retargetHtml}${adapter?.ready ? "" : `<div class="sde-canonical-handler-block">${escapeHtml(reason)}</div>`}<div class="sde-shift-actions" aria-label="Kvitter canonical skifteforslag">${completeHtml}${cancelHtml}</div>`;
+    : "";
+  return `<div class="sde-shift-actions" aria-label="Kvitter canonical skifteforslag">${completeHtml}${cancelHtml}</div>`;
 }
 
 function buildSdeCanonicalProductionCardHtml(card, reader, index){
@@ -37711,7 +37678,7 @@ async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action, enco
     renderSdeSkiftebevegelser();
     return;
   }
-  const projectedCards = getSdeCanonicalProductionProjectedCards(reader);
+  const projectedCards = getSdeCanonicalProductionVisibleCards(reader);
   const cardAdapterPairs = projectedCards.map(card=>({
     card,
     adapter:reader.handlerAdapters?.[card.canonicalCardId] || null
@@ -37800,16 +37767,13 @@ function renderSdeCanonicalProductionReader(){
   const graphicOverview = buildSdeCanonicalGraphicOverviewData(reader);
   const graphicPlanVisible = isSdeGraphicPlanViewMode();
   const viewToggleText = graphicPlanVisible ? "Til Skifte-kort" : "SDE Grafisk planverktøy";
-  const projectedCards = getSdeCanonicalProductionProjectedCards(reader);
+  const projectedCards = getSdeCanonicalProductionVisibleCards(reader);
   const cardsHtml = projectedCards.map((card,index)=>buildSdeCanonicalProductionCardHtml(card,reader,index)).filter(Boolean).join("")
     || `<div class="sde-shift-empty">Ingen actionable canonical skiftekort. Se canonical diagnostics for behov som er stanset.</div>`;
   const diagnosticsHtml = buildSdeCanonicalDiagnosticsHtml(diagnostics, reader.integrityReport.status);
   const scorePresentation = buildSdeCanonicalProductionScorePresentation(reader, diagnostics, data.score);
   const nightPlacementOverviewHtml = graphicPlanVisible
     ? renderSdeNightPlacementOverview(data, {overview:graphicOverview, readerMode:"canonical", reader})
-    : "";
-  const retargetFeedbackHtml = !graphicPlanVisible && sdeCanonicalRetargetFeedback?.text
-    ? `<div class="sde-night-placement-confirmation ${sdeCanonicalRetargetFeedback.status === "error" ? "error" : ""}" role="status" data-sde-canonical-retarget-feedback="${escapeHtml(sdeCanonicalRetargetFeedback.status || "info")}">${escapeHtml(sdeCanonicalRetargetFeedback.text)}</div>`
     : "";
   const actionHistoryHtml = buildSdeMoveActionHistoryHtml();
   const activeProposalCount = Number(reader.cardProjection.activeProposalCount || 0);
@@ -37837,7 +37801,6 @@ function renderSdeCanonicalProductionReader(){
       <button class="sde-shift-details-toggle" id="sdeShiftDetailsToggle" type="button" aria-pressed="false" title="Vis eller skjul utfyllende forklaring">☰</button>
       <span class="sde-shift-section-title-count">${escapeHtml(String(activeProposalCount))} forslag</span>
     </div>
-    ${retargetFeedbackHtml}
     ${nightPlacementOverviewHtml}
     ${graphicPlanVisible ? "" : `<div class="sde-shift-board">${actionHistoryHtml}<div class="sde-shift-grid">${cardsHtml}</div></div>`}
     ${diagnosticsHtml}

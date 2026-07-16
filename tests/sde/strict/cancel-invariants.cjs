@@ -322,12 +322,13 @@ eval(prefix + String.raw`
   ctx.renderSdeCanonicalProductionReader();
   const firstHtml=root.innerHTML;
   const positions={replacement:firstHtml.indexOf('data-sde-canonical-card-id="replacement"'),oldA:firstHtml.indexOf('data-sde-canonical-card-id="old-a"'),oldB:firstHtml.indexOf('data-sde-canonical-card-id="old-b"')};
-  put("INV-CANCEL-010",positions.oldA>=0 && positions.oldA<positions.replacement,"real canonical renderer places exiting left of replacement");
-  const firstExitingOrder=[...firstHtml.matchAll(/data-sde-canonical-card-id="(old-[ab])"/g)].map(match=>match[1]).join(",");
+  put("INV-CANCEL-010",positions.oldA<0 && positions.oldB<0 && positions.replacement>=0,"real canonical renderer omits exiting cards and exposes only the executable replacement");
+  const firstVisibleOrder=[...firstHtml.matchAll(/data-sde-canonical-card-id="([^"]+)"/g)].map(match=>match[1]).join(",");
+  ctx.innerWidth=390;
   currentReader=makeReader([oldA,oldB]);
   ctx.renderSdeCanonicalProductionReader();
-  const secondOrder=[...root.innerHTML.matchAll(/data-sde-canonical-card-id="(old-[ab])"/g)].map(match=>match[1]).join(",");
-  put("INV-CANCEL-011",firstExitingOrder==="old-a,old-b" && secondOrder==="old-a,old-b","multiple exiting cards sort deterministically before replacement, including 390px reading direction");
+  const secondVisibleOrder=[...root.innerHTML.matchAll(/data-sde-canonical-card-id="([^"]+)"/g)].map(match=>match[1]).join(",");
+  put("INV-CANCEL-011",firstVisibleOrder==="replacement" && secondVisibleOrder==="replacement","exiting input order cannot change the executable-only production card list, including 390px reading direction");
 
   appState.sdeMoveActions["old-a"].removedFromActiveLayout=true;
   appState.sdeMoveActions["old-b"].removedFromActiveLayout=true;
