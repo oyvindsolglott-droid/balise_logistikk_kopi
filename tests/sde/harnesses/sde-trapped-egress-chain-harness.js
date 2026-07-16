@@ -364,6 +364,7 @@ eval(prefix + String.raw`
   let staleReleaseIdentityReplanned=false;
   try{
     resetState(f.B.placements);
+    appState.sdeCanonicalRetargetIntents={};
     appState.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
     const assessment=ctx.buildSdeNightPlacementDropAssessment({
       vehicle:f.B.main.vehicle,
