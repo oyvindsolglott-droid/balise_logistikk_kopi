@@ -27,6 +27,60 @@ function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
+const X1_MUTANT_ID = "X1-bind-canRetarget-to-canCancel";
+const X1_BEFORE_LINE = "    const canRetarget = isSdeCanonicalRetargetableOutcome(outcome);";
+const X1_AFTER_LINE = "    const canRetarget = isSdeCanonicalRetargetableOutcome(outcome) && !isRecovery(outcome); /* mutation: bind retarget to cancellation */";
+const X1_EXPECTED_INVARIANT_IDS = Object.freeze(["INV-REROUTE-001", "INV-REROUTE-004", "INV-REROUTE-008"]);
+
+function countExactLines(value, line) {
+  return String(value).split(/\r?\n/).filter(item => item === line).length;
+}
+
+function validateX1MutationApplication(original, mutated) {
+  const errors = [];
+  const originalLines = String(original).split(/\r?\n/);
+  const mutatedLines = String(mutated).split(/\r?\n/);
+  if (countExactLines(original, X1_BEFORE_LINE) !== 1) errors.push("X1 target line must exist exactly once");
+  if (countExactLines(mutated, X1_BEFORE_LINE) !== 0) errors.push("X1 target line must be fully replaced");
+  if (countExactLines(mutated, X1_AFTER_LINE) !== 1) errors.push("X1 replacement line must exist exactly once");
+  if (originalLines.length !== mutatedLines.length) errors.push("X1 must preserve line count");
+  const changedLineIndexes = [];
+  for (let index = 0; index < Math.max(originalLines.length, mutatedLines.length); index += 1) {
+    if (originalLines[index] !== mutatedLines[index]) changedLineIndexes.push(index);
+  }
+  if (changedLineIndexes.length !== 1) errors.push(`X1 must change exactly one source line, got ${changedLineIndexes.length}`);
+  const targetIndex = originalLines.indexOf(X1_BEFORE_LINE);
+  if (changedLineIndexes.length === 1 && changedLineIndexes[0] !== targetIndex) errors.push("X1 changed an unrelated source line");
+  if (targetIndex >= 0 && mutatedLines[targetIndex] !== X1_AFTER_LINE) errors.push("X1 replacement does not match the locked mutation");
+  return {
+    ok: errors.length === 0,
+    errors,
+    changedLineCount: changedLineIndexes.length,
+    changedHunkCount: changedLineIndexes.length === 1 ? 1 : null,
+    targetLineNumber: targetIndex >= 0 ? targetIndex + 1 : null,
+    beforeLineSha256: sha256(X1_BEFORE_LINE),
+    afterLineSha256: sha256(X1_AFTER_LINE),
+  };
+}
+
+function applyX1Mutation(value) {
+  if (countExactLines(value, X1_BEFORE_LINE) !== 1) throw new Error("independent canRetarget: expected exactly one authoritative X1 target line");
+  const html = replaceOnce(value, X1_BEFORE_LINE, X1_AFTER_LINE, "independent canRetarget");
+  const validation = validateX1MutationApplication(value, html);
+  if (!validation.ok) throw new Error(`X1 mutation application failed closed: ${validation.errors.join("; ")}`);
+  return {
+    html,
+    metadata: {
+      strategy: "bind-authoritative-card-canRetarget-to-recovery-cancel-semantics",
+      functionName: "buildSdeCanonicalCardProjection/resolveCanRetarget",
+      changedOccurrences: 1,
+      ...validation,
+      beforeLine: X1_BEFORE_LINE,
+      afterLine: X1_AFTER_LINE,
+    },
+  };
+}
+
 const ACTIVE_SOURCE_MUTANT_IDS = Object.freeze([
   "A-bypass-cancellation-modal",
   "B-mutate-cancellation-state-before-save",
@@ -110,6 +164,59 @@ function validateMutationStrictReport(report, strictExitCode) {
   return {ok: errors.length === 0, errors};
 }
 
+function parseMutationStrictRun(run, name) {
+  if (run?.error) {
+    const code = String(run.error.code || "child_error");
+    throw new Error(`${name} infrastructure error (${code}): ${run.error.message || run.error}`);
+  }
+  if (run?.signal) throw new Error(`${name} infrastructure error: terminated by ${run.signal}`);
+  if (![0, 1].includes(run?.status)) {
+    throw new Error(`${name} infrastructure error: unexpected exit ${String(run?.status)}${run?.stderr ? `: ${run.stderr}` : ""}`);
+  }
+  if (String(run.stderr || "").trim()) {
+    throw new Error(`${name} infrastructure error: unexpected stderr/warning: ${String(run.stderr).trim()}`);
+  }
+  const lines = String(run.stdout || "").trim().split(/\n/).filter(Boolean);
+  if (!lines.length) throw new Error(`${name} infrastructure error: missing final strict JSON`);
+  let report;
+  try {
+    report = JSON.parse(lines.at(-1));
+  } catch (error) {
+    throw new Error(`${name} infrastructure error: malformed final strict JSON: ${error.message}`);
+  }
+  const validation = validateMutationStrictReport(report, run.status);
+  if (!validation.ok) throw new Error(`${name} returned an incomplete strict report: ${validation.errors.join("; ")}`);
+  return {...report, strictExitCode: run.status};
+}
+
+function isStructuredMutationKill(mutation, report) {
+  if (!report || report.strictExitCode !== 1 || !Array.isArray(report.failIds)) return false;
+  return mutation.any
+    ? mutation.catches.some(id => report.failIds.includes(id))
+    : mutation.catches.every(id => report.failIds.includes(id));
+}
+
+function isRejected(callback) {
+  try {
+    callback();
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+function syntheticStrictReport(failIds=[]) {
+  const failed = new Set(failIds);
+  const results = STRICT_INVARIANT_IDS.map(id => ({id, status: failed.has(id) ? "FAIL" : "PASS", detail: "self-validation"}));
+  return {
+    schemaVersion: "sde-strict-report-v1",
+    mode: "strict",
+    counts: {total: results.length, pass: results.length - failed.size, fail: failed.size},
+    failIds: [...failIds],
+    results,
+  };
+}
+
 function validateScenarioReports(reports) {
   const catalog = validateExactCatalog(reports?.map(item => item?.id), ACTIVE_MUTATION_SCENARIO_IDS, "mutation scenario");
   const errors = [...catalog.errors];
@@ -117,8 +224,14 @@ function validateScenarioReports(reports) {
   return {ok: errors.length === 0, errors};
 }
 
-function runCatalogSelfValidation() {
+function runCatalogSelfValidation({baseline, x1Report, x1Application, x1Mutation}) {
   const passReports = ACTIVE_MUTATION_SCENARIO_IDS.map(id => ({id, status: "PASS"}));
+  const validPassReport = syntheticStrictReport();
+  const validFailReport = syntheticStrictReport(X1_EXPECTED_INVARIANT_IDS);
+  const validPassRun = {status: 0, signal: null, error: null, stderr: "", stdout: `${JSON.stringify(validPassReport)}\n`};
+  const validFailRun = {status: 1, signal: null, error: null, stderr: "", stdout: `${JSON.stringify(validFailReport)}\n`};
+  const wrongTargetSource = source.replace(X1_BEFORE_LINE, "    const unrelatedCapability = isSdeCanonicalRetargetableOutcome(outcome);");
+  const multipleHunkSource = `${x1Application?.mutatedSource || ""}\n<!-- unintended second X1 hunk -->`;
   const scenarios = [
     {id: "exact-active-66-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "missing-invariant-id-is-rejected", passed: !validateExactCatalog(STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS, "strict invariant").ok},
@@ -130,6 +243,18 @@ function runCatalogSelfValidation() {
     {id: "survivor-is-rejected", passed: !validateScenarioReports(passReports.map((item, index) => index === 0 ? {...item, status: "FAIL"} : item)).ok},
     {id: "missing-source-mutant-is-rejected", passed: !validateExactCatalog(ACTIVE_SOURCE_MUTANT_IDS.slice(0, -1), ACTIVE_SOURCE_MUTANT_IDS, "source mutant").ok},
     {id: "duplicate-source-mutant-is-rejected", passed: !validateExactCatalog([...ACTIVE_SOURCE_MUTANT_IDS.slice(0, -1), ACTIVE_SOURCE_MUTANT_IDS[0]], ACTIVE_SOURCE_MUTANT_IDS, "source mutant").ok},
+    {id: "unchanged-candidate-harness-exit-zero-is-structured", passed: baseline?.strictExitCode === 0 && baseline?.failIds?.length === 0 && baseline?.counts?.total === STRICT_INVARIANT_IDS.length},
+    {id: "x1-structured-invariant-failure-is-killed", passed: x1Application?.validation?.ok === true && isStructuredMutationKill(x1Mutation, x1Report)},
+    {id: "generic-exit-two-is-rejected", passed: isRejected(()=>parseMutationStrictRun({...validFailRun, status: 2}, "self-exit-two"))},
+    {id: "malformed-json-is-rejected", passed: isRejected(()=>parseMutationStrictRun({...validFailRun, stdout: "{not-json\n"}, "self-malformed"))},
+    {id: "missing-final-json-is-rejected", passed: isRejected(()=>parseMutationStrictRun({...validFailRun, stdout: ""}, "self-missing-json"))},
+    {id: "timeout-is-rejected", passed: isRejected(()=>parseMutationStrictRun({...validFailRun, status: null, error: Object.assign(new Error("timeout"), {code: "ETIMEDOUT"})}, "self-timeout"))},
+    {id: "signal-is-rejected", passed: isRejected(()=>parseMutationStrictRun({...validFailRun, status: null, signal: "SIGTERM"}, "self-signal"))},
+    {id: "unknown-warning-is-rejected", passed: isRejected(()=>parseMutationStrictRun({...validFailRun, stderr: "unexpected warning"}, "self-warning"))},
+    {id: "wrong-x1-target-is-rejected", passed: isRejected(()=>applyX1Mutation(wrongTargetSource))},
+    {id: "multiple-x1-hunks-are-rejected", passed: !validateX1MutationApplication(source, multipleHunkSource).ok},
+    {id: "missing-x1-expected-invariant-is-rejected", passed: !isStructuredMutationKill(x1Mutation, {...x1Report, failIds: (x1Report?.failIds || []).filter(id => id !== X1_EXPECTED_INVARIANT_IDS[0])})},
+    {id: "x1-survivor-is-rejected", passed: !isStructuredMutationKill(x1Mutation, {...parseMutationStrictRun(validPassRun, "self-survivor"), failIds: []})},
   ];
   return {
     status: scenarios.every(item => item.passed) ? "PASS" : "FAIL",
@@ -196,11 +321,7 @@ function strictReport(html, name) {
     timeout: 60_000,
     maxBuffer: 64 * 1024 * 1024,
   });
-  if (run.error || ![0, 1].includes(run.status)) throw new Error(`${name} crashed: ${run.error || run.stderr || run.stdout}`);
-  const report = JSON.parse(String(run.stdout).trim().split(/\n/).filter(Boolean).at(-1));
-  const validation = validateMutationStrictReport(report, run.status);
-  if (!validation.ok) throw new Error(`${name} returned an incomplete strict report: ${validation.errors.join("; ")}`);
-  return {...report, strictExitCode: run.status};
+  return parseMutationStrictRun(run, name);
 }
 
 const legacyOccupiedTargetGuard = "if(getSdeVehicleInSlot(mainTargetSlot)) return null;";
@@ -399,14 +520,9 @@ const mutations = [
     catches: ["INV-RELIEF-009"],
   },
   {
-    id: "X1-bind-canRetarget-to-canCancel",
-    apply: html => replaceOnce(
-      html,
-      "const canRetarget = isSdeCanonicalRetargetableOutcome(outcome);",
-      "const canRetarget = isSdeCanonicalRetargetableOutcome(outcome) && !isRecovery(outcome); /* mutation: bind retarget to cancellation */",
-      "independent canRetarget",
-    ),
-    catches: ["INV-REROUTE-001", "INV-REROUTE-004", "INV-REROUTE-008"],
+    id: X1_MUTANT_ID,
+    apply: applyX1Mutation,
+    catches: [...X1_EXPECTED_INVARIANT_IDS],
   },
   {
     id: "X2-ignore-contextual-rejected-target",
@@ -591,12 +707,16 @@ const mutations = [
   },
   {
     id: "Z5-POISON-GLOBAL-DRAG-AFTER-CHAIN-FAILURE",
-    apply: html => replaceOnce(
-      html,
-      "clearSdePrerequisiteCancellationTransientDragState(); // SDE_PREREQUISITE_CANCEL_DRAG_CLEANUP",
-      "sdeProductionReaderFallbackError = new Error(\"mutation: poison global graphical drag\");",
-      "post-cancellation drag cleanup",
-    ),
+    apply: html => applySemanticStrategy(html, [{
+      id: "current-prerequisite-cancellation-finalizer",
+      functionName: "handleSdeShiftMoveAction/finalizeSdePrerequisiteCancellationTransientDragState",
+      matches: sourceValue => countOccurrences(sourceValue, "finalizeSdePrerequisiteCancellationTransientDragState(); // SDE_PREREQUISITE_CANCEL_DRAG_CLEANUP") === 1,
+      edits: [{
+        name: "post-cancellation drag cleanup",
+        before: "finalizeSdePrerequisiteCancellationTransientDragState(); // SDE_PREREQUISITE_CANCEL_DRAG_CLEANUP",
+        after: "sdeProductionReaderFallbackError = new Error(\"mutation: poison global graphical drag\");",
+      }],
+    }], "post-cancellation drag cleanup"),
     catches: ["INV-EGRESS-021"],
   },
 ];
@@ -608,8 +728,10 @@ try {
   if (baseline.strictExitCode !== 0 || baseline.failIds.length !== 0) throw new Error("active strict baseline must pass before mutation execution");
   const sourceCatalog = validateExactCatalog(mutations.map(item => item.id), ACTIVE_SOURCE_MUTANT_IDS, "source mutant");
   if (!sourceCatalog.ok) throw new Error(sourceCatalog.errors.join("; "));
-  catalogSelfValidation = runCatalogSelfValidation();
-  if (catalogSelfValidation.status !== "PASS") throw new Error("mutation catalog self-validation failed");
+  const x1Mutation = mutations.find(item => item.id === X1_MUTANT_ID);
+  if (!x1Mutation) throw new Error("authoritative X1 mutation is missing");
+  let x1Report = null;
+  let x1Application = null;
 
   for (const mutation of mutations) {
     const applied = mutation.apply(source);
@@ -617,18 +739,24 @@ try {
     const metadata = typeof applied === "string" ? null : applied.metadata;
     if (mutatedSource === source) throw new Error(`${mutation.id}: mutation changed no source`);
     const report = strictReport(mutatedSource, mutation.id);
-    const caught = mutation.any
-      ? mutation.catches.some(id => report.failIds.includes(id))
-      : mutation.catches.every(id => report.failIds.includes(id));
+    const caught = isStructuredMutationKill(mutation, report);
+    if (mutation.id === X1_MUTANT_ID) {
+      x1Report = report;
+      x1Application = {mutatedSource, validation: validateX1MutationApplication(source, mutatedSource)};
+    }
     reports.push({
       id: mutation.id,
       status: caught ? "PASS" : "FAIL",
       expectedRedIds: mutation.catches,
       actualFailIds: report.failIds,
       strictExitCode: report.strictExitCode,
+      structuredKill: caught && report.strictExitCode === 1,
       ...(metadata || {}),
     });
   }
+
+  catalogSelfValidation = runCatalogSelfValidation({baseline, x1Report, x1Application, x1Mutation});
+  if (catalogSelfValidation.status !== "PASS") throw new Error("mutation catalog self-validation failed");
 
   const metaRun = childProcess.spawnSync(process.execPath, [path.join(__dirname, "qualification-contract-meta.cjs")], {cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 64 * 1024 * 1024});
   const metaReport = JSON.parse(String(metaRun.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));

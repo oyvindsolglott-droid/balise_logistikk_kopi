@@ -27,6 +27,16 @@ eval(prefix + String.raw`
   const put=globalThis.__prerequisiteRecord;
   const sanitizeVehicleValue=ctx.sanitizeVehicleValue;
   const normalizeSlot=ctx.normalizeSlot;
+  const structuredSafetyAlerts=[];
+  const failOnUnexpectedAlert=ctx.alert;
+  ctx.alert=message=>{
+    const text=String(message||"");
+    if(text==="Annulleringen ga ikke én komplett canonical planrevision. Gjeldende plan er beholdt uendret."){
+      structuredSafetyAlerts.push(text);
+      return;
+    }
+    return failOnUnexpectedAlert(message);
+  };
 
   const clone=value=>JSON.parse(JSON.stringify(value));
   const currentPlacements=()=>Object.entries(appState.grunnoppstilling||{})
@@ -210,8 +220,59 @@ eval(prefix + String.raw`
     };
   }
 
+  function reacquireCancellationAction(initial){
+    const release=initial?.release||null;
+    const actionKey=release?ctx.getSdeMoveActionKey(release):"";
+    const currentReader=initial?.reader||readerFor(initial?.rows||[]);
+    const currentOutcome=(currentReader?.canonicalPlan?.candidateOutcomes||[])
+      .find(outcome=>String(outcome?.actionKey||"")===actionKey)||null;
+    const currentCard=allCards(currentReader)
+      .find(card=>card?.activeOutcomeId===currentOutcome?.candidateOutcomeId)||null;
+    const currentAdapter=currentCard
+      ? currentReader?.handlerAdapters?.[currentCard.canonicalCardId]||null
+      : null;
+    const renderedCard=initial?.releaseCard||null;
+    const renderedAdapter=initial?.adapter||null;
+    const renderedActionKeys=(ctx.__prerequisiteRenderedData?.moves||[]).map(ctx.getSdeMoveActionKey);
+    const errors=[];
+    if(Object.prototype.hasOwnProperty.call(initial||{},"applied")&&initial.applied!==true) errors.push("drag_not_applied");
+    if(!release||!actionKey) errors.push("current_action_missing");
+    if(!currentOutcome) errors.push("current_outcome_missing");
+    if(!currentCard) errors.push("current_card_missing");
+    if(!currentAdapter) errors.push("current_adapter_missing");
+    if(!renderedActionKeys.includes(actionKey)) errors.push("current_action_not_rendered");
+    if(String(currentReader?.planRevision||"")!==String(initial?.reader?.planRevision||"")) errors.push("plan_revision_changed");
+    if(String(currentCard?.obligationId||"")!==String(renderedCard?.obligationId||"")) errors.push("obligation_changed");
+    if(String(currentCard?.stepId||"")!==String(renderedCard?.stepId||"")) errors.push("step_changed");
+    if(String(currentCard?.activeOutcomeId||"")!==String(renderedCard?.activeOutcomeId||"")) errors.push("active_outcome_changed");
+    if(String(currentAdapter?.executionKey||"")!==String(renderedAdapter?.executionKey||"")) errors.push("execution_key_changed");
+    if(currentCard?.status!=="actionable") errors.push("current_card_not_actionable");
+    if(currentAdapter?.ready!==true) errors.push("current_adapter_not_ready");
+    if(currentAdapter?.canCancel!==true) errors.push("current_cancel_capability_missing");
+    return {
+      ok:errors.length===0,
+      errors,
+      release,
+      releaseCard:currentCard,
+      adapter:currentAdapter,
+      reader:currentReader,
+      actionKey,
+      identity:{
+        planRevision:String(currentReader?.planRevision||""),
+        obligationId:String(currentCard?.obligationId||""),
+        stepId:String(currentCard?.stepId||""),
+        activeOutcomeId:String(currentCard?.activeOutcomeId||""),
+        executionKey:String(currentAdapter?.executionKey||""),
+        canCancel:currentAdapter?.canCancel===true,
+        canRetarget:currentAdapter?.canRetarget===true
+      }
+    };
+  }
+
   async function cancelInitial(initial,{mode="save",beforeAction=null,comment="prerequisite cancel fixture"}={}){
-    const key=ctx.getSdeMoveActionKey(initial.release);
+    const current=reacquireCancellationAction(initial);
+    const key=current.actionKey;
+    const alertStart=structuredSafetyAlerts.length;
     const before=stable({
       actions:appState.sdeMoveActions,
       replans:appState.sdePhysicalReleaseReplans,
@@ -219,7 +280,23 @@ eval(prefix + String.raw`
       overrides:appState.sdeNightPlacementManualOverrides,
       authorities:appState.sdeActiveMoveOutcomes
     });
-    const pending=ctx.handleSdeShiftMoveAction(encodeURIComponent(key),"cancelled",adapterContext(initial));
+    if(!current.ok){
+      return {
+        key,
+        modal:null,
+        before,
+        after:before,
+        projection:finalProjection(),
+        actionRecord:{},
+        structuredSafetyAlerts:[],
+        structuredFailure:{
+          code:"current_prerequisite_cancel_action_unavailable",
+          errors:current.errors,
+          identity:current.identity
+        }
+      };
+    }
+    const pending=ctx.handleSdeShiftMoveAction(encodeURIComponent(key),"cancelled",adapterContext(current));
     const modal=await waitForModal();
     if(typeof beforeAction==="function") beforeAction(initial,modal);
     if(mode==="abort") modal?.backdrop?.controls.get("cancel")?.click();
@@ -239,7 +316,7 @@ eval(prefix + String.raw`
       overrides:appState.sdeNightPlacementManualOverrides,
       authorities:appState.sdeActiveMoveOutcomes
     });
-    return {key,modal,before,after,projection:finalProjection(),actionRecord:ctx.getSdeMoveActionRecord(key)||{}};
+    return {key,modal,before,after,projection:finalProjection(),actionRecord:ctx.getSdeMoveActionRecord(key)||{},structuredSafetyAlerts:structuredSafetyAlerts.slice(alertStart)};
   }
 
   function fillEveryEmptySlot(label){
@@ -270,6 +347,18 @@ eval(prefix + String.raw`
 
   const abortInitial=applyReportedDrag();
   const abortResult=await cancelInitial(abortInitial,{mode:"abort"});
+  if(abortResult.structuredFailure){
+    reports.structuredFailure=abortResult.structuredFailure;
+    ["INV-EGRESS-016","INV-EGRESS-017","INV-EGRESS-018","INV-EGRESS-019","INV-EGRESS-020","INV-EGRESS-021"]
+      .forEach(id=>put(id,false,"structured prerequisite action precondition failed: "+abortResult.structuredFailure.errors.join(",")));
+    reports.contracts={
+      "PREREQUISITE-CANCEL-REPLANS-CHAIN":false,
+      "PREREQUISITE-CANCEL-ALTERNATE-MAIN-TARGET":false,
+      "PREREQUISITE-CANCEL-NO-SOLUTION-IS-SCOPED":false,
+      "POST-CANCEL-GRAPHICAL-DRAG-CONTINUITY":false
+    };
+    return;
+  }
   reports.A_ABORT={modal:Boolean(abortResult.modal),unchanged:abortResult.before===abortResult.after,summary:projectionSummary(abortResult.projection)};
 
   const initialA=applyReportedDrag();
@@ -305,7 +394,8 @@ eval(prefix + String.raw`
     oldMainObligation,
     staleHandler:staleResolution?.executable===false,
     lifecycle:{managed:actionUiA.managed,holdMs:actionUiA.holdMs,exitMs:actionUiA.exitMs,totalMs:actionUiA.totalMs},
-    actionRecord:savedA.actionRecord
+    actionRecord:savedA.actionRecord,
+    structuredSafetyAlerts:savedA.structuredSafetyAlerts
   };
 
   async function alternateMainRun(){
@@ -336,7 +426,7 @@ eval(prefix + String.raw`
   const savedC=await cancelInitial(initialC,{beforeAction:()=>fillEveryEmptySlot("C-FULL"),comment:"fixture C no safe replacement"});
   const summaryC=projectionSummary(savedC.projection);
   const diagnosticC=summaryC.diagnostics.find(item=>String(item?.code||item?.diagnosticType||item?.sdeCanonicalRetargetDiagnostic||"").includes("prerequisite_cancelled_no_safe_replacement"))||null;
-  reports.C={summary:summaryC,diagnostic:diagnosticC,scoped:Boolean(diagnosticC&&diagnosticC.mainVehicleId&&diagnosticC.originalRequestedTarget),noOrphanRecovery:role(savedC.projection.rows,"return").length===0};
+  reports.C={summary:summaryC,diagnostic:diagnosticC,scoped:Boolean(diagnosticC&&diagnosticC.mainVehicleId&&diagnosticC.originalRequestedTarget),noOrphanRecovery:role(savedC.projection.rows,"return").length===0,structuredSafetyAlerts:savedC.structuredSafetyAlerts};
 
   function applyIndependent(independent){
     appState.grunnoppstilling[independent.sourceSlot]=independent.vehicle;
@@ -518,6 +608,7 @@ eval(prefix + String.raw`
   );
   const atomic=Boolean(
     reports.A.replacement.complete
+    && reports.A.structuredSafetyAlerts.length===0
     && reports.A.after.integrity==="PASS"
     && reports.A.after.operativeOutcomes===3
     && reports.A.after.reservations===3
@@ -531,7 +622,11 @@ eval(prefix + String.raw`
     && reports.A.lifecycle.managed
     && reports.A.lifecycle.holdMs===5000
     && reports.A.lifecycle.exitMs===2000
+    && reports.A.replacement.complete
+    && Boolean(reports.A.replacement.releaseTarget)
     && reports.A.replacement.releaseTarget!==oldReleaseTarget
+    && reports.A.actionRecord?.replacementTargetSlot===reports.A.replacement.releaseTarget
+    && reports.A.actionRecord?.replacementTargetSlot!==reports.A.actionRecord?.rejectedTargetSlot
     && reports.A.actionRecord?.rejectedChainFingerprint
     && reports.A.actionRecord?.cancelledPlanRevision
     && Array.isArray(reports.A.actionRecord?.staleOutcomeIds)
@@ -539,6 +634,7 @@ eval(prefix + String.raw`
   );
   const noSolutionScoped=Boolean(
     reports.C.scoped
+    && reports.C.structuredSafetyAlerts.length===0
     && reports.C.noOrphanRecovery
     && reports.C.summary.operativeOutcomes===0
     && reports.C.summary.cards.length===0
