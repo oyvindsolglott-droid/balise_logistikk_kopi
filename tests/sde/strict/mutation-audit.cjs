@@ -233,7 +233,7 @@ function runCatalogSelfValidation({baseline, x1Report, x1Application, x1Mutation
   const wrongTargetSource = source.replace(X1_BEFORE_LINE, "    const unrelatedCapability = isSdeCanonicalRetargetableOutcome(outcome);");
   const multipleHunkSource = `${x1Application?.mutatedSource || ""}\n<!-- unintended second X1 hunk -->`;
   const scenarios = [
-    {id: "exact-active-66-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
+    {id: "exact-active-67-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "missing-invariant-id-is-rejected", passed: !validateExactCatalog(STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "extra-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS, "INV-EXTRA-001"], STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "duplicate-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS[0]], STRICT_INVARIANT_IDS, "strict invariant").ok},

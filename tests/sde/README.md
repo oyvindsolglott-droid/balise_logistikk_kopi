@@ -10,9 +10,9 @@ npm run test:sde:strict
 ```
 
 Strict returnerer non-zero for hver brutt invariant. Den aktive lukkede
-baselinen er 66/66 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
+baselinen er 67/67 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
 tre ganger og blir bare grønn når alle kjøringene har exit 0, eksakt samme
-normaliserte semantikk, unike invariant-ID-er og 66/66 PASS:
+normaliserte semantikk, unike invariant-ID-er og 67/67 PASS:
 
 ```sh
 npm run test:sde:baseline-audit

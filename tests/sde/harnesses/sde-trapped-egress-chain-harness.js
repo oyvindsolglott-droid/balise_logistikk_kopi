@@ -432,7 +432,7 @@ eval(prefix + String.raw`
       reason:chain?.reason||""
     };
   }catch(error){ reports.P={name:"stale cancelled release identity is replanned",error:String(error?.stack||error)}; }
-  put("INV-EGRESS-016",staleReleaseIdentityReplanned,"74-10 5M→6S rejects a stale cancelled 74-12 release identity and materializes one complete replacement chain");
+  put("INV-EGRESS-022",staleReleaseIdentityReplanned,"74-10 5M→6S rejects a stale cancelled 74-12 release identity and materializes one complete replacement chain");
 
   const failed=globalThis.__egressResults.filter(item=>item.status==="FAIL");
   process.stdout.write(JSON.stringify({
