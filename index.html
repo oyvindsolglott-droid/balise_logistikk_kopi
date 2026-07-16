@@ -33838,7 +33838,8 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
         routeText:"Vaskesporet: VS blokkerer VN.",
         reason:`Hard stopp: ${vehicle} i VN kan ikke fysisk flyttes til ${targetSlot} mens VS er belagt av ${washAccessBlocker.vehicle}. Flytt blokkerende kjøretøy i VS først.`
       }
-    : getSdeHardPhysicalBlockStateForMove(blockedMoveRequest);
+    : getSdeCompleteTrappedEgressBlockState(blockedMoveRequest, getSdeHardPhysicalBlockStateForMove(blockedMoveRequest)) // SDE_EGRESS_GRAPHIC_COMPLETE_BLOCK_STATE
+    ;
   if(hardBlockState.hardBlocked){
     const blockedRequest = buildSdeNightPlacementBlockedMoveRequest(vehicle, assessmentFromSlot, targetSlot, row, hardBlockState);
     const releaseRows = Array.isArray(data?.moves) ? data.moves : [];
