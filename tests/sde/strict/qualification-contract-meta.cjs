@@ -2,6 +2,7 @@
 
 const {
   DETERMINISM_RUNS,
+  STRICT_INVARIANT_IDS,
   STRICT_TOTAL,
   assessRuns,
   normalizedBaselineReport,
@@ -11,7 +12,7 @@ const {
 } = require("./qualification-contract.cjs");
 
 function strictReport({failId = "", indexSha256 = "a".repeat(64)} = {}) {
-  const ids = Array.from({length: STRICT_TOTAL}, (_, index) => `INV-META-${String(index + 1).padStart(3, "0")}`);
+  const ids = [...STRICT_INVARIANT_IDS];
   if (failId) ids[0] = failId;
   const results = ids.map((id, index) => ({id, status: failId && index === 0 ? "FAIL" : "PASS", detail: `meta result ${index + 1}`}));
   return {

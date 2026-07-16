@@ -2,8 +2,74 @@
 
 const crypto = require("node:crypto");
 
-const STRICT_TOTAL = 60;
+const STRICT_INVARIANT_IDS = Object.freeze([
+  "INV-CANCEL-001",
+  "INV-CANCEL-002",
+  "INV-CANCEL-003",
+  "INV-CANCEL-004",
+  "INV-CANCEL-005",
+  "INV-CANCEL-006",
+  "INV-CANCEL-007",
+  "INV-CANCEL-008",
+  "INV-CANCEL-009",
+  "INV-CANCEL-010",
+  "INV-CANCEL-011",
+  "INV-CANCEL-012",
+  "INV-CANCEL-013",
+  "INV-CANCEL-014",
+  "INV-CANCEL-015",
+  "INV-CANCEL-016",
+  "INV-CANCEL-017",
+  "INV-EGRESS-001",
+  "INV-EGRESS-002",
+  "INV-EGRESS-003",
+  "INV-EGRESS-004",
+  "INV-EGRESS-005",
+  "INV-EGRESS-006",
+  "INV-EGRESS-007",
+  "INV-EGRESS-008",
+  "INV-EGRESS-009",
+  "INV-EGRESS-010",
+  "INV-EGRESS-011",
+  "INV-EGRESS-012",
+  "INV-EGRESS-013",
+  "INV-EGRESS-014",
+  "INV-EGRESS-015",
+  "INV-RELIEF-001",
+  "INV-RELIEF-002",
+  "INV-RELIEF-003",
+  "INV-RELIEF-004",
+  "INV-RELIEF-005",
+  "INV-RELIEF-006",
+  "INV-RELIEF-007",
+  "INV-RELIEF-008",
+  "INV-RELIEF-009",
+  "INV-RELIEF-010",
+  "INV-RELIEF-011",
+  "INV-REROUTE-001",
+  "INV-REROUTE-002",
+  "INV-REROUTE-003",
+  "INV-REROUTE-004",
+  "INV-REROUTE-005",
+  "INV-REROUTE-006",
+  "INV-REROUTE-007",
+  "INV-REROUTE-008",
+  "INV-TARGET-001",
+  "INV-TARGET-002",
+  "INV-TARGET-003",
+  "INV-TARGET-004",
+  "INV-TARGET-005",
+  "INV-TARGET-006",
+  "INV-TARGET-007",
+  "INV-TARGET-008",
+  "INV-TARGET-009",
+]);
+const STRICT_TOTAL = STRICT_INVARIANT_IDS.length;
 const DETERMINISM_RUNS = 3;
+
+if (STRICT_TOTAL !== 60 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
+  throw new Error("active strict invariant catalog must contain exactly 60 unique IDs");
+}
 
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -66,6 +132,7 @@ function validateStrictReport(report) {
     if (report.results.length !== STRICT_TOTAL) errors.push(`strict results must contain ${STRICT_TOTAL} entries`);
     if (ids.some(id => typeof id !== "string" || !id)) errors.push("strict result IDs must be non-empty strings");
     if (!unique(ids)) errors.push("strict result IDs must be unique");
+    if (canonical([...ids].sort()) !== canonical([...STRICT_INVARIANT_IDS].sort())) errors.push("strict result IDs must match the active invariant catalog exactly");
     if (report.results.some(item => item?.status !== "PASS")) errors.push("every strict result must be PASS");
     if (failures.length !== report?.counts?.fail) errors.push("strict fail count does not match result statuses");
     if (Array.isArray(report?.failIds) && canonical(failures) !== canonical([...report.failIds].sort())) errors.push("strict failIds do not match result statuses");
@@ -141,6 +208,7 @@ function assessRuns(runs, {expectedExitCode = 0, validateReport, normalizeReport
 
 module.exports = {
   DETERMINISM_RUNS,
+  STRICT_INVARIANT_IDS,
   STRICT_TOTAL,
   assessRuns,
   canonical,

@@ -5,6 +5,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const {STRICT_INVARIANT_IDS} = require("./qualification-contract.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const sourcePath = path.join(root, "index.html");
@@ -24,6 +25,116 @@ function countOccurrences(value, search) {
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+const ACTIVE_SOURCE_MUTANT_IDS = Object.freeze([
+  "A-bypass-cancellation-modal",
+  "B-mutate-cancellation-state-before-save",
+  "C-mutate-state-on-modal-cancel",
+  "D-remove-learning-reason-and-comment",
+  "E-remove-exiting-status",
+  "F-remove-replacement-authority",
+  "G-change-5-plus-2",
+  "H-reverse-card-order",
+  "I-keep-placeholder-after-removeAt",
+  "G-allow-occupied-target-card",
+  "H-rank-VN-before-local-south",
+  "I-remove-mandatory-recovery",
+  "X1-bind-canRetarget-to-canCancel",
+  "X2-ignore-contextual-rejected-target",
+  "X3-bypass-whole-chain-target-filter",
+  "X4-retain-old-retarget-resource-identity",
+  "X5-drop-mandatory-retarget-recovery",
+  "Y1-SINGLE-BLOCKER-CAP",
+  "Y2-OMIT-RELEASE-OR-RECOVERY",
+  "Y3-WRONG-DEPENDENCY-ORDER",
+  "Y4-PARTIAL-RESOURCE-PROJECTION",
+  "Y5-ORIGINAL-SNAPSHOT-AFTER-PROGRESS",
+  "Y6-RETARGET-BOUND-TO-CANCEL",
+  "Y7-UNSAFE-CANDIDATE-OR-TARGET-OVERRIDE",
+  "Y8-RECURSIVE-DRAG-BYPASSES-COMPLETE-EGRESS",
+  "Y9-DROP-ACTIONABLE-MID-CHAIN-SUFFIX",
+  "Y10-NULL-MATCHMEDIA-DEREFERENCE",
+]);
+const ACTIVE_MUTATION_SCENARIO_IDS = Object.freeze([
+  ...ACTIVE_SOURCE_MUTANT_IDS,
+  "qualification-contract-positive",
+  "qualification-contract-fail-closed-negatives",
+]);
+
+if (ACTIVE_SOURCE_MUTANT_IDS.length !== 27 || ACTIVE_MUTATION_SCENARIO_IDS.length !== 29) {
+  throw new Error("active mutation catalogs have unexpected totals");
+}
+
+function validateExactCatalog(actualIds, expectedIds, label) {
+  const errors = [];
+  if (!Array.isArray(actualIds)) return {ok: false, errors: [`${label} must be an array`]};
+  if (actualIds.some(id => typeof id !== "string" || !id)) errors.push(`${label} IDs must be non-empty strings`);
+  if (new Set(actualIds).size !== actualIds.length) errors.push(`${label} IDs must be unique`);
+  if (actualIds.length !== expectedIds.length) errors.push(`${label} total must be ${expectedIds.length}`);
+  const actual = [...actualIds].sort();
+  const expected = [...expectedIds].sort();
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) errors.push(`${label} IDs must match the active catalog exactly`);
+  return {ok: errors.length === 0, errors};
+}
+
+function validateMutationStrictReport(report, strictExitCode) {
+  const errors = [];
+  if (report?.schemaVersion !== "sde-strict-report-v1") errors.push("unexpected strict schemaVersion");
+  if (report?.mode !== "strict") errors.push("unexpected strict mode");
+  if (report?.counts?.total !== STRICT_INVARIANT_IDS.length) errors.push(`strict total must be ${STRICT_INVARIANT_IDS.length}`);
+  if (!Array.isArray(report?.results)) {
+    errors.push("strict results must be an array");
+  } else {
+    errors.push(...validateExactCatalog(report.results.map(item => item?.id), STRICT_INVARIANT_IDS, "strict invariant").errors);
+    if (report.results.some(item => !["PASS", "FAIL"].includes(item?.status))) errors.push("strict statuses must be PASS or FAIL");
+  }
+  if (!Array.isArray(report?.failIds)) {
+    errors.push("strict failIds must be an array");
+  } else {
+    if (new Set(report.failIds).size !== report.failIds.length) errors.push("strict failIds must be unique");
+    if (report.failIds.some(id => !STRICT_INVARIANT_IDS.includes(id))) errors.push("strict failIds must belong to the active invariant catalog");
+  }
+  if (Array.isArray(report?.results) && Array.isArray(report?.failIds)) {
+    const failures = report.results.filter(item => item?.status === "FAIL").map(item => item.id).sort();
+    if (JSON.stringify(failures) !== JSON.stringify([...report.failIds].sort())) errors.push("strict failIds must match failed result IDs");
+    if (report?.counts?.fail !== failures.length) errors.push("strict fail count must match failed results");
+    if (report?.counts?.pass !== report.results.length - failures.length) errors.push("strict pass count must match passed results");
+    if (strictExitCode !== (failures.length ? 1 : 0)) errors.push("strict exit code must match failure state");
+  }
+  return {ok: errors.length === 0, errors};
+}
+
+function validateScenarioReports(reports) {
+  const catalog = validateExactCatalog(reports?.map(item => item?.id), ACTIVE_MUTATION_SCENARIO_IDS, "mutation scenario");
+  const errors = [...catalog.errors];
+  if (Array.isArray(reports) && reports.some(item => item?.status !== "PASS")) errors.push("every mutation scenario must be executed and pass; survivors are forbidden");
+  return {ok: errors.length === 0, errors};
+}
+
+function runCatalogSelfValidation() {
+  const passReports = ACTIVE_MUTATION_SCENARIO_IDS.map(id => ({id, status: "PASS"}));
+  const scenarios = [
+    {id: "exact-active-60-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
+    {id: "missing-invariant-id-is-rejected", passed: !validateExactCatalog(STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS, "strict invariant").ok},
+    {id: "extra-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS, "INV-EXTRA-001"], STRICT_INVARIANT_IDS, "strict invariant").ok},
+    {id: "duplicate-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS[0]], STRICT_INVARIANT_IDS, "strict invariant").ok},
+    {id: "missing-y10-scenario-is-rejected", passed: !validateScenarioReports(passReports.filter(item => item.id !== "Y10-NULL-MATCHMEDIA-DEREFERENCE")).ok},
+    {id: "extra-mutation-scenario-is-rejected", passed: !validateScenarioReports([...passReports, {id: "UNKNOWN-MUTATION", status: "PASS"}]).ok},
+    {id: "duplicate-mutation-scenario-is-rejected", passed: !validateScenarioReports([...passReports.slice(0, -1), passReports[0]]).ok},
+    {id: "survivor-is-rejected", passed: !validateScenarioReports(passReports.map((item, index) => index === 0 ? {...item, status: "FAIL"} : item)).ok},
+    {id: "missing-source-mutant-is-rejected", passed: !validateExactCatalog(ACTIVE_SOURCE_MUTANT_IDS.slice(0, -1), ACTIVE_SOURCE_MUTANT_IDS, "source mutant").ok},
+    {id: "duplicate-source-mutant-is-rejected", passed: !validateExactCatalog([...ACTIVE_SOURCE_MUTANT_IDS.slice(0, -1), ACTIVE_SOURCE_MUTANT_IDS[0]], ACTIVE_SOURCE_MUTANT_IDS, "source mutant").ok},
+  ];
+  return {
+    status: scenarios.every(item => item.passed) ? "PASS" : "FAIL",
+    counts: {
+      total: scenarios.length,
+      pass: scenarios.filter(item => item.passed).length,
+      fail: scenarios.filter(item => !item.passed).length,
+    },
+    scenarios: scenarios.map(item => ({id: item.id, status: item.passed ? "PASS" : "FAIL"})),
+  };
 }
 
 function applySemanticStrategy(value, strategies, name) {
@@ -82,9 +193,8 @@ function strictReport(html, name) {
   });
   if (run.error || ![0, 1].includes(run.status)) throw new Error(`${name} crashed: ${run.error || run.stderr || run.stdout}`);
   const report = JSON.parse(String(run.stdout).trim().split(/\n/).filter(Boolean).at(-1));
-  if (report?.counts?.total !== 57 || !Array.isArray(report?.failIds)) {
-    throw new Error(`${name} returned an incomplete strict report`);
-  }
+  const validation = validateMutationStrictReport(report, run.status);
+  if (!validation.ok) throw new Error(`${name} returned an incomplete strict report: ${validation.errors.join("; ")}`);
   return {...report, strictExitCode: run.status};
 }
 
@@ -437,7 +547,15 @@ const mutations = [
 ];
 
 const reports = [];
+let catalogSelfValidation;
 try {
+  const baseline = strictReport(source, "active-baseline");
+  if (baseline.strictExitCode !== 0 || baseline.failIds.length !== 0) throw new Error("active strict baseline must pass before mutation execution");
+  const sourceCatalog = validateExactCatalog(mutations.map(item => item.id), ACTIVE_SOURCE_MUTANT_IDS, "source mutant");
+  if (!sourceCatalog.ok) throw new Error(sourceCatalog.errors.join("; "));
+  catalogSelfValidation = runCatalogSelfValidation();
+  if (catalogSelfValidation.status !== "PASS") throw new Error("mutation catalog self-validation failed");
+
   for (const mutation of mutations) {
     const applied = mutation.apply(source);
     const mutatedSource = typeof applied === "string" ? applied : applied.html;
@@ -472,11 +590,13 @@ try {
   const negatives = negativeIds.map(id => metaReport.scenarios?.find(item => item.id === id));
   reports.push({id: "qualification-contract-positive", status: metaRun.status === 0 && positive?.status === "PASS" ? "PASS" : "FAIL", expectedExitCode: 0, actualExitCode: metaRun.status});
   reports.push({id: "qualification-contract-fail-closed-negatives", status: metaRun.status === 0 && negatives.every(item => item?.status === "PASS") ? "PASS" : "FAIL", expectedExitCode: 0, actualExitCode: metaRun.status, scenarios: negativeIds});
+  const scenarioCatalog = validateScenarioReports(reports);
+  if (!scenarioCatalog.ok) throw new Error(scenarioCatalog.errors.join("; "));
 } finally {
   fs.rmSync(temporary, {recursive: true, force: true});
 }
 
 const failed = reports.filter(item => item.status === "FAIL");
 const mutationReports = reports.filter(item=>!item.id.startsWith("qualification-contract-"));
-process.stdout.write(`${JSON.stringify({schemaVersion: "sde-mutation-audit-v1", mutationCounts:{total:mutationReports.length,pass:mutationReports.filter(item=>item.status==="PASS").length,fail:mutationReports.filter(item=>item.status==="FAIL").length}, counts: {total: reports.length, pass: reports.length - failed.length, fail: failed.length}, reports})}\n`);
+process.stdout.write(`${JSON.stringify({schemaVersion: "sde-mutation-audit-v1", catalogSelfValidation, sourceMutantCounts:{total:mutationReports.length,pass:mutationReports.filter(item=>item.status==="PASS").length,fail:mutationReports.filter(item=>item.status==="FAIL").length}, mutationCounts:{total:mutationReports.length,pass:mutationReports.filter(item=>item.status==="PASS").length,fail:mutationReports.filter(item=>item.status==="FAIL").length}, counts: {total: reports.length, pass: reports.length - failed.length, fail: failed.length}, reports})}\n`);
 process.exit(failed.length ? 1 : 0);
