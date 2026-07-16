@@ -38,7 +38,11 @@ drepes av disse invariantene.
 parent-intenten består, den komplette kjeden replannes atomisk fra fersk actual,
 avvist target/kjede kan ikke returnere, fallback til nytt hovedmål er synlig,
 no-solution er planavgrenset diagnostic-only, og andre grafiske drag forblir
-operative. Mutasjonene Z1–Z5 skal alle drepes av disse invariantene.
+operative. Continuity-fixturen beviser først at den uavhengige positive ruten
+`12S → VN` er fysisk gyldig med `VS`, `12N` og `VN` ledige. Den opprinnelige
+belagte `VS`/`12N`-tilstanden er bevart som en negativ safety-case som skal
+avvises med null operative outcomes, kort, reservasjoner, overlays og adaptere.
+Mutasjonene Z1–Z5 skal alle drepes av disse invariantene.
 
 ```sh
 npm run test:sde:contracts

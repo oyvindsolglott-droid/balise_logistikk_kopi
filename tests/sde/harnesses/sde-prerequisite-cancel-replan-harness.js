@@ -347,7 +347,101 @@ eval(prefix + String.raw`
     const applied=ctx.applySdeNightPlacementDragOverride(payload,independent.targetSlot);
     const fallbackError=vm.runInContext("Boolean(sdeProductionReaderFallbackError)",ctx);
     const canonicalMode=ctx.getSdeProductionReaderMode(ctx.location,{technicalFailure:fallbackError})==="canonical";
-    return {assessment,applied,canonicalMode,fallbackError,override:Object.values(appState.sdeNightPlacementManualOverrides||{}).find(item=>item?.vehicle===independent.vehicle)||null};
+    const projection=finalProjection();
+    const outcomes=(projection.reader?.canonicalPlan?.activeOutcomes||[]).filter(item=>item?.vehicleId===independent.vehicle);
+    const cards=projection.cards.filter(item=>item?.vehicleId===independent.vehicle);
+    const reservations=(projection.reader?.reservationProjection?.reservations||[]).filter(item=>item?.vehicleId===independent.vehicle);
+    const overlays=projection.overlays.filter(item=>item?.vehicleId===independent.vehicle);
+    const adapters=cards.map(card=>projection.reader?.handlerAdapters?.[card.canonicalCardId]).filter(Boolean);
+    const complete=Boolean(
+      projection.reader?.integrityReport?.status==="PASS"
+      && outcomes.length===1
+      && cards.length===1
+      && reservations.length===1
+      && overlays.length===1
+      && adapters.length===1
+      && adapters[0].ready===true
+    );
+    return {assessment,applied,canonicalMode,fallbackError,override:Object.values(appState.sdeNightPlacementManualOverrides||{}).find(item=>item?.vehicle===independent.vehicle)||null,projection,complete,projectionIntegrity:projection.reader?.integrityReport?.status||"ERROR",adapterReady:adapters[0]?.ready===true,adapterStatus:String(adapters[0]?.executionResolution?.status||""),counts:{outcomes:outcomes.length,cards:cards.length,reservations:reservations.length,overlays:overlays.length,adapters:adapters.length}};
+  }
+
+  function preparePositiveIndependentFixture(fixture){
+    const independent=fixture.independent;
+    const preconditions=fixture.positivePhysicalPreconditions||{};
+    (preconditions.mustBeEmpty||[]).forEach(slot=>{delete appState.grunnoppstilling[normalizeSlot(slot)];});
+    appState.grunnoppstilling[normalizeSlot(independent.sourceSlot)]=sanitizeVehicleValue(independent.vehicle);
+    const payload={vehicle:independent.vehicle,slot:independent.sourceSlot,fromSlot:independent.sourceSlot,sourceKind:"actual"};
+    const row={vehicle:independent.vehicle,fromSlot:independent.sourceSlot,arrivalSlot:independent.sourceSlot,recommendedSlot:independent.targetSlot,toSlot:independent.targetSlot};
+    const physical=ctx.getSdeHardPhysicalBlockStateForMove(row);
+    const routeSafe=ctx.isSdeSafePhysicalBlockerReleaseMove(independent.vehicle,independent.sourceSlot,independent.targetSlot);
+    const assessment=ctx.buildSdeNightPlacementDropAssessment(payload,independent.targetSlot,{moves:[]});
+    const projection=finalProjection();
+    const mustBeEmpty=(preconditions.mustBeEmpty||[]).map(normalizeSlot).filter(Boolean);
+    const occupiedMustBeEmpty=mustBeEmpty.filter(slot=>sanitizeVehicleValue(appState.grunnoppstilling[slot]));
+    const requiredResources=(preconditions.requiredRouteResources||[]).map(normalizeSlot).filter(Boolean);
+    const occupiedRequiredResources=requiredResources.filter(slot=>sanitizeVehicleValue(appState.grunnoppstilling[slot]));
+    const relevantReservations=(projection.reader?.reservationProjection?.reservations||[]).filter(item=>
+      normalizeSlot(item?.targetSlot)===normalizeSlot(independent.targetSlot)
+      || (item?.routeResources||[]).some(resource=>requiredResources.includes(normalizeSlot(resource)))
+    );
+    const sourceVehicle=sanitizeVehicleValue(appState.grunnoppstilling[normalizeSlot(independent.sourceSlot)]);
+    const targetVehicle=sanitizeVehicleValue(appState.grunnoppstilling[normalizeSlot(independent.targetSlot)]);
+    const cancellationVehicles=new Set([
+      fixtureCatalog.A.main.vehicle,
+      fixtureCatalog.A.expectedInitialBlocker.vehicle,
+      ...fixtureCatalog.A.placements.map(([,vehicle])=>vehicle)
+    ].map(sanitizeVehicleValue));
+    const independentFromCancellation=!cancellationVehicles.has(sanitizeVehicleValue(independent.vehicle));
+    const valid=Boolean(
+      sourceVehicle===sanitizeVehicleValue(independent.vehicle)
+      && !targetVehicle
+      && occupiedMustBeEmpty.length===0
+      && occupiedRequiredResources.length===0
+      && relevantReservations.length===0
+      && physical?.hardBlocked===false
+      && routeSafe===true
+      && assessment?.ok===true
+      && assessment?.hardPhysicalBlocked!==true
+      && independentFromCancellation
+    );
+    const report={valid,sourceVehicle,targetVehicle:targetVehicle||"",mustBeEmpty,occupiedMustBeEmpty,occupiedRequiredResources,relevantReservations:relevantReservations.length,physicalHardBlocked:Boolean(physical?.hardBlocked),physicalReason:String(physical?.reason||""),routeSafe,assessmentOk:assessment?.ok===true,assessmentHardBlocked:assessment?.hardPhysicalBlocked===true,independentFromCancellation,sourceSlot:independent.sourceSlot,targetSlot:independent.targetSlot,requiredResources};
+    if(!valid) throw new Error("fixture invalid: "+stable(report));
+    return report;
+  }
+
+  async function runNegativePhysicalConflict(fixture){
+    const initial=applyReportedDrag();
+    await cancelInitial(initial,{beforeAction:()=>fillEveryEmptySlot("E-NEGATIVE-FULL"),comment:"fixture E negative physical conflict"});
+    const independent=fixture.independent;
+    appState.grunnoppstilling[independent.sourceSlot]=independent.vehicle;
+    delete appState.grunnoppstilling[independent.targetSlot];
+    (fixture.negativePhysicalConflict?.occupied||[]).forEach(([slot,vehicle])=>{appState.grunnoppstilling[normalizeSlot(slot)]=sanitizeVehicleValue(vehicle);});
+    const payload={vehicle:independent.vehicle,slot:independent.sourceSlot,fromSlot:independent.sourceSlot,sourceKind:"actual"};
+    const assessment=ctx.buildSdeNightPlacementDropAssessment(payload,independent.targetSlot,{moves:[]});
+    const physical=ctx.getSdeHardPhysicalBlockStateForMove({vehicle:independent.vehicle,fromSlot:independent.sourceSlot,arrivalSlot:independent.sourceSlot,recommendedSlot:independent.targetSlot,toSlot:independent.targetSlot});
+    const before=stable({overrides:appState.sdeNightPlacementManualOverrides,authorities:appState.sdeActiveMoveOutcomes,actions:appState.sdeMoveActions});
+    let persistCalls=0;
+    ctx.persist=()=>{persistCalls+=1;};
+    const applyResult=ctx.applySdeNightPlacementDragOverride(payload,independent.targetSlot);
+    const after=stable({overrides:appState.sdeNightPlacementManualOverrides,authorities:appState.sdeActiveMoveOutcomes,actions:appState.sdeMoveActions});
+    const projection=finalProjection();
+    const outcomes=(projection.reader?.canonicalPlan?.activeOutcomes||[]).filter(item=>item?.vehicleId===independent.vehicle);
+    const cards=projection.cards.filter(item=>item?.vehicleId===independent.vehicle);
+    const reservations=(projection.reader?.reservationProjection?.reservations||[]).filter(item=>item?.vehicleId===independent.vehicle);
+    const overlays=projection.overlays.filter(item=>item?.vehicleId===independent.vehicle);
+    const adapterCount=cards.map(card=>projection.reader?.handlerAdapters?.[card.canonicalCardId]).filter(Boolean).length;
+    const blockerSlots=(physical?.blockers||[]).map(item=>normalizeSlot(item?.slot)).filter(Boolean);
+    const noOperativeProjection=outcomes.length===0&&cards.length===0&&reservations.length===0&&overlays.length===0&&adapterCount===0;
+    const rejected=applyResult===false||noOperativeProjection;
+    const physicalDiagnostic=physical?.hardBlocked===true&&blockerSlots.includes("12N")&&blockerSlots.includes("VS")&&/12N|VS/.test(String(physical?.reason||""));
+    const safetyPass=Boolean(
+      rejected
+      && physicalDiagnostic
+      && noOperativeProjection
+      && before===after
+      && persistCalls===0
+    );
+    return {safetyPass,rejected,physicalDiagnostic,assessmentOk:assessment?.ok===true,assessmentHardBlocked:assessment?.hardPhysicalBlocked===true,assessmentMessage:String(assessment?.message||""),assessmentConflicts:assessment?.conflicts||[],applyResult,physicalHardBlocked:Boolean(physical?.hardBlocked),physicalReason:String(physical?.reason||assessment?.message||""),blockerSlots,counts:{outcomes:outcomes.length,cards:cards.length,reservations:reservations.length,overlays:overlays.length,adapters:adapterCount},stateUnchanged:before===after,persistCalls};
   }
 
   const initialD=applyReportedDrag();
@@ -357,8 +451,10 @@ eval(prefix + String.raw`
 
   const initialE=applyReportedDrag();
   await cancelInitial(initialE,{beforeAction:()=>fillEveryEmptySlot("E-FULL"),comment:"fixture E diagnostic before independent drag"});
+  const positivePhysicalPrecondition=preparePositiveIndependentFixture(fixtureCatalog.E);
   const independentAfterC=applyIndependent(fixtureCatalog.E.independent);
-  reports.E={assessmentOk:independentAfterC.assessment?.ok===true,applied:independentAfterC.applied===true,canonicalMode:independentAfterC.canonicalMode,fallbackError:independentAfterC.fallbackError,override:Boolean(independentAfterC.override)};
+  const negativePhysicalConflict=await runNegativePhysicalConflict(fixtureCatalog.E);
+  reports.E={positivePhysicalPrecondition,assessmentOk:independentAfterC.assessment?.ok===true,assessmentHardBlocked:independentAfterC.assessment?.hardPhysicalBlocked===true,applied:independentAfterC.applied===true,canonicalMode:independentAfterC.canonicalMode,fallbackError:independentAfterC.fallbackError,override:Boolean(independentAfterC.override),complete:independentAfterC.complete,projectionIntegrity:independentAfterC.projectionIntegrity,adapterReady:independentAfterC.adapterReady,adapterStatus:independentAfterC.adapterStatus,counts:independentAfterC.counts,negativePhysicalConflict};
 
   const initialF=applyReportedDrag();
   const firstF=await cancelInitial(initialF,{comment:"fixture F first rejection"});
@@ -452,7 +548,9 @@ eval(prefix + String.raw`
   );
   const continuity=Boolean(
     reports.D.assessmentOk&&reports.D.applied&&reports.D.override&&reports.D.canonicalMode&&!reports.D.fallbackError
-    && reports.E.assessmentOk&&reports.E.applied&&reports.E.override&&reports.E.canonicalMode&&!reports.E.fallbackError
+    && reports.E.positivePhysicalPrecondition.valid
+    && reports.E.assessmentOk&&!reports.E.assessmentHardBlocked&&reports.E.applied&&reports.E.override&&reports.E.complete&&reports.E.canonicalMode&&!reports.E.fallbackError
+    && reports.E.negativePhysicalConflict.safetyPass
     && reports.F.unique&&reports.F.terminated
     && reports.G.fresh
   );

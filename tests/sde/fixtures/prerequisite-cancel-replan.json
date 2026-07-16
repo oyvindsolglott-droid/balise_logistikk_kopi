@@ -30,7 +30,16 @@
       "name": "independent-drag-after-diagnostic",
       "baseFixture": "C",
       "independent": {"vehicle": "E-INDEPENDENT", "sourceSlot": "12S", "targetSlot": "VN"},
-      "rule": "A scoped diagnostic cannot poison the graphical receiver for an independent vehicle."
+      "positivePhysicalPreconditions": {
+        "mustBeEmpty": ["VS", "12N", "VN"],
+        "requiredRouteResources": ["VN", "VS"],
+        "rule": "12S contains E-INDEPENDENT while VS, 12N and VN are physically empty, no route resource is reserved and the production route validator accepts 12S to VN."
+      },
+      "negativePhysicalConflict": {
+        "occupied": [["VS", "E-VS-BLOCKER"], ["12N", "E-12N-BLOCKER"]],
+        "rule": "The original VS and 12N occupancy is retained as an explicit unsafe 12S to VN rejection case with zero operative projection."
+      },
+      "rule": "A scoped diagnostic cannot poison the graphical receiver for an independent vehicle whose physical route has first been proven valid."
     },
     "F": {
       "name": "repeated-prerequisite-cancellation",
