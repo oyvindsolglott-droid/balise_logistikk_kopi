@@ -3,26 +3,31 @@
 const childProcess = require("node:child_process");
 const path = require("node:path");
 const {
+  BASELINE_REPLAY_TIMEOUT_MS,
+  CHILD_MAX_BUFFER_BYTES,
   DETERMINISM_RUNS,
+  STRICT_REPLAY_TIMEOUT_MS,
   assessRuns,
+  buildChildDiagnostic,
   normalizedBaselineReport,
   normalizedStrictReport,
+  validateReplaySchedule,
   validateBaselineReport,
   validateStrictReport,
 } = require("./qualification-contract.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const commands = [
-  {name: "strict", file: "strict-runner.cjs", expectedExitCode: 0, validateReport: validateStrictReport, normalizeReport: normalizedStrictReport},
-  {name: "baseline-audit", file: "baseline-audit.cjs", expectedExitCode: 0, validateReport: validateBaselineReport, normalizeReport: normalizedBaselineReport},
+  {name: "strict", file: "strict-runner.cjs", timeoutMs: STRICT_REPLAY_TIMEOUT_MS, expectedExitCode: 0, validateReport: validateStrictReport, normalizeReport: normalizedStrictReport},
+  {name: "baseline-audit", file: "baseline-audit.cjs", timeoutMs: BASELINE_REPLAY_TIMEOUT_MS, expectedExitCode: 0, validateReport: validateBaselineReport, normalizeReport: normalizedBaselineReport},
 ];
 const reports = [];
 
 const metaRun = childProcess.spawnSync(process.execPath, [path.join(__dirname, "qualification-contract-meta.cjs")], {
   cwd: root,
   encoding: "utf8",
-  timeout: 60_000,
-  maxBuffer: 64 * 1024 * 1024,
+  timeout: STRICT_REPLAY_TIMEOUT_MS,
+  maxBuffer: CHILD_MAX_BUFFER_BYTES,
 });
 let metaReport = null;
 try {
@@ -47,21 +52,70 @@ const metaOk = !metaRun.error
   && metaReport?.counts?.fail === 0
   && requiredMetaScenarios.every(id => metaReport.scenarios?.some(item => item.id === id && item.status === "PASS"));
 
+function runReplaySeries(command) {
+  const runs = [];
+  const intervals = [];
+  const diagnostics = [];
+  const epoch = process.hrtime.bigint();
+  let activeChildren = 0;
+  let maximumObservedConcurrency = 0;
+  for (let index = 0; index < DETERMINISM_RUNS; index += 1) {
+    const startNs = Number(process.hrtime.bigint() - epoch);
+    activeChildren += 1;
+    maximumObservedConcurrency = Math.max(maximumObservedConcurrency, activeChildren);
+    let run;
+    try {
+      run = childProcess.spawnSync(process.execPath, [path.join(__dirname, command.file)], {
+        cwd: root,
+        encoding: "utf8",
+        timeout: command.timeoutMs,
+        maxBuffer: CHILD_MAX_BUFFER_BYTES,
+      });
+    } catch (error) {
+      run = {status: null, signal: null, stdout: "", stderr: "", error};
+    } finally {
+      activeChildren -= 1;
+    }
+    const endNs = Number(process.hrtime.bigint() - epoch);
+    run.replayTiming = {
+      startNs,
+      endNs,
+      elapsedMs: (endNs - startNs) / 1_000_000,
+      completed: !run.error && (Number.isInteger(run.status) || Boolean(run.signal)),
+    };
+    runs.push(run);
+    intervals.push(run.replayTiming);
+    const diagnostic = buildChildDiagnostic(run, {
+      childType: command.name,
+      runIndex: index + 1,
+      command: [process.execPath, path.join(__dirname, command.file)],
+      cwd: root,
+      timeoutMs: command.timeoutMs,
+      expectedExitCode: command.expectedExitCode,
+    });
+    if (diagnostic) diagnostics.push(diagnostic);
+  }
+  const schedule = validateReplaySchedule(intervals);
+  if (maximumObservedConcurrency !== schedule.summary.maximumConcurrency) {
+    schedule.errors.push(`observed concurrency ${maximumObservedConcurrency} disagrees with interval concurrency ${schedule.summary.maximumConcurrency}`);
+    schedule.ok = false;
+  }
+  return {runs, schedule, diagnostics};
+}
+
 for (const command of commands) {
-  const runs = Array.from({length: DETERMINISM_RUNS}, () => childProcess.spawnSync(process.execPath, [path.join(__dirname, command.file)], {
-    cwd: root,
-    encoding: "utf8",
-    timeout: 60_000,
-    maxBuffer: 64 * 1024 * 1024,
-  }));
+  const execution = runReplaySeries(command);
+  const runs = execution.runs;
   const assessment = assessRuns(runs, command);
   reports.push({
     name: command.name,
-    status: assessment.ok ? "PASS" : "FAIL",
+    status: assessment.ok && execution.schedule.ok ? "PASS" : "FAIL",
     expectedExitCode: command.expectedExitCode,
     exitCodes: assessment.exitCodes,
     normalizedOutputSha256: assessment.normalizedOutputSha256,
-    validationErrors: assessment.errors,
+    replayContract: execution.schedule.summary,
+    childDiagnostics: execution.diagnostics,
+    validationErrors: [...assessment.errors, ...execution.schedule.errors],
   });
 }
 

@@ -72,6 +72,9 @@ const STRICT_INVARIANT_IDS = Object.freeze([
 ]);
 const STRICT_TOTAL = STRICT_INVARIANT_IDS.length;
 const DETERMINISM_RUNS = 3;
+const STRICT_REPLAY_TIMEOUT_MS = 60_000;
+const BASELINE_REPLAY_TIMEOUT_MS = 180_000;
+const CHILD_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
 if (STRICT_TOTAL !== 66 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
   throw new Error("active strict invariant catalog must contain exactly 66 unique IDs");
@@ -178,6 +181,63 @@ function validateBaselineReport(report) {
   return {ok: errors.length === 0, errors, normalized: normalizedBaselineReport(report)};
 }
 
+function validateReplaySchedule(intervals) {
+  const errors = [];
+  if (!Array.isArray(intervals)) {
+    return {ok: false, errors: ["replay schedule must be an array"], summary: {runCount: 0, maximumConcurrency: null, sequential: false, allCompleted: false}};
+  }
+  if (intervals.length !== DETERMINISM_RUNS) errors.push(`expected ${DETERMINISM_RUNS} scheduled runs, got ${intervals.length}`);
+  let maximumConcurrency = 0;
+  let sequential = true;
+  let allCompleted = true;
+  intervals.forEach((interval, index) => {
+    const validBounds = Number.isFinite(interval?.startNs) && Number.isFinite(interval?.endNs) && interval.endNs >= interval.startNs;
+    if (!validBounds) errors.push(`run ${index + 1}: invalid replay interval`);
+    if (interval?.completed !== true) {
+      allCompleted = false;
+      errors.push(`run ${index + 1}: child did not fully exit`);
+    }
+    if (index && validBounds) {
+      const previous = intervals[index - 1];
+      if (!Number.isFinite(previous?.endNs) || previous.endNs > interval.startNs) {
+        sequential = false;
+        errors.push(`run ${index + 1}: started before run ${index} fully exited`);
+      }
+    }
+  });
+  for (const interval of intervals) {
+    if (!Number.isFinite(interval?.startNs) || !Number.isFinite(interval?.endNs)) continue;
+    const concurrency = intervals.filter(other => Number.isFinite(other?.startNs)
+      && Number.isFinite(other?.endNs)
+      && other.startNs <= interval.startNs
+      && other.endNs > interval.startNs).length;
+    maximumConcurrency = Math.max(maximumConcurrency, concurrency);
+  }
+  if (maximumConcurrency > 1) errors.push(`maximum replay concurrency must be 1, got ${maximumConcurrency}`);
+  return {
+    ok: errors.length === 0,
+    errors,
+    summary: {runCount: intervals.length, maximumConcurrency, sequential, allCompleted},
+  };
+}
+
+function buildChildDiagnostic(run, {childType, runIndex, command, cwd, timeoutMs, expectedExitCode = 0}) {
+  const errorCode = run?.error?.code || (run?.signal ? "SIGNAL_TERMINATION" : null);
+  const failed = Boolean(run?.error) || run?.status !== expectedExitCode || Boolean(run?.signal);
+  if (!failed) return null;
+  return {
+    childType,
+    runIndex,
+    command: [...command],
+    elapsedMs: Number(run?.replayTiming?.elapsedMs ?? 0),
+    timeoutMs,
+    cwd,
+    errorCode,
+    status: run?.status ?? null,
+    signal: run?.signal || null,
+  };
+}
+
 function assessRuns(runs, {expectedExitCode = 0, validateReport, normalizeReport}) {
   const parsed = [];
   const normalized = [];
@@ -213,14 +273,19 @@ function assessRuns(runs, {expectedExitCode = 0, validateReport, normalizeReport
 }
 
 module.exports = {
+  BASELINE_REPLAY_TIMEOUT_MS,
+  CHILD_MAX_BUFFER_BYTES,
   DETERMINISM_RUNS,
+  STRICT_REPLAY_TIMEOUT_MS,
   STRICT_INVARIANT_IDS,
   STRICT_TOTAL,
   assessRuns,
+  buildChildDiagnostic,
   canonical,
   normalizedBaselineReport,
   normalizedStrictReport,
   sha256,
+  validateReplaySchedule,
   validateBaselineReport,
   validateStrictReport,
 };
