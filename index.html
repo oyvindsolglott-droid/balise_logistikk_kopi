@@ -18483,8 +18483,10 @@ function buildSdeCancelledDismissalRows(){
 }
 
 function prefersReducedSdeReleaseMotion(){
-  return typeof window?.matchMedia === "function"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const mediaQuery = typeof window?.matchMedia === "function"
+    ? window.matchMedia("(prefers-reduced-motion: reduce)")
+    : null;
+  return mediaQuery?.matches === true; // SDE_EGRESS_NULL_SAFE_MOTION
 }
 
 function getSdePhysicalReleaseCancelledUiState(row, now=Date.now()){
