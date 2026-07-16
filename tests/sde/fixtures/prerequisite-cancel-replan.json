@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "sde-prerequisite-cancel-replan-fixtures-v1",
+  "fixtures": {
+    "A": {
+      "name": "reported-prerequisite-cancel-replan",
+      "placements": [["5N", "74-12"], ["5M", "74-10"], ["5S", "74-11"]],
+      "main": {"vehicle": "74-10", "sourceSlot": "5M", "requestedTarget": "4M", "requestId": "cancel-replan-a"},
+      "expectedInitialBlocker": {"vehicle": "74-12", "sourceSlot": "5N"},
+      "rule": "Cancel abort is a no-op; Save rejects one temporary route while preserving the 5M to 4M parent intent and rebuilding a complete chain."
+    },
+    "B": {
+      "name": "alternate-main-target-after-fresh-occupancy",
+      "baseFixture": "A",
+      "occupyOriginalTargetBeforeSave": ["4M", "B-FRESH-OCCUPANT"],
+      "rule": "Fresh actual state makes the original target unavailable after the modal opens; a complete deterministic alternate main target must be visible and historically linked."
+    },
+    "C": {
+      "name": "no-safe-replacement",
+      "baseFixture": "A",
+      "fillAllEmptySlotsBeforeSave": true,
+      "rule": "No complete original-target or alternate-target plan exists, so the result is scoped diagnostic-only without operative projection."
+    },
+    "D": {
+      "name": "independent-drag-after-replacement",
+      "baseFixture": "A",
+      "independent": {"vehicle": "D-INDEPENDENT", "sourceSlot": "12S", "targetSlot": "9"},
+      "rule": "A real independent graphical order remains stageable after successful prerequisite cancellation replanning."
+    },
+    "E": {
+      "name": "independent-drag-after-diagnostic",
+      "baseFixture": "C",
+      "independent": {"vehicle": "E-INDEPENDENT", "sourceSlot": "12S", "targetSlot": "VN"},
+      "rule": "A scoped diagnostic cannot poison the graphical receiver for an independent vehicle."
+    },
+    "F": {
+      "name": "repeated-prerequisite-cancellation",
+      "baseFixture": "A",
+      "rule": "Two rejected prerequisite strategies never loop back to an earlier target or chain."
+    },
+    "G": {
+      "name": "fresh-actual-during-replan",
+      "baseFixture": "A",
+      "occupyNextTemporaryTargetBeforeSave": ["6N", "G-FRESH-OCCUPANT"],
+      "rule": "The replacement planner reads fresh actual state and cannot select a newly occupied temporary target."
+    },
+    "H": {
+      "name": "main-cancellation-unchanged",
+      "placements": [["12S", "H-MAIN"]],
+      "main": {"vehicle": "H-MAIN", "sourceSlot": "12S", "requestedTarget": "9", "requestId": "cancel-main-h"},
+      "rule": "Cancelling a main card remains main cancellation and does not enter prerequisite replanning."
+    },
+    "I": {
+      "name": "delete-card-unchanged",
+      "baseFixture": "A",
+      "rule": "Delete remains a separate canDelete path and creates no prerequisite rejection context."
+    }
+  }
+}

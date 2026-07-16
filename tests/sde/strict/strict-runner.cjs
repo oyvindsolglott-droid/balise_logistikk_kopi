@@ -13,6 +13,7 @@ const drivers = [
   "relief-invariants.cjs",
   "reroute-invariants.cjs",
   "egress-invariants.cjs",
+  "prerequisite-cancel-invariants.cjs",
 ];
 
 function runDriver(driver) {

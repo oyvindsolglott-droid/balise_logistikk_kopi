@@ -52,6 +52,18 @@ function runHarness(file, sourcePath = indexPath) {
   return run(process.execPath, [path.join(harnessDirectory, file), sourcePath]);
 }
 
+let prerequisiteCancelReport = null;
+function getPrerequisiteCancelReport() {
+  if (prerequisiteCancelReport) return prerequisiteCancelReport;
+  const result = runHarness("sde-prerequisite-cancel-replan-harness.js");
+  assert.equal(result.error, undefined, `prerequisite-cancel harness could not start: ${result.error?.message || "unknown error"}`);
+  assert.ok([0, 1].includes(result.status), `prerequisite-cancel harness crashed:\n${failureDetails(result)}`);
+  prerequisiteCancelReport = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
+  assert.equal(prerequisiteCancelReport?.schemaVersion, "sde-prerequisite-cancel-replan-harness-v1");
+  assert.equal(prerequisiteCancelReport?.counts?.total, 6);
+  return prerequisiteCancelReport;
+}
+
 function registerHarnessTest({phase, name, harness, baseline}) {
   test(`${phase} — ${name}`, () => {
     assertPassed(runHarness(harness), `${phase} current contract`);
@@ -226,9 +238,9 @@ test("H — card preview stays explicit, fail-closed and non-interactive", () =>
   );
 });
 
-test("I/L audits and executable R/X/Y coverage cannot disappear silently", () => {
+test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
-  assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXY".split(""));
+  assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
   assert.equal(coverage.I.status, "audit-only");
   assert.equal(coverage.L.status, "audit-only");
   assert.equal(coverage.R.status, "implemented");
@@ -237,6 +249,8 @@ test("I/L audits and executable R/X/Y coverage cannot disappear silently", () =>
   assert.deepEqual(coverage.X.invariants, ["INV-REROUTE-001", "INV-REROUTE-002", "INV-REROUTE-003", "INV-REROUTE-004", "INV-REROUTE-005", "INV-REROUTE-006", "INV-REROUTE-007", "INV-REROUTE-008"]);
   assert.equal(coverage.Y.status, "implemented");
   assert.deepEqual(coverage.Y.invariants, ["INV-EGRESS-001", "INV-EGRESS-002", "INV-EGRESS-003", "INV-EGRESS-004", "INV-EGRESS-005", "INV-EGRESS-006", "INV-EGRESS-007", "INV-EGRESS-008", "INV-EGRESS-009", "INV-EGRESS-010", "INV-EGRESS-011", "INV-EGRESS-012", "INV-EGRESS-013", "INV-EGRESS-014", "INV-EGRESS-015"]);
+  assert.equal(coverage.Z.status, "implemented");
+  assert.deepEqual(coverage.Z.invariants, ["INV-EGRESS-016", "INV-EGRESS-017", "INV-EGRESS-018", "INV-EGRESS-019", "INV-EGRESS-020", "INV-EGRESS-021"]);
   for(const phase of Object.keys(coverage).filter(letter => !["I", "L"].includes(letter))){
     assert.equal(coverage[phase].status, "implemented", `${phase} must remain implemented`);
   }
@@ -293,6 +307,18 @@ for(const [id,name] of [
   const invariant=report?.results?.find(item=>item.id===id);
   assert.equal(invariant?.status,"PASS",invariant?.detail||`${id} missing`);
 });
+
+for (const contractName of [
+  "PREREQUISITE-CANCEL-REPLANS-CHAIN",
+  "PREREQUISITE-CANCEL-ALTERNATE-MAIN-TARGET",
+  "PREREQUISITE-CANCEL-NO-SOLUTION-IS-SCOPED",
+  "POST-CANCEL-GRAPHICAL-DRAG-CONTINUITY",
+]) {
+  test(`CONTRACT ${contractName}`, () => {
+    const report = getPrerequisiteCancelReport();
+    assert.equal(report?.scenarios?.contracts?.[contractName], true, `${contractName} failed in the production-code harness`);
+  });
+}
 
 registerHarnessTest({
   phase: "M1",

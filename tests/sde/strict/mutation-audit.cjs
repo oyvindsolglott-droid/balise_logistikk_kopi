@@ -55,6 +55,11 @@ const ACTIVE_SOURCE_MUTANT_IDS = Object.freeze([
   "Y8-RECURSIVE-DRAG-BYPASSES-COMPLETE-EGRESS",
   "Y9-DROP-ACTIONABLE-MID-CHAIN-SUFFIX",
   "Y10-NULL-MATCHMEDIA-DEREFERENCE",
+  "Z1-DROP-PARENT-INTENT-ON-PREREQUISITE-CANCEL",
+  "Z2-REUSE-REJECTED-CHAIN",
+  "Z3-COMMIT-PARTIAL-CANCELLED-CHAIN",
+  "Z4-RETAIN-STALE-CANCELLED-RESOURCES",
+  "Z5-POISON-GLOBAL-DRAG-AFTER-CHAIN-FAILURE",
 ]);
 const ACTIVE_MUTATION_SCENARIO_IDS = Object.freeze([
   ...ACTIVE_SOURCE_MUTANT_IDS,
@@ -62,7 +67,7 @@ const ACTIVE_MUTATION_SCENARIO_IDS = Object.freeze([
   "qualification-contract-fail-closed-negatives",
 ]);
 
-if (ACTIVE_SOURCE_MUTANT_IDS.length !== 27 || ACTIVE_MUTATION_SCENARIO_IDS.length !== 29) {
+if (ACTIVE_SOURCE_MUTANT_IDS.length !== 32 || ACTIVE_MUTATION_SCENARIO_IDS.length !== 34) {
   throw new Error("active mutation catalogs have unexpected totals");
 }
 
@@ -115,7 +120,7 @@ function validateScenarioReports(reports) {
 function runCatalogSelfValidation() {
   const passReports = ACTIVE_MUTATION_SCENARIO_IDS.map(id => ({id, status: "PASS"}));
   const scenarios = [
-    {id: "exact-active-60-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
+    {id: "exact-active-66-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "missing-invariant-id-is-rejected", passed: !validateExactCatalog(STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "extra-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS, "INV-EXTRA-001"], STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "duplicate-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS[0]], STRICT_INVARIANT_IDS, "strict invariant").ok},
@@ -543,6 +548,56 @@ const mutations = [
       "null-safe reduced motion",
     ),
     catches: ["INV-EGRESS-015"],
+  },
+  {
+    id: "Z1-DROP-PARENT-INTENT-ON-PREREQUISITE-CANCEL",
+    apply: html => replaceOnce(
+      html,
+      "const parentIntent = getSdePrerequisiteCancellationParentIntent(cancelledRow, data); // SDE_PREREQUISITE_CANCEL_PRESERVE_PARENT",
+      "const parentIntent = null; /* mutation: drop parent intent */",
+      "prerequisite parent intent",
+    ),
+    catches: ["INV-EGRESS-016", "INV-EGRESS-017"],
+  },
+  {
+    id: "Z2-REUSE-REJECTED-CHAIN",
+    apply: html => replaceOnce(
+      html,
+      "const rejection = setSdeCanonicalRetargetIntent(cancelledRow, {mode:\"reject_target\", rejectedTarget}); // SDE_PREREQUISITE_CANCEL_CONTEXTUAL_REJECTION",
+      "const rejection = {ok:true,intent:null}; /* mutation: reuse rejected chain */",
+      "contextual prerequisite rejection",
+    ),
+    catches: ["INV-EGRESS-017", "INV-EGRESS-019"],
+  },
+  {
+    id: "Z3-COMMIT-PARTIAL-CANCELLED-CHAIN",
+    apply: html => replaceOnce(
+      html,
+      "const atomicReplacement = replacement; // SDE_PREREQUISITE_CANCEL_ATOMIC_PLAN",
+      "const atomicReplacement = replacement?.kind === \"diagnostic\" ? {...replacement,kind:\"complete\",rows:[cancelledRow]} : {...replacement,rows:(replacement?.rows||[]).filter(row=>row.sdePhysicalDependencyRole===\"return\")}; /* mutation: partial cancelled chain */",
+      "atomic prerequisite replacement",
+    ),
+    catches: ["INV-EGRESS-018", "INV-EGRESS-020"],
+  },
+  {
+    id: "Z4-RETAIN-STALE-CANCELLED-RESOURCES",
+    apply: html => replaceOnce(
+      html,
+      "const staleOutcomeIds = getSdePrerequisiteCancellationStaleOutcomeIds(cancelledRow, parentIntent, data); // SDE_PREREQUISITE_CANCEL_STALE_RESOURCES",
+      "const staleOutcomeIds = []; /* mutation: retain stale cancelled resources */",
+      "stale prerequisite resources",
+    ),
+    catches: ["INV-EGRESS-019"],
+  },
+  {
+    id: "Z5-POISON-GLOBAL-DRAG-AFTER-CHAIN-FAILURE",
+    apply: html => replaceOnce(
+      html,
+      "clearSdePrerequisiteCancellationTransientDragState(); // SDE_PREREQUISITE_CANCEL_DRAG_CLEANUP",
+      "sdeProductionReaderFallbackError = new Error(\"mutation: poison global graphical drag\");",
+      "post-cancellation drag cleanup",
+    ),
+    catches: ["INV-EGRESS-021"],
   },
 ];
 

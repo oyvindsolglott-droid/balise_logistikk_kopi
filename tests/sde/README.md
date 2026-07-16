@@ -10,9 +10,9 @@ npm run test:sde:strict
 ```
 
 Strict returnerer non-zero for hver brutt invariant. Den aktive lukkede
-baselinen er 60/60 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
+baselinen er 66/66 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
 tre ganger og blir bare grønn når alle kjøringene har exit 0, eksakt samme
-normaliserte semantikk, unike invariant-ID-er og 60/60 PASS:
+normaliserte semantikk, unike invariant-ID-er og 66/66 PASS:
 
 ```sh
 npm run test:sde:baseline-audit
@@ -34,6 +34,12 @@ replanlegging, recursive grafiske bestillinger, handlingsklare mid-chain-suffix
 og null-sikker reduced-motion-lesing. Mutasjonsscenariene Y1–Y10 skal alle
 drepes av disse invariantene.
 
+`INV-EGRESS-016`–`021` låser den faktiske prerequisite-cancellation-banen:
+parent-intenten består, den komplette kjeden replannes atomisk fra fersk actual,
+avvist target/kjede kan ikke returnere, fallback til nytt hovedmål er synlig,
+no-solution er planavgrenset diagnostic-only, og andre grafiske drag forblir
+operative. Mutasjonene Z1–Z5 skal alle drepes av disse invariantene.
+
 ```sh
 npm run test:sde:contracts
 npm run test:sde:mutations
@@ -45,7 +51,7 @@ Strict-driverne leser `index.html`, trekker ut inline-skriptene og evaluerer de
 faktiske production-funksjonene i en isolert VM. De kopierer ikke funksjonene
 som testes. I og L er dokumenterte read-only audits. R er kjørbar gjennom
 `INV-CANCEL-010`–`013`, X gjennom `INV-REROUTE-001`–`008`, og Y gjennom
-`INV-EGRESS-001`–`015`.
+`INV-EGRESS-001`–`015`, og Z gjennom `INV-EGRESS-016`–`021`.
 
 CI-jobben har stabilt navn `permanent-regressions`, kjører
 `npm run test:sde:strict`, har read-only permissions og feiler når én invariant
