@@ -236,7 +236,7 @@ test("I/L audits and executable R/X/Y coverage cannot disappear silently", () =>
   assert.equal(coverage.X.status, "implemented");
   assert.deepEqual(coverage.X.invariants, ["INV-REROUTE-001", "INV-REROUTE-002", "INV-REROUTE-003", "INV-REROUTE-004", "INV-REROUTE-005", "INV-REROUTE-006", "INV-REROUTE-007", "INV-REROUTE-008"]);
   assert.equal(coverage.Y.status, "implemented");
-  assert.deepEqual(coverage.Y.invariants, ["INV-EGRESS-001", "INV-EGRESS-002", "INV-EGRESS-003", "INV-EGRESS-004", "INV-EGRESS-005", "INV-EGRESS-006", "INV-EGRESS-007", "INV-EGRESS-008", "INV-EGRESS-009", "INV-EGRESS-010", "INV-EGRESS-011", "INV-EGRESS-012"]);
+  assert.deepEqual(coverage.Y.invariants, ["INV-EGRESS-001", "INV-EGRESS-002", "INV-EGRESS-003", "INV-EGRESS-004", "INV-EGRESS-005", "INV-EGRESS-006", "INV-EGRESS-007", "INV-EGRESS-008", "INV-EGRESS-009", "INV-EGRESS-010", "INV-EGRESS-011", "INV-EGRESS-012", "INV-EGRESS-013", "INV-EGRESS-014", "INV-EGRESS-015"]);
   for(const phase of Object.keys(coverage).filter(letter => !["I", "L"].includes(letter))){
     assert.equal(coverage[phase].status, "implemented", `${phase} must remain implemented`);
   }
@@ -271,12 +271,27 @@ registerHarnessTest({
 
 test("Y — complete trapped-egress chains and unresolved-step retarget stay atomic", () => {
   const result = runHarness("sde-trapped-egress-chain-harness.js");
-  assertPassed(result, "Y trapped-egress harness");
+  assert.equal(result.error,undefined,`Y trapped-egress harness could not start: ${result.error?.message||"unknown error"}`);
+  assert.ok([0,1].includes(result.status),`Y trapped-egress harness crashed:\n${failureDetails(result)}`);
   const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
   assert.equal(report?.schemaVersion, "sde-trapped-egress-harness-v1");
-  assert.deepEqual(report?.counts, {total:12,pass:12,fail:0});
-  assert.deepEqual(report?.results?.map(item=>item.id), Array.from({length:12},(_,index)=>`INV-EGRESS-${String(index+1).padStart(3,"0")}`));
+  assert.equal(report?.counts?.total,15);
+  assert.deepEqual(report?.results?.map(item=>item.id), Array.from({length:15},(_,index)=>`INV-EGRESS-${String(index+1).padStart(3,"0")}`));
+  assert.equal(report?.results?.slice(0,12).every(item=>item.status==="PASS"),true,"the pre-existing 12 Y invariants must remain green");
   for(const fixture of "ABCDEFGHIJKL") assert.ok(report?.scenarios?.[fixture] || ["H","I","J","K"].includes(fixture), `missing fixture ${fixture}`);
+});
+
+for(const [id,name] of [
+  ["INV-EGRESS-013","recursive graphical drag selects the complete physical-chain staging path"],
+  ["INV-EGRESS-014","completed prerequisite preserves a fully projected actionable mid-chain suffix"],
+  ["INV-EGRESS-015","responsive reduced-motion detection tolerates a null MediaQueryList"],
+]) test(`${id} — ${name}`,()=>{
+  const result=runHarness("sde-trapped-egress-chain-harness.js");
+  assert.equal(result.error,undefined,`${id} harness could not start: ${result.error?.message||"unknown error"}`);
+  assert.ok([0,1].includes(result.status),`${id} harness crashed:\n${failureDetails(result)}`);
+  const report=JSON.parse(String(result.stdout||"").trim().split(/\n/).filter(Boolean).at(-1));
+  const invariant=report?.results?.find(item=>item.id===id);
+  assert.equal(invariant?.status,"PASS",invariant?.detail||`${id} missing`);
 });
 
 registerHarnessTest({

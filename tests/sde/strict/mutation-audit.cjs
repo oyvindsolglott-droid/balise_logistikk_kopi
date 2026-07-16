@@ -404,6 +404,36 @@ const mutations = [
     ),
     catches: ["INV-EGRESS-007", "INV-EGRESS-010", "INV-EGRESS-012"],
   },
+  {
+    id: "Y8-RECURSIVE-DRAG-BYPASSES-COMPLETE-EGRESS",
+    apply: html => replaceOnce(
+      html,
+      "getSdeCompleteTrappedEgressBlockState(blockedMoveRequest, getSdeHardPhysicalBlockStateForMove(blockedMoveRequest)) // SDE_EGRESS_GRAPHIC_COMPLETE_BLOCK_STATE",
+      "getSdeHardPhysicalBlockStateForMove(blockedMoveRequest) /* mutation: bypass complete recursive egress */",
+      "recursive graphical complete block state",
+    ),
+    catches: ["INV-EGRESS-013"],
+  },
+  {
+    id: "Y9-DROP-ACTIONABLE-MID-CHAIN-SUFFIX",
+    apply: html => replaceOnce(
+      html,
+      "&& (row.sdeTrappedEgressChainStep === true || row.sdePhysicalDependsOn.map(value=>String(value || \"\").trim()).filter(Boolean).length) // SDE_EGRESS_ACTIONABLE_SUFFIX",
+      "&& row.sdePhysicalDependsOn.map(value=>String(value || \"\").trim()).filter(Boolean).length /* mutation: require stale prerequisite */",
+      "actionable mid-chain suffix",
+    ),
+    catches: ["INV-EGRESS-014"],
+  },
+  {
+    id: "Y10-NULL-MATCHMEDIA-DEREFERENCE",
+    apply: html => replaceOnce(
+      html,
+      "return mediaQuery?.matches === true; // SDE_EGRESS_NULL_SAFE_MOTION",
+      "return mediaQuery.matches === true; /* mutation: null MediaQueryList dereference */",
+      "null-safe reduced motion",
+    ),
+    catches: ["INV-EGRESS-015"],
+  },
 ];
 
 const reports = [];

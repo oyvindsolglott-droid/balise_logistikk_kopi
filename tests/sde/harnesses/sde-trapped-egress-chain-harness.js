@@ -242,6 +242,125 @@ eval(prefix + String.raw`
   const direct=Boolean(L.rows.length===1&&!L.rows[0].sdePhysicalChainId&&L.rows[0].toSlot===f.L.main.requestedTarget&&L.reader?.integrityReport?.status==="PASS");
   put("INV-EGRESS-012",direct&&vnRegression,"direct moves and contextual VN rejection remain intact");
 
+  let recursiveGraphicPath=false;
+  try{
+    resetState(f.F.placements);
+    appState.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
+    const assessment=ctx.buildSdeNightPlacementDropAssessment({
+      vehicle:f.F.main.vehicle,
+      slot:f.F.main.sourceSlot,
+      fromSlot:f.F.main.sourceSlot,
+      sourceKind:"actual"
+    },f.F.main.requestedTarget,{moves:[]});
+    const override={
+      id:"invariant-recursive-"+f.F.main.requestId,
+      vehicle:f.F.main.vehicle,
+      fromSlot:f.F.main.sourceSlot,
+      originalFromSlot:f.F.main.sourceSlot,
+      currentFromSlot:f.F.main.sourceSlot,
+      toSlot:f.F.main.requestedTarget,
+      createdAt:"2026-07-15T12:00:00.000Z",
+      updatedAt:"2026-07-15T12:00:00.000Z",
+      hardPhysicalBlocked:Boolean(assessment?.hardPhysicalBlocked),
+      canonicalProducer:"graphic_drag_generated_move",
+      canonicalPurpose:"vehicle-relocation",
+      sdeCanonicalGraphicDragOrder:true,
+      dragRequestId:"invariant-recursive-"+f.F.main.requestId,
+      sdeNightPlacementDragIdentity:"invariant-recursive-"+f.F.main.requestId,
+      manualPlanId:"manual-graphic-order|invariant-recursive-"+f.F.main.requestId
+    };
+    appState.sdeNightPlacementManualOverrides={[override.id]:override};
+    const staged=ctx.stageSdeCanonicalGraphicDragOrder(override);
+    const inspected=staged?.chain;
+    recursiveGraphicPath=Boolean(
+      assessment?.ok===true
+      && assessment?.hardPhysicalBlocked===true
+      && staged?.adapter?.ready===true
+      && inspected?.ok===true
+      && inspected?.reliefKind==="trapped_egress"
+      && inspected?.outcomes?.all?.length===5
+      && inspected?.cards?.all?.length===5
+      && inspected?.reservations?.length===5
+      && inspected?.overlays?.active?.length===1
+      && inspected?.overlays?.deferred?.length===4
+      && inspected?.adapters?.all?.length===5
+    );
+    reports.M={name:"recursive graphical staging",hardPhysicalBlocked:assessment?.hardPhysicalBlocked===true,reason:inspected?.reason||"",steps:inspected?.outcomes?.all?.length||0};
+  }catch(error){ reports.M={name:"recursive graphical staging",error:String(error?.stack||error)}; }
+  put("INV-EGRESS-013",recursiveGraphicPath,"recursive graphical drag enters the physical-chain branch and materializes the complete five-step canonical projection");
+
+  let actionableMidChainSuffix=false;
+  try{
+    const initial=build(f.A);
+    const first=initial.releases[0];
+    const firstKey=ctx.getSdeMoveActionKey(first);
+    const placements=f.A.placements.filter(([slot])=>slot!==first.fromSlot).concat([[first.toSlot,first.vehicle]]);
+    const actions={[firstKey]:{
+      action:"completed",
+      completedAt:"2026-07-15T12:00:00.000Z",
+      vehicle:first.vehicle,
+      fromSlot:first.fromSlot,
+      toSlot:first.toSlot,
+      snapshot:JSON.parse(JSON.stringify(first))
+    }};
+    const suffix=build({...f.A,placements},[],{sdeMoveActions:actions});
+    const outcomes=suffix.reader?.canonicalPlan?.candidateOutcomes||[];
+    const mainOutcome=outcomes.find(item=>item?.raw?.sdePhysicalDependencyRole==="dependent");
+    const recoveryOutcome=outcomes.find(item=>item?.raw?.sdePhysicalDependencyRole==="return");
+    const mainCard=suffix.cards.find(card=>card.activeOutcomeId===mainOutcome?.candidateOutcomeId);
+    const recoveryCard=suffix.cards.find(card=>card.activeOutcomeId===recoveryOutcome?.candidateOutcomeId);
+    const reservations=suffix.reader?.reservationProjection?.reservations||[];
+    const activeOverlays=suffix.reader?.graphicProjection?.activeOverlays||[];
+    const deferredOverlays=suffix.reader?.graphicProjection?.deferredOverlays||[];
+    const mainAdapter=mainCard?suffix.reader?.handlerAdapters?.[mainCard.canonicalCardId]:null;
+    const recoveryAdapter=recoveryCard?suffix.reader?.handlerAdapters?.[recoveryCard.canonicalCardId]:null;
+    actionableMidChainSuffix=Boolean(
+      suffix.rows.length===2
+      && suffix.rows.every(row=>ctx.getSdeMoveActionKey(row)!==firstKey)
+      && suffix.mains.length===1
+      && suffix.recoveries.length===1
+      && suffix.releases.length===0
+      && mainCard?.status==="actionable"
+      && mainCard?.canComplete===true
+      && mainAdapter?.ready===true
+      && reservations.some(item=>item.activeOutcomeId===mainOutcome?.candidateOutcomeId)
+      && activeOverlays.some(item=>item.activeOutcomeId===mainOutcome?.candidateOutcomeId)
+      && recoveryCard?.status==="blocked_chain_step"
+      && recoveryAdapter?.ready===false
+      && reservations.some(item=>item.activeOutcomeId===recoveryOutcome?.candidateOutcomeId)
+      && deferredOverlays.some(item=>item.activeOutcomeId===recoveryOutcome?.candidateOutcomeId)
+      && !(suffix.reader?.canonicalPlan?.diagnostics||[]).some(item=>item.code==="physically_invalid_candidate"&&item.candidateId===mainOutcome?.actionKey)
+    );
+    reports.N={name:"mid-chain actionable suffix",completedKey:firstKey,rows:suffix.rows.map(row=>({role:row.sdePhysicalDependencyRole,vehicle:row.vehicle,from:row.fromSlot,to:row.toSlot})),mainStatus:mainCard?.status||"missing",recoveryStatus:recoveryCard?.status||"missing"};
+  }catch(error){ reports.N={name:"mid-chain actionable suffix",error:String(error?.stack||error)}; }
+  put("INV-EGRESS-014",actionableMidChainSuffix,"after the final completed prerequisite, the fresh unresolved main/recovery suffix remains fully projected and the main is actionable");
+
+  let nullSafeReducedMotion=false;
+  const originalMatchMedia=ctx.matchMedia;
+  try{
+    const checks=[];
+    ctx.matchMedia=undefined;
+    checks.push(ctx.prefersReducedSdeReleaseMotion()===false);
+    ctx.matchMedia={};
+    checks.push(ctx.prefersReducedSdeReleaseMotion()===false);
+    ctx.matchMedia=()=>null;
+    checks.push(ctx.prefersReducedSdeReleaseMotion()===false);
+    ctx.matchMedia=()=>undefined;
+    checks.push(ctx.prefersReducedSdeReleaseMotion()===false);
+    ctx.matchMedia=()=>({});
+    checks.push(ctx.prefersReducedSdeReleaseMotion()===false);
+    ctx.matchMedia=()=>({matches:"true"});
+    checks.push(ctx.prefersReducedSdeReleaseMotion()===false);
+    ctx.matchMedia=()=>({matches:false});
+    checks.push(ctx.prefersReducedSdeReleaseMotion()===false);
+    ctx.matchMedia=()=>({matches:true});
+    checks.push(ctx.prefersReducedSdeReleaseMotion()===true);
+    nullSafeReducedMotion=checks.every(Boolean);
+    reports.O={name:"null-safe reduced motion",result:nullSafeReducedMotion};
+  }catch(error){ reports.O={name:"null-safe reduced motion",error:String(error?.stack||error)}; }
+  finally{ ctx.matchMedia=originalMatchMedia; }
+  put("INV-EGRESS-015",nullSafeReducedMotion,"reduced-motion detection is null-safe when a responsive browser exposes matchMedia without a MediaQueryList result");
+
   const failed=globalThis.__egressResults.filter(item=>item.status==="FAIL");
   process.stdout.write(JSON.stringify({
     schemaVersion:"sde-trapped-egress-harness-v1",

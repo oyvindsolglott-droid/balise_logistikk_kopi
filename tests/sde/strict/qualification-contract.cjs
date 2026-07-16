@@ -2,7 +2,7 @@
 
 const crypto = require("node:crypto");
 
-const STRICT_TOTAL = 57;
+const STRICT_TOTAL = 60;
 const DETERMINISM_RUNS = 3;
 
 function canonical(value) {

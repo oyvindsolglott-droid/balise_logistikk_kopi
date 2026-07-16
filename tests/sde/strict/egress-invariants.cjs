@@ -17,8 +17,8 @@ if(run.error || ![0,1].includes(run.status)){
   process.exit(2);
 }
 const report = JSON.parse(String(run.stdout || "").trim().split(/\n/).filter(Boolean).at(-1) || "{}");
-if(!Array.isArray(report.results) || report.results.length !== 12){
-  process.stderr.write("egress harness did not emit exactly 12 invariant results\n");
+if(!Array.isArray(report.results) || report.results.length !== 15){
+  process.stderr.write("egress harness did not emit exactly 15 invariant results\n");
   process.exit(2);
 }
 process.stdout.write(`${JSON.stringify({category:"egress",results:report.results,scenarios:report.scenarios||{}})}\n`);
