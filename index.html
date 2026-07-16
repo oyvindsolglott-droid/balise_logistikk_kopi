@@ -24296,7 +24296,7 @@ function buildSdeCanonicalPlan(input={}){
       String(row.sdePhysicalChainId || "").trim()
       && String(row.sdePhysicalDependencyRole || "").trim() === "dependent"
       && Array.isArray(row.sdePhysicalDependsOn)
-      && row.sdePhysicalDependsOn.map(value=>String(value || "").trim()).filter(Boolean).length
+      && (row.sdeTrappedEgressChainStep === true || row.sdePhysicalDependsOn.map(value=>String(value || "").trim()).filter(Boolean).length) // SDE_EGRESS_ACTIONABLE_SUFFIX
     );
     const physicalInvalidReason = String(
       (targetOccupiedByOtherVehicle ? `${targetSlot} er fysisk opptatt av ${targetOccupant.vehicleId}.` : "") ||
