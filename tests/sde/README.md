@@ -44,6 +44,11 @@ belagte `VS`/`12N`-tilstanden er bevart som en negativ safety-case som skal
 avvises med null operative outcomes, kort, reservasjoner, overlays og adaptere.
 Mutasjonene Z1–Z5 skal alle drepes av disse invariantene.
 
+`INV-EGRESS-022` låser skjermbilderegresjonen 74-10 `5M → 6S`: et gammelt
+annullert frigjøringssteg for 74-12 kan ikke gjenbrukes som aktiv identitet.
+Planleggeren må velge en ny komplett release/main/recovery-kjede og bevare det
+eksakte brukerbestilte hovedmålet.
+
 ```sh
 npm run test:sde:contracts
 npm run test:sde:mutations

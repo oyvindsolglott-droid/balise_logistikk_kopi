@@ -289,16 +289,21 @@ test("Y — complete trapped-egress chains and unresolved-step retarget stay ato
   assert.ok([0,1].includes(result.status),`Y trapped-egress harness crashed:\n${failureDetails(result)}`);
   const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
   assert.equal(report?.schemaVersion, "sde-trapped-egress-harness-v1");
-  assert.equal(report?.counts?.total,15);
-  assert.deepEqual(report?.results?.map(item=>item.id), Array.from({length:15},(_,index)=>`INV-EGRESS-${String(index+1).padStart(3,"0")}`));
+  assert.equal(report?.counts?.total,16);
+  assert.deepEqual(report?.results?.map(item=>item.id), [
+    ...Array.from({length:15},(_,index)=>`INV-EGRESS-${String(index+1).padStart(3,"0")}`),
+    "INV-EGRESS-022"
+  ]);
   assert.equal(report?.results?.slice(0,12).every(item=>item.status==="PASS"),true,"the pre-existing 12 Y invariants must remain green");
   for(const fixture of "ABCDEFGHIJKL") assert.ok(report?.scenarios?.[fixture] || ["H","I","J","K"].includes(fixture), `missing fixture ${fixture}`);
+  assert.ok(report?.scenarios?.P,"missing stale-release identity fixture P");
 });
 
 for(const [id,name] of [
   ["INV-EGRESS-013","recursive graphical drag selects the complete physical-chain staging path"],
   ["INV-EGRESS-014","completed prerequisite preserves a fully projected actionable mid-chain suffix"],
   ["INV-EGRESS-015","responsive reduced-motion detection tolerates a null MediaQueryList"],
+  ["INV-EGRESS-022","stale cancelled release identity is replaced before graphical staging"],
 ]) test(`${id} — ${name}`,()=>{
   const result=runHarness("sde-trapped-egress-chain-harness.js");
   assert.equal(result.error,undefined,`${id} harness could not start: ${result.error?.message||"unknown error"}`);
