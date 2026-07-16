@@ -17841,6 +17841,22 @@ function getSdeTrappedEgressRecoveryActionKey(chainId, index, step){
   return `sde-trapped-egress|${chainId}|recovery-${index + 1}|${normalizeVehicleToken(step?.vehicle)}|${normalizeSlot(step?.fromSlot)}|${normalizeSlot(step?.toSlot)}`;
 }
 
+function getSdeTrappedEgressReleaseActionKey(chainId, index, step){
+  return `sde-trapped-egress|${chainId}|release-${index + 1}|${normalizeVehicleToken(step?.vehicle)}|${normalizeSlot(step?.fromSlot)}|${normalizeSlot(step?.toSlot)}`;
+}
+
+function hasSdeTrappedEgressStalePendingActionIdentity(chainId, releaseSteps=[], recoverySteps=[]){
+  const pendingReleases = (Array.isArray(releaseSteps) ? releaseSteps : [])
+    .filter(step=>step?.carriedCompletedRelease !== true);
+  const releaseKeys = pendingReleases.map((step,index)=>
+    getSdeTrappedEgressReleaseActionKey(chainId,index,step)
+  );
+  const recoveryKeys = (Array.isArray(recoverySteps) ? recoverySteps : []).map((step,index)=>
+    getSdeTrappedEgressRecoveryActionKey(chainId,index,step)
+  );
+  return [...releaseKeys,...recoveryKeys].some(actionKey=>Boolean(getSdeMoveActionRecord(actionKey)));
+}
+
 function getSdeTrappedEgressCarriedReleases(row, occupancy){
   const mainSource = normalizeSlot(row?.fromSlot || row?.arrivalSlot || row?.originalFromSlot);
   const mainNeedKey = String(getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row) || "").trim();
@@ -17946,6 +17962,12 @@ function buildSdeCompleteTrappedEgressPlan(row, blockState, sourceRows=[], optio
     releases:[...carriedReleases],
     movedTokens:new Set(carriedReleases.map(step=>normalizeVehicleToken(step.vehicle)).filter(Boolean))
   };
+  const chainId = `sde-trapped-egress-v1|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+    mainVehicle:normalizeVehicleToken(mainVehicle),
+    mainSource,
+    initialOccupancy:getSdeTrappedEgressOccupancySignature(occupancy),
+    needKey:getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row)
+  }))}`;
   const queue = [initial];
   const visited = new Set([`${getSdeTrappedEgressOccupancySignature(occupancy)}|${Array.from(initial.movedTokens).sort().join(",")}`]);
   let completed = null;
@@ -17953,7 +17975,11 @@ function buildSdeCompleteTrappedEgressPlan(row, blockState, sourceRows=[], optio
   while(queue.length){
     const current = queue.shift();
     const recovery = validateSdeTrappedEgressRecovery(current.occupancy,mainStep,current.releases);
-    if(recovery && current.releases.length){
+    if(
+      recovery
+      && current.releases.length
+      && !hasSdeTrappedEgressStalePendingActionIdentity(chainId,current.releases,recovery.recoverySteps)
+    ){
       completed = {...current,recovery};
       break;
     }
@@ -17992,12 +18018,6 @@ function buildSdeCompleteTrappedEgressPlan(row, blockState, sourceRows=[], optio
   }
   if(!completed) return null;
 
-  const chainId = `sde-trapped-egress-v1|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
-    mainVehicle:normalizeVehicleToken(mainVehicle),
-    mainSource,
-    initialOccupancy:getSdeTrappedEgressOccupancySignature(occupancy),
-    needKey:getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row)
-  }))}`;
   const releaseSteps = completed.releases.map(step=>({...step,routeResources:getSdeTrappedEgressRouteResources(step,chainId)}));
   const mainWithRoute = {
     ...mainStep,
@@ -18034,7 +18054,7 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
   const totalSteps = pendingReleaseSteps.length + 1 + plan.recoverySteps.length;
   const releaseRows = [];
   pendingReleaseSteps.forEach((step,index)=>{
-    const stableActionKey = `sde-trapped-egress|${plan.chainId}|release-${index + 1}|${normalizeVehicleToken(step.vehicle)}|${step.fromSlot}|${step.toSlot}`;
+    const stableActionKey = getSdeTrappedEgressReleaseActionKey(plan.chainId,index,step);
     const recoveryIndex = plan.recoverySteps.findIndex(recovery=>
       haveSameSdeVehicleTokens(recovery.vehicle,step.vehicle)
       && normalizeSlot(recovery.fromSlot) === normalizeSlot(step.toSlot)
