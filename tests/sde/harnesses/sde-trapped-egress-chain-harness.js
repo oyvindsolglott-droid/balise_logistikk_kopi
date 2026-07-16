@@ -361,6 +361,78 @@ eval(prefix + String.raw`
   finally{ ctx.matchMedia=originalMatchMedia; }
   put("INV-EGRESS-015",nullSafeReducedMotion,"reduced-motion detection is null-safe when a responsive browser exposes matchMedia without a MediaQueryList result");
 
+  let staleReleaseIdentityReplanned=false;
+  try{
+    resetState(f.B.placements);
+    appState.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
+    const assessment=ctx.buildSdeNightPlacementDropAssessment({
+      vehicle:f.B.main.vehicle,
+      slot:f.B.main.sourceSlot,
+      fromSlot:f.B.main.sourceSlot,
+      sourceKind:"actual"
+    },f.B.main.requestedTarget,{moves:[]});
+    const override={
+      id:"invariant-stale-release-"+f.B.main.requestId,
+      vehicle:f.B.main.vehicle,
+      fromSlot:f.B.main.sourceSlot,
+      originalFromSlot:f.B.main.sourceSlot,
+      currentFromSlot:f.B.main.sourceSlot,
+      toSlot:f.B.main.requestedTarget,
+      createdAt:"2026-07-16T20:11:00.000Z",
+      updatedAt:"2026-07-16T20:11:00.000Z",
+      hardPhysicalBlocked:Boolean(assessment?.hardPhysicalBlocked),
+      canonicalProducer:"graphic_drag_generated_move",
+      canonicalPurpose:"vehicle-relocation",
+      sdeCanonicalGraphicDragOrder:true,
+      dragRequestId:"invariant-stale-release-"+f.B.main.requestId,
+      sdeNightPlacementDragIdentity:"invariant-stale-release-"+f.B.main.requestId,
+      manualPlanId:"manual-graphic-order|invariant-stale-release-"+f.B.main.requestId
+    };
+    appState.sdeNightPlacementManualOverrides={[override.id]:override};
+    const generated=ctx.buildSdeNightPlacementGeneratedMove(override);
+    const initialRows=ctx.buildSdePhysicalBlockerGuardMoves([generated]);
+    const staleRelease=initialRows.find(row=>row.sdePhysicalDependencyRole==="prerequisite");
+    const staleReleaseKey=staleRelease ? ctx.getSdeMoveActionKey(staleRelease) : "";
+    if(staleReleaseKey){
+      appState.sdeMoveActions[staleReleaseKey]={
+        action:"cancelled",
+        cancelledAt:"2026-07-16T20:11:00.000Z",
+        vehicle:staleRelease.vehicle,
+        fromSlot:staleRelease.fromSlot,
+        toSlot:staleRelease.toSlot,
+        snapshot:JSON.parse(JSON.stringify(staleRelease))
+      };
+    }
+    const staged=ctx.stageSdeCanonicalGraphicDragOrder(override);
+    const chain=staged?.chain;
+    const replacementRelease=chain?.outcomes?.releases?.[0] || null;
+    staleReleaseIdentityReplanned=Boolean(
+      assessment?.ok===true
+      && assessment?.hardPhysicalBlocked===true
+      && staleReleaseKey
+      && chain?.ok===true
+      && chain?.reliefKind==="trapped_egress"
+      && chain?.outcomes?.all?.length===3
+      && replacementRelease
+      && replacementRelease.actionKey!==staleReleaseKey
+      && ctx.normalizeSlot(replacementRelease.targetSlot)!==ctx.normalizeSlot(staleRelease?.toSlot)
+      && ctx.normalizeSlot(chain?.outcomes?.main?.targetSlot)===ctx.normalizeSlot(f.B.main.requestedTarget)
+      && staged?.reader?.integrityReport?.status==="PASS"
+      && staged?.adapter?.ready===true
+    );
+    reports.P={
+      name:"stale cancelled release identity is replanned",
+      staleReleaseKey,
+      staleTarget:staleRelease?.toSlot||"",
+      replacementReleaseKey:replacementRelease?.actionKey||"",
+      replacementTarget:replacementRelease?.targetSlot||"",
+      requestedTarget:chain?.outcomes?.main?.targetSlot||"",
+      steps:chain?.outcomes?.all?.length||0,
+      reason:chain?.reason||""
+    };
+  }catch(error){ reports.P={name:"stale cancelled release identity is replanned",error:String(error?.stack||error)}; }
+  put("INV-EGRESS-016",staleReleaseIdentityReplanned,"74-10 5M→6S rejects a stale cancelled 74-12 release identity and materializes one complete replacement chain");
+
   const failed=globalThis.__egressResults.filter(item=>item.status==="FAIL");
   process.stdout.write(JSON.stringify({
     schemaVersion:"sde-trapped-egress-harness-v1",

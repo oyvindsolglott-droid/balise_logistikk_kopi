@@ -8,10 +8,10 @@
       "physicalRelation": "4M has two yard ends; 4S blocks the south path and 4N blocks the north path. Moving either blocking vehicle to a validated temporary slot opens one egress end; that temporary move requires recovery after 75-01 reaches 5M."
     },
     "B": {
-      "name": "source-5m",
-      "placements": [["5S", "B-5S"], ["5M", "B-MAIN"], ["5N", "B-5N"]],
-      "main": {"vehicle": "B-MAIN", "sourceSlot": "5M", "requestedTarget": "4M", "requestId": "egress-b"},
-      "physicalRelation": "5S and 5N occupy both open paths from 5M; one validated temporary release opens egress and must be recovered."
+      "name": "screenshot-74-10-5m-to-6s",
+      "placements": [["5S", "74-11"], ["5M", "74-10"], ["5N", "74-12"]],
+      "main": {"vehicle": "74-10", "sourceSlot": "5M", "requestedTarget": "6S", "requestId": "screenshot-74-10-5m-to-6s"},
+      "physicalRelation": "74-11 and 74-12 occupy both open paths from 5M. A stale cancelled release identity must be rejected and replaced by a complete release/main/recovery chain to the exact requested target 6S."
     },
     "C": {
       "name": "source-6s",
