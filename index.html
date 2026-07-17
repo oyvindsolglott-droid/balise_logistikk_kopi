@@ -29175,10 +29175,15 @@ async function handleSdeShiftMoveAction(encodedKey, action, adapterContext={}){
   const currentOutcomeKey = getSdeMoveObligationStepKey(row);
   const currentOutcomeAuthority = getSdeActiveOutcomeAuthority(currentOutcomeKey);
   const canonicalAuthorityMatches = doesSdeCanonicalActionAuthorityMatch(row, currentOutcomeAuthority, adapterContext);
+  const localAuthorityActionKey = String(
+    currentOutcomeAuthority?.legacyActionKey
+    || currentOutcomeAuthority?.activeOutcomeId
+    || ""
+  ).trim();
   if(
     currentOutcomeAuthority
     && !canonicalAuthorityMatches
-    && (!currentOutcomeAuthority.activeOutcomeId || currentOutcomeAuthority.activeOutcomeId !== getSdeMoveActionKey(row))
+    && (!localAuthorityActionKey || localAuthorityActionKey !== getSdeMoveActionKey(row))
   ){
     alert("SDE-kortet er erstattet og er ikke lenger det aktive utfallet for dette skiftebehovet.");
     return;

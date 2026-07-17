@@ -340,6 +340,13 @@ registerHarnessTest({
   baseline: "4aba2d32b1b99d8f01037f8330899791648036fb",
 });
 
+registerHarnessTest({
+  phase: "Completed-chain manual return",
+  name: "a valid local return remains quittable when canonical authority uses a separate outcome id",
+  harness: "sde-completed-chain-manual-return-harness.js",
+  baseline: "93e3ab9d83ddd1e7003c15e675c06ed759685cf8",
+});
+
 test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
   assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
