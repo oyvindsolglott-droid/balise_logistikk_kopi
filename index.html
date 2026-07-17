@@ -14339,6 +14339,26 @@ function getSdeSlotPathToOpenEnd(slot, end){
   return null;
 }
 
+function getSdePhysicalApproachCorridorSlots(slot, end){
+  const normalizedSlot = normalizeSlot(slot);
+  const normalizedEnd = String(end || "").trim();
+  const track = getSdeSlotTrack(normalizedSlot);
+
+  // Adkomsten til spor 5 går via 4M. En midlertidig plassering i 4M kan
+  // derfor ikke samtidig regnes som frigjøring av et påfølgende steg til 5M.
+  if(track === "5" && ["south","north"].includes(normalizedEnd)) return ["4M"];
+  return [];
+}
+
+function getSdePhysicalAccessPathSlots(slot, end){
+  const sameTrackPath = getSdeSlotPathToOpenEnd(slot,end);
+  if(!Array.isArray(sameTrackPath)) return null;
+  return Array.from(new Set([
+    ...sameTrackPath,
+    ...getSdePhysicalApproachCorridorSlots(slot,end)
+  ].map(normalizeSlot).filter(Boolean)));
+}
+
 function getSdeAccessOptionsForSlot(slot, purpose="source"){
   const normalizedSlot = normalizeSlot(slot);
   const track = getSdeSlotTrack(normalizedSlot);
@@ -14804,6 +14824,79 @@ function isSdeSafePhysicalBlockerAccessReliefMove(vehicle, fromSlot, toSlot, acc
   return true;
 }
 
+function buildSdeTemporaryAccessReliefMainRouteAssessment(blockedRow, blockState, freeingMove){
+  const blockerVehicle = sanitizeVehicleValue(freeingMove?.vehicle);
+  const blockerFromSlot = normalizeSlot(freeingMove?.fromSlot || freeingMove?.arrivalSlot);
+  const holdingSlot = normalizeSlot(freeingMove?.recommendedSlot || freeingMove?.toSlot);
+  const blockedVehicle = sanitizeVehicleValue(blockState?.vehicle || blockedRow?.vehicle);
+  const blockedFromSlot = normalizeSlot(blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot);
+  const mainTargetSlot = normalizeSlot(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot);
+  const accessOption = (blockState?.accessAssessment?.targetAccessOptions || []).find(option=>
+    (option?.blockers || []).some(item=>
+      normalizeSlot(item?.slot) === blockerFromSlot
+      && haveSameSdeVehicleTokens(item?.vehicle, blockerVehicle)
+    )
+  );
+  const accessEnd = String(accessOption?.end || "").trim();
+  const invalid = !blockerVehicle || !blockerFromSlot || !holdingSlot || !blockedVehicle
+    || !blockedFromSlot || !mainTargetSlot || !accessEnd;
+  if(invalid){
+    return {
+      safe:false,
+      accessEnd,
+      sourceClearEnds:[],
+      targetPathSlots:[],
+      blockingSlots:[],
+      reason:"Mangler entydig mellomtilstand eller adkomstende for hovedflyttingen."
+    };
+  }
+
+  const virtualOccupancy = new Map(
+    Object.entries(state.grunnoppstilling || {})
+      .map(([slot,vehicle])=>[normalizeSlot(slot),sanitizeVehicleValue(vehicle)])
+      .filter(([slot,vehicle])=>slot && vehicle)
+  );
+  Array.from(virtualOccupancy.entries()).forEach(([slot,vehicle])=>{
+    if(haveSameSdeVehicleTokens(vehicle,blockerVehicle)) virtualOccupancy.delete(slot);
+  });
+  virtualOccupancy.set(holdingSlot,blockerVehicle);
+
+  const isPathClear = pathSlots => Array.isArray(pathSlots)
+    && pathSlots.every(slot=>!virtualOccupancy.get(normalizeSlot(slot)));
+  const sourceClearEnds = getSdeSameTrackOpenEnds(getSdeSlotTrack(blockedFromSlot)).filter(end=>
+    isPathClear(getSdePhysicalAccessPathSlots(blockedFromSlot,end))
+  );
+  const targetPathSlots = getSdePhysicalAccessPathSlots(mainTargetSlot,accessEnd) || [];
+  const blockingSlots = targetPathSlots.filter(slot=>Boolean(virtualOccupancy.get(slot)));
+  const targetVehicle = sanitizeVehicleValue(virtualOccupancy.get(mainTargetSlot));
+  const sameTrackOrder = getSdeSameTrackSlotOrder(getSdeSlotTrack(blockedFromSlot));
+  const fromIndex = sameTrackOrder.indexOf(blockedFromSlot);
+  const targetIndex = sameTrackOrder.indexOf(mainTargetSlot);
+  const internalPathSlots = fromIndex >= 0 && targetIndex >= 0 && fromIndex !== targetIndex
+    ? sameTrackOrder.slice(Math.min(fromIndex,targetIndex) + 1,Math.max(fromIndex,targetIndex))
+    : [];
+  const internalBlockingSlots = internalPathSlots.filter(slot=>Boolean(virtualOccupancy.get(slot)));
+  const safe = !targetVehicle
+    && sourceClearEnds.length > 0
+    && blockingSlots.length === 0
+    && internalBlockingSlots.length === 0;
+
+  return {
+    safe,
+    accessEnd,
+    sourceClearEnds,
+    targetPathSlots,
+    blockingSlots:sortSdeCanonicalStrings([...blockingSlots,...internalBlockingSlots]),
+    reason:safe
+      ? `Mellomtilstanden bevarer ${accessEnd}-adkomsten til ${mainTargetSlot}.`
+      : `Mellomplassering ${holdingSlot} sperrer neste hovedflytting til ${mainTargetSlot}${blockingSlots.length ? ` via ${blockingSlots.join(", ")}` : ""}.`
+  };
+}
+
+function isSdeTemporaryAccessReliefMainRouteOpen(blockedRow, blockState, freeingMove){
+  return buildSdeTemporaryAccessReliefMainRouteAssessment(blockedRow,blockState,freeingMove).safe === true;
+}
+
 function buildSdeTargetAccessTemporaryVnAssessment(blockedRow, blockState, blocker, rows=[], context={}){
   const blockerVehicle = sanitizeVehicleValue(blocker?.vehicle);
   const blockerFromSlot = normalizeSlot(blocker?.slot);
@@ -14862,6 +14955,18 @@ function buildSdeTargetAccessTemporaryVnAssessment(blockedRow, blockState, block
   )){
     addBlocker(`${blockerFromSlot} → VN har ikke en fysisk validert rute med fri VS-adkomst.`);
   }
+  if(
+    blockerVehicle && blockerFromSlot && accessEnd
+    && !isSdeTemporaryAccessReliefMainRouteOpen(blockedRow,blockState,{
+      vehicle:blockerVehicle,
+      fromSlot:blockerFromSlot,
+      arrivalSlot:blockerFromSlot,
+      recommendedSlot:"VN",
+      toSlot:"VN"
+    })
+  ){
+    addBlocker(`VN-mellomtilstanden bevarer ikke fysisk adkomst til ${mainTargetSlot}.`);
+  }
 
   const eligible = blockers.length === 0;
   const accessResource = `track-access|${targetTrack || "unknown"}|${accessEnd || "unknown"}`;
@@ -14893,12 +14998,22 @@ function getSdePhysicalBlockerAccessReliefCandidateOrder(vehicle, fromSlot, bloc
   const ordinaryCandidates = getSdeResolutionCandidateSlots(from,blockedFrom)
     .filter(slot=>!avoidSlots.has(slot))
     .filter(slot=>isSdeSafePhysicalBlockerAccessReliefMove(vehicle,from,slot,accessEnd,blockedFrom,{avoidSlots:[...avoidSlots]}))
+    .filter(slot=>!options?.blockedRow || !options?.blockState || isSdeTemporaryAccessReliefMainRouteOpen(
+      options.blockedRow,
+      options.blockState,
+      {vehicle,fromSlot:from,arrivalSlot:from,recommendedSlot:slot,toSlot:slot}
+    ))
     .map(slot=>({slot,score:scoreSdeResolutionTarget(slot)}))
     .sort((left,right)=>right.score-left.score || left.slot.localeCompare(right.slot))
     .map(item=>item.slot);
   const preferDedicatedVn = options?.preferDedicatedVn === true
     && !avoidSlots.has("VN")
-    && isSdeSafePhysicalBlockerAccessReliefMove(vehicle,from,"VN",accessEnd,blockedFrom,{avoidSlots:[...avoidSlots]});
+    && isSdeSafePhysicalBlockerAccessReliefMove(vehicle,from,"VN",accessEnd,blockedFrom,{avoidSlots:[...avoidSlots]})
+    && (!options?.blockedRow || !options?.blockState || isSdeTemporaryAccessReliefMainRouteOpen(
+      options.blockedRow,
+      options.blockState,
+      {vehicle,fromSlot:from,arrivalSlot:from,recommendedSlot:"VN",toSlot:"VN"}
+    ));
   return Array.from(new Set([...ordinaryCandidates,...(preferDedicatedVn ? ["VN"] : [])]));
 }
 
@@ -15022,7 +15137,7 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
         blockerSlot,
         normalizeSlot(context.avoidSlot || blockedFromSlot),
         accessReliefEnd,
-        {avoidSlots:baseAvoidSlots}
+        {avoidSlots:baseAvoidSlots,blockedRow,blockState}
       )
     : getSdePhysicalBlockerReleaseCandidateOrder(
         blockerVehicle,
@@ -15081,7 +15196,8 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
     if(manualRejectedTargets.has(target)) return false;
     if(explicitTarget && target !== explicitTarget) return false;
     if(avoidSlots.has(target) && reservedByOtherRow) return false;
-    return !getSdeHardPhysicalBlockStateForMove(row).hardBlocked;
+    if(getSdeHardPhysicalBlockStateForMove(row).hardBlocked) return false;
+    return !accessReliefEnd || isSdeTemporaryAccessReliefMainRouteOpen(blockedRow,blockState,row);
   });
 
   if(existingMove){
@@ -15108,6 +15224,13 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
       ? (lockedButtTrackVnRelief ? vnReliefAssessment.eligible : accessVnAssessment?.eligible === true)
       : accessReliefEnd
         ? isSdeSafePhysicalBlockerAccessReliefMove(blockerVehicle, blockerSlot, preferredTarget, accessReliefEnd, avoidSlot || blockedFromSlot, {avoidSlots:[...avoidSlots]})
+          && isSdeTemporaryAccessReliefMainRouteOpen(blockedRow,blockState,{
+            vehicle:blockerVehicle,
+            fromSlot:blockerSlot,
+            arrivalSlot:blockerSlot,
+            recommendedSlot:preferredTarget,
+            toSlot:preferredTarget
+          })
         : isSdeSafePhysicalBlockerReleaseMove(blockerVehicle, blockerSlot, preferredTarget, avoidSlot || blockedFromSlot, {avoidSlots:[...avoidSlots]}))
       ? preferredTarget
       : "";
@@ -15234,7 +15357,9 @@ function buildSdePhysicalBlockerFreeingMove(blockedRow, blockState, rows=[], con
       const accessCandidateOrder = accessReliefEnd
         ? getSdePhysicalBlockerAccessReliefCandidateOrder(blocker?.vehicle, blocker?.slot, blockState?.fromSlot, accessReliefEnd, {
             avoidSlots:[blockState?.fromSlot, blockState?.toSlot, ...contextAvoidSlots, ...rejectedTargets],
-            preferDedicatedVn:accessVnAssessment?.eligible === true
+            preferDedicatedVn:accessVnAssessment?.eligible === true,
+            blockedRow,
+            blockState
           })
         : [];
       const target = accessReliefEnd
@@ -15445,6 +15570,13 @@ function buildSdeTemporaryAccessReliefChainPlan(blockedRow, blockState, freeingM
   ) return null;
   if(getSdeVehicleInSlot(mainTargetSlot)) return null;
 
+  const mainRouteAssessment = buildSdeTemporaryAccessReliefMainRouteAssessment(
+    blockedRow,
+    blockState,
+    freeingMove
+  );
+  if(!mainRouteAssessment.safe) return null;
+
   const returnAccessOption = getSdeAccessOptionsForSlot(blockerFromSlot, "target")
     .find(option=>option?.end === accessEnd && option?.clear === true);
   if(!returnAccessOption) return null;
@@ -15479,6 +15611,7 @@ function buildSdeTemporaryAccessReliefChainPlan(blockedRow, blockState, freeingM
     accessResource,
     routeResources:sortSdeCanonicalStrings([
       accessResource,
+      ...getSdePhysicalApproachCorridorSlots(mainTargetSlot,accessEnd),
       ...(Array.isArray(dedicatedVnAssessment?.routeResources) ? dedicatedVnAssessment.routeResources : []),
       ...(holdingSlot === "VN" ? ["VN","VS"] : [])
     ]),

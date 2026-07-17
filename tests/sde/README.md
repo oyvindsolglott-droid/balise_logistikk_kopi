@@ -64,6 +64,13 @@ kort tilbys, når `Utført` kvitteres og når et ledig mål velges med grafisk d
 Mål som faktisk er belagt, og kilder som er fysisk sperret i alle ender, beholder
 de eksisterende fail-closed-vaktene.
 
+Helkjeden må i tillegg bevare den fysiske ruten gjennom hver mellomtilstand.
+Den permanente route-continuity-testen låser den rapporterte 74-10-bestillingen
+`10S → 5M`: 74-11 kan ikke flyttes midlertidig fra `5S` til `4M`, fordi 4M
+er adkomstressurs for spor 5 og dermed ville sperret neste bestilte steg. SDE må
+velge en annen komplett release/main/recovery-kjede, eller forbli diagnostic-only
+dersom ingen slik kjede finnes.
+
 ```sh
 npm run test:sde:contracts
 npm run test:sde:mutations

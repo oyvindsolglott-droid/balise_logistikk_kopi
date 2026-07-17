@@ -319,6 +319,13 @@ registerHarnessTest({
   baseline: "7516f82b6320266a735df4eb1d661a40ba61762c",
 });
 
+registerHarnessTest({
+  phase: "Chain route continuity",
+  name: "a prerequisite holding slot cannot block the following ordered move",
+  harness: "sde-chain-route-continuity-harness.js",
+  baseline: "b125418d22a4124c60e5cb8c36e76da70165669b",
+});
+
 test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
   assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
