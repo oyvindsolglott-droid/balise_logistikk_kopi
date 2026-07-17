@@ -15155,7 +15155,11 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
     : Array.from(new Set(accessReliefEnd === "south"
       ? [...ordinaryCandidateOrder,...(accessVnAssessment?.eligible ? ["VN"] : [])]
       : [...(accessVnAssessment?.eligible ? ["VN"] : []),...ordinaryCandidateOrder]));
-  const planningStateSignature = getSdePhysicalPlanningStateSignature(sourceRows);
+  const planningStateSignature = getSdePhysicalPlanningStateSignature(sourceRows, {
+    blockedVehicle:blockState?.vehicle || blockedRow?.vehicle,
+    blockedFromSlot:blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot,
+    blockedTargetSlot:blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot
+  });
   const roundRecord = prepareSdePhysicalReleaseRound(
     getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker),
     completeCandidateOrder,
@@ -16633,13 +16637,22 @@ function normalizeSdePhysicalReleaseReplanRecord(key, sourceRecord=null){
   };
 }
 
-function getSdePhysicalPlanningStateSignature(rows=[]){
+function getSdePhysicalPlanningStateSignature(rows=[], scope={}){
   const occupancy = Object.entries(state.grunnoppstilling || {})
     .map(([slot,vehicle])=>[normalizeSlot(slot), normalizeVehicleToken(vehicle)])
     .filter(([slot,vehicle])=>slot && vehicle)
     .sort((a,b)=>a[0].localeCompare(b[0]) || a[1].localeCompare(b[1]));
+  const blockedVehicle = normalizeVehicleToken(scope?.blockedVehicle);
+  const blockedFromSlot = normalizeSlot(scope?.blockedFromSlot);
+  const blockedTargetSlot = normalizeSlot(scope?.blockedTargetSlot);
+  const hasBlockedStepScope = Boolean(blockedVehicle && blockedFromSlot && blockedTargetSlot);
   const activePlans = getSdeAuthoritativeActiveOutcomeRows(Array.isArray(rows) ? rows : [])
     .filter(row=>row && !isSdeMoveActioned(row))
+    .filter(row=>!hasBlockedStepScope || (
+      normalizeVehicleToken(row.vehicle) === blockedVehicle
+      && normalizeSlot(row.fromSlot || row.arrivalSlot) === blockedFromSlot
+      && normalizeSlot(row.recommendedSlot || row.toSlot) === blockedTargetSlot
+    ))
     .map(row=>[
       normalizeVehicleToken(row.vehicle),
       normalizeSlot(row.fromSlot || row.arrivalSlot),
@@ -16716,7 +16729,14 @@ function getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocke
     blocker?.vehicle,
     blocker?.slot
   );
-  const orderIdentity = blockedRow?.sdeCanonicalGraphicDragOrder === true
+  const isGraphicOrder = Boolean(
+    blockedRow?.sdeCanonicalGraphicDragOrder === true
+    || blockedRow?.isNightPlacementGenerated === true
+    || blockedRow?.sdeNightPlacementDragOverrideActive === true
+    || String(blockedRow?.canonicalProducer || "").trim() === "graphic_drag_generated_move"
+    || String(blockedRow?.source || "").trim() === "night-placement-drag"
+  );
+  const orderIdentity = isGraphicOrder
     ? String(
         blockedRow?.sdeNightPlacementDragIdentity
         || blockedRow?.manualPlanId
@@ -17082,7 +17102,11 @@ function findSdePhysicalReleaseReplacementRow(cancelledRow, data){
 
   const replanRecord = getSdePhysicalReleaseReplanRecord(replanKey);
   if(replanRecord){
-    replanRecord.planningStateSignature = getSdePhysicalPlanningStateSignature(sourceData.moves);
+    replanRecord.planningStateSignature = getSdePhysicalPlanningStateSignature(sourceData.moves, {
+      blockedVehicle:cancelledRow?.sdePhysicalBlockerForVehicle,
+      blockedFromSlot:cancelledRow?.sdePhysicalBlockerForSlot,
+      blockedTargetSlot:cancelledRow?.sdePhysicalBlockerOriginalTarget
+    });
   }
 
   return buildSdeShiftCardMoveCandidates(sourceData, {reconcileActive:false})
@@ -35165,7 +35189,13 @@ function stageSdeCanonicalGraphicDragOrder(override){
 
   if(override?.hardPhysicalBlocked){
     removeSdeActiveOutcomeAuthoritiesForPhysicalStep(generatedMove.vehicle, generatedMove.fromSlot);
-    const stagedRows = buildSdePhysicalBlockerGuardMoves([generatedMove], {reconcileActive:false});
+    const previousPhysicalReleaseReplans = cloneSdeCanonicalValue(state.sdePhysicalReleaseReplans) || {};
+    let stagedRows = [];
+    try{
+      stagedRows = buildSdePhysicalBlockerGuardMoves([generatedMove], {reconcileActive:false});
+    }finally{
+      state.sdePhysicalReleaseReplans = previousPhysicalReleaseReplans;
+    }
     const stagedMain = stagedRows.find(row=>getSdeMoveActionKey(row) === actionKey) || null;
     const stagedChainId = String(stagedMain?.sdePhysicalChainId || "").trim();
     const stagedChainRows = stagedChainId
@@ -35215,7 +35245,9 @@ function stageSdeCanonicalGraphicDragOrder(override){
     };
     const provisionalReader = buildSdeCanonicalProductionReader();
     const provisional = inspectSdeCanonicalGraphicDragPhysicalReliefChain(provisionalReader, expected);
-    if(!provisional.ok) throw new Error(`Canonical fysisk frigjøringskjede er ufullstendig: ${provisional.reason}`);
+    if(!provisional.ok){
+      throw new Error(`Canonical fysisk frigjøringskjede er ufullstendig: ${provisional.reason}`);
+    }
     const stagedFirstOutcome = (provisional.outcomes?.all || []).find(outcome=>
       String(outcome?.actionKey || "").trim() === stagedFirstActionKey
     );

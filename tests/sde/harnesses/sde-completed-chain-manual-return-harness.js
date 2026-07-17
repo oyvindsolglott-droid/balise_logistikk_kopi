@@ -123,7 +123,19 @@ eval(prefix + String.raw`
     }
   };
 
-  vm.runInContext("computeInndataCachedRows=null;computeInndataCacheDepth=0;sdeShiftLastRenderedData={moves:[],score:0};sdeNightPlacementDropMessage=null;sdeNightPlacementBlockedMoveRequest=null;sdeProductionReaderFallbackError=null",ctx);
+  const unrelatedRuntimeRow={
+    vehicle:"69-63",fromSlot:"2N",arrivalSlot:"2N",recommendedSlot:"4S",toSlot:"4S",
+    arrivalTrain:"92489",arrivalPart:"1",arrivalTime:"20:51",nextDepartureTrain:"92482",nextDeparturePart:"1",
+    source:"Ankomstbasert parkeringsbehov",canonicalProducer:"ordinary_base_need"
+  };
+  ctx.__unrelatedRuntimeRow=unrelatedRuntimeRow;
+  vm.runInContext(
+    "computeInndataCachedRows=null;computeInndataCacheDepth=0;"+
+    "sdeShiftLastRenderedData={moves:[],score:0,limitedPlanningMode:true};"+
+    "getSdeShiftShowcaseData=()=>({moves:[__unrelatedRuntimeRow],score:0});"+
+    "sdeNightPlacementDropMessage=null;sdeNightPlacementBlockedMoveRequest=null;sdeProductionReaderFallbackError=null",
+    ctx
+  );
   ctx.renderSdeSkiftebevegelser=()=>{};
   assert.equal(ctx.getSdeCurrentSlotForVehicle("74-12"),"5N","actual state must show the manually completed return");
   assert.equal(ctx.getSdeMoveActionRecord(mainActionKey)?.action,"completed");
@@ -141,6 +153,12 @@ eval(prefix + String.raw`
   assert.equal(nextReader.integrityReport.status,"PASS","the next order must remain canonically complete");
   assert.equal(nextReader.cardProjection.actionableCards.length,1,"the next order must expose exactly one actionable prerequisite");
   assert.equal(nextReader.graphicProjection.activeOverlays.length,1,"the next order must expose exactly one active overlay");
+  const nextReplanKey=Object.keys(appState.sdePhysicalReleaseReplans).find(key=>key.includes("|74-10|6S|5M|"));
+  const nextReplan=nextReplanKey ? appState.sdePhysicalReleaseReplans[nextReplanKey] : null;
+  assert.ok(
+    !nextReplan || nextReplan.roundNumber === 1,
+    "preflight must not advance a release round merely because unrelated runtime rows exist"
+  );
 
   process.stdout.write(JSON.stringify({
     schemaVersion:"sde-completed-chain-manual-return-harness-v2",ok:true,
