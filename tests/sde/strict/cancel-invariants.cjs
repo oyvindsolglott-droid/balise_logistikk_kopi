@@ -287,16 +287,17 @@ eval(prefix + String.raw`
   const now=Date.now();
   const card=(id,status,vehicle)=>({canonicalCardId:id,activeOutcomeId:"out-"+id,obligationId:"obl",stepId:"step-"+id,status,vehicleId:vehicle,sourceSlot:"10N",targetSlot:"5S",sequenceStep:1,explanation:id});
   const replacement=card("replacement","actionable","NEW");
+  const blocked={...card("blocked","blocked_chain_step","BLOCKED"),sequenceStep:2,blockedBy:["replacement"]};
   const oldA=card("old-a","exiting","OLD-A");
   const oldB=card("old-b","exiting","OLD-B");
   function makeReader(exitingCards){
-    const all=[replacement,...exitingCards];
+    const all=[replacement,blocked,...exitingCards];
     const handlerAdapters={};
     for(const item of all){
       const row={stableActionKey:item.canonicalCardId,sdeCancellationDismissalCard:item.status==="exiting",vehicle:item.vehicleId,fromSlot:item.sourceSlot,toSlot:item.targetSlot};
-      handlerAdapters[item.canonicalCardId]={row,actionKey:item.canonicalCardId,canComplete:item.status==="actionable",canCancel:item.status==="actionable",ready:true};
+      handlerAdapters[item.canonicalCardId]={row,actionKey:item.canonicalCardId,canComplete:item.status==="actionable",canCancel:item.status==="actionable",ready:item.status==="actionable"};
     }
-    return {planRevision:"strict-r",canonicalPlan:{candidateOutcomes:[]},cardProjection:{activeProposalCount:1,actionableCards:[replacement],handlerBlockedCards:[],blockedChainCards:[],exitingCards},handlerAdapters,integrityReport:{status:"FAIL"},reservationProjection:{reservations:[]},graphicProjection:{activeOverlays:[],deferredOverlays:[]}};
+    return {planRevision:"strict-r",canonicalPlan:{candidateOutcomes:[]},cardProjection:{activeProposalCount:1,actionableCards:[replacement],handlerBlockedCards:[],blockedChainCards:[blocked],exitingCards},handlerAdapters,integrityReport:{status:"FAIL"},reservationProjection:{reservations:[]},graphicProjection:{activeOverlays:[],deferredOverlays:[]}};
   }
   appState.sdeMoveActions={
     "old-a":{action:"cancelled",cancelledAt:new Date(now-1000).toISOString(),exitStartedAt:new Date(now+4000).toISOString(),removeAt:new Date(now+6000).toISOString(),exitDurationMs:2000},
@@ -321,14 +322,27 @@ eval(prefix + String.raw`
   ctx.buildSdeCanonicalProductionReader=()=>currentReader;
   ctx.renderSdeCanonicalProductionReader();
   const firstHtml=root.innerHTML;
-  const positions={replacement:firstHtml.indexOf('data-sde-canonical-card-id="replacement"'),oldA:firstHtml.indexOf('data-sde-canonical-card-id="old-a"'),oldB:firstHtml.indexOf('data-sde-canonical-card-id="old-b"')};
-  put("INV-CANCEL-010",positions.oldA<0 && positions.oldB<0 && positions.replacement>=0,"real canonical renderer omits exiting cards and exposes only the executable replacement");
+  const positions={replacement:firstHtml.indexOf('data-sde-canonical-card-id="replacement"'),blocked:firstHtml.indexOf('data-sde-canonical-card-id="blocked"'),oldA:firstHtml.indexOf('data-sde-canonical-card-id="old-a"'),oldB:firstHtml.indexOf('data-sde-canonical-card-id="old-b"')};
+  const blockedStart=positions.blocked;
+  const blockedEnd=firstHtml.indexOf("</article>",blockedStart);
+  const blockedHtml=blockedStart>=0 && blockedEnd>=0 ? firstHtml.slice(blockedStart,blockedEnd) : "";
+  put(
+    "INV-CANCEL-010",
+    positions.oldA>=0
+      && positions.oldB>=0
+      && positions.replacement>=0
+      && positions.blocked>=0
+      && firstHtml.includes('data-sde-release-cancelled-card="1"')
+      && firstHtml.includes("sde-release-cancelled")
+      && !blockedHtml.includes("sde-shift-action-btn"),
+    "real canonical renderer keeps exiting red lifecycle cards and ordered blocked steps visible without exposing blocked actions"
+  );
   const firstVisibleOrder=[...firstHtml.matchAll(/data-sde-canonical-card-id="([^"]+)"/g)].map(match=>match[1]).join(",");
   ctx.innerWidth=390;
   currentReader=makeReader([oldA,oldB]);
   ctx.renderSdeCanonicalProductionReader();
   const secondVisibleOrder=[...root.innerHTML.matchAll(/data-sde-canonical-card-id="([^"]+)"/g)].map(match=>match[1]).join(",");
-  put("INV-CANCEL-011",firstVisibleOrder==="replacement" && secondVisibleOrder==="replacement","exiting input order cannot change the executable-only production card list, including 390px reading direction");
+  put("INV-CANCEL-011",firstVisibleOrder==="old-a,old-b,replacement,blocked" && secondVisibleOrder==="old-a,old-b,replacement,blocked","exiting cards, replacement and future ordered steps keep deterministic reading order, including 390px");
 
   appState.sdeMoveActions["old-a"].removedFromActiveLayout=true;
   appState.sdeMoveActions["old-b"].removedFromActiveLayout=true;

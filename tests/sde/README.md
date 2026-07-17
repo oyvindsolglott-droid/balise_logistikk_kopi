@@ -49,12 +49,14 @@ annullert frigjøringssteg for 74-12 kan ikke gjenbrukes som aktiv identitet.
 Planleggeren må velge en ny komplett release/main/recovery-kjede og bevare det
 eksakte brukerbestilte hovedmålet.
 
-Produksjons-UI-kontrakten er strengere enn den interne kjedeprojeksjonen: bare
-kort med `status=actionable`, klar handleradapter og minst én tillatt operativ
-handling kan rendres i hovedlisten. Dependency-sperrede, handler-sperrede og
-avsluttede kort beholdes bare som intern integritet/diagnostikk. Retarget kan
-fortsatt valideres i canonical-modellen, men produksjonskortene og det grafiske
-verktøyet eksponerer ingen «Velg annet spor»-meny eller retarget-mål.
+Produksjons-UI viser alle fysisk validerte og bestilte kjedesteg: det aktive
+steget, dependency-sperrede fremtidige steg og et annullert kort mens den røde
+5+2-sekunders smuldre-/reflow-livssyklusen pågår. Bare kort med
+`status=actionable`, klar handleradapter og minst én tillatt operativ handling
+får `Utført`/`Annullert`; fremtidige steg har ingen handlingskontroller.
+Handler-sperrede og diagnostic-only kandidater rendres ikke som operative kort.
+Retarget kan fortsatt valideres i canonical-modellen, men produksjonskortene og
+det grafiske verktøyet eksponerer ingen «Velg annet spor»-meny eller retarget-mål.
 
 Rutetilgjengelighet skal vurderes per mulig adkomstende. Én sperret ende er ikke
 en hard ruteblokk når en annen ende er fri. Det samme kriteriet brukes når et

@@ -89,7 +89,7 @@ const ACTIVE_SOURCE_MUTANT_IDS = Object.freeze([
   "E-remove-exiting-status",
   "F-remove-replacement-authority",
   "G-change-5-plus-2",
-  "H-reverse-card-order",
+  "H-hide-ordered-and-exiting-cards",
   "I-keep-placeholder-after-removeAt",
   "G-allow-occupied-target-card",
   "H-rank-VN-before-local-south",
@@ -355,14 +355,18 @@ const executableOnlyVisibleCardsFunction = `function getSdeCanonicalProductionVi
     })
   );
 }`;
-const exposedExitingVisibleCardsFunction = `function getSdeCanonicalProductionVisibleCards(reader){
+const lifecycleVisibleCardsFunction = `function getSdeCanonicalProductionVisibleCards(reader){
+  const actionableCards = (reader.cardProjection.actionableCards || []).filter(card=>{
+      const adapter = reader.handlerAdapters?.[card.canonicalCardId];
+      return card.status === "actionable"
+        && adapter?.ready === true
+        && (adapter.canComplete === true || adapter.canCancel === true);
+    });
   return orderSdeCanonicalProductionProjectedCards([
-    ...(reader.cardProjection.exitingCards || []),
-    ...(reader.cardProjection.actionableCards || [])
+    ...actionableCards,
+    ...(reader.cardProjection.blockedChainCards || []),
+    ...(reader.cardProjection.exitingCards || [])
   ]);
-}`;
-const exposedAllProjectedCardsFunction = `function getSdeCanonicalProductionVisibleCards(reader){
-  return getSdeCanonicalProductionProjectedCards(reader);
 }`;
 
 const mutations = [
@@ -422,18 +426,18 @@ const mutations = [
     catches: ["INV-CANCEL-007", "INV-CANCEL-008"],
   },
   {
-    id: "H-reverse-card-order",
+    id: "H-hide-ordered-and-exiting-cards",
     apply: html => applySemanticStrategy(html, [{
-      id: "expose-exiting-production-cards",
+      id: "hide-ordered-and-exiting-production-cards",
       functionName: "getSdeCanonicalProductionVisibleCards",
       reportSnippets: true,
-      matches: sourceValue => countOccurrences(sourceValue, executableOnlyVisibleCardsFunction) === 1,
+      matches: sourceValue => countOccurrences(sourceValue, lifecycleVisibleCardsFunction) === 1,
       edits: [{
-        name: "expose exiting cards before replacement",
-        before: executableOnlyVisibleCardsFunction,
-        after: exposedExitingVisibleCardsFunction,
+        name: "hide ordered and exiting cards",
+        before: lifecycleVisibleCardsFunction,
+        after: executableOnlyVisibleCardsFunction,
       }],
-    }], "executable-only card visibility"),
+    }], "ordered and exiting card visibility"),
     catches: ["INV-CANCEL-010", "INV-CANCEL-011"],
   },
   {
@@ -442,10 +446,9 @@ const mutations = [
       id: "expose-all-cards-and-retain-placeholder",
       functionName: "getSdeCanonicalProductionVisibleCards + buildSdeCanonicalProductionCardHtml",
       reportSnippets: true,
-      matches: sourceValue => countOccurrences(sourceValue, executableOnlyVisibleCardsFunction) === 1
+      matches: sourceValue => countOccurrences(sourceValue, lifecycleVisibleCardsFunction) === 1
         && countOccurrences(sourceValue, removedCancelledCard) === 1,
       edits: [
-        {name: "expose all projected cards", before: executableOnlyVisibleCardsFunction, after: exposedAllProjectedCardsFunction},
         {name: "retain measurable cancelled-card layout placeholder", before: removedCancelledCard, after: retainedCancelledCardPlaceholder},
       ],
     }], "placeholder after removeAt"),

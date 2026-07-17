@@ -238,17 +238,20 @@ test("H — card preview stays explicit, fail-closed and non-interactive", () =>
   );
 });
 
-test("Production UI — shows only executable shift cards and no retarget menu", () => {
+test("Production UI — shows ordered cards, exposes actions only when executable, and has no retarget menu", () => {
   const contract = source => {
     const visibleCards = extractFunction(source, "getSdeCanonicalProductionVisibleCards");
     assert.ok(visibleCards.includes("reader.cardProjection.actionableCards"));
+    assert.ok(visibleCards.includes("reader.cardProjection.blockedChainCards"));
+    assert.ok(visibleCards.includes("reader.cardProjection.exitingCards"));
     assert.ok(visibleCards.includes("adapter?.ready === true"));
     assert.ok(visibleCards.includes("adapter.canComplete === true || adapter.canCancel === true"));
-    for(const forbidden of ["blockedChainCards", "handlerBlockedCards", "exitingCards"]){
+    for(const forbidden of ["handlerBlockedCards"]){
       assert.equal(visibleCards.includes(forbidden), false, `production visible cards include ${forbidden}`);
     }
 
     const controls = extractFunction(source, "buildSdeCanonicalCardActionControlsHtml");
+    assert.ok(controls.includes('card.status !== "actionable" || adapter?.ready !== true'));
     for(const forbidden of ["Velg annet spor", "Avslå VN og velg annet spor", "data-sde-canonical-retarget-action", "beginSdeCanonicalRetarget"]){
       assert.equal(controls.includes(forbidden), false, `production card controls expose ${forbidden}`);
     }
@@ -265,6 +268,46 @@ test("Production UI — shows only executable shift cards and no retarget menu",
     "production executable-only UI",
     currentHtml,
     "a9a68b4a4eb20fbef9b556d839a73dd0b3aacef4",
+    contract,
+  );
+});
+
+test("Cancellation UI — cancelled card stays red, crumbles, and yields its place to the replacement", () => {
+  const contract = source => {
+    const visibleCards = extractFunction(source, "getSdeCanonicalProductionVisibleCards");
+    assert.ok(visibleCards.includes("reader.cardProjection.exitingCards"));
+    const cardHtml = extractFunction(source, "buildSdeCanonicalProductionCardHtml");
+    assert.ok(cardHtml.includes("getSdePhysicalReleaseCancelledUiState"));
+    assert.ok(cardHtml.includes("buildSdePhysicalReleaseCancelledCardUi"));
+    assert.ok(cardHtml.includes('if(cancelledUiState.hidden) return "";'));
+    const render = extractFunction(source, "renderSdeCanonicalProductionReader");
+    assert.ok(render.includes("scheduleSdePhysicalReleaseCardDismissals(root)"));
+    assert.ok(source.includes("@keyframes sdeReleaseCardCrumble"));
+  };
+  assertHistoricalContractFailure(
+    "cancelled card crumble lifecycle visibility",
+    currentHtml,
+    "34d66488bf597252610d327ba240e52a3d066fcc",
+    contract,
+  );
+});
+
+test("Ordered chain UI — every booked step has a card while future steps have no action controls", () => {
+  const contract = source => {
+    const visibleCards = extractFunction(source, "getSdeCanonicalProductionVisibleCards");
+    assert.ok(visibleCards.includes("reader.cardProjection.blockedChainCards"));
+    assert.equal(visibleCards.includes("reader.cardProjection.handlerBlockedCards"), false);
+    const controls = extractFunction(source, "buildSdeCanonicalCardActionControlsHtml");
+    assert.ok(controls.includes('card.status !== "actionable" || adapter?.ready !== true'));
+    assert.equal(controls.includes("blocked_chain_step"), false);
+    const cardHtml = extractFunction(source, "buildSdeCanonicalProductionCardHtml");
+    assert.ok(cardHtml.includes("Fremtidig kjedesteg"));
+    assert.ok(cardHtml.includes("blockedBy"));
+  };
+  assertHistoricalContractFailure(
+    "booked chain card visibility without blocked actions",
+    currentHtml,
+    "34d66488bf597252610d327ba240e52a3d066fcc",
     contract,
   );
 });

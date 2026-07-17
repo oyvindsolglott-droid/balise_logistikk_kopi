@@ -37093,14 +37093,17 @@ function getSdeCanonicalProductionProjectedCards(reader){
 }
 
 function getSdeCanonicalProductionVisibleCards(reader){
-  return orderSdeCanonicalProductionProjectedCards(
-    (reader.cardProjection.actionableCards || []).filter(card=>{
+  const actionableCards = (reader.cardProjection.actionableCards || []).filter(card=>{
       const adapter = reader.handlerAdapters?.[card.canonicalCardId];
       return card.status === "actionable"
         && adapter?.ready === true
         && (adapter.canComplete === true || adapter.canCancel === true);
-    })
-  );
+    });
+  return orderSdeCanonicalProductionProjectedCards([
+    ...actionableCards,
+    ...(reader.cardProjection.blockedChainCards || []),
+    ...(reader.cardProjection.exitingCards || [])
+  ]);
 }
 
 function applySdeCanonicalHandlerActionableGate(reader, initialAdapters){
