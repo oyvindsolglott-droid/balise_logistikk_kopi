@@ -326,6 +326,13 @@ registerHarnessTest({
   baseline: "b125418d22a4124c60e5cb8c36e76da70165669b",
 });
 
+registerHarnessTest({
+  phase: "Completed-chain lifecycle",
+  name: "a completed historical chain cannot poison a fresh order from current actual-state",
+  harness: "sde-completed-chain-new-order-harness.js",
+  baseline: "4ef126fbb280360c7ad243d0a3f6ce1668c066f1",
+});
+
 test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
   assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));

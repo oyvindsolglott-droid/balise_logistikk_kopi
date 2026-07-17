@@ -18100,8 +18100,17 @@ function buildSdeCompleteTrappedEgressPlan(row, blockState, sourceRows=[], optio
   const chainId = `sde-trapped-egress-v1|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
     mainVehicle:normalizeVehicleToken(mainVehicle),
     mainSource,
+    requestedTarget,
     initialOccupancy:getSdeTrappedEgressOccupancySignature(occupancy),
-    needKey:getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row)
+    needKey:getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row),
+    orderIdentity:String(
+      row?.sdeNightPlacementDragIdentity
+      || row?.manualPlanId
+      || row?.sdeNightPlacementGeneratedActionKey
+      || row?.stableActionKey
+      || getSdeMoveActionKey(row)
+      || ""
+    ).trim() // SDE_EGRESS_FRESH_ORDER_IDENTITY
   }))}`;
   const queue = [initial];
   const visited = new Set([`${getSdeTrappedEgressOccupancySignature(occupancy)}|${Array.from(initial.movedTokens).sort().join(",")}`]);
