@@ -23630,6 +23630,7 @@ function getSdeCancelledOutcomeAlias(row){
   const physicalFromSlot = getSdeMoveOutcomePhysicalFromSlot(row);
   const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
   const sequenceStep = getSdeMoveOutcomeSequenceStep(row);
+  const rowReplanKey = String(row.sdePhysicalReleaseReplanKey || getSdePhysicalReleaseReplanKey(row) || "").trim();
   if(!vehicleToken || !physicalFromSlot) return "";
 
   const rowCardIds = new Set([
@@ -23671,6 +23672,13 @@ function getSdeCancelledOutcomeAlias(row){
         normalizeSlot(snapshot.toSlot)
       ].filter(Boolean));
       const activeTarget = normalizeSlot(record.replacementTargetSlot);
+      const recordReplanKey = String(
+        record.replanKey
+        || snapshot.sdePhysicalReleaseReplanKey
+        || getSdePhysicalReleaseReplanKey(snapshot)
+        || ""
+      ).trim();
+      const sameReplanContext = Boolean(rowReplanKey && recordReplanKey && rowReplanKey === recordReplanKey);
       const generatedManualAlias = Boolean(
         row.isNightPlacementGenerated
         || row.sdeNightPlacementDragOverrideActive
@@ -23679,10 +23687,12 @@ function getSdeCancelledOutcomeAlias(row){
       );
       const exactGeneratedPhysicalAlternative = Boolean(
         generatedManualAlias
+        && sameReplanContext
         && targetSlot
         && (rejectedTargets.has(targetSlot) || (activeTarget && targetSlot === activeTarget))
       );
-      return exactCardAlias || exactNeedAlias || exactGeneratedPhysicalAlternative
+      const replanContextAllowsAlias = !rowReplanKey || sameReplanContext;
+      return replanContextAllowsAlias && (exactCardAlias || exactNeedAlias || exactGeneratedPhysicalAlternative)
         ? String(record.outcomeKey || "").trim()
         : "";
     })

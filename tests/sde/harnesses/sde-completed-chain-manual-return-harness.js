@@ -26,7 +26,19 @@ eval(prefix + String.raw`
     sdeNightPlacementDragIdentity:mainRequestId,manualPlanId:"manual-graphic-order|"+mainRequestId,
     sdeNightPlacementDragOverrideActive:true,isNightPlacementGenerated:true,isManualOnly:true
   };
-  const chainRows=ctx.buildSdePhysicalBlockerGuardMoves([mainOrder],{reconcileActive:false});
+  const mainOverride={
+    id:mainRequestId,vehicle:"74-10",originalFromSlot:"5M",fromSlot:"5M",currentFromSlot:"5M",toSlot:"6S",
+    createdAt:"2026-07-17T18:29:00.000Z",updatedAt:"2026-07-17T18:29:00.000Z",
+    source:"night-placement-drag",stableActionKey:mainActionKey,moveKey:mainActionKey,
+    needKey:"night-placement-drag-need|"+mainActionKey,hasMatchedSdeMove:false,isManualOnly:true,
+    hardPhysicalBlocked:true,canonicalProducer:"graphic_drag_generated_move",canonicalPurpose:"vehicle-relocation",
+    sdeCanonicalGraphicDragOrder:true,dragRequestId:mainRequestId,sdeNightPlacementDragIdentity:mainRequestId,
+    manualPlanId:"manual-graphic-order|"+mainRequestId
+  };
+  appState.sdeNightPlacementManualOverrides={[mainOverride.id]:mainOverride};
+  const stagedMainOrder=ctx.stageSdeCanonicalGraphicDragOrder(mainOverride);
+  assert.ok(stagedMainOrder?.chain?.ok,"the original chain must stage completely");
+  const chainRows=ctx.buildSdePhysicalBlockerGuardMoves([ctx.buildSdeNightPlacementGeneratedMove(mainOverride)],{reconcileActive:false});
   const release=chainRows.find(row=>row.sdePhysicalDependencyRole==="prerequisite");
   const main=chainRows.find(row=>row.sdePhysicalDependencyRole==="dependent");
   const recovery=chainRows.find(row=>row.sdePhysicalDependencyRole==="return");
@@ -50,7 +62,13 @@ eval(prefix + String.raw`
     }
   };
   const progressedPlacements=[["4M","74-12"],["6S","74-10"],["5S","74-11"]];
-  resetState(progressedPlacements,{sdeMoveActions:completedActions});
+  const progressedOverrides=JSON.parse(JSON.stringify(appState.sdeNightPlacementManualOverrides));
+  const progressedAuthorities=JSON.parse(JSON.stringify(appState.sdeActiveMoveOutcomes));
+  resetState(progressedPlacements,{
+    sdeMoveActions:completedActions,
+    sdeNightPlacementManualOverrides:progressedOverrides,
+    sdeActiveMoveOutcomes:progressedAuthorities
+  });
   appState.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
 
   const requestId="manual-return-after-completed-main";
@@ -93,10 +111,42 @@ eval(prefix + String.raw`
   assert.equal(appState.grunnoppstilling["5N"],"74-12","74-12 must physically return to 5N");
   assert.equal(appState.grunnoppstilling["4M"],undefined,"the temporary 4M placement must be released");
 
+  const historicalReplanKey="sde-physical-release-replan|74-10|10S|5M|74-12|5N";
+  const historicalOutcomeKey="move|physical-release|"+historicalReplanKey+"|74-12|5N|physical-1";
+  appState.sdeMoveActions["historical-cancelled-release"]={
+    action:"cancelled",vehicle:"74-12",fromSlot:"5N",toSlot:"4M",physicalFromSlot:"5N",
+    sequenceStep:"physical-1",outcomeKey:historicalOutcomeKey,replanKey:historicalReplanKey,
+    replacementTargetSlot:"VN",time:"2026-07-17T17:00:00.000Z",
+    snapshot:{
+      vehicle:"74-12",fromSlot:"5N",originalFromSlot:"5N",toSlot:"4M",needKey:"historical-release-need",
+      sdePhysicalChainStep:1,sdePhysicalDependencyRole:"prerequisite",sdePhysicalReleaseReplanKey:historicalReplanKey
+    }
+  };
+
+  vm.runInContext("computeInndataCachedRows=null;computeInndataCacheDepth=0;sdeShiftLastRenderedData={moves:[],score:0};sdeNightPlacementDropMessage=null;sdeNightPlacementBlockedMoveRequest=null;sdeProductionReaderFallbackError=null",ctx);
+  ctx.renderSdeSkiftebevegelser=()=>{};
+  assert.equal(ctx.getSdeCurrentSlotForVehicle("74-12"),"5N","actual state must show the manually completed return");
+  assert.equal(ctx.getSdeMoveActionRecord(mainActionKey)?.action,"completed");
+  const nextPayload={vehicle:"74-10",slot:"6S",fromSlot:"6S",sourceKind:"actual"};
+  const nextAssessment=ctx.buildSdeNightPlacementDropAssessment(nextPayload,"5M",{moves:[]});
+  assert.equal(nextAssessment.ok,true,nextAssessment.message||"the next order must be assessable");
+  assert.equal(nextAssessment.hardPhysicalBlocked,true,"the next order must use a complete temporary access-relief chain");
+  const nextApplied=ctx.applySdeNightPlacementDragOverride(nextPayload,"5M");
+  const nextDropMessage=vm.runInContext("sdeNightPlacementDropMessage",ctx);
+  assert.equal(nextApplied,true,nextDropMessage?.text||"the next order was rejected");
+  assert.notEqual(nextDropMessage?.type,"error","a completed chain must not poison the next physical order");
+  const nextOverview=ctx.buildSdeNightPlacementOverviewData({moves:[]});
+  assert.equal(nextOverview.rejectedSlot,"","the free 5M target must not retain a red rejection frame");
+  const nextReader=ctx.buildSdeCanonicalProductionReader();
+  assert.equal(nextReader.integrityReport.status,"PASS","the next order must remain canonically complete");
+  assert.equal(nextReader.cardProjection.actionableCards.length,1,"the next order must expose exactly one actionable prerequisite");
+  assert.equal(nextReader.graphicProjection.activeOverlays.length,1,"the next order must expose exactly one active overlay");
+
   process.stdout.write(JSON.stringify({
-    schemaVersion:"sde-completed-chain-manual-return-harness-v1",ok:true,
+    schemaVersion:"sde-completed-chain-manual-return-harness-v2",ok:true,
     completedBefore:[ctx.getSdeMoveActionKey(release),ctx.getSdeMoveActionKey(main)],
-    returnActionKey:actionKey,authorityOutcomeId:authority.activeOutcomeId,finalSlot:"5N",alerts
+    returnActionKey:actionKey,authorityOutcomeId:authority.activeOutcomeId,finalSlot:"5N",alerts,
+    nextOrder:{vehicle:"74-10",fromSlot:"6S",toSlot:"5M",actionableCards:nextReader.cardProjection.actionableCards.length}
   })+"\n");
 })().catch(error=>{
   process.stderr.write(String(error?.stack||error)+"\n");
