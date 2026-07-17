@@ -269,6 +269,13 @@ test("Production UI — shows only executable shift cards and no retarget menu",
   );
 });
 
+registerHarnessTest({
+  phase: "Route availability",
+  name: "one free egress keeps offered completion and every free manual target available",
+  harness: "sde-partial-egress-route-availability-harness.js",
+  baseline: "7516f82b6320266a735df4eb1d661a40ba61762c",
+});
+
 test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
   assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));

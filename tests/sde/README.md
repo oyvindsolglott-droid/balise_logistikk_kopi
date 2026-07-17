@@ -56,6 +56,12 @@ avsluttede kort beholdes bare som intern integritet/diagnostikk. Retarget kan
 fortsatt valideres i canonical-modellen, men produksjonskortene og det grafiske
 verktøyet eksponerer ingen «Velg annet spor»-meny eller retarget-mål.
 
+Rutetilgjengelighet skal vurderes per mulig adkomstende. Én sperret ende er ikke
+en hard ruteblokk når en annen ende er fri. Det samme kriteriet brukes når et
+kort tilbys, når `Utført` kvitteres og når et ledig mål velges med grafisk drag.
+Mål som faktisk er belagt, og kilder som er fysisk sperret i alle ender, beholder
+de eksisterende fail-closed-vaktene.
+
 ```sh
 npm run test:sde:contracts
 npm run test:sde:mutations

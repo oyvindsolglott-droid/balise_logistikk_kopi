@@ -14475,7 +14475,9 @@ function getSdeMovePhysicalAccessAssessment(row){
   const sourceClearOptions = getSdeClearAccessOptions(sourceAccessOptions);
   const targetClearOptions = getSdeClearAccessOptions(targetAccessOptions);
   const routeText = fromSlot && toSlot ? getSdeRouteAssessmentForPlanSkifte(fromSlot, toSlot) : "";
-  const hardRouteBlocked = /^Kontroller:\s*rute blokkert/i.test(routeText);
+  // Bare den eksplisitte fullstopp-formen «rute blokkert.» er hard blokkering.
+  // «rute blokkert via …» beskriver én sperret ende når en annen ende fortsatt er fri.
+  const hardRouteBlocked = /^Kontroller:\s*rute blokkert\./i.test(routeText);
   const blockers = [];
   const seenSlots = new Set();
   const addBlockers = items => {
