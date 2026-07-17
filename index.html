@@ -16562,6 +16562,8 @@ function getSdePhysicalReleaseReplanKeyFromParts(blockedVehicle, blockedFromSlot
 
 function getSdePhysicalReleaseReplanKey(row){
   if(!row) return "";
+  const explicitKey = String(row.sdePhysicalReleaseReplanKey || "").trim();
+  if(explicitKey) return explicitKey;
   return getSdePhysicalReleaseReplanKeyFromParts(
     row.sdePhysicalBlockerForVehicle,
     row.sdePhysicalBlockerForSlot,
@@ -16707,13 +16709,25 @@ function getSdePhysicalReleaseRejectedProposals(key){
 }
 
 function getSdePhysicalReleaseReplanKeyForBlocker(blockedRow, blockState, blocker){
-  return getSdePhysicalReleaseReplanKeyFromParts(
+  const baseKey = getSdePhysicalReleaseReplanKeyFromParts(
     blockState?.vehicle || blockedRow?.vehicle,
     blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot,
     blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot,
     blocker?.vehicle,
     blocker?.slot
   );
+  const orderIdentity = blockedRow?.sdeCanonicalGraphicDragOrder === true
+    ? String(
+        blockedRow?.sdeNightPlacementDragIdentity
+        || blockedRow?.manualPlanId
+        || blockedRow?.sdeNightPlacementGeneratedActionKey
+        || blockedRow?.stableActionKey
+        || ""
+      ).trim()
+    : "";
+  return baseKey && orderIdentity
+    ? `${baseKey}|order-${getSdeShiftSnapshotHash(orderIdentity)}`
+    : baseKey;
 }
 
 function getSdePhysicalReleaseRejectedTargetsForBlocker(blockedRow, blockState, blocker){
@@ -18249,8 +18263,8 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
       sdePhysicalDependencyRole:"prerequisite",
       canonicalChainStepActive:true,
       canonicalProducer:"physical_blocker_guard",
-      sdePhysicalReleaseReplanKey:getSdePhysicalReleaseReplanKeyFromParts(
-        blockState.vehicle,blockState.fromSlot,blockState.toSlot,step.vehicle,step.originalBlockerSlot
+      sdePhysicalReleaseReplanKey:getSdePhysicalReleaseReplanKeyForBlocker(
+        row,blockState,{vehicle:step.vehicle,slot:step.originalBlockerSlot}
       ),
       sdePhysicalReleaseCandidateOrder:[...step.candidateOrder],
       sdePhysicalPlanningStateSignature:plan.sourceStateSignature,
@@ -18335,8 +18349,8 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
       sdePhysicalBlockerForVehicle:blockState.vehicle,
       sdePhysicalBlockerForSlot:blockState.fromSlot,
       sdePhysicalBlockerOriginalTarget:blockState.toSlot,
-      sdePhysicalReleaseReplanKey:release ? getSdePhysicalReleaseReplanKeyFromParts(
-        blockState.vehicle,blockState.fromSlot,blockState.toSlot,release.vehicle,release.originalBlockerSlot
+      sdePhysicalReleaseReplanKey:release ? getSdePhysicalReleaseReplanKeyForBlocker(
+        row,blockState,{vehicle:release.vehicle,slot:release.originalBlockerSlot}
       ) : "",
       sdePhysicalReleaseCandidateOrder:release ? [...release.candidateOrder] : [],
       sdePhysicalAccessReliefChain:{
@@ -29824,6 +29838,12 @@ function buildSdePersistedPhysicalCancellationFailClosedRows(){
 function buildSdeCancelledReplacementMoves(baseMoves, options={}){
   const moves = Array.isArray(baseMoves) ? baseMoves : [];
   const activeMoves = getSdeAuthoritativeActiveOutcomeRows(moves);
+  const freshCanonicalGraphicSteps = new Set(
+    getSdeNightPlacementActiveManualOverrides()
+      .filter(override=>override?.sdeCanonicalGraphicDragOrder === true)
+      .map(override=>`${normalizeVehicleToken(override?.vehicle)}|${getSdeNightPlacementOverrideFromSlot(override)}`)
+      .filter(key=>key !== "|")
+  );
   const learningEvents = Array.isArray(state.sdeMoveLearningLog)
     ? state.sdeMoveLearningLog.filter(Boolean)
     : [];
@@ -29927,11 +29947,20 @@ function buildSdeCancelledReplacementMoves(baseMoves, options={}){
     .sort((left,right)=>String(left?.time || "").localeCompare(String(right?.time || "")))
     .forEach(event=>{
     const snapshot = event?.snapshot || {};
+    const actionRecord = getSdeMoveActionRecord(event.key);
+    const cancelledVehicle = normalizeVehicleToken(snapshot?.vehicle || actionRecord?.vehicle);
+    const cancelledFromSlot = normalizeSlot(
+      snapshot?.originalFromSlot
+      || snapshot?.fromSlot
+      || snapshot?.arrivalSlot
+      || actionRecord?.physicalFromSlot
+      || actionRecord?.fromSlot
+    );
+    if(freshCanonicalGraphicSteps.has(`${cancelledVehicle}|${cancelledFromSlot}`)) return;
     const needKey = getSdeWrongTrackReplacementNeedKeyFromEvent(event);
     const rejectedSlot = normalizeSlot(snapshot.toSlot);
     if(!needKey) return;
 
-    const actionRecord = getSdeMoveActionRecord(event.key);
     const canonicalOutcomeKey = String(
       actionRecord?.outcomeKey
       || getSdeMoveObligationStepKey({
@@ -33482,6 +33511,11 @@ function getSdeNightPlacementMatchedMoveForOverride(override, allRows=[]){
     if(needKeyMatch) return needKeyMatch;
   }
 
+  // A canonical graphic drag carries a unique order identity. If neither of its
+  // explicit keys matched, binding it to an older row merely by vehicle/source
+  // would reuse that row's completed lifecycle and suppress the fresh order.
+  if(override?.sdeCanonicalGraphicDragOrder === true) return null;
+
   const vehicleToken = normalizeVehicleToken(override?.vehicle);
   if(!vehicleToken) return null;
 
@@ -33853,10 +33887,19 @@ function getSdeNightPlacementStepRoleLabel(row){
 
 function buildSdeShiftCardMoveCandidates(data, options={}){
   const baseRows = Array.isArray(data?.moves) ? data.moves : [];
+  const generatedMoves = buildSdeNightPlacementGeneratedMoves(baseRows);
+  const canonicalGraphicSteps = new Set(
+    generatedMoves
+      .filter(row=>row?.sdeCanonicalGraphicDragOrder === true)
+      .map(row=>`${normalizeVehicleToken(row?.vehicle)}|${normalizeSlot(row?.originalFromSlot || row?.fromSlot || row?.arrivalSlot)}`)
+      .filter(key=>key !== "|")
+  );
   const effectiveMoves = baseRows
     .map(row => getSdeEffectiveMoveForCard(row, baseRows))
-    .filter(row => !isSdeNightPlacementMoveAlreadySatisfied(row));
-  const generatedMoves = buildSdeNightPlacementGeneratedMoves(baseRows);
+    .filter(row => !isSdeNightPlacementMoveAlreadySatisfied(row))
+    .filter(row => !canonicalGraphicSteps.has(
+      `${normalizeVehicleToken(row?.vehicle)}|${normalizeSlot(row?.originalFromSlot || row?.fromSlot || row?.arrivalSlot)}`
+    ));
   return applySdeNightPlacementStepRoles(
     buildSdePhysicalBlockerGuardMoves(
       [...effectiveMoves, ...generatedMoves],
@@ -34518,9 +34561,35 @@ function removeSdeActiveOutcomeAuthoritiesForPhysicalStep(vehicle, fromSlot){
   let changed = false;
   Object.keys(authorities).forEach(key=>{
     const authority = authorities[key];
-    if(normalizeVehicleToken(authority?.vehicle) !== vehicleToken) return;
-    if(normalizeSlot(authority?.physicalFromSlot) !== physicalFromSlot) return;
+    const keyParts = String(key || "").split("|");
+    const encodedVehicle = keyParts[0] === "move" ? keyParts[2] : "";
+    const encodedFromSlot = keyParts[0] === "move" ? keyParts[3] : "";
+    if(normalizeVehicleToken(authority?.vehicle || authority?.vehicleId || encodedVehicle) !== vehicleToken) return;
+    if(normalizeSlot(authority?.physicalFromSlot || authority?.canonicalSourceSlot || encodedFromSlot) !== physicalFromSlot) return;
     delete authorities[key];
+    changed = true;
+  });
+  Object.values(state.sdeMoveActions || {}).forEach(record=>{
+    if(record?.action !== "cancelled") return;
+    const snapshot = record?.snapshot || {};
+    const outcomeKey = getSdeMoveOutcomeKeyFromActionRecord(record);
+    const keyParts = String(outcomeKey || "").split("|");
+    const encodedVehicle = keyParts[0] === "move" ? keyParts[2] : "";
+    const encodedFromSlot = keyParts[0] === "move" ? keyParts[3] : "";
+    const recordVehicle = normalizeVehicleToken(
+      record?.vehicle || snapshot?.vehicle || encodedVehicle
+    );
+    const recordFromSlot = normalizeSlot(
+      record?.physicalFromSlot
+      || record?.fromSlot
+      || snapshot?.originalFromSlot
+      || snapshot?.fromSlot
+      || encodedFromSlot
+    );
+    if(recordVehicle !== vehicleToken || recordFromSlot !== physicalFromSlot) return;
+    if(record.prerequisiteCancellationSupersededToDifferentChain === true) return;
+    record.prerequisiteCancellationSupersededToDifferentChain = true;
+    record.authorityPending = false;
     changed = true;
   });
   return changed;
@@ -35081,6 +35150,48 @@ function stageSdeCanonicalGraphicDragOrder(override){
 
   if(override?.hardPhysicalBlocked){
     removeSdeActiveOutcomeAuthoritiesForPhysicalStep(generatedMove.vehicle, generatedMove.fromSlot);
+    const stagedRows = buildSdePhysicalBlockerGuardMoves([generatedMove], {reconcileActive:false});
+    const stagedMain = stagedRows.find(row=>getSdeMoveActionKey(row) === actionKey) || null;
+    const stagedChainId = String(stagedMain?.sdePhysicalChainId || "").trim();
+    const stagedChainRows = stagedChainId
+      ? stagedRows.filter(row=>String(row?.sdePhysicalChainId || "").trim() === stagedChainId)
+      : [];
+    const stagedReleases = stagedChainRows.filter(row=>row?.sdePhysicalDependencyRole === "prerequisite");
+    const stagedMains = stagedChainRows.filter(row=>row?.sdePhysicalDependencyRole === "dependent");
+    const stagedReturns = stagedChainRows.filter(row=>row?.sdePhysicalDependencyRole === "return");
+    if(
+      !stagedMain
+      || !stagedChainId
+      || stagedReleases.length < 1
+      || stagedMains.length !== 1
+      || stagedReturns.length !== stagedReleases.length
+    ){
+      throw new Error("Canonical fysisk frigjøringskjede kunne ikke forhåndsstages komplett.");
+    }
+    stagedChainRows.forEach(row=>{
+      const rowVehicle = sanitizeVehicleValue(row?.vehicle);
+      const rowFromSlot = getSdeMoveOutcomePhysicalFromSlot(row);
+      if(!rowVehicle || !rowFromSlot){
+        throw new Error("Canonical fysisk frigjøringssteg mangler entydig authority-identitet.");
+      }
+      removeSdeActiveOutcomeAuthoritiesForPhysicalStep(rowVehicle,rowFromSlot);
+    });
+    const stagedFirst = stagedReleases[0];
+    const stagedFirstActionKey = getSdeMoveActionKey(stagedFirst);
+    const stagedFirstOutcomeKey = getSdeMoveObligationStepKey(stagedFirst);
+    const stagedFirstAuthority = setSdeActiveOutcomeAuthority(stagedFirstOutcomeKey,stagedFirst,{
+      activeOutcomeId:stagedFirstActionKey,
+      legacyActionKey:stagedFirstActionKey,
+      vehicle:stagedFirst.vehicle,
+      physicalFromSlot:getSdeMoveOutcomePhysicalFromSlot(stagedFirst),
+      requestedTarget:stagedFirst?.recommendedSlot || stagedFirst?.toSlot,
+      producer:String(stagedFirst?.canonicalProducer || "physical_blocker_guard").trim(),
+      dragRequestId:override.dragRequestId,
+      createdAt:override.createdAt,
+      updatedAt:override.updatedAt,
+      source:"graphic_drag_physical_chain_stage"
+    });
+    if(!stagedFirstAuthority) throw new Error("Canonical fysisk frigjørings-authority kunne ikke opprettes.");
     const expected = {
       vehicle:generatedMove.vehicle,
       sourceSlot:generatedMove.fromSlot,
@@ -35090,6 +35201,13 @@ function stageSdeCanonicalGraphicDragOrder(override){
     const provisionalReader = buildSdeCanonicalProductionReader();
     const provisional = inspectSdeCanonicalGraphicDragPhysicalReliefChain(provisionalReader, expected);
     if(!provisional.ok) throw new Error(`Canonical fysisk frigjøringskjede er ufullstendig: ${provisional.reason}`);
+    const stagedFirstOutcome = (provisional.outcomes?.all || []).find(outcome=>
+      String(outcome?.actionKey || "").trim() === stagedFirstActionKey
+    );
+    stagedFirstAuthority.canonicalActiveOutcomeId = String(stagedFirstOutcome?.candidateOutcomeId || "").trim();
+    stagedFirstAuthority.obligationId = String(stagedFirstOutcome?.obligationId || "").trim();
+    stagedFirstAuthority.stepId = String(stagedFirstOutcome?.stepId || "").trim();
+    stagedFirstAuthority.updatedAt = override.updatedAt;
     override.sdeCanonicalManualAuthority = {
       authorityMode:"requested_target_with_physical_guard",
       vehicle:generatedMove.vehicle,

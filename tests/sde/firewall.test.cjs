@@ -333,6 +333,13 @@ registerHarnessTest({
   baseline: "4ef126fbb280360c7ad243d0a3f6ce1668c066f1",
 });
 
+registerHarnessTest({
+  phase: "Fresh graphical order identity",
+  name: "a unique browser drag cannot bind to an older row only by vehicle and source",
+  harness: "sde-fresh-graphic-order-base-row-harness.js",
+  baseline: "4aba2d32b1b99d8f01037f8330899791648036fb",
+});
+
 test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
   assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
