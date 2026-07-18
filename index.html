@@ -33257,6 +33257,59 @@ function pruneSdeNightPlacementNoOpOverrides(){
   return changed;
 }
 
+function pruneSdeNightPlacementStaleCanonicalGraphicOverrides(){
+  const overrides = getSdeNightPlacementManualOverrides();
+  const overrideEntries = Object.entries(overrides).filter(([,override])=>Boolean(override));
+  if(!overrideEntries.length) return false;
+
+  const completedLockedSlots = getSdeNightPlacementCompletedLockedSlots();
+  let changed = false;
+
+  const hasUsablePlannedSource = (currentKey, override) => {
+    const sourceSlot = getSdeNightPlacementOverrideFromSlot(override);
+    const vehicleToken = normalizeVehicleToken(override?.vehicle);
+    if(!sourceSlot || !vehicleToken) return false;
+    return overrideEntries.some(([candidateKey, candidate])=>{
+      if(candidateKey === currentKey || !candidate) return false;
+      if(normalizeVehicleToken(candidate?.vehicle) !== vehicleToken) return false;
+      if(isSdeNightPlacementOverrideActioned(candidate)) return false;
+      if(isSdeNightPlacementNoOpOverride(candidate)) return false;
+      return normalizeSlot(candidate?.toSlot) === sourceSlot;
+    });
+  };
+
+  overrideEntries.forEach(([key, override])=>{
+    if(override?.sdeCanonicalGraphicDragOrder !== true) return;
+    if(isSdeNightPlacementOverrideActioned(override)) return;
+    if(isSdeNightPlacementNoOpOverride(override)) return;
+
+    const vehicle = sanitizeVehicleValue(override?.vehicle);
+    const sourceSlot = getSdeNightPlacementOverrideFromSlot(override);
+    const physicalSlot = getSdePhysicalSlotForVehicle(vehicle);
+    if(!vehicle || !sourceSlot || !physicalSlot || physicalSlot === sourceSlot) return;
+
+    const completedLocked = completedLockedSlots[sourceSlot];
+    if(
+      completedLocked?.vehicle
+      && normalizeVehicleToken(completedLocked.vehicle) === normalizeVehicleToken(vehicle)
+    ) return;
+
+    if(hasUsablePlannedSource(key, override)) return;
+
+    delete overrides[key];
+    removeSdeStaleCanonicalGraphicAuthoritiesForVehicle(vehicle, physicalSlot);
+    if(
+      normalizeVehicleToken(sdeNightPlacementBlockedMoveRequest?.vehicle) === normalizeVehicleToken(vehicle)
+      && normalizeSlot(sdeNightPlacementBlockedMoveRequest?.fromSlot || sdeNightPlacementBlockedMoveRequest?.arrivalSlot) === sourceSlot
+    ){
+      sdeNightPlacementBlockedMoveRequest = null;
+    }
+    changed = true;
+  });
+
+  return changed;
+}
+
 function getSdeNightPlacementOverrideActionKey(override){
   return String(
     override?.stableActionKey ||
@@ -33295,6 +33348,7 @@ function getSdeNightPlacementOverrideStepKey(override){
 
 function getSdeNightPlacementActiveManualOverrides(){
   pruneSdeNightPlacementNoOpOverrides();
+  pruneSdeNightPlacementStaleCanonicalGraphicOverrides();
   const byStep = new Map();
   Object.values(getSdeNightPlacementManualOverrides()).filter(Boolean).forEach(override=>{
     if(isSdeNightPlacementOverrideActioned(override)) return;
