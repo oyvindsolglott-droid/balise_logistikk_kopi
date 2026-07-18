@@ -599,6 +599,13 @@ registerHarnessTest({
   baseline: "b3521243b0e3fb5d680c1e41d2d34c63445f4331",
 });
 
+registerHarnessTest({
+  phase: "DROPS-1A",
+  name: "level-one vehicle registry keeps the exact catalog and independent collapsed DOM groups",
+  harness: "sde-drops-vehicle-registry-dom-harness.js",
+  baseline: "f84986fb348a10572fb6e4b5ee86c45ce40335f5",
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),
