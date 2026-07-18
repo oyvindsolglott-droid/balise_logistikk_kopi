@@ -35086,10 +35086,13 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     : [];
   const releaseOutcomes = chainOutcomes.filter(outcome=>String(outcome?.raw?.sdePhysicalDependencyRole || "").trim() === "prerequisite");
   const returnOutcomes = chainOutcomes.filter(outcome=>String(outcome?.raw?.sdePhysicalDependencyRole || "").trim() === "return");
-  const expectedStepCount = releaseOutcomes.length * 2 + 1;
+  const carriedReleases = mainOutcome
+    ? getSdeTrappedEgressCarriedReleases(mainOutcome.raw,getSdeTrappedEgressActualOccupancy())
+    : [];
+  const expectedStepCount = releaseOutcomes.length + 1 + returnOutcomes.length;
   const exactSequence = Boolean(
-    releaseOutcomes.length >= 1
-    && returnOutcomes.length === releaseOutcomes.length
+    releaseOutcomes.length + carriedReleases.length >= 1
+    && returnOutcomes.length === releaseOutcomes.length + carriedReleases.length
     && chainOutcomes.length === expectedStepCount
     && chainOutcomes.every((outcome,index)=>
       Number(outcome?.raw?.sdePhysicalChainStep || 0) === index + 1
@@ -35102,12 +35105,21 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     return dependencies.length === 1 && dependencies[0] === String(chainOutcomes[index - 1]?.actionKey || "").trim();
   }));
   const recoveryPairing = Boolean(
-    returnOutcomes.length === releaseOutcomes.length
-    && releaseOutcomes.every(release=>returnOutcomes.some(recovery=>
-      sanitizeVehicleValue(recovery?.vehicleId) === sanitizeVehicleValue(release?.vehicleId)
-      && normalizeSlot(recovery?.canonicalSourceSlot) === normalizeSlot(release?.targetSlot)
-      && normalizeSlot(recovery?.targetSlot) === normalizeSlot(release?.canonicalSourceSlot)
-    ))
+    returnOutcomes.length === releaseOutcomes.length + carriedReleases.length
+    && returnOutcomes.every(recovery=>
+      releaseOutcomes.some(release=>
+        sanitizeVehicleValue(recovery?.vehicleId) === sanitizeVehicleValue(release?.vehicleId)
+        && normalizeSlot(recovery?.canonicalSourceSlot) === normalizeSlot(release?.targetSlot)
+        && normalizeSlot(recovery?.targetSlot) === normalizeSlot(release?.canonicalSourceSlot)
+      )
+      || carriedReleases.some(release=>
+        sanitizeVehicleValue(recovery?.vehicleId) === sanitizeVehicleValue(release?.vehicle)
+        && normalizeSlot(recovery?.canonicalSourceSlot) === normalizeSlot(release?.toSlot)
+        && normalizeSlot(recovery?.targetSlot) === normalizeSlot(release?.fromSlot)
+        && release?.carriedCompletedRelease === true
+        && getSdeMoveActionRecord(release?.completedActionKey)?.action === "completed"
+      )
+    )
   );
 
   const actionableCards = (reader?.cardProjection?.actionableCards || []).filter(card=>card?.chainId === chainId);
@@ -35163,6 +35175,10 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
       sanitizeVehicleValue(item.vehicleId) === sanitizeVehicleValue(outcome.vehicleId)
       && normalizeSlot(item.slot) === normalizeSlot(outcome.canonicalSourceSlot)
     ))
+    && carriedReleases.every(release=>actualSlots.some(item=>
+      sanitizeVehicleValue(item.vehicleId) === sanitizeVehicleValue(release.vehicle)
+      && normalizeSlot(item.slot) === normalizeSlot(release.toSlot)
+    ))
   );
   const chainRecords = (reader?.cardProjection?.chains || []).filter(chain=>chain?.chainId === chainId);
   const activeOutcomeIds = new Set((reader?.canonicalPlan?.activeOutcomes || [])
@@ -35194,6 +35210,7 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     `steps=${chainOutcomes.length}/${expectedStepCount}`,
     `release=${releaseOutcomes.length}`,
     `return=${returnOutcomes.length}`,
+    `carried=${carriedReleases.length}`,
     `sequence=${exactSequence ? "ok" : "mismatch"}`,
     `dependencies=${dependenciesMatch ? "ok" : "mismatch"}`,
     `recovery=${recoveryPairing ? "paired" : "mismatch"}`,
@@ -35212,7 +35229,7 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     chainId,
     chain:chainRecords[0] || null,
     plan:mainOutcome?.raw?.sdePhysicalAccessReliefChain || null,
-    outcomes:{release:firstOutcome,main:mainOutcome,return:returnOutcomes[0] || null,releases:releaseOutcomes,returns:returnOutcomes,all:chainOutcomes},
+    outcomes:{release:firstOutcome,main:mainOutcome,return:returnOutcomes[0] || null,releases:releaseOutcomes,returns:returnOutcomes,carriedReleases,all:chainOutcomes},
     cards:{release:firstCard,main:cardByOutcomeId.get(mainOutcome?.candidateOutcomeId) || null,return:cardByOutcomeId.get(returnOutcomes[0]?.candidateOutcomeId) || null,all:chainCards},
     reservations,
     overlays:{active:activeOverlays,deferred:deferredOverlays},
@@ -35261,9 +35278,9 @@ function stageSdeCanonicalGraphicDragOrder(override){
     if(
       !stagedMain
       || !stagedChainId
-      || stagedReleases.length < 1
       || stagedMains.length !== 1
-      || stagedReturns.length !== stagedReleases.length
+      || stagedReturns.length < 1
+      || stagedChainRows.length !== stagedReleases.length + stagedMains.length + stagedReturns.length
     ){
       throw new Error("Canonical fysisk frigjøringskjede kunne ikke forhåndsstages komplett.");
     }
@@ -35275,7 +35292,8 @@ function stageSdeCanonicalGraphicDragOrder(override){
       }
       removeSdeActiveOutcomeAuthoritiesForPhysicalStep(rowVehicle,rowFromSlot);
     });
-    const stagedFirst = stagedReleases[0];
+    const stagedFirst = [...stagedChainRows]
+      .sort((left,right)=>Number(left?.sdePhysicalChainStep || 0) - Number(right?.sdePhysicalChainStep || 0))[0];
     const stagedFirstActionKey = getSdeMoveActionKey(stagedFirst);
     const stagedFirstOutcomeKey = getSdeMoveObligationStepKey(stagedFirst);
     const stagedFirstAuthority = setSdeActiveOutcomeAuthority(stagedFirstOutcomeKey,stagedFirst,{

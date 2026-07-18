@@ -347,6 +347,13 @@ registerHarnessTest({
   baseline: "93e3ab9d83ddd1e7003c15e675c06ed759685cf8",
 });
 
+registerHarnessTest({
+  phase: "Mid-chain restaging",
+  name: "a completed release validates the remaining main and return suffix without creating a false error",
+  harness: "sde-mid-chain-restage-harness.js",
+  baseline: "c90d3dd584bd342a1860b9acd697024d2da0919a",
+});
+
 test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
   assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
