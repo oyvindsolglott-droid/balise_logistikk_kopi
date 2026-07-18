@@ -18028,14 +18028,22 @@ function getSdeTrappedEgressRouteResources(step, chainId){
   ]);
 }
 
-function getSdeTrappedEgressTemporaryCandidateOrder(fromSlot, excludedSlots=[]){
+function getSdeTrappedEgressTemporaryCandidateOrder(fromSlot, excludedSlots=[], options={}){
   const excluded = new Set((Array.isArray(excludedSlots) ? excludedSlots : []).map(normalizeSlot).filter(Boolean));
+  const dedicatedVn = options?.preferDedicatedVn === true ? ["VN"] : [];
   return Array.from(new Set([
+    ...dedicatedVn,
     ...getSdeResolutionCandidateSlots(fromSlot,""),
     "9"
   ].map(normalizeSlot).filter(Boolean)))
     .filter(slot=>!excluded.has(slot) && slot !== "VS")
-    .sort((left,right)=>scoreSdeResolutionTarget(right) - scoreSdeResolutionTarget(left) || left.localeCompare(right));
+    .sort((left,right)=>{
+      if(options?.preferDedicatedVn === true && (left === "VN" || right === "VN")){
+        if(left === "VN" && right !== "VN") return -1;
+        if(right === "VN" && left !== "VN") return 1;
+      }
+      return scoreSdeResolutionTarget(right) - scoreSdeResolutionTarget(left) || left.localeCompare(right);
+    });
 }
 
 function expandSdeTrappedEgressRecursiveBlockers(occupancy, blockers=[], mainVehicle=""){
@@ -18230,7 +18238,9 @@ function buildSdeCompleteTrappedEgressPlan(row, blockState, sourceRows=[], optio
       if(!fromSlot) continue;
       const intent = releaseIntents.get(token);
       const rejectedTargets = new Set((intent?.rejectedTargets || []).map(normalizeSlot).filter(Boolean));
-      const candidateOrder = getSdeTrappedEgressTemporaryCandidateOrder(fromSlot,excludedTargets)
+      const candidateOrder = getSdeTrappedEgressTemporaryCandidateOrder(fromSlot,excludedTargets,{
+        preferDedicatedVn:row?.sdePreferDedicatedVnRelief === true
+      })
         .filter(slot=>!rejectedTargets.has(slot));
       const explicitTarget = normalizeSlot(intent?.explicitTarget);
       const selectionOrder = explicitTarget ? candidateOrder.filter(slot=>slot === explicitTarget) : candidateOrder;
@@ -36082,7 +36092,8 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
       source:getSdeNightPlacementSourceLabel(row, "move"),
       fromSlot:normalizeSlot(physicalSlot),
       row:row || null,
-      activeOutcomeId
+      activeOutcomeId,
+      status:getSdeUncompletedMoveDependencyKeys(row).length ? "deferred" : "active"
     };
     entry.proposals.push(proposal);
     if(!entry.proposedVehicle){
@@ -36276,6 +36287,22 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
           severity:"warning"
         }
       );
+    }
+
+    const uncompletedDependencyKeys = getSdeUncompletedMoveDependencyKeys(row);
+    if(row?.sdeTrappedEgressChainStep === true && uncompletedDependencyKeys.length){
+      const canonicalPhysicalSlot = getCanonicalPhysicalSlotForVehicle(vehicle);
+      const statedSourceSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot)
+        || getSdeMoveOutcomePhysicalFromSlot(row);
+      const displaySourceSlot = statedSourceSlot || canonicalPhysicalSlot;
+      if(canonicalPhysicalSlot){
+        const physicalEntry = slots[canonicalPhysicalSlot];
+        if(physicalEntry && !physicalEntry.plannedTargets.some(item => item.activeOutcomeId === getActiveOutcomeId(row))){
+          physicalEntry.plannedTargets.push({slot:targetSlot, vehicle, row, activeOutcomeId:getActiveOutcomeId(row)});
+        }
+      }
+      addPlannedProposal(targetSlot, vehicle, row, displaySourceSlot);
+      return;
     }
 
     const activeOutcomeId = getActiveOutcomeId(row);
@@ -36755,12 +36782,12 @@ function renderSdeNightPlacementOverview(data, options={}){
   const overviewSubtitle = canonicalReader
     ? "Canonical faktisk sporplan med aktive og dependency-utsatte planoverlays som separate lag."
     : limitedPlanningMode
-    ? "Faktisk fysisk sporplan med aktive lokale planforslag som separat overlay."
+    ? "Faktisk fysisk sporplan med automatiske og manuelle planforslag som separate lag."
     : "Faktisk fysisk sporplan med aktive SDE-planforslag som separat overlay.";
   const activeMovesLabel = canonicalReader
     ? "canonical aktive resultater"
     : limitedPlanningMode
-    ? "aktive manuelle resultater"
+    ? "aktive planresultater"
     : "aktive SDE-resultater";
 
   return `<section class="sde-night-placement-panel" id="sdeNightPlacementPanel" aria-label="SDE Grafisk planverktøy">
@@ -38340,14 +38367,178 @@ function renderSdeSkiftebevegelser(){
   });
 }
 
+const SDE_AUTOMATIC_TRAPPED_READINESS_PRODUCER = "automatic_trapped_readiness";
+
+function isSdeAutomaticTrappedReadinessMove(row){
+  return row?.isSdeAutomaticTrappedReadiness === true
+    || String(row?.canonicalProducer || "").trim() === SDE_AUTOMATIC_TRAPPED_READINESS_PRODUCER;
+}
+
+function getSdeAutomaticTrappedReadinessTargetCandidates(fromSlot, occupancy){
+  const from = normalizeSlot(fromSlot);
+  const physical = occupancy instanceof Map ? occupancy : getSdeTrappedEgressActualOccupancy();
+  return Array.from(new Set([
+    ...getSdeResolutionCandidateSlots(from,""),
+    "9"
+  ].map(normalizeSlot).filter(Boolean)))
+    .filter(slot=>slot !== from && slot !== "VN" && slot !== "VS")
+    .filter(slot=>!sanitizeVehicleValue(physical.get(slot)))
+    .sort((left,right)=>scoreSdeResolutionTarget(right) - scoreSdeResolutionTarget(left) || left.localeCompare(right));
+}
+
+function getSdeAutomaticTrappedReadinessRejectedTargets(vehicle, fromSlot){
+  const token = normalizeVehicleToken(vehicle);
+  const source = normalizeSlot(fromSlot);
+  return new Set(Object.values(state.sdeMoveActions || {}).flatMap(record=>{
+    const snapshot = record?.snapshot || {};
+    if(record?.action !== "cancelled") return [];
+    if(String(snapshot.canonicalProducer || "").trim() !== SDE_AUTOMATIC_TRAPPED_READINESS_PRODUCER) return [];
+    if(normalizeVehicleToken(snapshot.vehicle || record?.vehicle) !== token) return [];
+    if(normalizeSlot(snapshot.fromSlot || snapshot.arrivalSlot || record?.fromSlot) !== source) return [];
+    const target = normalizeSlot(snapshot.toSlot || snapshot.recommendedSlot || record?.toSlot);
+    return target ? [target] : [];
+  }));
+}
+
+function getSdeAutomaticTrappedReadinessHistoryRevision(vehicle, fromSlot){
+  const token = normalizeVehicleToken(vehicle);
+  const source = normalizeSlot(fromSlot);
+  const history = Object.entries(state.sdeMoveActions || {}).flatMap(([actionKey,record])=>{
+    const snapshot = record?.snapshot || {};
+    if(String(snapshot.canonicalProducer || "").trim() !== SDE_AUTOMATIC_TRAPPED_READINESS_PRODUCER) return [];
+    if(normalizeVehicleToken(snapshot.vehicle || record?.vehicle) !== token) return [];
+    const snapshotSource = normalizeSlot(snapshot.fromSlot || snapshot.arrivalSlot || record?.fromSlot);
+    if(snapshotSource !== source && !String(actionKey || "").includes(`|${token}|${source}|`)) return [];
+    return [{actionKey:String(actionKey || ""),action:String(record?.action || ""),target:normalizeSlot(snapshot.toSlot || record?.toSlot)}];
+  }).sort((left,right)=>left.actionKey.localeCompare(right.actionKey));
+  return getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue(history));
+}
+
+function buildSdeAutomaticTrappedReadinessMove(vehicle, fromSlot, toSlot, options={}){
+  const vehicleId = sanitizeVehicleValue(vehicle);
+  const source = normalizeSlot(fromSlot);
+  const target = normalizeSlot(toSlot);
+  if(!vehicleId || !source || !target) return null;
+  const token = normalizeVehicleToken(vehicleId);
+  const revision = String(options?.revision || getSdeAutomaticTrappedReadinessHistoryRevision(vehicleId,source) || "initial").trim();
+  const stableActionKey = String(options?.stableActionKey || `sde-auto-trapped-readiness|${token}|${source}|${target}|${revision}`).trim();
+  const needKey = String(options?.needKey || `sde-auto-trapped-readiness-need|${stableActionKey}`).trim();
+  return {
+    vehicle:vehicleId,
+    fromSlot:source,
+    arrivalSlot:source,
+    originalFromSlot:source,
+    recommendedSlot:target,
+    toSlot:target,
+    source:"automatic-physical-readiness",
+    originalSource:"SDE fysisk beredskap",
+    canonicalProducer:SDE_AUTOMATIC_TRAPPED_READINESS_PRODUCER,
+    canonicalPurpose:"automatic-physical-readiness",
+    stableActionKey,
+    moveKey:stableActionKey,
+    needKey,
+    sdeNightPlacementGeneratedActionKey:stableActionKey,
+    sdeNightPlacementGeneratedNeedKey:needKey,
+    isNightPlacementGenerated:true,
+    isManualOnly:false,
+    isSdeAutomaticTrappedReadiness:true,
+    sdePreferDedicatedVnRelief:true,
+    arrivalTrainText:"Fysisk innklemming oppdaget",
+    departureTrainText:"Ingen kjent avgang",
+    nextDepartureText:"Ingen kjent avgang",
+    recommendationConfidence:"fysisk-validert",
+    recommendationScore:"Fysisk beredskap",
+    recommendationAlternatives:[],
+    recommendationReason:`${vehicleId} står fysisk innklemt i ${source}. SDE har valgt ${target} som permanent frigjøringsmål og materialiserer nødvendige midlertidige frigjørings- og returskift i riktig rekkefølge.`,
+    parkingStrategy:"Automatisk fysisk frigjøringsplan",
+    parkingInstruction:"Utfør bare det første handlingsklare kortet. Etterfølgende hoved- og returskift åpnes sekvensielt når faktisk plassering er bekreftet."
+  };
+}
+
+function getSdePendingAutomaticTrappedReadinessMoves(){
+  const occupancy = getSdeTrappedEgressActualOccupancy();
+  const seen = new Set();
+  return Object.values(state.sdeMoveActions || {}).flatMap(record=>{
+    if(record?.action !== "completed") return [];
+    const plan = record?.snapshot?.sdePhysicalAccessReliefChain || {};
+    const mainActionKey = String(plan.mainActionKey || "").trim();
+    if(plan.sdeTrappedEgressChain !== true || !mainActionKey.startsWith("sde-auto-trapped-readiness|")) return [];
+    if(seen.has(mainActionKey) || getSdeMoveActionRecord(mainActionKey)?.action) return [];
+    const vehicle = sanitizeVehicleValue(plan.blockedVehicle);
+    const fromSlot = normalizeSlot(plan.blockedFromSlot);
+    const toSlot = normalizeSlot(plan.mainTargetSlot);
+    if(!vehicle || !fromSlot || !toSlot) return [];
+    if(normalizeVehicleToken(occupancy.get(fromSlot)) !== normalizeVehicleToken(vehicle)) return [];
+    if(sanitizeVehicleValue(occupancy.get(toSlot))) return [];
+    seen.add(mainActionKey);
+    const move = buildSdeAutomaticTrappedReadinessMove(vehicle,fromSlot,toSlot,{
+      stableActionKey:mainActionKey,
+      needKey:String(plan.mainObligationKey || "").trim()
+    });
+    return move ? [move] : [];
+  });
+}
+
+function buildSdeAutomaticTrappedReadinessMoves(sourceRows=[]){
+  const rows = Array.isArray(sourceRows) ? sourceRows : [];
+  const occupancy = getSdeTrappedEgressActualOccupancy();
+  const claimedVehicles = new Set(rows.filter(row=>
+    row && !isSdeMoveActioned(row) && normalizeSlot(row?.recommendedSlot || row?.toSlot)
+  ).map(row=>normalizeVehicleToken(row?.vehicle)).filter(Boolean));
+  const pending = getSdePendingAutomaticTrappedReadinessMoves()
+    .filter(row=>!claimedVehicles.has(normalizeVehicleToken(row.vehicle)));
+  pending.forEach(row=>claimedVehicles.add(normalizeVehicleToken(row.vehicle)));
+
+  const automatic = [...pending];
+  const middleSlots = inputSlots.filter(slot=>{
+    const order = getSdeSameTrackSlotOrder(getSdeSlotTrack(slot));
+    const index = order.indexOf(normalizeSlot(slot));
+    return order.length >= 3 && index > 0 && index < order.length - 1;
+  }).sort((left,right)=>left.localeCompare(right));
+
+  middleSlots.forEach(fromSlot=>{
+    const vehicle = sanitizeVehicleValue(occupancy.get(fromSlot));
+    const token = normalizeVehicleToken(vehicle);
+    if(!vehicle || !token || claimedVehicles.has(token)) return;
+    const accessOptions = getSdeTrappedEgressAccessOptions(occupancy,fromSlot);
+    if(accessOptions.length < 2 || accessOptions.some(option=>option.clear)) return;
+    const blockerTokens = new Set(accessOptions.flatMap(option=>option.blockers || [])
+      .map(blocker=>normalizeVehicleToken(blocker?.vehicle))
+      .filter(Boolean));
+    if(Array.from(blockerTokens).some(blockerToken=>claimedVehicles.has(blockerToken))){
+      return;
+    }
+
+    const rejectedTargets = getSdeAutomaticTrappedReadinessRejectedTargets(vehicle,fromSlot);
+    const revision = getSdeAutomaticTrappedReadinessHistoryRevision(vehicle,fromSlot);
+    const candidates = getSdeAutomaticTrappedReadinessTargetCandidates(fromSlot,occupancy)
+      .filter(target=>!rejectedTargets.has(target));
+    for(const target of candidates){
+      const move = buildSdeAutomaticTrappedReadinessMove(vehicle,fromSlot,target,{revision});
+      if(!move || getSdeMoveActionRecord(getSdeMoveActionKey(move))?.action) continue;
+      const blockState = getSdeCompleteTrappedEgressBlockState(move,getSdeHardPhysicalBlockStateForMove(move));
+      if(blockState?.hardBlocked !== true) continue;
+      const plan = buildSdeCompleteTrappedEgressPlan(move,blockState,[...rows,...automatic,move]);
+      if(!plan || !plan.releaseSteps.length || plan.recoverySteps.length !== plan.releaseSteps.length) continue;
+      automatic.push(move);
+      claimedVehicles.add(token);
+      break;
+    }
+  });
+
+  return automatic;
+}
+
 function buildSdeLimitedPlanningData(reason, text){
   const baseMoves = buildSdeNightPlacementGeneratedMoves([]);
+  const automaticMoves = buildSdeAutomaticTrappedReadinessMoves(baseMoves);
   const replacementMoves = buildSdeCancelledReplacementMoves(baseMoves);
-  const moves = sortSdeShiftMovesForDisplay([...replacementMoves, ...baseMoves]);
+  const moves = sortSdeShiftMovesForDisplay([...replacementMoves, ...automaticMoves, ...baseMoves]);
   return {
     score:"–",
     moves,
-    baseMoveCount:0,
+    baseMoveCount:automaticMoves.length,
+    automaticMoveCount:automaticMoves.length,
     unresolved:[],
     unresolvedCount:0,
     filteredPastDepartureNeeds:[],
@@ -38403,7 +38594,7 @@ function buildSdeLimitedPlanningCardsHtml(data){
   const rows = buildSdeFinalCardRowsForData(data);
   const visibleRows = buildSdeVisibleCardMoveEntries(rows).map(({row}) => row);
   if(!visibleRows.length){
-    return `<div class="sde-shift-empty">Ingen manuelle planforslag er opprettet. Åpne SDE Grafisk planverktøy og dra et kjøretøy fra gjeldende sporplan til en ledig slot for å lage et simulert forslag.</div>`;
+    return `<div class="sde-shift-empty">Ingen automatisk fysisk frigjøringsplan eller manuelle planforslag er nødvendige nå. Åpne SDE Grafisk planverktøy for å lage et simulert forslag.</div>`;
   }
 
   return visibleRows.map((row,index)=>{
@@ -38419,6 +38610,12 @@ function buildSdeLimitedPlanningCardsHtml(data){
     const actionControlsHtml = buildSdeShiftMoveActionControlsHtml(row, encodeURIComponent(actionKey));
     const cancelledReleaseUiState = getSdePhysicalReleaseCancelledUiState(row);
     const cancelledReleaseCardUi = buildSdePhysicalReleaseCancelledCardUi(row, cancelledReleaseUiState);
+    const automaticReadiness = isSdeAutomaticTrappedReadinessMove(row);
+    const proposalLabel = automaticReadiness ? "Automatisk fysisk plan" : "Manuelt forslag";
+    const proposalHeading = automaticReadiness ? "Automatisk fysisk frigjøringsplan" : "Manuell / Simulert / Begrenset datagrunnlag";
+    const proposalText = automaticReadiness
+      ? "SDE har oppdaget fysisk innklemming og beregnet en komplett sekvens. Bare første frigjøringskort er handlingsklart; hovedflytting og eventuell retur åpnes i riktig rekkefølge."
+      : "Ankomst/avgang er ikke tilgjengelig. Dette er et lokalt planforslag, ikke faktisk parkert-hvor og ikke operativ skifteordre.";
 
     return `<article class="sde-shift-card low${cancelledReleaseCardUi.className}" data-sde-card-key="${actionKey}" data-sde-limited-planning-card="${actionKey}" data-sde-outcome-key="${escapeHtml(String(row.sdeOutcomeKey || getSdeMoveObligationStepKey(row)))}" data-sde-outcome-active="${row.sdeOutcomeActive === true ? "1" : "0"}" data-sde-active-outcome-id="${escapeHtml(String(row.sdeActiveOutcomeId || ""))}" data-sde-superseded-by="${escapeHtml(String(row.sdeSupersededBy || ""))}"${cancelledReleaseCardUi.attributes} style="--delay:${index * 55}ms">
       <div class="sde-shift-card-top">
@@ -38432,24 +38629,24 @@ function buildSdeLimitedPlanningCardsHtml(data){
         </div>
       </div>
 
-      <div class="sde-shift-route" aria-label="Simulert manuell skiftebevegelse">
+      <div class="sde-shift-route" aria-label="${automaticReadiness ? "Automatisk fysisk skiftebevegelse" : "Simulert manuell skiftebevegelse"}">
         <div class="sde-shift-slot from">${escapeHtml(fromSlot || "ukjent")}</div>
         <div class="sde-shift-arrow">→</div>
         <div class="sde-shift-slot to">${escapeHtml(toSlot || (row.isSdeCancellationFailClosed ? "Ingen trygg løsning" : "ukjent"))}</div>
       </div>
 
       <div class="sde-shift-meta">
-        <span class="sde-shift-badge">Manuelt forslag</span>
-        <span class="sde-shift-badge sde-night-card-override-badge">SIMULERT</span>
+        <span class="sde-shift-badge">${proposalLabel}</span>
+        <span class="sde-shift-badge sde-night-card-override-badge">${automaticReadiness ? "SEKVENSPLANLAGT" : "SIMULERT"}</span>
         <span class="sde-shift-badge sde-night-card-override-badge">BEGRENSET DATAGRUNNLAG</span>
         <span class="sde-shift-badge">Tid ikke vurdert</span>
         <span class="sde-shift-badge">Score ikke beregnet</span>
       </div>
 
       <div class="sde-night-card-override">
-        <strong>Manuell / Simulert / Begrenset datagrunnlag</strong>
+        <strong>${proposalHeading}</strong>
         <span>${escapeHtml(timeStatus)}</span>
-        <span>Ankomst/avgang er ikke tilgjengelig. Dette er et lokalt planforslag, ikke faktisk parkert-hvor og ikke operativ skifteordre.</span>
+        <span>${proposalText}</span>
       </div>
       ${physicalBlockerFreeingHtml}
       ${temporaryVnReliefChainHtml}
@@ -38470,7 +38667,8 @@ function renderSdeLimitedPlanningMode(root, options={}){
   const data = buildSdeLimitedPlanningData(reason, limitedText);
   const overview = buildSdeNightPlacementOverviewData(data);
   const noRegisteredVehicles = Number(overview?.counts?.occupied || 0) <= 0;
-  const generatedCardCount = getSdeActiveProposalCount(buildSdeFinalCardRowsForData(data));
+  const generatedCardCount = buildSdeVisibleCardMoveEntries(buildSdeFinalCardRowsForData(data)).length;
+  const automaticMoveCount = Number(data?.automaticMoveCount || 0);
   const graphicPlanVisible = isSdeGraphicPlanViewMode();
   const viewToggleText = graphicPlanVisible ? "Til Skifte-kort" : "SDE Grafisk planverktøy";
   const nightPlacementOverviewHtml = graphicPlanVisible
@@ -38490,7 +38688,7 @@ function renderSdeLimitedPlanningMode(root, options={}){
         <div class="sde-shift-score-number"><strong>–</strong><span>/ 100</span></div>
       </div>
       <div class="sde-shift-kpis">
-        <div class="sde-shift-kpi"><strong>0</strong><span>automatiske skifteforslag</span></div>
+        <div class="sde-shift-kpi"><strong>${escapeHtml(String(automaticMoveCount))}</strong><span>automatiske skifteforslag</span></div>
         <div class="sde-shift-kpi"><strong>${escapeHtml(String(overview?.counts?.occupied || 0))}</strong><span>kjøretøy i gjeldende sporplan</span></div>
         <div class="sde-shift-kpi"><strong>${escapeHtml(String(overview?.counts?.empty || 0))}</strong><span>ledige ordinære slots</span></div>
         <div class="sde-shift-kpi"><strong>Begrenset</strong><span>${escapeHtml(reason)}</span></div>
@@ -38505,9 +38703,9 @@ function renderSdeLimitedPlanningMode(root, options={}){
     }) : ""}
 
     <div class="sde-shift-section-title">
-      <span class="sde-shift-section-title-main">Manuell skifteplanlegging</span>
+      <span class="sde-shift-section-title-main">Skifteplanlegging</span>
       <button class="sde-night-placement-toggle" id="sdeNightPlacementToggle" type="button" aria-pressed="${graphicPlanVisible ? "true" : "false"}" aria-label="${viewToggleText}" title="${viewToggleText}" data-menu-tooltip="Visuelt planverktøy for ønsket sluttbilde og skifteplan. Dra kjøretøy for å lage et lokalt simulert forslag; faktisk sporplan endres ikke.">${viewToggleText}</button>
-      <span class="sde-shift-section-title-count">${escapeHtml(String(generatedCardCount))} manuelle forslag</span>
+      <span class="sde-shift-section-title-count">${escapeHtml(String(generatedCardCount))} skiftekort · ${escapeHtml(String(automaticMoveCount))} automatiske hovedplaner</span>
       ${noRegisteredVehicles ? `<span class="sde-shift-section-title-count">ingen registrerte kjøretøy</span>` : ""}
     </div>
     ${nightPlacementOverviewHtml}

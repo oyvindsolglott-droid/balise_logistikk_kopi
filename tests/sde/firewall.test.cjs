@@ -578,6 +578,13 @@ registerHarnessTest({
   baseline: "6711cb06cea777234fc6e5179550b0525ddb0599",
 });
 
+registerHarnessTest({
+  phase: "X",
+  name: "trapped middle vehicles automatically produce one ordered VN release, main and recovery chain",
+  harness: "sde-automatic-trapped-readiness-harness.js",
+  baseline: "a8609c965967e8bc5c7bb5e43d2f0109f923c7eb",
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),
