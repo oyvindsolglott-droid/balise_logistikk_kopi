@@ -73,6 +73,71 @@ eval(prefix + String.raw`
   assert.equal(exactDragAccepted,true,String(vm.runInContext('sdeNightPlacementDropMessage?.text||""',ctx)));
   assert.equal(Object.values(appState.sdeNightPlacementManualOverrides).filter(item=>item.vehicle==="74-12" && item.fromSlot==="10S" && item.toSlot==="4S").length,1);
   assert.equal(Object.values(appState.sdeNightPlacementManualOverrides).some(item=>item.vehicle==="74-12" && item.fromSlot==="11S"),false);
+
+  // Automatic stale-source pruning removes impossible canonical drag orders before they can render as unsolvable cards.
+  resetState([["11S","74-10"],["5M","69-55"],["5N","74-12"]]);
+  appState.sdeNightPlacementManualOverrides = {
+    stale:{
+      id:"stale",
+      vehicle:"74-10",
+      fromSlot:"5M",
+      originalFromSlot:"5M",
+      toSlot:"6N",
+      stableActionKey:"night-placement-drag|7410|5M|6N|stale",
+      moveKey:"night-placement-drag|7410|5M|6N|stale",
+      needKey:"night-placement-drag-need|night-placement-drag|7410|5M|6N|stale",
+      sdeCanonicalGraphicDragOrder:true,
+      dragRequestId:"stale",
+      createdAt:"2026-07-16T08:00:00.000Z",
+      updatedAt:"2026-07-16T08:00:00.000Z"
+    }
+  };
+  appState.sdeActiveMoveOutcomes = {
+    stale:{vehicle:"74-10",physicalFromSlot:"5M",producer:"graphic_drag_generated_move",activeOutcomeId:"stale"}
+  };
+  const prunedOverrides = ctx.getSdeNightPlacementActiveManualOverrides();
+  assert.equal(prunedOverrides.length,0);
+  assert.equal(Object.keys(appState.sdeNightPlacementManualOverrides).length,0);
+  assert.equal(Object.keys(appState.sdeActiveMoveOutcomes).length,0);
+
+  resetState([["11S","74-10"]]);
+  appState.sdeNightPlacementManualOverrides = {
+    parent:{
+      id:"parent",
+      vehicle:"74-10",
+      fromSlot:"11S",
+      originalFromSlot:"11S",
+      toSlot:"5M",
+      stableActionKey:"night-placement-drag|7410|11S|5M|parent",
+      moveKey:"night-placement-drag|7410|11S|5M|parent",
+      needKey:"night-placement-drag-need|night-placement-drag|7410|11S|5M|parent",
+      sdeCanonicalGraphicDragOrder:true,
+      dragRequestId:"parent",
+      createdAt:"2026-07-16T08:01:00.000Z",
+      updatedAt:"2026-07-16T08:01:00.000Z"
+    },
+    child:{
+      id:"child",
+      vehicle:"74-10",
+      fromSlot:"5M",
+      originalFromSlot:"5M",
+      toSlot:"6N",
+      stableActionKey:"night-placement-drag|7410|5M|6N|child",
+      moveKey:"night-placement-drag|7410|5M|6N|child",
+      needKey:"night-placement-drag-need|night-placement-drag|7410|5M|6N|child",
+      sdeCanonicalGraphicDragOrder:true,
+      dragRequestId:"child",
+      createdAt:"2026-07-16T08:02:00.000Z",
+      updatedAt:"2026-07-16T08:02:00.000Z"
+    }
+  };
+  const keptOverrides = ctx.getSdeNightPlacementActiveManualOverrides();
+  assert.equal(keptOverrides.length,2);
+  assert.equal(Object.keys(appState.sdeNightPlacementManualOverrides).length,2);
+
+  resetState(multiPlacements);
+  vm.runInContext('sdeShiftLastRenderedData={moves:[],score:0}',ctx);
+  ctx.renderSdeSkiftebevegelser = ()=>{};
   const repeatedExactDrag = ctx.applySdeNightPlacementDragOverride({vehicle:"74-12",slot:"10S",fromSlot:"10S",sourceKind:"actual"},"4S");
   assert.equal(repeatedExactDrag,true);
   assert.equal(Object.values(appState.sdeNightPlacementManualOverrides).filter(item=>item.vehicle==="74-12" && item.fromSlot==="10S" && item.toSlot==="4S").length,1);
