@@ -354,6 +354,13 @@ registerHarnessTest({
   baseline: "c90d3dd584bd342a1860b9acd697024d2da0919a",
 });
 
+registerHarnessTest({
+  phase: "Direct wash transit",
+  name: "4N to 10S uses the free wash corridor as one move instead of a trapped-egress chain",
+  harness: "sde-direct-wash-transit-route-harness.js",
+  baseline: "15f430b8978c43cdcd60a8876105e079fb9e9818",
+});
+
 test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
   assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));

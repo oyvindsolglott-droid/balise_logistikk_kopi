@@ -17912,11 +17912,70 @@ function getSdeTrappedEgressMainSourceEnds(sourceSlot, targetSlot=""){
   return null;
 }
 
+const SDE_DIRECT_WASH_TRANSIT_TARGETS_BY_SOURCE = Object.freeze({
+  "4N":["10S","11S","12S"]
+});
+
+function getSdeDirectWashTransitRouteAssessment(row, occupancy=getSdeTrappedEgressActualOccupancy()){
+  const {vehicle,fromSlot,toSlot} = getSdePhysicalMoveParts(row);
+  const allowedTargets = SDE_DIRECT_WASH_TRANSIT_TARGETS_BY_SOURCE[fromSlot] || [];
+  const routeResources = ["VN","VS"];
+  const unavailable = reason=>({
+    eligible:false,
+    vehicle,
+    fromSlot,
+    toSlot,
+    routeResources:[],
+    reason:String(reason || "Direkte transitt gjennom Vaskesporet er ikke tilgjengelig.")
+  });
+  if(!vehicle || !fromSlot || !toSlot || !allowedTargets.includes(toSlot)){
+    return unavailable("Flyttingen inngår ikke i en verifisert direkte Vaskespor-korridor.");
+  }
+  if(!(occupancy instanceof Map)) return unavailable("Fersk fysisk sporstatus mangler.");
+  if(normalizeVehicleToken(occupancy.get(fromSlot)) !== normalizeVehicleToken(vehicle)){
+    return unavailable(`${vehicle} står ikke fysisk i ${fromSlot}.`);
+  }
+  if(sanitizeVehicleValue(occupancy.get(toSlot))){
+    return unavailable(`${toSlot} er fysisk opptatt.`);
+  }
+  const occupiedWashResource = routeResources.find(slot=>sanitizeVehicleValue(occupancy.get(slot)));
+  if(occupiedWashResource){
+    return unavailable(`${occupiedWashResource} er fysisk opptatt og kan ikke brukes som transittkorridor.`);
+  }
+  const unavailableWashResource = routeResources.find(slot=>typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(slot));
+  if(unavailableWashResource || (typeof isTxpWashRouteUnavailable === "function" && isTxpWashRouteUnavailable())){
+    return unavailable(`Vaskespor-ruten er markert utilgjengelig${unavailableWashResource ? ` i ${unavailableWashResource}` : ""}.`);
+  }
+  const sourceOption = getSdeTrappedEgressAccessOptions(occupancy,fromSlot,["north"])
+    .find(option=>option.clear);
+  if(!sourceOption) return unavailable(`Nordenden fra ${fromSlot} er ikke fri.`);
+  const afterDeparture = cloneSdeTrappedEgressOccupancy(occupancy);
+  afterDeparture.delete(fromSlot);
+  const targetOption = getSdeTrappedEgressAccessOptions(afterDeparture,toSlot,["north"])
+    .find(option=>option.clear);
+  if(!targetOption) return unavailable(`Nordlig innkjøring til ${toSlot} er ikke fri.`);
+  return {
+    eligible:true,
+    vehicle,
+    fromSlot,
+    toSlot,
+    sourceOption,
+    targetOption,
+    routeResources,
+    routeKind:"direct_wash_transit",
+    reason:`Direkte fysisk rute ${fromSlot} → Vaskesporet (VN/VS) → ${toSlot} er fri. Ingen mellomparkering eller frigjøringskjede er nødvendig.`
+  };
+}
+
 function getSdeCompleteTrappedEgressBlockState(row, existingState=null){
   const original = existingState || getSdeHardPhysicalBlockStateForMove(row);
   if(original?.hardBlocked) return original;
   const {vehicle,fromSlot,toSlot} = getSdePhysicalMoveParts(row);
   const occupancy = getSdeTrappedEgressActualOccupancy();
+  const directWashTransit = getSdeDirectWashTransitRouteAssessment(row,occupancy);
+  if(directWashTransit.eligible){
+    return {...original,directWashTransit};
+  }
   const sourceOptions = getSdeTrappedEgressAccessOptions(
     occupancy,fromSlot,getSdeTrappedEgressMainSourceEnds(fromSlot,toSlot)
   );
@@ -33656,6 +33715,12 @@ function buildSdeNightPlacementCardOverrideMove(row, override){
   const originalTargetSlot = normalizeSlot(row.originalRecommendedSlot || row.recommendedSlot || row.toSlot);
   const originalActionKey = getSdeMoveActionKey(row);
   const originalReason = String(row.recommendationReason || row.parkingInstruction || "").trim();
+  const directWashTransit = getSdeDirectWashTransitRouteAssessment({
+    vehicle:row.vehicle,
+    fromSlot:overrideFromSlot || normalizeSlot(row.fromSlot || row.arrivalSlot),
+    toSlot
+  });
+  const directWashTransitEligible = directWashTransit.eligible === true;
 
   return {
     ...row,
@@ -33673,9 +33738,22 @@ function buildSdeNightPlacementCardOverrideMove(row, override){
     sdeNightPlacementOverrideCreatedAt:String(override.createdAt || ""),
     earliestMoveTime:String(override.earliestMoveTime || ""),
     latestMoveTime:String(override.latestMoveTime || ""),
-    timeStatus:String(override.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"),
-    sdeNightPlacementOverrideConflicts:Array.isArray(override.conflicts) ? override.conflicts : [],
+    timeStatus:directWashTransitEligible && override.timeStatus === "CONFLICT_PHYSICAL_BLOCKED"
+      ? "UNKNOWN_TIME_MANUAL_REVIEW"
+      : String(override.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"),
+    sdeNightPlacementOverrideConflicts:directWashTransitEligible
+      ? []
+      : Array.isArray(override.conflicts) ? override.conflicts : [],
     sdeNightPlacementOverrideAffectedVehicles:Array.isArray(override.affectedVehicles) ? override.affectedVehicles : [],
+    sdeNightPlacementHardPhysicalBlocked:directWashTransitEligible ? false : Boolean(override.hardPhysicalBlocked),
+    sdeNightPlacementNoSafeReleaseMove:directWashTransitEligible ? false : Boolean(override.noSafeReleaseMove),
+    sdeNightPlacementPhysicalBlockReason:directWashTransitEligible ? "" : String(override.physicalBlockReason || ""),
+    sdeDirectWashTransit:directWashTransitEligible || override.sdeDirectWashTransit === true,
+    sdeTrappedEgressRouteResources:sortSdeCanonicalStrings(
+      directWashTransitEligible
+        ? directWashTransit.routeResources
+        : override.sdeTrappedEgressRouteResources || []
+    ),
     recommendationReason:`Overstyrt i SDE Grafisk planverktøy: opprinnelig SDE-forslag ${originalTargetSlot || "ukjent"} er erstattet av simulert manuell plassering ${toSlot}.`,
     parkingStrategy:"Simulert manuell plassering",
     parkingInstruction:"Simulert ønsket sluttplassering. Tidsstatus og konflikter må kontrolleres operativt."
@@ -33735,6 +33813,12 @@ function buildSdeNightPlacementGeneratedMove(override){
   if(!vehicle || !fromSlot || !toSlot || !actionKey) return null;
   if(isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot)) return null;
 
+  // Manual orders survive reloads. Re-evaluate their physical route against
+  // current actual state so an order created before the direct wash corridor
+  // was known cannot keep presenting a stale trapped-egress chain forever.
+  const directWashTransit = getSdeDirectWashTransitRouteAssessment({vehicle,fromSlot,toSlot});
+  const directWashTransitEligible = directWashTransit.eligible === true;
+
   const conflicts = Array.isArray(override.conflicts)
     ? override.conflicts.map(item => String(item || "").trim()).filter(Boolean)
     : [];
@@ -33775,12 +33859,20 @@ function buildSdeNightPlacementGeneratedMove(override){
     latestMoveTime:String(override.latestMoveTime || ""),
     sourceEvent:String(override.sourceEvent || "SDE Grafisk planverktøy"),
     nextRequiredUse:String(override.nextRequiredUse || ""),
-    timeStatus:String(override.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"),
-    sdeNightPlacementOverrideConflicts:conflicts,
+    timeStatus:directWashTransitEligible && override.timeStatus === "CONFLICT_PHYSICAL_BLOCKED"
+      ? "UNKNOWN_TIME_MANUAL_REVIEW"
+      : String(override.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"),
+    sdeNightPlacementOverrideConflicts:directWashTransitEligible ? [] : conflicts,
     sdeNightPlacementOverrideAffectedVehicles:affectedVehicles,
-    sdeNightPlacementHardPhysicalBlocked:Boolean(override.hardPhysicalBlocked),
-    sdeNightPlacementNoSafeReleaseMove:Boolean(override.noSafeReleaseMove),
-    sdeNightPlacementPhysicalBlockReason:String(override.physicalBlockReason || ""),
+    sdeNightPlacementHardPhysicalBlocked:directWashTransitEligible ? false : Boolean(override.hardPhysicalBlocked),
+    sdeNightPlacementNoSafeReleaseMove:directWashTransitEligible ? false : Boolean(override.noSafeReleaseMove),
+    sdeNightPlacementPhysicalBlockReason:directWashTransitEligible ? "" : String(override.physicalBlockReason || ""),
+    sdeDirectWashTransit:directWashTransitEligible || override.sdeDirectWashTransit === true,
+    sdeTrappedEgressRouteResources:sortSdeCanonicalStrings(
+      directWashTransitEligible
+        ? directWashTransit.routeResources
+        : override.sdeTrappedEgressRouteResources || []
+    ),
     arrivalTrainText:"SDE Grafisk planverktøy",
     departureTrainText:"Ingen kjent avgang",
     arrivalTime:String(override.earliestMoveTime || ""),
@@ -34545,6 +34637,9 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
 
   const assessmentFromSlot = fromSlot || getSdeNightPlacementOriginalFromSlot(vehicle, row?.fromSlot || row?.arrivalSlot);
   const blockedMoveRequest = buildSdeNightPlacementBlockedMoveRequest(vehicle, assessmentFromSlot, targetSlot, row);
+  const directWashTransit = getSdeDirectWashTransitRouteAssessment(
+    blockedMoveRequest,getSdeTrappedEgressActualOccupancy()
+  );
   const canonicalOccupants = getSdeNightPlacementPhysicalOccupants();
   const washAccessBlocker = assessmentFromSlot === "VN" && canonicalOccupants.VS?.vehicle &&
     normalizeVehicleToken(canonicalOccupants.VS.vehicle) !== normalizeVehicleToken(vehicle)
@@ -34613,7 +34708,9 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
     };
   }
   const timeAssessment = getSdeNightPlacementTimeAssessment(row, assessmentFromSlot, targetSlot);
-  const affectedVehicles = buildSdeNightPlacementAffectedVehicles(assessmentFromSlot, targetSlot);
+  const affectedVehicles = directWashTransit.eligible
+    ? []
+    : buildSdeNightPlacementAffectedVehicles(assessmentFromSlot, targetSlot);
   const conflicts = [
     ...timeAssessment.conflicts,
     ...affectedVehicles.map(item => item.reason).filter(Boolean)
@@ -34640,9 +34737,13 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
     timeStatus,
     conflicts,
     affectedVehicles,
-    message:timeStatus === "OK_TIME_KNOWN"
-      ? `Simulert manuell plassering: ${vehicle} → ${targetSlot}.`
-      : `Simulert – tidsvurdering nødvendig for ${vehicle} → ${targetSlot}.`
+    directWashTransit:directWashTransit.eligible ? directWashTransit : null,
+    routeResources:directWashTransit.eligible ? [...directWashTransit.routeResources] : [],
+    message:directWashTransit.eligible
+      ? `Simulert direkte skift: ${vehicle} ${assessmentFromSlot} → Vaskesporet → ${targetSlot}. Ingen frigjøringskjede eller mellomparkering er nødvendig.`
+      : timeStatus === "OK_TIME_KNOWN"
+        ? `Simulert manuell plassering: ${vehicle} → ${targetSlot}.`
+        : `Simulert – tidsvurdering nødvendig for ${vehicle} → ${targetSlot}.`
   };
 }
 
@@ -35258,7 +35359,7 @@ function stageSdeCanonicalGraphicDragOrder(override){
   const actionKey = getSdeMoveActionKey(generatedMove);
   if(!outcomeKey || !actionKey) throw new Error("Canonical drag-identitet mangler.");
 
-  if(override?.hardPhysicalBlocked){
+  if(override?.hardPhysicalBlocked && generatedMove.sdeDirectWashTransit !== true){
     removeSdeActiveOutcomeAuthoritiesForPhysicalStep(generatedMove.vehicle, generatedMove.fromSlot);
     const previousPhysicalReleaseReplans = cloneSdeCanonicalValue(state.sdePhysicalReleaseReplans) || {};
     let stagedRows = [];
@@ -35460,7 +35561,8 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
           targetSlot:assessment.toSlot,
           actionKey:existingActionKey
         };
-        existingOrder = existingSameTargetOverride.hardPhysicalBlocked
+        const existingGeneratedMove = buildSdeNightPlacementGeneratedMove(existingSameTargetOverride);
+        existingOrder = existingSameTargetOverride.hardPhysicalBlocked && existingGeneratedMove?.sdeDirectWashTransit !== true
           ? inspectSdeCanonicalGraphicDragPhysicalReliefChain(existingReader, existingExpected)
           : inspectSdeCanonicalGraphicDragOrder(existingReader, existingExpected);
       }catch(_error){
@@ -35564,6 +35666,8 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     hardPhysicalBlocked:Boolean(assessment.hardPhysicalBlocked),
     noSafeReleaseMove:Boolean(assessment.noSafeReleaseMove),
     physicalBlockReason:String(assessment.physicalBlockState?.reason || ""),
+    sdeDirectWashTransit:assessment.directWashTransit?.eligible === true,
+    sdeTrappedEgressRouteResources:sortSdeCanonicalStrings(assessment.routeResources || []),
     note:"simulert ønsket sluttplassering",
     ...(canonicalReaderMode ? {
       canonicalProducer:"graphic_drag_generated_move",
