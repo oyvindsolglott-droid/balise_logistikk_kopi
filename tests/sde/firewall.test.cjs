@@ -585,6 +585,13 @@ registerHarnessTest({
   baseline: "a8609c965967e8bc5c7bb5e43d2f0109f923c7eb",
 });
 
+registerHarnessTest({
+  phase: "X2",
+  name: "completed history cannot reject a new inbound order through a newly opened north end",
+  harness: "sde-inbound-trapped-target-history-harness.js",
+  baseline: "090fabb343a6a75d4ac4480cf1740d7b0a22e4e8",
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),

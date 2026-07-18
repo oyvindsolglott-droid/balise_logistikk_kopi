@@ -14344,9 +14344,10 @@ function getSdePhysicalApproachCorridorSlots(slot, end){
   const normalizedEnd = String(end || "").trim();
   const track = getSdeSlotTrack(normalizedSlot);
 
-  // Adkomsten til spor 5 går via 4M. En midlertidig plassering i 4M kan
-  // derfor ikke samtidig regnes som frigjøring av et påfølgende steg til 5M.
-  if(track === "5" && ["south","north"].includes(normalizedEnd)) return ["4M"];
+  // Søradkomsten til spor 5 går via 4M. En midlertidig plassering i 4M kan
+  // derfor ikke samtidig regnes som frigjøring av et påfølgende steg til 5M
+  // fra sør. Nordadkomsten går via 5N og skal ikke feilaktig sperres av 4M.
+  if(track === "5" && normalizedEnd === "south") return ["4M"];
   return [];
 }
 
@@ -15021,7 +15022,9 @@ function buildSdePhysicalBlockerReturnAssessment(blockerVehicle, originSlot, fre
   const origin = normalizeSlot(originSlot);
   const target = normalizeSlot(freeingTarget);
   const blockedFrom = normalizeSlot(blockedFromSlot);
-  const temporaryVnReturn = target === "VN" && /^(10|11|12)S$/.test(blockedFrom);
+  const temporaryVnReturn = target === "VN"
+    && /^(10|11|12)S$/.test(blockedFrom)
+    && origin === blockedFrom.replace(/S$/, "N");
 
   return {
     originSlot:origin,
@@ -18782,6 +18785,14 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
           } : accessChainPlan ? {
             sdePhysicalResolutionContext:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
             sdePhysicalAccessReliefChain:{...accessChainPlan},
+            sdePhysicalBlockerReturnAssessment:{
+              ...(freeingMove.sdePhysicalBlockerReturnAssessment || {}),
+              shouldConsiderReturn:true,
+              returnPossible:true,
+              returnSlot:accessChainPlan.returnTargetSlot,
+              temporaryHoldingSlot:accessChainPlan.holdingSlot,
+              reason:`Midlertidig frigjøring til ${accessChainPlan.holdingSlot}. Retur til ${accessChainPlan.returnTargetSlot} er sekvensplanlagt etter hovedflyttingen.`
+            },
             parkingStrategy:"Midlertidig adkomstfrigjøring",
             parkingInstruction:`Midlertidig frigjøring til ${accessChainPlan.holdingSlot}. Retur til ${accessChainPlan.returnTargetSlot} er obligatorisk etter hovedflyttingen.`
           } : alternateChainPlan ? {

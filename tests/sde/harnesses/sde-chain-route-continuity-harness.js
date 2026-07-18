@@ -44,8 +44,14 @@ eval(prefix + String.raw`
 
   const selectedAssessment = ctx.buildSdeTemporaryAccessReliefMainRouteAssessment(main,blockState,release);
   assert.equal(selectedAssessment.safe,true,selectedAssessment.reason);
-  assert.ok(Array.from(selectedAssessment.targetPathSlots).includes("4M"));
-  assert.ok(Array.from(release.sdePhysicalAccessReliefChain.routeResources).includes("4M"));
+  if(release.fromSlot === "5S"){
+    assert.ok(Array.from(selectedAssessment.targetPathSlots).includes("4M"));
+    assert.ok(Array.from(release.sdePhysicalAccessReliefChain.routeResources).includes("4M"));
+  }else{
+    assert.equal(release.fromSlot,"5N","north access must be opened by the north blocker");
+    assert.ok(!Array.from(selectedAssessment.targetPathSlots).includes("4M"));
+    assert.ok(!Array.from(release.sdePhysicalAccessReliefChain.routeResources).includes("4M"));
+  }
 
   const reader = ctx.buildSdeCanonicalProductionReader(snapshot(rows,placements));
   assert.equal(reader.integrityReport.status,"PASS");
