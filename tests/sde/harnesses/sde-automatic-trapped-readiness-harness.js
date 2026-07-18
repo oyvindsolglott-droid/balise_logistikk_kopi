@@ -49,11 +49,11 @@ eval(prefix + String.raw`
   );
 
   const limited = ctx.buildSdeLimitedPlanningData("FRESH_NO_TURSATT_ASSIGNMENTS","test");
-  assert.equal(limited.automaticMoveCount,1);
-  assert.equal(limited.moves.some(row=>row.canonicalProducer==="automatic_trapped_readiness"),true);
+  assert.equal(limited.automaticMoveCount,0,"fresh data without tursatt assignments must not create an automatic order");
+  assert.equal(limited.moves.some(row=>row.canonicalProducer==="automatic_trapped_readiness"),false);
   const overview = ctx.buildSdeNightPlacementOverviewData(limited);
-  assert.equal(overview.counts.activeMoves,3);
-  assert.equal(overview.counts.overlays,3,"release, main and recovery must all be projected in sequence");
+  assert.equal(overview.counts.activeMoves,0);
+  assert.equal(overview.counts.overlays,0,"no release, main or recovery overlay may be projected without a tursatt context");
   assert.equal(overview.counts.unresolved,0,"a dependency-blocked recovery is deferred, never unresolved");
 
   const claimed = ctx.buildSdeAutomaticTrappedReadinessMoves([{

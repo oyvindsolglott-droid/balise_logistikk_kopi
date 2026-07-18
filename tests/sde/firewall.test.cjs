@@ -592,6 +592,13 @@ registerHarnessTest({
   baseline: "090fabb343a6a75d4ac4480cf1740d7b0a22e4e8",
 });
 
+registerHarnessTest({
+  phase: "X3",
+  name: "no tursatt assignments cannot resurrect automatic physical-chain cards",
+  harness: "sde-no-tursatt-no-automatic-cards-harness.js",
+  baseline: "b3521243b0e3fb5d680c1e41d2d34c63445f4331",
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),

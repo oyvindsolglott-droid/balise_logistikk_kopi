@@ -38540,9 +38540,15 @@ function buildSdeAutomaticTrappedReadinessMoves(sourceRows=[]){
   return automatic;
 }
 
+function isSdeAutomaticTrappedReadinessOperationallyEligible(reason){
+  return String(reason || "").trim() === "HAS_TURSATT_ASSIGNMENTS";
+}
+
 function buildSdeLimitedPlanningData(reason, text){
   const baseMoves = buildSdeNightPlacementGeneratedMoves([]);
-  const automaticMoves = buildSdeAutomaticTrappedReadinessMoves(baseMoves);
+  const automaticMoves = isSdeAutomaticTrappedReadinessOperationallyEligible(reason)
+    ? buildSdeAutomaticTrappedReadinessMoves(baseMoves)
+    : [];
   const replacementMoves = buildSdeCancelledReplacementMoves(baseMoves);
   const moves = sortSdeShiftMovesForDisplay([...replacementMoves, ...automaticMoves, ...baseMoves]);
   return {
