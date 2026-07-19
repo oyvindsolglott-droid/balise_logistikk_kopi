@@ -1,6 +1,7 @@
 "use strict";
 
 const ACCESS_IDENTITY_SOURCE = "cloudflare_access_jwt";
+const ACCESS_IDENTITY_SCHEMA_VERSION = "sde-runtime-identity-v1";
 const ACCESS_JWT_ALGORITHM = "RS256";
 const ACCESS_CERTS_PATH = "/cdn-cgi/access/certs";
 const MAX_IDENTITY_VALUE_LENGTH = 320;
@@ -184,17 +185,24 @@ function createAccessIdentitySessionHandler(options = {}){
     });
 
     if(result.ok){
-      return res.status(200).json({
+      return res.status(200).json(accessIdentitySessionResponse({
         ok: true,
         ...result.identity
-      });
+      }));
     }
 
-    return res.status(result.status).json({
+    return res.status(result.status).json(accessIdentitySessionResponse({
       ok: false,
       error: result.publicError,
       ...unauthenticatedIdentityReadModel()
-    });
+    }));
+  };
+}
+
+function accessIdentitySessionResponse(fields){
+  return {
+    ...fields,
+    schemaVersion: ACCESS_IDENTITY_SCHEMA_VERSION
   };
 }
 
@@ -298,6 +306,7 @@ function loadJose(){
 }
 
 module.exports = {
+  ACCESS_IDENTITY_SCHEMA_VERSION,
   ACCESS_IDENTITY_SOURCE,
   ACCESS_JWT_ALGORITHM,
   classifyVerificationError,
