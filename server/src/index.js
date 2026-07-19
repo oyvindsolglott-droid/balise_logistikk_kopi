@@ -36,6 +36,11 @@ const {
   getSharedSporplanDraft,
   saveSharedSporplanDraft
 } = require("./sharedSporplanDraft");
+const {
+  AUTHORITY_METADATA: VEHICLE_STATUS_AUTHORITY_METADATA,
+  SCHEMA_VERSION: VEHICLE_STATUS_SCHEMA_VERSION,
+  buildProductionVehicleStatusReadModel
+} = require("./vehicleStatusReadModel");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
@@ -329,6 +334,38 @@ app.get("/api/shared-sporplan-draft", (_req, res) => {
       ok: false,
       error: "server_error",
       message: "Internal server error."
+    });
+  }
+});
+
+app.get("/api/vehicle-status", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  try{
+    return res.json({
+      ok: true,
+      ...buildProductionVehicleStatusReadModel(),
+      trustedRequestAuthority: null
+    });
+  }catch(error){
+    console.error("vehicle-status readback failed", error);
+    return res.status(500).json({
+      ok: false,
+      error: "vehicle_status_readback_failed",
+      message: "Vehicle-status readback is unavailable.",
+      schemaVersion: VEHICLE_STATUS_SCHEMA_VERSION,
+      ...VEHICLE_STATUS_AUTHORITY_METADATA,
+      revision: 0,
+      items: [],
+      history: [],
+      events: [],
+      notifications: [],
+      diagnostics: [{
+        code: "vehicle_status_readback_failed",
+        kind: "read_model",
+        recordKey: "production",
+        message: "Vehicle-status readback failed closed."
+      }],
+      trustedRequestAuthority: null
     });
   }
 });
