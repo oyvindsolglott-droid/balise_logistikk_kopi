@@ -623,6 +623,29 @@ filter:drop-shadow(0 2px 1px rgba(15,23,42,.20));
 display:block;
 text-align:left;
 }
+.segmented button.seg-tursatt-graphic{
+position:relative;
+padding:3px 12px;
+overflow:hidden;
+}
+.seg-tursatt-graphic__image{
+display:block;
+width:100%;
+height:68px;
+object-fit:contain;
+object-position:center;
+}
+.seg-tursatt-graphic .seg-main{
+position:absolute;
+width:1px;
+height:1px;
+padding:0;
+margin:-1px;
+overflow:hidden;
+clip:rect(0,0,0,0);
+white-space:nowrap;
+border:0;
+}
 .seg-green{
 border-color:#16a34a !important;
 color:#052e16;
@@ -694,6 +717,7 @@ box-shadow:
   .segmented button,
   .segmented button{min-height:68px;font-size:15px;}
   .seg-icon{font-size:28px;}
+  .seg-tursatt-graphic__image{height:60px;}
 }
 .panel{
 display:none;
@@ -6949,7 +6973,7 @@ button{padding:12px 12px}
 </div>
 
 <div class="segmented" aria-label="Hovedmeny">
-<button class="seg seg-green active" type="button" data-tab="oppstilling" data-levels="0 1 2 3 5" data-menu-tooltip="Viser hvilke tog og kjøretøy som faktisk er tursatt inn og ut av Skien. Gir grunnlaget for å forstå dagens materiellflyt, sporbehov og hvilke sett som må håndteres."><span class="seg-icon">🚆</span><span class="seg-main">Tursatt</span></button>
+<button class="seg seg-green seg-tursatt-graphic active" type="button" data-tab="oppstilling" data-levels="0 1 2 3 5" data-menu-tooltip="Viser hvilke tog og kjøretøy som faktisk er tursatt inn og ut av Skien. Gir grunnlaget for å forstå dagens materiellflyt, sporbehov og hvilke sett som må håndteres."><img class="seg-tursatt-graphic__image" src="assets/tursatt-button.png" alt="" aria-hidden="true"><span class="seg-main">Tursatt</span></button>
 <button class="seg seg-decision" type="button" data-tab="sdeSkiftebevegelser" data-levels="0 2 3" data-menu-tooltip="Samler SDE-forslag og kort for planlagte flytt mellom spor. Her kan skiftebevegelser vurderes, bestilles og følges opp før de påvirker felles sporstatus."><span class="seg-icon">⇄</span><span class="seg-main">SDE<br>Skiftebevegelser</span></button>
 <button class="seg seg-decision" type="button" data-tab="sdeVaktplan" data-levels="0 1" data-menu-tooltip="Viser relevant vakt- og oppgaveinformasjon uten støy fra irrelevante avganger. Gir et ryddig bilde av hva som må følges opp, og hvem som trenger samme situasjonsforståelse."><span class="seg-icon">▦</span><span class="seg-main">SDE<br>Vaktplan</span></button>
 <button class="seg" type="button" data-tab="dropsMateriellstyrer" data-levels="0 1" data-menu-tooltip="Viser materiellstatus, DROPS-behov, verkstedavklaringer og forhold som påvirker disponering. Gir DROPS, TXP og SDE samme grunnlag for å samordne materiell."><span class="seg-icon">▱</span><span class="seg-main">DROPS<br>Materiellstyrer</span></button>
