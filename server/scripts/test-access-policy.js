@@ -1,6 +1,8 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const {
   ACCESS_RIGHTS,
   ENDPOINT_CATEGORIES,
@@ -15,6 +17,8 @@ const {
   getEndpointPolicy,
   getReadbackClassification
 } = require("../src/accessPolicy");
+
+const INDEX_FILE = path.resolve(__dirname, "..", "src", "index.js");
 
 const identity = Object.freeze({
   id: "b46-policy-test-user",
@@ -216,6 +220,19 @@ expectPolicy("allowlisted asset file is static asset", "GET", "/assets/slot_trac
   staticKind: STATIC_RESOURCE_KINDS.ASSET,
   requiresRuntimeAllowlist: true
 });
+
+expectPolicy("Tursatt button graphic is an allowlisted static asset", "GET", "/assets/tursatt-button.png", {
+  endpointCategory: ENDPOINT_CATEGORIES.STATIC_ASSET,
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  staticKind: STATIC_RESOURCE_KINDS.ASSET,
+  requiresRuntimeAllowlist: true
+});
+
+assert.match(
+  fs.readFileSync(INDEX_FILE, "utf8"),
+  /\["tursatt-button\.png", path\.join\(REPO_ROOT, "assets", "tursatt-button\.png"\)\]/,
+  "production server must serve the Tursatt button graphic from the static asset allowlist"
+);
 
 expectNoPolicy("unknown data file is not classified", "GET", "/data/private.json");
 expectNoPolicy("unknown asset file is not classified", "GET", "/assets/private.png");

@@ -135,7 +135,8 @@ const FRONTEND_DATA_FILES = new Map([
 ]);
 const FRONTEND_ASSET_FILES = new Map([
   ["slot_track_empty.png", path.join(REPO_ROOT, "assets", "slot_track_empty.png")],
-  ["motorvognsett_top.png", path.join(REPO_ROOT, "assets", "motorvognsett_top.png")]
+  ["motorvognsett_top.png", path.join(REPO_ROOT, "assets", "motorvognsett_top.png")],
+  ["tursatt-button.png", path.join(REPO_ROOT, "assets", "tursatt-button.png")]
 ]);
 
 const configuredDatabasePath = getDatabasePath();

@@ -332,7 +332,8 @@ const ENDPOINT_POLICY_CATALOG = Object.freeze([
     requiresRuntimeAllowlist: true,
     allowedPathValues: [
       "/assets/slot_track_empty.png",
-      "/assets/motorvognsett_top.png"
+      "/assets/motorvognsett_top.png",
+      "/assets/tursatt-button.png"
     ]
   }),
   endpointPolicy({
