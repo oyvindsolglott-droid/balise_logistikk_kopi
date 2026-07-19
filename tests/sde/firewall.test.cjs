@@ -606,6 +606,26 @@ registerHarnessTest({
   baseline: "f84986fb348a10572fb6e4b5ee86c45ce40335f5",
 });
 
+test("TURSATT-UI — button graphic fills the complete inner button surface", () => {
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-tursatt-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-tursatt-graphic__image\{([^}]*)\}/)?.[1] || "";
+
+  assert.match(buttonRule, /padding:0;/, "Tursatt button must not add an inner frame around the graphic");
+  assert.match(buttonRule, /overflow:hidden;/, "full-bleed graphic must remain clipped by the button radius");
+  assert.match(imageRule, /position:absolute;/, "graphic must fill independently of semantic label layout");
+  assert.match(imageRule, /inset:0;/, "graphic must be anchored to every inner edge");
+  assert.match(imageRule, /width:100%;/);
+  assert.match(imageRule, /height:100%;/);
+  assert.match(imageRule, /object-fit:cover;/, "graphic must cover the button instead of becoming an inset thumbnail");
+  assert.match(imageRule, /object-position:center 60%;/, "the full-bleed crop must keep the Tursatt label visible");
+  assert.doesNotMatch(imageRule, /object-fit:contain;/, "the former inset thumbnail regression is forbidden");
+  assert.match(
+    currentHtml,
+    /\.segmented button\.seg-tursatt-graphic\{min-width:160px\}/,
+    "narrow viewports must preserve a usable full-bleed aspect ratio",
+  );
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),

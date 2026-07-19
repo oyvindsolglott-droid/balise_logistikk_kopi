@@ -625,15 +625,17 @@ text-align:left;
 }
 .segmented button.seg-tursatt-graphic{
 position:relative;
-padding:3px 12px;
+padding:0;
 overflow:hidden;
 }
 .seg-tursatt-graphic__image{
 display:block;
+position:absolute;
+inset:0;
 width:100%;
-height:68px;
-object-fit:contain;
-object-position:center;
+height:100%;
+object-fit:cover;
+object-position:center 60%;
 }
 .seg-tursatt-graphic .seg-main{
 position:absolute;
@@ -717,7 +719,7 @@ box-shadow:
   .segmented button,
   .segmented button{min-height:68px;font-size:15px;}
   .seg-icon{font-size:28px;}
-  .seg-tursatt-graphic__image{height:60px;}
+  .seg-tursatt-graphic__image{height:100%;}
 }
 .panel{
 display:none;
@@ -1859,6 +1861,7 @@ h1{font-size:20px;line-height:1.15}
 .toolbar button{flex:1 1 140px}
 .segmented{display:flex;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:6px 6px 8px;scroll-snap-type:x proximity}
 .segmented button{flex:0 0 auto;min-width:132px;scroll-snap-align:start;white-space:nowrap}
+.segmented button.seg-tursatt-graphic{min-width:160px}
 .view-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .view-tools .label{grid-column:1/-1}
 .view-tools button{width:100%}
