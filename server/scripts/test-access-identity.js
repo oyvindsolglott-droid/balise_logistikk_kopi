@@ -25,13 +25,32 @@ const TEST_ENV = Object.freeze({
   SDE_CF_ACCESS_TEAM_DOMAIN: " https://unit-test.cloudflareaccess.com/ ",
   SDE_CF_ACCESS_AUDIENCE: " sde-test-audience "
 });
+const EXPECTED_IDENTITY_SCHEMA_VERSION = "sde-runtime-identity-v1";
 
 let serverProcess = null;
 const passed = [];
+const schemaPassed = [];
+const observedIdentityResponses = [];
 
 async function check(name, callback){
   await callback();
   passed.push(name);
+}
+
+async function schemaCheck(name, callback){
+  await callback();
+  schemaPassed.push(name);
+}
+
+function assertIdentityResponseSchema(response){
+  assert.equal(typeof response.body, "object");
+  assert.equal(response.body.schemaVersion, EXPECTED_IDENTITY_SCHEMA_VERSION);
+  assert.deepEqual(
+    ["schema", "schema_version", "identitySchemaVersion", "responseSchemaVersion"]
+      .filter((field) => Object.hasOwn(response.body, field)),
+    []
+  );
+  observedIdentityResponses.push(response.body);
 }
 
 async function main(){
@@ -52,6 +71,12 @@ async function main(){
     jti: "safe-token-id"
   };
   const validToken = await signToken(jose, keyOne, baseClaims);
+  const validServiceToken = await signToken(jose, keyOne, {
+    ...baseClaims,
+    sub: "service-subject-1",
+    email: undefined,
+    common_name: "service-client-id.access"
+  });
 
   await check("01 valid JWT", async () => {
     const result = await verifyAccessIdentityRequest({
@@ -172,14 +197,8 @@ async function main(){
   });
 
   await check("12 verified service token", async () => {
-    const token = await signToken(jose, keyOne, {
-      ...baseClaims,
-      sub: "service-subject-1",
-      email: undefined,
-      common_name: "service-client-id.access"
-    });
     const result = await verifyAccessIdentityRequest({
-      headers: { "cf-access-jwt-assertion": token }, env: TEST_ENV, jwks
+      headers: { "cf-access-jwt-assertion": validServiceToken }, env: TEST_ENV, jwks
     });
     assert.equal(result.ok, true);
     assert.equal(result.identity.identityKind, "service");
@@ -187,13 +206,8 @@ async function main(){
   });
 
   await check("13 service token gets no human role", async () => {
-    const token = await signToken(jose, keyOne, {
-      ...baseClaims,
-      email: undefined,
-      common_name: "service-client-id.access"
-    });
     const result = await verifyAccessIdentityRequest({
-      headers: { "cf-access-jwt-assertion": token }, env: TEST_ENV, jwks
+      headers: { "cf-access-jwt-assertion": validServiceToken }, env: TEST_ENV, jwks
     });
     assert.equal(result.identity.roleResolved, false);
     assert.deepEqual(result.identity.roles, []);
@@ -297,9 +311,125 @@ async function main(){
         assert.equal(response.status, 404);
       }
     });
+
+    await schemaCheck("01 valid human response schema", async () => {
+      const response = await requestJson(handlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.identityKind, "human");
+      assertIdentityResponseSchema(response);
+    });
+
+    await schemaCheck("02 valid service response schema", async () => {
+      const response = await requestJson(handlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validServiceToken
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.identityKind, "service");
+      assert.equal(Object.hasOwn(response.body, "email"), false);
+      assert.deepEqual(response.body.roles, []);
+      assert.equal(response.body.writeAuthority, false);
+      assertIdentityResponseSchema(response);
+    });
+
+    await schemaCheck("03 missing token response schema", async () => {
+      const response = await requestJson(handlerServer.port, "GET", "/api/auth/session");
+      assert.equal(response.status, 401);
+      assert.equal(response.body.error, "authentication_required");
+      assertIdentityResponseSchema(response);
+    });
+
+    await schemaCheck("04 invalid token response schema", async () => {
+      const response = await requestJson(handlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": "not-a-valid-jwt"
+      });
+      assert.equal(response.status, 401);
+      assert.equal(response.body.error, "authentication_failed");
+      assertIdentityResponseSchema(response);
+    });
+
+    await schemaCheck("05 schema cannot be overridden by request or claims", async () => {
+      const spoofedToken = await signToken(jose, keyOne, {
+        ...baseClaims,
+        schemaVersion: "attacker-claim"
+      });
+      const response = await requestJson(
+        handlerServer.port,
+        "GET",
+        "/api/auth/session?schemaVersion=attacker-query",
+        undefined,
+        {
+          "Cf-Access-Jwt-Assertion": spoofedToken,
+          "X-Schema-Version": "attacker-header"
+        }
+      );
+      assert.equal(response.status, 200);
+      assertIdentityResponseSchema(response);
+      const serialized = JSON.stringify(response.body);
+      for(const spoofed of ["attacker-claim", "attacker-query", "attacker-header"]){
+        assert.equal(serialized.includes(spoofed), false);
+      }
+    });
   }finally{
     await handlerServer.stop();
   }
+
+  await schemaCheck("06 missing runtime config response schema", async () => {
+    const server = await startHandlerServer(createAccessIdentitySessionHandler({ env: {}, jwks }));
+    try{
+      const response = await requestJson(server.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      assert.equal(response.status, 503);
+      assert.equal(response.body.error, "access_identity_configuration_missing");
+      assertIdentityResponseSchema(response);
+    }finally{
+      await server.stop();
+    }
+  });
+
+  await schemaCheck("07 invalid runtime config response schema", async () => {
+    const server = await startHandlerServer(createAccessIdentitySessionHandler({
+      env: {
+        SDE_CF_ACCESS_TEAM_DOMAIN: "http://invalid.cloudflareaccess.com",
+        SDE_CF_ACCESS_AUDIENCE: "sde-test-audience"
+      },
+      jwks
+    }));
+    try{
+      const response = await requestJson(server.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      assert.equal(response.status, 503);
+      assert.equal(response.body.error, "access_identity_configuration_invalid");
+      assertIdentityResponseSchema(response);
+    }finally{
+      await server.stop();
+    }
+  });
+
+  await schemaCheck("08 verification unavailable response schema", async () => {
+    const unavailable = async () => {
+      const error = new Error("test JWKS unavailable");
+      error.code = "ERR_JWKS_NETWORK";
+      throw error;
+    };
+    const server = await startHandlerServer(createAccessIdentitySessionHandler({
+      env: TEST_ENV,
+      jwks: unavailable
+    }));
+    try{
+      const response = await requestJson(server.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      assert.equal(response.status, 503);
+      assert.equal(response.body.error, "access_identity_verification_unavailable");
+      assertIdentityResponseSchema(response);
+    }finally{
+      await server.stop();
+    }
+  });
 
   await runActualServerChecks(validToken);
 
@@ -348,8 +478,18 @@ async function main(){
     assert.equal(second.identity.subject, "human-subject-2");
   });
 
+  await schemaCheck("09 all structured identity responses use one exact schema", async () => {
+    assert.equal(observedIdentityResponses.length, 8);
+    assert.equal(
+      new Set(observedIdentityResponses.map((body) => body.schemaVersion)).size,
+      1
+    );
+  });
+
   assert.equal(passed.length, 30, `expected 30 checks, got ${passed.length}`);
+  assert.equal(schemaPassed.length, 9, `expected 9 schema checks, got ${schemaPassed.length}`);
   console.log("accessIdentityTests: 30/30");
+  console.log("accessIdentitySchemaTests: 9/9");
   console.log("accessIdentityHttpTests: PASS");
 }
 
@@ -370,6 +510,7 @@ async function runActualServerChecks(validToken){
       });
       assert.equal(response.status, 503);
       assert.equal(response.body.error, "access_identity_configuration_missing");
+      assert.equal(response.body.schemaVersion, EXPECTED_IDENTITY_SCHEMA_VERSION);
       const afterRevision = await requestJson(port, "GET", "/api/state/revision");
       const afterOperational = await requestJson(port, "GET", "/api/operational-state");
       assert.deepEqual(afterRevision.body, beforeRevision.body);
