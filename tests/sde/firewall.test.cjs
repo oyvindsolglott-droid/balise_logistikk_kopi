@@ -624,6 +624,11 @@ test("TURSATT-UI — button graphic fills the complete inner button surface", ()
     /\.segmented button\.seg-tursatt-graphic\{min-width:160px\}/,
     "narrow viewports must preserve a usable full-bleed aspect ratio",
   );
+  assert.match(
+    currentHtml,
+    /@media \(min-width:901px\)\{\s*\.seg-tursatt-graphic__image\{object-position:center 88%;\}\s*\}/,
+    "desktop must use a lower crop that keeps the complete Tursatt label inside the button",
+  );
 });
 
 test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button", () => {
