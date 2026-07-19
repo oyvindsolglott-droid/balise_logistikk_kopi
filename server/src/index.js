@@ -1,6 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const express = require("express");
+const { createAccessIdentitySessionHandler } = require("./accessIdentity");
 const { getDatabasePath, openDatabase } = require("./db");
 const { getEventsSinceRevision, parseSinceRevision, writeSseEvent } = require("./events");
 const { prepareRuntimeMigrationMode, runRuntimeMigrationIfEnabled } = require("./runtimeMigrationMode");
@@ -337,6 +338,8 @@ app.get("/api/shared-sporplan-draft", (_req, res) => {
     });
   }
 });
+
+app.get("/api/auth/session", createAccessIdentitySessionHandler());
 
 app.get("/api/vehicle-status", (_req, res) => {
   res.set("Cache-Control", "no-store");
