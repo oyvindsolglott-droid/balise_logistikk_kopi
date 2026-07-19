@@ -16,6 +16,15 @@ const {
   verifyAccessIdentityRequest
 } = require("../src/accessIdentity");
 
+let identityRoleBindings = null;
+try{
+  identityRoleBindings = require("../src/identityRoleBindings");
+}catch(error){
+  if(error?.code !== "MODULE_NOT_FOUND" || !String(error.message).includes("identityRoleBindings")){
+    throw error;
+  }
+}
+
 const SERVER_DIR = path.resolve(__dirname, "..");
 const INDEX_FILE = path.join(SERVER_DIR, "src", "index.js");
 const TEST_HOST = "127.0.0.1";
@@ -30,6 +39,7 @@ const EXPECTED_IDENTITY_SCHEMA_VERSION = "sde-runtime-identity-v1";
 let serverProcess = null;
 const passed = [];
 const schemaPassed = [];
+const roleBindingPassed = [];
 const observedIdentityResponses = [];
 
 async function check(name, callback){
@@ -40,6 +50,11 @@ async function check(name, callback){
 async function schemaCheck(name, callback){
   await callback();
   schemaPassed.push(name);
+}
+
+async function roleBindingCheck(name, callback){
+  await callback();
+  roleBindingPassed.push(name);
 }
 
 function assertIdentityResponseSchema(response){
@@ -76,6 +91,54 @@ async function main(){
     sub: "service-subject-1",
     email: undefined,
     common_name: "service-client-id.access"
+  });
+  const wrongSubjectSameEmailToken = await signToken(jose, keyOne, {
+    ...baseClaims,
+    sub: "unbound-human-subject",
+    jti: "unbound-token-id"
+  });
+  const disabledSubjectToken = await signToken(jose, keyOne, {
+    ...baseClaims,
+    sub: "disabled-human-subject",
+    email: "disabled@example.com",
+    jti: "disabled-token-id"
+  });
+  const emailMismatchToken = await signToken(jose, keyOne, {
+    ...baseClaims,
+    email: "different@example.com",
+    jti: "email-mismatch-token-id"
+  });
+  const validRoleBindingsCatalog = Object.freeze({
+    bindings: Object.freeze([
+      Object.freeze({
+        bindingId: "binding-drops-operator",
+        subject: "human-subject-1",
+        role: "drops",
+        enabled: true,
+        expectedEmail: "operator@example.com",
+        description: "Test-only exact subject binding"
+      }),
+      Object.freeze({
+        bindingId: "binding-disabled-operator",
+        subject: "disabled-human-subject",
+        role: "txp",
+        enabled: false,
+        expectedEmail: "disabled@example.com"
+      }),
+      Object.freeze({
+        bindingId: "binding-service-must-not-resolve",
+        subject: "service-subject-1",
+        role: "verksted",
+        enabled: true
+      }),
+      Object.freeze({
+        bindingId: "binding-other-human",
+        subject: "other-human-subject",
+        role: "txp",
+        enabled: true,
+        expectedEmail: "other@example.com"
+      })
+    ])
   });
 
   await check("01 valid JWT", async () => {
@@ -375,6 +438,342 @@ async function main(){
     await handlerServer.stop();
   }
 
+  const roleHandlerServer = await startHandlerServer(createAccessIdentitySessionHandler({
+    env: TEST_ENV,
+    jwks,
+    roleBindingsCatalog: validRoleBindingsCatalog
+  }));
+  try{
+    await roleBindingCheck("01 bound verified human resolves exact role", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.roleResolved, true);
+      assert.deepEqual(response.body.roles, ["drops"]);
+      assert.equal(response.body.roleBindingSource, "server_config");
+      assert.equal(response.body.roleBindingId, "binding-drops-operator");
+    });
+
+    await roleBindingCheck("02 unverified identity gets no role", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session");
+      assert.equal(response.status, 401);
+      assert.equal(response.body.roleResolved, false);
+      assert.deepEqual(response.body.roles, []);
+    });
+
+    await roleBindingCheck("03 verified unbound human gets no role", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": wrongSubjectSameEmailToken
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.identityVerified, true);
+      assert.equal(response.body.roleResolved, false);
+      assert.deepEqual(response.body.roles, []);
+    });
+
+    await roleBindingCheck("04 service identity never gets human role", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validServiceToken
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.identityKind, "service");
+      assert.equal(response.body.roleResolved, false);
+      assert.deepEqual(response.body.roles, []);
+    });
+
+    await roleBindingCheck("05 email match cannot replace exact subject", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": wrongSubjectSameEmailToken
+      });
+      assert.equal(response.body.email, "operator@example.com");
+      assert.notEqual(response.body.subject, "human-subject-1");
+      assert.equal(response.body.roleResolved, false);
+    });
+
+    await roleBindingCheck("06 role query cannot override bound subject", async () => {
+      const response = await requestJson(
+        roleHandlerServer.port,
+        "GET",
+        "/api/auth/session?role=txp",
+        undefined,
+        { "Cf-Access-Jwt-Assertion": validToken }
+      );
+      assert.deepEqual(response.body.roles, ["drops"]);
+      assert.equal(JSON.stringify(response.body).includes("txp"), false);
+    });
+
+    await roleBindingCheck("07 X-Role cannot affect binding", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken,
+        "X-Role": "admin_pilot"
+      });
+      assert.deepEqual(response.body.roles, ["drops"]);
+      assert.equal(JSON.stringify(response.body).includes("admin_pilot"), false);
+    });
+
+    await roleBindingCheck("08 X-Level cannot affect binding", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken,
+        "X-Level": "master"
+      });
+      assert.deepEqual(response.body.roles, ["drops"]);
+      assert.equal(JSON.stringify(response.body).includes("master"), false);
+    });
+
+    await roleBindingCheck("09 X-Email cannot affect binding", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken,
+        "X-Email": "other@example.com"
+      });
+      assert.deepEqual(response.body.roles, ["drops"]);
+      assert.equal(response.body.email, "operator@example.com");
+    });
+
+    await roleBindingCheck("10 Cloudflare email header alone gets no role", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Authenticated-User-Email": "operator@example.com"
+      });
+      assert.equal(response.status, 401);
+      assert.equal(response.body.roleResolved, false);
+      assert.deepEqual(response.body.roles, []);
+    });
+
+    await roleBindingCheck("11 role level actor and email query fields are ignored", async () => {
+      const response = await requestJson(
+        roleHandlerServer.port,
+        "GET",
+        "/api/auth/session?role=txp&level=master&actor=other-human-subject&email=other%40example.com",
+        undefined,
+        { "Cf-Access-Jwt-Assertion": validToken }
+      );
+      assert.deepEqual(response.body.roles, ["drops"]);
+      const serialized = JSON.stringify(response.body);
+      assert.equal(serialized.includes("master"), false);
+      assert.equal(serialized.includes("other-human-subject"), false);
+      assert.equal(serialized.includes("other@example.com"), false);
+    });
+
+    await roleBindingCheck("12 disabled binding gets no role", async () => {
+      const response = await requestJson(roleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": disabledSubjectToken
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.roleResolved, false);
+      assert.deepEqual(response.body.roles, []);
+    });
+  }finally{
+    await roleHandlerServer.stop();
+  }
+
+  await roleBindingCheck("13 unknown role makes catalog fail closed", async () => {
+    assert.ok(identityRoleBindings, "identityRoleBindings module must exist");
+    assert.deepEqual(identityRoleBindings.ALLOWED_IDENTITY_ROLES, [
+      "admin_pilot",
+      "agila",
+      "drops",
+      "sde_skiftere",
+      "txp",
+      "verksted"
+    ]);
+    const result = identityRoleBindings.validateIdentityRoleBindingsCatalog({
+      bindings: [{ bindingId: "unknown-role", subject: "human-subject-1", role: "root", enabled: true }]
+    });
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.bindings, []);
+    assert.equal(result.diagnostics.includes("role_binding_unknown_role"), true);
+  });
+
+  await roleBindingCheck("14 duplicate active subject makes catalog fail closed", async () => {
+    const result = identityRoleBindings.validateIdentityRoleBindingsCatalog({
+      bindings: [
+        { bindingId: "duplicate-subject-a", subject: "same-subject", role: "drops", enabled: true },
+        { bindingId: "duplicate-subject-b", subject: "same-subject", role: "drops", enabled: true }
+      ]
+    });
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.bindings, []);
+    assert.equal(result.diagnostics.includes("role_binding_duplicate_active_subject"), true);
+  });
+
+  await roleBindingCheck("15 duplicate binding id makes catalog fail closed", async () => {
+    const result = identityRoleBindings.validateIdentityRoleBindingsCatalog({
+      bindings: [
+        { bindingId: "duplicate-id", subject: "subject-a", role: "drops", enabled: true },
+        { bindingId: "duplicate-id", subject: "subject-b", role: "txp", enabled: true }
+      ]
+    });
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.bindings, []);
+    assert.equal(result.diagnostics.includes("role_binding_duplicate_binding_id"), true);
+  });
+
+  await roleBindingCheck("16 one subject cannot have multiple active roles", async () => {
+    const result = identityRoleBindings.validateIdentityRoleBindingsCatalog({
+      bindings: [
+        { bindingId: "multi-role-a", subject: "same-subject", role: "drops", enabled: true },
+        { bindingId: "multi-role-b", subject: "same-subject", role: "txp", enabled: true }
+      ]
+    });
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.bindings, []);
+    assert.equal(result.diagnostics.includes("role_binding_active_subject_multiple_roles"), true);
+  });
+
+  const secondRoleHandlerServer = await startHandlerServer(createAccessIdentitySessionHandler({
+    env: TEST_ENV,
+    jwks,
+    roleBindingsCatalog: validRoleBindingsCatalog
+  }));
+  try{
+    await roleBindingCheck("17 expected email mismatch is diagnostic only", async () => {
+      const response = await requestJson(secondRoleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": emailMismatchToken
+      });
+      assert.equal(response.body.roleResolved, true);
+      assert.deepEqual(response.body.roles, ["drops"]);
+      assert.deepEqual(response.body.roleBindingDiagnostics, ["role_binding_expected_email_mismatch"]);
+    });
+
+    await roleBindingCheck("23 response never exposes full catalog or other identities", async () => {
+      const response = await requestJson(secondRoleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      const serialized = JSON.stringify(response.body);
+      for(const forbidden of [
+        "other-human-subject",
+        "disabled-human-subject",
+        "binding-other-human",
+        "Test-only exact subject binding",
+        "SDE_IDENTITY_ROLE_BINDINGS_PATH"
+      ]){
+        assert.equal(serialized.includes(forbidden), false);
+      }
+    });
+
+    await roleBindingCheck("25 response contains at most one role", async () => {
+      const response = await requestJson(secondRoleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      assert.equal(response.body.roles.length, 1);
+      assert.equal(new Set(response.body.roles).size, response.body.roles.length);
+    });
+
+    await roleBindingCheck("26 runtime enforcement remains false", async () => {
+      const response = await requestJson(secondRoleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      assert.equal(response.body.runtimeRoleEnforcement, false);
+    });
+
+    await roleBindingCheck("27 write authority remains false", async () => {
+      const response = await requestJson(secondRoleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      assert.equal(response.body.writeAuthority, false);
+    });
+
+    await roleBindingCheck("28 identity response schema version remains v1", async () => {
+      const response = await requestJson(secondRoleHandlerServer.port, "GET", "/api/auth/session", undefined, {
+        "Cf-Access-Jwt-Assertion": validToken
+      });
+      assert.equal(response.body.schemaVersion, EXPECTED_IDENTITY_SCHEMA_VERSION);
+      assert.deepEqual(
+        ["schema", "schema_version", "identitySchemaVersion", "responseSchemaVersion"]
+          .filter((field) => Object.hasOwn(response.body, field)),
+        []
+      );
+    });
+  }finally{
+    await secondRoleHandlerServer.stop();
+  }
+
+  await roleBindingCheck("18 catalog validation and resolution do not mutate catalog", async () => {
+    const catalog = JSON.parse(JSON.stringify(validRoleBindingsCatalog));
+    const before = JSON.stringify(catalog);
+    const validated = identityRoleBindings.validateIdentityRoleBindingsCatalog(catalog);
+    identityRoleBindings.resolveIdentityRoleBinding({
+      identityVerified: true,
+      identityKind: "human",
+      subject: "human-subject-1",
+      email: "operator@example.com"
+    }, validated);
+    assert.equal(JSON.stringify(catalog), before);
+  });
+
+  await roleBindingCheck("19 role resolution does not mutate identity", async () => {
+    const identity = Object.freeze({
+      identityVerified: true,
+      identityKind: "human",
+      subject: "human-subject-1",
+      email: "operator@example.com"
+    });
+    const before = JSON.stringify(identity);
+    const validated = identityRoleBindings.validateIdentityRoleBindingsCatalog(validRoleBindingsCatalog);
+    identityRoleBindings.resolveIdentityRoleBinding(identity, validated);
+    assert.equal(JSON.stringify(identity), before);
+  });
+
+  await roleBindingCheck("20 catalog validation is input-order independent", async () => {
+    const forward = identityRoleBindings.validateIdentityRoleBindingsCatalog(validRoleBindingsCatalog);
+    const reverse = identityRoleBindings.validateIdentityRoleBindingsCatalog({
+      bindings: [...validRoleBindingsCatalog.bindings].reverse()
+    });
+    assert.deepEqual(reverse, forward);
+  });
+
+  await roleBindingCheck("21 missing role config is an empty catalog without crash", async () => {
+    let readAttempted = false;
+    const result = identityRoleBindings.loadIdentityRoleBindingsCatalog({
+      env: {},
+      readFileSync: () => {
+        readAttempted = true;
+        throw new Error("must not read");
+      }
+    });
+    assert.equal(readAttempted, false);
+    assert.equal(result.configured, false);
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.bindings, []);
+  });
+
+  await roleBindingCheck("22 invalid configured JSON fails closed", async () => {
+    const result = identityRoleBindings.loadIdentityRoleBindingsCatalog({
+      env: { SDE_IDENTITY_ROLE_BINDINGS_PATH: "/outside-repo/secret-bindings.json" },
+      readFileSync: () => "{not-json"
+    });
+    assert.equal(result.configured, true);
+    assert.equal(result.valid, false);
+    assert.deepEqual(result.bindings, []);
+    assert.equal(result.diagnostics.includes("role_bindings_json_invalid"), true);
+    assert.equal(JSON.stringify(result).includes("secret-bindings.json"), false);
+  });
+
+  await roleBindingCheck("24 role resolves only for exact active subject", async () => {
+    const validated = identityRoleBindings.validateIdentityRoleBindingsCatalog(validRoleBindingsCatalog);
+    const exact = identityRoleBindings.resolveIdentityRoleBinding({
+      identityVerified: true,
+      identityKind: "human",
+      subject: "human-subject-1",
+      email: "operator@example.com"
+    }, validated);
+    const wrongSubject = identityRoleBindings.resolveIdentityRoleBinding({
+      identityVerified: true,
+      identityKind: "human",
+      subject: "human-subject-10",
+      email: "operator@example.com"
+    }, validated);
+    const disabled = identityRoleBindings.resolveIdentityRoleBinding({
+      identityVerified: true,
+      identityKind: "human",
+      subject: "disabled-human-subject",
+      email: "disabled@example.com"
+    }, validated);
+    assert.equal(exact.roleResolved, true);
+    assert.equal(wrongSubject.roleResolved, false);
+    assert.equal(disabled.roleResolved, false);
+  });
+
   await schemaCheck("06 missing runtime config response schema", async () => {
     const server = await startHandlerServer(createAccessIdentitySessionHandler({ env: {}, jwks }));
     try{
@@ -478,6 +877,25 @@ async function main(){
     assert.equal(second.identity.subject, "human-subject-2");
   });
 
+  await roleBindingCheck("29 auth GET does not mutate operational state", async () => {
+    assert.equal(passed.includes("25 auth GET does not mutate operational revision"), true);
+  });
+
+  await roleBindingCheck("30 auth GET does not mutate shared draft", async () => {
+    assert.equal(passed.includes("26 auth GET does not mutate shared draft"), true);
+  });
+
+  await roleBindingCheck("31 no identity role binding write routes exist", async () => {
+    assert.equal(passed.includes("24 no identity write routes"), true);
+  });
+
+  await roleBindingCheck("32 existing cryptographic verification controls remain green", async () => {
+    for(let index = 1; index <= 13; index += 1){
+      const prefix = String(index).padStart(2, "0");
+      assert.equal(passed.some((name) => name.startsWith(`${prefix} `)), true);
+    }
+  });
+
   await schemaCheck("09 all structured identity responses use one exact schema", async () => {
     assert.equal(observedIdentityResponses.length, 8);
     assert.equal(
@@ -488,8 +906,10 @@ async function main(){
 
   assert.equal(passed.length, 30, `expected 30 checks, got ${passed.length}`);
   assert.equal(schemaPassed.length, 9, `expected 9 schema checks, got ${schemaPassed.length}`);
+  assert.equal(roleBindingPassed.length, 32, `expected 32 role-binding checks, got ${roleBindingPassed.length}`);
   console.log("accessIdentityTests: 30/30");
   console.log("accessIdentitySchemaTests: 9/9");
+  console.log("accessIdentityRoleBindingTests: 32/32");
   console.log("accessIdentityHttpTests: PASS");
 }
 
