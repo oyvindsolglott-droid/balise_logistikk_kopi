@@ -626,6 +626,35 @@ test("TURSATT-UI — button graphic fills the complete inner button surface", ()
   );
 });
 
+test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button", () => {
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-drops-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-drops-graphic__image\{([^}]*)\}/)?.[1] || "";
+
+  assert.match(buttonRule, /position:relative;/);
+  assert.match(buttonRule, /padding:0;/, "DROPS button must not add an inner frame around the graphic");
+  assert.match(buttonRule, /overflow:hidden;/, "the graphic must remain clipped by the existing button radius");
+  assert.match(imageRule, /position:absolute;/);
+  assert.match(imageRule, /inset:0;/);
+  assert.match(imageRule, /width:100%;/);
+  assert.match(imageRule, /height:100%;/);
+  assert.match(imageRule, /object-fit:cover;/, "the supplied graphic must fill the button without deformation");
+  assert.match(
+    currentHtml,
+    /<button class="seg seg-drops-graphic"[^>]*data-tab="dropsMateriellstyrer"[^>]*><img class="seg-drops-graphic__image" src="data:image\/jpeg;base64,[A-Za-z0-9+/=]+" alt="" aria-hidden="true"><span class="seg-main">DROPS<br>Materiellstyrer<\/span><\/button>/,
+    "DROPS routing and semantic label must be preserved while the production-routable inline graphic replaces duplicate visible text",
+  );
+  assert.equal(
+    (currentHtml.match(/<img class="seg-drops-graphic__image"/g) || []).length,
+    1,
+    "only the DROPS menu button may render the supplied graphic",
+  );
+  assert.match(
+    currentHtml,
+    /\.segmented button\.seg-drops-graphic\{min-width:160px\}/,
+    "narrow viewports must preserve a usable graphic button",
+  );
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),
