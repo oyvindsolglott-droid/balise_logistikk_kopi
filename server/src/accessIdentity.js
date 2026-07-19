@@ -1,5 +1,11 @@
 "use strict";
 
+const {
+  loadIdentityRoleBindingsCatalog,
+  resolveIdentityRoleBinding,
+  validateIdentityRoleBindingsCatalog
+} = require("./identityRoleBindings");
+
 const ACCESS_IDENTITY_SOURCE = "cloudflare_access_jwt";
 const ACCESS_IDENTITY_SCHEMA_VERSION = "sde-runtime-identity-v1";
 const ACCESS_JWT_ALGORITHM = "RS256";
@@ -173,6 +179,12 @@ function createAccessIdentitySessionHandler(options = {}){
   const env = options.env || process.env;
   const jwks = options.jwks;
   const verifier = options.verifier;
+  const roleBindingsCatalog = Object.hasOwn(options, "roleBindingsCatalog")
+    ? validateIdentityRoleBindingsCatalog(options.roleBindingsCatalog)
+    : loadIdentityRoleBindingsCatalog({
+      env,
+      readFileSync: options.readRoleBindingsFile
+    });
 
   return async function accessIdentitySessionHandler(req, res){
     res.set("Cache-Control", "no-store");
@@ -185,9 +197,17 @@ function createAccessIdentitySessionHandler(options = {}){
     });
 
     if(result.ok){
+      const roleBinding = resolveIdentityRoleBinding(result.identity, roleBindingsCatalog);
       return res.status(200).json(accessIdentitySessionResponse({
         ok: true,
-        ...result.identity
+        ...result.identity,
+        roleResolved: roleBinding.roleResolved,
+        roles: roleBinding.roles,
+        roleBindingSource: roleBinding.roleBindingSource,
+        roleBindingId: roleBinding.roleBindingId,
+        roleBindingDiagnostics: roleBinding.diagnostics,
+        runtimeRoleEnforcement: false,
+        writeAuthority: false
       }));
     }
 
