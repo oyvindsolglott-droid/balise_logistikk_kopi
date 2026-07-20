@@ -626,7 +626,7 @@ test("TURSATT-UI — desktop uses one seamless wide image while mobile keeps its
     /\.segmented button\.seg-tursatt-graphic\{min-width:160px\}/,
     "narrow viewports must preserve a usable full-bleed aspect ratio",
   );
-  assert.match(currentHtml, /<source media="\(min-width:901px\)" srcset="assets\/tursatt-button-wide\.png">/);
+  assert.match(currentHtml, /<source media="\(min-width:901px\)" srcset="assets\/tursatt-button-wide\.png\?v=572cee6a">/, "the production image URL must bypass a cached pre-route 404");
   assert.match(currentHtml, /<img class="seg-tursatt-graphic__image" src="assets\/tursatt-button\.png" alt="" aria-hidden="true"><\/picture><span class="seg-main"><span class="seg-primary">Tursatt<\/span><\/span>/);
   assert.match(desktopRule, /\.segmented button\.seg-tursatt-graphic\{[\s\S]*?background:#03181d;[\s\S]*?isolation:isolate;/);
   assert.match(desktopRule, /\.segmented button\.seg-tursatt-graphic::after\{[\s\S]*?right:0;[\s\S]*?bottom:0;[\s\S]*?width:48%;[\s\S]*?height:45%;[\s\S]*?linear-gradient\(90deg,transparent,rgba\(1,18,24,\.99\) 24%,#011218 45%\);[\s\S]*?z-index:1;/);
