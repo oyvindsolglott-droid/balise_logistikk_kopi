@@ -644,12 +644,13 @@ test("GRAPHIC MENU TYPOGRAPHY — Tursatt and DROPS share one responsive label c
   assert.match(sharedDesktopRule, /--graphic-menu-label-spacing:-\.02em;/);
   assert.match(sharedDesktopRule, /\.seg-tursatt-graphic \.seg-main,\n\.seg-drops-graphic \.seg-main::before\{[\s\S]*?font-family:inherit;[\s\S]*?font-size:var\(--graphic-menu-label-size\);[\s\S]*?font-weight:var\(--graphic-menu-label-weight\);[\s\S]*?letter-spacing:var\(--graphic-menu-label-spacing\);/);
   assert.match(sharedDesktopRule, /\.seg-drops-graphic \.seg-main::before\{[\s\S]*?content:"DROPS";[\s\S]*?text-shadow:0 2px 5px rgba\(0,0,0,\.95\);/);
-  assert.match(sharedDesktopRule, /\.segmented button\.seg-drops-graphic::after\{[\s\S]*?width:42%;[\s\S]*?height:64%;[\s\S]*?z-index:1;/, "the baked DROPS label must be covered before the shared DOM typography is rendered");
+  assert.match(sharedDesktopRule, /\.segmented button\.seg-drops-graphic::after\{[\s\S]*?width:34%;[\s\S]*?height:50%;[\s\S]*?z-index:1;/, "the compact DROPS backplate must cover the baked label without obscuring excess artwork");
   assert.match(sharedMobileRule, /--graphic-menu-label-size:15px;/);
   assert.match(sharedMobileRule, /--graphic-menu-label-weight:900;/);
   assert.match(sharedMobileRule, /--graphic-menu-label-spacing:-\.02em;/);
   assert.match(sharedMobileRule, /\.seg-tursatt-graphic \.seg-main \.seg-primary,\n\.seg-drops-graphic \.seg-main::before\{[\s\S]*?font-family:inherit;[\s\S]*?font-size:var\(--graphic-menu-label-size\);[\s\S]*?font-weight:var\(--graphic-menu-label-weight\);[\s\S]*?letter-spacing:var\(--graphic-menu-label-spacing\);/);
   assert.match(sharedMobileRule, /\.segmented button\.seg-tursatt-graphic::after,\n\.segmented button\.seg-drops-graphic::after\{[\s\S]*?z-index:1;/, "both baked mobile labels must be covered before the shared typography is rendered");
+  assert.match(sharedMobileRule, /\.segmented button\.seg-drops-graphic::after\{[\s\S]*?width:44%;[\s\S]*?height:62%;/, "the mobile DROPS backplate must stay compact while preserving label contrast");
 });
 
 test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button", () => {
