@@ -9,9 +9,11 @@ const {after, test} = require("node:test");
 
 const root = path.resolve(__dirname, "../..");
 const indexPath = path.join(root, "index.html");
+const serverIndexPath = path.join(root, "server", "src", "index.js");
 const harnessDirectory = path.join(__dirname, "harnesses");
 const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "sde-regression-firewall-"));
 const currentHtml = fs.readFileSync(indexPath, "utf8");
+const currentServerIndex = fs.readFileSync(serverIndexPath, "utf8");
 
 after(() => fs.rmSync(fixtureDirectory, {recursive: true, force: true}));
 
@@ -625,12 +627,29 @@ test("TURSATT-UI — desktop uses one seamless wide image while mobile keeps its
     "narrow viewports must preserve a usable full-bleed aspect ratio",
   );
   assert.match(currentHtml, /<source media="\(min-width:901px\)" srcset="assets\/tursatt-button-wide\.png">/);
-  assert.match(currentHtml, /<img class="seg-tursatt-graphic__image" src="assets\/tursatt-button\.png" alt="" aria-hidden="true">/);
+  assert.match(currentHtml, /<img class="seg-tursatt-graphic__image" src="assets\/tursatt-button\.png" alt="" aria-hidden="true"><\/picture><span class="seg-main"><span class="seg-primary">Tursatt<\/span><\/span>/);
   assert.match(desktopRule, /\.segmented button\.seg-tursatt-graphic\{[\s\S]*?background:#03181d;[\s\S]*?isolation:isolate;/);
   assert.match(desktopRule, /\.segmented button\.seg-tursatt-graphic::after\{[\s\S]*?right:0;[\s\S]*?bottom:0;[\s\S]*?width:48%;[\s\S]*?height:45%;[\s\S]*?linear-gradient\(90deg,transparent,rgba\(1,18,24,\.99\) 24%,#011218 45%\);[\s\S]*?z-index:1;/);
   assert.match(desktopRule, /\.seg-tursatt-graphic__image\{[\s\S]*?object-position:center 40%;/);
   assert.match(desktopRule, /\.seg-tursatt-graphic \.seg-main\{[\s\S]*?right:12px;[\s\S]*?bottom:10px;[\s\S]*?overflow:visible;[\s\S]*?clip:auto;[\s\S]*?color:#fff;[\s\S]*?z-index:2;/);
   assert.doesNotMatch(desktopRule, /seg-tursatt-graphic::before/, "desktop must not synthesize side-fill behind the wide image");
+  assert.match(currentServerIndex, /\["tursatt-button-wide\.png", path\.join\(REPO_ROOT, "assets", "tursatt-button-wide\.png"\)\]/, "production appserver must serve the desktop asset instead of returning 404");
+});
+
+test("GRAPHIC MENU TYPOGRAPHY — Tursatt and DROPS share one responsive label contract", () => {
+  const sharedDesktopRule = currentHtml.match(/@media \(min-width:901px\)\{\n\.segmented button\.seg-tursatt-graphic,([\s\S]*?)\n\}\n\.seg-green/)?.[1] || "";
+  const sharedMobileRule = currentHtml.match(/@media \(max-width:900px\)\{\n\.segmented button\.seg-tursatt-graphic,([\s\S]*?)\n\}\n\.seg-green/)?.[1] || "";
+  assert.match(sharedDesktopRule, /--graphic-menu-label-size:clamp\(18px,1\.65vw,25px\);/);
+  assert.match(sharedDesktopRule, /--graphic-menu-label-weight:900;/);
+  assert.match(sharedDesktopRule, /--graphic-menu-label-spacing:-\.02em;/);
+  assert.match(sharedDesktopRule, /\.seg-tursatt-graphic \.seg-main,\n\.seg-drops-graphic \.seg-main::before\{[\s\S]*?font-family:inherit;[\s\S]*?font-size:var\(--graphic-menu-label-size\);[\s\S]*?font-weight:var\(--graphic-menu-label-weight\);[\s\S]*?letter-spacing:var\(--graphic-menu-label-spacing\);/);
+  assert.match(sharedDesktopRule, /\.seg-drops-graphic \.seg-main::before\{[\s\S]*?content:"DROPS";[\s\S]*?text-shadow:0 2px 5px rgba\(0,0,0,\.95\);/);
+  assert.match(sharedDesktopRule, /\.segmented button\.seg-drops-graphic::after\{[\s\S]*?width:42%;[\s\S]*?height:64%;[\s\S]*?z-index:1;/, "the baked DROPS label must be covered before the shared DOM typography is rendered");
+  assert.match(sharedMobileRule, /--graphic-menu-label-size:15px;/);
+  assert.match(sharedMobileRule, /--graphic-menu-label-weight:900;/);
+  assert.match(sharedMobileRule, /--graphic-menu-label-spacing:-\.02em;/);
+  assert.match(sharedMobileRule, /\.seg-tursatt-graphic \.seg-main \.seg-primary,\n\.seg-drops-graphic \.seg-main::before\{[\s\S]*?font-family:inherit;[\s\S]*?font-size:var\(--graphic-menu-label-size\);[\s\S]*?font-weight:var\(--graphic-menu-label-weight\);[\s\S]*?letter-spacing:var\(--graphic-menu-label-spacing\);/);
+  assert.match(sharedMobileRule, /\.segmented button\.seg-tursatt-graphic::after,\n\.segmented button\.seg-drops-graphic::after\{[\s\S]*?z-index:1;/, "both baked mobile labels must be covered before the shared typography is rendered");
 });
 
 test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button", () => {
