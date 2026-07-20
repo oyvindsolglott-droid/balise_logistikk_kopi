@@ -606,9 +606,10 @@ registerHarnessTest({
   baseline: "f84986fb348a10572fb6e4b5ee86c45ce40335f5",
 });
 
-test("TURSATT-UI — button graphic fills the complete inner button surface", () => {
+test("TURSATT-UI — desktop uses one seamless wide image while mobile keeps its established crop", () => {
   const buttonRule = currentHtml.match(/\.segmented button\.seg-tursatt-graphic\{([^}]*)\}/)?.[1] || "";
   const imageRule = currentHtml.match(/\.seg-tursatt-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const desktopRule = currentHtml.match(/@media \(min-width:901px\)\{([\s\S]*?)\n\}\n\.segmented button\.seg-drops-graphic/)?.[1] || "";
 
   assert.match(buttonRule, /padding:0;/, "Tursatt button must not add an inner frame around the graphic");
   assert.match(buttonRule, /overflow:hidden;/, "full-bleed graphic must remain clipped by the button radius");
@@ -616,19 +617,20 @@ test("TURSATT-UI — button graphic fills the complete inner button surface", ()
   assert.match(imageRule, /inset:0;/, "graphic must be anchored to every inner edge");
   assert.match(imageRule, /width:100%;/);
   assert.match(imageRule, /height:100%;/);
-  assert.match(imageRule, /object-fit:cover;/, "graphic must cover the button instead of becoming an inset thumbnail");
+  assert.match(imageRule, /object-fit:cover;/, "the established mobile crop must remain unchanged");
   assert.match(imageRule, /object-position:center 60%;/, "the full-bleed crop must keep the Tursatt label visible");
-  assert.doesNotMatch(imageRule, /object-fit:contain;/, "the former inset thumbnail regression is forbidden");
   assert.match(
     currentHtml,
     /\.segmented button\.seg-tursatt-graphic\{min-width:160px\}/,
     "narrow viewports must preserve a usable full-bleed aspect ratio",
   );
-  assert.match(
-    currentHtml,
-    /@media \(min-width:901px\)\{\s*\.seg-tursatt-graphic__image\{object-position:center 88%;\}\s*\}/,
-    "desktop must use a lower crop that keeps the complete Tursatt label inside the button",
-  );
+  assert.match(currentHtml, /<source media="\(min-width:901px\)" srcset="assets\/tursatt-button-wide\.png">/);
+  assert.match(currentHtml, /<img class="seg-tursatt-graphic__image" src="assets\/tursatt-button\.png" alt="" aria-hidden="true">/);
+  assert.match(desktopRule, /\.segmented button\.seg-tursatt-graphic\{[\s\S]*?background:#03181d;[\s\S]*?isolation:isolate;/);
+  assert.match(desktopRule, /\.segmented button\.seg-tursatt-graphic::after\{[\s\S]*?right:0;[\s\S]*?bottom:0;[\s\S]*?width:48%;[\s\S]*?height:45%;[\s\S]*?linear-gradient\(90deg,transparent,rgba\(1,18,24,\.99\) 24%,#011218 45%\);[\s\S]*?z-index:1;/);
+  assert.match(desktopRule, /\.seg-tursatt-graphic__image\{[\s\S]*?object-position:center 40%;/);
+  assert.match(desktopRule, /\.seg-tursatt-graphic \.seg-main\{[\s\S]*?right:12px;[\s\S]*?bottom:10px;[\s\S]*?overflow:visible;[\s\S]*?clip:auto;[\s\S]*?color:#fff;[\s\S]*?z-index:2;/);
+  assert.doesNotMatch(desktopRule, /seg-tursatt-graphic::before/, "desktop must not synthesize side-fill behind the wide image");
 });
 
 test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button", () => {
