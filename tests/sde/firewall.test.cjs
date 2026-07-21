@@ -654,6 +654,18 @@ test("GRAPHIC MENU TYPOGRAPHY — Tursatt and DROPS share one responsive label c
   assert.match(sharedMobileRule, /\.segmented button\.seg-drops-graphic::after\{[\s\S]*?width:44%;[\s\S]*?height:62%;/, "the mobile DROPS backplate must stay compact while preserving label contrast");
 });
 
+test("GRAPHIC MENU DIMENSIONS — every menu button matches Tursatt on desktop, tablet and mobile", () => {
+  const uniformDesktopRule = currentHtml.match(/@media \(min-width:701px\)\{([\s\S]*?)\n\}/)?.[1] || "";
+  const tabletRule = currentHtml.match(/@media \(min-width:701px\) and \(max-width:1100px\)\{([\s\S]*?)\n\}/)?.[1] || "";
+  const mobileRule = currentHtml.match(/@media \(max-width:700px\)\{([\s\S]*?)\.view-tools\{/)?.[1] || "";
+
+  assert.match(uniformDesktopRule, /\.segmented\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)\}/, "desktop must use four equal menu columns");
+  assert.match(uniformDesktopRule, /\.segmented button\.seg\{[\s\S]*?grid-column:auto;[\s\S]*?width:100%;[\s\S]*?min-height:0;[\s\S]*?aspect-ratio:1810 \/ 530;/, "every desktop button must inherit Tursatt's exact box dimensions");
+  assert.match(tabletRule, /\.segmented\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)\}/, "tablet must keep every menu cell equally wide");
+  assert.match(mobileRule, /\.segmented button\.seg\{[\s\S]*?flex:0 0 160px;[\s\S]*?width:160px;[\s\S]*?min-width:160px;[\s\S]*?height:76px;[\s\S]*?min-height:76px;[\s\S]*?max-height:76px;[\s\S]*?aspect-ratio:auto;/, "every mobile menu button must use the same 160 by 76 pixel slot");
+  assert.doesNotMatch(currentHtml, /\.segmented button:nth-child\(-n\+4\)\{grid-column:span 5;\}/, "the former first-row size exception must never return");
+});
+
 test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button", () => {
   const buttonRule = currentHtml.match(/\.segmented button\.seg-drops-graphic\{([^}]*)\}/)?.[1] || "";
   const imageRule = currentHtml.match(/\.seg-drops-graphic__image\{([^}]*)\}/)?.[1] || "";

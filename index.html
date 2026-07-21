@@ -997,7 +997,6 @@ border-color:#2563eb !important;
 border-color:#dc2626 !important;
 }
 .seg-red .seg-icon{color:#dc2626}
-.segmented button:nth-child(-n+4){grid-column:span 5;}
 .seg-decision{
 border-color:#2563eb !important;
 background:
@@ -2166,8 +2165,17 @@ color:#111827;
 display:none;
 }
 
-@media (max-width:1100px){
-.segmented{grid-template-columns:repeat(5,minmax(120px,1fr))}
+@media (min-width:701px){
+.segmented{grid-template-columns:repeat(4,minmax(0,1fr))}
+.segmented button.seg{
+grid-column:auto;
+width:100%;
+min-height:0;
+aspect-ratio:1810 / 530;
+}
+}
+@media (min-width:701px) and (max-width:1100px){
+.segmented{grid-template-columns:repeat(3,minmax(0,1fr))}
 }
 @media (max-width:700px){
 :root{
@@ -2193,7 +2201,17 @@ h1{font-size:20px;line-height:1.15}
 .toolbar{position:sticky;top:calc(var(--sticky-top) + var(--seg-height) + 8px);z-index:19;background:var(--bg);padding-bottom:8px}
 .toolbar button{flex:1 1 140px}
 .segmented{display:flex;flex-wrap:nowrap;align-items:stretch;gap:6px;padding:6px 6px 8px;scroll-snap-type:x proximity}
-.segmented button{flex:0 0 auto;min-width:132px;scroll-snap-align:start;white-space:nowrap}
+.segmented button.seg{
+flex:0 0 160px;
+width:160px;
+min-width:160px;
+height:76px;
+min-height:76px;
+max-height:76px;
+aspect-ratio:auto;
+scroll-snap-align:start;
+white-space:nowrap;
+}
 .segmented button.seg-tursatt-graphic{min-width:160px}
 .segmented button.seg-drops-graphic{min-width:160px}
 .segmented button.seg-sporplan-graphic{width:160px;min-width:160px}
