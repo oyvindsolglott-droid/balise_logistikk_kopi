@@ -653,13 +653,18 @@ display:block;
 width:100%;
 min-height:0;
 padding:0;
-border:0;
-border-radius:0;
-background:transparent;
-overflow:visible;
+border:2px solid #62d7ff;
+border-radius:18px;
+background:#061828;
+overflow:hidden;
 cursor:pointer;
 line-height:0;
-box-shadow:none;
+isolation:isolate;
+box-shadow:
+  inset 0 2px 0 rgba(255,255,255,.88),
+  inset 0 -4px 0 rgba(2,12,24,.58),
+  0 8px 0 rgba(20,62,88,.42),
+  0 14px 22px rgba(15,23,42,.24);
 }
 .seg-sporplan-graphic__image{
 display:block;
@@ -674,7 +679,11 @@ transform:translateY(-1px);
 }
 .segmented button.seg-sporplan-graphic.active{
 transform:translateY(5px);
-box-shadow:none;
+box-shadow:
+  inset 0 5px 12px rgba(2,12,24,.48),
+  inset 0 1px 0 rgba(255,255,255,.58),
+  0 2px 0 rgba(20,62,88,.32),
+  0 5px 12px rgba(15,23,42,.20);
 }
 .segmented button.seg-sporplan-graphic:focus-visible{
 outline:3px solid #22d3ee;

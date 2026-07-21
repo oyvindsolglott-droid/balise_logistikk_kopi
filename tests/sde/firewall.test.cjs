@@ -689,6 +689,7 @@ test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing 
   const assetHash = crypto.createHash("sha256").update(asset).digest("hex");
   const buttonRule = currentHtml.match(/\.segmented button\.seg-sporplan-graphic\{([^}]*)\}/)?.[1] || "";
   const imageRule = currentHtml.match(/\.seg-sporplan-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const activeRule = currentHtml.match(/\.segmented button\.seg-sporplan-graphic\.active\{([^}]*)\}/)?.[1] || "";
   const desktopRule = currentHtml.match(/@media \(min-width:901px\)\{([\s\S]*?)\.segmented button\.seg-tursatt-graphic\{/)?.[1] || "";
 
   assert.equal(assetHash, "148a1db129266c37efa6c43f2831bd852535c67a34f886d2cbc3289940bb5439", "the supplied PNG must remain byte-identical");
@@ -697,10 +698,16 @@ test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing 
   assert.match(buttonRule, /display:block;/);
   assert.match(buttonRule, /width:100%;/);
   assert.match(buttonRule, /padding:0;/);
-  assert.match(buttonRule, /border:0;/);
-  assert.match(buttonRule, /background:transparent;/);
-  assert.match(buttonRule, /overflow:visible;/);
+  assert.match(buttonRule, /border:2px solid #62d7ff;/);
+  assert.match(buttonRule, /border-radius:18px;/);
+  assert.match(buttonRule, /background:#061828;/);
+  assert.match(buttonRule, /overflow:hidden;/);
   assert.match(buttonRule, /cursor:pointer;/);
+  assert.match(buttonRule, /isolation:isolate;/);
+  assert.match(buttonRule, /inset 0 2px 0 rgba\(255,255,255,\.88\)/, "Sporplan must retain the same raised top highlight as the other graphic buttons");
+  assert.match(buttonRule, /0 8px 0 rgba\(20,62,88,\.42\)/, "Sporplan must retain a visible 3D depth edge");
+  assert.match(activeRule, /inset 0 5px 12px rgba\(2,12,24,\.48\)/, "the active state must visibly press the 3D button");
+  assert.match(activeRule, /0 2px 0 rgba\(20,62,88,\.32\)/, "the pressed state must shorten the outer depth without changing its action");
   assert.match(imageRule, /display:block;/);
   assert.match(imageRule, /width:100%;/);
   assert.match(imageRule, /height:auto;/);
