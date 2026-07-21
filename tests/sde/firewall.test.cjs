@@ -2,6 +2,7 @@
 
 const assert = require("node:assert/strict");
 const childProcess = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -680,6 +681,43 @@ test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button",
     /\.segmented button\.seg-drops-graphic\{min-width:160px\}/,
     "narrow viewports must preserve a usable graphic button",
   );
+});
+
+test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing Sporplan button", () => {
+  const assetPath = path.join(root, "assets", "sporplan-skien-stasjon.png");
+  const asset = fs.readFileSync(assetPath);
+  const assetHash = crypto.createHash("sha256").update(asset).digest("hex");
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-sporplan-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-sporplan-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const desktopRule = currentHtml.match(/@media \(min-width:901px\)\{([\s\S]*?)\.segmented button\.seg-tursatt-graphic\{/)?.[1] || "";
+
+  assert.equal(assetHash, "148a1db129266c37efa6c43f2831bd852535c67a34f886d2cbc3289940bb5439", "the supplied PNG must remain byte-identical");
+  assert.equal(asset.readUInt32BE(16), 1916, "the supplied width must remain unchanged");
+  assert.equal(asset.readUInt32BE(20), 821, "the supplied height must remain unchanged");
+  assert.match(buttonRule, /display:block;/);
+  assert.match(buttonRule, /width:100%;/);
+  assert.match(buttonRule, /padding:0;/);
+  assert.match(buttonRule, /border:0;/);
+  assert.match(buttonRule, /background:transparent;/);
+  assert.match(buttonRule, /overflow:visible;/);
+  assert.match(buttonRule, /cursor:pointer;/);
+  assert.match(imageRule, /display:block;/);
+  assert.match(imageRule, /width:100%;/);
+  assert.match(imageRule, /height:auto;/);
+  assert.match(imageRule, /aspect-ratio:1916 \/ 821;/);
+  assert.match(imageRule, /object-fit:contain;/);
+  assert.match(currentHtml, /\.segmented button\.seg-sporplan-graphic\{width:160px;min-width:160px\}/, "mobile must retain the established graphic-menu slot width");
+  assert.match(desktopRule, /\.segmented button\.seg-sporplan-graphic\{[\s\S]*?aspect-ratio:1810 \/ 530;[\s\S]*?overflow:hidden;/, "desktop must crop only the source pixels outside the supplied finished frame");
+  assert.match(desktopRule, /\.seg-sporplan-graphic__image\{[\s\S]*?left:-2\.818%;[\s\S]*?top:-24\.151%;[\s\S]*?width:105\.856%;[\s\S]*?height:154\.906%;[\s\S]*?max-width:none;/, "desktop crop must preserve the complete in-frame artwork without deformation");
+  assert.match(currentHtml, /\.segmented button\.seg-sporplan-graphic:focus-visible\{[\s\S]*?outline:3px solid #22d3ee;[\s\S]*?outline-offset:4px;/);
+  assert.match(
+    currentHtml,
+    /<button class="seg seg-sporplan-graphic" type="button" data-tab="sporplan" data-levels="0 1 2 3 5" aria-label="Åpne Sporplan"[^>]*><img class="seg-sporplan-graphic__image" src="assets\/sporplan-skien-stasjon\.png\?v=148a1db1" alt=""><\/button>/,
+    "routing, access levels and semantic identity must remain unchanged",
+  );
+  assert.equal((currentHtml.match(/<img class="seg-sporplan-graphic__image"/g) || []).length, 1, "only the Sporplan menu button may use this graphic");
+  assert.doesNotMatch(currentHtml, /data-tab="sporplan"[^>]*>[\s\S]*?<span class="seg-icon">▦<\/span>/, "the old icon must not remain");
+  assert.match(currentServerIndex, /\["sporplan-skien-stasjon\.png", path\.join\(REPO_ROOT, "assets", "sporplan-skien-stasjon\.png"\)\]/, "the production appserver must serve the exact supplied asset");
 });
 
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
