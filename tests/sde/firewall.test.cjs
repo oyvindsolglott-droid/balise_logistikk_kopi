@@ -727,6 +727,51 @@ test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing 
   assert.match(currentServerIndex, /\["sporplan-skien-stasjon\.png", path\.join\(REPO_ROOT, "assets", "sporplan-skien-stasjon\.png"\)\]/, "the production appserver must serve the exact supplied asset");
 });
 
+test("TXP-INPUT-UI — supplied TXP graphic replaces only the existing Input Sporplan button", () => {
+  const assetPath = path.join(root, "assets", "txp-input-sporplan.png");
+  const asset = fs.readFileSync(assetPath);
+  const assetHash = crypto.createHash("sha256").update(asset).digest("hex");
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-txp-input-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-txp-input-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const activeRule = currentHtml.match(/\.segmented button\.seg-txp-input-graphic\.active\{([^}]*)\}/)?.[1] || "";
+
+  assert.equal(assetHash, "b2debef98c0d66d705f61f35c820d805306082c31c04f3eaece141fe099d48d0", "the supplied PNG must remain byte-identical");
+  assert.equal(asset.readUInt32BE(16), 1893, "the supplied width must remain unchanged");
+  assert.equal(asset.readUInt32BE(20), 831, "the supplied height must remain unchanged");
+  assert.match(buttonRule, /position:relative;/);
+  assert.match(buttonRule, /display:block;/);
+  assert.match(buttonRule, /width:100%;/);
+  assert.match(buttonRule, /padding:0;/);
+  assert.match(buttonRule, /border:2px solid #62d7ff;/);
+  assert.match(buttonRule, /border-radius:18px;/);
+  assert.match(buttonRule, /background:#061828;/);
+  assert.match(buttonRule, /overflow:hidden;/);
+  assert.match(buttonRule, /cursor:pointer;/);
+  assert.match(buttonRule, /isolation:isolate;/);
+  assert.match(buttonRule, /aspect-ratio:1893 \/ 720;/, "narrow layouts must crop only the supplied exterior canvas");
+  assert.match(buttonRule, /inset 0 2px 0 rgba\(255,255,255,\.88\)/, "TXP must use the established raised 3D highlight");
+  assert.match(buttonRule, /0 8px 0 rgba\(20,62,88,\.42\)/, "TXP must retain a visible 3D depth edge");
+  assert.match(imageRule, /position:absolute;/);
+  assert.match(imageRule, /inset:0;/);
+  assert.match(imageRule, /width:100%;/);
+  assert.match(imageRule, /height:100%;/);
+  assert.match(imageRule, /object-fit:cover;/, "the supplied image must fill the button without deformation");
+  assert.match(imageRule, /object-position:center 46%;/);
+  assert.match(activeRule, /inset 0 5px 12px rgba\(2,12,24,\.48\)/, "the active state must visibly press the 3D button");
+  assert.match(activeRule, /0 2px 0 rgba\(20,62,88,\.32\)/, "the pressed state must shorten its outer depth");
+  assert.match(currentHtml, /@media \(min-width:901px\)\{[\s\S]*?\.segmented button\.seg-txp-input-graphic\{[\s\S]*?aspect-ratio:1810 \/ 530;/, "desktop must retain the established menu-row proportions");
+  assert.match(currentHtml, /\.segmented button\.seg-txp-input-graphic\{width:160px;min-width:160px\}/, "mobile must retain the established graphic-menu slot width");
+  assert.match(currentHtml, /\.segmented button\.seg-txp-input-graphic:focus-visible\{[\s\S]*?outline:3px solid #22d3ee;[\s\S]*?outline-offset:4px;/);
+  assert.match(
+    currentHtml,
+    /<button class="seg seg-txp-input-graphic" type="button" data-tab="grunnoppstilling" data-levels="0 2" aria-label="Åpne TXP Input Sporplan"[^>]*><img class="seg-txp-input-graphic__image" src="assets\/txp-input-sporplan\.png\?v=b2debef9" alt=""><\/button>/,
+    "routing, access levels and semantic identity must remain unchanged",
+  );
+  assert.equal((currentHtml.match(/<img class="seg-txp-input-graphic__image"/g) || []).length, 1, "only the TXP Input Sporplan menu button may use this graphic");
+  assert.doesNotMatch(currentHtml, /data-tab="grunnoppstilling"[^>]*>[\s\S]*?<span class="seg-icon">TXP<\/span>/, "the old icon and visible duplicate label must not remain");
+  assert.match(currentServerIndex, /\["txp-input-sporplan\.png", path\.join\(REPO_ROOT, "assets", "txp-input-sporplan\.png"\)\]/, "the production appserver must serve the exact supplied asset");
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),

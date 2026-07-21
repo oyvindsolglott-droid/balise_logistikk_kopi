@@ -138,7 +138,8 @@ const FRONTEND_ASSET_FILES = new Map([
   ["motorvognsett_top.png", path.join(REPO_ROOT, "assets", "motorvognsett_top.png")],
   ["tursatt-button.png", path.join(REPO_ROOT, "assets", "tursatt-button.png")],
   ["tursatt-button-wide.png", path.join(REPO_ROOT, "assets", "tursatt-button-wide.png")],
-  ["sporplan-skien-stasjon.png", path.join(REPO_ROOT, "assets", "sporplan-skien-stasjon.png")]
+  ["sporplan-skien-stasjon.png", path.join(REPO_ROOT, "assets", "sporplan-skien-stasjon.png")],
+  ["txp-input-sporplan.png", path.join(REPO_ROOT, "assets", "txp-input-sporplan.png")]
 ]);
 
 const configuredDatabasePath = getDatabasePath();
