@@ -654,16 +654,57 @@ test("GRAPHIC MENU TYPOGRAPHY — Tursatt and DROPS share one responsive label c
   assert.match(sharedMobileRule, /\.segmented button\.seg-drops-graphic::after\{[\s\S]*?width:44%;[\s\S]*?height:62%;/, "the mobile DROPS backplate must stay compact while preserving label contrast");
 });
 
-test("GRAPHIC MENU DIMENSIONS — every menu button matches Tursatt on desktop, tablet and mobile", () => {
+test("GRAPHIC MENU DIMENSIONS — wide menu controls match Tursatt on desktop, tablet and mobile", () => {
   const uniformDesktopRule = currentHtml.match(/@media \(min-width:701px\)\{([\s\S]*?)\n\}/)?.[1] || "";
   const tabletRule = currentHtml.match(/@media \(min-width:701px\) and \(max-width:1100px\)\{([\s\S]*?)\n\}/)?.[1] || "";
   const mobileRule = currentHtml.match(/@media \(max-width:700px\)\{([\s\S]*?)\.view-tools\{/)?.[1] || "";
 
   assert.match(uniformDesktopRule, /\.segmented\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)\}/, "desktop must use four equal menu columns");
-  assert.match(uniformDesktopRule, /\.segmented button\.seg\{[\s\S]*?grid-column:auto;[\s\S]*?width:100%;[\s\S]*?min-height:0;[\s\S]*?aspect-ratio:1810 \/ 530;/, "every desktop button must inherit Tursatt's exact box dimensions");
+  assert.match(uniformDesktopRule, /\.segmented button\.seg\{[\s\S]*?grid-column:auto;[\s\S]*?width:100%;[\s\S]*?min-height:0;[\s\S]*?aspect-ratio:1810 \/ 530;/, "wide desktop controls must inherit Tursatt's exact box dimensions before explicit square-control overrides");
   assert.match(tabletRule, /\.segmented\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)\}/, "tablet must keep every menu cell equally wide");
-  assert.match(mobileRule, /\.segmented button\.seg\{[\s\S]*?flex:0 0 160px;[\s\S]*?width:160px;[\s\S]*?min-width:160px;[\s\S]*?height:76px;[\s\S]*?min-height:76px;[\s\S]*?max-height:76px;[\s\S]*?aspect-ratio:auto;/, "every mobile menu button must use the same 160 by 76 pixel slot");
+  assert.match(mobileRule, /\.segmented button\.seg\{[\s\S]*?flex:0 0 160px;[\s\S]*?width:160px;[\s\S]*?min-width:160px;[\s\S]*?height:76px;[\s\S]*?min-height:76px;[\s\S]*?max-height:76px;[\s\S]*?aspect-ratio:auto;/, "wide mobile controls must use the same 160 by 76 pixel slot before explicit square-control overrides");
   assert.doesNotMatch(currentHtml, /\.segmented button:nth-child\(-n\+4\)\{grid-column:span 5;\}/, "the former first-row size exception must never return");
+});
+
+test("TURNERING GRAPHIC BUTTONS — transparent square Kveld and Natt controls preserve routing", () => {
+  const assets = [
+    ["turnering-kveld-button.png", "1a5b642eceb7c50b0c67e0cf617bc95c6a13a88e29185147f57b303188dafe10"],
+    ["turnering-natt-button.png", "5a4bc8d7edbab70a7a82737bc067268e41f4968a408b239a564dd9835bac9134"],
+  ];
+  for (const [file, expectedHash] of assets) {
+    const bytes = fs.readFileSync(path.join(root, "assets", file));
+    assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", `${file} must remain a PNG`);
+    assert.equal(bytes[25], 6, `${file} must retain its RGBA transparency channel`);
+    assert.equal(crypto.createHash("sha256").update(bytes).digest("hex"), expectedHash, `${file} must retain the approved transparent artwork`);
+  }
+
+  assert.match(
+    currentHtml,
+    /<button class="seg seg-turnering-graphic seg-turnering-kveld-graphic" type="button" data-tab="turneringKveld" data-levels="0 2" aria-label="Åpne Turnering Kveld"[^>]*><img class="seg-turnering-graphic__image" src="assets\/turnering-kveld-button\.png\?v=[a-f0-9]+" alt="" aria-hidden="true"><\/button>/,
+    "Kveld must preserve its existing route and access levels while rendering only the approved image",
+  );
+  assert.match(
+    currentHtml,
+    /<button class="seg seg-turnering-graphic seg-turnering-natt-graphic" type="button" data-tab="turneringNatt" data-levels="0 2" aria-label="Åpne Turnering Natt"[^>]*><img class="seg-turnering-graphic__image" src="assets\/turnering-natt-button\.png\?v=[a-f0-9]+" alt="" aria-hidden="true"><\/button>/,
+    "Natt must preserve its existing route and access levels while rendering only the approved image",
+  );
+  assert.equal((currentHtml.match(/<img class="seg-turnering-graphic__image"/g) || []).length, 2, "only the two Turnering buttons may use these graphics");
+
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-turnering-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-turnering-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const mobileRule = currentHtml.match(/@media \(max-width:700px\)\{([\s\S]*?)\.view-tools\{/)?.[1] || "";
+
+  assert.match(buttonRule, /padding:0;/);
+  assert.match(buttonRule, /border:0;/);
+  assert.match(buttonRule, /background:transparent;/, "the wrapper must not recreate the removed black rectangle");
+  assert.match(buttonRule, /overflow:visible;/, "the transparent exterior and complete metallic frame must remain visible");
+  assert.match(buttonRule, /box-shadow:none;/, "only the supplied 3D frame may be visible");
+  assert.match(imageRule, /width:100%;/);
+  assert.match(imageRule, /height:100%;/);
+  assert.match(imageRule, /object-fit:contain;/);
+  assert.match(currentHtml, /@media \(min-width:701px\)\{[\s\S]*?\.segmented button\.seg\.seg-turnering-graphic\{[\s\S]*?width:29\.2817679558%;[\s\S]*?aspect-ratio:1 \/ 1;[\s\S]*?\n\}/, "desktop and tablet buttons must be square and exactly as high as the wide controls");
+  assert.match(mobileRule, /\.segmented button\.seg\.seg-turnering-graphic\{[\s\S]*?flex:0 0 76px;[\s\S]*?width:76px;[\s\S]*?min-width:76px;[\s\S]*?height:76px;[\s\S]*?max-height:76px;[\s\S]*?aspect-ratio:1 \/ 1;/, "mobile buttons must stay square and no taller than their row");
+  assert.match(currentHtml, /\.segmented button\.seg-turnering-graphic:focus-visible\{[\s\S]*?outline:3px solid #22d3ee;/, "keyboard focus must remain visible");
 });
 
 test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button", () => {
