@@ -2060,6 +2060,16 @@ box-shadow:0 0 0 2px rgba(220,38,38,.12);
 background:#fff7f7;
 }
 
+#oppstillingTable tr.opp-unresolved-departure td.opp-departure-cell{
+background:#fff7ed;
+}
+
+#oppstillingTable tr.opp-unresolved-departure .opp-balise-deviation input::placeholder{
+color:#b45309;
+font-weight:700;
+opacity:1;
+}
+
 #oppstillingTable .opp-slot-cell{
 min-width:38px;
 width:38px;
@@ -12276,6 +12286,7 @@ function getTursattBaseVehicleMapByMode(side, mode){
 
 function getTursattVehicleCellInfo(train, side, mode){
   const key = normalizeTognr(train);
+  const occurrenceError = getTursattVehicleError({train:key, mode}, side);
   const lookupKeys = getTursattBratsbergAlternativeTrainNumbers(key);
   const displayTrain = side === "arrival"
     ? normalizeTognr(getArrivalDisplayTrainNumberMapByMode(mode)?.[key])
@@ -12287,7 +12298,9 @@ function getTursattVehicleCellInfo(train, side, mode){
     : (state.manualTursattArrivalVehicles || {});
   const baseKey = sourceKeys.find(trainKey => sanitizeVehicleValue(base.map?.[trainKey] || ""));
   const manualKey = lookupKeys.find(trainKey => sanitizeVehicleValue(manualMap[trainKey] || ""));
-  const fallbackKey = sourceKeys.find(trainKey => sanitizeVehicleValue(getBaseVehicleForTrain(trainKey, mode)));
+  const fallbackKey = occurrenceError
+    ? ""
+    : sourceKeys.find(trainKey => sanitizeVehicleValue(getBaseVehicleForTrain(trainKey, mode)));
   const baseValue = sanitizeVehicleValue(base.map?.[baseKey] || "");
   const rawManualValue = sanitizeVehicleValue(manualMap[manualKey] || "");
   const staleOriginalValue = displayTrain
@@ -12296,7 +12309,9 @@ function getTursattVehicleCellInfo(train, side, mode){
   const manualValue = displayTrain && rawManualValue && rawManualValue === staleOriginalValue
     ? ""
     : rawManualValue;
-  const fallbackValue = displayTrain ? "" : sanitizeVehicleValue(getBaseVehicleForTrain(fallbackKey, mode));
+  const fallbackValue = displayTrain || occurrenceError
+    ? ""
+    : sanitizeVehicleValue(getBaseVehicleForTrain(fallbackKey, mode));
   const effectiveValue = manualValue || baseValue || fallbackValue;
   const fallbackAllowed = !baseValue && !displayTrain;
   const fallbackUsed = fallbackAllowed && !manualValue && Boolean(fallbackValue && effectiveValue === fallbackValue);
@@ -12312,6 +12327,7 @@ function getTursattVehicleCellInfo(train, side, mode){
     key,
     side,
     mode,
+    occurrenceError,
     baseValue,
     baseLabel:base.label,
     displayTrain,
@@ -12535,6 +12551,15 @@ function getVehicleErrorMapByMode(mode){
   return getVehicleErrorMapByMode(selectedMode);
 }
 
+function getTursattVehicleError(rowData, side){
+  if(side !== "departure") return "";
+  const train = normalizeTognr(rowData?.train);
+  if(!train) return "";
+
+  const mode = rowData?.mode === "idag" ? "idag" : "imorgen";
+  return String(getVehicleErrorMapByMode(mode)?.[train] || "").trim();
+}
+
 function getArrivalDisplayTrainNumberMapByMode(mode){
   if(mode === "idag") return state.baliseTodayArrivalDisplayTrainNumbers || {};
   if(mode === "imorgen") return state.baliseTomorrowArrivalDisplayTrainNumbers || {};
@@ -12609,13 +12634,20 @@ function appendOppstillingSideCells(tr, rowData, side){
   const train = rowData?.train || "";
   const time = rowData?.displayTime || rowData?.time || "";
   const mode = rowData?.mode || "";
+  const vehicleError = getTursattVehicleError(rowData, side);
+
+  if(vehicleError){
+    tr.classList.add("opp-unresolved-departure");
+  }
 
   const tdTrain = document.createElement("td");
   tdTrain.textContent = getDisplayTrainNumberForOppstilling(train, side, mode);
+  if(vehicleError) tdTrain.title = vehicleError;
   tr.appendChild(tdTrain);
 
   const tdTime = document.createElement("td");
   tdTime.textContent = time;
+  if(vehicleError) tdTime.title = vehicleError;
   tr.appendChild(tdTime);
 
   const vehicles = train
@@ -12626,6 +12658,16 @@ function appendOppstillingSideCells(tr, rowData, side){
   const tdVehicle1 = document.createElement("td");
   const diagnostic = train ? state.tursattBaliseDiagnostics?.[state.tursattBaliseDiagnostics.length - 1] : null;
   appendOppstillingVehicleInput(tdVehicle1, train, side, "vehicle1", vehicles.vehicle1, false, mode, diagnostic);
+  if(vehicleError){
+    tdVehicle1.classList.add("opp-balise-deviation");
+    tdVehicle1.title = vehicleError;
+    const input = tdVehicle1.querySelector("input");
+    if(input){
+      input.placeholder = "Uavklart";
+      input.title = vehicleError;
+      input.setAttribute("aria-label", `${train} – uavklart materiell`);
+    }
+  }
   tr.appendChild(tdVehicle1);
 
   appendOppstillingSlotCell(tr, train, side, 0, vehicles);
@@ -12671,7 +12713,7 @@ function hasTursattVehicle(rowData, side){
 
 function shouldShowTursattRow(rowData, side){
   if(tursattShowUntursattRows) return true;
-  return hasTursattVehicle(rowData, side);
+  return hasTursattVehicle(rowData, side) || Boolean(getTursattVehicleError(rowData, side));
 }
 
 function filterTursattRowsForDisplay(rows, side){
