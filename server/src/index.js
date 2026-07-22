@@ -141,6 +141,7 @@ const FRONTEND_ASSET_FILES = new Map([
   ["sporplan-skien-stasjon.png", path.join(REPO_ROOT, "assets", "sporplan-skien-stasjon.png")],
   ["txp-input-sporplan.png", path.join(REPO_ROOT, "assets", "txp-input-sporplan.png")],
   ["sde-skiftebevegelser.png", path.join(REPO_ROOT, "assets", "sde-skiftebevegelser.png")],
+  ["stadler-button.png", path.join(REPO_ROOT, "assets", "stadler-button.png")],
   ["turnering-kveld-button.png", path.join(REPO_ROOT, "assets", "turnering-kveld-button.png")],
   ["turnering-natt-button.png", path.join(REPO_ROOT, "assets", "turnering-natt-button.png")]
 ]);

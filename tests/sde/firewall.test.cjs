@@ -902,6 +902,51 @@ test("SDE-SHIFT-UI — supplied SDE graphic replaces only the existing Skiftebev
   assert.match(currentServerIndex, /\["sde-skiftebevegelser\.png", path\.join\(REPO_ROOT, "assets", "sde-skiftebevegelser\.png"\)\]/, "the production appserver must serve the exact supplied asset");
 });
 
+test("STADLER-UI — supplied STADLER graphic replaces only Input verksted", () => {
+  const assetPath = path.join(root, "assets", "stadler-button.png");
+  const asset = fs.readFileSync(assetPath);
+  const assetHash = crypto.createHash("sha256").update(asset).digest("hex");
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-stadler-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-stadler-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const activeRule = currentHtml.match(/\.segmented button\.seg-stadler-graphic\.active\{([^}]*)\}/)?.[1] || "";
+
+  assert.equal(assetHash, "e54c0284d0a638fcafeb978512d15ebade2185c17bd070e600c32e6ac47b4fb6", "the supplied STADLER PNG must remain byte-identical");
+  assert.equal(asset.readUInt32BE(16), 1916, "the supplied width must remain unchanged");
+  assert.equal(asset.readUInt32BE(20), 821, "the supplied height must remain unchanged");
+  assert.match(buttonRule, /position:relative;/);
+  assert.match(buttonRule, /display:block;/);
+  assert.match(buttonRule, /width:100%;/);
+  assert.match(buttonRule, /padding:0;/);
+  assert.match(buttonRule, /border:2px solid #aeb8c4;/);
+  assert.match(buttonRule, /border-radius:18px;/);
+  assert.match(buttonRule, /background:#07090c;/);
+  assert.match(buttonRule, /overflow:hidden;/, "the exterior black canvas must be clipped outside the rounded button");
+  assert.match(buttonRule, /cursor:pointer;/);
+  assert.match(buttonRule, /isolation:isolate;/);
+  assert.match(buttonRule, /aspect-ratio:1916 \/ 640;/, "narrow layouts must crop only the supplied exterior canvas");
+  assert.match(buttonRule, /inset 0 2px 0 rgba\(255,255,255,\.88\)/, "STADLER must use a raised 3D highlight");
+  assert.match(buttonRule, /0 8px 0 rgba\(74,18,24,\.52\)/, "STADLER must retain a visible 3D depth edge");
+  assert.match(imageRule, /position:absolute;/);
+  assert.match(imageRule, /inset:0;/);
+  assert.match(imageRule, /width:100%;/);
+  assert.match(imageRule, /height:100%;/);
+  assert.match(imageRule, /object-fit:cover;/, "the supplied image must fill the button without deformation");
+  assert.match(imageRule, /object-position:center 57%;/);
+  assert.match(activeRule, /inset 0 5px 12px rgba\(10,12,16,\.58\)/, "the active state must visibly press the 3D button");
+  assert.match(activeRule, /0 2px 0 rgba\(74,18,24,\.38\)/, "the pressed state must shorten its outer depth");
+  assert.match(currentHtml, /@media \(min-width:901px\)\{[\s\S]*?\.segmented button\.seg-stadler-graphic\{[\s\S]*?aspect-ratio:1810 \/ 530;/, "desktop must retain the established menu-row proportions");
+  assert.match(currentHtml, /\.segmented button\.seg-stadler-graphic\{width:160px;min-width:160px\}/, "mobile must retain the established graphic-menu slot width");
+  assert.match(currentHtml, /\.segmented button\.seg-stadler-graphic:focus-visible\{[\s\S]*?outline:3px solid #ef4444;[\s\S]*?outline-offset:4px;/);
+  assert.match(
+    currentHtml,
+    /<button class="seg seg-red seg-stadler-graphic" type="button" data-tab="verkstedBestillinger" data-levels="0 4" aria-label="Åpne STADLER"[^>]*><img class="seg-stadler-graphic__image" src="assets\/stadler-button\.png\?v=e54c0284" alt=""><\/button>/,
+    "Input verksted routing and access levels must remain unchanged while the button identity becomes STADLER",
+  );
+  assert.equal((currentHtml.match(/<img class="seg-stadler-graphic__image"/g) || []).length, 1, "only Input verksted may use the STADLER graphic");
+  assert.doesNotMatch(currentHtml, /data-tab="verkstedBestillinger"[^>]*>[\s\S]*?<span class="seg-icon">🔧<\/span>/, "the old icon and visible Input verksted label must not remain");
+  assert.match(currentServerIndex, /\["stadler-button\.png", path\.join\(REPO_ROOT, "assets", "stadler-button\.png"\)\]/, "the production appserver must serve the exact supplied STADLER asset");
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),
