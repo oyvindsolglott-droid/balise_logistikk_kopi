@@ -3,6 +3,13 @@ const path = require("node:path");
 const express = require("express");
 const { createAccessIdentitySessionHandler } = require("./accessIdentity");
 const { createRuntimeCapabilitiesHandler } = require("./runtimeAuthorization");
+const {
+  COMMAND_ROUTE: VEHICLE_STATUS_REPORT_NOT_OPERATIONAL_ROUTE,
+  createReportNotOperationalHandler,
+  createVehicleStatusJsonErrorHandler,
+  getVehicleStatusTestWriteStatus
+} = require("./vehicleStatusReportNotOperational");
+const { createVehicleStatusTestRepository } = require("./vehicleStatusTestRepository");
 const { getDatabasePath, openDatabase } = require("./db");
 const { getEventsSinceRevision, parseSinceRevision, writeSseEvent } = require("./events");
 const { prepareRuntimeMigrationMode, runRuntimeMigrationIfEnabled } = require("./runtimeMigrationMode");
@@ -148,6 +155,18 @@ const FRONTEND_ASSET_FILES = new Map([
 ]);
 
 const configuredDatabasePath = getDatabasePath();
+const VEHICLE_STATUS_TEST_WRITE_STATUS = getVehicleStatusTestWriteStatus({
+  env: process.env,
+  port: PORT,
+  databasePath: configuredDatabasePath,
+  productionDatabasePath: PRODUCTION_DB_PATH
+});
+if(VEHICLE_STATUS_TEST_WRITE_STATUS.enabled && !VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed){
+  console.error(
+    `vehicle status test write startup blocked: ${VEHICLE_STATUS_TEST_WRITE_STATUS.guardFailure.message}`
+  );
+  process.exit(1);
+}
 let runtimeMigrationMode;
 try{
   runtimeMigrationMode = prepareRuntimeMigrationMode({
@@ -218,6 +237,9 @@ if(OPERATIONAL_STATE_STATUS.operationalStateWritesEnabled){
 }
 
 const { db, databasePath } = openDatabase();
+const vehicleStatusTestRepository = VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed
+  ? createVehicleStatusTestRepository({ db })
+  : null;
 let runtimeMigrationStatus = runtimeMigrationMode;
 try{
   runtimeMigrationStatus = runRuntimeMigrationIfEnabled(db, {
@@ -301,6 +323,8 @@ app.get("/api/server/status", (_req, res) => {
     operationalStateProductionWritesEnabled: OPERATIONAL_STATE_STATUS.operationalStateProductionWritesEnabled,
     operationalStateWritesAllowed: OPERATIONAL_STATE_STATUS.writesAllowed,
     operationalStateOperationalWritesAllowed: OPERATIONAL_STATE_STATUS.operationalWritesAllowed,
+    vehicleStatusTestWritesEnabled: VEHICLE_STATUS_TEST_WRITE_STATUS.enabled,
+    vehicleStatusTestWritesAllowed: VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed,
     ...schemaStatus,
     clientReadContract: CLIENT_READ_CONTRACT,
     operationalDataContract: OPERATIONAL_DATA_CONTRACT,
@@ -356,6 +380,13 @@ app.get("/api/auth/capabilities", createRuntimeCapabilitiesHandler());
 app.get("/api/vehicle-status", (_req, res) => {
   res.set("Cache-Control", "no-store");
   try{
+    if(vehicleStatusTestRepository){
+      return res.json({
+        ok: true,
+        ...vehicleStatusTestRepository.getReadModel(),
+        trustedRequestAuthority: null
+      });
+    }
     return res.json({
       ok: true,
       ...buildProductionVehicleStatusReadModel(),
@@ -384,6 +415,13 @@ app.get("/api/vehicle-status", (_req, res) => {
     });
   }
 });
+
+if(vehicleStatusTestRepository){
+  app.post(
+    VEHICLE_STATUS_REPORT_NOT_OPERATIONAL_ROUTE,
+    createReportNotOperationalHandler({ repository: vehicleStatusTestRepository })
+  );
+}
 
 app.post("/api/shared-sporplan-draft", (req, res) => {
   if(!SHARED_SPORPLAN_DRAFT_WRITES_ENABLED){
@@ -985,6 +1023,8 @@ app.get("/assets/:filename", (req, res) => {
 
   return sendStaticFile(res, filePath, "image/png");
 });
+
+app.use(createVehicleStatusJsonErrorHandler());
 
 app.use((_req, res) => {
   res.status(404).json({
