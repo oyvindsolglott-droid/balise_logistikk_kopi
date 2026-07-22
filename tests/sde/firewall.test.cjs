@@ -947,6 +947,53 @@ test("STADLER-UI — supplied STADLER graphic replaces only Input verksted", () 
   assert.match(currentServerIndex, /\["stadler-button\.png", path\.join\(REPO_ROOT, "assets", "stadler-button\.png"\)\]/, "the production appserver must serve the exact supplied STADLER asset");
 });
 
+test("AGILIA-UI — corrected level identity and dedicated graphic menu are permanent", () => {
+  const assetPath = path.join(root, "assets", "agilia-button.png");
+  const asset = fs.readFileSync(assetPath);
+  const assetHash = crypto.createHash("sha256").update(asset).digest("hex");
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-agilia-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-agilia-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const activeRule = currentHtml.match(/\.segmented button\.seg-agilia-graphic\.active\{([^}]*)\}/)?.[1] || "";
+
+  assert.equal(assetHash, "37f6dd17b0f42510cd5714c473486934619414234f56be026cfea5e663183ed4", "the supplied Agilia PNG must remain byte-identical");
+  assert.equal(asset.readUInt32BE(16), 1672, "the supplied Agilia width must remain unchanged");
+  assert.equal(asset.readUInt32BE(20), 941, "the supplied Agilia height must remain unchanged");
+  assert.match(buttonRule, /position:relative;/);
+  assert.match(buttonRule, /display:block;/);
+  assert.match(buttonRule, /width:100%;/);
+  assert.match(buttonRule, /padding:0;/);
+  assert.match(buttonRule, /border:2px solid #facc15;/, "Agilia must have a thin yellow perimeter line");
+  assert.match(buttonRule, /border-radius:18px;/);
+  assert.match(buttonRule, /background:#081426;/, "masked exterior must resolve to the dark button surface, never grey");
+  assert.match(buttonRule, /overflow:hidden;/, "the supplied grey canvas must be clipped outside the visible button");
+  assert.match(buttonRule, /aspect-ratio:1916 \/ 640;/);
+  assert.match(buttonRule, /inset 0 2px 0 rgba\(255,255,255,\.88\)/, "Agilia must retain the raised 3D highlight");
+  assert.match(buttonRule, /0 8px 0 rgba\(113,63,18,\.52\)/, "Agilia must retain a visible 3D depth edge");
+  assert.match(imageRule, /position:absolute;/);
+  assert.match(imageRule, /left:50%;/);
+  assert.match(imageRule, /top:54%;/);
+  assert.match(imageRule, /width:126%;/);
+  assert.match(imageRule, /height:auto;/, "the supplied image must never be deformed");
+  assert.match(imageRule, /transform:translate\(-50%,-50%\);/, "the grey exterior must be cropped symmetrically");
+  assert.match(activeRule, /inset 0 5px 12px rgba\(66,32,6,\.52\)/, "the active state must visibly press the 3D button");
+  assert.match(activeRule, /0 2px 0 rgba\(113,63,18,\.38\)/, "the pressed state must shorten its outer depth");
+  assert.match(currentHtml, /@media \(min-width:901px\)\{[\s\S]*?\.segmented button\.seg-agilia-graphic\{[\s\S]*?aspect-ratio:1810 \/ 530;[\s\S]*?\.seg-agilia-graphic__image\{[\s\S]*?top:53%;[\s\S]*?width:116%;/, "desktop must use a wider crop that removes the grey source canvas");
+  assert.match(currentHtml, /\.segmented button\.seg-agilia-graphic\{width:160px;min-width:160px\}/, "mobile must retain the established graphic-menu slot width");
+  assert.match(currentHtml, /\.segmented button\.seg-agilia-graphic:focus-visible\{[\s\S]*?outline:3px solid #facc15;[\s\S]*?outline-offset:4px;/);
+  assert.match(
+    currentHtml,
+    /<button class="seg seg-agilia-graphic" type="button" data-tab="agilia" data-levels="0 1 5" aria-label="Åpne Agilia"[^>]*><img class="seg-agilia-graphic__image" src="assets\/agilia-button\.png\?v=37f6dd17" alt=""><\/button>/,
+    "Agilia must be exposed only at levels 0, 1 and 5",
+  );
+  assert.equal((currentHtml.match(/<img class="seg-agilia-graphic__image"/g) || []).length, 1, "there must be exactly one Agilia menu button");
+  assert.match(currentHtml, /<section class="panel" id="agilia">/, "Agilia must open a dedicated panel");
+  assert.match(currentHtml, /<option value="5">Nivå 5 – Agilia<\/option>/, "level 5 must use the corrected Agilia spelling");
+  assert.match(currentHtml, /<tr><td>5<\/td><td>Agilia<\/td>/, "the access overview must use the corrected Agilia spelling");
+  assert.match(currentHtml, /\{level:"Agilia", functions:\["Sporplan", "Agilia"\]\}/, "the shared access readmodel must use the corrected Agilia identity");
+  assert.doesNotMatch(currentHtml, /\bAgila\b/, "the misspelled Agila identity must not remain");
+  assert.match(currentServerIndex, /\["agilia-button\.png", path\.join\(REPO_ROOT, "assets", "agilia-button\.png"\)\]/, "the production appserver must serve the exact supplied Agilia asset");
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),
