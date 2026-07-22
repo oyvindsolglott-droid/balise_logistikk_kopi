@@ -458,6 +458,13 @@ registerHarnessTest({
   baseline: "50bb0dbeb5120758956211795dcc1a77cdb3667e",
 });
 
+registerHarnessTest({
+  phase: "TURSATT-80818",
+  name: "validated departures with unresolved occurrence material remain visible",
+  harness: "sde-tursatt-unresolved-row-harness.js",
+  baseline: "ecba507a6ec033fee9f3af4160e60bc23e07c1c3",
+});
+
 test("M2 — generator propagates actual platform provenance without vehicle hardcoding", () => {
   const contract = source => {
     for(const name of [

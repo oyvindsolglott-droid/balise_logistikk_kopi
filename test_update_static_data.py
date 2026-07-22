@@ -1,10 +1,16 @@
 import json
+import itertools
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 import update_static_data as static_data
+
+
+OCCURRENCE_FIXTURE = json.loads(
+    (Path(__file__).parent / "tests/fixtures/balise_tursatt_occurrences_2026-07-22.json").read_text()
+)
 
 
 def make_payload(mode, run_date):
@@ -111,6 +117,169 @@ class BaliseCandidateSelectionTest(unittest.TestCase):
 
         self.assertEqual(selected["lookup_train_no"], "90802")
         self.assertEqual(selected["departure_hits"], ["74-20"])
+
+
+class BaliseOccurrenceBoundDepartureTest(unittest.TestCase):
+    def make_candidate(self, occurrence, general_hits=None):
+        route_info = occurrence["routeInfo"]
+        return {
+            "lookup_train_no": occurrence["lookupTrainNumber"],
+            "general_hits": list(general_hits or []),
+            "departure_hits": [],
+            "arrival_hits": [],
+            "route_vehicle_hits": static_data.extract_route_vehicle_hits(
+                occurrence["vehicleRows"],
+                route_info.get("routeId", ""),
+                "Skien",
+            ),
+            "has_train_content": bool(route_info),
+            "skien_arrival_time": None,
+            "skien_departure_time": occurrence["skienDepartureTime"],
+            "route_info": route_info,
+        }
+
+    def test_80818_exact_occurrence_is_complete_and_ordered(self):
+        candidates = [self.make_candidate(row) for row in OCCURRENCE_FIXTURE["occurrences"]]
+        selected = static_data.select_balise_candidate_result(
+            OCCURRENCE_FIXTURE["logicalTrain"],
+            candidates,
+            operational_date=OCCURRENCE_FIXTURE["operationalDate"],
+        )
+        resolution = static_data.resolve_departure_candidate(
+            OCCURRENCE_FIXTURE["logicalTrain"],
+            OCCURRENCE_FIXTURE["operationalDate"],
+            selected,
+        )
+
+        self.assertEqual(selected["lookup_train_no"], "80818")
+        self.assertEqual(selected["route_info"]["origin"], "Skien")
+        self.assertEqual(selected["route_info"]["destination"], "Eidsvoll")
+        self.assertEqual(resolution["displayTrainNumber"], "80818")
+        self.assertEqual(resolution["departureTime"], "11:45")
+        self.assertEqual(resolution["vehicleIds"], ["74-11", "74-41"])
+        self.assertEqual(resolution["error"], "")
+
+    def test_candidate_input_order_does_not_change_exact_occurrence(self):
+        candidates = [self.make_candidate(row) for row in OCCURRENCE_FIXTURE["occurrences"]]
+        selections = {
+            static_data.select_balise_candidate_result(
+                OCCURRENCE_FIXTURE["logicalTrain"],
+                list(permutation),
+                operational_date=OCCURRENCE_FIXTURE["operationalDate"],
+            )["lookup_train_no"]
+            for permutation in itertools.permutations(candidates)
+        }
+        self.assertEqual(selections, {"80818"})
+
+    def test_page_wide_material_cannot_replace_occurrence_bound_material(self):
+        exact = OCCURRENCE_FIXTURE["occurrences"][1]
+        selected = self.make_candidate(exact, general_hits=["74-19", "74-49"])
+        resolution = static_data.resolve_departure_candidate(
+            OCCURRENCE_FIXTURE["logicalTrain"],
+            OCCURRENCE_FIXTURE["operationalDate"],
+            selected,
+        )
+        self.assertEqual(resolution["vehicleIds"], ["74-11", "74-41"])
+        self.assertNotIn("74-19", resolution["vehicleIds"])
+
+    def test_time_only_occurrence_is_explicitly_unresolved_without_cross_candidate_fallback(self):
+        exact = OCCURRENCE_FIXTURE["occurrences"][1]
+        selected = self.make_candidate(
+            {**exact, "vehicleRows": []},
+            general_hits=["74-19", "74-49"],
+        )
+        resolution = static_data.resolve_departure_candidate(
+            OCCURRENCE_FIXTURE["logicalTrain"],
+            OCCURRENCE_FIXTURE["operationalDate"],
+            selected,
+        )
+        self.assertEqual(resolution["vehicleIds"], [])
+        self.assertIn("80818", resolution["error"])
+        self.assertIn("fixture-route-80818", resolution["error"])
+
+    def test_80824_uses_only_its_separate_occurrence(self):
+        occurrence = OCCURRENCE_FIXTURE["separateOccurrence"]
+        selected = self.make_candidate(occurrence, general_hits=["74-11", "74-41"])
+        resolution = static_data.resolve_departure_candidate(
+            "824",
+            OCCURRENCE_FIXTURE["operationalDate"],
+            selected,
+        )
+        self.assertEqual(resolution["displayTrainNumber"], "80824")
+        self.assertEqual(resolution["departureTime"], "14:45")
+        self.assertEqual(resolution["vehicleIds"], ["74-19", "74-49"])
+        self.assertNotIn("74-41", resolution["vehicleIds"])
+
+
+class DepartureCompletenessContractTest(unittest.TestCase):
+    def test_build_payload_keeps_departure_and_vehicle_on_same_display_number(self):
+        occurrence = {
+            "operationalDate": "2026-07-22",
+            "requestedTrainNumber": "818",
+            "displayTrainNumber": "80818",
+            "routeId": "fixture-route-80818",
+            "origin": "Skien",
+            "destination": "Eidsvoll",
+            "station": "Skien",
+            "departureTime": "11:45",
+            "vehicleIds": ["74-11", "74-41"],
+        }
+
+        def fake_fetch(train_numbers, run_date, deadline_at=None):
+            return (
+                {"818": "74-11, 74-41"},
+                {"818": "74-11, 74-41"},
+                {},
+                {},
+                {"818": "80818"},
+                {"818": "80818"},
+                {},
+                {"818": "11:45"},
+                {},
+                {},
+                {"818": occurrence},
+            )
+
+        with patch.object(static_data, "fetch_vehicle_maps_for_trains", side_effect=fake_fetch):
+            with patch.object(
+                static_data,
+                "get_operational_tursatt_dates",
+                return_value={
+                    "arrival_date": static_data.date(2026, 7, 22),
+                    "departure_date": static_data.date(2026, 7, 22),
+                    "window": "test",
+                },
+            ):
+                payload = static_data.build_payload("imorgen")
+
+        self.assertEqual(payload["departures"]["80818"], "11:45")
+        self.assertEqual(payload["departureVehicles"]["80818"], "74-11, 74-41")
+        self.assertEqual(payload["departureOccurrences"]["80818"]["routeId"], "fixture-route-80818")
+
+    def test_departure_without_material_or_error_is_rejected(self):
+        payload = {
+            "ok": True,
+            "updatedAt": "22.07.2026 12:00:00",
+            "mode": "imorgen",
+            "date": "2026-07-22",
+            "departures": {"80818": "11:45"},
+            "departureVehicles": {},
+            "vehicleErrors": {},
+        }
+        with self.assertRaisesRegex(ValueError, "80818"):
+            static_data.validate_payload("imorgen", payload)
+
+    def test_explicitly_unresolved_departure_passes_per_train_fail_closed_contract(self):
+        payload = {
+            "ok": True,
+            "updatedAt": "22.07.2026 12:00:00",
+            "mode": "imorgen",
+            "date": "2026-07-22",
+            "departures": {"80818": "11:45"},
+            "departureVehicles": {},
+            "vehicleErrors": {"80818": "Forekomstbundet materiell mangler"},
+        }
+        self.assertIs(static_data.validate_payload("imorgen", payload), payload)
 
 
 class BaliseArrivalSegmentSelectionTest(unittest.TestCase):

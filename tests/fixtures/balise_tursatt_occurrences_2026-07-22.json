@@ -1,0 +1,74 @@
+{
+  "operationalDate": "2026-07-22",
+  "logicalTrain": "818",
+  "occurrences": [
+    {
+      "lookupTrainNumber": "818",
+      "routeInfo": {},
+      "skienDepartureTime": null,
+      "vehicleRows": []
+    },
+    {
+      "lookupTrainNumber": "80818",
+      "routeInfo": {
+        "routeId": "fixture-route-80818",
+        "trainNumber": "80818",
+        "operationalDate": "2026-07-22",
+        "origin": "Skien",
+        "destination": "Eidsvoll"
+      },
+      "skienDepartureTime": "11:45",
+      "vehicleRows": [
+        {
+          "sv_route": "fixture-route-80818",
+          "station_name": "Skien",
+          "position": 0,
+          "vehicle": "74-11"
+        },
+        {
+          "sv_route": "fixture-route-80818",
+          "station_name": "Skien",
+          "position": 5,
+          "vehicle": "74-41"
+        },
+        {
+          "sv_route": "fixture-route-80818",
+          "station_name": "Eidsvoll",
+          "position": 0,
+          "vehicle": "74-11"
+        }
+      ]
+    },
+    {
+      "lookupTrainNumber": "90818",
+      "routeInfo": {},
+      "skienDepartureTime": null,
+      "vehicleRows": []
+    }
+  ],
+  "separateOccurrence": {
+    "lookupTrainNumber": "80824",
+    "routeInfo": {
+      "routeId": "fixture-route-80824",
+      "trainNumber": "80824",
+      "operationalDate": "2026-07-22",
+      "origin": "Skien",
+      "destination": "Eidsvoll"
+    },
+    "skienDepartureTime": "14:45",
+    "vehicleRows": [
+      {
+        "sv_route": "fixture-route-80824",
+        "station_name": "Skien",
+        "position": 0,
+        "vehicle": "74-19"
+      },
+      {
+        "sv_route": "fixture-route-80824",
+        "station_name": "Skien",
+        "position": 5,
+        "vehicle": "74-49"
+      }
+    ]
+  }
+}
