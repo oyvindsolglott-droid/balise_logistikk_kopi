@@ -630,6 +630,7 @@ test("TURSATT-UI — baked label remains seamless without an obscuring CSS backp
     "narrow viewports must preserve a usable full-bleed aspect ratio",
   );
   assert.match(currentHtml, /<source media="\(min-width:901px\)" srcset="assets\/tursatt-button-wide\.png\?v=572cee6a">/, "the production image URL must bypass a cached pre-route 404");
+  assert.match(currentHtml, /<button class="seg seg-green seg-tursatt-graphic active" type="button" data-tab="oppstilling" data-levels="0 1 2 3 4 5"/, "Tursatt must remain available to every operational level, including level 4");
   assert.match(currentHtml, /<img class="seg-tursatt-graphic__image" src="assets\/tursatt-button\.png" alt="" aria-hidden="true"><\/picture><span class="seg-main"><span class="seg-primary">Tursatt<\/span><\/span>/);
   assert.match(desktopRule, /\.segmented button\.seg-tursatt-graphic\{[\s\S]*?background:#03181d;[\s\S]*?isolation:isolate;/);
   assert.match(desktopRule, /\.seg-tursatt-graphic__image\{[\s\S]*?object-position:center 40%;/);
@@ -804,8 +805,8 @@ test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing 
   assert.match(currentHtml, /\.segmented button\.seg-sporplan-graphic:focus-visible\{[\s\S]*?outline:3px solid #22d3ee;[\s\S]*?outline-offset:4px;/);
   assert.match(
     currentHtml,
-    /<button class="seg seg-sporplan-graphic" type="button" data-tab="sporplan" data-levels="0 1 2 3 5" aria-label="Åpne Sporplan"[^>]*><img class="seg-sporplan-graphic__image" src="assets\/sporplan-skien-stasjon\.png\?v=148a1db1" alt=""><\/button>/,
-    "routing, access levels and semantic identity must remain unchanged",
+    /<button class="seg seg-sporplan-graphic" type="button" data-tab="sporplan" data-levels="0 1 2 3 4 5" aria-label="Åpne Sporplan"[^>]*><img class="seg-sporplan-graphic__image" src="assets\/sporplan-skien-stasjon\.png\?v=148a1db1" alt=""><\/button>/,
+    "routing, all-level access and semantic identity must remain unchanged",
   );
   assert.equal((currentHtml.match(/<img class="seg-sporplan-graphic__image"/g) || []).length, 1, "only the Sporplan menu button may use this graphic");
   assert.doesNotMatch(buttonMarkup, /<span class="seg-icon">▦<\/span>/, "the old icon must not remain inside the Sporplan button");
@@ -992,6 +993,14 @@ test("AGILIA-UI — corrected level identity and dedicated graphic menu are perm
   assert.match(currentHtml, /\{level:"Agilia", functions:\["Sporplan", "Agilia"\]\}/, "the shared access readmodel must use the corrected Agilia identity");
   assert.doesNotMatch(currentHtml, /\bAgila\b/, "the misspelled Agila identity must not remain");
   assert.match(currentServerIndex, /\["agilia-button\.png", path\.join\(REPO_ROOT, "assets", "agilia-button\.png"\)\]/, "the production appserver must serve the exact supplied Agilia asset");
+});
+
+test("LEVEL-4-MENU — workshop keeps Tursatt and Sporplan without Agilia", () => {
+  assert.match(currentHtml, /data-tab="oppstilling" data-levels="0 1 2 3 4 5"/, "level 4 must retain Tursatt");
+  assert.match(currentHtml, /data-tab="sporplan" data-levels="0 1 2 3 4 5"/, "level 4 must retain Sporplan");
+  assert.match(currentHtml, /\{level:"Verksted", functions:\["Tursatt", "Sporplan", "DROPS-relevante behov", "verksted\/materiellstatus"\]\}/, "the shared access readmodel must include both level-4 overview surfaces");
+  assert.match(currentHtml, /<tr><td>4<\/td><td>Verksted<\/td><td>Oversikt i Tursatt og Sporplan, samt registrering av verkstedbehov/, "the access overview must describe the level-4 menu");
+  assert.match(currentHtml, /data-tab="agilia" data-levels="0 5"/, "Agilia must remain excluded from level 4");
 });
 
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
