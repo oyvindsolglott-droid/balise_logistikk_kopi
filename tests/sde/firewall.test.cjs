@@ -982,8 +982,8 @@ test("AGILIA-UI — corrected level identity and dedicated graphic menu are perm
   assert.match(currentHtml, /\.segmented button\.seg-agilia-graphic:focus-visible\{[\s\S]*?outline:3px solid #facc15;[\s\S]*?outline-offset:4px;/);
   assert.match(
     currentHtml,
-    /<button class="seg seg-agilia-graphic" type="button" data-tab="agilia" data-levels="0 1 5" aria-label="Åpne Agilia"[^>]*><img class="seg-agilia-graphic__image" src="assets\/agilia-button\.png\?v=37f6dd17" alt=""><\/button>/,
-    "Agilia must be exposed only at levels 0, 1 and 5",
+    /<button class="seg seg-agilia-graphic" type="button" data-tab="agilia" data-levels="0 5" aria-label="Åpne Agilia"[^>]*><img class="seg-agilia-graphic__image" src="assets\/agilia-button\.png\?v=37f6dd17" alt=""><\/button>/,
+    "Agilia must be exposed only at levels 0 and 5",
   );
   assert.equal((currentHtml.match(/<img class="seg-agilia-graphic__image"/g) || []).length, 1, "there must be exactly one Agilia menu button");
   assert.match(currentHtml, /<section class="panel" id="agilia">/, "Agilia must open a dedicated panel");
