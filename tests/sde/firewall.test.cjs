@@ -676,6 +676,10 @@ test("TURNERING GRAPHIC BUTTONS — transparent square Kveld and Natt controls p
     assert.equal(bytes.subarray(0, 8).toString("hex"), "89504e470d0a1a0a", `${file} must remain a PNG`);
     assert.equal(bytes[25], 6, `${file} must retain its RGBA transparency channel`);
     assert.equal(crypto.createHash("sha256").update(bytes).digest("hex"), expectedHash, `${file} must retain the approved transparent artwork`);
+    assert.ok(
+      currentServerIndex.includes(`["${file}", path.join(REPO_ROOT, "assets", "${file}")]`),
+      `production appserver must serve ${file} instead of returning 404`,
+    );
   }
 
   assert.match(
