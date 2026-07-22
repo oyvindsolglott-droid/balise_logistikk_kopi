@@ -671,12 +671,12 @@ test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button",
   const imageRule = currentHtml.match(/\.seg-drops-graphic__image\{([^}]*)\}/)?.[1] || "";
 
   assert.match(buttonRule, /position:relative;/);
-  assert.match(buttonRule, /padding:0;/, "DROPS button must not add an inner frame around the graphic");
+  assert.match(buttonRule, /padding:0;/, "DROPS button must not add content padding around the graphic");
   assert.match(buttonRule, /overflow:hidden;/, "the graphic must remain clipped by the existing button radius");
   assert.match(imageRule, /position:absolute;/);
-  assert.match(imageRule, /inset:0;/);
-  assert.match(imageRule, /width:100%;/);
-  assert.match(imageRule, /height:100%;/);
+  assert.match(imageRule, /inset:2px;/);
+  assert.match(imageRule, /width:calc\(100% - 4px\);/);
+  assert.match(imageRule, /height:calc\(100% - 4px\);/);
   assert.match(imageRule, /object-fit:cover;/, "the supplied graphic must fill the button without deformation");
   assert.match(
     currentHtml,
@@ -693,6 +693,23 @@ test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button",
     /\.segmented button\.seg-drops-graphic\{min-width:160px\}/,
     "narrow viewports must preserve a usable graphic button",
   );
+});
+
+test("DROPS 3D FRAME — dark-blue edge and recessed fill remain visible around the graphic", () => {
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-drops-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-drops-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const activeRule = currentHtml.match(/\.segmented button\.seg-drops-graphic\.active\{([^}]*)\}/)?.[1] || "";
+
+  assert.match(buttonRule, /border:2px solid #123b63;/, "DROPS must use a thin dark-blue outer frame");
+  assert.match(buttonRule, /background:linear-gradient\(180deg,#174f80 0%,#0b3357 48%,#041a31 100%\);/, "unfilled button area must use a dark-blue depth gradient");
+  assert.match(buttonRule, /box-shadow:[\s\S]*?inset 0 1px 0 rgba\(164,216,255,\.72\),[\s\S]*?inset 0 -3px 0 rgba\(0,10,26,\.76\),[\s\S]*?0 7px 0 #082744,[\s\S]*?0 13px 20px rgba\(2,13,28,\.34\);/, "the frame must retain a restrained bevel and outer depth edge");
+  assert.match(imageRule, /inset:2px;/, "the graphic must reveal a narrow, even dark-blue inner edge");
+  assert.match(imageRule, /width:calc\(100% - 4px\);/);
+  assert.match(imageRule, /height:calc\(100% - 4px\);/);
+  assert.match(imageRule, /border-radius:14px;/, "the inset graphic must follow the button corners without clipping the frame");
+  assert.doesNotMatch(currentHtml, /\.seg-drops-graphic__image\{height:100%;\}/, "mobile rules must not erase the lower dark-blue edge");
+  assert.match(activeRule, /transform:translateY\(5px\);/);
+  assert.match(activeRule, /box-shadow:[\s\S]*?0 2px 0 #081d34,/, "the selected state must compress rather than lose the 3D edge");
 });
 
 test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing Sporplan button", () => {
