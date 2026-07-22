@@ -609,10 +609,12 @@ registerHarnessTest({
   baseline: "f84986fb348a10572fb6e4b5ee86c45ce40335f5",
 });
 
-test("TURSATT-UI — desktop uses one seamless wide image while mobile keeps its established crop", () => {
+test("TURSATT-UI — baked label remains seamless without an obscuring CSS backplate", () => {
   const buttonRule = currentHtml.match(/\.segmented button\.seg-tursatt-graphic\{([^}]*)\}/)?.[1] || "";
   const imageRule = currentHtml.match(/\.seg-tursatt-graphic__image\{([^}]*)\}/)?.[1] || "";
   const desktopRule = currentHtml.match(/@media \(min-width:901px\)\{([\s\S]*?)\n\}\n\.segmented button\.seg-drops-graphic/)?.[1] || "";
+  const mobileRule = currentHtml.match(/@media \(max-width:900px\)\{([\s\S]*?)\n\}\n\.seg-green/)?.[1] || "";
+  const semanticLabelRule = currentHtml.match(/\.seg-tursatt-graphic \.seg-main\{([^}]*)\}/)?.[1] || "";
 
   assert.match(buttonRule, /padding:0;/, "Tursatt button must not add an inner frame around the graphic");
   assert.match(buttonRule, /overflow:hidden;/, "full-bleed graphic must remain clipped by the button radius");
@@ -630,39 +632,47 @@ test("TURSATT-UI — desktop uses one seamless wide image while mobile keeps its
   assert.match(currentHtml, /<source media="\(min-width:901px\)" srcset="assets\/tursatt-button-wide\.png\?v=572cee6a">/, "the production image URL must bypass a cached pre-route 404");
   assert.match(currentHtml, /<img class="seg-tursatt-graphic__image" src="assets\/tursatt-button\.png" alt="" aria-hidden="true"><\/picture><span class="seg-main"><span class="seg-primary">Tursatt<\/span><\/span>/);
   assert.match(desktopRule, /\.segmented button\.seg-tursatt-graphic\{[\s\S]*?background:#03181d;[\s\S]*?isolation:isolate;/);
-  assert.match(desktopRule, /\.segmented button\.seg-tursatt-graphic::after\{[\s\S]*?right:0;[\s\S]*?bottom:0;[\s\S]*?width:48%;[\s\S]*?height:45%;[\s\S]*?linear-gradient\(90deg,transparent,rgba\(1,18,24,\.99\) 24%,#011218 45%\);[\s\S]*?z-index:1;/);
   assert.match(desktopRule, /\.seg-tursatt-graphic__image\{[\s\S]*?object-position:center 40%;/);
-  assert.match(desktopRule, /\.seg-tursatt-graphic \.seg-main\{[\s\S]*?right:12px;[\s\S]*?bottom:10px;[\s\S]*?overflow:visible;[\s\S]*?clip:auto;[\s\S]*?color:#fff;[\s\S]*?z-index:2;/);
+  assert.match(semanticLabelRule, /width:1px;[\s\S]*?height:1px;[\s\S]*?overflow:hidden;[\s\S]*?clip:rect\(0,0,0,0\);/, "the semantic label must remain available without duplicating the baked Tursatt artwork");
+  assert.doesNotMatch(currentHtml, /\.segmented button\.seg-tursatt-graphic::after\{/, "no CSS backplate may obscure the train behind the baked Tursatt label");
+  assert.doesNotMatch(desktopRule, /\.seg-tursatt-graphic \.seg-main\{/, "desktop must not render a duplicate Tursatt label");
+  assert.doesNotMatch(mobileRule, /\.seg-tursatt-graphic \.seg-main(?:\s|\{|,)/, "mobile must not render a duplicate Tursatt label");
   assert.doesNotMatch(desktopRule, /seg-tursatt-graphic::before/, "desktop must not synthesize side-fill behind the wide image");
   assert.match(currentServerIndex, /\["tursatt-button-wide\.png", path\.join\(REPO_ROOT, "assets", "tursatt-button-wide\.png"\)\]/, "production appserver must serve the desktop asset instead of returning 404");
 });
 
-test("GRAPHIC MENU TYPOGRAPHY — Tursatt and DROPS share one responsive label contract", () => {
-  const sharedDesktopRule = currentHtml.match(/@media \(min-width:901px\)\{\n\.segmented button\.seg-tursatt-graphic,([\s\S]*?)\n\}\n\.seg-green/)?.[1] || "";
-  const sharedMobileRule = currentHtml.match(/@media \(max-width:900px\)\{\n\.segmented button\.seg-tursatt-graphic,([\s\S]*?)\n\}\n\.seg-green/)?.[1] || "";
+test("GRAPHIC MENU TYPOGRAPHY — DROPS retains its responsive label contract", () => {
+  const sharedDesktopRule = currentHtml.match(/@media \(min-width:901px\)\{\n\.segmented button\.seg-drops-graphic([\s\S]*?)\n\}\n@media \(max-width:900px\)/)?.[1] || "";
+  const sharedMobileRule = currentHtml.match(/@media \(max-width:900px\)\{\n\.segmented button\.seg-drops-graphic([\s\S]*?)\n\}\n\.seg-green/)?.[1] || "";
   assert.match(sharedDesktopRule, /--graphic-menu-label-size:clamp\(18px,1\.65vw,25px\);/);
   assert.match(sharedDesktopRule, /--graphic-menu-label-weight:900;/);
   assert.match(sharedDesktopRule, /--graphic-menu-label-spacing:-\.02em;/);
-  assert.match(sharedDesktopRule, /\.seg-tursatt-graphic \.seg-main,\n\.seg-drops-graphic \.seg-main::before\{[\s\S]*?font-family:inherit;[\s\S]*?font-size:var\(--graphic-menu-label-size\);[\s\S]*?font-weight:var\(--graphic-menu-label-weight\);[\s\S]*?letter-spacing:var\(--graphic-menu-label-spacing\);/);
+  assert.match(sharedDesktopRule, /\.seg-drops-graphic \.seg-main::before\{[\s\S]*?font-family:inherit;[\s\S]*?font-size:var\(--graphic-menu-label-size\);[\s\S]*?font-weight:var\(--graphic-menu-label-weight\);[\s\S]*?letter-spacing:var\(--graphic-menu-label-spacing\);/);
   assert.match(sharedDesktopRule, /\.seg-drops-graphic \.seg-main::before\{[\s\S]*?content:"DROPS";[\s\S]*?text-shadow:0 2px 5px rgba\(0,0,0,\.95\);/);
   assert.match(sharedDesktopRule, /\.segmented button\.seg-drops-graphic::after\{[\s\S]*?width:34%;[\s\S]*?height:50%;[\s\S]*?z-index:1;/, "the compact DROPS backplate must cover the baked label without obscuring excess artwork");
   assert.match(sharedMobileRule, /--graphic-menu-label-size:15px;/);
   assert.match(sharedMobileRule, /--graphic-menu-label-weight:900;/);
   assert.match(sharedMobileRule, /--graphic-menu-label-spacing:-\.02em;/);
-  assert.match(sharedMobileRule, /\.seg-tursatt-graphic \.seg-main \.seg-primary,\n\.seg-drops-graphic \.seg-main::before\{[\s\S]*?font-family:inherit;[\s\S]*?font-size:var\(--graphic-menu-label-size\);[\s\S]*?font-weight:var\(--graphic-menu-label-weight\);[\s\S]*?letter-spacing:var\(--graphic-menu-label-spacing\);/);
-  assert.match(sharedMobileRule, /\.segmented button\.seg-tursatt-graphic::after,\n\.segmented button\.seg-drops-graphic::after\{[\s\S]*?z-index:1;/, "both baked mobile labels must be covered before the shared typography is rendered");
+  assert.match(sharedMobileRule, /\.seg-drops-graphic \.seg-main::before\{[\s\S]*?font-family:inherit;[\s\S]*?font-size:var\(--graphic-menu-label-size\);[\s\S]*?font-weight:var\(--graphic-menu-label-weight\);[\s\S]*?letter-spacing:var\(--graphic-menu-label-spacing\);/);
   assert.match(sharedMobileRule, /\.segmented button\.seg-drops-graphic::after\{[\s\S]*?width:44%;[\s\S]*?height:62%;/, "the mobile DROPS backplate must stay compact while preserving label contrast");
 });
 
-test("GRAPHIC MENU DIMENSIONS — wide menu controls match Tursatt on desktop, tablet and mobile", () => {
-  const uniformDesktopRule = currentHtml.match(/@media \(min-width:701px\)\{([\s\S]*?)\n\}/)?.[1] || "";
-  const tabletRule = currentHtml.match(/@media \(min-width:701px\) and \(max-width:1100px\)\{([\s\S]*?)\n\}/)?.[1] || "";
+test("GRAPHIC MENU DIMENSIONS — six TXP controls stay ordered on one equal-height row", () => {
+  const uniformDesktopRule = currentHtml.match(/@media \(min-width:701px\)\{([\s\S]*?)\n\}\n@media \(max-width:700px\)/)?.[1] || "";
   const mobileRule = currentHtml.match(/@media \(max-width:700px\)\{([\s\S]*?)\.view-tools\{/)?.[1] || "";
+  const menuMarkup = currentHtml.match(/<div class="segmented" aria-label="Hovedmeny">([\s\S]*?)<\/div>\n\n\n<section class="panel" id="grunnoppstilling">/)?.[1] || "";
+  const menuOrder = [...menuMarkup.matchAll(/data-tab="([^"]+)"/g)].map((match) => match[1]);
 
-  assert.match(uniformDesktopRule, /\.segmented\{grid-template-columns:repeat\(4,minmax\(0,1fr\)\)\}/, "desktop must use four equal menu columns");
+  assert.match(uniformDesktopRule, /\.segmented\{[\s\S]*?grid-template-columns:[\s\S]*?repeat\(4,minmax\(211\.698114px,3\.41509434fr\)\)[\s\S]*?repeat\(2,minmax\(62px,1fr\)\);/, "the first four wide controls and the two square controls must form one height-matched row");
   assert.match(uniformDesktopRule, /\.segmented button\.seg\{[\s\S]*?grid-column:auto;[\s\S]*?width:100%;[\s\S]*?min-height:0;[\s\S]*?aspect-ratio:1810 \/ 530;/, "wide desktop controls must inherit Tursatt's exact box dimensions before explicit square-control overrides");
-  assert.match(tabletRule, /\.segmented\{grid-template-columns:repeat\(3,minmax\(0,1fr\)\)\}/, "tablet must keep every menu cell equally wide");
+  assert.match(uniformDesktopRule, /\.segmented button\.seg\.seg-turnering-graphic\{[\s\S]*?width:100%;[\s\S]*?min-width:0;[\s\S]*?aspect-ratio:1 \/ 1;/, "the square controls must use the same computed row height as the wide controls");
   assert.match(mobileRule, /\.segmented button\.seg\{[\s\S]*?flex:0 0 160px;[\s\S]*?width:160px;[\s\S]*?min-width:160px;[\s\S]*?height:76px;[\s\S]*?min-height:76px;[\s\S]*?max-height:76px;[\s\S]*?aspect-ratio:auto;/, "wide mobile controls must use the same 160 by 76 pixel slot before explicit square-control overrides");
+  assert.deepEqual(
+    menuOrder.slice(0, 6),
+    ["grunnoppstilling", "sporplan", "sdeSkiftebevegelser", "oppstilling", "turneringKveld", "turneringNatt"],
+    "the TXP menu must start with the exact approved six-button order",
+  );
+  assert.doesNotMatch(currentHtml, /@media \(min-width:701px\) and \(max-width:1100px\)\{[\s\S]*?grid-template-columns:repeat\(3/, "tablet must not force the approved six-button row into a three-column wrap");
   assert.doesNotMatch(currentHtml, /\.segmented button:nth-child\(-n\+4\)\{grid-column:span 5;\}/, "the former first-row size exception must never return");
 });
 
@@ -706,7 +716,7 @@ test("TURNERING GRAPHIC BUTTONS — transparent square Kveld and Natt controls p
   assert.match(imageRule, /width:100%;/);
   assert.match(imageRule, /height:100%;/);
   assert.match(imageRule, /object-fit:contain;/);
-  assert.match(currentHtml, /@media \(min-width:701px\)\{[\s\S]*?\.segmented button\.seg\.seg-turnering-graphic\{[\s\S]*?width:29\.2817679558%;[\s\S]*?aspect-ratio:1 \/ 1;[\s\S]*?\n\}/, "desktop and tablet buttons must be square and exactly as high as the wide controls");
+  assert.match(currentHtml, /@media \(min-width:701px\)\{[\s\S]*?\.segmented button\.seg\.seg-turnering-graphic\{[\s\S]*?width:100%;[\s\S]*?min-width:0;[\s\S]*?aspect-ratio:1 \/ 1;[\s\S]*?\n\}/, "desktop and tablet buttons must be square and exactly as high as the wide controls");
   assert.match(mobileRule, /\.segmented button\.seg\.seg-turnering-graphic\{[\s\S]*?flex:0 0 76px;[\s\S]*?width:76px;[\s\S]*?min-width:76px;[\s\S]*?height:76px;[\s\S]*?max-height:76px;[\s\S]*?aspect-ratio:1 \/ 1;/, "mobile buttons must stay square and no taller than their row");
   assert.match(currentHtml, /\.segmented button\.seg-turnering-graphic:focus-visible\{[\s\S]*?outline:3px solid #22d3ee;/, "keyboard focus must remain visible");
 });
@@ -765,6 +775,7 @@ test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing 
   const imageRule = currentHtml.match(/\.seg-sporplan-graphic__image\{([^}]*)\}/)?.[1] || "";
   const activeRule = currentHtml.match(/\.segmented button\.seg-sporplan-graphic\.active\{([^}]*)\}/)?.[1] || "";
   const desktopRule = currentHtml.match(/@media \(min-width:901px\)\{([\s\S]*?)\.segmented button\.seg-tursatt-graphic\{/)?.[1] || "";
+  const buttonMarkup = currentHtml.match(/<button class="seg seg-sporplan-graphic"[^>]*data-tab="sporplan"[^>]*>[\s\S]*?<\/button>/)?.[0] || "";
 
   assert.equal(assetHash, "148a1db129266c37efa6c43f2831bd852535c67a34f886d2cbc3289940bb5439", "the supplied PNG must remain byte-identical");
   assert.equal(asset.readUInt32BE(16), 1916, "the supplied width must remain unchanged");
@@ -797,7 +808,7 @@ test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing 
     "routing, access levels and semantic identity must remain unchanged",
   );
   assert.equal((currentHtml.match(/<img class="seg-sporplan-graphic__image"/g) || []).length, 1, "only the Sporplan menu button may use this graphic");
-  assert.doesNotMatch(currentHtml, /data-tab="sporplan"[^>]*>[\s\S]*?<span class="seg-icon">▦<\/span>/, "the old icon must not remain");
+  assert.doesNotMatch(buttonMarkup, /<span class="seg-icon">▦<\/span>/, "the old icon must not remain inside the Sporplan button");
   assert.match(currentServerIndex, /\["sporplan-skien-stasjon\.png", path\.join\(REPO_ROOT, "assets", "sporplan-skien-stasjon\.png"\)\]/, "the production appserver must serve the exact supplied asset");
 });
 
