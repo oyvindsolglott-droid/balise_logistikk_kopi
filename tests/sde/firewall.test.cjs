@@ -919,6 +919,51 @@ test("SDE-SHIFT-UI — supplied SDE graphic replaces only the existing Skiftebev
   assert.match(currentServerIndex, /\["sde-skiftebevegelser\.png", path\.join\(REPO_ROOT, "assets", "sde-skiftebevegelser\.png"\)\]/, "the production appserver must serve the exact supplied asset");
 });
 
+test("SDE-VAKTPLAN-UI — supplied graphic replaces only the existing Vaktplan button", () => {
+  const assetPath = path.join(root, "assets", "sde-vaktplan.png");
+  const asset = fs.readFileSync(assetPath);
+  const assetHash = crypto.createHash("sha256").update(asset).digest("hex");
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-vaktplan-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-vaktplan-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const activeRule = currentHtml.match(/\.segmented button\.seg-vaktplan-graphic\.active\{([^}]*)\}/)?.[1] || "";
+
+  assert.equal(assetHash, "a705bd2b4538f794f5195177b90e3998ee168b2dfe3ced34391957441ec42112", "the supplied PNG must remain byte-identical");
+  assert.equal(asset.readUInt32BE(16), 1942, "the supplied width must remain unchanged");
+  assert.equal(asset.readUInt32BE(20), 809, "the supplied height must remain unchanged");
+  assert.match(buttonRule, /position:relative;/);
+  assert.match(buttonRule, /display:block;/);
+  assert.match(buttonRule, /width:100%;/);
+  assert.match(buttonRule, /padding:0;/);
+  assert.match(buttonRule, /border:2px solid #62d7ff;/);
+  assert.match(buttonRule, /border-radius:18px;/);
+  assert.match(buttonRule, /background:#061828;/);
+  assert.match(buttonRule, /overflow:hidden;/);
+  assert.match(buttonRule, /cursor:pointer;/);
+  assert.match(buttonRule, /isolation:isolate;/);
+  assert.match(buttonRule, /aspect-ratio:1942 \/ 640;/, "the Vaktplan artwork must fill the established menu-button geometry");
+  assert.match(buttonRule, /inset 0 2px 0 rgba\(255,255,255,\.88\)/, "Vaktplan must use the established raised 3D highlight");
+  assert.match(buttonRule, /0 8px 0 rgba\(20,62,88,\.42\)/, "Vaktplan must retain a visible 3D depth edge");
+  assert.match(imageRule, /position:absolute;/);
+  assert.match(imageRule, /inset:0;/);
+  assert.match(imageRule, /width:100%;/);
+  assert.match(imageRule, /height:100%;/);
+  assert.match(imageRule, /object-fit:cover;/, "the supplied image must fill the button without deformation");
+  assert.match(imageRule, /object-position:center 44%;/);
+  assert.match(activeRule, /inset 0 5px 12px rgba\(2,12,24,\.48\)/, "the active state must visibly press the 3D button");
+  assert.match(activeRule, /0 2px 0 rgba\(20,62,88,\.32\)/, "the pressed state must shorten its outer depth");
+  assert.match(currentHtml, /@media \(min-width:901px\)\{[\s\S]*?\.segmented button\.seg-vaktplan-graphic\{[\s\S]*?aspect-ratio:1810 \/ 530;/, "desktop must retain the established menu-row proportions");
+  assert.match(currentHtml, /\.segmented button\.seg-vaktplan-graphic\{width:160px;min-width:160px\}/, "mobile must retain the established graphic-menu slot width");
+  assert.match(currentHtml, /\.segmented button\.seg-vaktplan-graphic:focus-visible\{[\s\S]*?outline:3px solid #22d3ee;[\s\S]*?outline-offset:4px;/);
+  assert.match(
+    currentHtml,
+    /<button class="seg seg-vaktplan-graphic" type="button" data-tab="sdeVaktplan" data-levels="0 1" aria-label="Åpne SDE Vaktplan"[^>]*><img class="seg-vaktplan-graphic__image" src="assets\/sde-vaktplan\.png\?v=a705bd2b" alt=""><\/button>/,
+    "routing, access levels and semantic identity must remain unchanged",
+  );
+  assert.equal((currentHtml.match(/<img class="seg-vaktplan-graphic__image"/g) || []).length, 1, "only the SDE Vaktplan menu button may use this graphic");
+  assert.doesNotMatch(currentHtml.match(/<button class="seg seg-vaktplan-graphic"[\s\S]*?<\/button>/)?.[0] || "", /<span class="seg-icon">▦<\/span>|<span class="seg-main">SDE<br>Vaktplan<\/span>/, "the old icon and duplicate visible label must not remain");
+  assert.match(currentServerIndex, /\["sde-vaktplan\.png", path\.join\(REPO_ROOT, "assets", "sde-vaktplan\.png"\)\]/, "the production appserver must serve the exact supplied asset");
+});
+
 test("STADLER-UI — supplied STADLER graphic replaces only Input verksted", () => {
   const assetPath = path.join(root, "assets", "stadler-button.png");
   const asset = fs.readFileSync(assetPath);
