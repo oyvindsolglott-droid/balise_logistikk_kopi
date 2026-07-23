@@ -792,9 +792,9 @@ test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing 
   const desktopRule = currentHtml.match(/@media \(min-width:901px\)\{([\s\S]*?)\.segmented button\.seg-tursatt-graphic\{/)?.[1] || "";
   const buttonMarkup = currentHtml.match(/<button class="seg seg-sporplan-graphic"[^>]*data-tab="sporplan"[^>]*>[\s\S]*?<\/button>/)?.[0] || "";
 
-  assert.equal(assetHash, "148a1db129266c37efa6c43f2831bd852535c67a34f886d2cbc3289940bb5439", "the supplied PNG must remain byte-identical");
-  assert.equal(asset.readUInt32BE(16), 1916, "the supplied width must remain unchanged");
-  assert.equal(asset.readUInt32BE(20), 821, "the supplied height must remain unchanged");
+  assert.equal(assetHash, "8a544aa9192817b1f9f7973c25167a9e3e87c52dc034062fe0d112cde286a010", "the supplied PNG must remain byte-identical");
+  assert.equal(asset.readUInt32BE(16), 1774, "the supplied width must remain unchanged");
+  assert.equal(asset.readUInt32BE(20), 887, "the supplied height must remain unchanged");
   assert.match(buttonRule, /display:block;/);
   assert.match(buttonRule, /width:100%;/);
   assert.match(buttonRule, /padding:0;/);
@@ -809,17 +809,19 @@ test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing 
   assert.match(activeRule, /inset 0 5px 12px rgba\(2,12,24,\.48\)/, "the active state must visibly press the 3D button");
   assert.match(activeRule, /0 2px 0 rgba\(20,62,88,\.32\)/, "the pressed state must shorten the outer depth without changing its action");
   assert.match(imageRule, /display:block;/);
+  assert.match(imageRule, /position:absolute;/);
+  assert.match(imageRule, /inset:0;/);
   assert.match(imageRule, /width:100%;/);
-  assert.match(imageRule, /height:auto;/);
-  assert.match(imageRule, /aspect-ratio:1916 \/ 821;/);
-  assert.match(imageRule, /object-fit:contain;/);
+  assert.match(imageRule, /height:100%;/);
+  assert.match(imageRule, /object-fit:cover;/);
+  assert.match(imageRule, /object-position:center 48%;/);
   assert.match(currentHtml, /\.segmented button\.seg-sporplan-graphic\{width:160px;min-width:160px\}/, "mobile must retain the established graphic-menu slot width");
-  assert.match(desktopRule, /\.segmented button\.seg-sporplan-graphic\{[\s\S]*?aspect-ratio:1810 \/ 530;[\s\S]*?overflow:hidden;/, "desktop must crop only the source pixels outside the supplied finished frame");
-  assert.match(desktopRule, /\.seg-sporplan-graphic__image\{[\s\S]*?left:-2\.818%;[\s\S]*?top:-24\.151%;[\s\S]*?width:105\.856%;[\s\S]*?height:154\.906%;[\s\S]*?max-width:none;/, "desktop crop must preserve the complete in-frame artwork without deformation");
+  assert.match(desktopRule, /\.segmented button\.seg-sporplan-graphic\{[\s\S]*?aspect-ratio:1810 \/ 530;[\s\S]*?overflow:hidden;/, "desktop must retain the established menu slot while clipping only the pixels that fall outside the button frame");
+  assert.doesNotMatch(desktopRule, /\.seg-sporplan-graphic__image\{/, "desktop must not introduce a viewport-specific crop");
   assert.match(currentHtml, /\.segmented button\.seg-sporplan-graphic:focus-visible\{[\s\S]*?outline:3px solid #22d3ee;[\s\S]*?outline-offset:4px;/);
   assert.match(
     currentHtml,
-    /<button class="seg seg-sporplan-graphic" type="button" data-tab="sporplan" data-levels="0 1 2 3 4 5" aria-label="Åpne Sporplan"[^>]*><img class="seg-sporplan-graphic__image" src="assets\/sporplan-skien-stasjon\.png\?v=148a1db1" alt=""><\/button>/,
+    /<button class="seg seg-sporplan-graphic" type="button" data-tab="sporplan" data-levels="0 1 2 3 4 5" aria-label="Åpne Sporplan"[^>]*><img class="seg-sporplan-graphic__image" src="assets\/sporplan-skien-stasjon\.png\?v=8a544aa9" alt=""><\/button>/,
     "routing, all-level access and semantic identity must remain unchanged",
   );
   assert.equal((currentHtml.match(/<img class="seg-sporplan-graphic__image"/g) || []).length, 1, "only the Sporplan menu button may use this graphic");

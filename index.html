@@ -668,10 +668,12 @@ box-shadow:
 }
 .seg-sporplan-graphic__image{
 display:block;
+position:absolute;
+inset:0;
 width:100%;
-height:auto;
-aspect-ratio:1916 / 821;
-object-fit:contain;
+height:100%;
+object-fit:cover;
+object-position:center 48%;
 }
 .segmented button.seg-sporplan-graphic:hover{
 filter:brightness(1.02);
@@ -903,14 +905,6 @@ outline-offset:3px;
 position:relative;
 aspect-ratio:1810 / 530;
 overflow:hidden;
-}
-.seg-sporplan-graphic__image{
-position:absolute;
-left:-2.818%;
-top:-24.151%;
-width:105.856%;
-height:154.906%;
-max-width:none;
 }
 .segmented button.seg-txp-input-graphic{
 aspect-ratio:1810 / 530;
@@ -7798,7 +7792,7 @@ button{padding:12px 12px}
 
 <div class="segmented" aria-label="Hovedmeny">
 <button class="seg seg-txp-input-graphic" type="button" data-tab="grunnoppstilling" data-levels="0 2" aria-label="Åpne TXP Input Sporplan" data-menu-tooltip="Her legger TXP inn og korrigerer parkert-hvor i den delte sporplanen. Endringer lagres til felles serverstatus og blir synlige for andre brukere ved refresh eller ny åpning."><img class="seg-txp-input-graphic__image" src="assets/txp-input-sporplan.png?v=b2debef9" alt=""></button>
-<button class="seg seg-sporplan-graphic" type="button" data-tab="sporplan" data-levels="0 1 2 3 4 5" aria-label="Åpne Sporplan" data-menu-tooltip="Felles grafisk sporstatus for hva som står hvor. Viser synket parkert-hvor på tvers av enheter, slik at TXP, skiftere, DROPS, verksted og Agilia ser samme situasjonsbilde."><img class="seg-sporplan-graphic__image" src="assets/sporplan-skien-stasjon.png?v=148a1db1" alt=""></button>
+<button class="seg seg-sporplan-graphic" type="button" data-tab="sporplan" data-levels="0 1 2 3 4 5" aria-label="Åpne Sporplan" data-menu-tooltip="Felles grafisk sporstatus for hva som står hvor. Viser synket parkert-hvor på tvers av enheter, slik at TXP, skiftere, DROPS, verksted og Agilia ser samme situasjonsbilde."><img class="seg-sporplan-graphic__image" src="assets/sporplan-skien-stasjon.png?v=8a544aa9" alt=""></button>
 <button class="seg seg-sde-shift-graphic" type="button" data-tab="sdeSkiftebevegelser" data-levels="0 2 3" aria-label="Åpne SDE Skiftebevegelser" data-menu-tooltip="Samler SDE-forslag og kort for planlagte flytt mellom spor. Her kan skiftebevegelser vurderes, bestilles og følges opp før de påvirker felles sporstatus."><img class="seg-sde-shift-graphic__image" src="assets/sde-skiftebevegelser.png?v=e2de04bb" alt=""></button>
 <button class="seg seg-green seg-tursatt-graphic active" type="button" data-tab="oppstilling" data-levels="0 1 2 3 4 5" data-menu-tooltip="Viser hvilke tog og kjøretøy som faktisk er tursatt inn og ut av Skien. Gir grunnlaget for å forstå dagens materiellflyt, sporbehov og hvilke sett som må håndteres."><picture><source media="(min-width:901px)" srcset="assets/tursatt-button-wide.png?v=572cee6a"><img class="seg-tursatt-graphic__image" src="assets/tursatt-button.png" alt="" aria-hidden="true"></picture><span class="seg-main"><span class="seg-primary">Tursatt</span></span></button>
 <button class="seg seg-turnering-graphic seg-turnering-kveld-graphic" type="button" data-tab="turneringKveld" data-levels="0 2" aria-label="Åpne Turnering Kveld" data-menu-tooltip="Planflate for kveldsvinduet med sporbruk, vask, vendinger og praktiske begrensninger. Brukes til å forberede hvordan materiell bør disponeres videre gjennom kvelden."><img class="seg-turnering-graphic__image" src="assets/turnering-kveld-button.png?v=1a5b642e" alt="" aria-hidden="true"></button>
