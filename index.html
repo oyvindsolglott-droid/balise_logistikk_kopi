@@ -7611,8 +7611,282 @@ button{padding:12px 12px}
   font-size:10px;
   line-height:1.4;
 }
+.drops-vehicle-selector-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:12px;
+  min-width:0;
+  margin-bottom:14px;
+  padding:14px;
+  border:1px solid #dbe5f0;
+  border-radius:16px;
+  background:linear-gradient(180deg,#f8fbff,#eef5ff);
+}
+.drops-vehicle-selector{
+  min-width:0;
+  display:grid;
+  gap:6px;
+  color:#334155;
+  font-size:11px;
+  font-weight:950;
+}
+.drops-vehicle-selector select{
+  width:100%;
+  min-width:0;
+  min-height:46px;
+  border:1px solid #94a3b8;
+  border-radius:12px;
+  padding:9px 12px;
+  background:#fff;
+  color:#0f172a;
+  font:850 14px/1.2 inherit;
+}
+.drops-vehicle-selector select:focus-visible{
+  outline:3px solid #2563eb;
+  outline-offset:2px;
+}
+.drops-standard-sheet-host{
+  min-width:0;
+}
+.drops-standard-sheet-toolbar{
+  min-width:0;
+  margin-bottom:10px;
+  padding:9px 11px;
+  border:1px solid #cbd5e1;
+  border-radius:13px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  background:linear-gradient(180deg,#fff,#f8fafc);
+  color:#0f172a;
+  box-shadow:0 5px 12px rgba(15,23,42,.07);
+}
+.drops-standard-sheet-toolbar > strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  font-size:12px;
+  font-weight:950;
+  white-space:nowrap;
+}
+.drops-standard-sheet-collapse{
+  appearance:none;
+  flex:0 0 auto;
+  min-height:38px;
+  border:1px solid #94a3b8;
+  border-radius:10px;
+  padding:7px 10px;
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  background:#fff;
+  color:#1e293b;
+  font:900 11px/1 inherit;
+  cursor:pointer;
+}
+.drops-standard-sheet-collapse:hover{
+  background:#eff6ff;
+  border-color:#60a5fa;
+}
+.drops-standard-sheet-collapse:focus-visible{
+  outline:3px solid #2563eb;
+  outline-offset:2px;
+}
+.drops-standard-sheet-collapse-icon{
+  display:inline-grid;
+  place-items:center;
+  width:22px;
+  height:22px;
+  border-radius:999px;
+  background:#dbeafe;
+  color:#1d4ed8;
+  font-size:14px;
+  font-weight:950;
+  transition:transform .16s ease;
+}
+.drops-standard-sheet-collapse[aria-expanded="false"] .drops-standard-sheet-collapse-icon{
+  transform:rotate(180deg);
+}
+.drops-standard-sheet-body[hidden]{
+  display:none !important;
+}
+.drops-standard-sheet-empty{
+  min-width:0;
+  border:1px dashed #93c5fd;
+  border-radius:16px;
+  padding:24px 16px;
+  background:#f8fbff;
+  color:#475569;
+  text-align:center;
+  font-size:13px;
+  font-weight:850;
+}
+.drops-standard-sheet-status{
+  flex:0 1 280px;
+  min-width:0;
+  padding:9px 11px;
+  border:1px solid #86efac;
+  border-radius:12px;
+  background:#f0fdf4;
+  color:#14532d;
+  text-align:right;
+}
+.drops-standard-sheet-status strong,
+.drops-standard-sheet-status span{
+  display:block;
+}
+.drops-standard-sheet-status strong{
+  font-size:12px;
+  font-weight:950;
+}
+.drops-standard-sheet-status span{
+  margin-top:2px;
+  font-size:10px;
+  font-weight:750;
+  line-height:1.35;
+}
+.drops-stadler-boundary{
+  margin-bottom:12px;
+  padding:9px 11px;
+  border:1px solid #fcd34d;
+  border-radius:11px;
+  background:#fffbeb;
+  color:#78350f;
+  font-size:11px;
+  font-weight:750;
+  line-height:1.4;
+}
+.drops-not-operational-fault-row{
+  grid-template-columns:48px minmax(110px,.3fr) minmax(220px,1fr) minmax(120px,.38fr) minmax(150px,.42fr);
+  align-items:center;
+}
+.drops-not-operational-priority{
+  display:grid;
+  place-items:center;
+  width:38px;
+  height:38px;
+  border-radius:999px;
+  background:#fee2e2;
+  color:#991b1b;
+  font-size:15px;
+  font-weight:950;
+}
+.drops-not-operational-row-action,
+.drops-not-operational-stadler-action{
+  min-width:0;
+  display:grid;
+  gap:4px;
+}
+.drops-not-operational-register-fault,
+.drops-not-operational-stadler-action button{
+  min-height:40px;
+  border-radius:10px;
+  padding:8px 10px;
+  font:900 11px/1.2 inherit;
+}
+.drops-not-operational-register-fault{
+  border:1px solid #1d4ed8;
+  background:linear-gradient(180deg,#3b82f6,#1d4ed8);
+  color:#fff;
+  cursor:pointer;
+  box-shadow:0 3px 0 #1e3a8a;
+}
+.drops-not-operational-local-registration{
+  min-height:40px;
+  padding:7px 9px;
+  border:1px solid #fca5a5;
+  border-radius:10px;
+  background:#fff1f2;
+  color:#991b1b;
+}
+.drops-not-operational-local-registration strong,
+.drops-not-operational-local-registration time{
+  display:block;
+}
+.drops-not-operational-local-registration strong{
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+}
+.drops-not-operational-local-registration time{
+  margin-top:2px;
+  font-size:9px;
+  font-weight:750;
+  line-height:1.25;
+}
+.drops-not-operational-stadler-action button{
+  border:1px solid #cbd5e1;
+  background:#f1f5f9;
+  color:#64748b;
+  cursor:not-allowed;
+  opacity:.72;
+}
+.drops-not-operational-stadler-action span{
+  color:#92400e;
+  font-size:9px;
+  font-weight:800;
+  line-height:1.25;
+}
+.drops-not-operational-fault-error{
+  grid-column:2/-1;
+}
+.drops-not-operational-editor-actions{
+  grid-template-columns:minmax(0,420px);
+  justify-content:center;
+  justify-items:stretch;
+  text-align:center;
+}
+.drops-not-operational-editor-actions span{
+  color:#64748b;
+  font-size:10px;
+  font-weight:750;
+  line-height:1.4;
+}
+.drops-vehicle-authoritative-sheet{
+  min-width:0;
+  padding:18px;
+  border:2px solid #dc2626;
+  border-radius:18px;
+  background:
+    radial-gradient(circle at top right,rgba(239,68,68,.18),transparent 34%),
+    linear-gradient(180deg,#fff1f2,#fee2e2);
+  color:#7f1d1d;
+  box-shadow:inset 0 1px 0 #fff,0 10px 24px rgba(127,29,29,.14);
+}
+.drops-vehicle-authoritative-sheet h3{
+  margin:0 0 6px;
+  color:#450a0a;
+  font-size:20px;
+}
+.drops-vehicle-authoritative-sheet strong,
+.drops-vehicle-authoritative-sheet time{
+  display:block;
+}
+.drops-vehicle-authoritative-sheet > div > strong{
+  font-size:15px;
+  font-weight:950;
+}
+.drops-vehicle-authoritative-sheet time{
+  margin-top:4px;
+  font-size:11px;
+  font-weight:800;
+}
+.drops-vehicle-authoritative-sheet ol{
+  margin:13px 0 0;
+  padding-left:22px;
+  font-size:12px;
+  line-height:1.55;
+}
 @media(max-width:1100px){
   .drops-vehicle-groups{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .drops-not-operational-fault-row{
+    grid-template-columns:48px minmax(110px,.35fr) minmax(180px,1fr);
+    align-items:end;
+  }
+  .drops-not-operational-row-action{ grid-column:2; }
+  .drops-not-operational-stadler-action{ grid-column:3; }
+  .drops-not-operational-fault-error{ grid-column:2/-1; }
 }
 @media(max-width:900px){
   .drops-station-header{ display:grid; }
@@ -7637,10 +7911,15 @@ button{padding:12px 12px}
   .drops-vehicle-number{ padding-top:0; }
   .drops-not-operational-action{ width:100%; }
   .drops-not-operational-fault-row{ grid-template-columns:minmax(0,1fr); align-items:stretch; }
+  .drops-vehicle-selector-grid{ grid-template-columns:minmax(0,1fr); padding:11px; }
+  .drops-not-operational-priority{ width:34px; height:34px; }
+  .drops-not-operational-row-action,
+  .drops-not-operational-stadler-action,
   .drops-not-operational-fault-error{ grid-column:1; }
   .drops-not-operational-field select,
   .drops-not-operational-field textarea{ font-size:16px; }
   .drops-not-operational-editor-header{ display:grid; }
+  .drops-standard-sheet-status{ width:100%; text-align:left; }
   .drops-not-operational-close{ justify-self:start; }
   .drops-not-operational-editor-actions{ grid-template-columns:minmax(0,1fr); }
 }
@@ -44360,7 +44639,12 @@ function getDropsNotOperationalFaultCategories(){
 function createDropsNotOperationalEditorDraft(vehicle){
   return {
     vehicle:String(vehicle || "").trim(),
-    faults:[{category:"",description:""}],
+    faults:Array.from({length:5},()=>({
+      category:"",
+      description:"",
+      registered:false,
+      registeredAt:""
+    })),
     errors:[],
     preview:null,
     actionId:null,
@@ -44370,25 +44654,11 @@ function createDropsNotOperationalEditorDraft(vehicle){
 }
 
 function addDropsNotOperationalFault(draft){
-  const faults = Array.isArray(draft?.faults) ? draft.faults : [];
-  if(faults.length >= 5) return draft;
-  return {
-    ...draft,
-    faults:[...faults,{category:"",description:""}],
-    errors:[],
-    preview:null
-  };
+  return draft;
 }
 
 function removeDropsNotOperationalFault(draft,index){
-  const faults = Array.isArray(draft?.faults) ? draft.faults : [];
-  if(faults.length <= 1 || index < 0 || index >= faults.length) return draft;
-  return {
-    ...draft,
-    faults:faults.filter((unused,faultIndex)=>faultIndex !== index),
-    errors:[],
-    preview:null
-  };
+  return draft;
 }
 
 function updateDropsNotOperationalFault(draft,index,field,value){
@@ -44399,8 +44669,10 @@ function updateDropsNotOperationalFault(draft,index,field,value){
     : (getDropsNotOperationalFaultCategories().includes(String(value || "")) ? String(value) : "");
   return {
     ...draft,
-    faults:faults.map((fault,faultIndex)=>faultIndex === index ? {...fault,[field]:nextValue} : {...fault}),
-    errors:[],
+    faults:faults.map((fault,faultIndex)=>faultIndex === index
+      ? {...fault,[field]:nextValue,registered:false,registeredAt:""}
+      : {...fault}),
+    errors:(Array.isArray(draft?.errors) ? draft.errors : []).filter(error=>error?.index !== index),
     preview:null
   };
 }
@@ -44422,20 +44694,46 @@ function validateDropsNotOperationalDraft(draft){
   });
 }
 
+function registerDropsNotOperationalFault(draft,index,nowFactory=()=>new Date()){
+  const faults = Array.isArray(draft?.faults) ? draft.faults : [];
+  if(index < 0 || index >= faults.length) return draft;
+  const fault = faults[index] || {};
+  const category = String(fault.category || "");
+  const description = String(fault.description ?? "");
+  const valid = getDropsNotOperationalFaultCategories().includes(category) && description.trim() !== "";
+  const otherErrors = (Array.isArray(draft?.errors) ? draft.errors : []).filter(error=>error?.index !== index);
+  if(!valid){
+    return {
+      ...draft,
+      errors:[...otherErrors,{index,message:"Fyll ut både feiltype og beskrivelse før raden registreres."}],
+      preview:null
+    };
+  }
+  const nextDraft = {
+    ...draft,
+    faults:faults.map((entry,faultIndex)=>faultIndex === index
+      ? {...entry,registered:true,registeredAt:nowFactory().toISOString()}
+      : {...entry}),
+    errors:otherErrors,
+    preview:null
+  };
+  return {...nextDraft,preview:buildDropsNotOperationalPreview(nextDraft)};
+}
+
 function buildDropsNotOperationalPreview(draft){
   const errors = validateDropsNotOperationalDraft(draft);
   if(errors.length){
     return {ok:false,errors,vehicle:String(draft?.vehicle || ""),notSaved:true};
   }
   const faults = (Array.isArray(draft?.faults) ? draft.faults : [])
-    .filter(fault=>String(fault?.category || "") !== "" && String(fault?.description ?? "").trim() !== "")
+    .filter(fault=>fault?.registered === true && String(fault?.category || "") !== "" && String(fault?.description ?? "").trim() !== "")
     .map((fault,index)=>({
-      priority:index + 1,
+      priority:(Array.isArray(draft?.faults) ? draft.faults : []).indexOf(fault) + 1,
       category:String(fault.category),
       description:String(fault.description)
     }));
   return {
-    ok:true,
+    ok:faults.length > 0,
     vehicle:String(draft?.vehicle || ""),
     status:"Ikke Driftsklar",
     faults,
@@ -44469,12 +44767,28 @@ function buildDropsReportNotOperationalPayload(draft,readback){
     vehicleId:String(draft?.vehicle || ""),
     faults:(Array.isArray(draft?.faults) ? draft.faults : [])
       .filter(fault=>String(fault?.category || "") !== "" && String(fault?.description ?? "").trim() !== "")
-      .map((fault,index)=>({
-        priority:index + 1,
+      .filter(fault=>fault?.registered === true)
+      .map(fault=>({
+        priority:(Array.isArray(draft?.faults) ? draft.faults : []).indexOf(fault) + 1,
         category:String(fault.category),
         description:String(fault.description).trim()
       }))
   };
+}
+
+function hasDropsUnsavedDraft(draft){
+  return (Array.isArray(draft?.faults) ? draft.faults : []).some(fault=>
+    fault?.registered === true ||
+    String(fault?.category || "") !== "" ||
+    String(fault?.description ?? "").trim() !== ""
+  );
+}
+
+function shouldConfirmDropsVehicleSelectionChange(draft,nextVehicle){
+  const currentVehicle = String(draft?.vehicle || "");
+  return currentVehicle !== "" &&
+    currentVehicle !== String(nextVehicle || "") &&
+    hasDropsUnsavedDraft(draft);
 }
 
 function getDropsVehicleStatusRecord(readback,vehicleId){
@@ -44597,7 +44911,7 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
   const safeToken = vehicle.replace(/[^A-Za-z0-9_-]/g,"");
   const faults = Array.isArray(draft?.faults) && draft.faults.length
     ? draft.faults.slice(0,5)
-    : [{category:"",description:""}];
+    : createDropsNotOperationalEditorDraft(vehicle).faults;
   const errors = Array.isArray(draft?.errors) ? draft.errors : [];
   const categories = getDropsNotOperationalFaultCategories();
   const faultRowsHtml = faults.map((fault,index)=>{
@@ -44606,12 +44920,20 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
     const descriptionId = `sdeDropsFaultDescription-${safeToken}-${priority}`;
     const errorId = `sdeDropsFaultError-${safeToken}-${priority}`;
     const error = errors.find(item=>item?.index === index)?.message || "";
+    const registered = fault?.registered === true;
     const categoryOptions = [
       `<option value="">Velg feiltype</option>`,
       ...categories.map(category=>`<option value="${category}"${fault?.category === category ? " selected" : ""}>${category}</option>`)
     ].join("");
+    const localRegistrationHtml = registered
+      ? `<div class="drops-not-operational-local-registration" data-sde-drops-register-fault="${priority}">
+          <strong>Ikke lagret</strong>
+          <time datetime="${escapeHtml(fault.registeredAt || "")}">${escapeHtml(formatDropsVehicleStatusTimestamp(fault.registeredAt))}</time>
+        </div>`
+      : `<button class="drops-not-operational-register-fault" type="button" data-sde-drops-register-fault="${priority}">Registrer</button>`;
     return `<fieldset class="drops-not-operational-fault-row" data-sde-drops-fault-row="${priority}">
       <legend>Prioritet ${priority}</legend>
+      <div class="drops-not-operational-priority" aria-label="Prioritet ${priority}">${priority}</div>
       <div class="drops-not-operational-field">
         <label for="${categoryId}">Feiltype</label>
         <select id="${categoryId}" data-sde-drops-fault-category="${priority}"${error ? ` aria-invalid="true" aria-describedby="${errorId}"` : ""}>${categoryOptions}</select>
@@ -44620,11 +44942,16 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
         <label for="${descriptionId}">Beskrivelse</label>
         <textarea id="${descriptionId}" data-sde-drops-fault-description="${priority}" maxlength="400" placeholder="Beskriv feilen kort og konkret"${error ? ` aria-invalid="true" aria-describedby="${errorId}"` : ""}>${escapeHtml(fault?.description || "")}</textarea>
       </div>
-      ${faults.length > 1 ? `<button class="drops-not-operational-remove" type="button" data-sde-drops-remove-fault="${priority}" aria-label="Fjern feil med prioritet ${priority}">Fjern</button>` : `<span aria-hidden="true"></span>`}
+      <div class="drops-not-operational-row-action">${localRegistrationHtml}</div>
+      <div class="drops-not-operational-stadler-action">
+        <button type="button" data-sde-drops-order-repair="${priority}" disabled aria-disabled="true">Bestill Utbedring</button>
+        <span>Stadler-integrasjon ikke aktivert</span>
+      </div>
       ${error ? `<p class="drops-not-operational-fault-error" id="${errorId}" role="alert">${escapeHtml(error)}</p>` : ""}
     </fieldset>`;
   }).join("");
-  const preview = draft?.preview?.ok === true ? draft.preview : null;
+  const generatedPreview = buildDropsNotOperationalPreview(draft);
+  const preview = draft?.preview?.ok === true ? draft.preview : (generatedPreview.ok ? generatedPreview : null);
   const previewFaultsHtml = preview
     ? preview.faults.map(fault=>`<li><strong>${fault.priority}. ${escapeHtml(fault.category)}</strong> – ${escapeHtml(fault.description)}</li>`).join("")
     : "";
@@ -44635,9 +44962,11 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
   </section>` : "";
   const availability = viewModel?.availability || {available:false};
   const submitting = draft?.submitting === true;
-  const submitAction = preview && availability.available
-    ? `<button class="drops-not-operational-submit" type="button" data-sde-drops-submit-not-operational${submitting ? " disabled aria-disabled=\"true\"" : ""}>${submitting ? "Sender og kontrollerer…" : "Meld som Ikke Driftsklar"}</button>`
-    : `<button type="button" disabled aria-disabled="true">${preview ? "Lagring er ikke tilgjengelig her" : "Kontroller registreringen først"}</button>`;
+  const submitDisabled = !preview || !availability.available || submitting;
+  const submitAction = `<button class="drops-not-operational-submit" type="button" data-sde-drops-submit-not-operational${submitDisabled ? " disabled aria-disabled=\"true\"" : ""}>${submitting ? "Sender og kontrollerer…" : "Registrer Ikke Driftsklar"}</button>`;
+  const availabilityMessage = availability.available
+    ? "Registrerte rader sendes samlet. Status blir først autoritativ etter fersk GET-readback."
+    : "Registrering er deaktivert fordi serverens rolle- eller write-gate ikke er tilgjengelig.";
   const submitErrorHtml = draft?.submitError
     ? `<p class="drops-not-operational-submit-error" role="alert">${escapeHtml(draft.submitError)}</p>`
     : "";
@@ -44645,19 +44974,19 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
   return `<section class="drops-not-operational-editor" data-sde-drops-not-operational-editor="${escapeHtml(vehicle)}" aria-labelledby="sdeDropsNotOperationalTitle-${safeToken}">
     <div class="drops-not-operational-editor-header">
       <div class="drops-not-operational-editor-heading">
-        <h4 id="sdeDropsNotOperationalTitle-${safeToken}" tabindex="-1">Registrer Ikke Driftsklar · ${escapeHtml(vehicle)}</h4>
-        <p>UI-forhåndsvisning uten statusendring eller lagring.</p>
+        <h4 id="sdeDropsNotOperationalTitle-${safeToken}" tabindex="-1">Kjøretøy ${escapeHtml(vehicle)}</h4>
+        <p>Fem faste feilrader. Lokal radregistrering er merket «Ikke lagret» frem til serverbekreftet GET-readback.</p>
       </div>
-      <button class="drops-not-operational-close" type="button" data-sde-drops-close-not-operational>Avbryt</button>
+      <div class="drops-standard-sheet-status">
+        <strong>DRIFTSKLAR</strong>
+        <span>Ingen autoritativ Ikke Driftsklar-status registrert</span>
+      </div>
     </div>
-    <div class="drops-not-operational-registration-time"><strong>Registreringstidspunkt</strong><span>Registreres ved serverbekreftet lagring. Denne kladden er ikke autoritativ.</span></div>
+    <div class="drops-not-operational-registration-time"><strong>Autoritativ status og tidspunkt</strong><span>Oppdateres bare fra serverens kjøretøystatus-readback. Lokal kladd endrer ikke status.</span></div>
+    <div class="drops-stadler-boundary" role="status"><strong>Utbedringsbestilling:</strong> Stadler-integrasjon ikke aktivert. Ingen bestilling sendes eller fremstilles som utført.</div>
     <div class="drops-not-operational-faults">${faultRowsHtml}</div>
-    <div class="drops-not-operational-editor-actions">
-      <button class="drops-not-operational-add" type="button" data-sde-drops-add-fault${faults.length >= 5 ? " disabled" : ""}>Legg til feil</button>
-      <button class="drops-not-operational-review" type="button" data-sde-drops-review-registration>Kontroller registrering</button>
-      ${submitAction}
-    </div>
     ${previewHtml}
+    <div class="drops-not-operational-editor-actions">${submitAction}<span>${availabilityMessage}</span></div>
     ${submitErrorHtml}
   </section>`;
 }
@@ -44666,65 +44995,77 @@ function isDropsVehicleRegistryVisibleForAccessLevel(level){
   return String(level || "").trim() === "1";
 }
 
-function buildDropsVehicleRegistryHtml(expandedGroups=new Set(),editorDraft=null,viewModel={}){
+function buildDropsVehicleRegistryHtml(selectedSeries="",selectedVehicle="",editorDraft=null,viewModel={},sheetCollapsed=false){
   const catalog = getDropsVehicleCatalog();
   const groupEntries = Object.entries(catalog);
   const total = groupEntries.reduce((sum,[,vehicles])=>sum + vehicles.length,0);
-  const groupsHtml = groupEntries.map(([series,vehicles])=>{
-    const expanded = !!expandedGroups?.has?.(series);
-    const editorInGroup = String(editorDraft?.vehicle || "").startsWith(`${series}-`);
-    const listId = `sdeDropsVehicleList${series}`;
-    const toggleId = `sdeDropsVehicleToggle${series}`;
-    const rowsHtml = vehicles.map(vehicle=>{
-      const editorOpen = editorDraft?.vehicle === vehicle;
-      const editorId = `sdeDropsNotOperationalEditor-${vehicle}`;
-      const statusRecord = getDropsVehicleStatusRecord(viewModel?.readback,vehicle);
-      const isNotOperational = statusRecord?.currentStatus === "IKKE_DRIFTSKLAR";
-      const activeFaults = Array.isArray(statusRecord?.activeFaults) ? statusRecord.activeFaults : [];
-      const statusHtml = isNotOperational
-        ? `<section class="drops-vehicle-authoritative-status" data-sde-drops-authoritative-status="${escapeHtml(vehicle)}">
-            <strong>Ikke Driftsklar</strong>
-            <time datetime="${escapeHtml(statusRecord.registeredAt || "")}">${escapeHtml(formatDropsVehicleStatusTimestamp(statusRecord.registeredAt))}</time>
-            ${activeFaults.length ? `<ol>${activeFaults.map(fault=>`<li>${escapeHtml(fault.category)} · ${escapeHtml(fault.description)}</li>`).join("")}</ol>` : `<span>Ingen feil registrert</span>`}
-          </section>`
-        : `<button class="drops-not-operational-action" type="button" data-sde-drops-vehicle-status-action="${escapeHtml(vehicle)}" aria-expanded="${editorOpen ? "true" : "false"}" aria-controls="${editorId}"${viewModel?.availability?.available === true ? "" : " disabled aria-disabled=\"true\""}>Meld: Ikke Driftsklar</button>
-          <span class="drops-not-operational-time-note">${viewModel?.availability?.available === true ? "Registreres ved serverbekreftet lagring" : "Read-only · serverlagring ikke tilgjengelig"}</span>`;
-      return `<div class="drops-vehicle-row${isNotOperational ? " is-not-operational" : ""}" data-sde-drops-vehicle="${escapeHtml(vehicle)}">
-        <span class="drops-vehicle-number">${escapeHtml(vehicle)}</span>
-        <div class="drops-vehicle-status-control">
-          ${statusHtml}
+  const cleanSeries = Object.prototype.hasOwnProperty.call(catalog,String(selectedSeries || ""))
+    ? String(selectedSeries)
+    : "";
+  const vehicles = cleanSeries ? catalog[cleanSeries] : [];
+  const cleanVehicle = vehicles.includes(String(selectedVehicle || "")) ? String(selectedVehicle) : "";
+  const seriesOptions = [
+    `<option value="">Velg serie</option>`,
+    ...groupEntries.map(([series,seriesVehicles])=>`<option value="${series}"${series === cleanSeries ? " selected" : ""}>Serie ${series} · ${seriesVehicles.length} kjøretøy</option>`)
+  ].join("");
+  const vehicleOptions = [
+    `<option value="">Velg kjøretøy</option>`,
+    ...vehicles.map(vehicle=>`<option value="${escapeHtml(vehicle)}"${vehicle === cleanVehicle ? " selected" : ""}>${escapeHtml(vehicle)}</option>`)
+  ].join("");
+  const statusRecord = cleanVehicle ? getDropsVehicleStatusRecord(viewModel?.readback,cleanVehicle) : null;
+  const isNotOperational = statusRecord?.currentStatus === "IKKE_DRIFTSKLAR";
+  const activeFaults = Array.isArray(statusRecord?.activeFaults) ? statusRecord.activeFaults : [];
+  const selectedDraft = cleanVehicle && editorDraft?.vehicle === cleanVehicle
+    ? editorDraft
+    : (cleanVehicle ? createDropsNotOperationalEditorDraft(cleanVehicle) : null);
+  const authoritativeSheet = isNotOperational
+    ? `<section class="drops-vehicle-authoritative-sheet" data-sde-drops-authoritative-status="${escapeHtml(cleanVehicle)}" aria-labelledby="sdeDropsAuthoritativeTitle">
+        <div>
+          <h3 id="sdeDropsAuthoritativeTitle">Kjøretøy ${escapeHtml(cleanVehicle)}</h3>
+          <strong>IKKE DRIFTSKLAR</strong>
+          <time datetime="${escapeHtml(statusRecord.registeredAt || "")}">${escapeHtml(formatDropsVehicleStatusTimestamp(statusRecord.registeredAt))}</time>
         </div>
-        ${editorOpen ? buildDropsNotOperationalEditorHtml(editorDraft,viewModel).replace("class=\"drops-not-operational-editor\"",`id="${editorId}" class="drops-not-operational-editor"`) : ""}
-      </div>`;
-    }).join("");
-
-    return `<section class="drops-vehicle-group${editorInGroup ? " has-editor" : ""}" data-sde-drops-vehicle-group="${series}">
-      <h3>
-        <button class="drops-vehicle-toggle" type="button" id="${toggleId}" data-sde-drops-vehicle-toggle="${series}" aria-expanded="${expanded ? "true" : "false"}" aria-controls="${listId}">
-          <span class="drops-vehicle-toggle-series">Serie ${series}</span>
-          <span class="drops-vehicle-toggle-count">${vehicles.length} kjøretøy</span>
-          <span class="drops-vehicle-toggle-icon" aria-hidden="true">⌄</span>
+        ${activeFaults.length
+          ? `<ol>${activeFaults.map(fault=>`<li><strong>${escapeHtml(fault.priority)}. ${escapeHtml(fault.category)}</strong> · ${escapeHtml(fault.description)}</li>`).join("")}</ol>`
+          : `<p>Ingen aktive feil fulgte serverens autoritative readback.</p>`}
+      </section>`
+    : "";
+  const selectedSheet = cleanVehicle
+    ? `<div class="drops-standard-sheet-toolbar">
+        <strong>Standardark · Kjøretøy ${escapeHtml(cleanVehicle)}</strong>
+        <button class="drops-standard-sheet-collapse" type="button" data-sde-drops-toggle-standard-sheet aria-expanded="${sheetCollapsed ? "false" : "true"}" aria-controls="dropsStandardSheetBody">
+          <span>${sheetCollapsed ? "Åpne ark" : "Kollaps ark"}</span>
+          <span class="drops-standard-sheet-collapse-icon" aria-hidden="true">⌃</span>
         </button>
-      </h3>
-      <div class="drops-vehicle-list" id="${listId}" data-sde-drops-vehicle-list="${series}" role="region" aria-labelledby="${toggleId}"${expanded ? "" : " hidden"}>
-        ${rowsHtml}
       </div>
-    </section>`;
-  }).join("");
+      <div class="drops-standard-sheet-body" id="dropsStandardSheetBody"${sheetCollapsed ? " hidden" : ""}>${authoritativeSheet || buildDropsNotOperationalEditorHtml(selectedDraft,viewModel)}</div>`
+    : `<div class="drops-standard-sheet-empty">Velg først serie og deretter kjøretøy for å åpne ett standardark.</div>`;
 
   return `<section data-sde-drops-vehicle-registry-content aria-labelledby="dropsVehicleRegistryTitle">
     <div class="drops-vehicle-registry-header">
       <div class="drops-vehicle-registry-title">
         <h2 id="dropsVehicleRegistryTitle">Kjøretøy</h2>
-        <p>Fast kjøretøyregister for DROPS. Åpne seriene ved behov.</p>
+        <p>Velg serie og kjøretøy. Bare ett standardark er aktivt om gangen.</p>
       </div>
       <div class="drops-vehicle-registry-total">${total} kjøretøy</div>
     </div>
-    <div class="drops-vehicle-groups">${groupsHtml}</div>
+    <div class="drops-vehicle-selector-grid">
+      <label class="drops-vehicle-selector">
+        <span>Serie</span>
+        <select data-sde-drops-series-select>${seriesOptions}</select>
+      </label>
+      <label class="drops-vehicle-selector">
+        <span>Kjøretøy</span>
+        <select data-sde-drops-vehicle-select${cleanSeries ? "" : " disabled"}>${vehicleOptions}</select>
+      </label>
+    </div>
+    <div class="drops-standard-sheet-host" data-sde-drops-selected-vehicle="${escapeHtml(cleanVehicle)}">${selectedSheet}</div>
   </section>`;
 }
 
-const dropsVehicleRegistryExpandedGroups = new Set();
+let dropsVehicleRegistrySelectedSeries = "";
+let dropsVehicleRegistrySelectedVehicle = "";
+let dropsStandardSheetCollapsed = false;
 let dropsNotOperationalEditorState = null;
 let dropsVehicleStatusReadback = null;
 let dropsRuntimeCapabilities = null;
@@ -44783,61 +45124,36 @@ function renderDropsVehicleRegistry(){
   if(!visible) return;
 
   host.innerHTML = buildDropsVehicleRegistryHtml(
-    dropsVehicleRegistryExpandedGroups,
+    dropsVehicleRegistrySelectedSeries,
+    dropsVehicleRegistrySelectedVehicle,
     dropsNotOperationalEditorState,
-    getDropsVehicleStatusViewModel()
+    getDropsVehicleStatusViewModel(),
+    dropsStandardSheetCollapsed
   );
   ensureDropsVehicleStatusContext();
 }
 
-function openDropsNotOperationalEditor(vehicle){
-  const cleanVehicle = String(vehicle || "").trim();
-  if(!Object.values(getDropsVehicleCatalog()).flat().includes(cleanVehicle)) return;
-  if(dropsNotOperationalEditorState?.vehicle !== cleanVehicle){
-    dropsNotOperationalEditorState = createDropsNotOperationalEditorDraft(cleanVehicle);
-  }
-  renderDropsVehicleRegistry();
-  const heading = document.getElementById(`sdeDropsNotOperationalTitle-${cleanVehicle}`);
-  heading?.focus?.();
-}
-
-function closeDropsNotOperationalEditor(){
-  const vehicle = dropsNotOperationalEditorState?.vehicle || "";
-  dropsNotOperationalEditorState = null;
-  renderDropsVehicleRegistry();
-  document.querySelector(`[data-sde-drops-vehicle="${vehicle}"] .drops-not-operational-action`)?.focus?.();
+function confirmDropsDraftDiscard(nextVehicle){
+  if(!shouldConfirmDropsVehicleSelectionChange(dropsNotOperationalEditorState,nextVehicle)) return true;
+  return window.confirm("Kjøretøyarket inneholder data som ikke er sendt. Vil du forkaste kladden og bytte kjøretøy?");
 }
 
 function handleDropsNotOperationalRegistryClick(event){
-  const action = event.target.closest("[data-sde-drops-vehicle-status-action]");
-  if(action){
+  const collapseAction = event.target.closest("[data-sde-drops-toggle-standard-sheet]");
+  if(collapseAction){
     event.preventDefault();
-    openDropsNotOperationalEditor(action.dataset.sdeDropsVehicleStatusAction);
-    return true;
-  }
-  if(event.target.closest("[data-sde-drops-close-not-operational]")){
-    event.preventDefault();
-    closeDropsNotOperationalEditor();
-    return true;
-  }
-  if(event.target.closest("[data-sde-drops-add-fault]")){
-    event.preventDefault();
-    dropsNotOperationalEditorState = addDropsNotOperationalFault(dropsNotOperationalEditorState);
+    dropsStandardSheetCollapsed = !dropsStandardSheetCollapsed;
     renderDropsVehicleRegistry();
+    document.querySelector("[data-sde-drops-toggle-standard-sheet]")?.focus?.();
     return true;
   }
-  const removeAction = event.target.closest("[data-sde-drops-remove-fault]");
-  if(removeAction){
+  const registerAction = event.target.closest("button[data-sde-drops-register-fault]");
+  if(registerAction){
     event.preventDefault();
-    dropsNotOperationalEditorState = removeDropsNotOperationalFault(dropsNotOperationalEditorState,Number(removeAction.dataset.sdeDropsRemoveFault) - 1);
-    renderDropsVehicleRegistry();
-    return true;
-  }
-  if(event.target.closest("[data-sde-drops-review-registration]")){
-    event.preventDefault();
-    const errors = validateDropsNotOperationalDraft(dropsNotOperationalEditorState);
-    const preview = errors.length ? null : buildDropsNotOperationalPreview(dropsNotOperationalEditorState);
-    dropsNotOperationalEditorState = {...dropsNotOperationalEditorState,errors,preview};
+    dropsNotOperationalEditorState = registerDropsNotOperationalFault(
+      dropsNotOperationalEditorState,
+      Number(registerAction.dataset.sdeDropsRegisterFault) - 1
+    );
     renderDropsVehicleRegistry();
     document.querySelector('[data-sde-drops-not-operational-editor] [aria-invalid="true"]')?.focus?.();
     return true;
@@ -44852,9 +45168,10 @@ function handleDropsNotOperationalRegistryClick(event){
 
 async function submitDropsNotOperationalFromUi(){
   if(dropsReportNotOperationalInFlight) return;
-  if(!dropsNotOperationalEditorState?.preview?.ok) return;
+  const preview = buildDropsNotOperationalPreview(dropsNotOperationalEditorState);
+  if(!preview.ok) return;
   dropsReportNotOperationalInFlight = true;
-  dropsNotOperationalEditorState = {...dropsNotOperationalEditorState,submitting:true,submitError:""};
+  dropsNotOperationalEditorState = {...dropsNotOperationalEditorState,preview,submitting:true,submitError:""};
   renderDropsVehicleRegistry();
   try{
     const result = await submitDropsNotOperationalDraftWithReadback(
@@ -44890,16 +45207,38 @@ function handleDropsNotOperationalRegistryInput(event){
   return true;
 }
 
-function toggleDropsVehicleRegistryGroup(series){
-  const cleanSeries = String(series || "").trim();
-  if(!Object.prototype.hasOwnProperty.call(getDropsVehicleCatalog(),cleanSeries)) return;
-
-  if(dropsVehicleRegistryExpandedGroups.has(cleanSeries)){
-    dropsVehicleRegistryExpandedGroups.delete(cleanSeries);
-  }else{
-    dropsVehicleRegistryExpandedGroups.add(cleanSeries);
+function handleDropsVehicleRegistrySelectionChange(event){
+  const seriesSelect = event.target.closest("[data-sde-drops-series-select]");
+  if(seriesSelect){
+    const nextSeries = Object.prototype.hasOwnProperty.call(getDropsVehicleCatalog(),seriesSelect.value)
+      ? seriesSelect.value
+      : "";
+    if(!confirmDropsDraftDiscard("")){
+      renderDropsVehicleRegistry();
+      return true;
+    }
+    dropsVehicleRegistrySelectedSeries = nextSeries;
+    dropsVehicleRegistrySelectedVehicle = "";
+    dropsStandardSheetCollapsed = false;
+    dropsNotOperationalEditorState = null;
+    renderDropsVehicleRegistry();
+    document.querySelector("[data-sde-drops-vehicle-select]")?.focus?.();
+    return true;
   }
+  const vehicleSelect = event.target.closest("[data-sde-drops-vehicle-select]");
+  if(!vehicleSelect) return false;
+  const vehicles = getDropsVehicleCatalog()[dropsVehicleRegistrySelectedSeries] || [];
+  const nextVehicle = vehicles.includes(vehicleSelect.value) ? vehicleSelect.value : "";
+  if(!confirmDropsDraftDiscard(nextVehicle)){
+    renderDropsVehicleRegistry();
+    return true;
+  }
+  dropsVehicleRegistrySelectedVehicle = nextVehicle;
+  dropsStandardSheetCollapsed = false;
+  dropsNotOperationalEditorState = nextVehicle ? createDropsNotOperationalEditorDraft(nextVehicle) : null;
   renderDropsVehicleRegistry();
+  document.getElementById(`sdeDropsNotOperationalTitle-${nextVehicle}`)?.focus?.();
+  return true;
 }
 
 const accessLevelSelect = document.getElementById("accessLevelSelect");
@@ -45612,18 +45951,12 @@ function renderDropsPanels(){
 
 function initDropsPanels(){
   document.addEventListener("click", event=>{
-    if(handleDropsNotOperationalRegistryClick(event)) return;
-    const toggle = event.target.closest("[data-sde-drops-vehicle-toggle]");
-    if(!toggle) return;
-    toggleDropsVehicleRegistryGroup(toggle.dataset.sdeDropsVehicleToggle);
+    handleDropsNotOperationalRegistryClick(event);
   });
   document.addEventListener("input",handleDropsNotOperationalRegistryInput);
-  document.addEventListener("change",handleDropsNotOperationalRegistryInput);
-  document.addEventListener("keydown",event=>{
-    if(event.key === "Escape" && dropsNotOperationalEditorState){
-      event.preventDefault();
-      closeDropsNotOperationalEditor();
-    }
+  document.addEventListener("change",event=>{
+    if(handleDropsVehicleRegistrySelectionChange(event)) return;
+    handleDropsNotOperationalRegistryInput(event);
   });
 
   const form = document.getElementById("verkstedBestillingForm");
