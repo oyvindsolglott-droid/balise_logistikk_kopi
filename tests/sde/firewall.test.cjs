@@ -610,10 +610,10 @@ registerHarnessTest({
 });
 
 registerHarnessTest({
-  phase: "DROPS-1A",
-  name: "level-one vehicle registry keeps the exact catalog and independent collapsed DOM groups",
+  phase: "DROPS-UI-2A",
+  name: "level-one vehicle registry uses compact selectors and one five-row standard sheet",
   harness: "sde-drops-vehicle-registry-dom-harness.js",
-  baseline: "f84986fb348a10572fb6e4b5ee86c45ce40335f5",
+  baseline: "8ae6a3c4717be55a711fc21ff75f63ab47fc9a98",
 });
 
 registerHarnessTest({

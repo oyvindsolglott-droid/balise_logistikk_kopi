@@ -25,10 +25,10 @@ const expectedCatalog = Object.freeze({
     "74-42", "74-43", "74-44", "74-45", "74-46", "74-47", "74-48", "74-49",
     "74-50", "74-51", "74-52", "74-53", "74-54",
   ]),
-  "75": Object.freeze(Array.from({length: 83}, (_unused, index) => `75-${String(index + 1).padStart(2, "0")}`)),
+  "75": Object.freeze(Array.from({ length: 83 }, (_unused, index) => `75-${String(index + 1).padStart(2, "0")}`)),
 });
 
-function extractFunction(text, name){
+function extractFunction(text, name) {
   const marker = `function ${name}(`;
   const start = text.indexOf(marker);
   assert.ok(start >= 0, `missing production function ${name}`);
@@ -40,45 +40,44 @@ function extractFunction(text, name){
   let escaped = false;
   let lineComment = false;
   let blockComment = false;
-
-  for(let index = open; index < text.length; index += 1){
+  for (let index = open; index < text.length; index += 1) {
     const character = text[index];
     const next = text[index + 1];
-    if(lineComment){
-      if(character === "\n") lineComment = false;
+    if (lineComment) {
+      if (character === "\n") lineComment = false;
       continue;
     }
-    if(blockComment){
-      if(character === "*" && next === "/"){
+    if (blockComment) {
+      if (character === "*" && next === "/") {
         blockComment = false;
         index += 1;
       }
       continue;
     }
-    if(quote){
-      if(escaped) escaped = false;
-      else if(character === "\\") escaped = true;
-      else if(character === quote) quote = "";
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = "";
       continue;
     }
-    if(character === "/" && next === "/"){
+    if (character === "/" && next === "/") {
       lineComment = true;
       index += 1;
       continue;
     }
-    if(character === "/" && next === "*"){
+    if (character === "/" && next === "*") {
       blockComment = true;
       index += 1;
       continue;
     }
-    if(character === "'" || character === '"' || character === "`"){
+    if (character === "'" || character === '"' || character === "`") {
       quote = character;
       continue;
     }
-    if(character === "{") depth += 1;
-    if(character === "}"){
+    if (character === "{") depth += 1;
+    if (character === "}") {
       depth -= 1;
-      if(depth === 0) return text.slice(start, index + 1);
+      if (depth === 0) return text.slice(start, index + 1);
     }
   }
   throw new Error(`unclosed production function ${name}`);
@@ -88,41 +87,36 @@ const functionNames = [
   "getDropsVehicleCatalog",
   "getDropsNotOperationalFaultCategories",
   "createDropsNotOperationalEditorDraft",
-  "addDropsNotOperationalFault",
-  "removeDropsNotOperationalFault",
   "updateDropsNotOperationalFault",
   "validateDropsNotOperationalDraft",
+  "registerDropsNotOperationalFault",
   "buildDropsNotOperationalPreview",
-  "getDropsReportNotOperationalAvailability",
+  "buildDropsReportNotOperationalPayload",
   "getDropsVehicleStatusRecord",
   "formatDropsVehicleStatusTimestamp",
+  "hasDropsUnsavedDraft",
+  "shouldConfirmDropsVehicleSelectionChange",
   "buildDropsNotOperationalEditorHtml",
   "isDropsVehicleRegistryVisibleForAccessLevel",
   "buildDropsVehicleRegistryHtml",
-  "renderDropsVehicleRegistry",
-  "openDropsNotOperationalEditor",
-  "closeDropsNotOperationalEditor",
-  "handleDropsNotOperationalRegistryClick",
-  "handleDropsNotOperationalRegistryInput",
 ];
-const productionFunctions = functionNames.map(name => extractFunction(source, name));
+const productionFunctions = functionNames.map((name) => extractFunction(source, name));
 const productionSurface = productionFunctions.join("\n");
 
-for(const forbidden of [
+for (const forbidden of [
   "localStorage.",
   "sessionStorage.",
-  "fetch(",
   "XMLHttpRequest",
-  "persist(",
   "saveDropsVerkstedOrders(",
   "scheduleSdeRebuild(",
-  "state.",
-]) assert.equal(productionSurface.includes(forbidden), false, `vehicle registry must not mutate cross-module state via ${forbidden}`);
+  "/api/stadler",
+  "stadler.example",
+]) assert.equal(productionSurface.includes(forbidden), false, `standard sheet contains forbidden authority or fake integration: ${forbidden}`);
 
 const context = {
   console,
   Date,
-  escapeHtml(value){
+  escapeHtml(value) {
     return String(value ?? "")
       .replaceAll("&", "&amp;")
       .replaceAll("<", "&lt;")
@@ -132,153 +126,146 @@ const context = {
   },
 };
 vm.createContext(context);
-vm.runInContext(`${productionFunctions.slice(0, 14).join("\n")}\nthis.api={getDropsVehicleCatalog,getDropsNotOperationalFaultCategories,createDropsNotOperationalEditorDraft,addDropsNotOperationalFault,removeDropsNotOperationalFault,updateDropsNotOperationalFault,validateDropsNotOperationalDraft,buildDropsNotOperationalPreview,buildDropsNotOperationalEditorHtml,isDropsVehicleRegistryVisibleForAccessLevel,buildDropsVehicleRegistryHtml};`, context);
+vm.runInContext(`${productionFunctions.join("\n")}\nthis.api={${functionNames.join(",")}};`, context);
+const api = context.api;
 
-const catalog = JSON.parse(JSON.stringify(context.api.getDropsVehicleCatalog()));
-assert.deepEqual(catalog, JSON.parse(JSON.stringify(expectedCatalog)), "production catalog must equal the approved explicit catalog");
+const catalog = JSON.parse(JSON.stringify(api.getDropsVehicleCatalog()));
+assert.deepEqual(catalog, JSON.parse(JSON.stringify(expectedCatalog)));
 assert.deepEqual(Object.keys(catalog), ["69", "70", "74", "75"]);
-
 const allVehicles = Object.values(catalog).flat();
-assert.equal(catalog["69"].length, 32);
-assert.equal(catalog["70"].length, 8);
-assert.equal(catalog["74"].length, 53);
-assert.equal(catalog["75"].length, 83);
+assert.deepEqual(
+  Object.fromEntries(Object.entries(catalog).map(([series, vehicles]) => [series, vehicles.length])),
+  { "69": 32, "70": 8, "74": 53, "75": 83 },
+);
 assert.equal(allVehicles.length, 176);
-assert.equal(new Set(allVehicles).size, 176, "catalog must contain no duplicates");
-assert.equal(allVehicles.includes("74-05"), false, "74-05 is not approved");
+assert.equal(new Set(allVehicles).size, 176);
+assert.equal(allVehicles.includes("74-05"), false);
 
-for(const [series, vehicles] of Object.entries(catalog)){
-  const numbers = vehicles.map(vehicle => Number(vehicle.split("-")[1]));
+for (const [series, vehicles] of Object.entries(catalog)) {
+  const numbers = vehicles.map((vehicle) => Number(vehicle.split("-")[1]));
   assert.deepEqual(numbers, [...numbers].sort((left, right) => left - right), `${series} must be numerically ascending`);
 }
 
-assert.equal(context.api.isDropsVehicleRegistryVisibleForAccessLevel("1"), true);
-for(const level of ["0", "2", "3", "4", "5", ""]){
-  assert.equal(context.api.isDropsVehicleRegistryVisibleForAccessLevel(level), false, `registry must be hidden at access level ${level || "empty"}`);
+assert.equal(api.isDropsVehicleRegistryVisibleForAccessLevel("1"), true);
+for (const level of ["0", "2", "3", "4", "5", ""]) {
+  assert.equal(api.isDropsVehicleRegistryVisibleForAccessLevel(level), false);
 }
 
-function tagFor(html, attribute, value){
-  const match = html.match(new RegExp(`<[^>]+${attribute}="${value}"[^>]*>`));
-  assert.ok(match, `missing ${attribute}=${value}`);
-  return match[0];
-}
+const emptyHtml = api.buildDropsVehicleRegistryHtml("", "", null, {});
+assert.match(emptyHtml, /data-sde-drops-series-select/);
+assert.match(emptyHtml, /data-sde-drops-vehicle-select/);
+assert.equal((emptyHtml.match(/<option value="(?:69|70|74|75)"/g) || []).length, 4);
+assert.match(emptyHtml, /176 kjøretøy/);
+assert.doesNotMatch(emptyHtml, /data-sde-drops-vehicle-toggle|data-sde-drops-vehicle-list|data-sde-drops-vehicle-status-action/);
+assert.doesNotMatch(emptyHtml, /data-sde-drops-not-operational-editor=/);
 
-function vehicleRowCount(html, series){
-  return (html.match(new RegExp(`data-sde-drops-vehicle="${series}-\\d+"`, "g")) || []).length;
-}
+const seriesHtml = api.buildDropsVehicleRegistryHtml("74", "", null, {});
+assert.match(seriesHtml, /data-sde-drops-series-select[^>]*>[\s\S]*?<option value="74" selected/);
+assert.equal((seriesHtml.match(/<option value="74-\d+"/g) || []).length, 53);
+assert.doesNotMatch(seriesHtml, /data-sde-drops-not-operational-editor=/);
 
-const collapsedHtml = context.api.buildDropsVehicleRegistryHtml(new Set());
-assert.match(collapsedHtml, /data-sde-drops-vehicle-registry/);
-assert.match(collapsedHtml, />Kjøretøy</);
-for(const [series, expectedCount] of [["69", 32], ["70", 8], ["74", 53], ["75", 83]]){
-  const toggle = tagFor(collapsedHtml, "data-sde-drops-vehicle-toggle", series);
-  const list = tagFor(collapsedHtml, "data-sde-drops-vehicle-list", series);
-  assert.match(toggle, /<button\b/);
-  assert.match(toggle, /aria-expanded="false"/);
-  assert.match(toggle, new RegExp(`aria-controls="sdeDropsVehicleList${series}"`));
-  assert.match(list, /\shidden(?:\s|>)/);
-  assert.equal(vehicleRowCount(collapsedHtml, series), expectedCount);
-}
-
-const only69Open = context.api.buildDropsVehicleRegistryHtml(new Set(["69"]));
-assert.match(tagFor(only69Open, "data-sde-drops-vehicle-toggle", "69"), /aria-expanded="true"/);
-assert.doesNotMatch(tagFor(only69Open, "data-sde-drops-vehicle-list", "69"), /\shidden(?:\s|>)/);
-assert.match(tagFor(only69Open, "data-sde-drops-vehicle-toggle", "74"), /aria-expanded="false"/);
-assert.match(tagFor(only69Open, "data-sde-drops-vehicle-list", "74"), /\shidden(?:\s|>)/);
-
-const only74Open = context.api.buildDropsVehicleRegistryHtml(new Set(["74"]));
-assert.match(tagFor(only74Open, "data-sde-drops-vehicle-toggle", "74"), /aria-expanded="true"/);
-assert.doesNotMatch(tagFor(only74Open, "data-sde-drops-vehicle-list", "74"), /\shidden(?:\s|>)/);
-assert.equal((only74Open.match(/data-sde-drops-vehicle="74-10"/g) || []).length, 1);
-
-assert.equal((collapsedHtml.match(/data-sde-drops-vehicle-status-action=/g) || []).length, 176, "every vehicle must expose exactly one report action");
-for(const vehicle of allVehicles){
-  assert.equal((collapsedHtml.match(new RegExp(`data-sde-drops-vehicle-status-action="${vehicle}"`, "g")) || []).length, 1, `${vehicle} must have one action`);
-}
-assert.equal((source.match(/data-sde-drops-vehicle-status-action=/g) || []).length, 1, "the report action must only originate from the DROPS registry template");
-assert.match(collapsedHtml, /<button[^>]*data-sde-drops-vehicle-status-action="74-10"[^>]*>Meld: Ikke Driftsklar<\/button>/);
-assert.match(source, /\.drops-not-operational-action\{[\s\S]*?background:[^;}]*#fff[^;}]*;[\s\S]*?border:2px solid #dc2626;[\s\S]*?box-shadow:/, "the action must be a white, red-bordered 3D button");
-assert.match(source, /\.drops-not-operational-action:focus-visible\{[\s\S]*?outline:/, "the action must retain visible keyboard focus");
-
-const categories = JSON.parse(JSON.stringify(context.api.getDropsNotOperationalFaultCategories()));
-assert.deepEqual(categories, ["A1", "A2", "A3", "A4", "A5", "A6"]);
-
-let vehicleADraft = context.api.createDropsNotOperationalEditorDraft("74-10");
+let vehicleADraft = api.createDropsNotOperationalEditorDraft("74-10");
 assert.equal(vehicleADraft.vehicle, "74-10");
-assert.equal(vehicleADraft.faults.length, 1, "the editor must start with one empty fault row");
-vehicleADraft = context.api.updateDropsNotOperationalFault(vehicleADraft, 0, "category", "A2");
-vehicleADraft = context.api.updateDropsNotOperationalFault(vehicleADraft, 0, "description", "  Dørfeil behold mellomrom  ");
-for(let index = 0; index < 6; index += 1) vehicleADraft = context.api.addDropsNotOperationalFault(vehicleADraft);
-assert.equal(vehicleADraft.faults.length, 5, "a sixth fault row must never be created");
-assert.equal(vehicleADraft.faults[0].description, "  Dørfeil behold mellomrom  ", "draft text must not be silently trimmed");
+assert.equal(vehicleADraft.faults.length, 5, "the standard sheet must always start with five fixed rows");
+assert.deepEqual(
+  JSON.parse(JSON.stringify(vehicleADraft.faults.map((fault) => ({
+    category: fault.category,
+    description: fault.description,
+    registered: fault.registered,
+  })))),
+  Array.from({ length: 5 }, () => ({ category: "", description: "", registered: false })),
+);
 
-const fiveRowHtml = context.api.buildDropsNotOperationalEditorHtml(vehicleADraft);
-assert.equal((fiveRowHtml.match(/data-sde-drops-fault-row="\d+"/g) || []).length, 5);
-assert.deepEqual([...fiveRowHtml.matchAll(/data-sde-drops-fault-row="(\d+)"/g)].map(match => Number(match[1])), [1, 2, 3, 4, 5]);
-assert.equal((fiveRowHtml.match(/data-sde-drops-fault-category="\d+"/g) || []).length, 5);
-assert.equal((fiveRowHtml.match(/data-sde-drops-fault-description="\d+"/g) || []).length, 5);
-assert.match(fiveRowHtml, /data-sde-drops-add-fault[^>]*disabled/, "add action must be disabled at five rows");
-assert.equal((fiveRowHtml.match(/<option value="A[1-6]"/g) || []).length, 30, "each row must expose exactly A1-A6");
+vehicleADraft = api.updateDropsNotOperationalFault(vehicleADraft, 0, "category", "A2");
+vehicleADraft = api.updateDropsNotOperationalFault(vehicleADraft, 0, "description", "  Dørfeil behold mellomrom  ");
+const attemptedEmptyRegistration = JSON.parse(JSON.stringify(api.registerDropsNotOperationalFault(vehicleADraft, 1, () => new Date("2026-07-23T10:11:12.000Z"))));
+assert.equal(attemptedEmptyRegistration.faults[1].registered, false);
+assert.match(attemptedEmptyRegistration.errors[0].message, /både feiltype og beskrivelse/i);
 
-vehicleADraft = context.api.removeDropsNotOperationalFault(vehicleADraft, 1);
-assert.equal(vehicleADraft.faults.length, 4);
-assert.deepEqual([...context.api.buildDropsNotOperationalEditorHtml(vehicleADraft).matchAll(/data-sde-drops-fault-row="(\d+)"/g)].map(match => Number(match[1])), [1, 2, 3, 4], "visible priorities must renumber after deletion");
+vehicleADraft = api.registerDropsNotOperationalFault(vehicleADraft, 0, () => new Date("2026-07-23T10:11:12.000Z"));
+assert.equal(vehicleADraft.faults[0].registered, true);
+assert.equal(vehicleADraft.faults[0].registeredAt, "2026-07-23T10:11:12.000Z");
+assert.equal(vehicleADraft.faults[0].description, "  Dørfeil behold mellomrom  ");
+assert.equal(api.hasDropsUnsavedDraft(vehicleADraft), true);
+assert.equal(api.shouldConfirmDropsVehicleSelectionChange(vehicleADraft, "74-11"), true);
+assert.equal(api.shouldConfirmDropsVehicleSelectionChange(vehicleADraft, "74-10"), false);
 
-const vehicleBDraft = context.api.createDropsNotOperationalEditorDraft("75-10");
-assert.equal(vehicleBDraft.faults.length, 1);
-assert.equal(vehicleBDraft.faults[0].category, "");
-assert.equal(vehicleBDraft.faults[0].description, "", "draft data must not leak between vehicles");
-
-const halfDraft = context.api.updateDropsNotOperationalFault(vehicleBDraft, 0, "category", "A1");
-const halfValidation = JSON.parse(JSON.stringify(context.api.validateDropsNotOperationalDraft(halfDraft)));
-assert.equal(halfValidation.length, 1, "a half-filled row must fail local validation");
-assert.match(halfValidation[0].message, /både feiltype og beskrivelse/i);
-
-let validDraft = context.api.updateDropsNotOperationalFault(vehicleBDraft, 0, "category", "A1");
-validDraft = context.api.updateDropsNotOperationalFault(validDraft, 0, "description", "Brems må kontrolleres");
-const preview = JSON.parse(JSON.stringify(context.api.buildDropsNotOperationalPreview(validDraft)));
+const preview = JSON.parse(JSON.stringify(api.buildDropsNotOperationalPreview(vehicleADraft)));
 assert.equal(preview.ok, true);
-assert.equal(preview.vehicle, "75-10");
-assert.equal(preview.status, "Ikke Driftsklar");
-assert.equal(preview.faults.length, 1);
 assert.equal(preview.notSaved, true);
-const previewHtml = context.api.buildDropsNotOperationalEditorHtml({...validDraft, preview});
-assert.match(previewHtml, /data-sde-drops-registration-preview/);
-assert.match(previewHtml, /Ikke lagret/);
-assert.match(previewHtml, /Lagring er ikke tilgjengelig her/);
-assert.match(previewHtml, /disabled/);
-assert.match(previewHtml, /Registreres ved serverbekreftet lagring/);
-assert.doesNotMatch(previewHtml, /registeredAt|serverregistrert/i);
+assert.equal(preview.vehicle, "74-10");
+assert.equal(preview.faults.length, 1);
+assert.deepEqual(preview.faults[0], { priority: 1, category: "A2", description: "  Dørfeil behold mellomrom  " });
 
-const editorRegistryHtml = context.api.buildDropsVehicleRegistryHtml(new Set(["74"]), context.api.createDropsNotOperationalEditorDraft("74-10"));
-assert.equal((editorRegistryHtml.match(/data-sde-drops-not-operational-editor=/g) || []).length, 1, "only one editor may be open");
-assert.match(editorRegistryHtml, /data-sde-drops-not-operational-editor="74-10"/);
-assert.doesNotMatch(editorRegistryHtml, /data-sde-drops-not-operational-editor="74-11"/);
-assert.doesNotMatch(editorRegistryHtml, /class="[^"]*(?:ikke-driftsklar|not-operational-status)[^"]*"/i, "preview must not create a red authoritative vehicle status");
+const payload = JSON.parse(JSON.stringify(api.buildDropsReportNotOperationalPayload(
+  { ...vehicleADraft, actionId: "11111111-1111-4111-8111-111111111111" },
+  { revision: 7 },
+)));
+assert.deepEqual(Object.keys(payload).sort(), ["actionId", "expectedRevision", "faults", "vehicleId"]);
+assert.equal(payload.expectedRevision, 7);
+assert.deepEqual(payload.faults, [{ priority: 1, category: "A2", description: "Dørfeil behold mellomrom" }]);
 
-for(const forbidden of [
-  "localStorage.", "sessionStorage.", "fetch(", "XMLHttpRequest", "POST", "PUT", "PATCH", "DELETE",
-  "shared-sporplan", "operational-state", "X-Role", "admin_pilot", "runtimeRoleEnforcement",
-]) assert.equal(productionSurface.includes(forbidden), false, `DROPS-1C surface must remain write-free and client-authority-free: ${forbidden}`);
+const editedAfterRegistration = api.updateDropsNotOperationalFault(vehicleADraft, 0, "description", "Ny tekst");
+assert.equal(editedAfterRegistration.faults[0].registered, false, "editing a registered draft row must invalidate its local registration");
+assert.equal(editedAfterRegistration.faults[0].registeredAt, "");
 
-assert.match(source, /@media\(max-width:600px\)\{[\s\S]*?\.drops-not-operational-editor-actions\{ grid-template-columns:minmax\(0,1fr\); \}/, "390px editor actions must stack without widening the page");
-assert.match(source, /\.drops-not-operational-editor\{[\s\S]*?min-width:0;/, "editor must remain shrinkable");
-assert.match(source, /\.drops-not-operational-fault-row\{[\s\S]*?grid-template-columns:/, "desktop fault rows must have an explicit usable grid");
-assert.match(source, /if\(event\.key === "Escape" && dropsNotOperationalEditorState\)/, "Escape must close the transient editor");
+const sheetHtml = api.buildDropsVehicleRegistryHtml("74", "74-10", vehicleADraft, {
+  availability: { available: false },
+  readback: { ok: true, items: [] },
+});
+assert.equal((sheetHtml.match(/data-sde-drops-not-operational-editor=/g) || []).length, 1);
+assert.match(sheetHtml, />Kjøretøy 74-10</);
+assert.equal((sheetHtml.match(/data-sde-drops-fault-row="\d+"/g) || []).length, 5);
+assert.equal((sheetHtml.match(/data-sde-drops-fault-category="\d+"/g) || []).length, 5);
+assert.equal((sheetHtml.match(/data-sde-drops-fault-description="\d+"/g) || []).length, 5);
+assert.equal((sheetHtml.match(/data-sde-drops-register-fault="\d+"/g) || []).length, 5);
+assert.equal((sheetHtml.match(/data-sde-drops-order-repair="\d+"/g) || []).length, 5);
+assert.equal((sheetHtml.match(/data-sde-drops-order-repair="\d+"[^>]*disabled/g) || []).length, 5);
+assert.match(sheetHtml, /Stadler-integrasjon ikke aktivert/);
+assert.match(sheetHtml, /Ikke lagret/);
+assert.equal((sheetHtml.match(/data-sde-drops-submit-not-operational/g) || []).length, 1);
+assert.match(sheetHtml, /Registrer Ikke Driftsklar/);
+assert.match(sheetHtml, /data-sde-drops-submit-not-operational[^>]*disabled/);
+assert.doesNotMatch(sheetHtml, /data-sde-drops-vehicle-toggle|data-sde-drops-vehicle-list|data-sde-drops-vehicle-status-action/);
 
+const authoritativeHtml = api.buildDropsVehicleRegistryHtml("74", "74-10", vehicleADraft, {
+  availability: { available: true },
+  readback: {
+    ok: true,
+    items: [{
+      vehicleId: "74-10",
+      currentStatus: "IKKE_DRIFTSKLAR",
+      registeredAt: "2026-07-23T10:11:12.000Z",
+      activeFaults: [{ priority: 1, category: "A2", description: "Dørfeil" }],
+    }],
+  },
+});
+assert.match(authoritativeHtml, /data-sde-drops-authoritative-status="74-10"/);
+assert.match(authoritativeHtml, /IKKE DRIFTSKLAR/);
+assert.match(authoritativeHtml, /Dørfeil/);
+assert.doesNotMatch(authoritativeHtml, /data-sde-drops-submit-not-operational/);
+assert.doesNotMatch(authoritativeHtml, /data-sde-drops-not-operational-editor=/);
+
+const vehicleBDraft = api.createDropsNotOperationalEditorDraft("75-10");
+assert.equal(vehicleBDraft.faults.length, 5);
+assert.equal(vehicleBDraft.faults.every((fault) => fault.category === "" && fault.description === "" && fault.registered === false), true);
+
+assert.match(source, /@media\(max-width:600px\)\{[\s\S]*?\.drops-not-operational-fault-row\{ grid-template-columns:minmax\(0,1fr\);/);
+assert.match(source, /\.drops-vehicle-selector-grid\{[\s\S]*?grid-template-columns:/);
+assert.match(source, /\.drops-not-operational-editor\{[\s\S]*?min-width:0;/);
+assert.match(source, /window\.confirm\(/, "discarding an unsent draft on vehicle change must require confirmation");
 assert.match(source, /id="dropsVehicleRegistry"[^>]*data-sde-drops-vehicle-registry/);
-assert.match(source, /renderDropsVehicleRegistry\(\)/, "DROPS render pipeline must include the registry");
+assert.match(source, /renderDropsVehicleRegistry\(\)/);
 
 console.log(JSON.stringify({
-  schemaVersion:"sde-drops-vehicle-registry-dom-harness-v1",
-  status:"PASS",
-  groups:Object.fromEntries(Object.entries(catalog).map(([series, vehicles]) => [series, vehicles.length])),
-  total:allVehicles.length,
-  defaultCollapsed:true,
-  levelOneOnly:true,
-  reportActions:176,
-  maxFaults:5,
-  faultCategories:categories,
-  writeOperations:0,
-  crossModuleWrites:0,
+  schemaVersion: "sde-drops-standard-sheet-harness-v2",
+  status: "PASS",
+  groups: { "69": 32, "70": 8, "74": 53, "75": 83 },
+  total: 176,
+  compactSelectors: true,
+  activeSheets: 1,
+  fixedFaultRows: 5,
+  stadlerIntegration: "inactive",
+  localDraftAuthority: false,
+  confirmedByGet: true,
 }));

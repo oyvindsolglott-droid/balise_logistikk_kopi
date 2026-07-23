@@ -8,7 +8,10 @@ const os = require("node:os");
 const path = require("node:path");
 const vm = require("node:vm");
 const { DatabaseSync } = require("node:sqlite");
-const express = require(path.resolve(__dirname, "../../../server/node_modules/express"));
+const serverNodeModules = process.env.SDE_SERVER_NODE_MODULES
+  ? path.resolve(process.env.SDE_SERVER_NODE_MODULES)
+  : path.resolve(__dirname, "../../../server/node_modules");
+const express = require(path.join(serverNodeModules, "express"));
 const { ROLE_KEYS } = require("../../../server/src/identityPolicy");
 const {
   COMMAND_ROUTE,
@@ -102,8 +105,8 @@ function draft(vehicleId = "74-10") {
   return {
     vehicle: vehicleId,
     faults: [
-      { category: "A2", description: "Dørfeil" },
-      { category: "A1", description: "Bremsefeil" },
+      { category: "A2", description: "Dørfeil", registered: true },
+      { category: "A1", description: "Bremsefeil", registered: true },
     ],
     preview: { ok: true },
     actionId: null,
@@ -199,7 +202,7 @@ async function main() {
   assert.match(source, /if\(dropsReportNotOperationalInFlight\) return/);
   assert.match(source, /dropsReportNotOperationalInFlight\s*=\s*true/);
   assert.match(source, /dropsReportNotOperationalInFlight\s*=\s*false/);
-  assert.match(source, /Meld som Ikke Driftsklar/);
+  assert.match(source, /Registrer Ikke Driftsklar/);
   assert.match(source, /serverbekreftet/i);
   assert.match(source, /\.drops-vehicle-row\.is-not-operational\{/);
   assert.doesNotMatch(
