@@ -24,6 +24,12 @@ const COMMAND_ROUTE = "/api/vehicle-status/commands/report-not-operational";
 const COMMAND_SCHEMA_VERSION = "vehicle-status-command-v1";
 const TEST_WRITE_GATE_ENV = "SDE_VEHICLE_STATUS_TEST_WRITES_ENABLED";
 const TEST_SERVER_MODE = "vehicle-status-test";
+const PRODUCTION_PILOT_WRITE_GATE_ENV =
+  "SDE_VEHICLE_STATUS_PRODUCTION_PILOT_WRITES_ENABLED";
+const VEHICLE_STATUS_DATABASE_ENV = "SDE_VEHICLE_STATUS_DB_PATH";
+const PRODUCTION_PILOT_SERVER_MODE = "vehicle-status-production-pilot";
+const DEFAULT_PRODUCTION_VEHICLE_STATUS_DB =
+  "/Users/solglottsr/balise_logistikk_kopi/server/data/sde-vehicle-status.sqlite3";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
 const ALLOWED_REQUEST_FIELDS = new Set([
   "actionId",
@@ -195,9 +201,10 @@ function normalizeReportNotOperationalPayload(input){
 function createReportNotOperationalHandler(options = {}){
   const repository = options.repository;
   if(!repository || typeof repository.executeReportNotOperational !== "function"){
-    throw new TypeError("An isolated vehicle-status test repository is required.");
+    throw new TypeError("A vehicle-status repository is required.");
   }
   const env = options.env || process.env;
+  const isCommandAvailable = options.isCommandAvailable || (() => true);
   const hasInjectedIdentityVerifier = Object.hasOwn(options, "verifyIdentityRequest");
   const verifyIdentityRequest = options.verifyIdentityRequest || verifyAccessIdentityRequest;
   const roleBindingsCatalog = Object.hasOwn(options, "roleBindingsCatalog")
@@ -210,6 +217,9 @@ function createReportNotOperationalHandler(options = {}){
   return async function reportNotOperationalHandler(req, res){
     setNoStore(res);
     try{
+      if(isCommandAvailable() !== true){
+        return sendError(res, 404, "not_found", "The requested resource was not found.");
+      }
       if(!hasInjectedIdentityVerifier && !accessAssertionPresent(req.headers)){
         return sendError(res, 401, "authentication_required", "Verified identity is required.");
       }
@@ -296,6 +306,67 @@ function createVehicleStatusJsonErrorHandler(){
     }
     return next(error);
   };
+}
+
+function getVehicleStatusProductionPilotWriteStatus(options = {}){
+  const env = options.env || process.env;
+  const port = Number(options.port);
+  const mainDatabasePath = options.mainDatabasePath;
+  const vehicleStatusDatabasePath = options.vehicleStatusDatabasePath;
+  const approvedVehicleStatusDatabasePath =
+    options.approvedVehicleStatusDatabasePath || DEFAULT_PRODUCTION_VEHICLE_STATUS_DB;
+  const enabled = isProductionPilotExplicitlyEnabled(
+    env[PRODUCTION_PILOT_WRITE_GATE_ENV]
+  );
+  let configurationFailure = null;
+
+  if(env.SDE_SERVER_MODE !== PRODUCTION_PILOT_SERVER_MODE){
+    configurationFailure = guard(
+      "vehicle_status_production_pilot_server_mode_required",
+      `Production-pilot writes require SDE_SERVER_MODE=${PRODUCTION_PILOT_SERVER_MODE}.`
+    );
+  }else if(port !== 8787){
+    configurationFailure = guard(
+      "vehicle_status_production_pilot_port_required",
+      "Production-pilot writes require the explicit production port 8787."
+    );
+  }else if(!env.SDE_SERVER_DB_PATH || !mainDatabasePath){
+    configurationFailure = guard(
+      "vehicle_status_production_pilot_main_database_required",
+      "Production-pilot writes require an explicit operational main database path."
+    );
+  }else if(!env[VEHICLE_STATUS_DATABASE_ENV] || !vehicleStatusDatabasePath){
+    configurationFailure = guard(
+      "vehicle_status_production_pilot_database_required",
+      `Production-pilot persistence requires ${VEHICLE_STATUS_DATABASE_ENV}.`
+    );
+  }else if(pathsReferToSameFile(vehicleStatusDatabasePath, mainDatabasePath)){
+    configurationFailure = guard(
+      "vehicle_status_production_pilot_main_database_forbidden",
+      "Vehicle-status production-pilot persistence cannot use the operational main database."
+    );
+  }else if(!pathsReferToSameFile(
+    vehicleStatusDatabasePath,
+    approvedVehicleStatusDatabasePath
+  )){
+    configurationFailure = guard(
+      "vehicle_status_production_pilot_database_not_approved",
+      "Vehicle-status production-pilot persistence requires the exact approved separate database."
+    );
+  }
+
+  const persistenceReady = configurationFailure === null;
+  const writesAllowed = enabled && persistenceReady;
+  return Object.freeze({
+    enabled,
+    writesAllowed,
+    commandAvailable: writesAllowed,
+    persistenceReady,
+    guardFailure: enabled ? configurationFailure : null,
+    configurationFailure,
+    gateEnvironmentVariable: PRODUCTION_PILOT_WRITE_GATE_ENV,
+    databaseEnvironmentVariable: VEHICLE_STATUS_DATABASE_ENV
+  });
 }
 
 function getVehicleStatusTestWriteStatus(options = {}){
@@ -401,6 +472,10 @@ function isExplicitlyEnabled(value){
   return normalized === "1" || normalized === "true";
 }
 
+function isProductionPilotExplicitlyEnabled(value){
+  return value === "1" || value === "true";
+}
+
 function isTemporaryDatabasePath(databasePath){
   const resolved = path.resolve(databasePath);
   const candidates = new Set([
@@ -474,11 +549,16 @@ module.exports = {
   COMMAND_NAME,
   COMMAND_ROUTE,
   COMMAND_SCHEMA_VERSION,
+  DEFAULT_PRODUCTION_VEHICLE_STATUS_DB,
   MAX_FAULT_DESCRIPTION_LENGTH,
+  PRODUCTION_PILOT_SERVER_MODE,
+  PRODUCTION_PILOT_WRITE_GATE_ENV,
   TEST_SERVER_MODE,
   TEST_WRITE_GATE_ENV,
+  VEHICLE_STATUS_DATABASE_ENV,
   createReportNotOperationalHandler,
   createVehicleStatusJsonErrorHandler,
+  getVehicleStatusProductionPilotWriteStatus,
   getVehicleStatusTestWriteStatus,
   normalizeReportNotOperationalPayload
 };

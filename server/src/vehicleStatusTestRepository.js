@@ -18,7 +18,7 @@ class VehicleStatusRepositoryConflict extends Error {
   }
 }
 
-function createVehicleStatusTestRepository(options = {}){
+function createVehicleStatusRepository(options = {}){
   const db = options.db;
   if(!db || typeof db.exec !== "function" || typeof db.prepare !== "function"){
     throw new TypeError("A synchronous SQLite database is required.");
@@ -26,10 +26,25 @@ function createVehicleStatusTestRepository(options = {}){
   const now = options.now || (() => new Date().toISOString());
   const randomUUID = options.randomUUID || crypto.randomUUID;
   const failureInjector = options.failureInjector || (() => {});
+  const repositoryMode = options.mode === "production-pilot"
+    ? "production-pilot"
+    : "test";
+  const writeEnabled = options.writeEnabled !== false;
+  const sourceLevel = repositoryMode === "production-pilot"
+    ? "server_production_pilot"
+    : "server_test_only";
 
   initializeSchema(db);
 
   function executeReportNotOperational(command, authority){
+    if(!writeEnabled){
+      return {
+        ok: false,
+        status: 404,
+        error: "not_found",
+        message: "The requested resource was not found."
+      };
+    }
     db.exec("BEGIN IMMEDIATE;");
     try{
       const replay = findIdempotency(command.actionId);
@@ -191,21 +206,28 @@ function createVehicleStatusTestRepository(options = {}){
   function getReadModel(){
     const revision = db.prepare(`SELECT revision FROM ${META_TABLE} WHERE id = 'main'`).get()?.revision || 0;
     const records = db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all()
-      .map(mapRecordToContract);
+      .map((row) => mapRecordToContract(row, sourceLevel));
     const events = db.prepare(`SELECT * FROM ${EVENT_TABLE} ORDER BY server_timestamp, event_id`).all()
-      .map(mapEventToContract);
+      .map((row) => mapEventToContract(row, sourceLevel));
     const model = buildVehicleStatusReadModel({ revision, records, events, notifications: [] });
+    const productionPilot = repositoryMode === "production-pilot";
     return {
       ...model,
       persistenceActive: true,
-      statusAuthorityActive: true,
-      writeEnabled: true,
-      runtimeRoleEnforcement: true,
+      statusAuthorityActive: writeEnabled,
+      writeEnabled,
+      runtimeRoleEnforcement: writeEnabled,
       operationalAuthority: false,
-      sourceMode: "isolated_vehicle_status_test_repository",
+      sourceMode: productionPilot
+        ? "production_pilot_vehicle_status_repository"
+        : "isolated_vehicle_status_test_repository",
       message: {
-        code: "vehicle_status_test_repository_active",
-        text: "Authoritative vehicle-status test persistence is active on an isolated server."
+        code: productionPilot
+          ? "vehicle_status_production_pilot_repository_active"
+          : "vehicle_status_test_repository_active",
+        text: productionPilot
+          ? "Separate vehicle-status production-pilot persistence is ready."
+          : "Authoritative vehicle-status test persistence is active on an isolated server."
       }
     };
   }
@@ -268,8 +290,18 @@ function createVehicleStatusTestRepository(options = {}){
   };
 }
 
+function createVehicleStatusTestRepository(options = {}){
+  return createVehicleStatusRepository({
+    ...options,
+    mode: "test",
+    writeEnabled: true
+  });
+}
+
 function initializeSchema(db){
   db.exec(`
+    PRAGMA user_version = 1;
+
     CREATE TABLE IF NOT EXISTS ${META_TABLE} (
       id TEXT PRIMARY KEY CHECK(id = 'main'),
       revision INTEGER NOT NULL CHECK(revision >= 0)
@@ -332,7 +364,7 @@ function initializeSchema(db){
   `);
 }
 
-function mapRecordToContract(row){
+function mapRecordToContract(row, sourceLevel){
   const activeFaults = JSON.parse(row.faults_json);
   return {
     vehicleId: row.vehicle_id,
@@ -343,7 +375,7 @@ function mapRecordToContract(row){
     statusAuthority: "vehicle_status.report_not_operational",
     registeredAt: row.registered_at,
     registeredBy: row.actor_subject,
-    sourceLevel: "server_test_only",
+    sourceLevel,
     stationPresenceAtRegistration: null,
     stationSlotAtRegistration: null,
     activeCaseId: row.last_event_id,
@@ -354,7 +386,7 @@ function mapRecordToContract(row){
   };
 }
 
-function mapEventToContract(row){
+function mapEventToContract(row, sourceLevel){
   return {
     eventId: row.event_id,
     actionId: row.action_id,
@@ -367,7 +399,7 @@ function mapEventToContract(row){
     currentDisposition: row.resulting_disposition,
     timestamp: row.server_timestamp,
     actor: row.actor_subject,
-    sourceLevel: "server_test_only",
+    sourceLevel,
     statusRevision: row.resulting_revision,
     payloadDigest: row.payload_hash
   };
@@ -383,5 +415,6 @@ module.exports = {
   META_TABLE,
   RECORD_TABLE,
   VehicleStatusRepositoryConflict,
+  createVehicleStatusRepository,
   createVehicleStatusTestRepository
 };

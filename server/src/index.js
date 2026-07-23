@@ -1,15 +1,22 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const { DatabaseSync } = require("node:sqlite");
 const express = require("express");
 const { createAccessIdentitySessionHandler } = require("./accessIdentity");
 const { createRuntimeCapabilitiesHandler } = require("./runtimeAuthorization");
 const {
   COMMAND_ROUTE: VEHICLE_STATUS_REPORT_NOT_OPERATIONAL_ROUTE,
+  DEFAULT_PRODUCTION_VEHICLE_STATUS_DB,
+  VEHICLE_STATUS_DATABASE_ENV,
   createReportNotOperationalHandler,
   createVehicleStatusJsonErrorHandler,
+  getVehicleStatusProductionPilotWriteStatus,
   getVehicleStatusTestWriteStatus
 } = require("./vehicleStatusReportNotOperational");
-const { createVehicleStatusTestRepository } = require("./vehicleStatusTestRepository");
+const {
+  createVehicleStatusRepository,
+  createVehicleStatusTestRepository
+} = require("./vehicleStatusTestRepository");
 const { getDatabasePath, openDatabase } = require("./db");
 const { getEventsSinceRevision, parseSinceRevision, writeSseEvent } = require("./events");
 const { prepareRuntimeMigrationMode, runRuntimeMigrationIfEnabled } = require("./runtimeMigrationMode");
@@ -162,9 +169,29 @@ const VEHICLE_STATUS_TEST_WRITE_STATUS = getVehicleStatusTestWriteStatus({
   databasePath: configuredDatabasePath,
   productionDatabasePath: PRODUCTION_DB_PATH
 });
+const configuredVehicleStatusDatabasePath = process.env[VEHICLE_STATUS_DATABASE_ENV] || null;
+const VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS =
+  getVehicleStatusProductionPilotWriteStatus({
+    env: process.env,
+    port: PORT,
+    mainDatabasePath: configuredDatabasePath,
+    vehicleStatusDatabasePath: configuredVehicleStatusDatabasePath,
+    approvedVehicleStatusDatabasePath: DEFAULT_PRODUCTION_VEHICLE_STATUS_DB
+  });
 if(VEHICLE_STATUS_TEST_WRITE_STATUS.enabled && !VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed){
   console.error(
     `vehicle status test write startup blocked: ${VEHICLE_STATUS_TEST_WRITE_STATUS.guardFailure.message}`
+  );
+  process.exit(1);
+}
+if(
+  VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled &&
+  !VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.writesAllowed
+){
+  console.error(
+    `vehicle status production-pilot startup blocked: ${
+      VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.guardFailure.message
+    }`
   );
   process.exit(1);
 }
@@ -238,9 +265,20 @@ if(OPERATIONAL_STATE_STATUS.operationalStateWritesEnabled){
 }
 
 const { db, databasePath } = openDatabase();
-const vehicleStatusTestRepository = VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed
-  ? createVehicleStatusTestRepository({ db })
-  : null;
+let vehicleStatusDatabase = null;
+let vehicleStatusRepository = null;
+if(VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed){
+  vehicleStatusRepository = createVehicleStatusTestRepository({ db });
+}else if(VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.persistenceReady){
+  fs.mkdirSync(path.dirname(configuredVehicleStatusDatabasePath), { recursive: true });
+  vehicleStatusDatabase = new DatabaseSync(configuredVehicleStatusDatabasePath);
+  vehicleStatusDatabase.exec("PRAGMA journal_mode = WAL;");
+  vehicleStatusRepository = createVehicleStatusRepository({
+    db: vehicleStatusDatabase,
+    mode: "production-pilot",
+    writeEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.writesAllowed
+  });
+}
 let runtimeMigrationStatus = runtimeMigrationMode;
 try{
   runtimeMigrationStatus = runRuntimeMigrationIfEnabled(db, {
@@ -326,6 +364,11 @@ app.get("/api/server/status", (_req, res) => {
     operationalStateOperationalWritesAllowed: OPERATIONAL_STATE_STATUS.operationalWritesAllowed,
     vehicleStatusTestWritesEnabled: VEHICLE_STATUS_TEST_WRITE_STATUS.enabled,
     vehicleStatusTestWritesAllowed: VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed,
+    productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
+    reportNotOperationalCommandAvailable:
+      VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed ||
+      VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.commandAvailable,
+    vehicleStatusPersistenceReady: Boolean(vehicleStatusRepository),
     ...schemaStatus,
     clientReadContract: CLIENT_READ_CONTRACT,
     operationalDataContract: OPERATIONAL_DATA_CONTRACT,
@@ -381,16 +424,24 @@ app.get("/api/auth/capabilities", createRuntimeCapabilitiesHandler());
 app.get("/api/vehicle-status", (_req, res) => {
   res.set("Cache-Control", "no-store");
   try{
-    if(vehicleStatusTestRepository){
+    if(vehicleStatusRepository){
       return res.json({
         ok: true,
-        ...vehicleStatusTestRepository.getReadModel(),
+        ...vehicleStatusRepository.getReadModel(),
+        productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
+        reportNotOperationalCommandAvailable:
+          VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed ||
+          VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.commandAvailable,
+        vehicleStatusPersistenceReady: true,
         trustedRequestAuthority: null
       });
     }
     return res.json({
       ok: true,
       ...buildProductionVehicleStatusReadModel(),
+      productionPilotWriteEnabled: false,
+      reportNotOperationalCommandAvailable: false,
+      vehicleStatusPersistenceReady: false,
       trustedRequestAuthority: null
     });
   }catch(error){
@@ -412,15 +463,24 @@ app.get("/api/vehicle-status", (_req, res) => {
         recordKey: "production",
         message: "Vehicle-status readback failed closed."
       }],
+      productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
+      reportNotOperationalCommandAvailable: false,
+      vehicleStatusPersistenceReady: false,
       trustedRequestAuthority: null
     });
   }
 });
 
-if(vehicleStatusTestRepository){
+if(vehicleStatusRepository){
   app.post(
     VEHICLE_STATUS_REPORT_NOT_OPERATIONAL_ROUTE,
-    createReportNotOperationalHandler({ repository: vehicleStatusTestRepository })
+    createReportNotOperationalHandler({
+      repository: vehicleStatusRepository,
+      isCommandAvailable: () => (
+        VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed ||
+        VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.commandAvailable
+      )
+    })
   );
 }
 
