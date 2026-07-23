@@ -7247,6 +7247,10 @@ button{padding:12px 12px}
 .drops-vehicle-row:nth-child(even){
   background:#f8fafc;
 }
+.drops-vehicle-row.is-not-operational{
+  border-left:4px solid #dc2626;
+  background:linear-gradient(90deg,#fff1f2,#fff 54%);
+}
 .drops-vehicle-number{
   padding-top:9px;
   color:#0f172a;
@@ -7295,6 +7299,13 @@ button{padding:12px 12px}
 .drops-not-operational-action:focus-visible{
   outline:3px solid #2563eb;
   outline-offset:3px;
+}
+.drops-not-operational-action:disabled{
+  cursor:not-allowed;
+  filter:grayscale(.25);
+  opacity:.58;
+  transform:none;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 2px 5px rgba(100,116,139,.12);
 }
 .drops-not-operational-time-note{
   color:#64748b;
@@ -7471,6 +7482,12 @@ button{padding:12px 12px}
   color:#fff;
   box-shadow:0 4px 0 #1e3a8a;
 }
+.drops-not-operational-submit{
+  border:1px solid #991b1b;
+  background:linear-gradient(180deg,#ef4444,#b91c1c);
+  color:#fff;
+  box-shadow:0 4px 0 #7f1d1d;
+}
 .drops-not-operational-editor-actions button:disabled{
   cursor:not-allowed;
   opacity:.58;
@@ -7510,6 +7527,46 @@ button{padding:12px 12px}
   padding-left:18px;
   font-size:11px;
   line-height:1.45;
+}
+.drops-not-operational-submit-error{
+  margin:11px 0 0;
+  padding:10px 11px;
+  border:1px solid #fca5a5;
+  border-radius:10px;
+  background:#fff1f2;
+  color:#991b1b;
+  font-size:11px;
+  font-weight:850;
+  line-height:1.4;
+}
+.drops-vehicle-authoritative-status{
+  min-width:0;
+  padding:10px 11px;
+  border:2px solid #dc2626;
+  border-radius:12px;
+  background:linear-gradient(180deg,#7f1d1d,#450a0a);
+  color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.24),0 5px 12px rgba(127,29,29,.2);
+}
+.drops-vehicle-authoritative-status strong{
+  display:block;
+  font-size:12px;
+  font-weight:950;
+}
+.drops-vehicle-authoritative-status time,
+.drops-vehicle-authoritative-status span{
+  display:block;
+  margin-top:3px;
+  color:#fecaca;
+  font-size:10px;
+  font-weight:750;
+  line-height:1.35;
+}
+.drops-vehicle-authoritative-status ol{
+  margin:7px 0 0;
+  padding-left:19px;
+  font-size:10px;
+  line-height:1.4;
 }
 @media(max-width:1100px){
   .drops-vehicle-groups{ grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -44262,7 +44319,10 @@ function createDropsNotOperationalEditorDraft(vehicle){
     vehicle:String(vehicle || "").trim(),
     faults:[{category:"",description:""}],
     errors:[],
-    preview:null
+    preview:null,
+    actionId:null,
+    submitting:false,
+    submitError:""
   };
 }
 
@@ -44340,7 +44400,156 @@ function buildDropsNotOperationalPreview(draft){
   };
 }
 
-function buildDropsNotOperationalEditorHtml(draft){
+function getDropsReportNotOperationalAvailability(readback,capabilities){
+  const capability = capabilities?.capabilities?.["vehicle_status.report_not_operational"];
+  const available = readback?.ok === true &&
+    readback?.writeEnabled === true &&
+    capabilities?.ok === true &&
+    capabilities?.roleResolved === true &&
+    capabilities?.role === "drops" &&
+    capability?.allowed === true &&
+    capability?.decision === "ALLOW";
+  return {
+    available,
+    reason:available ? "available" : "server_authority_unavailable"
+  };
+}
+
+function createDropsNotOperationalActionId(){
+  return crypto.randomUUID();
+}
+
+function buildDropsReportNotOperationalPayload(draft,readback){
+  return {
+    actionId:String(draft?.actionId || ""),
+    expectedRevision:Number.isInteger(readback?.revision) ? readback.revision : 0,
+    vehicleId:String(draft?.vehicle || ""),
+    faults:(Array.isArray(draft?.faults) ? draft.faults : [])
+      .filter(fault=>String(fault?.category || "") !== "" && String(fault?.description ?? "").trim() !== "")
+      .map((fault,index)=>({
+        priority:index + 1,
+        category:String(fault.category),
+        description:String(fault.description).trim()
+      }))
+  };
+}
+
+function getDropsVehicleStatusRecord(readback,vehicleId){
+  return (Array.isArray(readback?.items) ? readback.items : [])
+    .find(item=>String(item?.vehicleId || "") === String(vehicleId || "")) || null;
+}
+
+function getDropsSubmitErrorMessage(status){
+  if(status === 403) return "Du har ikke tilgang til å melde kjøretøyet som Ikke Driftsklar.";
+  if(status === 404) return "Lagring er ikke tilgjengelig i dette servermiljøet.";
+  if(status === 409) return "Statusen er endret på serveren. Fersk readback er hentet; kontroller registreringen og prøv igjen.";
+  if(status >= 500) return "Serverfeil. Ingen status vises som lagret før serveren bekrefter den i en ny GET.";
+  if(status === 0) return "Nettverksfeil. Serverstatus er kontrollert uten å anta at lagringen feilet eller lyktes.";
+  return "Registreringen ble avvist. Ingen autoritativ status er endret i visningen.";
+}
+
+function submitDropsNotOperationalDraftWithReadback(draft,readback,capabilities,fetchImpl,actionIdFactory=createDropsNotOperationalActionId){
+  return (async()=>{
+  const availability = getDropsReportNotOperationalAvailability(readback,capabilities);
+  if(!availability.available){
+    return {ok:false,error:"command_unavailable",status:404,draft,readback,confirmedByReadback:false};
+  }
+  const actionId = String(draft?.actionId || actionIdFactory());
+  const pendingDraft = {...draft,actionId,submitting:true,submitError:""};
+  const readJson = async response=>response?.json ? response.json().catch(()=>({})) : {};
+  const getReadback = async()=>{
+    const response = await fetchImpl("/api/vehicle-status",{
+      method:"GET",
+      headers:{Accept:"application/json"},
+      cache:"no-store",
+      credentials:"same-origin"
+    });
+    const json = await readJson(response);
+    if(!response?.ok || json?.ok !== true){
+      const error = new Error("vehicle_status_readback_failed");
+      error.status = Number(response?.status || 0);
+      throw error;
+    }
+    return json;
+  };
+  const confirmedResult = (latest)=>{
+    const record = getDropsVehicleStatusRecord(latest,pendingDraft.vehicle);
+    return record?.currentStatus === "IKKE_DRIFTSKLAR"
+      ? {ok:true,error:null,status:200,draft:{...pendingDraft,submitting:false},readback:latest,record,confirmedByReadback:true}
+      : null;
+  };
+
+  try{
+    const latestBeforePost = await getReadback();
+    const alreadyConfirmed = confirmedResult(latestBeforePost);
+    if(alreadyConfirmed) return alreadyConfirmed;
+    const payload = buildDropsReportNotOperationalPayload(pendingDraft,latestBeforePost);
+    const response = await fetchImpl("/api/vehicle-status/commands/report-not-operational",{
+      method:"POST",
+      headers:{"Content-Type":"application/json",Accept:"application/json"},
+      body:JSON.stringify(payload),
+      credentials:"same-origin"
+    });
+    const responseBody = await readJson(response);
+    if(!response?.ok){
+      let latest = latestBeforePost;
+      if(response?.status === 409){
+        try{ latest = await getReadback(); }catch(unusedError){ /* keep prior confirmed GET */ }
+      }
+      return {
+        ok:false,
+        error:String(responseBody?.error || "command_rejected"),
+        status:Number(response?.status || 0),
+        draft:{...pendingDraft,submitting:false,submitError:getDropsSubmitErrorMessage(Number(response?.status || 0))},
+        readback:latest,
+        confirmedByReadback:false
+      };
+    }
+    const latestAfterPost = await getReadback();
+    const confirmed = confirmedResult(latestAfterPost);
+    if(confirmed) return confirmed;
+    return {
+      ok:false,
+      error:"readback_confirmation_missing",
+      status:500,
+      draft:{...pendingDraft,submitting:false,submitError:"Serveren svarte, men statusen ble ikke bekreftet av fersk readback. Ingen rød status vises."},
+      readback:latestAfterPost,
+      confirmedByReadback:false
+    };
+  }catch(unusedError){
+    try{
+      const recoveryReadback = await getReadback();
+      const confirmed = confirmedResult(recoveryReadback);
+      if(confirmed) return confirmed;
+      return {
+        ok:false,
+        error:"network_uncertain",
+        status:0,
+        draft:{...pendingDraft,submitting:false,submitError:getDropsSubmitErrorMessage(0)},
+        readback:recoveryReadback,
+        confirmedByReadback:false
+      };
+    }catch(unusedRecoveryError){
+      return {
+        ok:false,
+        error:"network_uncertain",
+        status:0,
+        draft:{...pendingDraft,submitting:false,submitError:getDropsSubmitErrorMessage(0)},
+        readback,
+        confirmedByReadback:false
+      };
+    }
+  }
+  })();
+}
+
+function formatDropsVehicleStatusTimestamp(value){
+  const date = new Date(String(value || ""));
+  if(!Number.isFinite(date.getTime())) return "Serverregistrert tidspunkt mangler";
+  return date.toLocaleString("nb-NO",{dateStyle:"short",timeStyle:"medium"});
+}
+
+function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
   const vehicle = String(draft?.vehicle || "");
   const safeToken = vehicle.replace(/[^A-Za-z0-9_-]/g,"");
   const faults = Array.isArray(draft?.faults) && draft.faults.length
@@ -44381,6 +44590,14 @@ function buildDropsNotOperationalEditorHtml(draft){
     <div>${preview.faults.length} feil i prioritert rekkefølge</div>
     ${previewFaultsHtml ? `<ul>${previewFaultsHtml}</ul>` : `<p>Ingen feil er lagt inn i kladden.</p>`}
   </section>` : "";
+  const availability = viewModel?.availability || {available:false};
+  const submitting = draft?.submitting === true;
+  const submitAction = preview && availability.available
+    ? `<button class="drops-not-operational-submit" type="button" data-sde-drops-submit-not-operational${submitting ? " disabled aria-disabled=\"true\"" : ""}>${submitting ? "Sender og kontrollerer…" : "Meld som Ikke Driftsklar"}</button>`
+    : `<button type="button" disabled aria-disabled="true">${preview ? "Lagring er ikke tilgjengelig her" : "Kontroller registreringen først"}</button>`;
+  const submitErrorHtml = draft?.submitError
+    ? `<p class="drops-not-operational-submit-error" role="alert">${escapeHtml(draft.submitError)}</p>`
+    : "";
 
   return `<section class="drops-not-operational-editor" data-sde-drops-not-operational-editor="${escapeHtml(vehicle)}" aria-labelledby="sdeDropsNotOperationalTitle-${safeToken}">
     <div class="drops-not-operational-editor-header">
@@ -44395,9 +44612,10 @@ function buildDropsNotOperationalEditorHtml(draft){
     <div class="drops-not-operational-editor-actions">
       <button class="drops-not-operational-add" type="button" data-sde-drops-add-fault${faults.length >= 5 ? " disabled" : ""}>Legg til feil</button>
       <button class="drops-not-operational-review" type="button" data-sde-drops-review-registration>Kontroller registrering</button>
-      <button type="button" disabled aria-disabled="true">Lagring aktiveres i neste fase</button>
+      ${submitAction}
     </div>
     ${previewHtml}
+    ${submitErrorHtml}
   </section>`;
 }
 
@@ -44405,7 +44623,7 @@ function isDropsVehicleRegistryVisibleForAccessLevel(level){
   return String(level || "").trim() === "1";
 }
 
-function buildDropsVehicleRegistryHtml(expandedGroups=new Set(),editorDraft=null){
+function buildDropsVehicleRegistryHtml(expandedGroups=new Set(),editorDraft=null,viewModel={}){
   const catalog = getDropsVehicleCatalog();
   const groupEntries = Object.entries(catalog);
   const total = groupEntries.reduce((sum,[,vehicles])=>sum + vehicles.length,0);
@@ -44417,13 +44635,23 @@ function buildDropsVehicleRegistryHtml(expandedGroups=new Set(),editorDraft=null
     const rowsHtml = vehicles.map(vehicle=>{
       const editorOpen = editorDraft?.vehicle === vehicle;
       const editorId = `sdeDropsNotOperationalEditor-${vehicle}`;
-      return `<div class="drops-vehicle-row" data-sde-drops-vehicle="${escapeHtml(vehicle)}">
+      const statusRecord = getDropsVehicleStatusRecord(viewModel?.readback,vehicle);
+      const isNotOperational = statusRecord?.currentStatus === "IKKE_DRIFTSKLAR";
+      const activeFaults = Array.isArray(statusRecord?.activeFaults) ? statusRecord.activeFaults : [];
+      const statusHtml = isNotOperational
+        ? `<section class="drops-vehicle-authoritative-status" data-sde-drops-authoritative-status="${escapeHtml(vehicle)}">
+            <strong>Ikke Driftsklar</strong>
+            <time datetime="${escapeHtml(statusRecord.registeredAt || "")}">${escapeHtml(formatDropsVehicleStatusTimestamp(statusRecord.registeredAt))}</time>
+            ${activeFaults.length ? `<ol>${activeFaults.map(fault=>`<li>${escapeHtml(fault.category)} · ${escapeHtml(fault.description)}</li>`).join("")}</ol>` : `<span>Ingen feil registrert</span>`}
+          </section>`
+        : `<button class="drops-not-operational-action" type="button" data-sde-drops-vehicle-status-action="${escapeHtml(vehicle)}" aria-expanded="${editorOpen ? "true" : "false"}" aria-controls="${editorId}"${viewModel?.availability?.available === true ? "" : " disabled aria-disabled=\"true\""}>Meld: Ikke Driftsklar</button>
+          <span class="drops-not-operational-time-note">${viewModel?.availability?.available === true ? "Registreres ved serverbekreftet lagring" : "Read-only · serverlagring ikke tilgjengelig"}</span>`;
+      return `<div class="drops-vehicle-row${isNotOperational ? " is-not-operational" : ""}" data-sde-drops-vehicle="${escapeHtml(vehicle)}">
         <span class="drops-vehicle-number">${escapeHtml(vehicle)}</span>
         <div class="drops-vehicle-status-control">
-          <button class="drops-not-operational-action" type="button" data-sde-drops-vehicle-status-action="${escapeHtml(vehicle)}" aria-expanded="${editorOpen ? "true" : "false"}" aria-controls="${editorId}">Meld: Ikke Driftsklar</button>
-          <span class="drops-not-operational-time-note">Registreres ved serverbekreftet lagring</span>
+          ${statusHtml}
         </div>
-        ${editorOpen ? buildDropsNotOperationalEditorHtml(editorDraft).replace("class=\"drops-not-operational-editor\"",`id="${editorId}" class="drops-not-operational-editor"`) : ""}
+        ${editorOpen ? buildDropsNotOperationalEditorHtml(editorDraft,viewModel).replace("class=\"drops-not-operational-editor\"",`id="${editorId}" class="drops-not-operational-editor"`) : ""}
       </div>`;
     }).join("");
 
@@ -44455,6 +44683,52 @@ function buildDropsVehicleRegistryHtml(expandedGroups=new Set(),editorDraft=null
 
 const dropsVehicleRegistryExpandedGroups = new Set();
 let dropsNotOperationalEditorState = null;
+let dropsVehicleStatusReadback = null;
+let dropsRuntimeCapabilities = null;
+let dropsVehicleStatusContextLoaded = false;
+let dropsVehicleStatusContextLoadPromise = null;
+let dropsReportNotOperationalInFlight = false;
+
+function getDropsVehicleStatusViewModel(){
+  return {
+    readback:dropsVehicleStatusReadback,
+    capabilities:dropsRuntimeCapabilities,
+    availability:getDropsReportNotOperationalAvailability(dropsVehicleStatusReadback,dropsRuntimeCapabilities)
+  };
+}
+
+async function loadDropsVehicleStatusContext(fetchImpl=window.fetch.bind(window)){
+  const [readbackResponse,capabilitiesResponse] = await Promise.all([
+    fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
+    fetchImpl("/api/auth/capabilities",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"})
+  ]);
+  const readback = await readbackResponse.json().catch(()=>null);
+  const capabilities = await capabilitiesResponse.json().catch(()=>null);
+  return {
+    readback:readbackResponse.ok && readback?.ok === true ? readback : null,
+    capabilities:capabilitiesResponse.ok && capabilities?.ok === true ? capabilities : null
+  };
+}
+
+function ensureDropsVehicleStatusContext(){
+  if(dropsVehicleStatusContextLoaded || dropsVehicleStatusContextLoadPromise) return dropsVehicleStatusContextLoadPromise;
+  dropsVehicleStatusContextLoadPromise = loadDropsVehicleStatusContext()
+    .then(context=>{
+      dropsVehicleStatusReadback = context.readback;
+      dropsRuntimeCapabilities = context.capabilities;
+      dropsVehicleStatusContextLoaded = true;
+    })
+    .catch(()=>{
+      dropsVehicleStatusReadback = null;
+      dropsRuntimeCapabilities = null;
+      dropsVehicleStatusContextLoaded = true;
+    })
+    .finally(()=>{
+      dropsVehicleStatusContextLoadPromise = null;
+      renderDropsVehicleRegistry();
+    });
+  return dropsVehicleStatusContextLoadPromise;
+}
 
 function renderDropsVehicleRegistry(){
   const host = document.getElementById("dropsVehicleRegistry");
@@ -44465,7 +44739,12 @@ function renderDropsVehicleRegistry(){
   host.setAttribute("aria-hidden", visible ? "false" : "true");
   if(!visible) return;
 
-  host.innerHTML = buildDropsVehicleRegistryHtml(dropsVehicleRegistryExpandedGroups,dropsNotOperationalEditorState);
+  host.innerHTML = buildDropsVehicleRegistryHtml(
+    dropsVehicleRegistryExpandedGroups,
+    dropsNotOperationalEditorState,
+    getDropsVehicleStatusViewModel()
+  );
+  ensureDropsVehicleStatusContext();
 }
 
 function openDropsNotOperationalEditor(vehicle){
@@ -44520,7 +44799,41 @@ function handleDropsNotOperationalRegistryClick(event){
     document.querySelector('[data-sde-drops-not-operational-editor] [aria-invalid="true"]')?.focus?.();
     return true;
   }
+  if(event.target.closest("[data-sde-drops-submit-not-operational]")){
+    event.preventDefault();
+    submitDropsNotOperationalFromUi();
+    return true;
+  }
   return false;
+}
+
+async function submitDropsNotOperationalFromUi(){
+  if(dropsReportNotOperationalInFlight) return;
+  if(!dropsNotOperationalEditorState?.preview?.ok) return;
+  dropsReportNotOperationalInFlight = true;
+  dropsNotOperationalEditorState = {...dropsNotOperationalEditorState,submitting:true,submitError:""};
+  renderDropsVehicleRegistry();
+  try{
+    const result = await submitDropsNotOperationalDraftWithReadback(
+      dropsNotOperationalEditorState,
+      dropsVehicleStatusReadback,
+      dropsRuntimeCapabilities,
+      window.fetch.bind(window)
+    );
+    if(result?.readback) dropsVehicleStatusReadback = result.readback;
+    if(result?.ok && result?.confirmedByReadback){
+      dropsNotOperationalEditorState = null;
+    }else{
+      dropsNotOperationalEditorState = result?.draft || {
+        ...dropsNotOperationalEditorState,
+        submitting:false,
+        submitError:getDropsSubmitErrorMessage(Number(result?.status || 0))
+      };
+    }
+  }finally{
+    dropsReportNotOperationalInFlight = false;
+    renderDropsVehicleRegistry();
+  }
 }
 
 function handleDropsNotOperationalRegistryInput(event){
