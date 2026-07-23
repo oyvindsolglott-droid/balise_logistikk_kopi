@@ -829,6 +829,35 @@ test("SPORPLAN-UI — supplied Skien station graphic replaces only the existing 
   assert.match(currentServerIndex, /\["sporplan-skien-stasjon\.png", path\.join\(REPO_ROOT, "assets", "sporplan-skien-stasjon\.png"\)\]/, "the production appserver must serve the exact supplied asset");
 });
 
+test("MOBILE-SPORPLAN-OVERFLOW — graphic stays inside its own mobile button and cannot cover TXP", () => {
+  const buttonRule = currentHtml.match(/\.segmented button\.seg-sporplan-graphic\{([^}]*)\}/)?.[1] || "";
+  const imageRule = currentHtml.match(/\.seg-sporplan-graphic__image\{([^}]*)\}/)?.[1] || "";
+  const mobileRule = currentHtml.match(/@media \(max-width:700px\)\{([\s\S]*?)\.view-tools\{/)?.[1] || "";
+  const sporplanMarkup = currentHtml.match(/<button class="seg seg-sporplan-graphic"[^>]*data-tab="sporplan"[^>]*>[\s\S]*?<\/button>/)?.[0] || "";
+  const txpMarkup = currentHtml.match(/<button class="seg seg-txp-input-graphic"[^>]*data-tab="grunnoppstilling"[^>]*>[\s\S]*?<\/button>/)?.[0] || "";
+
+  assert.match(
+    buttonRule,
+    /position:relative;/,
+    "the absolutely positioned Sporplan image must use its own button as containing block at every viewport",
+  );
+  assert.match(buttonRule, /overflow:hidden;/, "the graphic must remain clipped by the button radius");
+  assert.match(imageRule, /position:absolute;/);
+  assert.match(imageRule, /inset:0;/);
+  assert.match(imageRule, /width:100%;/);
+  assert.match(imageRule, /height:100%;/);
+  assert.doesNotMatch(imageRule, /transform:/, "the image must not scale beyond its 160 by 76 pixel mobile containing block");
+  assert.match(
+    mobileRule,
+    /\.segmented button\.seg\{[\s\S]*?flex:0 0 160px;[\s\S]*?width:160px;[\s\S]*?height:76px;/,
+    "the established mobile button rectangle must remain 160 by 76 pixels",
+  );
+  assert.match(sporplanMarkup, /aria-label="Åpne Sporplan"/, "Sporplan routing and keyboard identity must remain available");
+  assert.match(txpMarkup, /aria-label="Åpne TXP Input Sporplan"/, "TXP Input must remain a separate visible and clickable button");
+  assert.notEqual(sporplanMarkup, txpMarkup, "Sporplan and TXP Input must remain separate click targets");
+  assert.doesNotMatch(currentHtml, /body\{overflow-x:hidden\}[\s\S]*?\.segmented\{overflow:hidden\}/, "the hotfix must not hide the horizontal menu globally");
+});
+
 test("TXP-INPUT-UI — supplied TXP graphic replaces only the existing Input Sporplan button", () => {
   const assetPath = path.join(root, "assets", "txp-input-sporplan.png");
   const asset = fs.readFileSync(assetPath);
