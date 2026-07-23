@@ -616,6 +616,13 @@ registerHarnessTest({
   baseline: "f84986fb348a10572fb6e4b5ee86c45ce40335f5",
 });
 
+registerHarnessTest({
+  phase: "DROPS-1E",
+  name: "not-operational submission stays server-authoritative through confirmed GET readback",
+  harness: "sde-drops-ui-server-readback-harness.js",
+  baseline: "c51d588ffeabca933a2646fa52d001de02e6eb7d",
+});
+
 test("TURSATT-UI — baked label remains seamless without an obscuring CSS backplate", () => {
   const buttonRule = currentHtml.match(/\.segmented button\.seg-tursatt-graphic\{([^}]*)\}/)?.[1] || "";
   const imageRule = currentHtml.match(/\.seg-tursatt-graphic__image\{([^}]*)\}/)?.[1] || "";

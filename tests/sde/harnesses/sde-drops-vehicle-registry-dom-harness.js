@@ -93,6 +93,9 @@ const functionNames = [
   "updateDropsNotOperationalFault",
   "validateDropsNotOperationalDraft",
   "buildDropsNotOperationalPreview",
+  "getDropsReportNotOperationalAvailability",
+  "getDropsVehicleStatusRecord",
+  "formatDropsVehicleStatusTimestamp",
   "buildDropsNotOperationalEditorHtml",
   "isDropsVehicleRegistryVisibleForAccessLevel",
   "buildDropsVehicleRegistryHtml",
@@ -118,6 +121,7 @@ for(const forbidden of [
 
 const context = {
   console,
+  Date,
   escapeHtml(value){
     return String(value ?? "")
       .replaceAll("&", "&amp;")
@@ -128,7 +132,7 @@ const context = {
   },
 };
 vm.createContext(context);
-vm.runInContext(`${productionFunctions.slice(0, 11).join("\n")}\nthis.api={getDropsVehicleCatalog,getDropsNotOperationalFaultCategories,createDropsNotOperationalEditorDraft,addDropsNotOperationalFault,removeDropsNotOperationalFault,updateDropsNotOperationalFault,validateDropsNotOperationalDraft,buildDropsNotOperationalPreview,buildDropsNotOperationalEditorHtml,isDropsVehicleRegistryVisibleForAccessLevel,buildDropsVehicleRegistryHtml};`, context);
+vm.runInContext(`${productionFunctions.slice(0, 14).join("\n")}\nthis.api={getDropsVehicleCatalog,getDropsNotOperationalFaultCategories,createDropsNotOperationalEditorDraft,addDropsNotOperationalFault,removeDropsNotOperationalFault,updateDropsNotOperationalFault,validateDropsNotOperationalDraft,buildDropsNotOperationalPreview,buildDropsNotOperationalEditorHtml,isDropsVehicleRegistryVisibleForAccessLevel,buildDropsVehicleRegistryHtml};`, context);
 
 const catalog = JSON.parse(JSON.stringify(context.api.getDropsVehicleCatalog()));
 assert.deepEqual(catalog, JSON.parse(JSON.stringify(expectedCatalog)), "production catalog must equal the approved explicit catalog");
@@ -241,7 +245,7 @@ assert.equal(preview.notSaved, true);
 const previewHtml = context.api.buildDropsNotOperationalEditorHtml({...validDraft, preview});
 assert.match(previewHtml, /data-sde-drops-registration-preview/);
 assert.match(previewHtml, /Ikke lagret/);
-assert.match(previewHtml, /Lagring aktiveres i neste fase/);
+assert.match(previewHtml, /Lagring er ikke tilgjengelig her/);
 assert.match(previewHtml, /disabled/);
 assert.match(previewHtml, /Registreres ved serverbekreftet lagring/);
 assert.doesNotMatch(previewHtml, /registeredAt|serverregistrert/i);
