@@ -313,12 +313,11 @@ async function main(){
     });
   });
 
-  await check("35 zero faults is accepted without disposition escalation", async () => {
+  await check("35 zero authoritative faults is rejected without write", async () => {
     await withFixture(async (fixture) => {
       const response = await postCommand(fixture, validPayload({ vehicleId: "69-38", faults: [] }), "drops");
-      assert.equal(response.status, 201);
-      assert.deepEqual(response.json.faults, []);
-      assert.equal(response.json.disposition, "NONE");
+      assertError(response, 409, "active_fault_required");
+      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, emptyCounts());
     });
   });
 
@@ -340,11 +339,11 @@ async function main(){
       const response = await postCommand(fixture, body, "drops");
       const snapshot = fixture.repository.getStorageSnapshot();
       assert.equal(response.status, 201);
-      assert.equal(snapshot.records[0].actorSubject, FIXED_SUBJECT);
-      assert.equal(snapshot.events[0].actorSubject, FIXED_SUBJECT);
-      assert.equal(snapshot.events[0].identitySource, "cloudflare_access_jwt");
-      assert.equal(snapshot.events[0].roleBindingSource, "server_config");
-      assert.equal(snapshot.events[0].commandType, COMMAND_NAME);
+      assert.equal(snapshot.records[0].last_actor, FIXED_SUBJECT);
+      assert.equal(snapshot.events[0].actor_subject, FIXED_SUBJECT);
+      assert.equal(snapshot.events[0].identity_source, "cloudflare_access_jwt");
+      assert.equal(snapshot.events[0].role_binding_source, "server_config");
+      assert.equal(snapshot.events[0].command_type, COMMAND_NAME);
     });
   });
 
@@ -383,11 +382,7 @@ async function main(){
       assert.equal(replay.json.idempotentReplay, true);
       assert.equal(replay.json.eventId, first.json.eventId);
       assert.equal(replay.json.revision, 1);
-      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, {
-        records: 1,
-        events: 1,
-        idempotency: 1
-      });
+      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, legacyCounts(2));
     });
   });
 
@@ -397,11 +392,7 @@ async function main(){
       await postCommand(fixture, body, "drops");
       const conflict = await postCommand(fixture, { ...body, vehicleId: "74-11" }, "drops");
       assertError(conflict, 409, "action_id_payload_conflict");
-      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, {
-        records: 1,
-        events: 1,
-        idempotency: 1
-      });
+      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, legacyCounts(1));
     });
   });
 
@@ -422,18 +413,14 @@ async function main(){
         expectedRevision: 1
       }), "drops");
       assertError(response, 409, "status_already_not_operational");
-      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, {
-        records: 1,
-        events: 1,
-        idempotency: 1
-      });
+      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, legacyCounts(1));
     });
   });
 
   await check("43 injected transaction failure rolls back record event and idempotency", async () => {
     await withFixture(async (fixture) => {
       fixture.repository.setFailureInjector((stage) => {
-        if(stage === "after_event_insert") throw new Error("controlled repository failure");
+        if(stage === "before_commit") throw new Error("controlled repository failure");
       });
       const response = await postCommand(fixture, validPayload(), "drops");
       assertError(response, 500, "vehicle_status_command_failed");
@@ -449,11 +436,7 @@ async function main(){
         postCommand(fixture, validPayload({ actionId: crypto.randomUUID() }), "drops")
       ]);
       assert.deepEqual([first.status, second.status].sort(), [201, 409]);
-      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, {
-        records: 1,
-        events: 1,
-        idempotency: 1
-      });
+      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, legacyCounts(1));
     });
   });
 
@@ -645,7 +628,27 @@ function assertError(response, status, code){
 }
 
 function emptyCounts(){
-  return { records: 0, events: 0, idempotency: 0 };
+  return {
+    records: 0,
+    events: 0,
+    idempotency: 0,
+    cases: 0,
+    faults: 0,
+    repairRequests: 0,
+    notifications: 0
+  };
+}
+
+function legacyCounts(faults){
+  return {
+    records: 1,
+    events: 1,
+    idempotency: 1,
+    cases: 1,
+    faults,
+    repairRequests: 0,
+    notifications: 0
+  };
 }
 
 async function startIndexServer(options = {}){

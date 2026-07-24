@@ -608,16 +608,21 @@ async function main(){
     assert.equal(result.diagnostics.includes("role_binding_duplicate_binding_id"), true);
   });
 
-  await roleBindingCheck("16 one subject cannot have multiple active roles", async () => {
+  await roleBindingCheck("16 one binding can carry explicit multiple roles", async () => {
     const result = identityRoleBindings.validateIdentityRoleBindingsCatalog({
       bindings: [
-        { bindingId: "multi-role-a", subject: "same-subject", role: "drops", enabled: true },
-        { bindingId: "multi-role-b", subject: "same-subject", role: "txp", enabled: true }
+        {
+          bindingId: "multi-role",
+          subject: "same-subject",
+          roles: ["verksted", "drops"],
+          enabled: true
+        }
       ]
     });
-    assert.equal(result.valid, false);
-    assert.deepEqual(result.bindings, []);
-    assert.equal(result.diagnostics.includes("role_binding_active_subject_multiple_roles"), true);
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.bindings[0].roles, ["drops", "verksted"]);
+    assert.equal(result.bindings[0].role, null);
+    assert.deepEqual(result.diagnostics, []);
   });
 
   const secondRoleHandlerServer = await startHandlerServer(createAccessIdentitySessionHandler({
@@ -651,11 +656,11 @@ async function main(){
       }
     });
 
-    await roleBindingCheck("25 response contains at most one role", async () => {
+    await roleBindingCheck("25 response contains explicit unique roles only", async () => {
       const response = await requestJson(secondRoleHandlerServer.port, "GET", "/api/auth/session", undefined, {
         "Cf-Access-Jwt-Assertion": validToken
       });
-      assert.equal(response.body.roles.length, 1);
+      assert.equal(response.body.roles.length > 0, true);
       assert.equal(new Set(response.body.roles).size, response.body.roles.length);
     });
 

@@ -623,6 +623,15 @@ registerHarnessTest({
   baseline: "c51d588ffeabca933a2646fa52d001de02e6eb7d",
 });
 
+test("DROPS-VERKSTED-2B — full authoritative vehicle lifecycle remains atomic and role-bound", () => {
+  assertPassed(
+    run(process.execPath, [
+      path.join(root, "server", "scripts", "test-vehicle-status-lifecycle-v2.js"),
+    ]),
+    "DROPS-VERKSTED-2B server lifecycle contract",
+  );
+});
+
 test("TURSATT-UI — baked label remains seamless without an obscuring CSS backplate", () => {
   const buttonRule = currentHtml.match(/\.segmented button\.seg-tursatt-graphic\{([^}]*)\}/)?.[1] || "";
   const imageRule = currentHtml.match(/\.seg-tursatt-graphic__image\{([^}]*)\}/)?.[1] || "";

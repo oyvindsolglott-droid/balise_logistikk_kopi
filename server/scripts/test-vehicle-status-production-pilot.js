@@ -154,10 +154,14 @@ async function main(){
   await check("12 production repository creates only isolated vehicle-status tables", async () => {
     await withFixture(async (fixture) => {
       assert.deepEqual(sqliteTables(fixture.databasePath), [
+        "vehicle_status_cases",
         "vehicle_status_command_events",
         "vehicle_status_command_idempotency",
         "vehicle_status_command_meta",
-        "vehicle_status_command_records"
+        "vehicle_status_command_records",
+        "vehicle_status_faults",
+        "vehicle_status_repair_requests",
+        "vehicle_status_role_notifications"
       ]);
       assert.deepEqual(fixture.repository.getStorageSnapshot().counts, emptyCounts());
       const readOnlyRepository = createVehicleStatusRepository({
@@ -212,11 +216,7 @@ async function main(){
       assert.equal(response.status, 201);
       assert.equal(response.json.vehicleId, "74-10");
       assert.equal(response.json.status, "IKKE_DRIFTSKLAR");
-      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, {
-        records: 1,
-        events: 1,
-        idempotency: 1
-      });
+      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, legacyCounts(1));
     });
   });
 
@@ -247,11 +247,7 @@ async function main(){
       assert.equal(replay.status, 200);
       assert.equal(replay.json.idempotentReplay, true);
       assert.equal(replay.json.eventId, first.json.eventId);
-      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, {
-        records: 1,
-        events: 1,
-        idempotency: 1
-      });
+      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, legacyCounts(1));
     });
   });
 
@@ -283,11 +279,7 @@ async function main(){
         vehicleId: "74-11"
       }), "drops");
       assert.equal(response.status, 404);
-      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, {
-        records: 1,
-        events: 1,
-        idempotency: 1
-      });
+      assert.deepEqual(fixture.repository.getStorageSnapshot().counts, legacyCounts(1));
     });
   });
 
@@ -442,7 +434,27 @@ function assertError(response, status, error){
 }
 
 function emptyCounts(){
-  return { records: 0, events: 0, idempotency: 0 };
+  return {
+    records: 0,
+    events: 0,
+    idempotency: 0,
+    cases: 0,
+    faults: 0,
+    repairRequests: 0,
+    notifications: 0
+  };
+}
+
+function legacyCounts(faults){
+  return {
+    records: 1,
+    events: 1,
+    idempotency: 1,
+    cases: 1,
+    faults,
+    repairRequests: 0,
+    notifications: 0
+  };
 }
 
 function tempDatabasePath(label){

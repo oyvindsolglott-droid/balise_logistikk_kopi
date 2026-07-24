@@ -134,13 +134,27 @@ async function main(){
     );
   });
 
-  await check("14 multiple roles are denied", () => {
+  await check("14 explicit multiple roles use union without inheritance", () => {
     const result = evaluateRuntimeAuthorization({
       identity: humanIdentity,
       roleResult: { roleResolved: true, roles: [ROLE_KEYS.DROPS, ROLE_KEYS.VERKSTED] },
       capability: CAPABILITY_IDS.READ
     });
-    assertDenied(result, "exactly_one_role_required");
+    assertAllowed(result);
+    assert.deepEqual(result.roles, [ROLE_KEYS.DROPS, ROLE_KEYS.VERKSTED]);
+    assert.deepEqual(result.capabilitySourceRoles, [ROLE_KEYS.DROPS, ROLE_KEYS.VERKSTED]);
+    const dropsWrite = evaluateRuntimeAuthorization({
+      identity: humanIdentity,
+      roleResult: { roleResolved: true, roles: [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS] },
+      capability: CAPABILITY_IDS.REPORT_NOT_OPERATIONAL
+    });
+    assertAllowed(dropsWrite);
+    assert.deepEqual(dropsWrite.capabilitySourceRoles, [ROLE_KEYS.DROPS]);
+    assertDenied(evaluateRuntimeAuthorization({
+      identity: humanIdentity,
+      roleResult: { roleResolved: true, roles: [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS] },
+      capability: CAPABILITY_IDS.REPORT_OPERATIONAL
+    }), "role_not_allowed");
   });
 
   await check("15 unknown role is denied", () => {

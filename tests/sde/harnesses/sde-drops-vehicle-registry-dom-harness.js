@@ -7,6 +7,8 @@ const vm = require("node:vm");
 
 const sourcePath = path.resolve(process.argv[2] || path.join(__dirname, "../../../index.html"));
 const source = fs.readFileSync(sourcePath, "utf8");
+const vehicleRegistryTotalMatch = source.match(/const DROPS_VEHICLE_REGISTRY_TOTAL\s*=\s*(\d+)\s*;/);
+assert.ok(vehicleRegistryTotalMatch, "missing production vehicle registry total");
 
 const expectedCatalog = Object.freeze({
   "69": Object.freeze([
@@ -116,6 +118,7 @@ for (const forbidden of [
 const context = {
   console,
   Date,
+  DROPS_VEHICLE_REGISTRY_TOTAL: Number(vehicleRegistryTotalMatch[1]),
   escapeHtml(value) {
     return String(value ?? "")
       .replaceAll("&", "&amp;")
@@ -199,11 +202,28 @@ assert.deepEqual(preview.faults[0], { priority: 1, category: "A2", description: 
 
 const payload = JSON.parse(JSON.stringify(api.buildDropsReportNotOperationalPayload(
   { ...vehicleADraft, actionId: "11111111-1111-4111-8111-111111111111" },
-  { revision: 7 },
+  {
+    items: [{
+      vehicleId: "74-10",
+      statusRevision: 7,
+      activeFaults: [{
+        faultId: "fault-74-10-1",
+        slot: 1,
+        category: "A2",
+        description: "  Dørfeil behold mellomrom  ",
+        status: "ACTIVE",
+      }],
+    }],
+  },
 )));
 assert.deepEqual(Object.keys(payload).sort(), ["actionId", "expectedRevision", "faults", "vehicleId"]);
 assert.equal(payload.expectedRevision, 7);
-assert.deepEqual(payload.faults, [{ priority: 1, category: "A2", description: "Dørfeil behold mellomrom" }]);
+assert.deepEqual(payload.faults, [{
+  faultId: "fault-74-10-1",
+  slot: 1,
+  category: "A2",
+  description: "Dørfeil behold mellomrom",
+}]);
 
 const editedAfterRegistration = api.updateDropsNotOperationalFault(vehicleADraft, 0, "description", "Ny tekst");
 assert.equal(editedAfterRegistration.faults[0].registered, false, "editing a registered draft row must invalidate its local registration");
@@ -221,7 +241,8 @@ assert.equal((sheetHtml.match(/data-sde-drops-fault-description="\d+"/g) || []).
 assert.equal((sheetHtml.match(/data-sde-drops-register-fault="\d+"/g) || []).length, 5);
 assert.equal((sheetHtml.match(/data-sde-drops-order-repair="\d+"/g) || []).length, 5);
 assert.equal((sheetHtml.match(/data-sde-drops-order-repair="\d+"[^>]*disabled/g) || []).length, 5);
-assert.match(sheetHtml, /Stadler-integrasjon ikke aktivert/);
+assert.match(sheetHtml, /Sendes bare for en aktiv, serverregistrert feil/);
+assert.doesNotMatch(sheetHtml, /Stadler-integrasjon ikke aktivert/);
 assert.match(sheetHtml, /Ikke lagret/);
 assert.equal((sheetHtml.match(/data-sde-drops-submit-not-operational/g) || []).length, 1);
 assert.match(sheetHtml, /Registrer Ikke Driftsklar/);
@@ -265,7 +286,7 @@ console.log(JSON.stringify({
   compactSelectors: true,
   activeSheets: 1,
   fixedFaultRows: 5,
-  stadlerIntegration: "inactive",
+  repairLifecycle: "server-authoritative",
   localDraftAuthority: false,
   confirmedByGet: true,
 }));
