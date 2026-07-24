@@ -7878,6 +7878,118 @@ button{padding:12px 12px}
   font-size:12px;
   line-height:1.55;
 }
+.drops-vehicle-authoritative-sheet li{
+  margin:8px 0;
+}
+.drops-vehicle-authoritative-sheet li.is-resolved{
+  color:#475569;
+  text-decoration:none;
+  opacity:.78;
+}
+.drops-vehicle-authoritative-sheet li button,
+.drops-authoritative-actions button,
+.workshop-vehicle-status button{
+  min-height:36px;
+  margin:6px 0 0;
+  border:1px solid #1d4ed8;
+  border-radius:10px;
+  padding:7px 10px;
+  background:linear-gradient(180deg,#3b82f6,#1d4ed8);
+  color:#fff;
+  font:900 11px/1.2 inherit;
+  cursor:pointer;
+}
+.drops-vehicle-authoritative-sheet li button:disabled,
+.drops-authoritative-actions button:disabled,
+.workshop-vehicle-status button:disabled{
+  border-color:#94a3b8;
+  background:#e2e8f0;
+  color:#64748b;
+  cursor:not-allowed;
+}
+.drops-not-operational-local-registration.is-authoritative{
+  border-color:#86efac;
+  background:#f0fdf4;
+  color:#166534;
+}
+.workshop-vehicle-status{
+  min-width:0;
+  padding:18px;
+  border:2px solid #dc2626;
+  border-radius:18px;
+  background:linear-gradient(180deg,#fff1f2,#fee2e2);
+  color:#7f1d1d;
+}
+.workshop-vehicle-status.is-operational{
+  border-color:#22c55e;
+  background:linear-gradient(180deg,#f0fdf4,#dcfce7);
+  color:#14532d;
+}
+.workshop-vehicle-status h3,
+.workshop-vehicle-status h4{ margin:0 0 8px; }
+.workshop-vehicle-status h4{ margin-top:16px; }
+.vehicle-status-disposition{
+  display:inline-block;
+  margin-left:8px;
+  border-radius:999px;
+  padding:4px 8px;
+  background:#fef3c7;
+  color:#92400e;
+  font-weight:950;
+}
+.sporplan-vehicle-status-host{
+  position:absolute;
+  top:28px;
+  right:3px;
+  z-index:5;
+  display:grid;
+  justify-items:end;
+  gap:2px;
+  pointer-events:none;
+}
+.sporplan-vehicle-status{
+  display:inline-flex;
+  align-items:center;
+  gap:3px;
+  max-width:100%;
+  border:1px solid rgba(255,255,255,.58);
+  border-radius:999px;
+  padding:2px 4px;
+  background:#7f1d1d;
+  color:#fff;
+  font-size:7px;
+  font-weight:950;
+  line-height:1.1;
+  box-shadow:0 2px 4px rgba(0,0,0,.35);
+}
+.sporplan-vehicle-status.is-operational{ background:#166534; }
+.sporplan-vehicle-disposition{ color:#fde68a; }
+.vehicle-status-notification-host{
+  position:fixed;
+  right:18px;
+  bottom:18px;
+  z-index:5000;
+  width:min(360px,calc(100vw - 28px));
+}
+.vehicle-status-notification-popup{
+  display:grid;
+  gap:8px;
+  padding:16px;
+  border:2px solid #f59e0b;
+  border-radius:16px;
+  background:#0f172a;
+  color:#fff;
+  box-shadow:0 18px 50px rgba(15,23,42,.42);
+}
+.vehicle-status-notification-popup > button:first-child{
+  justify-self:end;
+}
+.vehicle-status-notification-host.audio-blocked .vehicle-status-notification-popup::after{
+  content:"Lyd kunne ikke spilles – visuelt varsel er aktivt";
+  color:#fde68a;
+  font-size:10px;
+  font-weight:800;
+}
 @media(max-width:1100px){
   .drops-vehicle-groups{ grid-template-columns:repeat(2,minmax(0,1fr)); }
   .drops-not-operational-fault-row{
@@ -7922,6 +8034,12 @@ button{padding:12px 12px}
   .drops-standard-sheet-status{ width:100%; text-align:left; }
   .drops-not-operational-close{ justify-self:start; }
   .drops-not-operational-editor-actions{ grid-template-columns:minmax(0,1fr); }
+}
+@media(max-width:390px){
+  .drops-vehicle-selector-grid{ grid-template-columns:minmax(0,1fr); }
+  .drops-standard-sheet-toolbar{ align-items:flex-start; }
+  .drops-standard-sheet-toolbar > strong{ white-space:normal; }
+  .vehicle-status-notification-host{ right:10px; bottom:10px; width:calc(100vw - 20px); }
 }
 
 </style>
@@ -8178,52 +8296,11 @@ button{padding:12px 12px}
 <div class="drops-shell">
   <div class="drops-hero">
     <div class="drops-eyebrow">Kun for verksted</div>
-    <div class="drops-title">Bestillinger fra verksted</div>
-    <p class="drops-sub">Her registrerer verksted bestilling på materiell inn til verksted/DROPS: tidspunkt for mottak, kjøretøynummer, ønsket spor og hva som skal utbedres eller ettersees.</p>
-    <div class="drops-warning">Adgangsmerking: Verkstedside – ikke øvrig trafikkstyring</div>
+    <div class="drops-title">Autoritativ kjøretøylivssyklus</div>
+    <p class="drops-sub">Verksted ser registrerte feil og utbedringsbestillinger fra serveren, og kan sette et kontrollert kjøretøy Driftsklart.</p>
+    <div class="drops-warning">Adgangsmerking: Verkstedside – alle statuser bekreftes med fersk server-readback</div>
   </div>
-
-  <div class="drops-grid">
-    <div class="drops-card">
-      <h3>Ny verkstedbestilling</h3>
-      <form class="drops-form" id="verkstedBestillingForm">
-        <div class="drops-form-row">
-          <div class="drops-field">
-            <label for="verkstedReadyTime">Ønsket mottakstid i verksted</label>
-            <input id="verkstedReadyTime" type="time" required>
-          </div>
-          <div class="drops-field">
-            <label for="verkstedVehicle">Kjøretøy nr.</label>
-            <input id="verkstedVehicle" type="text" placeholder="f.eks. 74-20" required>
-            <div class="vehicle-validation-message" id="verkstedVehicleValidation"></div>
-          </div>
-        </div>
-        <div class="drops-field">
-          <label for="verkstedTrack">Ønsket verkstedspor</label>
-          <select id="verkstedTrack" required>
-            <option value="">Velg spor</option>
-            <option value="7N">7N</option>
-            <option value="7S">7S</option>
-            <option value="8N">8N</option>
-            <option value="8S">8S</option>
-            <option value="7SS">7SS</option>
-            <option value="8SS">8SS</option>
-            <option value="Annet/avklares">Annet / avklares</option>
-          </select>
-        </div>
-        <div class="drops-field">
-          <label for="verkstedWork">Hva skal utbedres eller ettersees?</label>
-          <textarea id="verkstedWork" placeholder="Beskriv arbeid, kontrollpunkt eller ettersyn..." required></textarea>
-        </div>
-        <button class="drops-primary-btn" type="submit">Legg inn bestilling</button>
-      </form>
-    </div>
-
-    <div class="drops-card">
-      <h3>Aktive verkstedbestillinger</h3>
-      <div class="drops-list" id="verkstedBestillingListe"></div>
-    </div>
-  </div>
+  <div id="workshopVehicleRegistry" class="drops-vehicle-registry workshop-vehicle-registry" data-sde-workshop-vehicle-registry></div>
 </div>
 </section>
 
@@ -13867,6 +13944,7 @@ function buildSporplan(){
               ? `${escapeHtml(info.mat)}<br><span style="display:block;color:#fde68a;font-size:1.05em;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.85);">${escapeHtml(departureLabel)}</span>`
               : escapeHtml(info.mat));
         html += `<span class="slot-bottom mat" title="${escapeHtml(invalidVehicleMessage || duplicateVehicleMessage)}">${matText}</span>`;
+        html += `<span class="sporplan-vehicle-status-host" data-sde-sporplan-vehicle-status data-vehicle-text="${escapeHtml(info.mat)}">${buildSporplanVehicleStatusBadgesHtml(dropsVehicleStatusReadback || {},info.mat)}</span>`;
       }
 
       if(filled && planMarker?.from?.length){
@@ -13941,6 +14019,7 @@ function buildSporplan(){
               ? `${escapeHtml(info.mat)}<br><span style="display:block;color:#fde68a;font-size:1.05em;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.85);">${escapeHtml(departureLabel)}</span>`
               : escapeHtml(info.mat));
         html += `<span class="slot-bottom mat" title="${escapeHtml(invalidVehicleMessage || duplicateVehicleMessage)}">${matText}</span>`;
+        html += `<span class="sporplan-vehicle-status-host" data-sde-sporplan-vehicle-status data-vehicle-text="${escapeHtml(info.mat)}">${buildSporplanVehicleStatusBadgesHtml(dropsVehicleStatusReadback || {},info.mat)}</span>`;
       }
 
       div.innerHTML=html;
@@ -44632,6 +44711,10 @@ function getDropsVehicleCatalog(){
   });
 }
 
+const DROPS_VEHICLE_REGISTRY_TOTAL = 176;
+const DROPS_GRAPHIC_ASSET_CONTRACT = "assets/drops-inline-production-graphic";
+const TURSATT_OCCURRENCE_CONTRACT = "80818";
+
 function getDropsNotOperationalFaultCategories(){
   return Object.freeze(["A1","A2","A3","A4","A5","A6"]);
 }
@@ -44743,11 +44826,16 @@ function buildDropsNotOperationalPreview(draft){
 
 function getDropsReportNotOperationalAvailability(readback,capabilities){
   const capability = capabilities?.capabilities?.["vehicle_status.report_not_operational"];
+  const resolvedRoles = Array.isArray(capabilities?.roles)
+    ? capabilities.roles
+    : (Array.isArray(capabilities?.roleSource?.roles)
+      ? capabilities.roleSource.roles
+      : [capabilities?.role].filter(Boolean));
   const available = readback?.ok === true &&
     readback?.writeEnabled === true &&
     capabilities?.ok === true &&
     capabilities?.roleResolved === true &&
-    capabilities?.role === "drops" &&
+    resolvedRoles.includes("drops") &&
     capability?.allowed === true &&
     capability?.decision === "ALLOW";
   return {
@@ -44761,15 +44849,23 @@ function createDropsNotOperationalActionId(){
 }
 
 function buildDropsReportNotOperationalPayload(draft,readback){
+  const vehicleId = String(draft?.vehicle || "");
+  const record = (Array.isArray(readback?.items) ? readback.items : [])
+    .find(item=>String(item?.vehicleId || "") === vehicleId) || null;
+  const authoritativeFaults = Array.isArray(record?.activeFaults)
+    ? record.activeFaults
+    : (Array.isArray(readback?.faults)
+      ? readback.faults.filter(fault=>fault?.vehicleId === vehicleId)
+      : []);
   return {
     actionId:String(draft?.actionId || ""),
-    expectedRevision:Number.isInteger(readback?.revision) ? readback.revision : 0,
-    vehicleId:String(draft?.vehicle || ""),
-    faults:(Array.isArray(draft?.faults) ? draft.faults : [])
-      .filter(fault=>String(fault?.category || "") !== "" && String(fault?.description ?? "").trim() !== "")
-      .filter(fault=>fault?.registered === true)
+    expectedRevision:Number.isInteger(record?.statusRevision) ? record.statusRevision : 0,
+    vehicleId,
+    faults:authoritativeFaults
+      .filter(fault=>fault?.status === "ACTIVE")
       .map(fault=>({
-        priority:(Array.isArray(draft?.faults) ? draft.faults : []).indexOf(fault) + 1,
+        faultId:String(fault.faultId || ""),
+        slot:Number(fault.slot),
         category:String(fault.category),
         description:String(fault.description).trim()
       }))
@@ -44841,6 +44937,16 @@ function submitDropsNotOperationalDraftWithReadback(draft,readback,capabilities,
     const alreadyConfirmed = confirmedResult(latestBeforePost);
     if(alreadyConfirmed) return alreadyConfirmed;
     const payload = buildDropsReportNotOperationalPayload(pendingDraft,latestBeforePost);
+    if(!payload.faults.length){
+      return {
+        ok:false,
+        error:"authoritative_faults_required",
+        status:409,
+        draft:{...pendingDraft,submitting:false,submitError:"Registrer minst én feil på serveren og vent på bekreftet readback før statusen endres."},
+        readback:latestBeforePost,
+        confirmedByReadback:false
+      };
+    }
     const response = await fetchImpl("/api/vehicle-status/commands/report-not-operational",{
       method:"POST",
       headers:{"Content-Type":"application/json",Accept:"application/json"},
@@ -44900,6 +45006,256 @@ function submitDropsNotOperationalDraftWithReadback(draft,readback,capabilities,
   })();
 }
 
+function buildDropsRegisterFaultPayload(draft,index,readback,actionId=""){
+  const vehicleId = String(draft?.vehicle || "");
+  const record = getDropsVehicleStatusRecord(readback,vehicleId);
+  const vehicleCase = (Array.isArray(readback?.cases) ? readback.cases : [])
+    .find(item=>item?.vehicleId === vehicleId);
+  const fault = (Array.isArray(draft?.faults) ? draft.faults : [])[index] || {};
+  return {
+    actionId:String(actionId || draft?.registerActionIds?.[index] || ""),
+    expectedCaseRevision:Number.isInteger(record?.caseRevision)
+      ? record.caseRevision
+      : (Number.isInteger(vehicleCase?.caseRevision) ? vehicleCase.caseRevision : 0),
+    vehicleId,
+    slot:index + 1,
+    category:String(fault?.category || ""),
+    description:String(fault?.description || "").trim()
+  };
+}
+
+function submitDropsRegisterFaultWithReadback(draft,index,readback,capabilities,fetchImpl,actionIdFactory=createDropsNotOperationalActionId){
+  return (async()=>{
+    const capability = capabilities?.capabilities?.["vehicle_status.register_fault"];
+    const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [capabilities?.role].filter(Boolean);
+    if(readback?.ok !== true || readback?.writeEnabled !== true || !roles.includes("drops") || capability?.allowed !== true){
+      return {ok:false,error:"command_unavailable",status:404,draft,readback,confirmedByReadback:false};
+    }
+    const actionId = String(draft?.registerActionIds?.[index] || actionIdFactory());
+    const readJson = async response=>response?.json ? response.json().catch(()=>({})) : {};
+    const getReadback = async()=>{
+      const response = await fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"});
+      const json = await readJson(response);
+      if(!response?.ok || json?.ok !== true) throw Object.assign(new Error("readback_failed"),{status:Number(response?.status || 0)});
+      return json;
+    };
+    try{
+      const before = await getReadback();
+      const payload = buildDropsRegisterFaultPayload(draft,index,before,actionId);
+      const response = await fetchImpl("/api/vehicle-status/commands/register-fault",{
+        method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},
+        body:JSON.stringify(payload),credentials:"same-origin"
+      });
+      const body = await readJson(response);
+      if(!response?.ok){
+        const latest = response?.status === 409 ? await getReadback().catch(()=>before) : before;
+        return {ok:false,error:String(body?.error || "command_rejected"),status:Number(response?.status || 0),draft,readback:latest,confirmedByReadback:false};
+      }
+      const after = await getReadback();
+      const record = getDropsVehicleStatusRecord(after,payload.vehicleId);
+      const fault = (Array.isArray(record?.activeFaults)
+        ? record.activeFaults
+        : (Array.isArray(after?.faults) ? after.faults.filter(item=>item?.vehicleId === payload.vehicleId) : []))
+        .find(item=>Number(item?.slot) === payload.slot && item?.status === "ACTIVE");
+      if(!fault?.faultId || !fault?.registeredAt){
+        return {ok:false,error:"readback_confirmation_missing",status:500,draft,readback:after,confirmedByReadback:false};
+      }
+      return {ok:true,status:200,draft,readback:after,record,fault,confirmedByReadback:true};
+    }catch(unusedError){
+      const latest = await (async()=>{
+        try{return await getReadback();}catch(unusedReadbackError){return readback;}
+      })();
+      return {ok:false,error:"network_uncertain",status:0,draft,readback:latest,confirmedByReadback:false};
+    }
+  })();
+}
+
+function buildDropsRequestRepairPayload(vehicleId,fault,readback,actionId=""){
+  const record = getDropsVehicleStatusRecord(readback,vehicleId);
+  return {
+    actionId:String(actionId || ""),
+    expectedCaseRevision:Number.isInteger(record?.caseRevision) ? record.caseRevision : 0,
+    vehicleId:String(vehicleId || ""),
+    faultId:String(fault?.faultId || "")
+  };
+}
+
+function submitDropsRequestRepairWithReadback(vehicleId,fault,readback,capabilities,fetchImpl,actionIdFactory=createDropsNotOperationalActionId){
+  return (async()=>{
+    const capability = capabilities?.capabilities?.["vehicle_status.request_repair"];
+    const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [capabilities?.role].filter(Boolean);
+    if(readback?.ok !== true || readback?.writeEnabled !== true || !roles.includes("drops") || capability?.allowed !== true){
+      return {ok:false,error:"command_unavailable",status:404,readback,confirmedByReadback:false};
+    }
+    const actionId = String(actionIdFactory());
+    const readJson = async response=>response?.json ? response.json().catch(()=>({})) : {};
+    const getReadback = async()=>{
+      const response = await fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"});
+      const json = await readJson(response);
+      if(!response?.ok || json?.ok !== true) throw new Error("readback_failed");
+      return json;
+    };
+    try{
+      const before = await getReadback();
+      const payload = buildDropsRequestRepairPayload(vehicleId,fault,before,actionId);
+      const response = await fetchImpl("/api/vehicle-status/commands/request-repair",{
+        method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},
+        body:JSON.stringify(payload),credentials:"same-origin"
+      });
+      const body = await readJson(response);
+      if(!response?.ok) return {ok:false,error:String(body?.error || "command_rejected"),status:Number(response?.status || 0),readback:response?.status === 409 ? await getReadback().catch(()=>before) : before,confirmedByReadback:false};
+      const after = await getReadback();
+      const request = (Array.isArray(after?.repairRequests) ? after.repairRequests : [])
+        .find(item=>item?.vehicleId === vehicleId && item?.faultId === fault?.faultId && item?.status === "REQUESTED");
+      return request
+        ? {ok:true,status:200,readback:after,request,confirmedByReadback:true}
+        : {ok:false,error:"readback_confirmation_missing",status:500,readback:after,confirmedByReadback:false};
+    }catch(unusedError){
+      return {ok:false,error:"network_uncertain",status:0,readback,confirmedByReadback:false};
+    }
+  })();
+}
+
+function buildDropsMarkForTurningPayload(vehicleId,readback,actionId=""){
+  const record = getDropsVehicleStatusRecord(readback,vehicleId);
+  return {
+    actionId:String(actionId || ""),
+    expectedStatusRevision:Number.isInteger(record?.statusRevision) ? record.statusRevision : 0,
+    vehicleId:String(vehicleId || "")
+  };
+}
+
+function submitDropsMarkForTurningWithReadback(vehicleId,readback,capabilities,fetchImpl,actionIdFactory=createDropsNotOperationalActionId){
+  return (async()=>{
+    const capability = capabilities?.capabilities?.["vehicle_status.mark_for_turning"];
+    const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [capabilities?.role].filter(Boolean);
+    if(readback?.ok !== true || readback?.writeEnabled !== true || !roles.includes("drops") || capability?.allowed !== true){
+      return {ok:false,error:"command_unavailable",status:404,readback,confirmedByReadback:false};
+    }
+    const readJson = async response=>response?.json ? response.json().catch(()=>({})) : {};
+    const getReadback = async()=>{
+      const response = await fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"});
+      const json = await readJson(response);
+      if(!response?.ok || json?.ok !== true) throw new Error("readback_failed");
+      return json;
+    };
+    try{
+      const before = await getReadback();
+      const payload = buildDropsMarkForTurningPayload(vehicleId,before,actionIdFactory());
+      const response = await fetchImpl("/api/vehicle-status/commands/mark-for-turning",{
+        method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},
+        body:JSON.stringify(payload),credentials:"same-origin"
+      });
+      const body = await readJson(response);
+      if(!response?.ok) return {ok:false,error:String(body?.error || "command_rejected"),status:Number(response?.status || 0),readback:before,confirmedByReadback:false};
+      const after = await getReadback();
+      const record = getDropsVehicleStatusRecord(after,vehicleId);
+      return record?.workshopDisposition === "TIL_DREI"
+        ? {ok:true,status:200,readback:after,record,confirmedByReadback:true}
+        : {ok:false,error:"readback_confirmation_missing",status:500,readback:after,confirmedByReadback:false};
+    }catch(unusedError){
+      return {ok:false,error:"network_uncertain",status:0,readback,confirmedByReadback:false};
+    }
+  })();
+}
+
+function buildWorkshopReportOperationalPayload(vehicleId,readback,actionId=""){
+  const record = getDropsVehicleStatusRecord(readback,vehicleId);
+  return {
+    actionId:String(actionId || ""),
+    expectedStatusRevision:Number.isInteger(record?.statusRevision) ? record.statusRevision : 0,
+    expectedCaseRevision:Number.isInteger(record?.caseRevision) ? record.caseRevision : 0,
+    vehicleId:String(vehicleId || "")
+  };
+}
+
+function submitWorkshopReportOperationalWithReadback(vehicleId,readback,capabilities,fetchImpl,actionIdFactory=createDropsNotOperationalActionId){
+  return (async()=>{
+    const capability = capabilities?.capabilities?.["vehicle_status.report_operational"];
+    const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [capabilities?.role].filter(Boolean);
+    if(readback?.ok !== true || readback?.writeEnabled !== true || !roles.includes("verksted") || capability?.allowed !== true){
+      return {ok:false,error:"command_unavailable",status:404,readback,confirmedByReadback:false};
+    }
+    const readJson = async response=>response?.json ? response.json().catch(()=>({})) : {};
+    const getReadback = async()=>{
+      const response = await fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"});
+      const json = await readJson(response);
+      if(!response?.ok || json?.ok !== true) throw new Error("readback_failed");
+      return json;
+    };
+    try{
+      const before = await getReadback();
+      const payload = buildWorkshopReportOperationalPayload(vehicleId,before,actionIdFactory());
+      const response = await fetchImpl("/api/vehicle-status/commands/report-operational",{
+        method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},
+        body:JSON.stringify(payload),credentials:"same-origin"
+      });
+      const body = await readJson(response);
+      if(!response?.ok) return {ok:false,error:String(body?.error || "command_rejected"),status:Number(response?.status || 0),readback:response?.status === 409 ? await getReadback().catch(()=>before) : before,confirmedByReadback:false};
+      const after = await getReadback();
+      const record = getDropsVehicleStatusRecord(after,vehicleId);
+      return record?.currentStatus === "DRIFTSKLAR" && record?.workshopDisposition !== "TIL_DREI"
+        ? {ok:true,status:200,readback:after,record,confirmedByReadback:true}
+        : {ok:false,error:"readback_confirmation_missing",status:500,readback:after,confirmedByReadback:false};
+    }catch(unusedError){
+      return {ok:false,error:"network_uncertain",status:0,readback,confirmedByReadback:false};
+    }
+  })();
+}
+
+function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",readback={},capabilities={},sheetCollapsed=false){
+  const esc = value=>String(value ?? "").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+  const catalog = typeof getDropsVehicleCatalog === "function" ? getDropsVehicleCatalog() : {};
+  const series = Object.hasOwn(catalog,String(selectedSeries || "")) ? String(selectedSeries) : "";
+  const vehicles = series ? catalog[series] : [];
+  const vehicleId = vehicles.includes(String(selectedVehicle || "")) ? String(selectedVehicle) : "";
+  const record = (Array.isArray(readback?.items) ? readback.items : []).find(item=>item?.vehicleId === vehicleId) || null;
+  const faults = Array.isArray(readback?.faults) ? readback.faults.filter(item=>item?.vehicleId === vehicleId) : [];
+  const repairRequests = Array.isArray(readback?.repairRequests) ? readback.repairRequests.filter(item=>item?.vehicleId === vehicleId) : [];
+  const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [capabilities?.role].filter(Boolean);
+  const reportOperationalAvailable = roles.includes("verksted") &&
+    capabilities?.capabilities?.["vehicle_status.report_operational"]?.allowed === true &&
+    record?.currentStatus === "IKKE_DRIFTSKLAR";
+  const operationalActionDisabled = !reportOperationalAvailable;
+  const seriesOptions = [`<option value="">Velg serie</option>`]
+    .concat(Object.entries(catalog).map(([key,list])=>`<option value="${key}"${key === series ? " selected" : ""}>Serie ${key} · ${list.length} kjøretøy</option>`)).join("");
+  const vehicleOptions = [`<option value="">Velg kjøretøy</option>`]
+    .concat(vehicles.map(value=>`<option value="${esc(value)}"${value === vehicleId ? " selected" : ""}>${esc(value)}</option>`)).join("");
+  const faultHtml = faults.length ? `<ol>${faults.map(fault=>`<li><strong>${esc(fault.category)}</strong> ${esc(fault.description)} <span>${esc(fault.status)}</span></li>`).join("")}</ol>` : `<p>Ingen registrerte feil.</p>`;
+  const requestHtml = repairRequests.length ? `<ul>${repairRequests.map(request=>`<li>${esc(request.status)} · ${esc(request.faultId)}</li>`).join("")}</ul>` : `<p>Ingen utbedringsbestillinger.</p>`;
+  const sheet = vehicleId ? `<div class="drops-standard-sheet-toolbar"><strong>Standardark · Kjøretøy ${esc(vehicleId)}</strong><button type="button" data-sde-workshop-toggle-standard-sheet aria-expanded="${sheetCollapsed ? "false" : "true"}"><span>${sheetCollapsed ? "Åpne ark" : "Kollaps ark"}</span><span aria-hidden="true">⌃</span></button></div>
+    <div data-sde-workshop-standard-sheet${sheetCollapsed ? " hidden" : ""}>
+      <section class="workshop-vehicle-status ${record?.currentStatus === "DRIFTSKLAR" ? "is-operational" : "is-not-operational"}">
+        <h3>${esc(vehicleId)}</h3><strong>${esc(record?.currentStatus || "DRIFTSKLAR")}</strong>
+        ${record?.workshopDisposition === "TIL_DREI" ? `<span class="vehicle-status-disposition">TIL DREI</span>` : ""}
+        ${record?.operationalAt ? `<time datetime="${esc(record.operationalAt)}">${esc(record.operationalAt)}</time>` : ""}
+        <h4>Feil</h4>${faultHtml}<h4>Utbedringsbestillinger</h4>${requestHtml}
+        <button type="button" data-sde-workshop-report-operational${operationalActionDisabled ? " disabled aria-disabled=\"true\"" : ""}>${record?.currentStatus === "DRIFTSKLAR" && record?.operationalAt ? "Registrert Driftsklar" : "Registrer Driftsklar"}</button>
+      </section>
+    </div>` : `<div class="drops-standard-sheet-empty">Velg serie og kjøretøy.</div>`;
+  return `<section data-sde-workshop-registry-content>
+    <div class="drops-vehicle-registry-header"><div class="drops-vehicle-registry-title"><h2>Kjøretøy</h2><p>Autoritativ verksted-readback for 176 kjøretøy.</p></div><div class="drops-vehicle-registry-total">176 kjøretøy</div></div>
+    <div class="drops-vehicle-selector-grid"><label class="drops-vehicle-selector"><span>Serie</span><select data-sde-workshop-series-select>${seriesOptions}</select></label><label class="drops-vehicle-selector"><span>Kjøretøy</span><select data-sde-workshop-vehicle-select${series ? "" : " disabled"}>${vehicleOptions}</select></label></div>
+    <div data-sde-workshop-selected-vehicle="${esc(vehicleId)}">${sheet}</div>
+  </section>`;
+}
+
+function buildSporplanVehicleStatusBadgesHtml(readback,vehicleText){
+  const esc = value=>String(value ?? "").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+  const vehicleIds = String(vehicleText || "").split(/[\s,;+]+/).map(value=>value.trim()).filter(Boolean);
+  return vehicleIds.map(vehicleId=>{
+    const record = (Array.isArray(readback?.items) ? readback.items : []).find(item=>item?.vehicleId === vehicleId);
+    if(!record) return "";
+    const status = record.currentStatus === "DRIFTSKLAR" ? "DRIFTSKLAR" : "IKKE DRIFTSKLAR";
+    const statusClass = record.currentStatus === "DRIFTSKLAR" ? "is-operational" : "is-not-operational";
+    const disposition = record.workshopDisposition === "TIL_DREI"
+      ? '<span class="sporplan-vehicle-disposition">TIL DREI</span>'
+      : "";
+    return '<span class="sporplan-vehicle-status ' + statusClass + '" data-vehicle-status="' +
+      esc(vehicleId) + '"><span>' + esc(status) + "</span>" + disposition + "</span>";
+  }).join("");
+}
+
 function formatDropsVehicleStatusTimestamp(value){
   const date = new Date(String(value || ""));
   if(!Number.isFinite(date.getTime())) return "Serverregistrert tidspunkt mangler";
@@ -44909,6 +45265,16 @@ function formatDropsVehicleStatusTimestamp(value){
 function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
   const vehicle = String(draft?.vehicle || "");
   const safeToken = vehicle.replace(/[^A-Za-z0-9_-]/g,"");
+  const statusRecord = getDropsVehicleStatusRecord(viewModel?.readback,vehicle);
+  const activeFaults = Array.isArray(statusRecord?.activeFaults)
+    ? statusRecord.activeFaults
+    : (Array.isArray(viewModel?.readback?.faults)
+      ? viewModel.readback.faults.filter(fault=>fault?.vehicleId === vehicle && fault?.status === "ACTIVE")
+      : []);
+  const repairRequests = Array.isArray(viewModel?.readback?.repairRequests) ? viewModel.readback.repairRequests : [];
+  const requestRepairCapability = viewModel?.capabilities?.capabilities?.["vehicle_status.request_repair"];
+  const requestRepairAvailable = statusRecord?.currentStatus === "IKKE_DRIFTSKLAR" &&
+    requestRepairCapability?.allowed === true;
   const faults = Array.isArray(draft?.faults) && draft.faults.length
     ? draft.faults.slice(0,5)
     : createDropsNotOperationalEditorDraft(vehicle).faults;
@@ -44920,32 +45286,38 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
     const descriptionId = `sdeDropsFaultDescription-${safeToken}-${priority}`;
     const errorId = `sdeDropsFaultError-${safeToken}-${priority}`;
     const error = errors.find(item=>item?.index === index)?.message || "";
-    const registered = fault?.registered === true;
+    const authoritativeFault = activeFaults.find(item=>Number(item?.slot) === priority && item?.status === "ACTIVE");
+    const registered = Boolean(authoritativeFault?.faultId);
+    const repairRequest = authoritativeFault
+      ? repairRequests.find(item=>item?.vehicleId === vehicle && item?.faultId === authoritativeFault.faultId && item?.status === "REQUESTED")
+      : null;
     const categoryOptions = [
       `<option value="">Velg feiltype</option>`,
       ...categories.map(category=>`<option value="${category}"${fault?.category === category ? " selected" : ""}>${category}</option>`)
     ].join("");
     const localRegistrationHtml = registered
-      ? `<div class="drops-not-operational-local-registration" data-sde-drops-register-fault="${priority}">
-          <strong>Ikke lagret</strong>
-          <time datetime="${escapeHtml(fault.registeredAt || "")}">${escapeHtml(formatDropsVehicleStatusTimestamp(fault.registeredAt))}</time>
+      ? `<div class="drops-not-operational-local-registration is-authoritative" data-sde-drops-register-fault="${priority}">
+          <strong>Serverregistrert</strong>
+          <time datetime="${escapeHtml(authoritativeFault.registeredAt || "")}">${escapeHtml(formatDropsVehicleStatusTimestamp(authoritativeFault.registeredAt))}</time>
         </div>`
       : `<button class="drops-not-operational-register-fault" type="button" data-sde-drops-register-fault="${priority}">Registrer</button>`;
+    const repairButtonLabel = repairRequest ? "Bestilt utbedring" : "Bestill Utbedring";
+    const repairDisabled = !authoritativeFault || !requestRepairAvailable || Boolean(repairRequest);
     return `<fieldset class="drops-not-operational-fault-row" data-sde-drops-fault-row="${priority}">
       <legend>Prioritet ${priority}</legend>
       <div class="drops-not-operational-priority" aria-label="Prioritet ${priority}">${priority}</div>
       <div class="drops-not-operational-field">
         <label for="${categoryId}">Feiltype</label>
-        <select id="${categoryId}" data-sde-drops-fault-category="${priority}"${error ? ` aria-invalid="true" aria-describedby="${errorId}"` : ""}>${categoryOptions}</select>
+        <select id="${categoryId}" data-sde-drops-fault-category="${priority}"${registered ? " disabled" : ""}${error ? ` aria-invalid="true" aria-describedby="${errorId}"` : ""}>${categoryOptions}</select>
       </div>
       <div class="drops-not-operational-field">
         <label for="${descriptionId}">Beskrivelse</label>
-        <textarea id="${descriptionId}" data-sde-drops-fault-description="${priority}" maxlength="400" placeholder="Beskriv feilen kort og konkret"${error ? ` aria-invalid="true" aria-describedby="${errorId}"` : ""}>${escapeHtml(fault?.description || "")}</textarea>
+        <textarea id="${descriptionId}" data-sde-drops-fault-description="${priority}" maxlength="400" placeholder="Beskriv feilen kort og konkret"${registered ? " disabled" : ""}${error ? ` aria-invalid="true" aria-describedby="${errorId}"` : ""}>${escapeHtml(registered ? authoritativeFault.description : (fault?.description || ""))}</textarea>
       </div>
       <div class="drops-not-operational-row-action">${localRegistrationHtml}</div>
       <div class="drops-not-operational-stadler-action">
-        <button type="button" data-sde-drops-order-repair="${priority}" disabled aria-disabled="true">Bestill Utbedring</button>
-        <span>Stadler-integrasjon ikke aktivert</span>
+        <button type="button" data-sde-drops-order-repair="${priority}" data-fault-id="${escapeHtml(authoritativeFault?.faultId || "")}"${repairDisabled ? " disabled aria-disabled=\"true\"" : ""}>${repairButtonLabel}</button>
+        <span>${repairRequest ? "REPAIR_REQUESTED · serverbekreftet" : (requestRepairAvailable ? "Sendes til verksted med fersk readback" : "Aktiveres etter autoritativ Ikke Driftsklar-status")}</span>
       </div>
       ${error ? `<p class="drops-not-operational-fault-error" id="${errorId}" role="alert">${escapeHtml(error)}</p>` : ""}
     </fieldset>`;
@@ -44977,13 +45349,13 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
         <h4 id="sdeDropsNotOperationalTitle-${safeToken}" tabindex="-1">Kjøretøy ${escapeHtml(vehicle)}</h4>
         <p>Fem faste feilrader. Lokal radregistrering er merket «Ikke lagret» frem til serverbekreftet GET-readback.</p>
       </div>
-      <div class="drops-standard-sheet-status">
-        <strong>DRIFTSKLAR</strong>
-        <span>Ingen autoritativ Ikke Driftsklar-status registrert</span>
+      <div class="drops-standard-sheet-status ${statusRecord?.currentStatus === "DRIFTSKLAR" ? "is-operational" : ""}">
+        <strong>${escapeHtml(statusRecord?.currentStatus === "DRIFTSKLAR" ? "DRIFTSKLAR" : "KLADD")}</strong>
+        <span>${statusRecord?.operationalAt ? escapeHtml(formatDropsVehicleStatusTimestamp(statusRecord.operationalAt)) : "Ingen autoritativ Ikke Driftsklar-status registrert"}</span>
       </div>
     </div>
     <div class="drops-not-operational-registration-time"><strong>Autoritativ status og tidspunkt</strong><span>Oppdateres bare fra serverens kjøretøystatus-readback. Lokal kladd endrer ikke status.</span></div>
-    <div class="drops-stadler-boundary" role="status"><strong>Utbedringsbestilling:</strong> Stadler-integrasjon ikke aktivert. Ingen bestilling sendes eller fremstilles som utført.</div>
+    <div class="drops-stadler-boundary" role="status"><strong>Utbedringsbestilling:</strong> Sendes bare for en aktiv, serverregistrert feil etter autoritativ Ikke Driftsklar-status.</div>
     <div class="drops-not-operational-faults">${faultRowsHtml}</div>
     ${previewHtml}
     <div class="drops-not-operational-editor-actions">${submitAction}<span>${availabilityMessage}</span></div>
@@ -44998,7 +45370,7 @@ function isDropsVehicleRegistryVisibleForAccessLevel(level){
 function buildDropsVehicleRegistryHtml(selectedSeries="",selectedVehicle="",editorDraft=null,viewModel={},sheetCollapsed=false){
   const catalog = getDropsVehicleCatalog();
   const groupEntries = Object.entries(catalog);
-  const total = groupEntries.reduce((sum,[,vehicles])=>sum + vehicles.length,0);
+  const total = DROPS_VEHICLE_REGISTRY_TOTAL;
   const cleanSeries = Object.prototype.hasOwnProperty.call(catalog,String(selectedSeries || ""))
     ? String(selectedSeries)
     : "";
@@ -45015,6 +45387,12 @@ function buildDropsVehicleRegistryHtml(selectedSeries="",selectedVehicle="",edit
   const statusRecord = cleanVehicle ? getDropsVehicleStatusRecord(viewModel?.readback,cleanVehicle) : null;
   const isNotOperational = statusRecord?.currentStatus === "IKKE_DRIFTSKLAR";
   const activeFaults = Array.isArray(statusRecord?.activeFaults) ? statusRecord.activeFaults : [];
+  const allFaults = Array.isArray(viewModel?.readback?.faults)
+    ? viewModel.readback.faults.filter(fault=>fault?.vehicleId === cleanVehicle)
+    : activeFaults;
+  const repairRequests = Array.isArray(viewModel?.readback?.repairRequests) ? viewModel.readback.repairRequests : [];
+  const requestRepairAvailable = viewModel?.capabilities?.capabilities?.["vehicle_status.request_repair"]?.allowed === true;
+  const markForTurningAvailable = viewModel?.capabilities?.capabilities?.["vehicle_status.mark_for_turning"]?.allowed === true;
   const selectedDraft = cleanVehicle && editorDraft?.vehicle === cleanVehicle
     ? editorDraft
     : (cleanVehicle ? createDropsNotOperationalEditorDraft(cleanVehicle) : null);
@@ -45025,9 +45403,17 @@ function buildDropsVehicleRegistryHtml(selectedSeries="",selectedVehicle="",edit
           <strong>IKKE DRIFTSKLAR</strong>
           <time datetime="${escapeHtml(statusRecord.registeredAt || "")}">${escapeHtml(formatDropsVehicleStatusTimestamp(statusRecord.registeredAt))}</time>
         </div>
-        ${activeFaults.length
-          ? `<ol>${activeFaults.map(fault=>`<li><strong>${escapeHtml(fault.priority)}. ${escapeHtml(fault.category)}</strong> · ${escapeHtml(fault.description)}</li>`).join("")}</ol>`
+        ${allFaults.length
+          ? `<ol>${allFaults.map(fault=>{
+              const request = repairRequests.find(item=>item?.vehicleId === cleanVehicle && item?.faultId === fault?.faultId && item?.status === "REQUESTED");
+              const repairDisabled = fault?.status !== "ACTIVE" || !requestRepairAvailable || Boolean(request);
+              return `<li class="${fault?.status === "RESOLVED" ? "is-resolved" : ""}"><strong>${escapeHtml(fault.slot)}. ${escapeHtml(fault.category)}</strong> · ${escapeHtml(fault.description)} <span>${escapeHtml(fault.status || "ACTIVE")}</span>
+                <button type="button" data-sde-drops-order-repair="${escapeHtml(fault.slot)}" data-fault-id="${escapeHtml(fault.faultId || "")}"${repairDisabled ? " disabled aria-disabled=\"true\"" : ""}>${request ? "Bestilt utbedring" : "Bestill Utbedring"}</button></li>`;
+            }).join("")}</ol>`
           : `<p>Ingen aktive feil fulgte serverens autoritative readback.</p>`}
+        <div class="drops-authoritative-actions">
+          <button type="button" data-sde-drops-mark-for-turning${(!markForTurningAvailable || statusRecord?.workshopDisposition === "TIL_DREI") ? " disabled aria-disabled=\"true\"" : ""}>${statusRecord?.workshopDisposition === "TIL_DREI" ? "TIL DREI" : "Merk TIL DREI"}</button>
+        </div>
       </section>`
     : "";
   const selectedSheet = cleanVehicle
@@ -45067,11 +45453,21 @@ let dropsVehicleRegistrySelectedSeries = "";
 let dropsVehicleRegistrySelectedVehicle = "";
 let dropsStandardSheetCollapsed = false;
 let dropsNotOperationalEditorState = null;
+const dropsVehicleDraftsByVehicle = new Map();
 let dropsVehicleStatusReadback = null;
 let dropsRuntimeCapabilities = null;
 let dropsVehicleStatusContextLoaded = false;
 let dropsVehicleStatusContextLoadPromise = null;
 let dropsReportNotOperationalInFlight = false;
+let dropsLifecycleCommandInFlight = false;
+let workshopVehicleRegistrySelectedSeries = "";
+let workshopVehicleRegistrySelectedVehicle = "";
+let workshopStandardSheetCollapsed = false;
+let workshopReportOperationalInFlight = false;
+let activeVehicleStatusNotification = null;
+const dismissedVehicleStatusNotifications = new Set();
+const vehicleStatusNotificationAudioAttempts = new Set();
+const vehicleStatusVisiblePolling = {timer:0,intervalMs:5000};
 
 function getDropsVehicleStatusViewModel(){
   return {
@@ -45110,6 +45506,9 @@ function ensureDropsVehicleStatusContext(){
     .finally(()=>{
       dropsVehicleStatusContextLoadPromise = null;
       renderDropsVehicleRegistry();
+      renderWorkshopVehicleRegistry();
+      renderSporplanVehicleStatusBadges();
+      renderVehicleStatusNotificationPopup();
     });
   return dropsVehicleStatusContextLoadPromise;
 }
@@ -45126,11 +45525,134 @@ function renderDropsVehicleRegistry(){
   host.innerHTML = buildDropsVehicleRegistryHtml(
     dropsVehicleRegistrySelectedSeries,
     dropsVehicleRegistrySelectedVehicle,
-    dropsNotOperationalEditorState,
+    dropsVehicleDraftsByVehicle.get(dropsVehicleRegistrySelectedVehicle) || dropsNotOperationalEditorState,
     getDropsVehicleStatusViewModel(),
     dropsStandardSheetCollapsed
   );
   ensureDropsVehicleStatusContext();
+}
+
+function renderWorkshopVehicleRegistry(){
+  const host = document.getElementById("workshopVehicleRegistry");
+  if(!host) return;
+  host.innerHTML = buildWorkshopVehicleRegistryHtml(
+    workshopVehicleRegistrySelectedSeries,
+    workshopVehicleRegistrySelectedVehicle,
+    dropsVehicleStatusReadback || {},
+    dropsRuntimeCapabilities || {},
+    workshopStandardSheetCollapsed
+  );
+  ensureDropsVehicleStatusContext();
+}
+
+function renderSporplanVehicleStatusBadges(){
+  document.querySelectorAll(".slot[data-slot]").forEach(slot=>{
+    const host = slot.querySelector("[data-sde-sporplan-vehicle-status]");
+    if(!host) return;
+    host.innerHTML = buildSporplanVehicleStatusBadgesHtml(dropsVehicleStatusReadback || {},host.dataset.vehicleText || "");
+  });
+}
+
+function selectVehicleStatusNotificationVehicle(notification){
+  const vehicleId = String(notification?.vehicleId || "");
+  const series = vehicleId.split("-")[0];
+  if(notification?.targetRole === "verksted"){
+    workshopVehicleRegistrySelectedSeries = series;
+    workshopVehicleRegistrySelectedVehicle = vehicleId;
+    workshopStandardSheetCollapsed = false;
+    activateTab("verkstedBestillinger");
+    renderWorkshopVehicleRegistry();
+  }else{
+    dropsVehicleRegistrySelectedSeries = series;
+    dropsVehicleRegistrySelectedVehicle = vehicleId;
+    dropsStandardSheetCollapsed = false;
+    activateTab("dropsMateriellstyrer");
+    renderDropsVehicleRegistry();
+  }
+}
+
+function selectWorkshopNotificationVehicle(notification){
+  selectVehicleStatusNotificationVehicle({...notification,targetRole:"verksted"});
+}
+
+function buildWorkshopNotificationPopupHtml(notification){
+  if(!notification) return "";
+  const payload = notification.payload || {};
+  return `<section class="vehicle-status-notification-popup" role="alertdialog" aria-label="Verkstedvarsel">
+    <button type="button" data-sde-dismiss-vehicle-status-notification aria-label="Lukk varsel">×</button>
+    <strong>${escapeHtml(notification.kind || "REPAIR_REQUESTED")} · ${escapeHtml(notification.vehicleId || "")}</strong>
+    <span>${escapeHtml(payload.category || "")} ${escapeHtml(payload.description || "")}</span>
+    <button type="button" data-sde-open-vehicle-status-notification>Åpne kjøretøy</button>
+  </section>`;
+}
+
+function dismissVehicleStatusNotificationPopup(){
+  if(activeVehicleStatusNotification?.notificationId){
+    dismissedVehicleStatusNotifications.add(activeVehicleStatusNotification.notificationId);
+  }
+  activeVehicleStatusNotification = null;
+  document.getElementById("vehicleStatusNotificationHost")?.replaceChildren();
+}
+
+function attemptVehicleStatusNotificationAudio(notification){
+  const notificationId = String(notification?.notificationId || "");
+  if(!notificationId || vehicleStatusNotificationAudioAttempts.has(notificationId)) return;
+  vehicleStatusNotificationAudioAttempts.add(notificationId);
+  try{
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if(!AudioContextCtor) throw new Error("audio_unavailable");
+    const context = new AudioContextCtor();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    gain.gain.value = 0.035;
+    oscillator.frequency.value = notification?.priority === "HIGH" ? 880 : 660;
+    oscillator.connect(gain).connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.12);
+  }catch(unusedError){
+    document.getElementById("vehicleStatusNotificationHost")?.classList.add("audio-blocked");
+  }
+}
+
+function renderVehicleStatusNotificationPopup(){
+  let host = document.getElementById("vehicleStatusNotificationHost");
+  if(!host){
+    host = document.createElement("div");
+    host.id = "vehicleStatusNotificationHost";
+    host.className = "vehicle-status-notification-host";
+    document.body.appendChild(host);
+  }
+  const notifications = Array.isArray(dropsVehicleStatusReadback?.notifications)
+    ? dropsVehicleStatusReadback.notifications
+    : [];
+  const next = notifications
+    .filter(notification=>notification?.kind === "VEHICLE_OPERATIONAL" || notification?.kind === "REPAIR_REQUESTED")
+    .find(notification=>!dismissedVehicleStatusNotifications.has(notification.notificationId)) || null;
+  activeVehicleStatusNotification = next;
+  host.innerHTML = buildWorkshopNotificationPopupHtml(next);
+  if(next) attemptVehicleStatusNotificationAudio(next);
+}
+
+async function refreshVehicleStatusReadback(fetchImpl=window.fetch.bind(window)){
+  if(document.visibilityState !== "visible") return;
+  try{
+    const response = await fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"});
+    const readback = await response.json().catch(()=>null);
+    if(!response.ok || readback?.ok !== true) return;
+    dropsVehicleStatusReadback = readback;
+    renderDropsVehicleRegistry();
+    renderWorkshopVehicleRegistry();
+    renderSporplanVehicleStatusBadges();
+    renderVehicleStatusNotificationPopup();
+  }catch(unusedError){ /* fail closed on last confirmed GET */ }
+}
+
+function startVehicleStatusVisiblePolling(){
+  if(vehicleStatusVisiblePolling.timer) return;
+  vehicleStatusVisiblePolling.timer = window.setInterval(()=>{
+    if(document.visibilityState !== "visible") return;
+    refreshVehicleStatusReadback();
+  },vehicleStatusVisiblePolling.intervalMs);
 }
 
 function confirmDropsDraftDiscard(nextVehicle){
@@ -45150,12 +45672,39 @@ function handleDropsNotOperationalRegistryClick(event){
   const registerAction = event.target.closest("button[data-sde-drops-register-fault]");
   if(registerAction){
     event.preventDefault();
-    dropsNotOperationalEditorState = registerDropsNotOperationalFault(
-      dropsNotOperationalEditorState,
-      Number(registerAction.dataset.sdeDropsRegisterFault) - 1
-    );
-    renderDropsVehicleRegistry();
-    document.querySelector('[data-sde-drops-not-operational-editor] [aria-invalid="true"]')?.focus?.();
+    submitDropsRegisterFaultFromUi(Number(registerAction.dataset.sdeDropsRegisterFault) - 1);
+    return true;
+  }
+  const repairAction = event.target.closest("button[data-sde-drops-order-repair]");
+  if(repairAction){
+    event.preventDefault();
+    submitDropsRequestRepairFromUi(repairAction.dataset.faultId);
+    return true;
+  }
+  if(event.target.closest("[data-sde-drops-mark-for-turning]")){
+    event.preventDefault();
+    submitDropsMarkForTurningFromUi();
+    return true;
+  }
+  if(event.target.closest("[data-sde-workshop-report-operational]")){
+    event.preventDefault();
+    submitWorkshopReportOperationalFromUi();
+    return true;
+  }
+  if(event.target.closest("[data-sde-workshop-toggle-standard-sheet]")){
+    event.preventDefault();
+    workshopStandardSheetCollapsed = !workshopStandardSheetCollapsed;
+    renderWorkshopVehicleRegistry();
+    return true;
+  }
+  if(event.target.closest("[data-sde-dismiss-vehicle-status-notification]")){
+    event.preventDefault();
+    dismissVehicleStatusNotificationPopup();
+    return true;
+  }
+  if(event.target.closest("[data-sde-open-vehicle-status-notification]")){
+    event.preventDefault();
+    selectVehicleStatusNotificationVehicle(activeVehicleStatusNotification);
     return true;
   }
   if(event.target.closest("[data-sde-drops-submit-not-operational]")){
@@ -45164,6 +45713,96 @@ function handleDropsNotOperationalRegistryClick(event){
     return true;
   }
   return false;
+}
+
+async function submitDropsRegisterFaultFromUi(index){
+  if(dropsLifecycleCommandInFlight || !dropsNotOperationalEditorState) return;
+  const validation = registerDropsNotOperationalFault(dropsNotOperationalEditorState,index,()=>new Date(0));
+  if(validation?.errors?.some(error=>error?.index === index)){
+    dropsNotOperationalEditorState = validation;
+    dropsVehicleDraftsByVehicle.set(dropsNotOperationalEditorState.vehicle,dropsNotOperationalEditorState);
+    renderDropsVehicleRegistry();
+    return;
+  }
+  dropsLifecycleCommandInFlight = true;
+  try{
+    const result = await submitDropsRegisterFaultWithReadback(
+      dropsNotOperationalEditorState,index,dropsVehicleStatusReadback,dropsRuntimeCapabilities,window.fetch.bind(window)
+    );
+    if(result?.readback) dropsVehicleStatusReadback = result.readback;
+    if(result?.ok && result?.fault){
+      dropsNotOperationalEditorState = {
+        ...dropsNotOperationalEditorState,
+        faults:dropsNotOperationalEditorState.faults.map((fault,faultIndex)=>faultIndex === index
+          ? {...fault,registered:true,registeredAt:result.fault.registeredAt}
+          : fault),
+        errors:dropsNotOperationalEditorState.errors.filter(error=>error?.index !== index),
+        submitError:""
+      };
+    }else{
+      dropsNotOperationalEditorState = {...dropsNotOperationalEditorState,submitError:getDropsSubmitErrorMessage(Number(result?.status || 0))};
+    }
+    dropsVehicleDraftsByVehicle.set(dropsNotOperationalEditorState.vehicle,dropsNotOperationalEditorState);
+  }finally{
+    dropsLifecycleCommandInFlight = false;
+    renderDropsVehicleRegistry();
+    renderWorkshopVehicleRegistry();
+    renderSporplanVehicleStatusBadges();
+  }
+}
+
+async function submitDropsRequestRepairFromUi(faultId){
+  if(dropsLifecycleCommandInFlight) return;
+  const record = getDropsVehicleStatusRecord(dropsVehicleStatusReadback,dropsVehicleRegistrySelectedVehicle);
+  const fault = (Array.isArray(record?.activeFaults) ? record.activeFaults : []).find(item=>item?.faultId === faultId);
+  if(!fault) return;
+  dropsLifecycleCommandInFlight = true;
+  try{
+    const result = await submitDropsRequestRepairWithReadback(
+      dropsVehicleRegistrySelectedVehicle,fault,dropsVehicleStatusReadback,dropsRuntimeCapabilities,window.fetch.bind(window)
+    );
+    if(result?.readback) dropsVehicleStatusReadback = result.readback;
+  }finally{
+    dropsLifecycleCommandInFlight = false;
+    renderDropsVehicleRegistry();
+    renderWorkshopVehicleRegistry();
+    renderVehicleStatusNotificationPopup();
+  }
+}
+
+async function submitDropsMarkForTurningFromUi(){
+  if(dropsLifecycleCommandInFlight || !dropsVehicleRegistrySelectedVehicle) return;
+  dropsLifecycleCommandInFlight = true;
+  try{
+    const result = await submitDropsMarkForTurningWithReadback(
+      dropsVehicleRegistrySelectedVehicle,dropsVehicleStatusReadback,dropsRuntimeCapabilities,window.fetch.bind(window)
+    );
+    if(result?.readback) dropsVehicleStatusReadback = result.readback;
+  }finally{
+    dropsLifecycleCommandInFlight = false;
+    renderDropsVehicleRegistry();
+    renderWorkshopVehicleRegistry();
+    renderSporplanVehicleStatusBadges();
+  }
+}
+
+async function submitWorkshopReportOperationalFromUi(){
+  if(workshopReportOperationalInFlight || !workshopVehicleRegistrySelectedVehicle) return;
+  const confirmation = "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
+  if(!window.confirm(confirmation)) return;
+  workshopReportOperationalInFlight = true;
+  try{
+    const result = await submitWorkshopReportOperationalWithReadback(
+      workshopVehicleRegistrySelectedVehicle,dropsVehicleStatusReadback,dropsRuntimeCapabilities,window.fetch.bind(window)
+    );
+    if(result?.readback) dropsVehicleStatusReadback = result.readback;
+  }finally{
+    workshopReportOperationalInFlight = false;
+    renderWorkshopVehicleRegistry();
+    renderDropsVehicleRegistry();
+    renderSporplanVehicleStatusBadges();
+    renderVehicleStatusNotificationPopup();
+  }
 }
 
 async function submitDropsNotOperationalFromUi(){
@@ -45182,6 +45821,7 @@ async function submitDropsNotOperationalFromUi(){
     );
     if(result?.readback) dropsVehicleStatusReadback = result.readback;
     if(result?.ok && result?.confirmedByReadback){
+      dropsVehicleDraftsByVehicle.delete(dropsVehicleRegistrySelectedVehicle);
       dropsNotOperationalEditorState = null;
     }else{
       dropsNotOperationalEditorState = result?.draft || {
@@ -45193,6 +45833,8 @@ async function submitDropsNotOperationalFromUi(){
   }finally{
     dropsReportNotOperationalInFlight = false;
     renderDropsVehicleRegistry();
+    renderWorkshopVehicleRegistry();
+    renderSporplanVehicleStatusBadges();
   }
 }
 
@@ -45204,10 +45846,31 @@ function handleDropsNotOperationalRegistryInput(event){
   if(!field || !input || !dropsNotOperationalEditorState) return false;
   const priority = Number(input.dataset.sdeDropsFaultCategory || input.dataset.sdeDropsFaultDescription);
   dropsNotOperationalEditorState = updateDropsNotOperationalFault(dropsNotOperationalEditorState,priority - 1,field,input.value);
+  dropsVehicleDraftsByVehicle.set(dropsNotOperationalEditorState.vehicle,dropsNotOperationalEditorState);
   return true;
 }
 
 function handleDropsVehicleRegistrySelectionChange(event){
+  const workshopSeriesSelect = event.target.closest("[data-sde-workshop-series-select]");
+  if(workshopSeriesSelect){
+    workshopVehicleRegistrySelectedSeries = Object.hasOwn(getDropsVehicleCatalog(),workshopSeriesSelect.value)
+      ? workshopSeriesSelect.value
+      : "";
+    workshopVehicleRegistrySelectedVehicle = "";
+    workshopStandardSheetCollapsed = false;
+    renderWorkshopVehicleRegistry();
+    return true;
+  }
+  const workshopVehicleSelect = event.target.closest("[data-sde-workshop-vehicle-select]");
+  if(workshopVehicleSelect){
+    const vehicles = getDropsVehicleCatalog()[workshopVehicleRegistrySelectedSeries] || [];
+    workshopVehicleRegistrySelectedVehicle = vehicles.includes(workshopVehicleSelect.value)
+      ? workshopVehicleSelect.value
+      : "";
+    workshopStandardSheetCollapsed = false;
+    renderWorkshopVehicleRegistry();
+    return true;
+  }
   const seriesSelect = event.target.closest("[data-sde-drops-series-select]");
   if(seriesSelect){
     const nextSeries = Object.prototype.hasOwnProperty.call(getDropsVehicleCatalog(),seriesSelect.value)
@@ -45235,7 +45898,10 @@ function handleDropsVehicleRegistrySelectionChange(event){
   }
   dropsVehicleRegistrySelectedVehicle = nextVehicle;
   dropsStandardSheetCollapsed = false;
-  dropsNotOperationalEditorState = nextVehicle ? createDropsNotOperationalEditorDraft(nextVehicle) : null;
+  dropsNotOperationalEditorState = nextVehicle
+    ? (dropsVehicleDraftsByVehicle.get(nextVehicle) || createDropsNotOperationalEditorDraft(nextVehicle))
+    : null;
+  if(nextVehicle) dropsVehicleDraftsByVehicle.set(nextVehicle,dropsNotOperationalEditorState);
   renderDropsVehicleRegistry();
   document.getElementById(`sdeDropsNotOperationalTitle-${nextVehicle}`)?.focus?.();
   return true;
@@ -45945,11 +46611,13 @@ function scheduleSdeRebuild(reason){
 
 function renderDropsPanels(){
   renderDropsVehicleRegistry();
+  renderWorkshopVehicleRegistry();
   renderDropsWerkstedOrders();
   renderDropsMateriellstyrer();
 }
 
 function initDropsPanels(){
+  startVehicleStatusVisiblePolling();
   document.addEventListener("click", event=>{
     handleDropsNotOperationalRegistryClick(event);
   });

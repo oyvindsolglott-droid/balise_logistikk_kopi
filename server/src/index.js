@@ -14,6 +14,13 @@ const {
   getVehicleStatusTestWriteStatus
 } = require("./vehicleStatusReportNotOperational");
 const {
+  COMMAND_DEFINITIONS: VEHICLE_STATUS_LIFECYCLE_COMMAND_DEFINITIONS,
+  LIFECYCLE_COMMANDS: VEHICLE_STATUS_LIFECYCLE_COMMANDS,
+  createVehicleStatusLifecycleHandler,
+  createVehicleStatusReadHandler,
+  getPilotAllowedVehicleIds
+} = require("./vehicleStatusLifecycle");
+const {
   createVehicleStatusRepository,
   createVehicleStatusTestRepository
 } = require("./vehicleStatusTestRepository");
@@ -279,6 +286,13 @@ if(VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed){
     writeEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.writesAllowed
   });
 }
+const vehicleStatusLifecycleCommandAvailable =
+  VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed ||
+  VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.commandAvailable;
+const vehicleStatusLifecycleAllowedVehicleIds =
+  VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed
+    ? new Set(["74-04"])
+    : getPilotAllowedVehicleIds(process.env);
 let runtimeMigrationStatus = runtimeMigrationMode;
 try{
   runtimeMigrationStatus = runRuntimeMigrationIfEnabled(db, {
@@ -366,8 +380,11 @@ app.get("/api/server/status", (_req, res) => {
     vehicleStatusTestWritesAllowed: VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed,
     productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
     reportNotOperationalCommandAvailable:
-      VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed ||
-      VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.commandAvailable,
+      vehicleStatusLifecycleCommandAvailable,
+    vehicleStatusLifecycleCommandsAvailable: vehicleStatusLifecycleCommandAvailable,
+    vehicleStatusLifecyclePilotAllowlistReady:
+      vehicleStatusLifecycleAllowedVehicleIds.has("74-04") &&
+      vehicleStatusLifecycleAllowedVehicleIds.size === 1,
     vehicleStatusPersistenceReady: Boolean(vehicleStatusRepository),
     ...schemaStatus,
     clientReadContract: CLIENT_READ_CONTRACT,
@@ -421,20 +438,23 @@ app.get("/api/auth/session", createAccessIdentitySessionHandler());
 
 app.get("/api/auth/capabilities", createRuntimeCapabilitiesHandler());
 
-app.get("/api/vehicle-status", (_req, res) => {
+const vehicleStatusReadHandler = vehicleStatusRepository
+  ? createVehicleStatusReadHandler({
+      repository: vehicleStatusRepository,
+      responseMetadata: {
+        productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
+        reportNotOperationalCommandAvailable: vehicleStatusLifecycleCommandAvailable,
+        vehicleStatusLifecycleCommandsAvailable: vehicleStatusLifecycleCommandAvailable,
+        vehicleStatusPersistenceReady: true
+      }
+    })
+  : null;
+
+app.get("/api/vehicle-status", async (req, res) => {
   res.set("Cache-Control", "no-store");
   try{
-    if(vehicleStatusRepository){
-      return res.json({
-        ok: true,
-        ...vehicleStatusRepository.getReadModel(),
-        productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
-        reportNotOperationalCommandAvailable:
-          VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed ||
-          VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.commandAvailable,
-        vehicleStatusPersistenceReady: true,
-        trustedRequestAuthority: null
-      });
+    if(vehicleStatusReadHandler){
+      return vehicleStatusReadHandler(req, res);
     }
     return res.json({
       ok: true,
@@ -472,16 +492,30 @@ app.get("/api/vehicle-status", (_req, res) => {
 });
 
 if(vehicleStatusRepository){
-  app.post(
-    VEHICLE_STATUS_REPORT_NOT_OPERATIONAL_ROUTE,
-    createReportNotOperationalHandler({
+  for(const commandName of Object.values(VEHICLE_STATUS_LIFECYCLE_COMMANDS)){
+    const definition = VEHICLE_STATUS_LIFECYCLE_COMMAND_DEFINITIONS[commandName];
+    app.post(
+      definition.route,
+      createVehicleStatusLifecycleHandler({
+        commandName,
+        repository: vehicleStatusRepository,
+        allowedVehicleIds: vehicleStatusLifecycleAllowedVehicleIds,
+        isCommandAvailable: () => vehicleStatusLifecycleCommandAvailable
+      })
+    );
+  }
+  if(
+    !Object.values(VEHICLE_STATUS_LIFECYCLE_COMMAND_DEFINITIONS)
+      .some((definition) => definition.route === VEHICLE_STATUS_REPORT_NOT_OPERATIONAL_ROUTE)
+  ){
+    app.post(
+      VEHICLE_STATUS_REPORT_NOT_OPERATIONAL_ROUTE,
+      createReportNotOperationalHandler({
       repository: vehicleStatusRepository,
-      isCommandAvailable: () => (
-        VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed ||
-        VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.commandAvailable
-      )
-    })
-  );
+        isCommandAvailable: () => vehicleStatusLifecycleCommandAvailable
+      })
+    );
+  }
 }
 
 app.post("/api/shared-sporplan-draft", (req, res) => {

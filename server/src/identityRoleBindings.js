@@ -46,9 +46,6 @@ function validateIdentityRoleBindingsCatalog(input, options = {}){
   for(const subjectBindings of activeBySubject.values()){
     if(subjectBindings.length <= 1) continue;
     diagnostics.add("role_binding_duplicate_active_subject");
-    if(new Set(subjectBindings.map((binding) => binding.role)).size > 1){
-      diagnostics.add("role_binding_active_subject_multiple_roles");
-    }
   }
 
   if(diagnostics.size > 0) return invalidCatalog(configured, diagnostics);
@@ -126,7 +123,7 @@ function resolveIdentityRoleBinding(identity, catalog){
 
   return Object.freeze({
     roleResolved: true,
-    roles: Object.freeze([binding.role]),
+    roles: binding.roles,
     roleBindingSource: ROLE_BINDING_SOURCE,
     roleBindingId: binding.bindingId,
     diagnostics: freezeDiagnostics(diagnostics),
@@ -143,7 +140,10 @@ function normalizeBinding(binding, diagnostics){
 
   const bindingId = normalizeExactString(binding.bindingId, MAX_BINDING_ID_LENGTH);
   const subject = normalizeExactString(binding.subject, MAX_SUBJECT_LENGTH);
-  const role = normalizeExactString(binding.role, MAX_BINDING_ID_LENGTH);
+  const rawRoles = Array.isArray(binding.roles)
+    ? binding.roles
+    : (binding.role === undefined ? null : [binding.role]);
+  const roles = rawRoles?.map((role) => normalizeExactString(role, MAX_BINDING_ID_LENGTH)) || null;
   const enabled = binding.enabled;
   const expectedEmail = binding.expectedEmail === undefined
     ? null
@@ -154,8 +154,15 @@ function normalizeBinding(binding, diagnostics){
 
   if(!bindingId) diagnostics.add("role_binding_invalid_binding_id");
   if(!subject) diagnostics.add("role_binding_invalid_subject");
-  if(!role || !ALLOWED_IDENTITY_ROLE_SET.has(role)){
-    diagnostics.add(role ? "role_binding_unknown_role" : "role_binding_invalid_role");
+  if(
+    !roles ||
+    roles.length === 0 ||
+    roles.some((role) => !role || !ALLOWED_IDENTITY_ROLE_SET.has(role))
+  ){
+    diagnostics.add(roles?.some(Boolean) ? "role_binding_unknown_role" : "role_binding_invalid_role");
+  }
+  if(roles && new Set(roles).size !== roles.length){
+    diagnostics.add("role_binding_duplicate_role");
   }
   if(typeof enabled !== "boolean") diagnostics.add("role_binding_invalid_enabled");
   if(binding.expectedEmail !== undefined && !expectedEmail){
@@ -168,8 +175,10 @@ function normalizeBinding(binding, diagnostics){
   if(
     !bindingId ||
     !subject ||
-    !role ||
-    !ALLOWED_IDENTITY_ROLE_SET.has(role) ||
+    !roles ||
+    roles.length === 0 ||
+    roles.some((role) => !role || !ALLOWED_IDENTITY_ROLE_SET.has(role)) ||
+    new Set(roles).size !== roles.length ||
     typeof enabled !== "boolean" ||
     (binding.expectedEmail !== undefined && !expectedEmail) ||
     (binding.description !== undefined && !description)
@@ -177,7 +186,14 @@ function normalizeBinding(binding, diagnostics){
     return null;
   }
 
-  const normalized = { bindingId, subject, role, enabled };
+  const normalizedRoles = Object.freeze([...roles].sort());
+  const normalized = {
+    bindingId,
+    subject,
+    roles: normalizedRoles,
+    role: normalizedRoles.length === 1 ? normalizedRoles[0] : null,
+    enabled
+  };
   if(expectedEmail) normalized.expectedEmail = expectedEmail;
   if(description) normalized.description = description;
   return normalized;
@@ -211,7 +227,7 @@ function freezeDiagnostics(diagnostics){
 function compareBindings(left, right){
   return left.bindingId.localeCompare(right.bindingId) ||
     left.subject.localeCompare(right.subject) ||
-    left.role.localeCompare(right.role);
+    left.roles.join(",").localeCompare(right.roles.join(","));
 }
 
 function countBy(values, selector){

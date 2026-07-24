@@ -29,7 +29,10 @@ const VEHICLE_STATUS_ROLE_SET = new Set(VEHICLE_STATUS_ROLES);
 
 const CAPABILITY_IDS = Object.freeze({
   READ: "vehicle_status.read",
+  REGISTER_FAULT: "vehicle_status.register_fault",
   REPORT_NOT_OPERATIONAL: "vehicle_status.report_not_operational",
+  REQUEST_REPAIR: "vehicle_status.request_repair",
+  MARK_FOR_TURNING: "vehicle_status.mark_for_turning",
   REPORT_OPERATIONAL: "vehicle_status.report_operational",
   REGISTER_RESOLUTIONS: "vehicle_status.register_resolutions",
   CLEAR_WORKSHOP_DISPOSITION_WITH_OPERATIONAL:
@@ -61,8 +64,26 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
     allowedRoles: VEHICLE_STATUS_ROLES
   },
   {
+    capability: CAPABILITY_IDS.REGISTER_FAULT,
+    description: "Register one authoritative vehicle fault.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.DROPS]
+  },
+  {
     capability: CAPABILITY_IDS.REPORT_NOT_OPERATIONAL,
     description: "Report a vehicle as not operational.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.DROPS]
+  },
+  {
+    capability: CAPABILITY_IDS.REQUEST_REPAIR,
+    description: "Create one internal repair request for an active fault.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.DROPS]
+  },
+  {
+    capability: CAPABILITY_IDS.MARK_FOR_TURNING,
+    description: "Mark a not-operational vehicle for turning.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: [ROLE_KEYS.DROPS]
   },
@@ -141,9 +162,10 @@ function evaluateRuntimeAuthorization(input = {}, options = {}){
   const capability = normalizeExactString(input.capability, 200);
   const identity = isPlainObject(input.identity) ? input.identity : null;
   const roleResult = isPlainObject(input.roleResult) ? input.roleResult : null;
-  const candidateRole = Array.isArray(roleResult?.roles) && roleResult.roles.length === 1
-    ? normalizeExactString(roleResult.roles[0], 100)
-    : null;
+  const candidateRoles = Array.isArray(roleResult?.roles)
+    ? [...new Set(roleResult.roles.map((role) => normalizeExactString(role, 100)))]
+    : [];
+  const candidateRole = candidateRoles.length === 1 ? candidateRoles[0] : null;
 
   if(!catalog || catalog.valid !== true || !Array.isArray(catalog.entries)){
     return denyDecision(capability, candidateRole, "capability_catalog_invalid");
@@ -158,10 +180,10 @@ function evaluateRuntimeAuthorization(input = {}, options = {}){
   if(roleResult?.roleResolved !== true){
     return denyDecision(capability, candidateRole, "role_unresolved");
   }
-  if(!Array.isArray(roleResult.roles) || roleResult.roles.length !== 1){
-    return denyDecision(capability, candidateRole, "exactly_one_role_required");
+  if(candidateRoles.length === 0 || candidateRoles.some((role) => !role)){
+    return denyDecision(capability, candidateRole, "explicit_roles_required");
   }
-  if(!candidateRole || !VEHICLE_STATUS_ROLE_SET.has(candidateRole)){
+  if(candidateRoles.some((role) => !VEHICLE_STATUS_ROLE_SET.has(role))){
     return denyDecision(capability, candidateRole, "unknown_role");
   }
   if(!capability){
@@ -173,11 +195,20 @@ function evaluateRuntimeAuthorization(input = {}, options = {}){
   if(catalogEntry.status !== CAPABILITY_STATUSES.ACTIVE){
     return denyDecision(capability, candidateRole, "capability_unresolved");
   }
-  if(!catalogEntry.allowedRoles.includes(candidateRole)){
+  const capabilitySourceRoles = candidateRoles
+    .filter((role) => catalogEntry.allowedRoles.includes(role));
+  if(capabilitySourceRoles.length === 0){
     return denyDecision(capability, candidateRole, "role_not_allowed");
   }
 
-  return decisionResult(true, capability, candidateRole, "role_explicitly_allowed");
+  return decisionResult(
+    true,
+    capability,
+    candidateRole,
+    "role_explicitly_allowed",
+    candidateRoles,
+    capabilitySourceRoles
+  );
 }
 
 function createRuntimeCapabilitiesHandler(options = {}){
@@ -224,7 +255,7 @@ function createRuntimeCapabilitiesHandler(options = {}){
     }
 
     const roleResult = resolveIdentityRoleBinding(identityResult.identity, roleBindingsCatalog);
-    if(roleResult.roleResolved !== true || roleResult.roles.length !== 1){
+    if(roleResult.roleResolved !== true || roleResult.roles.length === 0){
       return res.status(403).json(capabilityResponse({
         ok: false,
         error: "role_binding_required",
@@ -234,7 +265,8 @@ function createRuntimeCapabilitiesHandler(options = {}){
       }));
     }
 
-    const role = roleResult.roles[0];
+    const roles = [...roleResult.roles];
+    const role = roles.length === 1 ? roles[0] : null;
     const capabilities = Object.fromEntries(CAPABILITY_CATALOG.entries.map((entry) => {
       const result = evaluateRuntimeAuthorization({
         identity: identityResult.identity,
@@ -244,7 +276,8 @@ function createRuntimeCapabilitiesHandler(options = {}){
       return [entry.capability, Object.freeze({
         allowed: result.allowed,
         decision: result.decision,
-        reasonCode: result.reasonCode
+        reasonCode: result.reasonCode,
+        capabilitySourceRoles: result.capabilitySourceRoles
       })];
     }));
 
@@ -252,6 +285,7 @@ function createRuntimeCapabilitiesHandler(options = {}){
       ok: true,
       roleResolved: true,
       role,
+      roles,
       capabilities
     }));
   };
@@ -322,12 +356,21 @@ function normalizeCatalogEntry(entry, diagnostics){
   };
 }
 
-function decisionResult(allowed, capability, role, reasonCode){
+function decisionResult(
+  allowed,
+  capability,
+  role,
+  reasonCode,
+  roles = role ? [role] : [],
+  capabilitySourceRoles = []
+){
   return Object.freeze({
     allowed,
     decision: allowed ? "ALLOW" : "DENY",
     capability,
     role,
+    roles: Object.freeze([...roles]),
+    capabilitySourceRoles: Object.freeze([...capabilitySourceRoles]),
     decisionSource: DECISION_SOURCE,
     reasonCode,
     runtimeEnforcementScope: RUNTIME_ENFORCEMENT_SCOPE
