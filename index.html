@@ -45828,14 +45828,64 @@ function renderVehicleStatusNotificationPopup(){
   if(next) attemptVehicleStatusNotificationAudio(next);
 }
 
+function serializeDropsVehicleRenderValue(value){
+  if(value === null) return "null";
+  if(value === undefined) return "undefined";
+  if(Array.isArray(value)){
+    return `[${value.map(serializeDropsVehicleRenderValue).sort().join(",")}]`;
+  }
+  if(typeof value === "object"){
+    return `{${Object.keys(value)
+      .sort()
+      .map(key=>`${JSON.stringify(key)}:${serializeDropsVehicleRenderValue(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function getDropsVehicleAuthoritativeRenderSignature(readback,vehicleId){
+  const cleanVehicleId = String(vehicleId || "");
+  if(!cleanVehicleId) return "";
+  const forSelectedVehicle = collection=>(Array.isArray(collection) ? collection : [])
+    .filter(item=>String(item?.vehicleId || "") === cleanVehicleId);
+  return serializeDropsVehicleRenderValue({
+    item:forSelectedVehicle(readback?.items)[0] || null,
+    cases:forSelectedVehicle(readback?.cases),
+    faults:forSelectedVehicle(readback?.faults),
+    repairRequests:forSelectedVehicle(readback?.repairRequests),
+    gates:{
+      writeEnabled:readback?.writeEnabled === true,
+      productionPilotWriteEnabled:readback?.productionPilotWriteEnabled === true,
+      registerFaultCommandAvailable:readback?.registerFaultCommandAvailable === true,
+      vehicleStatusLifecycleCommandsAvailable:readback?.vehicleStatusLifecycleCommandsAvailable === true,
+      allowedVehicleIds:Array.isArray(readback?.allowedVehicleIds) ? readback.allowedVehicleIds : [],
+      vehicleStatusLifecycleAllowedVehicleIds:Array.isArray(readback?.vehicleStatusLifecycleAllowedVehicleIds)
+        ? readback.vehicleStatusLifecycleAllowedVehicleIds
+        : []
+    }
+  });
+}
+
+function shouldRenderDropsVehicleRegistryForReadback(previousReadback,nextReadback,vehicleId){
+  const cleanVehicleId = String(vehicleId || "");
+  if(!cleanVehicleId) return false;
+  return getDropsVehicleAuthoritativeRenderSignature(previousReadback,cleanVehicleId) !==
+    getDropsVehicleAuthoritativeRenderSignature(nextReadback,cleanVehicleId);
+}
+
 async function refreshVehicleStatusReadback(fetchImpl=window.fetch.bind(window)){
   if(document.visibilityState !== "visible") return;
   try{
     const response = await fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"});
     const readback = await response.json().catch(()=>null);
     if(!response.ok || readback?.ok !== true) return;
+    const refreshSelectedVehicle = shouldRenderDropsVehicleRegistryForReadback(
+      dropsVehicleStatusReadback,
+      readback,
+      dropsVehicleRegistrySelectedVehicle
+    );
     dropsVehicleStatusReadback = readback;
-    renderDropsVehicleRegistry();
+    if(refreshSelectedVehicle) renderDropsVehicleRegistry();
     renderWorkshopVehicleRegistry();
     renderSporplanVehicleStatusBadges();
     renderVehicleStatusNotificationPopup();
