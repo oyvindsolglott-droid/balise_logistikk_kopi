@@ -126,10 +126,12 @@ function extractFunction(text, name) {
 }
 
 const functionNames = [
+  "getDropsVehicleCatalog",
   "getDropsReportNotOperationalAvailability",
   "createDropsNotOperationalActionId",
   "buildDropsReportNotOperationalPayload",
   "getDropsVehicleStatusRecord",
+  "getAuthoritativeVehicleStatusPresentation",
   "getDropsSubmitErrorMessage",
   "submitDropsNotOperationalDraftWithReadback",
   "buildDropsRegisterFaultPayload",
@@ -140,6 +142,7 @@ const functionNames = [
   "submitDropsMarkForTurningWithReadback",
   "buildWorkshopReportOperationalPayload",
   "submitWorkshopReportOperationalWithReadback",
+  "formatDropsVehicleStatusTimestamp",
   "buildWorkshopVehicleRegistryHtml",
   "buildSporplanVehicleStatusBadgesHtml",
 ];

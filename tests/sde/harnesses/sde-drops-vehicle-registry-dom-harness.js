@@ -34,55 +34,9 @@ function extractFunction(text, name) {
   const marker = `function ${name}(`;
   const start = text.indexOf(marker);
   assert.ok(start >= 0, `missing production function ${name}`);
-  const signatureEnd = text.slice(start).match(/\)\s*\{/);
-  assert.ok(signatureEnd, `missing production body for ${name}`);
-  const open = start + signatureEnd.index + signatureEnd[0].lastIndexOf("{");
-  let depth = 0;
-  let quote = "";
-  let escaped = false;
-  let lineComment = false;
-  let blockComment = false;
-  for (let index = open; index < text.length; index += 1) {
-    const character = text[index];
-    const next = text[index + 1];
-    if (lineComment) {
-      if (character === "\n") lineComment = false;
-      continue;
-    }
-    if (blockComment) {
-      if (character === "*" && next === "/") {
-        blockComment = false;
-        index += 1;
-      }
-      continue;
-    }
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (character === "\\") escaped = true;
-      else if (character === quote) quote = "";
-      continue;
-    }
-    if (character === "/" && next === "/") {
-      lineComment = true;
-      index += 1;
-      continue;
-    }
-    if (character === "/" && next === "*") {
-      blockComment = true;
-      index += 1;
-      continue;
-    }
-    if (character === "'" || character === '"' || character === "`") {
-      quote = character;
-      continue;
-    }
-    if (character === "{") depth += 1;
-    if (character === "}") {
-      depth -= 1;
-      if (depth === 0) return text.slice(start, index + 1);
-    }
-  }
-  throw new Error(`unclosed production function ${name}`);
+  const nextTopLevelFunction = text.indexOf("\nfunction ", start + marker.length);
+  assert.ok(nextTopLevelFunction > start, `missing production boundary for ${name}`);
+  return text.slice(start, nextTopLevelFunction);
 }
 
 const functionNames = [
@@ -95,12 +49,15 @@ const functionNames = [
   "buildDropsNotOperationalPreview",
   "buildDropsReportNotOperationalPayload",
   "getDropsVehicleStatusRecord",
+  "getDropsRegisterFaultAvailability",
+  "getAuthoritativeVehicleStatusPresentation",
   "formatDropsVehicleStatusTimestamp",
   "hasDropsUnsavedDraft",
   "shouldConfirmDropsVehicleSelectionChange",
   "buildDropsNotOperationalEditorHtml",
   "isDropsVehicleRegistryVisibleForAccessLevel",
   "buildDropsVehicleRegistryHtml",
+  "buildWorkshopVehicleRegistryHtml",
 ];
 const productionFunctions = functionNames.map((name) => extractFunction(source, name));
 const productionSurface = productionFunctions.join("\n");
@@ -239,6 +196,8 @@ assert.equal((sheetHtml.match(/data-sde-drops-fault-row="\d+"/g) || []).length, 
 assert.equal((sheetHtml.match(/data-sde-drops-fault-category="\d+"/g) || []).length, 5);
 assert.equal((sheetHtml.match(/data-sde-drops-fault-description="\d+"/g) || []).length, 5);
 assert.equal((sheetHtml.match(/data-sde-drops-register-fault="\d+"/g) || []).length, 5);
+assert.equal((sheetHtml.match(/data-sde-drops-register-fault="\d+"[^>]*\bdisabled\b/g) || []).length, 5);
+assert.equal((sheetHtml.match(/data-sde-drops-register-fault="\d+"[^>]*aria-disabled="true"/g) || []).length, 5);
 assert.equal((sheetHtml.match(/data-sde-drops-order-repair="\d+"/g) || []).length, 5);
 assert.equal((sheetHtml.match(/data-sde-drops-order-repair="\d+"[^>]*disabled/g) || []).length, 5);
 assert.match(sheetHtml, /Sendes bare for en aktiv, serverregistrert feil/);
@@ -266,6 +225,65 @@ assert.match(authoritativeHtml, /IKKE DRIFTSKLAR/);
 assert.match(authoritativeHtml, /Dørfeil/);
 assert.doesNotMatch(authoritativeHtml, /data-sde-drops-submit-not-operational/);
 assert.doesNotMatch(authoritativeHtml, /data-sde-drops-not-operational-editor=/);
+
+const operationalReadback = {
+  ok: true,
+  writeEnabled: false,
+  vehicleStatusLifecycleCommandsAvailable: false,
+  items: [{
+    vehicleId: "74-10",
+    currentStatus: "DRIFTSKLAR",
+    operationalAt: "2026-07-24T08:09:10.000Z",
+  }],
+  faults: [{
+    vehicleId: "74-10",
+    faultId: "fault-resolved",
+    slot: 1,
+    category: "A2",
+    description: "Løst dørproblem",
+    status: "RESOLVED",
+  }],
+  repairRequests: [{
+    vehicleId: "74-10",
+    faultId: "fault-resolved",
+    status: "COMPLETED",
+  }],
+};
+const operationalHtml = api.buildDropsVehicleRegistryHtml("74", "74-10", vehicleADraft, {
+  availability: { available: false },
+  readback: operationalReadback,
+  capabilities: {},
+});
+assert.match(operationalHtml, /drops-vehicle-authoritative-sheet is-operational/);
+assert.match(operationalHtml, />DRIFTSKLAR</);
+assert.match(operationalHtml, /Registrert Driftsklar/);
+assert.match(operationalHtml, /Løst dørproblem/);
+assert.doesNotMatch(operationalHtml, /data-sde-drops-mark-for-turning/);
+
+const workshopOperationalHtml = api.buildWorkshopVehicleRegistryHtml("74", "74-10", operationalReadback, {});
+assert.match(workshopOperationalHtml, /workshop-vehicle-status is-operational/);
+assert.match(workshopOperationalHtml, /data-sde-workshop-report-operational[^>]*disabled[^>]*aria-disabled="true"/);
+assert.match(workshopOperationalHtml, />Registrert Driftsklar</);
+
+const unknownReadback = {
+  ok: true,
+  writeEnabled: false,
+  vehicleStatusLifecycleCommandsAvailable: false,
+  items: [],
+  faults: [],
+  repairRequests: [],
+};
+const unknownHtml = api.buildDropsVehicleRegistryHtml("74", "74-10", vehicleADraft, {
+  availability: { available: false },
+  readback: unknownReadback,
+  capabilities: {},
+});
+assert.match(unknownHtml, /drops-not-operational-editor is-unknown/);
+assert.match(unknownHtml, /Ingen autoritativ status registrert/);
+assert.doesNotMatch(unknownHtml, /drops-not-operational-editor is-operational|drops-not-operational-editor is-not-operational/);
+const workshopUnknownHtml = api.buildWorkshopVehicleRegistryHtml("74", "74-10", unknownReadback, {});
+assert.match(workshopUnknownHtml, /workshop-vehicle-status is-unknown/);
+assert.match(workshopUnknownHtml, /Ingen autoritativ status registrert/);
 
 const vehicleBDraft = api.createDropsNotOperationalEditorDraft("75-10");
 assert.equal(vehicleBDraft.faults.length, 5);

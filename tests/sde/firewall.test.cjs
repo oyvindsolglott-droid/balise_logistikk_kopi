@@ -196,6 +196,13 @@ registerHarnessTest({
   baseline: "ddc0eddb989f7a1fedffb894fbda78ab105569e1",
 });
 
+test("DROPS hotfix — lifecycle UI is fail-closed and graphic actual state matches Sporplan", () => {
+  assertPassed(
+    runHarness("sde-drops-lifecycle-ui-sporplan-sync-hotfix-harness.js"),
+    "DROPS lifecycle UI and Sporplan sync hotfix",
+  );
+});
+
 test("G — end-to-end integrity gate is complete and side-effect free", () => {
   const contract = source => {
     assert.equal(countFunction(source, "buildSdeCanonicalIntegrityReport"), 1);
