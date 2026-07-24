@@ -630,6 +630,13 @@ registerHarnessTest({
   baseline: "c51d588ffeabca933a2646fa52d001de02e6eb7d",
 });
 
+registerHarnessTest({
+  phase: "DROPS-74-04",
+  name: "visible polling preserves the active five-row draft, DOM identity, focus and caret",
+  harness: "sde-drops-focus-stability-harness.js",
+  baseline: "700648df6219a61cb7b750dfde31e9f2e49c1ed2",
+});
+
 test("DROPS-VERKSTED-2B — full authoritative vehicle lifecycle remains atomic and role-bound", () => {
   assertPassed(
     run(process.execPath, [
