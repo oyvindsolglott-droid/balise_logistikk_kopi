@@ -277,23 +277,33 @@ function createVehicleStatusReadHandler(options = {}){
   return async function vehicleStatusReadHandler(req, res){
     noStore(res);
     let roles = [];
+    let identityResult = null;
+    let roleResult = null;
     try{
       if(accessAssertionPresent(req.headers) || Object.hasOwn(options, "verifyIdentityRequest")){
-        const identityResult = await verifyIdentityRequest({
+        identityResult = await verifyIdentityRequest({
           headers: req.headers,
           env,
           jwks: options.jwks,
           verifier: options.verifier
         });
         if(identityResult?.ok && roleBindingsCatalog.valid === true){
-          const roleResult = resolveIdentityRoleBinding(identityResult.identity, roleBindingsCatalog);
+          roleResult = resolveIdentityRoleBinding(identityResult.identity, roleBindingsCatalog);
           if(roleResult.roleResolved === true) roles = [...roleResult.roles];
         }
       }
+      const responseMetadata = typeof options.responseMetadata === "function"
+        ? options.responseMetadata({
+            req,
+            identityResult,
+            roleResult,
+            roles: [...roles]
+          })
+        : (options.responseMetadata || {});
       return res.json({
         ok: true,
         ...repository.getReadModel({ roles }),
-        ...(options.responseMetadata || {}),
+        ...responseMetadata,
         roles,
         trustedRequestAuthority: null
       });

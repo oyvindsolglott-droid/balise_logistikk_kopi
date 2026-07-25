@@ -3,7 +3,11 @@ const path = require("node:path");
 const { DatabaseSync } = require("node:sqlite");
 const express = require("express");
 const { createAccessIdentitySessionHandler } = require("./accessIdentity");
-const { createRuntimeCapabilitiesHandler } = require("./runtimeAuthorization");
+const {
+  CAPABILITY_IDS,
+  createRuntimeCapabilitiesHandler,
+  evaluateRuntimeAuthorization
+} = require("./runtimeAuthorization");
 const {
   COMMAND_ROUTE: VEHICLE_STATUS_REPORT_NOT_OPERATIONAL_ROUTE,
   DEFAULT_PRODUCTION_VEHICLE_STATUS_DB,
@@ -441,11 +445,54 @@ app.get("/api/auth/capabilities", createRuntimeCapabilitiesHandler());
 const vehicleStatusReadHandler = vehicleStatusRepository
   ? createVehicleStatusReadHandler({
       repository: vehicleStatusRepository,
-      responseMetadata: {
-        productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
-        reportNotOperationalCommandAvailable: vehicleStatusLifecycleCommandAvailable,
-        vehicleStatusLifecycleCommandsAvailable: vehicleStatusLifecycleCommandAvailable,
-        vehicleStatusPersistenceReady: true
+      responseMetadata: ({ identityResult, roleResult }) => {
+        const capabilityAvailable = (capability) => {
+          if(
+            vehicleStatusLifecycleCommandAvailable !== true ||
+            identityResult?.ok !== true ||
+            roleResult?.roleResolved !== true
+          ){
+            return false;
+          }
+          return evaluateRuntimeAuthorization({
+            identity: identityResult.identity,
+            roleResult,
+            capability
+          }).allowed === true;
+        };
+        const registerFaultCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.REGISTER_FAULT);
+        const reportNotOperationalCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.REPORT_NOT_OPERATIONAL);
+        const requestRepairCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.REQUEST_REPAIR);
+        const markForTurningCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.MARK_FOR_TURNING);
+        const reportOperationalCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.REPORT_OPERATIONAL);
+        const vehicleStatusLifecycleCommandsAvailable = [
+          registerFaultCommandAvailable,
+          reportNotOperationalCommandAvailable,
+          requestRepairCommandAvailable,
+          markForTurningCommandAvailable,
+          reportOperationalCommandAvailable
+        ].some(Boolean);
+        const pilotAllowedVehicleIds =
+          VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled === true &&
+          vehicleStatusLifecycleCommandsAvailable
+            ? [...vehicleStatusLifecycleAllowedVehicleIds].sort()
+            : [];
+        return {
+          productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
+          vehicleStatusPersistenceReady: true,
+          registerFaultCommandAvailable,
+          reportNotOperationalCommandAvailable,
+          requestRepairCommandAvailable,
+          markForTurningCommandAvailable,
+          reportOperationalCommandAvailable,
+          vehicleStatusLifecycleCommandsAvailable,
+          pilotAllowedVehicleIds
+        };
       }
     })
   : null;

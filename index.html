@@ -44884,7 +44884,13 @@ function buildDropsNotOperationalPreview(draft){
   };
 }
 
-function getDropsReportNotOperationalAvailability(readback,capabilities){
+function isDropsPilotVehicleAllowed(readback,vehicleId){
+  return readback?.productionPilotWriteEnabled === true &&
+    Array.isArray(readback?.pilotAllowedVehicleIds) &&
+    readback.pilotAllowedVehicleIds.includes(String(vehicleId || ""));
+}
+
+function getDropsReportNotOperationalAvailability(readback,capabilities,vehicleId=""){
   const capability = capabilities?.capabilities?.["vehicle_status.report_not_operational"];
   const resolvedRoles = Array.isArray(capabilities?.roles)
     ? capabilities.roles
@@ -44897,7 +44903,9 @@ function getDropsReportNotOperationalAvailability(readback,capabilities){
     capabilities?.roleResolved === true &&
     resolvedRoles.includes("drops") &&
     capability?.allowed === true &&
-    capability?.decision === "ALLOW";
+    capability?.decision === "ALLOW" &&
+    readback?.reportNotOperationalCommandAvailable === true &&
+    isDropsPilotVehicleAllowed(readback,vehicleId);
   return {
     available,
     reason:available ? "available" : "server_authority_unavailable"
@@ -45022,12 +45030,13 @@ function getDropsRegisterFaultAvailability(draft,index,viewModel={}){
   const commandReady = readback?.registerFaultCommandAvailable === true ||
     readback?.vehicleStatusLifecycleCommandsAvailable === true;
   const allowlistCandidates = [
+    readback?.pilotAllowedVehicleIds,
     readback?.allowedVehicleIds,
     readback?.vehicleStatusLifecycleAllowedVehicleIds,
     capabilities?.allowedVehicleIds,
     capability?.allowedVehicleIds
   ].find(value=>Array.isArray(value));
-  const pilotVehicleAllowed = readback?.productionPilotWriteEnabled !== true ||
+  const pilotVehicleAllowed = readback?.productionPilotWriteEnabled === true &&
     (Array.isArray(allowlistCandidates) && allowlistCandidates.includes(vehicleId));
   const stateAllowsRegistration = !record ||
     record.currentStatus === "DRIFTSKLAR" ||
@@ -45069,7 +45078,11 @@ function getDropsSubmitErrorMessage(status){
 
 function submitDropsNotOperationalDraftWithReadback(draft,readback,capabilities,fetchImpl,actionIdFactory=createDropsNotOperationalActionId){
   return (async()=>{
-  const availability = getDropsReportNotOperationalAvailability(readback,capabilities);
+  const availability = getDropsReportNotOperationalAvailability(
+    readback,
+    capabilities,
+    String(draft?.vehicle || "")
+  );
   if(!availability.available){
     return {ok:false,error:"command_unavailable",status:404,draft,readback,confirmedByReadback:false};
   }
@@ -45382,7 +45395,8 @@ function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",r
   const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [capabilities?.role].filter(Boolean);
   const reportOperationalAvailable = readback?.ok === true &&
     readback?.writeEnabled === true &&
-    readback?.vehicleStatusLifecycleCommandsAvailable === true &&
+    readback?.reportOperationalCommandAvailable === true &&
+    isDropsPilotVehicleAllowed(readback,vehicleId) &&
     capabilities?.ok === true &&
     capabilities?.roleResolved === true &&
     roles.includes("verksted") &&
@@ -45569,15 +45583,18 @@ function buildDropsVehicleRegistryHtml(selectedSeries="",selectedVehicle="",edit
   const lifecycleReady = viewModel?.readback?.ok === true &&
     viewModel?.readback?.writeEnabled === true &&
     viewModel?.readback?.vehicleStatusLifecycleCommandsAvailable === true &&
+    isDropsPilotVehicleAllowed(viewModel?.readback,cleanVehicle) &&
     viewModel?.capabilities?.ok === true &&
     viewModel?.capabilities?.roleResolved === true &&
     roles.includes("drops");
   const requestRepairCapability = viewModel?.capabilities?.capabilities?.["vehicle_status.request_repair"];
   const markForTurningCapability = viewModel?.capabilities?.capabilities?.["vehicle_status.mark_for_turning"];
   const requestRepairAvailable = lifecycleReady &&
+    viewModel?.readback?.requestRepairCommandAvailable === true &&
     requestRepairCapability?.allowed === true &&
     requestRepairCapability?.decision === "ALLOW";
   const markForTurningAvailable = lifecycleReady &&
+    viewModel?.readback?.markForTurningCommandAvailable === true &&
     markForTurningCapability?.allowed === true &&
     markForTurningCapability?.decision === "ALLOW";
   const selectedDraft = cleanVehicle && editorDraft?.vehicle === cleanVehicle
@@ -45667,7 +45684,11 @@ function getDropsVehicleStatusViewModel(){
   return {
     readback:dropsVehicleStatusReadback,
     capabilities:dropsRuntimeCapabilities,
-    availability:getDropsReportNotOperationalAvailability(dropsVehicleStatusReadback,dropsRuntimeCapabilities),
+    availability:getDropsReportNotOperationalAvailability(
+      dropsVehicleStatusReadback,
+      dropsRuntimeCapabilities,
+      dropsVehicleRegistrySelectedVehicle
+    ),
     commandInFlight:dropsLifecycleCommandInFlight
   };
 }
@@ -45858,6 +45879,9 @@ function getDropsVehicleAuthoritativeRenderSignature(readback,vehicleId){
       productionPilotWriteEnabled:readback?.productionPilotWriteEnabled === true,
       registerFaultCommandAvailable:readback?.registerFaultCommandAvailable === true,
       vehicleStatusLifecycleCommandsAvailable:readback?.vehicleStatusLifecycleCommandsAvailable === true,
+      pilotAllowedVehicleIds:Array.isArray(readback?.pilotAllowedVehicleIds)
+        ? readback.pilotAllowedVehicleIds
+        : [],
       allowedVehicleIds:Array.isArray(readback?.allowedVehicleIds) ? readback.allowedVehicleIds : [],
       vehicleStatusLifecycleAllowedVehicleIds:Array.isArray(readback?.vehicleStatusLifecycleAllowedVehicleIds)
         ? readback.vehicleStatusLifecycleAllowedVehicleIds
