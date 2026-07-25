@@ -1,5 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const { DatabaseSync } = require("node:sqlite");
 const express = require("express");
 const { createAccessIdentitySessionHandler } = require("./accessIdentity");
@@ -22,6 +23,7 @@ const {
   LIFECYCLE_COMMANDS: VEHICLE_STATUS_LIFECYCLE_COMMANDS,
   PRODUCTION_ALLOWED_SCOPE_ENV,
   REGISTERED_VEHICLES_SCOPE,
+  createVehicleStatusAnalyticsHandler,
   createVehicleStatusLifecycleHandler,
   createVehicleStatusReadHandler,
   getPilotAllowedVehicleIds
@@ -164,6 +166,7 @@ const FRONTEND_DATA_FILES = new Map([
   ["api_idag.json", path.join(REPO_ROOT, "data", "api_idag.json")],
   ["api_imorgen.json", path.join(REPO_ROOT, "data", "api_imorgen.json")]
 ]);
+const VEHICLE_STATUS_OCCURRENCE_OBSERVER_INTERVAL_MS = 60_000;
 const FRONTEND_ASSET_FILES = new Map([
   ["slot_track_empty.png", path.join(REPO_ROOT, "assets", "slot_track_empty.png")],
   ["motorvognsett_top.png", path.join(REPO_ROOT, "assets", "motorvognsett_top.png")],
@@ -491,12 +494,26 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           capabilityAvailable(CAPABILITY_IDS.MARK_FOR_TURNING);
         const reportOperationalCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.REPORT_OPERATIONAL);
+        const notificationPresentedCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.PRESENT_NOTIFICATION);
+        const workshopSheetOpenedCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.OPEN_WORKSHOP_SHEET);
+        const workStartedCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.START_WORK);
+        const setWaitReasonCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.SET_WAIT_REASON);
+        const analyticsReadAvailable =
+          capabilityAvailable(CAPABILITY_IDS.ANALYTICS_READ);
         const vehicleStatusLifecycleCommandsAvailable = [
           registerFaultCommandAvailable,
           reportNotOperationalCommandAvailable,
           requestRepairCommandAvailable,
           markForTurningCommandAvailable,
-          reportOperationalCommandAvailable
+          reportOperationalCommandAvailable,
+          notificationPresentedCommandAvailable,
+          workshopSheetOpenedCommandAvailable,
+          workStartedCommandAvailable,
+          setWaitReasonCommandAvailable
         ].some(Boolean);
         const pilotAllowedVehicleIds =
           VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled === true &&
@@ -511,6 +528,11 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestRepairCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
+          notificationPresentedCommandAvailable,
+          workshopSheetOpenedCommandAvailable,
+          workStartedCommandAvailable,
+          setWaitReasonCommandAvailable,
+          analyticsReadAvailable,
           vehicleStatusLifecycleCommandsAvailable,
           vehicleWriteScope: vehicleStatusLifecycleWriteScope,
           allowedVehicleCount: vehicleStatusLifecycleAllowedVehicleIds.size,
@@ -566,6 +588,10 @@ app.get("/api/vehicle-status", async (req, res) => {
 });
 
 if(vehicleStatusRepository){
+  app.get(
+    "/api/vehicle-status/analytics",
+    createVehicleStatusAnalyticsHandler({ repository: vehicleStatusRepository })
+  );
   for(const commandName of Object.values(VEHICLE_STATUS_LIFECYCLE_COMMANDS)){
     const definition = VEHICLE_STATUS_LIFECYCLE_COMMAND_DEFINITIONS[commandName];
     app.post(
@@ -623,6 +649,8 @@ app.post("/api/shared-sporplan-draft", (req, res) => {
       currentRevision: result.currentRevision
     });
   }
+
+  observeSharedSporplanPlacementReadback(result.readback);
 
   return res.status(201).json({
     ok: true,
@@ -1203,12 +1231,146 @@ app.use((_req, res) => {
 });
 
 app.listen(PORT, () => {
+  initializeVehicleStatusObservers();
   const revision = getCurrentRevision(db);
   console.log("server started");
   console.log(`port: ${PORT}`);
   console.log(`database path: ${databasePath}`);
   console.log(`current revision: ${revision}`);
 });
+
+function initializeVehicleStatusObservers(){
+  if(!vehicleStatusRepository) return;
+
+  try{
+    observeSharedSporplanPlacementReadback(getSharedSporplanDraft(db));
+  }catch(error){
+    console.error("vehicle-status placement baseline failed", {
+      name: error?.name || "Error",
+      message: error?.message || "Placement baseline failed."
+    });
+  }
+
+  observeProductionOccurrencesFromStaticData();
+  const timer = setInterval(
+    observeProductionOccurrencesFromStaticData,
+    VEHICLE_STATUS_OCCURRENCE_OBSERVER_INTERVAL_MS
+  );
+  timer.unref?.();
+}
+
+function observeSharedSporplanPlacementReadback(readback){
+  if(
+    !vehicleStatusRepository ||
+    typeof vehicleStatusRepository.observeCanonicalPlacements !== "function"
+  ) return;
+  try{
+    vehicleStatusRepository.observeCanonicalPlacements({
+      placementRevision: `shared-sporplan:${Number(readback?.revision || 0)}`,
+      placements: extractCanonicalPlacements(readback?.draft)
+    });
+  }catch(error){
+    console.error("vehicle-status placement observer failed", {
+      name: error?.name || "Error",
+      message: error?.message || "Placement observer failed."
+    });
+  }
+}
+
+function extractCanonicalPlacements(draft){
+  const placements = new Map();
+  for(const slotMap of [draft?.grunnoppstilling, draft?.grunnoppstillingRep]){
+    if(!slotMap || typeof slotMap !== "object" || Array.isArray(slotMap)) continue;
+    for(const [slot, rawVehicleIds] of Object.entries(slotMap)){
+      for(const candidate of String(rawVehicleIds || "").split(/[\s,;+]+/)){
+        const vehicleId = candidate.trim();
+        if(isRegisteredVehicle(vehicleId)){
+          placements.set(vehicleId, { vehicleId, slot: String(slot || "").trim() });
+        }
+      }
+    }
+  }
+  return [...placements.values()].sort((left, right) =>
+    left.vehicleId.localeCompare(right.vehicleId) ||
+    left.slot.localeCompare(right.slot)
+  );
+}
+
+function observeProductionOccurrencesFromStaticData(){
+  if(
+    !vehicleStatusRepository ||
+    typeof vehicleStatusRepository.observeProductionOccurrences !== "function"
+  ) return;
+  try{
+    const source = loadProductionOccurrencesFromStaticData();
+    vehicleStatusRepository.observeProductionOccurrences(source);
+  }catch(error){
+    console.error("vehicle-status production occurrence observer failed", {
+      name: error?.name || "Error",
+      message: error?.message || "Production occurrence observer failed."
+    });
+  }
+}
+
+function loadProductionOccurrencesFromStaticData(){
+  const sourceDocuments = [...FRONTEND_DATA_FILES.values()].map((filePath) => ({
+    filePath,
+    content: fs.readFileSync(filePath, "utf8")
+  }));
+  const sourceRevision = crypto.createHash("sha256")
+    .update(sourceDocuments.map(({ filePath, content }) =>
+      `${path.basename(filePath)}\n${content}`).join("\n"))
+    .digest("hex");
+  const occurrences = [];
+  for(const { content } of sourceDocuments){
+    const document = JSON.parse(content);
+    for(const occurrence of Object.values(document?.departureOccurrences || {})){
+      const operationalDate = String(occurrence?.operationalDate || "").trim();
+      const departureTime = String(occurrence?.departureTime || "").trim();
+      const trainNumber = String(
+        occurrence?.displayTrainNumber || occurrence?.requestedTrainNumber || ""
+      ).trim();
+      const routeId = String(occurrence?.routeId || "").trim();
+      const departureAt = toLocalOperationalIso(operationalDate, departureTime);
+      if(!operationalDate || !departureAt) continue;
+      for(const rawVehicleId of Array.isArray(occurrence?.vehicleIds)
+        ? occurrence.vehicleIds
+        : []){
+        const vehicleId = String(rawVehicleId || "").trim();
+        if(!isRegisteredVehicle(vehicleId)) continue;
+        occurrences.push({
+          occurrenceId: [
+            operationalDate,
+            "departure",
+            trainNumber,
+            departureTime,
+            routeId,
+            vehicleId
+          ].join("|"),
+          operationalDate,
+          trainNumber: trainNumber || null,
+          departureAt,
+          vehicleId,
+          evidenceType: "TURSATT_SCHEDULED"
+        });
+      }
+    }
+  }
+  occurrences.sort((left, right) =>
+    left.departureAt.localeCompare(right.departureAt) ||
+    left.occurrenceId.localeCompare(right.occurrenceId)
+  );
+  return { sourceRevision, occurrences };
+}
+
+function toLocalOperationalIso(operationalDate, time){
+  if(
+    !/^\d{4}-\d{2}-\d{2}$/.test(operationalDate) ||
+    !/^\d{2}:\d{2}(?::\d{2})?$/.test(time)
+  ) return null;
+  const parsed = new Date(`${operationalDate}T${time.length === 5 ? `${time}:00` : time}`);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
 
 function sendStaticFile(res, filePath, contentType){
   fs.readFile(filePath, (error, data) => {

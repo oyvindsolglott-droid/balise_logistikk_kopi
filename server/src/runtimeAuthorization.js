@@ -34,6 +34,11 @@ const CAPABILITY_IDS = Object.freeze({
   REQUEST_REPAIR: "vehicle_status.request_repair",
   MARK_FOR_TURNING: "vehicle_status.mark_for_turning",
   REPORT_OPERATIONAL: "vehicle_status.report_operational",
+  PRESENT_NOTIFICATION: "vehicle_status.notification_presented",
+  OPEN_WORKSHOP_SHEET: "vehicle_status.workshop_sheet_opened",
+  START_WORK: "vehicle_status.work_started",
+  SET_WAIT_REASON: "vehicle_status.set_wait_reason",
+  ANALYTICS_READ: "vehicle_status.analytics_read",
   REGISTER_RESOLUTIONS: "vehicle_status.register_resolutions",
   CLEAR_WORKSHOP_DISPOSITION_WITH_OPERATIONAL:
     "vehicle_status.clear_workshop_disposition_with_operational",
@@ -92,6 +97,36 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
     description: "Report a vehicle as operational.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: [ROLE_KEYS.VERKSTED]
+  },
+  {
+    capability: CAPABILITY_IDS.PRESENT_NOTIFICATION,
+    description: "Record that a workshop notification was rendered in an authenticated client.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.VERKSTED]
+  },
+  {
+    capability: CAPABILITY_IDS.OPEN_WORKSHOP_SHEET,
+    description: "Record the first authenticated opening of a workshop vehicle sheet.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.VERKSTED]
+  },
+  {
+    capability: CAPABILITY_IDS.START_WORK,
+    description: "Record explicit workshop work start for an active vehicle case.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.VERKSTED]
+  },
+  {
+    capability: CAPABILITY_IDS.SET_WAIT_REASON,
+    description: "Set the standardized wait reason for an active workshop case.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.VERKSTED]
+  },
+  {
+    capability: CAPABILITY_IDS.ANALYTICS_READ,
+    description: "Read aggregated vehicle and process analytics without personal identifiers.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.DROPS, ROLE_KEYS.ADMIN_PILOT]
   },
   {
     capability: CAPABILITY_IDS.REGISTER_RESOLUTIONS,

@@ -5,6 +5,10 @@ const {
   LIFECYCLE_COMMANDS,
   LIFECYCLE_SCHEMA_VERSION
 } = require("./vehicleStatusLifecycle");
+const {
+  buildAnalytics,
+  buildProcessCases
+} = require("./vehicleStatusProcessAnalytics");
 
 const RECORD_TABLE = "vehicle_status_command_records";
 const EVENT_TABLE = "vehicle_status_command_events";
@@ -14,6 +18,10 @@ const CASE_TABLE = "vehicle_status_cases";
 const FAULT_TABLE = "vehicle_status_faults";
 const REPAIR_TABLE = "vehicle_status_repair_requests";
 const NOTIFICATION_TABLE = "vehicle_status_role_notifications";
+const PROCESS_CASE_TABLE = "vehicle_status_process_cases";
+const PROCESS_EVENT_TABLE = "vehicle_status_process_events";
+const PROCESS_OBSERVATION_TABLE = "vehicle_status_process_observations";
+const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
 
 class VehicleStatusRepositoryConflict extends Error {
   constructor(code, message, fields = {}, status = 409){
@@ -48,7 +56,11 @@ function createVehicleStatusRepository(options = {}){
       [LIFECYCLE_COMMANDS.REPORT_NOT_OPERATIONAL]: executeReportNotOperationalV2,
       [LIFECYCLE_COMMANDS.REQUEST_REPAIR]: executeRequestRepair,
       [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: executeMarkForTurning,
-      [LIFECYCLE_COMMANDS.REPORT_OPERATIONAL]: executeReportOperational
+      [LIFECYCLE_COMMANDS.REPORT_OPERATIONAL]: executeReportOperational,
+      [LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED]: executeNotificationPresented,
+      [LIFECYCLE_COMMANDS.WORKSHOP_SHEET_OPENED]: executeWorkshopSheetOpened,
+      [LIFECYCLE_COMMANDS.WORK_STARTED]: executeWorkStarted,
+      [LIFECYCLE_COMMANDS.SET_WAIT_REASON]: executeSetWaitReason
     };
     const implementation = implementations[commandName];
     if(!implementation) return {
@@ -126,6 +138,22 @@ function createVehicleStatusRepository(options = {}){
       authority, timestamp, caseBefore: currentCaseRevision, caseAfter: caseRevision,
       statusBefore: statusRevision(command.vehicleId), statusAfter: statusRevision(command.vehicleId),
       previousState: {}, resultingState: { faultId, slot: command.slot, status: "ACTIVE" }
+    });
+    const processCase = ensureActiveProcessCase(command.vehicleId, timestamp, eventId);
+    insertProcessEvent({
+      eventType: "FAULT_REGISTERED",
+      vehicleId: command.vehicleId,
+      caseId: processCase.case_id,
+      faultId,
+      actionId: command.actionId,
+      timestamp,
+      authority,
+      payload: {
+        slot: command.slot,
+        category: command.category,
+        description: command.description
+      },
+      idempotencyKey: `${command.actionId}:fault-registered`
     });
     incrementGlobalRevision();
     return resultBase(command, eventId, {
@@ -214,6 +242,21 @@ function createVehicleStatusRepository(options = {}){
         faults: activeFaults.map(toFaultContract)
       }
     });
+    const processCase = ensureActiveProcessCase(command.vehicleId, timestamp, eventId);
+    insertProcessEvent({
+      eventType: "NOT_OPERATIONAL_REPORTED",
+      vehicleId: command.vehicleId,
+      caseId: processCase.case_id,
+      actionId: command.actionId,
+      timestamp,
+      authority,
+      payload: {
+        status: "IKKE_DRIFTSKLAR",
+        disposition: "NONE",
+        statusRevision: resultingRevision
+      },
+      idempotencyKey: `${command.actionId}:not-operational`
+    });
     incrementGlobalRevision();
     return resultBase(command, eventId, {
       status: "IKKE_DRIFTSKLAR",
@@ -238,10 +281,6 @@ function createVehicleStatusRepository(options = {}){
       throw conflict("fault_not_active", "Only ACTIVE faults can be requested for repair.");
     }
     const record = findRecord(command.vehicleId);
-    if(record?.status !== "IKKE_DRIFTSKLAR"){
-      throw conflict("vehicle_not_not_operational",
-        "Repair requires authoritative IKKE_DRIFTSKLAR status.");
-    }
     if(db.prepare(`
       SELECT 1 FROM ${REPAIR_TABLE} WHERE fault_id = ? AND status = 'REQUESTED'
     `).get(command.faultId)){
@@ -273,9 +312,41 @@ function createVehicleStatusRepository(options = {}){
     insertEvent({
       eventId, command, commandName: LIFECYCLE_COMMANDS.REQUEST_REPAIR,
       authority, timestamp, caseBefore: currentCaseRevision, caseAfter: caseRevision,
-      statusBefore: record.status_revision, statusAfter: record.status_revision,
+      statusBefore: record?.status_revision || 0, statusAfter: record?.status_revision || 0,
       previousState: { faultStatus: fault.status },
       resultingState: { repairRequestId, repairStatus: "REQUESTED", notificationId }
+    });
+    const processCase = ensureActiveProcessCase(command.vehicleId, timestamp, eventId);
+    insertProcessEvent({
+      eventType: "REPAIR_REQUESTED",
+      vehicleId: command.vehicleId,
+      caseId: processCase.case_id,
+      faultId: command.faultId,
+      repairRequestId,
+      actionId: command.actionId,
+      timestamp,
+      authority,
+      payload: {
+        status: "REQUESTED",
+        requestedAt: timestamp
+      },
+      idempotencyKey: `${command.actionId}:repair-requested`
+    });
+    insertProcessEvent({
+      eventType: "WORKSHOP_NOTIFICATION_CREATED",
+      vehicleId: command.vehicleId,
+      caseId: processCase.case_id,
+      faultId: command.faultId,
+      repairRequestId,
+      notificationId,
+      actionId: command.actionId,
+      timestamp,
+      authority,
+      payload: {
+        targetRole: "verksted",
+        notificationKind: "REPAIR_REQUESTED"
+      },
+      idempotencyKey: `${command.actionId}:notification-created`
     });
     incrementGlobalRevision();
     return resultBase(command, eventId, {
@@ -285,6 +356,9 @@ function createVehicleStatusRepository(options = {}){
       requestedAt: timestamp,
       caseRevision,
       notificationId,
+      currentStatus: record?.status || null,
+      disposition: record?.disposition || null,
+      statusRevision: record?.status_revision || 0,
       externalRequestSent: false
     });
   }
@@ -337,17 +411,23 @@ function createVehicleStatusRepository(options = {}){
       "status_revision_mismatch", { currentStatusRevision });
     requireRevision(command.expectedCaseRevision, currentCaseRevision,
       "case_revision_mismatch", { currentCaseRevision });
-    if(record?.status !== "IKKE_DRIFTSKLAR"){
+    const activeFaultsBeforeResolution = selectFaults(command.vehicleId, "ACTIVE");
+    const requestedRepairsBeforeCompletion = db.prepare(`
+      SELECT * FROM ${REPAIR_TABLE}
+      WHERE vehicle_id = ? AND status = 'REQUESTED'
+      ORDER BY requested_at, repair_request_id
+    `).all(command.vehicleId);
+    const activeFaultCount = activeFaultsBeforeResolution.length;
+    const requestedRepairCount = requestedRepairsBeforeCompletion.length;
+    const hasActiveWork = activeFaultCount > 0 || requestedRepairCount > 0;
+    if(record?.status !== "IKKE_DRIFTSKLAR" && !hasActiveWork){
       throw conflict("vehicle_not_not_operational",
-        "Only IKKE_DRIFTSKLAR vehicles can be reported operational.");
+        "Only IKKE_DRIFTSKLAR vehicles or vehicles with active workshop work can be reported operational.");
     }
     const timestamp = now();
     const eventId = randomUUID();
     const notificationId = randomUUID();
-    const activeFaultCount = countWhere(FAULT_TABLE, "vehicle_id = ? AND status = 'ACTIVE'", command.vehicleId);
-    const requestedRepairCount =
-      countWhere(REPAIR_TABLE, "vehicle_id = ? AND status = 'REQUESTED'", command.vehicleId);
-    const caseChanged = activeFaultCount > 0 || requestedRepairCount > 0;
+    const caseChanged = hasActiveWork;
     const resultingCaseRevision = currentCaseRevision + (caseChanged ? 1 : 0);
     const resultingStatusRevision = currentStatusRevision + 1;
 
@@ -363,14 +443,28 @@ function createVehicleStatusRepository(options = {}){
       WHERE vehicle_id=? AND status='REQUESTED'
     `).run(timestamp, authority.subject, command.vehicleId);
     db.prepare(`
-      UPDATE ${RECORD_TABLE}
-      SET previous_status=status, status='DRIFTSKLAR', disposition='NONE',
-          status_revision=?, operational_at=?, updated_at=?,
-          last_actor=?, latest_event_id=?
-      WHERE vehicle_id=?
+      INSERT INTO ${RECORD_TABLE} (
+        vehicle_id, status, previous_status, disposition, status_revision,
+        registered_at, operational_at, updated_at, last_actor, latest_event_id
+      ) VALUES (?, 'DRIFTSKLAR', ?, 'NONE', ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(vehicle_id) DO UPDATE SET
+        previous_status=${RECORD_TABLE}.status,
+        status='DRIFTSKLAR',
+        disposition='NONE',
+        status_revision=excluded.status_revision,
+        operational_at=excluded.operational_at,
+        updated_at=excluded.updated_at,
+        last_actor=excluded.last_actor,
+        latest_event_id=excluded.latest_event_id
     `).run(
-      resultingStatusRevision, timestamp, timestamp,
-      authority.subject, eventId, command.vehicleId
+      command.vehicleId,
+      record?.status || null,
+      resultingStatusRevision,
+      record?.registered_at || timestamp,
+      timestamp,
+      timestamp,
+      authority.subject,
+      eventId
     );
     if(caseChanged){
       updateCase(command.vehicleId, timestamp, eventId, resultingCaseRevision);
@@ -387,7 +481,10 @@ function createVehicleStatusRepository(options = {}){
       authority, timestamp, caseBefore: currentCaseRevision,
       caseAfter: resultingCaseRevision,
       statusBefore: currentStatusRevision, statusAfter: resultingStatusRevision,
-      previousState: { status: record.status, disposition: record.disposition },
+      previousState: {
+        status: record?.status || null,
+        disposition: record?.disposition || null
+      },
       resultingState: {
         status: "DRIFTSKLAR", disposition: "NONE",
         resolvedFaults: activeFaultCount,
@@ -395,17 +492,286 @@ function createVehicleStatusRepository(options = {}){
         notificationId
       }
     });
+    const processCase = findActiveProcessCase(command.vehicleId) ||
+      ensureActiveProcessCase(command.vehicleId, timestamp, eventId);
+    insertProcessEvent({
+      eventType: "OPERATIONAL_REPORTED",
+      vehicleId: command.vehicleId,
+      caseId: processCase.case_id,
+      actionId: command.actionId,
+      timestamp,
+      authority,
+      payload: {
+        status: "DRIFTSKLAR",
+        disposition: "NONE",
+        statusRevision: resultingStatusRevision
+      },
+      idempotencyKey: `${command.actionId}:operational`
+    });
+    for(const fault of activeFaultsBeforeResolution){
+      insertProcessEvent({
+        eventType: "FAULT_RESOLVED",
+        vehicleId: command.vehicleId,
+        caseId: processCase.case_id,
+        faultId: fault.fault_id,
+        actionId: command.actionId,
+        timestamp,
+        authority,
+        payload: { category: fault.category, resolvedAt: timestamp },
+        idempotencyKey: `${command.actionId}:fault-resolved:${fault.fault_id}`
+      });
+    }
+    for(const repair of requestedRepairsBeforeCompletion){
+      insertProcessEvent({
+        eventType: "REPAIR_REQUEST_COMPLETED",
+        vehicleId: command.vehicleId,
+        caseId: processCase.case_id,
+        faultId: repair.fault_id,
+        repairRequestId: repair.repair_request_id,
+        actionId: command.actionId,
+        timestamp,
+        authority,
+        payload: { completedAt: timestamp },
+        idempotencyKey: `${command.actionId}:repair-completed:${repair.repair_request_id}`
+      });
+    }
+    closeProcessCase(processCase.case_id, timestamp);
     incrementGlobalRevision();
     return resultBase(command, eventId, {
       status: "DRIFTSKLAR",
       disposition: "NONE",
-      previousDisposition: record.disposition,
+      previousDisposition: record?.disposition || null,
       statusRevision: resultingStatusRevision,
       caseRevision: resultingCaseRevision,
       operationalAt: timestamp,
       notificationId,
       resolvedFaults: activeFaultCount,
       completedRepairRequests: requestedRepairCount
+    });
+  }
+
+  function executeNotificationPresented(command, authority){
+    const notification = db.prepare(`
+      SELECT * FROM ${NOTIFICATION_TABLE} WHERE notification_id = ?
+    `).get(command.notificationId);
+    if(!notification){
+      throw conflict("notification_not_found", "The notification was not found.", {}, 404);
+    }
+    if(!(authority.roles || []).includes(notification.target_role)){
+      throw conflict("notification_role_mismatch",
+        "The notification does not target the authenticated role.", {}, 403);
+    }
+    const processCase = findActiveProcessCase(notification.vehicle_id) ||
+      findLatestProcessCase(notification.vehicle_id);
+    if(!processCase){
+      throw conflict("process_case_not_found", "No vehicle process case was found.", {}, 404);
+    }
+    const timestamp = now();
+    const eventId = randomUUID();
+    const currentCaseRevision = findCase(notification.vehicle_id)?.case_revision || 0;
+    const alreadyPresented = db.prepare(`
+      SELECT 1 FROM ${PROCESS_EVENT_TABLE}
+      WHERE case_id = ? AND event_type = 'WORKSHOP_NOTIFICATION_PRESENTED'
+        AND notification_id = ?
+    `).get(processCase.case_id, notification.notification_id);
+    let timelineEventCreated = false;
+    if(!alreadyPresented){
+      timelineEventCreated = insertProcessEvent({
+        eventType: "WORKSHOP_NOTIFICATION_PRESENTED",
+        vehicleId: notification.vehicle_id,
+        caseId: processCase.case_id,
+        faultId: notification.fault_id,
+        repairRequestId: notification.repair_request_id,
+        notificationId: notification.notification_id,
+        actionId: command.actionId,
+        timestamp,
+        authority,
+        payload: {
+          presentationMeaning:
+            "Notification rendered in an authenticated client; not proof of reading or understanding."
+        },
+        idempotencyKey: `notification-presented:${notification.notification_id}`
+      });
+    }
+    const eventCommand = { ...command, vehicleId: notification.vehicle_id };
+    insertEvent({
+      eventId, command: eventCommand,
+      commandName: LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED,
+      authority, timestamp,
+      caseBefore: currentCaseRevision, caseAfter: currentCaseRevision,
+      statusBefore: statusRevision(notification.vehicle_id),
+      statusAfter: statusRevision(notification.vehicle_id),
+      previousState: {},
+      resultingState: {
+        notificationId: notification.notification_id,
+        timelineEventCreated
+      }
+    });
+    incrementGlobalRevision();
+    return resultBase(eventCommand, eventId, {
+      notificationId: notification.notification_id,
+      timelineEventCreated,
+      presentedAt: timelineEventCreated ? timestamp :
+        getFirstProcessEventTimestamp(
+          processCase.case_id,
+          "WORKSHOP_NOTIFICATION_PRESENTED",
+          "notification_id",
+          notification.notification_id
+        ),
+      caseRevision: currentCaseRevision
+    });
+  }
+
+  function executeWorkshopSheetOpened(command, authority){
+    const processCase = command.caseId
+      ? findProcessCase(command.caseId, command.vehicleId)
+      : (findActiveProcessCase(command.vehicleId) || findLatestProcessCase(command.vehicleId));
+    if(!processCase){
+      throw conflict("process_case_not_found", "No vehicle process case was found.", {}, 404);
+    }
+    const timestamp = now();
+    const eventId = randomUUID();
+    const currentCaseRevision = findCase(command.vehicleId)?.case_revision || 0;
+    const alreadyOpened = db.prepare(`
+      SELECT 1 FROM ${PROCESS_EVENT_TABLE}
+      WHERE case_id = ? AND event_type = 'WORKSHOP_SHEET_FIRST_OPENED'
+    `).get(processCase.case_id);
+    const timelineEventCreated = alreadyOpened ? false : insertProcessEvent({
+      eventType: "WORKSHOP_SHEET_FIRST_OPENED",
+      vehicleId: command.vehicleId,
+      caseId: processCase.case_id,
+      actionId: command.actionId,
+      timestamp,
+      authority,
+      payload: {
+        openingMeaning:
+          "Vehicle sheet opened in an authenticated client; not proof of reading or work start."
+      },
+      idempotencyKey: `workshop-sheet-first-opened:${processCase.case_id}`
+    });
+    insertEvent({
+      eventId, command, commandName: LIFECYCLE_COMMANDS.WORKSHOP_SHEET_OPENED,
+      authority, timestamp,
+      caseBefore: currentCaseRevision, caseAfter: currentCaseRevision,
+      statusBefore: statusRevision(command.vehicleId),
+      statusAfter: statusRevision(command.vehicleId),
+      previousState: {},
+      resultingState: { caseId: processCase.case_id, timelineEventCreated }
+    });
+    incrementGlobalRevision();
+    return resultBase(command, eventId, {
+      caseId: processCase.case_id,
+      timelineEventCreated,
+      firstOpenedAt: getFirstProcessEventTimestamp(
+        processCase.case_id,
+        "WORKSHOP_SHEET_FIRST_OPENED"
+      ),
+      caseRevision: currentCaseRevision
+    });
+  }
+
+  function executeWorkStarted(command, authority){
+    const processCase = findActiveProcessCase(command.vehicleId);
+    if(!processCase){
+      throw conflict("active_process_case_required", "An active vehicle process case is required.");
+    }
+    const currentCase = findCase(command.vehicleId);
+    const currentCaseRevision = currentCase?.case_revision || 0;
+    requireRevision(command.expectedCaseRevision, currentCaseRevision,
+      "case_revision_mismatch", { currentCaseRevision });
+    const activeWork = countWhere(
+      FAULT_TABLE,
+      "vehicle_id = ? AND status = 'ACTIVE'",
+      command.vehicleId
+    ) + countWhere(
+      REPAIR_TABLE,
+      "vehicle_id = ? AND status = 'REQUESTED'",
+      command.vehicleId
+    );
+    if(activeWork === 0){
+      throw conflict("active_work_required",
+        "An ACTIVE fault or REQUESTED repair request is required.");
+    }
+    if(db.prepare(`
+      SELECT 1 FROM ${PROCESS_EVENT_TABLE}
+      WHERE case_id = ? AND event_type = 'WORK_STARTED'
+    `).get(processCase.case_id)){
+      throw conflict("work_already_started", "Work has already been started for this case.");
+    }
+    const timestamp = now();
+    const eventId = randomUUID();
+    const caseRevision = currentCaseRevision + 1;
+    updateCase(command.vehicleId, timestamp, eventId, caseRevision);
+    insertProcessEvent({
+      eventType: "WORK_STARTED",
+      vehicleId: command.vehicleId,
+      caseId: processCase.case_id,
+      actionId: command.actionId,
+      timestamp,
+      authority,
+      payload: { workStartedAt: timestamp },
+      idempotencyKey: `${command.actionId}:work-started`
+    });
+    insertEvent({
+      eventId, command, commandName: LIFECYCLE_COMMANDS.WORK_STARTED,
+      authority, timestamp,
+      caseBefore: currentCaseRevision, caseAfter: caseRevision,
+      statusBefore: statusRevision(command.vehicleId),
+      statusAfter: statusRevision(command.vehicleId),
+      previousState: {},
+      resultingState: { workStartedAt: timestamp }
+    });
+    incrementGlobalRevision();
+    return resultBase(command, eventId, {
+      caseId: processCase.case_id,
+      workStartedAt: timestamp,
+      caseRevision
+    });
+  }
+
+  function executeSetWaitReason(command, authority){
+    const processCase = findActiveProcessCase(command.vehicleId);
+    if(!processCase){
+      throw conflict("active_process_case_required", "An active vehicle process case is required.");
+    }
+    const currentCase = findCase(command.vehicleId);
+    const currentCaseRevision = currentCase?.case_revision || 0;
+    requireRevision(command.expectedCaseRevision, currentCaseRevision,
+      "case_revision_mismatch", { currentCaseRevision });
+    const timestamp = now();
+    const eventId = randomUUID();
+    const caseRevision = currentCaseRevision + 1;
+    updateCase(command.vehicleId, timestamp, eventId, caseRevision);
+    db.prepare(`
+      UPDATE ${PROCESS_CASE_TABLE}
+      SET current_wait_reason = ?, latest_event_at = ?
+      WHERE case_id = ?
+    `).run(command.reason, timestamp, processCase.case_id);
+    insertProcessEvent({
+      eventType: "WAIT_REASON_SET",
+      vehicleId: command.vehicleId,
+      caseId: processCase.case_id,
+      actionId: command.actionId,
+      timestamp,
+      authority,
+      payload: { reason: command.reason },
+      idempotencyKey: `${command.actionId}:wait-reason`
+    });
+    insertEvent({
+      eventId, command, commandName: LIFECYCLE_COMMANDS.SET_WAIT_REASON,
+      authority, timestamp,
+      caseBefore: currentCaseRevision, caseAfter: caseRevision,
+      statusBefore: statusRevision(command.vehicleId),
+      statusAfter: statusRevision(command.vehicleId),
+      previousState: { reason: processCase.current_wait_reason || "NONE" },
+      resultingState: { reason: command.reason }
+    });
+    incrementGlobalRevision();
+    return resultBase(command, eventId, {
+      caseId: processCase.case_id,
+      currentWaitReason: command.reason,
+      waitReasonSetAt: timestamp,
+      caseRevision
     });
   }
 
@@ -463,39 +829,55 @@ function createVehicleStatusRepository(options = {}){
     `).all().map(mapRepair);
     const events = db.prepare(`SELECT * FROM ${EVENT_TABLE} ORDER BY server_timestamp, event_id`).all()
       .map(mapEvent);
+    const processEvents = selectProcessEvents();
+    const processCases = buildProcessCases({
+      caseRows: selectProcessCaseRows(),
+      events: processEvents
+    });
     const allNotifications = db.prepare(`
       SELECT * FROM ${NOTIFICATION_TABLE} ORDER BY created_at, notification_id
     `).all().map(mapNotification);
     const notifications = roles.length
       ? allNotifications.filter((notification) => roles.includes(notification.targetRole))
       : [];
-    const items = db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all()
-      .map((record) => {
+    const records = db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all();
+    const itemVehicleIds = [...new Set([
+      ...records.map((record) => record.vehicle_id),
+      ...cases.map((vehicleCase) => vehicleCase.vehicleId),
+      ...faults.map((fault) => fault.vehicleId)
+    ])].sort();
+    const items = itemVehicleIds.map((vehicleId) => {
+        const record = records.find((candidate) => candidate.vehicle_id === vehicleId) || null;
         const vehicleFaults = faults.filter((fault) =>
-          fault.vehicleId === record.vehicle_id && fault.status === "ACTIVE");
-        const caseRecord = cases.find((candidate) => candidate.vehicleId === record.vehicle_id);
+          fault.vehicleId === vehicleId && fault.status === "ACTIVE");
+        const caseRecord = cases.find((candidate) => candidate.vehicleId === vehicleId);
         return {
-          vehicleId: record.vehicle_id,
-          currentStatus: record.status,
-          previousStatus: record.previous_status,
-          workshopDisposition: record.disposition,
+          vehicleId,
+          currentStatus: record?.status || null,
+          previousStatus: record?.previous_status || null,
+          workshopDisposition: record?.disposition || null,
           statusReason: vehicleFaults[0]?.description || null,
-          statusAuthority: record.status === "DRIFTSKLAR"
-            ? "vehicle_status.report_operational"
-            : "vehicle_status.report_not_operational",
-          registeredAt: record.registered_at,
-          operationalAt: record.operational_at,
-          registeredBy: record.last_actor,
+          statusAuthority: record
+            ? (record.status === "DRIFTSKLAR"
+              ? "vehicle_status.report_operational"
+              : "vehicle_status.report_not_operational")
+            : null,
+          registeredAt: record?.registered_at || null,
+          operationalAt: record?.operational_at || null,
+          registeredBy: record?.last_actor || null,
           sourceLevel,
           stationPresenceAtRegistration: null,
           stationSlotAtRegistration: null,
-          activeCaseId: caseRecord?.vehicleId || record.vehicle_id,
-          statusRevision: record.status_revision,
+          activeCaseId: processCases.find((candidate) =>
+            candidate.vehicleId === vehicleId && candidate.active)?.caseId ||
+            caseRecord?.vehicleId ||
+            vehicleId,
+          statusRevision: record?.status_revision || 0,
           caseRevision: caseRecord?.caseRevision || 0,
           activeFaults: vehicleFaults,
           latestResolution: faults.find((fault) =>
-            fault.vehicleId === record.vehicle_id && fault.status === "RESOLVED") || null,
-          updatedAt: record.updated_at
+            fault.vehicleId === vehicleId && fault.status === "RESOLVED") || null,
+          updatedAt: record?.updated_at || caseRecord?.updatedAt || null
         };
       });
     return {
@@ -517,6 +899,9 @@ function createVehicleStatusRepository(options = {}){
       faults,
       repairRequests,
       events,
+      processEvents,
+      processCases,
+      placements: selectPlacementObservations(),
       notifications,
       diagnostics: [],
       message: {
@@ -525,6 +910,146 @@ function createVehicleStatusRepository(options = {}){
       },
       openPolicyDecisions: []
     };
+  }
+
+  function getAnalytics(filter = {}){
+    const readModel = getReadModel({ roles: [] });
+    return buildAnalytics({
+      now,
+      filter,
+      cases: readModel.processCases,
+      faults: readModel.faults,
+      repairs: readModel.repairRequests,
+      records: readModel.items,
+      placements: selectPlacementObservations()
+    });
+  }
+
+  function observeCanonicalPlacements(input = {}){
+    const sourceRevision = String(input.placementRevision ?? "");
+    if(!sourceRevision || !Array.isArray(input.placements)){
+      throw new TypeError("placementRevision and placements are required.");
+    }
+    db.exec("BEGIN IMMEDIATE;");
+    try{
+      let eventsCreated = 0;
+      const timestamp = now();
+      for(const raw of input.placements){
+        const vehicleId = String(raw?.vehicleId || "").trim();
+        const slot = normalizeSlot(raw?.slot);
+        if(!vehicleId || !slot) continue;
+        const observerKey = `placement:${vehicleId}`;
+        const previous = findObservation(observerKey);
+        if(previous?.source_revision === sourceRevision) continue;
+        const previousPayload = previous ? safeJson(previous.payload_json, {}) : null;
+        if(previousPayload){
+          const fromSlot = normalizeSlot(previousPayload.slot);
+          const fromWorkshop = WORKSHOP_SLOTS.has(fromSlot);
+          const toWorkshop = WORKSHOP_SLOTS.has(slot);
+          const eventType = !fromWorkshop && toWorkshop
+            ? "WORKSHOP_AREA_ENTERED"
+            : (fromWorkshop && !toWorkshop ? "WORKSHOP_AREA_EXITED" : null);
+          const processCase = eventType === "WORKSHOP_AREA_ENTERED"
+            ? findActiveProcessCase(vehicleId)
+            : (eventType === "WORKSHOP_AREA_EXITED"
+              ? findProcessCaseWithOpenWorkshopSegment(vehicleId)
+              : null);
+          if(eventType && processCase){
+            eventsCreated += insertProcessEvent({
+              eventType,
+              vehicleId,
+              caseId: processCase.case_id,
+              timestamp,
+              payload: { fromSlot, toSlot: slot, placementRevision: sourceRevision },
+              sourceRevision,
+              idempotencyKey:
+                `placement:${processCase.case_id}:${sourceRevision}:${fromSlot}:${slot}:${eventType}`
+            }) ? 1 : 0;
+          }
+        }
+        upsertObservation(observerKey, sourceRevision, {
+          vehicleId,
+          slot,
+          inWorkshop: WORKSHOP_SLOTS.has(slot)
+        }, timestamp);
+      }
+      if(eventsCreated) incrementGlobalRevision();
+      db.exec("COMMIT;");
+      return { eventsCreated, placementRevision: sourceRevision };
+    }catch(error){
+      rollbackQuietly(db);
+      throw error;
+    }
+  }
+
+  function observeProductionOccurrences(input = {}){
+    const sourceRevision = String(input.sourceRevision || "").trim();
+    if(!sourceRevision || !Array.isArray(input.occurrences)){
+      throw new TypeError("sourceRevision and occurrences are required.");
+    }
+    db.exec("BEGIN IMMEDIATE;");
+    try{
+      const timestamp = now();
+      const baselineKey = "production-occurrence-baseline";
+      const previous = findObservation(baselineKey);
+      if(!previous){
+        upsertObservation(baselineKey, sourceRevision, {
+          initialized: true,
+          occurrenceCount: input.occurrences.length
+        }, timestamp);
+        db.exec("COMMIT;");
+        return { eventsCreated: 0, sourceRevision, baselineEstablished: true };
+      }
+      if(previous.source_revision === sourceRevision){
+        db.exec("COMMIT;");
+        return { eventsCreated: 0, sourceRevision, replay: true };
+      }
+      let eventsCreated = 0;
+      const closedCases = selectProcessCaseRows().filter((processCase) => processCase.closedAt);
+      for(const processCase of closedCases){
+        if(db.prepare(`
+          SELECT 1 FROM ${PROCESS_EVENT_TABLE}
+          WHERE case_id = ? AND event_type = 'RETURN_TO_SERVICE_DETECTED'
+        `).get(processCase.caseId)) continue;
+        const occurrence = input.occurrences
+          .filter((candidate) =>
+            String(candidate?.vehicleId || "") === processCase.vehicleId &&
+            validEvidenceType(candidate?.evidenceType) &&
+            Date.parse(String(candidate?.departureAt || "")) >
+              Date.parse(String(processCase.closedAt || ""))
+          )
+          .sort((left, right) =>
+            Date.parse(left.departureAt) - Date.parse(right.departureAt))[0];
+        if(!occurrence?.occurrenceId || !occurrence?.operationalDate) continue;
+        eventsCreated += insertProcessEvent({
+          eventType: "RETURN_TO_SERVICE_DETECTED",
+          vehicleId: processCase.vehicleId,
+          caseId: processCase.caseId,
+          timestamp,
+          payload: {
+            operationalDate: occurrence.operationalDate,
+            trainNumber: occurrence.trainNumber || null,
+            departureAt: occurrence.departureAt,
+            detectedAt: timestamp
+          },
+          sourceRevision,
+          sourceOccurrenceId: occurrence.occurrenceId,
+          evidenceType: occurrence.evidenceType,
+          idempotencyKey:
+            `return-to-service:${processCase.caseId}:${occurrence.occurrenceId}`
+        }) ? 1 : 0;
+      }
+      upsertObservation(baselineKey, sourceRevision, {
+        initialized: true,
+        occurrenceCount: input.occurrences.length
+      }, timestamp);
+      if(eventsCreated) incrementGlobalRevision();
+      db.exec("COMMIT;");
+      return { eventsCreated, sourceRevision };
+    }catch(error){
+      rollbackQuietly(db);
+      throw error;
+    }
   }
 
   function getStorageSnapshot(){
@@ -536,7 +1061,10 @@ function createVehicleStatusRepository(options = {}){
         repairRequests: countRows(REPAIR_TABLE),
         notifications: countRows(NOTIFICATION_TABLE),
         events: countRows(EVENT_TABLE),
-        idempotency: countRows(IDEMPOTENCY_TABLE)
+        idempotency: countRows(IDEMPOTENCY_TABLE),
+        processCases: countRows(PROCESS_CASE_TABLE),
+        processEvents: countRows(PROCESS_EVENT_TABLE),
+        processObservations: countRows(PROCESS_OBSERVATION_TABLE)
       },
       records: db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all(),
       cases: db.prepare(`SELECT * FROM ${CASE_TABLE} ORDER BY vehicle_id`).all(),
@@ -544,7 +1072,9 @@ function createVehicleStatusRepository(options = {}){
       repairRequests: db.prepare(`SELECT * FROM ${REPAIR_TABLE} ORDER BY repair_request_id`).all(),
       notifications: db.prepare(`SELECT * FROM ${NOTIFICATION_TABLE} ORDER BY notification_id`).all(),
       events: db.prepare(`SELECT * FROM ${EVENT_TABLE} ORDER BY event_id`).all(),
-      idempotency: db.prepare(`SELECT * FROM ${IDEMPOTENCY_TABLE} ORDER BY action_id`).all()
+      idempotency: db.prepare(`SELECT * FROM ${IDEMPOTENCY_TABLE} ORDER BY action_id`).all(),
+      processCases: db.prepare(`SELECT * FROM ${PROCESS_CASE_TABLE} ORDER BY vehicle_id, sequence`).all(),
+      processEvents: db.prepare(`SELECT * FROM ${PROCESS_EVENT_TABLE} ORDER BY server_timestamp, process_event_id`).all()
     };
   }
 
@@ -694,12 +1224,181 @@ function createVehicleStatusRepository(options = {}){
   function countWhere(table, where, ...values){
     return db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE ${where}`).get(...values).count;
   }
+  function findActiveProcessCase(vehicleId){
+    return db.prepare(`
+      SELECT * FROM ${PROCESS_CASE_TABLE}
+      WHERE vehicle_id = ? AND closed_at IS NULL
+      ORDER BY sequence DESC LIMIT 1
+    `).get(vehicleId);
+  }
+  function findLatestProcessCase(vehicleId){
+    return db.prepare(`
+      SELECT * FROM ${PROCESS_CASE_TABLE}
+      WHERE vehicle_id = ?
+      ORDER BY sequence DESC LIMIT 1
+    `).get(vehicleId);
+  }
+  function findProcessCaseWithOpenWorkshopSegment(vehicleId){
+    const candidates = db.prepare(`
+      SELECT * FROM ${PROCESS_CASE_TABLE}
+      WHERE vehicle_id = ?
+      ORDER BY sequence DESC
+    `).all(vehicleId);
+    return candidates.find((candidate) => {
+      const lastTransition = db.prepare(`
+        SELECT event_type FROM ${PROCESS_EVENT_TABLE}
+        WHERE case_id = ?
+          AND event_type IN ('WORKSHOP_AREA_ENTERED','WORKSHOP_AREA_EXITED')
+        ORDER BY server_timestamp DESC, process_event_id DESC
+        LIMIT 1
+      `).get(candidate.case_id);
+      return lastTransition?.event_type === "WORKSHOP_AREA_ENTERED";
+    }) || null;
+  }
+  function findProcessCase(caseId, vehicleId){
+    return db.prepare(`
+      SELECT * FROM ${PROCESS_CASE_TABLE}
+      WHERE case_id = ? AND vehicle_id = ?
+    `).get(caseId, vehicleId);
+  }
+  function ensureActiveProcessCase(vehicleId, timestamp, sourceEventId){
+    const existing = findActiveProcessCase(vehicleId);
+    if(existing) return existing;
+    const sequence = Number(db.prepare(`
+      SELECT COALESCE(MAX(sequence), 0) AS value
+      FROM ${PROCESS_CASE_TABLE} WHERE vehicle_id = ?
+    `).get(vehicleId)?.value || 0) + 1;
+    const caseId = randomUUID();
+    db.prepare(`
+      INSERT INTO ${PROCESS_CASE_TABLE} (
+        case_id, vehicle_id, sequence, opened_at, closed_at,
+        current_wait_reason, source_event_id, latest_event_at
+      ) VALUES (?, ?, ?, ?, NULL, 'NONE', ?, ?)
+    `).run(caseId, vehicleId, sequence, timestamp, sourceEventId || null, timestamp);
+    return findProcessCase(caseId, vehicleId);
+  }
+  function closeProcessCase(caseId, timestamp){
+    db.prepare(`
+      UPDATE ${PROCESS_CASE_TABLE}
+      SET closed_at = COALESCE(closed_at, ?), latest_event_at = ?
+      WHERE case_id = ?
+    `).run(timestamp, timestamp, caseId);
+  }
+  function insertProcessEvent(input){
+    if(input.idempotencyKey && db.prepare(`
+      SELECT 1 FROM ${PROCESS_EVENT_TABLE} WHERE idempotency_key = ?
+    `).get(input.idempotencyKey)){
+      return false;
+    }
+    const processEventId = input.processEventId || randomUUID();
+    db.prepare(`
+      INSERT INTO ${PROCESS_EVENT_TABLE} (
+        process_event_id, event_type, vehicle_id, case_id,
+        fault_id, repair_request_id, notification_id, action_id,
+        server_timestamp, actor_subject, actor_role, payload_json,
+        source_revision, source_occurrence_id, evidence_type, idempotency_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      processEventId,
+      input.eventType,
+      input.vehicleId,
+      input.caseId,
+      input.faultId || null,
+      input.repairRequestId || null,
+      input.notificationId || null,
+      input.actionId || null,
+      input.timestamp || now(),
+      input.authority?.subject || null,
+      input.authority?.effectiveRole || null,
+      JSON.stringify(input.payload || {}),
+      input.sourceRevision === undefined || input.sourceRevision === null
+        ? null
+        : String(input.sourceRevision),
+      input.sourceOccurrenceId || null,
+      input.evidenceType || null,
+      input.idempotencyKey || null
+    );
+    db.prepare(`
+      UPDATE ${PROCESS_CASE_TABLE}
+      SET latest_event_at = ?
+      WHERE case_id = ?
+    `).run(input.timestamp || now(), input.caseId);
+    return true;
+  }
+  function selectProcessEvents(){
+    return db.prepare(`
+      SELECT * FROM ${PROCESS_EVENT_TABLE}
+      ORDER BY server_timestamp, process_event_id
+    `).all().map((row) => ({
+      processEventId: row.process_event_id,
+      eventType: row.event_type,
+      vehicleId: row.vehicle_id,
+      caseId: row.case_id,
+      faultId: row.fault_id,
+      repairRequestId: row.repair_request_id,
+      notificationId: row.notification_id,
+      timestamp: row.server_timestamp,
+      payload: safeJson(row.payload_json, {}),
+      sourceRevision: row.source_revision,
+      sourceOccurrenceId: row.source_occurrence_id,
+      evidenceType: row.evidence_type
+    }));
+  }
+  function selectProcessCaseRows(){
+    return db.prepare(`
+      SELECT * FROM ${PROCESS_CASE_TABLE}
+      ORDER BY vehicle_id, sequence
+    `).all().map((row) => ({
+      caseId: row.case_id,
+      vehicleId: row.vehicle_id,
+      sequence: row.sequence,
+      openedAt: row.opened_at,
+      closedAt: row.closed_at,
+      currentWaitReason: row.current_wait_reason,
+      latestEventAt: row.latest_event_at
+    }));
+  }
+  function getFirstProcessEventTimestamp(caseId, eventType, field = null, value = null){
+    const where = field ? ` AND ${field} = ?` : "";
+    const row = db.prepare(`
+      SELECT server_timestamp FROM ${PROCESS_EVENT_TABLE}
+      WHERE case_id = ? AND event_type = ?${where}
+      ORDER BY server_timestamp, process_event_id LIMIT 1
+    `).get(...(field ? [caseId, eventType, value] : [caseId, eventType]));
+    return row?.server_timestamp || null;
+  }
+  function findObservation(observerKey){
+    return db.prepare(`
+      SELECT * FROM ${PROCESS_OBSERVATION_TABLE} WHERE observer_key = ?
+    `).get(observerKey);
+  }
+  function upsertObservation(observerKey, sourceRevision, payload, timestamp){
+    db.prepare(`
+      INSERT INTO ${PROCESS_OBSERVATION_TABLE} (
+        observer_key, source_revision, payload_json, updated_at
+      ) VALUES (?, ?, ?, ?)
+      ON CONFLICT(observer_key) DO UPDATE SET
+        source_revision = excluded.source_revision,
+        payload_json = excluded.payload_json,
+        updated_at = excluded.updated_at
+    `).run(observerKey, sourceRevision, JSON.stringify(payload), timestamp);
+  }
+  function selectPlacementObservations(){
+    return db.prepare(`
+      SELECT payload_json FROM ${PROCESS_OBSERVATION_TABLE}
+      WHERE observer_key LIKE 'placement:%'
+      ORDER BY observer_key
+    `).all().map((row) => safeJson(row.payload_json, {}));
+  }
 
   return {
     executeCommand,
     executeReportNotOperational,
+    getAnalytics,
     getReadModel,
-    getStorageSnapshot
+    getStorageSnapshot,
+    observeCanonicalPlacements,
+    observeProductionOccurrences
   };
 }
 
@@ -726,7 +1425,7 @@ function initializeSchema(db){
       DROP TABLE IF EXISTS ${RECORD_TABLE};
       DROP TABLE IF EXISTS ${META_TABLE};
     `);
-  }else if(userVersion > 2){
+  }else if(userVersion > 3){
     throw new Error("vehicle_status_schema_version_unsupported");
   }
 
@@ -840,8 +1539,242 @@ function initializeSchema(db){
     CREATE TRIGGER IF NOT EXISTS vehicle_status_command_events_immutable_delete
     BEFORE DELETE ON ${EVENT_TABLE}
     BEGIN SELECT RAISE(ABORT, 'vehicle status events are immutable'); END;
-    PRAGMA user_version = 2;
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ${PROCESS_CASE_TABLE} (
+      case_id TEXT PRIMARY KEY,
+      vehicle_id TEXT NOT NULL,
+      sequence INTEGER NOT NULL CHECK(sequence >= 1),
+      opened_at TEXT NOT NULL,
+      closed_at TEXT,
+      current_wait_reason TEXT NOT NULL DEFAULT 'NONE'
+        CHECK(current_wait_reason IN (
+          'WAITING_FOR_SHUNTING',
+          'WAITING_FOR_WORKSHOP_TRACK',
+          'WAITING_FOR_PERSONNEL',
+          'WAITING_FOR_PART',
+          'WAITING_FOR_TECHNICAL_CLARIFICATION',
+          'WAITING_FOR_TEST_RUN',
+          'OTHER',
+          'NONE'
+        )),
+      source_event_id TEXT,
+      latest_event_at TEXT NOT NULL,
+      UNIQUE(vehicle_id, sequence)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS vehicle_status_one_active_process_case
+      ON ${PROCESS_CASE_TABLE}(vehicle_id) WHERE closed_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS ${PROCESS_EVENT_TABLE} (
+      process_event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL CHECK(event_type IN (
+        'FAULT_REGISTERED',
+        'NOT_OPERATIONAL_REPORTED',
+        'REPAIR_REQUESTED',
+        'WORKSHOP_NOTIFICATION_CREATED',
+        'WORKSHOP_NOTIFICATION_PRESENTED',
+        'WORKSHOP_SHEET_FIRST_OPENED',
+        'WORKSHOP_AREA_ENTERED',
+        'WORK_STARTED',
+        'WAIT_REASON_SET',
+        'OPERATIONAL_REPORTED',
+        'WORKSHOP_AREA_EXITED',
+        'RETURN_TO_SERVICE_DETECTED',
+        'FAULT_RESOLVED',
+        'REPAIR_REQUEST_COMPLETED'
+      )),
+      vehicle_id TEXT NOT NULL,
+      case_id TEXT NOT NULL,
+      fault_id TEXT,
+      repair_request_id TEXT,
+      notification_id TEXT,
+      action_id TEXT,
+      server_timestamp TEXT NOT NULL,
+      actor_subject TEXT,
+      actor_role TEXT,
+      payload_json TEXT NOT NULL,
+      source_revision TEXT,
+      source_occurrence_id TEXT,
+      evidence_type TEXT CHECK(
+        evidence_type IS NULL OR
+        evidence_type IN ('ACTUAL_DEPARTURE','TURSATT_SCHEDULED')
+      ),
+      idempotency_key TEXT UNIQUE,
+      FOREIGN KEY(case_id) REFERENCES ${PROCESS_CASE_TABLE}(case_id)
+    );
+    CREATE INDEX IF NOT EXISTS vehicle_status_process_events_case_time
+      ON ${PROCESS_EVENT_TABLE}(case_id, server_timestamp, process_event_id);
+    CREATE INDEX IF NOT EXISTS vehicle_status_process_events_vehicle_type
+      ON ${PROCESS_EVENT_TABLE}(vehicle_id, event_type);
+
+    CREATE TABLE IF NOT EXISTS ${PROCESS_OBSERVATION_TABLE} (
+      observer_key TEXT PRIMARY KEY,
+      source_revision TEXT NOT NULL,
+      payload_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_process_events_immutable_update
+    BEFORE UPDATE ON ${PROCESS_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'vehicle status process events are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_process_events_immutable_delete
+    BEFORE DELETE ON ${PROCESS_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'vehicle status process events are immutable'); END;
+  `);
+  if(userVersion < 3) backfillProcessHistory(db);
+  db.exec("PRAGMA user_version = 3;");
+}
+
+function backfillProcessHistory(db){
+  const existingProcessEvents =
+    db.prepare(`SELECT COUNT(*) AS count FROM ${PROCESS_EVENT_TABLE}`).get().count;
+  if(existingProcessEvents > 0) return;
+  const commandEvents = db.prepare(`
+    SELECT * FROM ${EVENT_TABLE}
+    ORDER BY server_timestamp, event_id
+  `).all();
+  const activeCases = new Map();
+  const sequenceByVehicle = new Map();
+
+  const ensureCase = (event) => {
+    const active = activeCases.get(event.vehicle_id);
+    if(active) return active;
+    const sequence = (sequenceByVehicle.get(event.vehicle_id) || 0) + 1;
+    sequenceByVehicle.set(event.vehicle_id, sequence);
+    const caseId = `legacy-process:${event.vehicle_id}:${event.event_id}`;
+    db.prepare(`
+      INSERT OR IGNORE INTO ${PROCESS_CASE_TABLE} (
+        case_id, vehicle_id, sequence, opened_at, closed_at,
+        current_wait_reason, source_event_id, latest_event_at
+      ) VALUES (?, ?, ?, ?, NULL, 'NONE', ?, ?)
+    `).run(
+      caseId,
+      event.vehicle_id,
+      sequence,
+      event.server_timestamp,
+      event.event_id,
+      event.server_timestamp
+    );
+    const processCase = { caseId, vehicleId: event.vehicle_id, sequence };
+    activeCases.set(event.vehicle_id, processCase);
+    return processCase;
+  };
+  const add = (event, processCase, eventType, fields = {}, suffix = eventType) => {
+    db.prepare(`
+      INSERT OR IGNORE INTO ${PROCESS_EVENT_TABLE} (
+        process_event_id, event_type, vehicle_id, case_id,
+        fault_id, repair_request_id, notification_id, action_id,
+        server_timestamp, actor_subject, actor_role, payload_json,
+        source_revision, source_occurrence_id, evidence_type, idempotency_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)
+    `).run(
+      `legacy-process-event:${event.event_id}:${suffix}`,
+      eventType,
+      event.vehicle_id,
+      processCase.caseId,
+      fields.faultId || null,
+      fields.repairRequestId || null,
+      fields.notificationId || null,
+      event.action_id,
+      event.server_timestamp,
+      event.actor_subject,
+      event.effective_role,
+      JSON.stringify({
+        backfilledFromCommandEvent: event.event_id,
+        provenance: "direct_immutable_command_event",
+        ...(fields.payload || {})
+      }),
+      `backfill:${event.event_id}:${suffix}`
+    );
+    db.prepare(`
+      UPDATE ${PROCESS_CASE_TABLE} SET latest_event_at = ? WHERE case_id = ?
+    `).run(event.server_timestamp, processCase.caseId);
+  };
+
+  for(const event of commandEvents){
+    if(![
+      LIFECYCLE_COMMANDS.REGISTER_FAULT,
+      LIFECYCLE_COMMANDS.REPORT_NOT_OPERATIONAL,
+      LIFECYCLE_COMMANDS.REQUEST_REPAIR,
+      LIFECYCLE_COMMANDS.REPORT_OPERATIONAL
+    ].includes(event.command_type)) continue;
+    const processCase = ensureCase(event);
+    const resultingState = safeJson(event.resulting_state_json, {});
+    if(event.command_type === LIFECYCLE_COMMANDS.REGISTER_FAULT){
+      const fault = resultingState.faultId
+        ? db.prepare(`SELECT * FROM ${FAULT_TABLE} WHERE fault_id = ?`)
+          .get(resultingState.faultId)
+        : null;
+      add(event, processCase, "FAULT_REGISTERED", {
+        faultId: resultingState.faultId || null,
+        payload: fault ? {
+          slot: fault.slot,
+          category: fault.category,
+          description: fault.description
+        } : {}
+      });
+    }else if(event.command_type === LIFECYCLE_COMMANDS.REPORT_NOT_OPERATIONAL){
+      add(event, processCase, "NOT_OPERATIONAL_REPORTED", {
+        payload: {
+          status: "IKKE_DRIFTSKLAR",
+          disposition: resultingState.disposition || "NONE",
+          statusRevision: event.resulting_status_revision
+        }
+      });
+    }else if(event.command_type === LIFECYCLE_COMMANDS.REQUEST_REPAIR){
+      const repair = db.prepare(`
+        SELECT * FROM ${REPAIR_TABLE} WHERE event_id = ?
+      `).get(event.event_id);
+      const notification = db.prepare(`
+        SELECT * FROM ${NOTIFICATION_TABLE} WHERE event_id = ?
+      `).get(event.event_id);
+      add(event, processCase, "REPAIR_REQUESTED", {
+        faultId: repair?.fault_id || null,
+        repairRequestId: repair?.repair_request_id || resultingState.repairRequestId || null,
+        payload: { status: "REQUESTED", requestedAt: repair?.requested_at || event.server_timestamp }
+      }, "repair-requested");
+      add(event, processCase, "WORKSHOP_NOTIFICATION_CREATED", {
+        faultId: repair?.fault_id || null,
+        repairRequestId: repair?.repair_request_id || null,
+        notificationId: notification?.notification_id || resultingState.notificationId || null,
+        payload: { targetRole: "verksted", notificationKind: "REPAIR_REQUESTED" }
+      }, "notification-created");
+    }else{
+      add(event, processCase, "OPERATIONAL_REPORTED", {
+        payload: {
+          status: "DRIFTSKLAR",
+          disposition: "NONE",
+          statusRevision: event.resulting_status_revision
+        }
+      }, "operational");
+      const resolvedFaults = db.prepare(`
+        SELECT * FROM ${FAULT_TABLE} WHERE resolution_event_id = ?
+      `).all(event.event_id);
+      for(const fault of resolvedFaults){
+        add(event, processCase, "FAULT_RESOLVED", {
+          faultId: fault.fault_id,
+          payload: { category: fault.category, resolvedAt: fault.resolved_at }
+        }, `fault-resolved:${fault.fault_id}`);
+      }
+      const completedRepairs = db.prepare(`
+        SELECT * FROM ${REPAIR_TABLE}
+        WHERE vehicle_id = ? AND status = 'COMPLETED' AND completed_at = ?
+      `).all(event.vehicle_id, event.server_timestamp);
+      for(const repair of completedRepairs){
+        add(event, processCase, "REPAIR_REQUEST_COMPLETED", {
+          faultId: repair.fault_id,
+          repairRequestId: repair.repair_request_id,
+          payload: { completedAt: repair.completed_at }
+        }, `repair-completed:${repair.repair_request_id}`);
+      }
+      db.prepare(`
+        UPDATE ${PROCESS_CASE_TABLE}
+        SET closed_at = ?, latest_event_at = ?
+        WHERE case_id = ?
+      `).run(event.server_timestamp, event.server_timestamp, processCase.caseId);
+      activeCases.delete(event.vehicle_id);
+    }
+  }
 }
 
 function mapCase(row){
@@ -977,6 +1910,20 @@ function sha256(value){
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
+function safeJson(value, fallback){
+  try{ return JSON.parse(String(value || "")); }
+  catch(_error){ return fallback; }
+}
+
+function normalizeSlot(value){
+  const normalized = String(value || "").trim().toUpperCase();
+  return /^[1-9][0-9]?(?:N|S|M|SS)?$/.test(normalized) ? normalized : "";
+}
+
+function validEvidenceType(value){
+  return value === "ACTUAL_DEPARTURE" || value === "TURSATT_SCHEDULED";
+}
+
 module.exports = {
   CASE_TABLE,
   EVENT_TABLE,
@@ -984,6 +1931,9 @@ module.exports = {
   IDEMPOTENCY_TABLE,
   META_TABLE,
   NOTIFICATION_TABLE,
+  PROCESS_CASE_TABLE,
+  PROCESS_EVENT_TABLE,
+  PROCESS_OBSERVATION_TABLE,
   RECORD_TABLE,
   REPAIR_TABLE,
   VehicleStatusRepositoryConflict,

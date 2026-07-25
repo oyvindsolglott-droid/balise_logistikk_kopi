@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v2";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v3";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -28,13 +28,27 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
 const FAULT_CATEGORIES = new Set(["A1", "A2", "A3", "A4", "A5", "A6"]);
+const WAIT_REASONS = new Set([
+  "WAITING_FOR_SHUNTING",
+  "WAITING_FOR_WORKSHOP_TRACK",
+  "WAITING_FOR_PERSONNEL",
+  "WAITING_FOR_PART",
+  "WAITING_FOR_TECHNICAL_CLARIFICATION",
+  "WAITING_FOR_TEST_RUN",
+  "OTHER",
+  "NONE"
+]);
 
 const LIFECYCLE_COMMANDS = Object.freeze({
   REGISTER_FAULT: "register_fault",
   REPORT_NOT_OPERATIONAL: "report_not_operational",
   REQUEST_REPAIR: "request_repair",
   MARK_FOR_TURNING: "mark_for_turning",
-  REPORT_OPERATIONAL: "report_operational"
+  REPORT_OPERATIONAL: "report_operational",
+  NOTIFICATION_PRESENTED: "notification_presented",
+  WORKSHOP_SHEET_OPENED: "workshop_sheet_opened",
+  WORK_STARTED: "work_started",
+  SET_WAIT_REASON: "set_wait_reason"
 });
 
 const COMMAND_DEFINITIONS = Object.freeze({
@@ -57,6 +71,22 @@ const COMMAND_DEFINITIONS = Object.freeze({
   [LIFECYCLE_COMMANDS.REPORT_OPERATIONAL]: Object.freeze({
     route: "/api/vehicle-status/commands/report-operational",
     capability: CAPABILITY_IDS.REPORT_OPERATIONAL
+  }),
+  [LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED]: Object.freeze({
+    route: "/api/vehicle-status/commands/notification-presented",
+    capability: CAPABILITY_IDS.PRESENT_NOTIFICATION
+  }),
+  [LIFECYCLE_COMMANDS.WORKSHOP_SHEET_OPENED]: Object.freeze({
+    route: "/api/vehicle-status/commands/workshop-sheet-opened",
+    capability: CAPABILITY_IDS.OPEN_WORKSHOP_SHEET
+  }),
+  [LIFECYCLE_COMMANDS.WORK_STARTED]: Object.freeze({
+    route: "/api/vehicle-status/commands/work-started",
+    capability: CAPABILITY_IDS.START_WORK
+  }),
+  [LIFECYCLE_COMMANDS.SET_WAIT_REASON]: Object.freeze({
+    route: "/api/vehicle-status/commands/set-wait-reason",
+    capability: CAPABILITY_IDS.SET_WAIT_REASON
   })
 });
 
@@ -75,6 +105,18 @@ const FIELDS = Object.freeze({
   ]),
   [LIFECYCLE_COMMANDS.REPORT_OPERATIONAL]: new Set([
     "actionId", "expectedStatusRevision", "expectedCaseRevision", "vehicleId"
+  ]),
+  [LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED]: new Set([
+    "actionId", "notificationId"
+  ]),
+  [LIFECYCLE_COMMANDS.WORKSHOP_SHEET_OPENED]: new Set([
+    "actionId", "vehicleId", "caseId"
+  ]),
+  [LIFECYCLE_COMMANDS.WORK_STARTED]: new Set([
+    "actionId", "expectedCaseRevision", "vehicleId"
+  ]),
+  [LIFECYCLE_COMMANDS.SET_WAIT_REASON]: new Set([
+    "actionId", "expectedCaseRevision", "vehicleId", "reason"
   ])
 });
 
@@ -92,12 +134,17 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
   }
   const actionId = normalizeUuid(input.actionId);
   if(!actionId) return invalid(400, "invalid_action_id", "actionId must be a UUID.");
-  const vehicleId = normalizeRegisteredVehicleId(input.vehicleId);
+  const vehicleId = commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED
+    ? null
+    : normalizeRegisteredVehicleId(input.vehicleId);
   const allowedVehicleIds = options.allowedVehicleIds;
   if(
-    !vehicleId ||
-    !isRegisteredVehicle(vehicleId) ||
-    (allowedVehicleIds instanceof Set && !allowedVehicleIds.has(vehicleId))
+    commandName !== LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED &&
+    (
+      !vehicleId ||
+      !isRegisteredVehicle(vehicleId) ||
+      (allowedVehicleIds instanceof Set && !allowedVehicleIds.has(vehicleId))
+    )
   ){
     return invalid(404, "vehicle_not_found", "vehicleId is not allowed by the authoritative registry.");
   }
@@ -169,12 +216,35 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
     const expectedStatusRevision = revision(input.expectedStatusRevision);
     if(expectedStatusRevision === null) return invalidRevision("expectedStatusRevision");
     normalized = { actionId, expectedStatusRevision, vehicleId };
-  }else{
+  }else if(commandName === LIFECYCLE_COMMANDS.REPORT_OPERATIONAL){
     const expectedStatusRevision = revision(input.expectedStatusRevision);
     const expectedCaseRevision = revision(input.expectedCaseRevision);
     if(expectedStatusRevision === null) return invalidRevision("expectedStatusRevision");
     if(expectedCaseRevision === null) return invalidRevision("expectedCaseRevision");
     normalized = { actionId, expectedStatusRevision, expectedCaseRevision, vehicleId };
+  }else if(commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED){
+    const notificationId = normalizeUuid(input.notificationId);
+    if(!notificationId){
+      return invalid(400, "invalid_notification_id", "notificationId must be a UUID.");
+    }
+    normalized = { actionId, notificationId };
+  }else if(commandName === LIFECYCLE_COMMANDS.WORKSHOP_SHEET_OPENED){
+    const caseId = input.caseId === undefined ? null : normalizedText(input.caseId, 200);
+    if(input.caseId !== undefined && !caseId){
+      return invalid(400, "invalid_case_id", "caseId is invalid.");
+    }
+    normalized = { actionId, vehicleId, caseId };
+  }else if(commandName === LIFECYCLE_COMMANDS.WORK_STARTED){
+    const expectedCaseRevision = revision(input.expectedCaseRevision);
+    if(expectedCaseRevision === null) return invalidRevision("expectedCaseRevision");
+    normalized = { actionId, expectedCaseRevision, vehicleId };
+  }else{
+    const expectedCaseRevision = revision(input.expectedCaseRevision);
+    if(expectedCaseRevision === null) return invalidRevision("expectedCaseRevision");
+    if(typeof input.reason !== "string" || !WAIT_REASONS.has(input.reason)){
+      return invalid(400, "invalid_wait_reason", "reason is not an allowed standardized wait reason.");
+    }
+    normalized = { actionId, expectedCaseRevision, vehicleId, reason: input.reason };
   }
   return {
     ok: true,
@@ -326,6 +396,62 @@ function createVehicleStatusReadHandler(options = {}){
   };
 }
 
+function createVehicleStatusAnalyticsHandler(options = {}){
+  const repository = options.repository;
+  if(!repository || typeof repository.getAnalytics !== "function"){
+    throw new TypeError("A vehicle-status analytics repository is required.");
+  }
+  const env = options.env || process.env;
+  const verifyIdentityRequest = options.verifyIdentityRequest || verifyAccessIdentityRequest;
+  const roleBindingsCatalog = Object.hasOwn(options, "roleBindingsCatalog")
+    ? validateIdentityRoleBindingsCatalog(options.roleBindingsCatalog)
+    : loadIdentityRoleBindingsCatalog({ env, readFileSync: options.readRoleBindingsFile });
+
+  return async function vehicleStatusAnalyticsHandler(req, res){
+    noStore(res);
+    try{
+      if(!accessAssertionPresent(req.headers) && !Object.hasOwn(options, "verifyIdentityRequest")){
+        return sendError(res, 401, "authentication_required", "Verified identity is required.");
+      }
+      const identityResult = await verifyIdentityRequest({
+        headers: req.headers,
+        env,
+        jwks: options.jwks,
+        verifier: options.verifier
+      });
+      if(identityResult?.ok !== true){
+        return sendError(res, identityResult?.status || 401,
+          identityResult?.publicError || "authentication_required",
+          "Verified identity is required.");
+      }
+      if(roleBindingsCatalog.valid !== true){
+        return sendError(res, 503, "role_binding_unavailable", "Role binding is unavailable.");
+      }
+      const roleResult = resolveIdentityRoleBinding(identityResult.identity, roleBindingsCatalog);
+      const authorization = evaluateRuntimeAuthorization({
+        identity: identityResult.identity,
+        roleResult,
+        capability: CAPABILITY_IDS.ANALYTICS_READ
+      });
+      if(authorization.allowed !== true){
+        return sendError(res, 403, "capability_forbidden",
+          "The verified identity lacks the analytics capability.");
+      }
+      return res.status(200).json({
+        ok: true,
+        ...repository.getAnalytics(req.query || {})
+      });
+    }catch(error){
+      console.error("vehicle-status analytics failed", {
+        name: error?.name || "Error",
+        message: error?.message || "Vehicle-status analytics failed."
+      });
+      return sendError(res, 500, "vehicle_status_analytics_failed",
+        "Vehicle-status analytics are unavailable.");
+    }
+  };
+}
+
 function getPilotAllowedVehicleIds(env = process.env){
   const configuredScope = typeof env[PRODUCTION_ALLOWED_SCOPE_ENV] === "string"
     ? env[PRODUCTION_ALLOWED_SCOPE_ENV].trim().toUpperCase()
@@ -417,6 +543,8 @@ module.exports = {
   PILOT_ALLOWED_VEHICLES_ENV,
   PRODUCTION_ALLOWED_SCOPE_ENV,
   REGISTERED_VEHICLES_SCOPE,
+  WAIT_REASONS,
+  createVehicleStatusAnalyticsHandler,
   createVehicleStatusLifecycleHandler,
   createVehicleStatusReadHandler,
   getPilotAllowedVehicleIds,

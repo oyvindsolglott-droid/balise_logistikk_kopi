@@ -8029,6 +8029,261 @@ button{padding:12px 12px}
   color:#92400e;
   font-weight:950;
 }
+.drops-repair-request-confirmed{
+  min-height:40px;
+  padding:8px 10px;
+  border:1px solid #86efac;
+  border-radius:10px;
+  display:grid;
+  gap:2px;
+  align-content:center;
+  background:#f0fdf4;
+  color:#166534;
+}
+.drops-repair-request-confirmed strong{
+  font-size:10px;
+  font-weight:950;
+  text-transform:uppercase;
+}
+.drops-repair-request-confirmed time{
+  font-size:9px;
+  font-weight:750;
+}
+.vehicle-process-timeline,
+.vehicle-status-analytics-panel{
+  margin-top:16px;
+  border:1px solid #93c5fd;
+  border-radius:14px;
+  background:rgba(255,255,255,.78);
+  color:#0f172a;
+  overflow:hidden;
+}
+.vehicle-process-timeline > summary,
+.vehicle-status-analytics-panel > summary{
+  padding:12px 14px;
+  background:linear-gradient(180deg,#eff6ff,#dbeafe);
+  color:#1e3a8a;
+  font-size:12px;
+  font-weight:950;
+  cursor:pointer;
+}
+.vehicle-process-timeline > :not(summary),
+.vehicle-status-analytics-panel > :not(summary){
+  margin-left:14px;
+  margin-right:14px;
+}
+.vehicle-process-timeline > p{
+  font-size:11px;
+  font-weight:800;
+}
+.vehicle-process-timeline ol{
+  margin-top:12px;
+  padding-left:0;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:7px;
+  list-style:none;
+}
+.vehicle-process-timeline li{
+  min-width:0;
+  padding:8px 10px;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  display:grid;
+  gap:3px;
+  background:#f8fafc;
+  color:#475569;
+}
+.vehicle-process-timeline li.is-recorded{
+  border-color:#86efac;
+  background:#f0fdf4;
+  color:#166534;
+}
+.vehicle-process-timeline li strong{
+  font-size:10px;
+  font-weight:950;
+}
+.vehicle-process-timeline li span,
+.vehicle-process-timeline li time{
+  font-size:9px;
+  font-weight:750;
+}
+.vehicle-process-metrics{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:7px;
+}
+.vehicle-process-metrics > div{
+  min-width:0;
+  padding:8px 9px;
+  border-radius:9px;
+  background:#e2e8f0;
+  display:grid;
+  gap:2px;
+}
+.vehicle-process-metrics span{
+  color:#475569;
+  font-size:9px;
+  font-weight:800;
+}
+.vehicle-process-metrics strong{
+  color:#0f172a;
+  font-size:11px;
+  font-weight:950;
+}
+.vehicle-process-evidence{
+  padding:8px 10px;
+  border-left:3px solid #0ea5e9;
+  background:#f0f9ff;
+  color:#075985;
+}
+.workshop-placement{
+  margin:10px 0 0;
+  padding:8px 10px;
+  border-radius:10px;
+  background:rgba(255,255,255,.7);
+  color:#334155;
+  font-size:11px;
+}
+.workshop-process-actions{
+  margin-top:14px;
+  padding:11px;
+  border:1px solid #bfdbfe;
+  border-radius:12px;
+  display:grid;
+  grid-template-columns:minmax(130px,.6fr) minmax(190px,1fr) minmax(150px,.7fr);
+  align-items:end;
+  gap:9px;
+  background:#eff6ff;
+}
+.workshop-process-actions label{
+  display:grid;
+  gap:4px;
+  color:#334155;
+  font-size:10px;
+  font-weight:900;
+}
+.workshop-process-actions select{
+  min-width:0;
+  min-height:36px;
+  border:1px solid #94a3b8;
+  border-radius:9px;
+  padding:7px 9px;
+  background:#fff;
+  color:#0f172a;
+  font:800 11px/1.2 inherit;
+}
+.workshop-work-started{
+  margin:0;
+  min-height:36px;
+  padding:7px 9px;
+  border:1px solid #86efac;
+  border-radius:9px;
+  display:grid;
+  gap:2px;
+  background:#f0fdf4;
+  color:#166534;
+  font-size:10px;
+}
+.vehicle-status-process-transparency,
+.vehicle-status-analysis-boundary{
+  padding:9px 11px;
+  border-left:3px solid #6366f1;
+  background:#eef2ff;
+  color:#3730a3;
+  font-size:10px;
+  font-weight:800;
+  line-height:1.45;
+}
+.vehicle-status-analytics-panel{
+  margin-bottom:14px;
+}
+.vehicle-status-analysis-filters{
+  margin-top:12px;
+  padding:11px;
+  border:1px solid #dbeafe;
+  border-radius:12px;
+  display:grid;
+  grid-template-columns:repeat(4,minmax(120px,1fr)) auto;
+  align-items:end;
+  gap:8px;
+  background:#f8fbff;
+}
+.vehicle-status-analysis-filters label{
+  min-width:0;
+  display:grid;
+  gap:4px;
+  color:#334155;
+  font-size:9px;
+  font-weight:900;
+}
+.vehicle-status-analysis-filters select,
+.vehicle-status-analysis-filters input{
+  min-width:0;
+  min-height:36px;
+  border:1px solid #94a3b8;
+  border-radius:9px;
+  padding:7px 8px;
+  background:#fff;
+  color:#0f172a;
+  font:800 11px/1.2 inherit;
+}
+.vehicle-status-analysis-filters button{
+  min-height:36px;
+  border:1px solid #1d4ed8;
+  border-radius:9px;
+  padding:7px 10px;
+  background:linear-gradient(180deg,#3b82f6,#1d4ed8);
+  color:#fff;
+  font:900 10px/1.2 inherit;
+  cursor:pointer;
+}
+.vehicle-status-analysis-grid{
+  margin-top:12px;
+  margin-bottom:14px;
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.vehicle-status-analysis-grid section{
+  min-width:0;
+  padding:12px;
+  border:1px solid #dbe5f0;
+  border-radius:12px;
+  background:#fff;
+}
+.vehicle-status-analysis-grid h3{
+  margin:0 0 9px;
+  color:#0f172a;
+  font-size:13px;
+}
+.vehicle-status-analysis-grid dl,
+.vehicle-status-metric-cards{
+  display:grid;
+  gap:6px;
+}
+.vehicle-status-analysis-grid dl > div,
+.vehicle-status-metric-cards > div{
+  min-width:0;
+  padding:7px 8px;
+  border-radius:8px;
+  display:grid;
+  gap:2px;
+  background:#f1f5f9;
+}
+.vehicle-status-analysis-grid dt,
+.vehicle-status-metric-cards span{
+  color:#475569;
+  font-size:9px;
+  font-weight:800;
+}
+.vehicle-status-analysis-grid dd,
+.vehicle-status-metric-cards strong{
+  margin:0;
+  color:#0f172a;
+  font-size:11px;
+  font-weight:950;
+}
 .sporplan-vehicle-status-host{
   position:absolute;
   top:28px;
@@ -8084,6 +8339,8 @@ button{padding:12px 12px}
 }
 @media(max-width:1100px){
   .drops-vehicle-groups{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .vehicle-status-analysis-filters{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .vehicle-status-analysis-filters button{ grid-column:1/-1; }
   .drops-not-operational-fault-row{
     grid-template-columns:48px minmax(110px,.35fr) minmax(180px,1fr);
     align-items:end;
@@ -8127,6 +8384,17 @@ button{padding:12px 12px}
   .drops-standard-sheet-status{ width:100%; text-align:left; }
   .drops-not-operational-close{ justify-self:start; }
   .drops-not-operational-editor-actions{ grid-template-columns:minmax(0,1fr); }
+  .vehicle-process-timeline ol,
+  .vehicle-process-metrics,
+  .vehicle-status-analysis-grid,
+  .vehicle-status-analysis-filters,
+  .workshop-process-actions{ grid-template-columns:minmax(0,1fr); }
+  .vehicle-status-analysis-filters button{ grid-column:auto; }
+  .vehicle-process-timeline > :not(summary),
+  .vehicle-status-analytics-panel > :not(summary){
+    margin-left:10px;
+    margin-right:10px;
+  }
 }
 @media(max-width:390px){
   .drops-vehicle-selector-grid{ grid-template-columns:minmax(0,1fr); }
@@ -45057,9 +45325,9 @@ function getAuthoritativeVehicleStatusPresentation(readback,vehicleId){
     label:"Ingen autoritativ status registrert",
     registrationLabel:"Ingen autoritativ status registrert",
     timestamp:"",
-    record:null,
-    faults:[],
-    repairRequests:[]
+    record,
+    faults:allFaults.filter(fault=>fault?.status === "ACTIVE" || fault?.status === "RESOLVED"),
+    repairRequests
   };
 }
 
@@ -45113,6 +45381,51 @@ function getDropsRegisterFaultAvailability(draft,index,viewModel={}){
     available,
     ariaDisabled:available ? "false" : "true",
     reason:available ? "available" : Object.entries(checks).find(([,value])=>!value)?.[0] || "unavailable",
+    checks
+  };
+}
+
+function getDropsRequestRepairAvailability(input){
+  input = input || {};
+  const vehicleId = String(input?.vehicleId || "");
+  const fault = input?.fault || null;
+  const repairRequest = input?.repairRequest || null;
+  const viewModel = input?.viewModel || {};
+  const readback = viewModel?.readback;
+  const capabilities = viewModel?.capabilities;
+  const capability = capabilities?.capabilities?.["vehicle_status.request_repair"];
+  const roles = Array.isArray(capabilities?.roles)
+    ? capabilities.roles
+    : (Array.isArray(capabilities?.roleSource?.roles)
+      ? capabilities.roleSource.roles
+      : [capabilities?.role].filter(Boolean));
+  const allowedVehicleIds = [
+    readback?.pilotAllowedVehicleIds,
+    readback?.allowedVehicleIds,
+    readback?.vehicleStatusLifecycleAllowedVehicleIds,
+    capabilities?.allowedVehicleIds,
+    capability?.allowedVehicleIds
+  ].find(value=>Array.isArray(value));
+  const checks = {
+    authoritativeActiveFault:Boolean(fault?.faultId) && fault?.status === "ACTIVE",
+    noExistingRepairRequest:!repairRequest,
+    identityVerified:capabilities?.ok === true && capabilities?.roleResolved === true,
+    dropsRole:roles.includes("drops"),
+    capabilityAllowed:capability?.allowed === true && capability?.decision === "ALLOW",
+    readbackReady:readback?.ok === true,
+    commandReady:readback?.requestRepairCommandAvailable === true,
+    writeGateOpen:readback?.writeEnabled === true,
+    vehicleWriteAllowed:readback?.productionPilotWriteEnabled === true &&
+      Array.isArray(allowedVehicleIds) &&
+      allowedVehicleIds.includes(vehicleId),
+    requestIdle:viewModel?.commandInFlight !== true
+  };
+  const available = Object.values(checks).every(Boolean);
+  return {
+    available,
+    ariaDisabled:available ? "false" : "true",
+    reason:available ? "available" :
+      Object.entries(checks).find(([,value])=>!value)?.[0] || "unavailable",
     checks
   };
 }
@@ -45301,9 +45614,13 @@ function submitDropsRegisterFaultWithReadback(draft,index,readback,capabilities,
 
 function buildDropsRequestRepairPayload(vehicleId,fault,readback,actionId=""){
   const record = getDropsVehicleStatusRecord(readback,vehicleId);
+  const vehicleCase = (Array.isArray(readback?.cases) ? readback.cases : [])
+    .find(item=>item?.vehicleId === vehicleId);
   return {
     actionId:String(actionId || ""),
-    expectedCaseRevision:Number.isInteger(record?.caseRevision) ? record.caseRevision : 0,
+    expectedCaseRevision:Number.isInteger(record?.caseRevision)
+      ? record.caseRevision
+      : (Number.isInteger(vehicleCase?.caseRevision) ? vehicleCase.caseRevision : 0),
     vehicleId:String(vehicleId || ""),
     faultId:String(fault?.faultId || "")
   };
@@ -45432,6 +45749,62 @@ function submitWorkshopReportOperationalWithReadback(vehicleId,readback,capabili
   })();
 }
 
+function buildWorkshopProcessCommandPayload(vehicleId,readback,actionId="",fields={}){
+  const record = getDropsVehicleStatusRecord(readback,vehicleId);
+  const vehicleCase = (Array.isArray(readback?.cases) ? readback.cases : [])
+    .find(item=>item?.vehicleId === vehicleId);
+  return {
+    actionId:String(actionId || ""),
+    expectedCaseRevision:Number.isInteger(record?.caseRevision)
+      ? record.caseRevision
+      : (Number.isInteger(vehicleCase?.caseRevision) ? vehicleCase.caseRevision : 0),
+    vehicleId:String(vehicleId || ""),
+    ...fields
+  };
+}
+
+function submitWorkshopProcessCommandWithReadback(commandName,vehicleId,readback,capabilities,fetchImpl,fields={},actionIdFactory=createDropsNotOperationalActionId){
+  return (async()=>{
+    const capabilityName = commandName === "work-started"
+      ? "vehicle_status.work_started"
+      : "vehicle_status.set_wait_reason";
+    const capability = capabilities?.capabilities?.[capabilityName];
+    const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [capabilities?.role].filter(Boolean);
+    if(readback?.ok !== true || readback?.writeEnabled !== true || !roles.includes("verksted") || capability?.allowed !== true){
+      return {ok:false,error:"command_unavailable",status:404,readback,confirmedByReadback:false};
+    }
+    const readJson = async response=>response?.json ? response.json().catch(()=>({})) : {};
+    const getReadback = async()=>{
+      const response = await fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"});
+      const json = await readJson(response);
+      if(!response?.ok || json?.ok !== true) throw new Error("readback_failed");
+      return json;
+    };
+    try{
+      const before = await getReadback();
+      const payload = buildWorkshopProcessCommandPayload(vehicleId,before,actionIdFactory(),fields);
+      const response = await fetchImpl(`/api/vehicle-status/commands/${commandName}`,{
+        method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},
+        body:JSON.stringify(payload),credentials:"same-origin"
+      });
+      const body = await readJson(response);
+      if(!response?.ok){
+        return {ok:false,error:String(body?.error || "command_rejected"),status:Number(response?.status || 0),readback:response?.status === 409 ? await getReadback().catch(()=>before) : before,confirmedByReadback:false};
+      }
+      const after = await getReadback();
+      const processCase = getVehicleProcessCase(after,vehicleId);
+      const confirmed = commandName === "work-started"
+        ? Boolean(processCase?.milestones?.workStartedAt)
+        : processCase?.currentWaitReason === fields.reason;
+      return confirmed
+        ? {ok:true,status:200,readback:after,processCase,confirmedByReadback:true}
+        : {ok:false,error:"readback_confirmation_missing",status:500,readback:after,confirmedByReadback:false};
+    }catch(unusedError){
+      return {ok:false,error:"network_uncertain",status:0,readback,confirmedByReadback:false};
+    }
+  })();
+}
+
 function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",readback={},capabilities={},sheetCollapsed=false){
   const esc = value=>String(value ?? "").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
   const catalog = typeof getDropsVehicleCatalog === "function" ? getDropsVehicleCatalog() : {};
@@ -45444,7 +45817,14 @@ function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",r
   const activeFaults = faults.filter(fault=>fault?.status === "ACTIVE");
   const resolvedFaults = faults.filter(fault=>fault?.status === "RESOLVED");
   const repairRequests = presentation.repairRequests;
+  const processCase = typeof getVehicleProcessCase === "function"
+    ? getVehicleProcessCase(readback,vehicleId)
+    : null;
+  const placement = (Array.isArray(readback?.placements) ? readback.placements : [])
+    .find(item=>item?.vehicleId === vehicleId) || null;
   const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [capabilities?.role].filter(Boolean);
+  const hasActiveWork = activeFaults.length > 0 ||
+    repairRequests.some(request=>request?.status === "REQUESTED");
   const reportOperationalAvailable = readback?.ok === true &&
     readback?.writeEnabled === true &&
     readback?.reportOperationalCommandAvailable === true &&
@@ -45454,8 +45834,24 @@ function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",r
     roles.includes("verksted") &&
     capabilities?.capabilities?.["vehicle_status.report_operational"]?.allowed === true &&
     capabilities?.capabilities?.["vehicle_status.report_operational"]?.decision === "ALLOW" &&
-    record?.currentStatus === "IKKE_DRIFTSKLAR";
+    (record?.currentStatus === "IKKE_DRIFTSKLAR" || hasActiveWork);
   const operationalActionDisabled = !reportOperationalAvailable;
+  const processWriteReady = readback?.ok === true &&
+    readback?.writeEnabled === true &&
+    isDropsPilotVehicleAllowed(readback,vehicleId) &&
+    capabilities?.ok === true &&
+    capabilities?.roleResolved === true &&
+    roles.includes("verksted");
+  const workStartedAvailable = processWriteReady &&
+    readback?.workStartedCommandAvailable === true &&
+    capabilities?.capabilities?.["vehicle_status.work_started"]?.allowed === true &&
+    processCase?.active === true &&
+    hasActiveWork &&
+    !processCase?.milestones?.workStartedAt;
+  const waitReasonAvailable = processWriteReady &&
+    readback?.setWaitReasonCommandAvailable === true &&
+    capabilities?.capabilities?.["vehicle_status.set_wait_reason"]?.allowed === true &&
+    processCase?.active === true;
   const seriesOptions = [`<option value="">Velg serie</option>`]
     .concat(Object.entries(catalog).map(([key,list])=>`<option value="${key}"${key === series ? " selected" : ""}>Serie ${key} · ${list.length} kjøretøy</option>`)).join("");
   const vehicleOptions = [`<option value="">Velg kjøretøy</option>`]
@@ -45466,15 +45862,40 @@ function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",r
   const historyFaultHtml = resolvedFaults.length
     ? `<ol data-sde-workshop-fault-history>${resolvedFaults.map(fault=>`<li class="is-resolved"><strong>${esc(fault.category)}</strong> ${esc(fault.description)} <span>${esc(fault.status)}</span>${buildVehicleStatusFaultTimingHtml(fault)}</li>`).join("")}</ol>`
     : `<p>Ingen avsluttet feilhistorikk.</p>`;
-  const requestHtml = repairRequests.length ? `<ul>${repairRequests.map(request=>`<li>${esc(request.status)} · ${esc(request.faultId)}</li>`).join("")}</ul>` : `<p>Ingen utbedringsbestillinger.</p>`;
+  const requestHtml = repairRequests.length ? `<ul>${repairRequests.map(request=>`<li><strong>${request.status === "REQUESTED" ? "Bestilt utbedring" : esc(request.status)}</strong> · ${esc(request.faultId)}${request.requestedAt ? ` · <time datetime="${esc(request.requestedAt)}">${esc(formatDropsVehicleStatusTimestamp(request.requestedAt))}</time>` : ""}</li>`).join("")}</ul>` : `<p>Ingen utbedringsbestillinger.</p>`;
+  const waitOptions = [
+    ["NONE","Ingen aktiv ventestatus"],
+    ["WAITING_FOR_SHUNTING","Venter på innkjøring"],
+    ["WAITING_FOR_WORKSHOP_TRACK","Venter på verkstedspor"],
+    ["WAITING_FOR_PERSONNEL","Venter på personell"],
+    ["WAITING_FOR_PART","Venter på reservedel"],
+    ["WAITING_FOR_TECHNICAL_CLARIFICATION","Venter på teknisk avklaring"],
+    ["WAITING_FOR_TEST_RUN","Venter på prøvekjøring"],
+    ["OTHER","Annet"]
+  ].map(([value,label])=>`<option value="${value}"${processCase?.currentWaitReason === value ? " selected" : ""}>${label}</option>`).join("");
+  const workStartedHtml = processCase?.milestones?.workStartedAt
+    ? `<p class="workshop-work-started"><strong>Arbeid påbegynt</strong> <time datetime="${esc(processCase.milestones.workStartedAt)}">${esc(formatDropsVehicleStatusTimestamp(processCase.milestones.workStartedAt))}</time></p>`
+    : `<button type="button" data-sde-workshop-work-started${workStartedAvailable ? "" : " disabled aria-disabled=\"true\""}>Arbeid påbegynt</button>`;
   const sheet = vehicleId ? `<div class="drops-standard-sheet-toolbar"><strong>Standardark · Kjøretøy ${esc(vehicleId)}</strong><button type="button" data-sde-workshop-toggle-standard-sheet aria-expanded="${sheetCollapsed ? "false" : "true"}"><span>${sheetCollapsed ? "Åpne ark" : "Kollaps ark"}</span><span aria-hidden="true">⌃</span></button></div>
     <div data-sde-workshop-standard-sheet${sheetCollapsed ? " hidden" : ""}>
       <section class="workshop-vehicle-status ${presentation.className}" data-authoritative-status-kind="${presentation.kind}">
         <h3>${esc(vehicleId)}</h3><strong>${esc(presentation.label)}</strong>
         ${record?.workshopDisposition === "TIL_DREI" ? `<span class="vehicle-status-disposition">TIL DREI</span>` : ""}
         ${presentation.timestamp ? `<time datetime="${esc(presentation.timestamp)}">${esc(formatDropsVehicleStatusTimestamp(presentation.timestamp))}</time>` : ""}
+        <p class="workshop-placement"><strong>Aktuell plassering:</strong> ${esc(placement?.slot || "Ikke registrert")} · ${placement?.inWorkshop === true ? "I verkstedområdet" : (placement ? "Utenfor verkstedområdet" : "Ikke registrert")}</p>
         <h4>Aktive feil</h4>${activeFaultHtml}<h4>Avsluttet historikk</h4>${historyFaultHtml}<h4>Utbedringsbestillinger</h4>${requestHtml}
-        <button type="button" data-sde-workshop-report-operational${operationalActionDisabled ? " disabled aria-disabled=\"true\"" : " aria-disabled=\"false\""}>${presentation.kind === "operational" ? "Registrert Driftsklar" : "Registrer Driftsklar"}</button>
+        <div class="workshop-process-actions">
+          ${workStartedHtml}
+          <label>Årsak til venting
+            <select data-sde-workshop-wait-reason${waitReasonAvailable ? "" : " disabled"}>${waitOptions}</select>
+          </label>
+          <button type="button" data-sde-workshop-set-wait-reason${waitReasonAvailable ? "" : " disabled aria-disabled=\"true\""}>Registrer ventestatus</button>
+        </div>
+        ${typeof buildVehicleProcessTimelineHtml === "function"
+          ? buildVehicleProcessTimelineHtml(readback,vehicleId)
+          : ""}
+        <button type="button" data-sde-workshop-report-operational${operationalActionDisabled ? " disabled aria-disabled=\"true\"" : " aria-disabled=\"false\""}>${reportOperationalAvailable || presentation.kind !== "operational" ? "Registrer Driftsklar" : "Registrert Driftsklar"}</button>
+        <p class="vehicle-status-process-transparency">SDE registrerer automatiske prosesstidspunkter for kjøretøy- og saksflyt. Opplysningene brukes til kapasitets- og prosessanalyse, ikke til rangering av enkeltpersoner.</p>
       </section>
     </div>` : `<div class="drops-standard-sheet-empty">Velg serie og kjøretøy.</div>`;
   return `<section data-sde-workshop-registry-content>
@@ -45542,6 +45963,144 @@ function buildVehicleStatusFaultTimingHtml(fault){
   return `<div class="vehicle-status-fault-timing">${registeredHtml}${resolvedHtml}${durationHtml}</div>`;
 }
 
+function formatVehicleProcessDuration(value){
+  if(!Number.isFinite(value) || value < 0) return "Ikke målbart";
+  const totalMinutes = Math.floor(value / 60000);
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor((totalMinutes % 1440) / 60);
+  const minutes = totalMinutes % 60;
+  return [
+    days ? `${days} d` : "",
+    hours ? `${hours} t` : "",
+    (minutes || (!days && !hours)) ? `${minutes} min` : ""
+  ].filter(Boolean).join(" ");
+}
+
+function getVehicleProcessCase(readback,vehicleId){
+  const processCases = (Array.isArray(readback?.processCases) ? readback.processCases : [])
+    .filter(item=>String(item?.vehicleId || "") === String(vehicleId || ""));
+  return processCases.find(item=>item?.active === true) ||
+    processCases.sort((left,right)=>
+      String(right?.openedAt || "").localeCompare(String(left?.openedAt || "")))[0] ||
+    null;
+}
+
+function getVehicleWaitReasonLabel(reason){
+  return ({
+    WAITING_FOR_SHUNTING:"Venter på innkjøring",
+    WAITING_FOR_WORKSHOP_TRACK:"Venter på verkstedspor",
+    WAITING_FOR_PERSONNEL:"Venter på personell",
+    WAITING_FOR_PART:"Venter på reservedel",
+    WAITING_FOR_TECHNICAL_CLARIFICATION:"Venter på teknisk avklaring",
+    WAITING_FOR_TEST_RUN:"Venter på prøvekjøring",
+    OTHER:"Annet",
+    NONE:"Ingen aktiv ventestatus"
+  })[String(reason || "NONE")] || "Ingen aktiv ventestatus";
+}
+
+function buildVehicleProcessTimelineHtml(readback,vehicleId){
+  const processCase = getVehicleProcessCase(readback,vehicleId);
+  const milestones = processCase?.milestones || {};
+  const milestoneDefinitions = [
+    ["firstFaultRegisteredAt","Feil registrert"],
+    ["firstNotOperationalAt","Ikke Driftsklar registrert"],
+    ["firstRepairRequestedAt","Utbedring bestilt"],
+    ["workshopNotificationCreatedAt","Varsel gjort tilgjengelig for Verksted"],
+    ["workshopNotificationPresentedAt","Popup presentert i autentisert klient"],
+    ["workshopSheetFirstOpenedAt","Verkstedark først åpnet"],
+    ["firstWorkshopAreaEnteredAt","Ankom verkstedområdet"],
+    ["workStartedAt","Arbeid påbegynt"],
+    ["operationalAt","Registrert Driftsklar"],
+    ["finalWorkshopAreaExitedAt","Forlot verkstedområdet"],
+    ["returnToServiceDetectedAt","Første senere produksjonsbruk"]
+  ];
+  const timelineHtml = milestoneDefinitions.map(([key,label])=>{
+    const timestamp = milestones[key];
+    return `<li class="${timestamp ? "is-recorded" : "is-missing"}">
+      <strong>${escapeHtml(label)}</strong>
+      <span>${timestamp
+        ? `<time datetime="${escapeHtml(timestamp)}">${escapeHtml(formatDropsVehicleStatusTimestamp(timestamp))}</time>`
+        : "Ikke registrert"}</span>
+    </li>`;
+  }).join("");
+  const metrics = processCase?.metrics || {};
+  const metricDefinitions = [
+    ["totalTreatmentTimeMs","Total behandlingstid"],
+    ["timeBeforeRepairRequestedMs","Tid før bestilling"],
+    ["notificationPresentationDelayMs","Teknisk varslingsforsinkelse"],
+    ["timeToFirstWorkshopSheetOpenMs","Tid til første åpning"],
+    ["waitForWorkshopEntryMs","Ventetid på innkjøring"],
+    ["workshopStayMs","Verkstedopphold"],
+    ["workshopQueueTimeMs","Køtid på verksted"],
+    ["activeRepairTimeMs","Aktiv reparasjonstid"],
+    ["completedToReleasedMs","Tid fra ferdigstillelse til frigjøring"],
+    ["returnToServiceTimeMs","Tid til produksjonsbruk"],
+    ["downtimeMs","Nedetid"]
+  ];
+  const metricsHtml = metricDefinitions.map(([key,label])=>
+    `<div><span>${escapeHtml(label)}</span><strong>${escapeHtml(formatVehicleProcessDuration(metrics[key]))}</strong></div>`
+  ).join("");
+  const productionEvent = (Array.isArray(processCase?.events) ? processCase.events : [])
+    .find(event=>event?.eventType === "RETURN_TO_SERVICE_DETECTED");
+  const evidenceHtml = productionEvent
+    ? `<p class="vehicle-process-evidence">Produksjonsbevis: ${productionEvent.evidenceType === "ACTUAL_DEPARTURE"
+      ? "Bekreftet faktisk avgang"
+      : "Planlagt/tursatt bruk"}</p>`
+    : "";
+  return `<details class="vehicle-process-timeline">
+    <summary>Sakstidslinje</summary>
+    <p>Aktuell sak: ${escapeHtml(processCase?.caseId || "Ikke registrert")}</p>
+    <ol>${timelineHtml}</ol>
+    <div class="vehicle-process-metrics">${metricsHtml}</div>
+    <p>Årsak til venting: <strong>${escapeHtml(getVehicleWaitReasonLabel(processCase?.currentWaitReason))}</strong></p>
+    ${evidenceHtml}
+  </details>`;
+}
+
+function buildVehicleStatusAnalyticsPanelHtml(analytics){
+  const snapshot = analytics?.operationalSnapshot || {};
+  const performance = analytics?.processPerformance || {};
+  const reliability = analytics?.reliability || {};
+  const capacity = analytics?.capacity || {};
+  const metricCards = Object.entries(performance).slice(0,6).map(([key,value])=>
+    `<div><span>${escapeHtml(key)}</span><strong>Gjennomsnitt ${escapeHtml(formatVehicleProcessDuration(value?.averageMs))}</strong><span>Median ${escapeHtml(formatVehicleProcessDuration(value?.medianMs))} · ${Number(value?.sampleCount || 0)} målinger</span></div>`
+  ).join("");
+  const recurrence = reliability?.recurrence || {};
+  const descriptionRecurrence = reliability?.descriptionRecurrence || {};
+  const firstTimeFix = reliability?.firstTimeFix || {};
+  const reliabilityHtml = [7,30,90].map(days=>{
+    const repeated = recurrence?.[`${days}Days`];
+    const repeatedDescription = descriptionRecurrence?.[`${days}Days`];
+    const fix = firstTimeFix?.[`${days}Days`];
+    const rate = Number.isFinite(fix?.rate) ? `${Math.round(fix.rate * 100)} %` : "Ikke målbart";
+    return `<div><strong>${days} dager</strong><span>Gjentatt kategori ${Number(repeated?.repeated || 0)} av ${Number(repeated?.sampleCount || 0)}</span><span>Gjentatt beskrivelse ${Number(repeatedDescription?.repeated || 0)} av ${Number(repeatedDescription?.sampleCount || 0)}</span><span>Førstegangsutbedring ${escapeHtml(rate)} · ${Number(fix?.sampleCount || 0)} målinger</span></div>`;
+  }).join("");
+  const distributionText = Object.entries(capacity?.distributions?.category || {})
+    .map(([key,value])=>`${key}: ${Number(value || 0)}`).join(" · ");
+  return `<details class="vehicle-status-analytics-panel">
+    <summary>Analyse og prosessdata</summary>
+    <p class="vehicle-status-analysis-boundary">Aggregert på kjøretøy, serie, kategori, sak og prosessfase – ikke til rangering av enkeltpersoner.</p>
+    <div class="vehicle-status-analysis-filters" aria-label="Analysefiltre">
+      <label>Periode <select data-sde-analytics-period><option value="30">Siste 30 dager</option><option value="7">Siste 7 dager</option><option value="90">Siste 90 dager</option></select></label>
+      <label>Serie <select data-sde-analytics-series><option value="">Alle</option><option>69</option><option>70</option><option>74</option><option>75</option></select></label>
+      <label>A-kategori <select data-sde-analytics-category><option value="">Alle</option>${getDropsNotOperationalFaultCategories().map(value=>`<option>${value}</option>`).join("")}</select></label>
+      <label>Kjøretøy <input data-sde-analytics-vehicle inputmode="text" placeholder="Alle"></label>
+      <button type="button" data-sde-refresh-vehicle-analytics>Oppdater analyse</button>
+    </div>
+    ${analytics ? `<div class="vehicle-status-analysis-grid">
+      <section><h3>Operativt øyeblikksbilde</h3><dl>
+        <div><dt>Åpne saker</dt><dd>${Number(snapshot.openCases || 0)}</dd></div>
+        <div><dt>Ventende utbedringer</dt><dd>${Number(snapshot.pendingRepairRequests || 0)}</dd></div>
+        <div><dt>Venter på verkstedspor</dt><dd>${Number(snapshot.waitingForWorkshopTrack || 0)}</dd></div>
+        <div><dt>Kjøretøy inne på verksted</dt><dd>${Number(snapshot.vehiclesInWorkshop || 0)}</dd></div>
+      </dl></section>
+      <section><h3>Prosessytelse</h3><div class="vehicle-status-metric-cards">${metricCards || "<p>Ikke målbart fra tilgjengelige data.</p>"}</div></section>
+      <section><h3>Pålitelighet</h3><div class="vehicle-status-metric-cards">${reliabilityHtml}</div><p>${Number(analytics?.sampleCounts?.faults || 0)} feil i valgt utvalg · ${Number(reliability?.workshopVisitSummary?.sampleCount || 0)} kjøretøy med målbare verkstedbesøk.</p><p>Tid til neste feil: ${escapeHtml(formatVehicleProcessDuration(reliability?.timeFromRepairToNextFault?.medianMs))} median · ${Number(reliability?.timeFromRepairToNextFault?.sampleCount || 0)} målinger.</p></section>
+      <section><h3>Kapasitetsplanlegging</h3><p>Kjent belastning: ${Number(capacity.knownCurrentLoad || 0)}</p><p>${escapeHtml(capacity.knownUpcomingLoadMessage || "Ikke beregnbar fra tilgjengelige data")}</p><p>Aktive feil per kategori: ${escapeHtml(distributionText || "Ingen")}</p></section>
+    </div>` : `<p>Analyse er ikke tilgjengelig for den verifiserte rollen eller serveren akkurat nå.</p>`}
+  </details>`;
+}
+
 function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
   const vehicle = String(draft?.vehicle || "");
   const safeToken = vehicle.replace(/[^A-Za-z0-9_-]/g,"");
@@ -45553,9 +46112,6 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
       ? viewModel.readback.faults.filter(fault=>fault?.vehicleId === vehicle && fault?.status === "ACTIVE")
       : []);
   const repairRequests = Array.isArray(viewModel?.readback?.repairRequests) ? viewModel.readback.repairRequests : [];
-  const requestRepairCapability = viewModel?.capabilities?.capabilities?.["vehicle_status.request_repair"];
-  const requestRepairAvailable = statusRecord?.currentStatus === "IKKE_DRIFTSKLAR" &&
-    requestRepairCapability?.allowed === true;
   const faults = Array.isArray(draft?.faults) && draft.faults.length
     ? draft.faults.slice(0,5)
     : createDropsNotOperationalEditorDraft(vehicle).faults;
@@ -45570,8 +46126,17 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
     const authoritativeFault = activeFaults.find(item=>Number(item?.slot) === priority && item?.status === "ACTIVE");
     const registered = Boolean(authoritativeFault?.faultId);
     const repairRequest = authoritativeFault
-      ? repairRequests.find(item=>item?.vehicleId === vehicle && item?.faultId === authoritativeFault.faultId && item?.status === "REQUESTED")
+      ? repairRequests.find(item=>item?.vehicleId === vehicle && item?.faultId === authoritativeFault.faultId)
       : null;
+    const repairAvailability = typeof getDropsRequestRepairAvailability === "function"
+      ? getDropsRequestRepairAvailability({
+          vehicleId:vehicle,
+          fault:authoritativeFault,
+          repairRequest,
+          statusRecord,
+          viewModel
+        })
+      : {available:false,ariaDisabled:"true",reason:"availability_helper_missing"};
     const categoryOptions = [
       `<option value="">Velg feiltype</option>`,
       ...categories.map(category=>`<option value="${category}"${fault?.category === category ? " selected" : ""}>${category}</option>`)
@@ -45583,8 +46148,9 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
           <time datetime="${escapeHtml(authoritativeFault.registeredAt || "")}">${escapeHtml(formatDropsVehicleStatusTimestamp(authoritativeFault.registeredAt))}</time>
         </div>`
       : `<button class="drops-not-operational-register-fault" type="button" data-sde-drops-register-fault="${priority}" aria-disabled="${registerAvailability.ariaDisabled}"${registerAvailability.available ? "" : " disabled"}>Registrer</button>`;
-    const repairButtonLabel = repairRequest ? "Bestilt utbedring" : "Bestill Utbedring";
-    const repairDisabled = !authoritativeFault || !requestRepairAvailable || Boolean(repairRequest);
+    const repairActionHtml = repairRequest
+      ? `<div class="drops-repair-request-confirmed"><strong>Bestilt utbedring</strong><time datetime="${escapeHtml(repairRequest.requestedAt || "")}">${escapeHtml(formatDropsVehicleStatusTimestamp(repairRequest.requestedAt))}</time></div>`
+      : `<button type="button" data-sde-drops-order-repair="${priority}" data-fault-id="${escapeHtml(authoritativeFault?.faultId || "")}"${repairAvailability.available ? "" : " disabled aria-disabled=\"true\""}>Bestill Utbedring</button>`;
     return `<fieldset class="drops-not-operational-fault-row" data-sde-drops-fault-row="${priority}">
       <legend>Prioritet ${priority}</legend>
       <div class="drops-not-operational-priority" aria-label="Prioritet ${priority}">${priority}</div>
@@ -45598,8 +46164,12 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
       </div>
       <div class="drops-not-operational-row-action">${localRegistrationHtml}</div>
       <div class="drops-not-operational-stadler-action">
-        <button type="button" data-sde-drops-order-repair="${priority}" data-fault-id="${escapeHtml(authoritativeFault?.faultId || "")}"${repairDisabled ? " disabled aria-disabled=\"true\"" : ""}>${repairButtonLabel}</button>
-        <span>${repairRequest ? "REPAIR_REQUESTED · serverbekreftet" : (requestRepairAvailable ? "Intern bestilling til Nivå 4 – Verksted" : "Aktiveres etter autoritativ Ikke Driftsklar-status")}</span>
+        ${repairActionHtml}
+        <span>${repairRequest
+          ? `${escapeHtml(repairRequest.status || "REQUESTED")} · serverbekreftet`
+          : (authoritativeFault
+            ? (repairAvailability.available ? "Intern bestilling til Nivå 4 – Verksted" : "Utbedringsbestilling er ikke tilgjengelig med gjeldende rolle eller readiness")
+            : "Aktiveres etter at feilen er registrert")}</span>
       </div>
       ${error ? `<p class="drops-not-operational-fault-error" id="${errorId}" role="alert">${escapeHtml(error)}</p>` : ""}
     </fieldset>`;
@@ -45637,8 +46207,11 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
       </div>
     </div>
     <div class="drops-not-operational-registration-time"><strong>Autoritativ status og tidspunkt</strong><span>Oppdateres bare fra serverens kjøretøystatus-readback. Lokal kladd endrer ikke status.</span></div>
-    <div class="drops-stadler-boundary" role="status"><strong>Utbedringsbestilling:</strong> Intern bestilling til Nivå 4 – Verksted. Sendes bare for en aktiv, serverregistrert feil etter autoritativ Ikke Driftsklar-status.</div>
+    <div class="drops-stadler-boundary" role="status"><strong>Utbedringsbestilling:</strong> Intern bestilling til Nivå 4 – Verksted. Sendes bare for en aktiv, serverregistrert feil og kan bestilles uavhengig av Driftsklarstatus; status og disponering endres ikke.</div>
     <div class="drops-not-operational-faults">${faultRowsHtml}</div>
+    ${typeof buildVehicleProcessTimelineHtml === "function"
+      ? buildVehicleProcessTimelineHtml(viewModel?.readback,vehicle)
+      : ""}
     ${previewHtml}
     <div class="drops-not-operational-editor-actions">${submitAction}<span>${availabilityMessage}</span></div>
     ${submitErrorHtml}
@@ -45731,6 +46304,9 @@ function buildDropsVehicleRegistryHtml(selectedSeries="",selectedVehicle="",edit
       <div class="drops-standard-sheet-body" id="dropsStandardSheetBody"${sheetCollapsed ? " hidden" : ""}>${buildDropsNotOperationalEditorHtml(selectedDraft,viewModel)}${authoritativeSheet}</div>`
     : `<div class="drops-standard-sheet-empty">Velg først serie og deretter kjøretøy for å åpne ett standardark.</div>`;
 
+  const analyticsPanelHtml = typeof buildVehicleStatusAnalyticsPanelHtml === "function"
+    ? buildVehicleStatusAnalyticsPanelHtml(viewModel?.analytics)
+    : "";
   return `<section data-sde-drops-vehicle-registry-content aria-labelledby="dropsVehicleRegistryTitle">
     <div class="drops-vehicle-registry-header">
       <div class="drops-vehicle-registry-title">
@@ -45750,6 +46326,7 @@ function buildDropsVehicleRegistryHtml(selectedSeries="",selectedVehicle="",edit
       </label>
     </div>
     <div class="drops-standard-sheet-host" data-sde-drops-selected-vehicle="${escapeHtml(cleanVehicle)}">${selectedSheet}</div>
+    ${analyticsPanelHtml}
   </section>`;
 }
 
@@ -45760,6 +46337,7 @@ let dropsNotOperationalEditorState = null;
 const dropsVehicleDraftsByVehicle = new Map();
 let dropsVehicleStatusReadback = null;
 let dropsRuntimeCapabilities = null;
+let dropsVehicleStatusAnalytics = null;
 let dropsVehicleStatusContextLoaded = false;
 let dropsVehicleStatusContextLoadPromise = null;
 let dropsReportNotOperationalInFlight = false;
@@ -45768,6 +46346,7 @@ let workshopVehicleRegistrySelectedSeries = "";
 let workshopVehicleRegistrySelectedVehicle = "";
 let workshopStandardSheetCollapsed = false;
 let workshopReportOperationalInFlight = false;
+let workshopProcessCommandInFlight = false;
 let activeVehicleStatusNotification = null;
 const dismissedVehicleStatusNotifications = new Set();
 const vehicleStatusNotificationKnownIds = new Set();
@@ -45775,6 +46354,8 @@ const vehicleStatusNotificationPending = [];
 const vehicleStatusNotificationAutoSelections = new Set();
 let vehicleStatusNotificationBaselineInitialized = false;
 const vehicleStatusNotificationAudioAttempts = new Set();
+const vehicleStatusNotificationPresentationAttempts = new Set();
+const workshopSheetOpenAttempts = new Set();
 let vehicleStatusNotificationAudioContext = null;
 let vehicleStatusNotificationAudioEnabled = false;
 const vehicleStatusVisiblePolling = {timer:0,intervalMs:5000};
@@ -45848,6 +46429,7 @@ function getDropsVehicleStatusViewModel(){
       dropsRuntimeCapabilities,
       dropsVehicleRegistrySelectedVehicle
     ),
+    analytics:dropsVehicleStatusAnalytics,
     commandInFlight:dropsLifecycleCommandInFlight
   };
 }
@@ -45858,15 +46440,18 @@ function acceptVehicleStatusReadback(readback){
 }
 
 async function loadDropsVehicleStatusContext(fetchImpl=window.fetch.bind(window)){
-  const [readbackResponse,capabilitiesResponse] = await Promise.all([
+  const [readbackResponse,capabilitiesResponse,analyticsResponse] = await Promise.all([
     fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
-    fetchImpl("/api/auth/capabilities",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"})
+    fetchImpl("/api/auth/capabilities",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
+    fetchImpl("/api/vehicle-status/analytics",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"})
   ]);
   const readback = await readbackResponse.json().catch(()=>null);
   const capabilities = await capabilitiesResponse.json().catch(()=>null);
+  const analytics = await analyticsResponse.json().catch(()=>null);
   return {
     readback:readbackResponse.ok && readback?.ok === true ? readback : null,
-    capabilities:capabilitiesResponse.ok && capabilities?.ok === true ? capabilities : null
+    capabilities:capabilitiesResponse.ok && capabilities?.ok === true ? capabilities : null,
+    analytics:analyticsResponse.ok && analytics?.ok === true ? analytics : null
   };
 }
 
@@ -45876,11 +46461,13 @@ function ensureDropsVehicleStatusContext(){
     .then(context=>{
       acceptVehicleStatusReadback(context.readback);
       dropsRuntimeCapabilities = context.capabilities;
+      dropsVehicleStatusAnalytics = context.analytics;
       dropsVehicleStatusContextLoaded = true;
     })
     .catch(()=>{
       acceptVehicleStatusReadback(null);
       dropsRuntimeCapabilities = null;
+      dropsVehicleStatusAnalytics = null;
       dropsVehicleStatusContextLoaded = true;
     })
     .finally(()=>{
@@ -45923,6 +46510,9 @@ function renderWorkshopVehicleRegistry(){
     workshopStandardSheetCollapsed
   );
   ensureDropsVehicleStatusContext();
+  if(workshopVehicleRegistrySelectedVehicle && !workshopStandardSheetCollapsed){
+    recordWorkshopSheetFirstOpened(workshopVehicleRegistrySelectedVehicle);
+  }
 }
 
 function renderSporplanVehicleStatusBadges(){
@@ -46081,6 +46671,57 @@ function renderVehicleStatusNotificationPopup(){
   host.classList.remove("audio-blocked");
   host.innerHTML = buildWorkshopNotificationPopupHtml(next);
   if(next) attemptVehicleStatusNotificationAudio(next);
+  if(next && typeof recordVehicleStatusNotificationPresented === "function"){
+    recordVehicleStatusNotificationPresented(next);
+  }
+}
+
+async function postVehicleStatusTechnicalCommand(commandName,payload){
+  const response = await window.fetch(`/api/vehicle-status/commands/${commandName}`,{
+    method:"POST",
+    headers:{"Content-Type":"application/json",Accept:"application/json"},
+    body:JSON.stringify({actionId:createDropsNotOperationalActionId(),...payload}),
+    credentials:"same-origin"
+  });
+  return {
+    ok:response.ok,
+    status:response.status,
+    body:await response.json().catch(()=>null)
+  };
+}
+
+function recordVehicleStatusNotificationPresented(notification){
+  const notificationId = String(notification?.notificationId || "");
+  const capability = dropsRuntimeCapabilities?.capabilities?.["vehicle_status.notification_presented"];
+  if(
+    !notificationId ||
+    vehicleStatusNotificationPresentationAttempts.has(notificationId) ||
+    dropsVehicleStatusReadback?.notificationPresentedCommandAvailable !== true ||
+    capability?.allowed !== true
+  ) return;
+  vehicleStatusNotificationPresentationAttempts.add(notificationId);
+  postVehicleStatusTechnicalCommand("notification-presented",{notificationId})
+    .catch(()=>vehicleStatusNotificationPresentationAttempts.delete(notificationId));
+}
+
+function recordWorkshopSheetFirstOpened(vehicleId){
+  const processCase = getVehicleProcessCase(dropsVehicleStatusReadback,vehicleId);
+  const caseId = String(processCase?.caseId || "");
+  const attemptKey = `${vehicleId}|${caseId || "active"}`;
+  const capability = dropsRuntimeCapabilities?.capabilities?.["vehicle_status.workshop_sheet_opened"];
+  if(
+    !vehicleId ||
+    !processCase?.active ||
+    workshopSheetOpenAttempts.has(attemptKey) ||
+    dropsVehicleStatusReadback?.workshopSheetOpenedCommandAvailable !== true ||
+    capability?.allowed !== true
+  ) return;
+  workshopSheetOpenAttempts.add(attemptKey);
+  postVehicleStatusTechnicalCommand("workshop-sheet-opened",{vehicleId,caseId})
+    .then(result=>{
+      if(!result.ok) workshopSheetOpenAttempts.delete(attemptKey);
+    })
+    .catch(()=>workshopSheetOpenAttempts.delete(attemptKey));
 }
 
 function serializeDropsVehicleRenderValue(value){
@@ -46108,11 +46749,16 @@ function getDropsVehicleAuthoritativeRenderSignature(readback,vehicleId){
     cases:forSelectedVehicle(readback?.cases),
     faults:forSelectedVehicle(readback?.faults),
     repairRequests:forSelectedVehicle(readback?.repairRequests),
+    processCases:forSelectedVehicle(readback?.processCases),
+    placements:forSelectedVehicle(readback?.placements),
     gates:{
       writeEnabled:readback?.writeEnabled === true,
       productionPilotWriteEnabled:readback?.productionPilotWriteEnabled === true,
       registerFaultCommandAvailable:readback?.registerFaultCommandAvailable === true,
       vehicleStatusLifecycleCommandsAvailable:readback?.vehicleStatusLifecycleCommandsAvailable === true,
+      requestRepairCommandAvailable:readback?.requestRepairCommandAvailable === true,
+      workStartedCommandAvailable:readback?.workStartedCommandAvailable === true,
+      setWaitReasonCommandAvailable:readback?.setWaitReasonCommandAvailable === true,
       pilotAllowedVehicleIds:Array.isArray(readback?.pilotAllowedVehicleIds)
         ? readback.pilotAllowedVehicleIds
         : [],
@@ -46206,6 +46852,16 @@ function handleDropsNotOperationalRegistryClick(event){
     submitWorkshopReportOperationalFromUi();
     return true;
   }
+  if(event.target.closest("[data-sde-workshop-work-started]")){
+    event.preventDefault();
+    submitWorkshopWorkStartedFromUi();
+    return true;
+  }
+  if(event.target.closest("[data-sde-workshop-set-wait-reason]")){
+    event.preventDefault();
+    submitWorkshopWaitReasonFromUi();
+    return true;
+  }
   if(event.target.closest("[data-sde-workshop-toggle-standard-sheet]")){
     event.preventDefault();
     workshopStandardSheetCollapsed = !workshopStandardSheetCollapsed;
@@ -46225,6 +46881,11 @@ function handleDropsNotOperationalRegistryClick(event){
   if(event.target.closest("[data-sde-drops-submit-not-operational]")){
     event.preventDefault();
     submitDropsNotOperationalFromUi();
+    return true;
+  }
+  if(event.target.closest("[data-sde-refresh-vehicle-analytics]")){
+    event.preventDefault();
+    refreshVehicleStatusAnalyticsFromUi();
     return true;
   }
   return false;
@@ -46324,6 +46985,73 @@ async function submitWorkshopReportOperationalFromUi(){
     renderSporplanVehicleStatusBadges();
     renderVehicleStatusNotificationPopup();
   }
+}
+
+async function submitWorkshopWorkStartedFromUi(){
+  if(workshopProcessCommandInFlight || !workshopVehicleRegistrySelectedVehicle) return;
+  workshopProcessCommandInFlight = true;
+  try{
+    const result = await submitWorkshopProcessCommandWithReadback(
+      "work-started",
+      workshopVehicleRegistrySelectedVehicle,
+      dropsVehicleStatusReadback,
+      dropsRuntimeCapabilities,
+      window.fetch.bind(window)
+    );
+    if(result?.readback) acceptVehicleStatusReadback(result.readback);
+  }finally{
+    workshopProcessCommandInFlight = false;
+    renderWorkshopVehicleRegistry();
+    renderDropsVehicleRegistry();
+  }
+}
+
+async function submitWorkshopWaitReasonFromUi(){
+  if(workshopProcessCommandInFlight || !workshopVehicleRegistrySelectedVehicle) return;
+  const select = document.querySelector("[data-sde-workshop-wait-reason]");
+  const reason = String(select?.value || "NONE");
+  workshopProcessCommandInFlight = true;
+  try{
+    const result = await submitWorkshopProcessCommandWithReadback(
+      "set-wait-reason",
+      workshopVehicleRegistrySelectedVehicle,
+      dropsVehicleStatusReadback,
+      dropsRuntimeCapabilities,
+      window.fetch.bind(window),
+      {reason}
+    );
+    if(result?.readback) acceptVehicleStatusReadback(result.readback);
+  }finally{
+    workshopProcessCommandInFlight = false;
+    renderWorkshopVehicleRegistry();
+    renderDropsVehicleRegistry();
+  }
+}
+
+async function refreshVehicleStatusAnalyticsFromUi(){
+  const period = Number(document.querySelector("[data-sde-analytics-period]")?.value || 30);
+  const to = new Date();
+  const from = new Date(to.getTime() - period * 86400000);
+  const params = new URLSearchParams({
+    from:from.toISOString(),
+    to:to.toISOString()
+  });
+  const series = String(document.querySelector("[data-sde-analytics-series]")?.value || "");
+  const category = String(document.querySelector("[data-sde-analytics-category]")?.value || "");
+  const vehicleId = String(document.querySelector("[data-sde-analytics-vehicle]")?.value || "").trim();
+  if(series) params.set("series",series);
+  if(category) params.set("category",category);
+  if(vehicleId) params.set("vehicleId",vehicleId);
+  try{
+    const response = await window.fetch(`/api/vehicle-status/analytics?${params}`,{
+      method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"
+    });
+    const analytics = await response.json().catch(()=>null);
+    if(response.ok && analytics?.ok === true){
+      dropsVehicleStatusAnalytics = analytics;
+      renderDropsVehicleRegistry();
+    }
+  }catch(unusedError){ /* behold siste bekreftede analyse */ }
 }
 
 async function submitDropsNotOperationalFromUi(){
