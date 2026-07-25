@@ -15,9 +15,16 @@ const {
 const {
   CONFIRM_OPERATIONAL_TEXT,
   LIFECYCLE_COMMANDS,
+  PRODUCTION_ALLOWED_SCOPE_ENV,
+  REGISTERED_VEHICLES_SCOPE,
   createVehicleStatusReadHandler,
+  getPilotAllowedVehicleIds,
   normalizeLifecycleCommand
 } = require("../src/vehicleStatusLifecycle");
+const {
+  VEHICLE_REGISTRY,
+  VEHICLE_REGISTRY_SIZE
+} = require("../src/vehicleRegistry");
 const {
   createVehicleStatusRepository
 } = require("../src/vehicleStatusTestRepository");
@@ -621,20 +628,25 @@ async function main(){
     primary.close();
   }
 
+  const ownerRoles = [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS, ROLE_KEYS.VERKSTED];
   await check("52 owner retains explicit admin_pilot role", () => {
-    const roles = [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS];
+    const roles = ownerRoles;
     assert.equal(roles.includes(ROLE_KEYS.ADMIN_PILOT), true);
   });
   await check("53 owner additionally has explicit drops role", () => {
-    const roles = [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS];
+    const roles = ownerRoles;
     assert.equal(roles.includes(ROLE_KEYS.DROPS), true);
   });
-  await check("54 capabilities are the union of explicit roles", () => {
-    const result = decision(CAPABILITY_IDS.REGISTER_FAULT, [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS]);
+  await check("54 owner additionally has explicit verksted role", () => {
+    const roles = ownerRoles;
+    assert.equal(roles.includes(ROLE_KEYS.VERKSTED), true);
+  });
+  await check("55 capabilities are the union of explicit roles", () => {
+    const result = decision(CAPABILITY_IDS.REGISTER_FAULT, ownerRoles);
     assert.equal(result.allowed, true);
     assert.deepEqual(result.capabilitySourceRoles, [ROLE_KEYS.DROPS]);
   });
-  await check("55 admin_pilot grants no operational writes alone", () => {
+  await check("56 admin_pilot grants no operational writes alone", () => {
     for(const capability of [
       CAPABILITY_IDS.REGISTER_FAULT,
       CAPABILITY_IDS.REQUEST_REPAIR,
@@ -644,20 +656,55 @@ async function main(){
       assert.equal(decision(capability, [ROLE_KEYS.ADMIN_PILOT]).allowed, false);
     }
   });
-  await check("56 admin_pilot plus drops grants only drops commands", () => {
-    const roles = [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS];
+  await check("57 owner multirole grants all explicit lifecycle commands", () => {
+    const roles = ownerRoles;
     assert.equal(decision(CAPABILITY_IDS.REGISTER_FAULT, roles).allowed, true);
+    assert.equal(decision(CAPABILITY_IDS.REPORT_NOT_OPERATIONAL, roles).allowed, true);
     assert.equal(decision(CAPABILITY_IDS.REQUEST_REPAIR, roles).allowed, true);
     assert.equal(decision(CAPABILITY_IDS.MARK_FOR_TURNING, roles).allowed, true);
+    assert.equal(decision(CAPABILITY_IDS.REPORT_OPERATIONAL, roles).allowed, true);
   });
-  await check("57 multi-role owner receives no workshop write", () => {
-    assert.equal(decision(
-      CAPABILITY_IDS.REPORT_OPERATIONAL,
-      [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS]
-    ).allowed, false);
+  await check("58 owner multirole capabilities retain explicit sources and no override", () => {
+    const dropsDecision = decision(CAPABILITY_IDS.REGISTER_FAULT, ownerRoles);
+    const workshopDecision = decision(CAPABILITY_IDS.REPORT_OPERATIONAL, ownerRoles);
+    assert.deepEqual(dropsDecision.capabilitySourceRoles, [ROLE_KEYS.DROPS]);
+    assert.deepEqual(workshopDecision.capabilitySourceRoles, [ROLE_KEYS.VERKSTED]);
+    assert.equal(roleResult(ownerRoles).roleBindingSource, "server_config");
   });
 
-  await check("58 gate off is 404 with zero writes for all commands", () => {
+  await check("59 registered vehicle scope contains exactly all 176 registry IDs", () => {
+    const allowed = getPilotAllowedVehicleIds({
+      [PRODUCTION_ALLOWED_SCOPE_ENV]: REGISTERED_VEHICLES_SCOPE
+    });
+    const registered = Object.values(VEHICLE_REGISTRY).flat().sort();
+    assert.equal(VEHICLE_REGISTRY_SIZE, 176);
+    assert.equal(allowed.size, 176);
+    assert.deepEqual([...allowed].sort(), registered);
+  });
+  await check("60 registered scope still rejects an unknown vehicleId", () => {
+    const allowed = getPilotAllowedVehicleIds({
+      [PRODUCTION_ALLOWED_SCOPE_ENV]: REGISTERED_VEHICLES_SCOPE
+    });
+    assert.equal(normalizeLifecycleCommand(
+      LIFECYCLE_COMMANDS.REGISTER_FAULT,
+      registerFaultPayload({ vehicleId: "99-99" }),
+      { allowedVehicleIds: allowed }
+    ).status, 404);
+  });
+  await check("61 absent or unknown registered scope remains fail closed", () => {
+    assert.equal(getPilotAllowedVehicleIds({}).size, 0);
+    assert.equal(getPilotAllowedVehicleIds({
+      [PRODUCTION_ALLOWED_SCOPE_ENV]: "ALL"
+    }).size, 0);
+  });
+  await check("62 legacy explicit allowlist remains registry validated", () => {
+    const allowed = getPilotAllowedVehicleIds({
+      SDE_VEHICLE_STATUS_PRODUCTION_PILOT_ALLOWED_VEHICLE_IDS: "74-04,99-99"
+    });
+    assert.deepEqual([...allowed], [VEHICLE_ID]);
+  });
+
+  await check("63 gate off is 404 with zero writes for all commands", () => {
     const fixture = createFixture({ writeEnabled: false });
     try{
       const cases = [
@@ -683,13 +730,13 @@ async function main(){
       assert.equal(fixture.repository.getStorageSnapshot().counts.events, 0);
     }finally{ fixture.close(); }
   });
-  await check("59 test gate cannot open production writes", () => {
+  await check("64 test gate cannot open production writes", () => {
     const fixture = createFixture({ writeEnabled: false });
     try{
       assert.equal(fixture.repository.getReadModel().writeEnabled, false);
     }finally{ fixture.close(); }
   });
-  await check("60 allowlist alone cannot open writes", () => {
+  await check("65 allowlist alone cannot open writes", () => {
     const fixture = createFixture({ writeEnabled: false });
     try{
       assert.equal(execute(
@@ -699,7 +746,7 @@ async function main(){
       ).status, 404);
     }finally{ fixture.close(); }
   });
-  await check("61 authenticated readback computes pilot allowlist metadata server-side", async () => {
+  await check("66 authenticated readback computes registered scope metadata server-side", async () => {
     let metadataContext = null;
     const handler = createVehicleStatusReadHandler({
       repository: {
@@ -714,7 +761,7 @@ async function main(){
         bindings: [{
           bindingId: "owner-readiness",
           subject: "cf-access|owner",
-          roles: [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS],
+          roles: ownerRoles,
           enabled: true
         }]
       },
@@ -735,7 +782,9 @@ async function main(){
           productionPilotWriteEnabled: true,
           vehicleStatusPersistenceReady: true,
           registerFaultCommandAvailable: allowed,
-          pilotAllowedVehicleIds: allowed ? [VEHICLE_ID] : []
+          vehicleWriteScope: REGISTERED_VEHICLES_SCOPE,
+          allowedVehicleCount: allowed ? VEHICLE_REGISTRY_SIZE : 0,
+          pilotAllowedVehicleIds: allowed ? Object.values(VEHICLE_REGISTRY).flat().sort() : []
         };
       }
     });
@@ -743,31 +792,33 @@ async function main(){
     await handler({ headers: { authorization: "Bearer test" } }, response);
     assert.equal(response.statusCode, 200);
     assert.equal(response.headers["cache-control"], "no-store");
-    assert.deepEqual(response.body.roles, [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS]);
+    assert.deepEqual(response.body.roles, ownerRoles);
     assert.equal(response.body.registerFaultCommandAvailable, true);
-    assert.deepEqual(response.body.pilotAllowedVehicleIds, [VEHICLE_ID]);
+    assert.equal(response.body.vehicleWriteScope, REGISTERED_VEHICLES_SCOPE);
+    assert.equal(response.body.allowedVehicleCount, VEHICLE_REGISTRY_SIZE);
+    assert.equal(response.body.pilotAllowedVehicleIds.length, VEHICLE_REGISTRY_SIZE);
     assert.equal(metadataContext.identityResult.ok, true);
     assert.equal(metadataContext.roleResult.roleResolved, true);
   });
-  await check("62 permanent lifecycle test uses temp databases only", () => {
+  await check("67 permanent lifecycle test uses temp databases only", () => {
     const fixture = createFixture();
     try{
       assert.equal(path.dirname(fixture.databasePath), os.tmpdir());
       assert.notEqual(path.resolve(fixture.databasePath), path.resolve(MAIN_DB));
     }finally{ fixture.close(); }
   });
-  await check("63 production database is untouched", () => {
+  await check("68 production database is untouched", () => {
     assert.deepEqual(snapshotFiles(Object.keys(productionBefore)), productionBefore);
   });
-  await check("64 operational state is untouched", () => {
+  await check("69 operational state is untouched", () => {
     assert.equal(globalThis.__sdeOperationalStateWriteCount || 0, 0);
   });
-  await check("65 shared draft is untouched", () => {
+  await check("70 shared draft is untouched", () => {
     assert.equal(SHARED_DRAFT_DB, MAIN_DB);
     assert.deepEqual(snapshotFiles(Object.keys(productionBefore)), productionBefore);
   });
 
-  assert.equal(passed.length, 65);
+  assert.equal(passed.length, 70);
   console.log(JSON.stringify({
     schemaVersion: "sde-vehicle-status-lifecycle-v2-test-report",
     status: "PASS",

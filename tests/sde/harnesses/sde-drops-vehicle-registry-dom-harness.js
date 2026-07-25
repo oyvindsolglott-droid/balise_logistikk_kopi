@@ -56,6 +56,7 @@ const functionNames = [
   "shouldConfirmDropsVehicleSelectionChange",
   "buildDropsNotOperationalEditorHtml",
   "isDropsVehicleRegistryVisibleForAccessLevel",
+  "buildVehicleStatusAudioControlHtml",
   "buildDropsVehicleRegistryHtml",
   "buildWorkshopVehicleRegistryHtml",
 ];
@@ -76,6 +77,7 @@ const context = {
   console,
   Date,
   DROPS_VEHICLE_REGISTRY_TOTAL: Number(vehicleRegistryTotalMatch[1]),
+  vehicleStatusNotificationAudioEnabled: false,
   escapeHtml(value) {
     return String(value ?? "")
       .replaceAll("&", "&amp;")

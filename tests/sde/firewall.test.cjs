@@ -203,6 +203,13 @@ test("DROPS hotfix — lifecycle UI is fail-closed and graphic actual state matc
   );
 });
 
+test("DROPS operational rollout — registered scope and user-activated notification audio stay fail-closed", () => {
+  assertPassed(
+    runHarness("sde-drops-operational-rollout-harness.js"),
+    "DROPS registered scope and notification audio",
+  );
+});
+
 test("G — end-to-end integrity gate is complete and side-effect free", () => {
   const contract = source => {
     assert.equal(countFunction(source, "buildSdeCanonicalIntegrityReport"), 1);
