@@ -15,6 +15,7 @@ const {
 const {
   CONFIRM_OPERATIONAL_TEXT,
   LIFECYCLE_COMMANDS,
+  createVehicleStatusReadHandler,
   normalizeLifecycleCommand
 } = require("../src/vehicleStatusLifecycle");
 const {
@@ -698,25 +699,75 @@ async function main(){
       ).status, 404);
     }finally{ fixture.close(); }
   });
-  await check("61 permanent lifecycle test uses temp databases only", () => {
+  await check("61 authenticated readback computes pilot allowlist metadata server-side", async () => {
+    let metadataContext = null;
+    const handler = createVehicleStatusReadHandler({
+      repository: {
+        getReadModel({ roles }){
+          return {
+            writeEnabled: true,
+            rolesSeen: [...roles]
+          };
+        }
+      },
+      roleBindingsCatalog: {
+        bindings: [{
+          bindingId: "owner-readiness",
+          subject: "cf-access|owner",
+          roles: [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS],
+          enabled: true
+        }]
+      },
+      verifyIdentityRequest: async () => ({
+        ok: true,
+        identity: {
+          authenticated: true,
+          identityVerified: true,
+          identityKind: "human",
+          subject: "cf-access|owner",
+          identitySource: "cloudflare_access_jwt"
+        }
+      }),
+      responseMetadata(context){
+        metadataContext = context;
+        const allowed = context.roles.includes(ROLE_KEYS.DROPS);
+        return {
+          productionPilotWriteEnabled: true,
+          vehicleStatusPersistenceReady: true,
+          registerFaultCommandAvailable: allowed,
+          pilotAllowedVehicleIds: allowed ? [VEHICLE_ID] : []
+        };
+      }
+    });
+    const response = createJsonResponse();
+    await handler({ headers: { authorization: "Bearer test" } }, response);
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.headers["cache-control"], "no-store");
+    assert.deepEqual(response.body.roles, [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.DROPS]);
+    assert.equal(response.body.registerFaultCommandAvailable, true);
+    assert.deepEqual(response.body.pilotAllowedVehicleIds, [VEHICLE_ID]);
+    assert.equal(metadataContext.identityResult.ok, true);
+    assert.equal(metadataContext.roleResult.roleResolved, true);
+  });
+  await check("62 permanent lifecycle test uses temp databases only", () => {
     const fixture = createFixture();
     try{
       assert.equal(path.dirname(fixture.databasePath), os.tmpdir());
       assert.notEqual(path.resolve(fixture.databasePath), path.resolve(MAIN_DB));
     }finally{ fixture.close(); }
   });
-  await check("62 production database is untouched", () => {
+  await check("63 production database is untouched", () => {
     assert.deepEqual(snapshotFiles(Object.keys(productionBefore)), productionBefore);
   });
-  await check("63 operational state is untouched", () => {
+  await check("64 operational state is untouched", () => {
     assert.equal(globalThis.__sdeOperationalStateWriteCount || 0, 0);
   });
-  await check("64 shared draft is untouched", () => {
+  await check("65 shared draft is untouched", () => {
     assert.equal(SHARED_DRAFT_DB, MAIN_DB);
     assert.deepEqual(snapshotFiles(Object.keys(productionBefore)), productionBefore);
   });
 
-  assert.equal(passed.length, 64);
+  assert.equal(passed.length, 65);
   console.log(JSON.stringify({
     schemaVersion: "sde-vehicle-status-lifecycle-v2-test-report",
     status: "PASS",
@@ -788,6 +839,26 @@ function snapshotFiles(filePaths){
       throw error;
     }
   }));
+}
+
+function createJsonResponse(){
+  return {
+    statusCode: 200,
+    headers: {},
+    body: null,
+    set(name, value){
+      this.headers[String(name).toLowerCase()] = String(value);
+      return this;
+    },
+    status(value){
+      this.statusCode = value;
+      return this;
+    },
+    json(value){
+      this.body = value;
+      return value;
+    }
+  };
 }
 
 main().catch((error) => {

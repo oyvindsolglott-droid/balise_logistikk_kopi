@@ -231,7 +231,11 @@ const gateOffView = {
   commandInFlight: false,
 };
 const openView = {
-  readback: readback(),
+  readback: readback([], {
+    productionPilotWriteEnabled: true,
+    registerFaultCommandAvailable: true,
+    pilotAllowedVehicleIds: ["74-04"],
+  }),
   capabilities: capabilities(),
   commandInFlight: false,
 };
@@ -262,11 +266,22 @@ assert.equal(
     ...openView,
     readback: readback([], {
       productionPilotWriteEnabled: true,
-      allowedVehicleIds: ["74-04"],
+      pilotAllowedVehicleIds: ["74-04"],
     }),
   }).available,
   false,
   "pilot allowlist",
+);
+const registerAvailabilitySource = extractFunction(source, "getDropsRegisterFaultAvailability");
+assert.match(
+  registerAvailabilitySource,
+  /pilotAllowedVehicleIds/,
+  "frontend availability must consume the server-computed pilot allowlist",
+);
+assert.doesNotMatch(
+  registerAvailabilitySource,
+  /74-04/,
+  "frontend availability must not hardcode the production pilot vehicle",
 );
 
 // B — color and truth labels come only from authoritative GET records.

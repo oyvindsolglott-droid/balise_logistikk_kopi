@@ -127,6 +127,7 @@ function extractFunction(text, name) {
 
 const functionNames = [
   "getDropsVehicleCatalog",
+  "isDropsPilotVehicleAllowed",
   "getDropsReportNotOperationalAvailability",
   "createDropsNotOperationalActionId",
   "buildDropsReportNotOperationalPayload",
@@ -165,6 +166,14 @@ function readback(revision = 0, items = [], fields = {}) {
     schemaVersion: "vehicle-status-read-model-v2",
     revision,
     writeEnabled: true,
+    productionPilotWriteEnabled: true,
+    registerFaultCommandAvailable: true,
+    reportNotOperationalCommandAvailable: true,
+    requestRepairCommandAvailable: true,
+    markForTurningCommandAvailable: true,
+    reportOperationalCommandAvailable: true,
+    vehicleStatusLifecycleCommandsAvailable: true,
+    pilotAllowedVehicleIds: ["74-04"],
     items,
     faults: [],
     repairRequests: [],
@@ -206,10 +215,10 @@ function draft(vehicleId = "74-04") {
 }
 
 async function main() {
-  assert.equal(api.getDropsReportNotOperationalAvailability(readback(), capabilities()).available, true);
-  assert.equal(api.getDropsReportNotOperationalAvailability(readback(), capabilities(false)).available, false);
-  assert.equal(api.getDropsReportNotOperationalAvailability(readback(), capabilities(true, "admin_pilot")).available, false);
-  assert.equal(api.getDropsReportNotOperationalAvailability({ ...readback(), writeEnabled: false }, capabilities()).available, false);
+  assert.equal(api.getDropsReportNotOperationalAvailability(readback(), capabilities(), "74-04").available, true);
+  assert.equal(api.getDropsReportNotOperationalAvailability(readback(), capabilities(false), "74-04").available, false);
+  assert.equal(api.getDropsReportNotOperationalAvailability(readback(), capabilities(true, "admin_pilot"), "74-04").available, false);
+  assert.equal(api.getDropsReportNotOperationalAvailability({ ...readback(), writeEnabled: false }, capabilities(), "74-04").available, false);
 
   const actionId = api.createDropsNotOperationalActionId();
   assert.equal(actionId, "11111111-1111-4111-8111-111111111111");
@@ -534,6 +543,14 @@ async function startFixture() {
     res.json({
       ok: true,
       writeEnabled: true,
+      productionPilotWriteEnabled: true,
+      registerFaultCommandAvailable: role !== "workshop",
+      reportNotOperationalCommandAvailable: role !== "workshop",
+      requestRepairCommandAvailable: role !== "workshop",
+      markForTurningCommandAvailable: role !== "workshop",
+      reportOperationalCommandAvailable: role === "workshop",
+      vehicleStatusLifecycleCommandsAvailable: true,
+      pilotAllowedVehicleIds: ["74-04"],
       ...repository.getReadModel({ roles }),
       roles,
       trustedRequestAuthority: null,
