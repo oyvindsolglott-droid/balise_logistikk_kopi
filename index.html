@@ -7152,10 +7152,18 @@ button{padding:12px 12px}
 }
 .drops-vehicle-registry-header{
   display:flex;
-  align-items:flex-end;
+  align-items:center;
   justify-content:space-between;
   gap:12px;
   margin-bottom:14px;
+}
+.drops-vehicle-registry-actions{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
 }
 .drops-vehicle-registry-title{
   display:grid;
@@ -7187,6 +7195,33 @@ button{padding:12px 12px}
   letter-spacing:.06em;
   text-transform:uppercase;
   white-space:nowrap;
+}
+.vehicle-status-audio-toggle{
+  appearance:none;
+  min-height:34px;
+  border:1px solid #93c5fd;
+  border-radius:999px;
+  padding:7px 11px;
+  background:linear-gradient(180deg,#eff6ff,#dbeafe);
+  color:#1e3a8a;
+  font:900 11px/1.1 inherit;
+  white-space:nowrap;
+  cursor:pointer;
+  box-shadow:0 3px 0 rgba(30,64,175,.18);
+}
+.vehicle-status-audio-toggle:hover{
+  border-color:#60a5fa;
+  background:linear-gradient(180deg,#ffffff,#dbeafe);
+}
+.vehicle-status-audio-toggle:focus-visible{
+  outline:3px solid rgba(37,99,235,.35);
+  outline-offset:2px;
+}
+.vehicle-status-audio-toggle.is-active{
+  border-color:#86efac;
+  background:linear-gradient(180deg,#ecfdf5,#bbf7d0);
+  color:#166534;
+  box-shadow:0 3px 0 rgba(22,101,52,.2);
 }
 .drops-vehicle-groups{
   display:grid;
@@ -8059,6 +8094,7 @@ button{padding:12px 12px}
 @media(max-width:600px){
   .drops-vehicle-registry{ padding:14px; border-radius:20px; }
   .drops-vehicle-registry-header{ align-items:flex-start; }
+  .drops-vehicle-registry-actions{ justify-content:flex-start; }
   .drops-vehicle-registry-title h2{ font-size:21px; }
   .drops-vehicle-registry-total{ font-size:10px; }
   .drops-vehicle-groups{ grid-template-columns:minmax(0,1fr); }
@@ -45421,7 +45457,7 @@ function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",r
       </section>
     </div>` : `<div class="drops-standard-sheet-empty">Velg serie og kjøretøy.</div>`;
   return `<section data-sde-workshop-registry-content>
-    <div class="drops-vehicle-registry-header"><div class="drops-vehicle-registry-title"><h2>Kjøretøy</h2><p>Autoritativ verksted-readback for 176 kjøretøy.</p></div><div class="drops-vehicle-registry-total">176 kjøretøy</div></div>
+    <div class="drops-vehicle-registry-header"><div class="drops-vehicle-registry-title"><h2>Kjøretøy</h2><p>Autoritativ verksted-readback for 176 kjøretøy.</p></div><div class="drops-vehicle-registry-actions">${buildVehicleStatusAudioControlHtml()}<div class="drops-vehicle-registry-total">176 kjøretøy</div></div></div>
     <div class="drops-vehicle-selector-grid"><label class="drops-vehicle-selector"><span>Serie</span><select data-sde-workshop-series-select>${seriesOptions}</select></label><label class="drops-vehicle-selector"><span>Kjøretøy</span><select data-sde-workshop-vehicle-select${series ? "" : " disabled"}>${vehicleOptions}</select></label></div>
     <div data-sde-workshop-selected-vehicle="${esc(vehicleId)}">${sheet}</div>
   </section>`;
@@ -45506,7 +45542,7 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
       <div class="drops-not-operational-row-action">${localRegistrationHtml}</div>
       <div class="drops-not-operational-stadler-action">
         <button type="button" data-sde-drops-order-repair="${priority}" data-fault-id="${escapeHtml(authoritativeFault?.faultId || "")}"${repairDisabled ? " disabled aria-disabled=\"true\"" : ""}>${repairButtonLabel}</button>
-        <span>${repairRequest ? "REPAIR_REQUESTED · serverbekreftet" : (requestRepairAvailable ? "Sendes til verksted med fersk readback" : "Aktiveres etter autoritativ Ikke Driftsklar-status")}</span>
+        <span>${repairRequest ? "REPAIR_REQUESTED · serverbekreftet" : (requestRepairAvailable ? "Intern bestilling til Nivå 4 – Verksted" : "Aktiveres etter autoritativ Ikke Driftsklar-status")}</span>
       </div>
       ${error ? `<p class="drops-not-operational-fault-error" id="${errorId}" role="alert">${escapeHtml(error)}</p>` : ""}
     </fieldset>`;
@@ -45544,7 +45580,7 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
       </div>
     </div>
     <div class="drops-not-operational-registration-time"><strong>Autoritativ status og tidspunkt</strong><span>Oppdateres bare fra serverens kjøretøystatus-readback. Lokal kladd endrer ikke status.</span></div>
-    <div class="drops-stadler-boundary" role="status"><strong>Utbedringsbestilling:</strong> Sendes bare for en aktiv, serverregistrert feil etter autoritativ Ikke Driftsklar-status.</div>
+    <div class="drops-stadler-boundary" role="status"><strong>Utbedringsbestilling:</strong> Intern bestilling til Nivå 4 – Verksted. Sendes bare for en aktiv, serverregistrert feil etter autoritativ Ikke Driftsklar-status.</div>
     <div class="drops-not-operational-faults">${faultRowsHtml}</div>
     ${previewHtml}
     <div class="drops-not-operational-editor-actions">${submitAction}<span>${availabilityMessage}</span></div>
@@ -45644,7 +45680,7 @@ function buildDropsVehicleRegistryHtml(selectedSeries="",selectedVehicle="",edit
         <h2 id="dropsVehicleRegistryTitle">Kjøretøy</h2>
         <p>Velg serie og kjøretøy. Bare ett standardark er aktivt om gangen.</p>
       </div>
-      <div class="drops-vehicle-registry-total">${total} kjøretøy</div>
+      <div class="drops-vehicle-registry-actions">${buildVehicleStatusAudioControlHtml()}<div class="drops-vehicle-registry-total">${total} kjøretøy</div></div>
     </div>
     <div class="drops-vehicle-selector-grid">
       <label class="drops-vehicle-selector">
@@ -45678,7 +45714,69 @@ let workshopReportOperationalInFlight = false;
 let activeVehicleStatusNotification = null;
 const dismissedVehicleStatusNotifications = new Set();
 const vehicleStatusNotificationAudioAttempts = new Set();
+let vehicleStatusNotificationAudioContext = null;
+let vehicleStatusNotificationAudioEnabled = false;
 const vehicleStatusVisiblePolling = {timer:0,intervalMs:5000};
+
+function buildVehicleStatusAudioControlHtml(){
+  const active = vehicleStatusNotificationAudioEnabled === true;
+  return `<button class="vehicle-status-audio-toggle${active ? " is-active" : ""}" type="button" data-sde-activate-vehicle-status-audio aria-pressed="${active ? "true" : "false"}">${active ? "Lydvarsling aktiv" : "Aktiver lydvarsling"}</button>`;
+}
+
+function updateVehicleStatusAudioControls(){
+  document.querySelectorAll("[data-sde-activate-vehicle-status-audio]").forEach(button=>{
+    button.classList.toggle("is-active",vehicleStatusNotificationAudioEnabled);
+    button.setAttribute("aria-pressed",vehicleStatusNotificationAudioEnabled ? "true" : "false");
+    button.textContent = vehicleStatusNotificationAudioEnabled
+      ? "Lydvarsling aktiv"
+      : "Aktiver lydvarsling";
+  });
+}
+
+function playVehicleStatusNotificationTone(context,frequency=660){
+  return new Promise((resolve,reject)=>{
+    try{
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      gain.gain.value = 0.035;
+      oscillator.frequency.value = frequency;
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.addEventListener?.("ended",resolve,{once:true});
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.12);
+      window.setTimeout(resolve,180);
+    }catch(error){
+      reject(error);
+    }
+  });
+}
+
+async function activateVehicleStatusNotificationAudio(){
+  try{
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if(!AudioContextCtor) throw new Error("audio_unavailable");
+    if(!vehicleStatusNotificationAudioContext || vehicleStatusNotificationAudioContext.state === "closed"){
+      vehicleStatusNotificationAudioContext = new AudioContextCtor();
+    }
+    if(vehicleStatusNotificationAudioContext.state === "suspended"){
+      await vehicleStatusNotificationAudioContext.resume();
+    }
+    if(vehicleStatusNotificationAudioContext.state !== "running"){
+      throw new Error("audio_not_running");
+    }
+    vehicleStatusNotificationAudioEnabled = true;
+    if(activeVehicleStatusNotification?.notificationId){
+      vehicleStatusNotificationAudioAttempts.add(String(activeVehicleStatusNotification.notificationId));
+    }
+    updateVehicleStatusAudioControls();
+    await playVehicleStatusNotificationTone(vehicleStatusNotificationAudioContext,740);
+    return true;
+  }catch(unusedError){
+    vehicleStatusNotificationAudioEnabled = false;
+    updateVehicleStatusAudioControls();
+    return false;
+  }
+}
 
 function getDropsVehicleStatusViewModel(){
   return {
@@ -45813,18 +45911,19 @@ function dismissVehicleStatusNotificationPopup(){
 function attemptVehicleStatusNotificationAudio(notification){
   const notificationId = String(notification?.notificationId || "");
   if(!notificationId || vehicleStatusNotificationAudioAttempts.has(notificationId)) return;
+  if(
+    vehicleStatusNotificationAudioEnabled !== true ||
+    !vehicleStatusNotificationAudioContext ||
+    vehicleStatusNotificationAudioContext.state !== "running"
+  ) return;
   vehicleStatusNotificationAudioAttempts.add(notificationId);
   try{
-    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-    if(!AudioContextCtor) throw new Error("audio_unavailable");
-    const context = new AudioContextCtor();
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    gain.gain.value = 0.035;
-    oscillator.frequency.value = notification?.priority === "HIGH" ? 880 : 660;
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start();
-    oscillator.stop(context.currentTime + 0.12);
+    Promise.resolve(playVehicleStatusNotificationTone(
+      vehicleStatusNotificationAudioContext,
+      notification?.priority === "HIGH" ? 880 : 660
+    )).catch(()=>{
+      document.getElementById("vehicleStatusNotificationHost")?.classList.add("audio-blocked");
+    });
   }catch(unusedError){
     document.getElementById("vehicleStatusNotificationHost")?.classList.add("audio-blocked");
   }
@@ -45845,6 +45944,7 @@ function renderVehicleStatusNotificationPopup(){
     .filter(notification=>notification?.kind === "VEHICLE_OPERATIONAL" || notification?.kind === "REPAIR_REQUESTED")
     .find(notification=>!dismissedVehicleStatusNotifications.has(notification.notificationId)) || null;
   activeVehicleStatusNotification = next;
+  host.classList.remove("audio-blocked");
   host.innerHTML = buildWorkshopNotificationPopupHtml(next);
   if(next) attemptVehicleStatusNotificationAudio(next);
 }
@@ -45930,6 +46030,11 @@ function confirmDropsDraftDiscard(nextVehicle){
 }
 
 function handleDropsNotOperationalRegistryClick(event){
+  if(event.target.closest("[data-sde-activate-vehicle-status-audio]")){
+    event.preventDefault();
+    activateVehicleStatusNotificationAudio();
+    return true;
+  }
   const collapseAction = event.target.closest("[data-sde-drops-toggle-standard-sheet]");
   if(collapseAction){
     event.preventDefault();

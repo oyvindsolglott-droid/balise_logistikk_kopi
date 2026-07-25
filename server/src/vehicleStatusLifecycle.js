@@ -8,7 +8,11 @@ const {
   validateIdentityRoleBindingsCatalog
 } = require("./identityRoleBindings");
 const { CAPABILITY_IDS, evaluateRuntimeAuthorization } = require("./runtimeAuthorization");
-const { isRegisteredVehicle, normalizeRegisteredVehicleId } = require("./vehicleRegistry");
+const {
+  VEHICLE_REGISTRY,
+  isRegisteredVehicle,
+  normalizeRegisteredVehicleId
+} = require("./vehicleRegistry");
 
 const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v2";
 const CONFIRM_OPERATIONAL_TEXT =
@@ -16,6 +20,10 @@ const CONFIRM_OPERATIONAL_TEXT =
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
 const PILOT_ALLOWED_VEHICLES_ENV =
   "SDE_VEHICLE_STATUS_PRODUCTION_PILOT_ALLOWED_VEHICLE_IDS";
+const PRODUCTION_ALLOWED_SCOPE_ENV =
+  "SDE_VEHICLE_STATUS_PRODUCTION_ALLOWED_SCOPE";
+const REGISTERED_VEHICLES_SCOPE = "REGISTERED_VEHICLES";
+const REGISTERED_VEHICLE_IDS = Object.freeze(Object.values(VEHICLE_REGISTRY).flat());
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
@@ -319,10 +327,22 @@ function createVehicleStatusReadHandler(options = {}){
 }
 
 function getPilotAllowedVehicleIds(env = process.env){
+  const configuredScope = typeof env[PRODUCTION_ALLOWED_SCOPE_ENV] === "string"
+    ? env[PRODUCTION_ALLOWED_SCOPE_ENV].trim().toUpperCase()
+    : "";
+  if(configuredScope === REGISTERED_VEHICLES_SCOPE){
+    return new Set(REGISTERED_VEHICLE_IDS);
+  }
+  if(configuredScope){
+    return new Set();
+  }
   const raw = typeof env[PILOT_ALLOWED_VEHICLES_ENV] === "string"
     ? env[PILOT_ALLOWED_VEHICLES_ENV]
     : "";
-  return new Set(raw.split(",").map((value) => normalizeRegisteredVehicleId(value)).filter(Boolean));
+  return new Set(raw
+    .split(",")
+    .map((value) => normalizeRegisteredVehicleId(value))
+    .filter((value) => value && isRegisteredVehicle(value)));
 }
 
 function revision(value){
@@ -395,6 +415,8 @@ module.exports = {
   LIFECYCLE_SCHEMA_VERSION,
   MAX_FAULT_DESCRIPTION_LENGTH,
   PILOT_ALLOWED_VEHICLES_ENV,
+  PRODUCTION_ALLOWED_SCOPE_ENV,
+  REGISTERED_VEHICLES_SCOPE,
   createVehicleStatusLifecycleHandler,
   createVehicleStatusReadHandler,
   getPilotAllowedVehicleIds,

@@ -20,10 +20,16 @@ const {
 const {
   COMMAND_DEFINITIONS: VEHICLE_STATUS_LIFECYCLE_COMMAND_DEFINITIONS,
   LIFECYCLE_COMMANDS: VEHICLE_STATUS_LIFECYCLE_COMMANDS,
+  PRODUCTION_ALLOWED_SCOPE_ENV,
+  REGISTERED_VEHICLES_SCOPE,
   createVehicleStatusLifecycleHandler,
   createVehicleStatusReadHandler,
   getPilotAllowedVehicleIds
 } = require("./vehicleStatusLifecycle");
+const {
+  VEHICLE_REGISTRY_SIZE,
+  isRegisteredVehicle
+} = require("./vehicleRegistry");
 const {
   createVehicleStatusRepository,
   createVehicleStatusTestRepository
@@ -297,6 +303,19 @@ const vehicleStatusLifecycleAllowedVehicleIds =
   VEHICLE_STATUS_TEST_WRITE_STATUS.writesAllowed
     ? new Set(["74-04"])
     : getPilotAllowedVehicleIds(process.env);
+const vehicleStatusLifecycleConfiguredScope =
+  String(process.env[PRODUCTION_ALLOWED_SCOPE_ENV] || "").trim().toUpperCase();
+const vehicleStatusLifecycleWriteScope =
+  vehicleStatusLifecycleConfiguredScope === REGISTERED_VEHICLES_SCOPE
+    ? REGISTERED_VEHICLES_SCOPE
+    : (vehicleStatusLifecycleAllowedVehicleIds.size > 0 ? "EXPLICIT_ALLOWLIST" : "NONE");
+const vehicleStatusLifecycleAllowedScopeReady =
+  vehicleStatusLifecycleAllowedVehicleIds.size > 0 &&
+  [...vehicleStatusLifecycleAllowedVehicleIds].every((vehicleId) => isRegisteredVehicle(vehicleId));
+const vehicleStatusRegisteredScopeReady =
+  vehicleStatusLifecycleWriteScope === REGISTERED_VEHICLES_SCOPE &&
+  vehicleStatusLifecycleAllowedVehicleIds.size === VEHICLE_REGISTRY_SIZE &&
+  vehicleStatusLifecycleAllowedScopeReady;
 let runtimeMigrationStatus = runtimeMigrationMode;
 try{
   runtimeMigrationStatus = runRuntimeMigrationIfEnabled(db, {
@@ -387,8 +406,10 @@ app.get("/api/server/status", (_req, res) => {
       vehicleStatusLifecycleCommandAvailable,
     vehicleStatusLifecycleCommandsAvailable: vehicleStatusLifecycleCommandAvailable,
     vehicleStatusLifecyclePilotAllowlistReady:
-      vehicleStatusLifecycleAllowedVehicleIds.has("74-04") &&
-      vehicleStatusLifecycleAllowedVehicleIds.size === 1,
+      vehicleStatusLifecycleAllowedScopeReady,
+    vehicleStatusWriteScope: vehicleStatusLifecycleWriteScope,
+    vehicleStatusAllowedVehicleCount: vehicleStatusLifecycleAllowedVehicleIds.size,
+    vehicleStatusRegisteredScopeReady,
     vehicleStatusPersistenceReady: Boolean(vehicleStatusRepository),
     ...schemaStatus,
     clientReadContract: CLIENT_READ_CONTRACT,
@@ -491,6 +512,8 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
           vehicleStatusLifecycleCommandsAvailable,
+          vehicleWriteScope: vehicleStatusLifecycleWriteScope,
+          allowedVehicleCount: vehicleStatusLifecycleAllowedVehicleIds.size,
           pilotAllowedVehicleIds
         };
       }
@@ -507,6 +530,8 @@ app.get("/api/vehicle-status", async (req, res) => {
       ok: true,
       ...buildProductionVehicleStatusReadModel(),
       productionPilotWriteEnabled: false,
+      vehicleWriteScope: "NONE",
+      allowedVehicleCount: 0,
       reportNotOperationalCommandAvailable: false,
       vehicleStatusPersistenceReady: false,
       trustedRequestAuthority: null
@@ -531,6 +556,8 @@ app.get("/api/vehicle-status", async (req, res) => {
         message: "Vehicle-status readback failed closed."
       }],
       productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
+      vehicleWriteScope: vehicleStatusLifecycleWriteScope,
+      allowedVehicleCount: vehicleStatusLifecycleAllowedVehicleIds.size,
       reportNotOperationalCommandAvailable: false,
       vehicleStatusPersistenceReady: false,
       trustedRequestAuthority: null
