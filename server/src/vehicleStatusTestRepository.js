@@ -262,7 +262,12 @@ function createVehicleStatusRepository(options = {}){
       notificationId, eventId, targetRole: "verksted", kind: "REPAIR_REQUESTED",
       priority: "HIGH", vehicleId: command.vehicleId, faultId: command.faultId,
       repairRequestId, timestamp,
-      payload: { category: fault.category, description: fault.description, slot: fault.slot }
+      payload: {
+        category: fault.category,
+        description: fault.description,
+        slot: fault.slot,
+        requestedAt: timestamp
+      }
     });
     updateCase(command.vehicleId, timestamp, eventId, caseRevision);
     insertEvent({
