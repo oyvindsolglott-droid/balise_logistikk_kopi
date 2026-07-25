@@ -362,7 +362,7 @@ async function main(){
         .faults.find((fault) => fault.faultId === faultResult.faultId).status, "ACTIVE");
     });
 
-    await check("21 request-repair requires IKKE_DRIFTSKLAR", () => {
+    await check("21 request-repair is independent of operational status", () => {
       const fixture = createFixture();
       try{
         const fault = execute(
@@ -370,7 +370,8 @@ async function main(){
           LIFECYCLE_COMMANDS.REGISTER_FAULT,
           registerFaultPayload()
         ).result;
-        const denied = execute(
+        const before = fixture.repository.getStorageSnapshot();
+        const accepted = execute(
           fixture.repository,
           LIFECYCLE_COMMANDS.REQUEST_REPAIR,
           {
@@ -380,7 +381,12 @@ async function main(){
             faultId: fault.faultId
           }
         );
-        assert.equal(denied.status, 409);
+        const after = fixture.repository.getStorageSnapshot();
+        assert.equal(accepted.status, 201);
+        assert.equal(after.counts.records, 0);
+        assert.deepEqual(after.records, before.records);
+        assert.equal(after.counts.repairRequests, 1);
+        assert.equal(after.counts.notifications, 1);
       }finally{ fixture.close(); }
     });
 

@@ -653,6 +653,22 @@ test("DROPS-VERKSTED-2B — full authoritative vehicle lifecycle remains atomic 
   );
 });
 
+test("DROPS-PROCESS — repair independence, immutable process events and privacy remain enforced", () => {
+  assertPassed(
+    run(process.execPath, [
+      path.join(root, "server", "scripts", "test-vehicle-status-process-v3.js"),
+    ]),
+    "DROPS process server contract",
+  );
+});
+
+test("DROPS-PROCESS-UI — every operational status can request repair without surveillance UI", () => {
+  assertPassed(
+    runHarness("sde-drops-repair-process-ui-harness.js"),
+    "DROPS process UI contract",
+  );
+});
+
 test("TURSATT-UI — baked label remains seamless without an obscuring CSS backplate", () => {
   const buttonRule = currentHtml.match(/\.segmented button\.seg-tursatt-graphic\{([^}]*)\}/)?.[1] || "";
   const imageRule = currentHtml.match(/\.seg-tursatt-graphic__image\{([^}]*)\}/)?.[1] || "";
