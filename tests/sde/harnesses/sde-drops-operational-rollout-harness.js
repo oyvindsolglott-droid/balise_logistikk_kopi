@@ -69,6 +69,9 @@ function extractFunction(text, name) {
 const audioControl = extractFunction(source, "buildVehicleStatusAudioControlHtml");
 const activateAudio = extractFunction(source, "activateVehicleStatusNotificationAudio");
 const attemptAudio = extractFunction(source, "attemptVehicleStatusNotificationAudio");
+const reconcileNotifications = extractFunction(source, "reconcileVehicleStatusNotifications");
+const nextNotification = extractFunction(source, "getNextVehicleStatusNotification");
+const popupHtml = extractFunction(source, "buildWorkshopNotificationPopupHtml");
 const popup = extractFunction(source, "renderVehicleStatusNotificationPopup");
 
 assert.match(audioControl, /data-sde-activate-vehicle-status-audio/);
@@ -79,6 +82,14 @@ assert.match(activateAudio, /playVehicleStatusNotificationTone/, "activation mus
 assert.match(attemptAudio, /vehicleStatusNotificationAudioEnabled/, "notification sound must require explicit activation");
 assert.match(attemptAudio, /notificationId/, "sound deduplication must be notification-bound");
 assert.match(attemptAudio, /vehicleStatusNotificationAudioAttempts/, "one sound attempt per notificationId");
+assert.match(reconcileNotifications, /vehicleStatusNotificationKnownIds/);
+assert.match(reconcileNotifications, /vehicleStatusNotificationPending/);
+assert.match(reconcileNotifications, /REPAIR_REQUESTED/);
+assert.match(nextNotification, /vehicleStatusNotificationPending/);
+assert.match(popupHtml, /Ny bestilling av utbedring/);
+assert.match(popupHtml, /requestedAt/);
+assert.match(popup, /getNextVehicleStatusNotification\(\)/);
+assert.match(popup, /selectWorkshopNotificationVehicle\(next\)/);
 assert.match(popup, /host\.innerHTML = buildWorkshopNotificationPopupHtml\(next\)/);
 assert.match(popup, /if\(next\) attemptVehicleStatusNotificationAudio\(next\)/);
 assert.ok(
@@ -203,6 +214,141 @@ async function main(){
     ["notification-1", "notification-2"]
   );
 
+  const popupNotificationHost = {
+    classList: { add(){}, remove(){} },
+    innerHTML: "",
+  };
+  const notificationSelections = [];
+  const notificationAudioAttempts = [];
+  const notificationContext = {
+    console,
+    Date,
+    Set,
+    escapeHtml(value){
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    },
+    formatDropsVehicleStatusTimestamp(value){
+      return `nb:${value}`;
+    },
+    document: {
+      body: { appendChild(){} },
+      createElement(){ return popupNotificationHost; },
+      getElementById(){ return popupNotificationHost; },
+    },
+  };
+  vm.createContext(notificationContext);
+  vm.runInContext(`
+    let activeVehicleStatusNotification = null;
+    const dismissedVehicleStatusNotifications = new Set();
+    const vehicleStatusNotificationKnownIds = new Set();
+    const vehicleStatusNotificationPending = [];
+    const vehicleStatusNotificationAutoSelections = new Set();
+    let vehicleStatusNotificationBaselineInitialized = false;
+    let dropsVehicleStatusReadback = null;
+    function selectWorkshopNotificationVehicle(notification){
+      notificationSelections.push({
+        notificationId:notification.notificationId,
+        vehicleId:notification.vehicleId,
+        faultId:notification.faultId
+      });
+    }
+    function attemptVehicleStatusNotificationAudio(notification){
+      if(notificationAudioAttempts.includes(notification.notificationId)) return;
+      notificationAudioAttempts.push(notification.notificationId);
+    }
+    ${reconcileNotifications}
+    ${nextNotification}
+    ${popupHtml}
+    ${popup}
+    this.api = {
+      reconcileVehicleStatusNotifications,
+      renderVehicleStatusNotificationPopup,
+      setReadback(value){ dropsVehicleStatusReadback = value; },
+      snapshot(){
+        return {
+          active:activeVehicleStatusNotification,
+          pending:[...vehicleStatusNotificationPending],
+          known:[...vehicleStatusNotificationKnownIds],
+          selections:[...notificationSelections],
+          audio:[...notificationAudioAttempts],
+          html:document.getElementById("vehicleStatusNotificationHost").innerHTML
+        };
+      }
+    };
+  `, notificationContext);
+  Object.assign(notificationContext, {
+    notificationSelections,
+    notificationAudioAttempts,
+  });
+
+  const historicalRepair = {
+    notificationId: "historical-repair",
+    targetRole: "verksted",
+    kind: "REPAIR_REQUESTED",
+    priority: "HIGH",
+    vehicleId: "74-04",
+    faultId: "historical-fault",
+    createdAt: "2026-07-24T07:00:00.000Z",
+    payload: { category: "A1", description: "Historisk", requestedAt: "2026-07-24T07:00:00.000Z" },
+  };
+  notificationContext.api.reconcileVehicleStatusNotifications({ ok: true, notifications: [historicalRepair] });
+  notificationContext.api.setReadback({ ok: true, notifications: [historicalRepair] });
+  notificationContext.api.renderVehicleStatusNotificationPopup();
+  assert.equal(notificationContext.api.snapshot().active, null, "initial history must establish a silent presentation baseline");
+  assert.deepEqual(JSON.parse(JSON.stringify(notificationContext.api.snapshot().selections)), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(notificationContext.api.snapshot().audio)), []);
+
+  notificationContext.api.reconcileVehicleStatusNotifications({ ok: true, notifications: [historicalRepair] });
+  notificationContext.api.renderVehicleStatusNotificationPopup();
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(notificationContext.api.snapshot().selections)),
+    [],
+    "report-not-operational readback without a new notification must stay silent",
+  );
+
+  const repairNotification = {
+    notificationId: "repair-request-2",
+    targetRole: "verksted",
+    kind: "REPAIR_REQUESTED",
+    priority: "HIGH",
+    vehicleId: "74-41",
+    faultId: "fault-74-41-new",
+    createdAt: "2026-07-25T11:12:13.000Z",
+    payload: {
+      category: "A3",
+      description: "Ny serverbekreftet feil",
+      requestedAt: "2026-07-25T11:12:13.000Z",
+    },
+  };
+  const repairReadback = { ok: true, notifications: [historicalRepair, repairNotification] };
+  notificationContext.api.reconcileVehicleStatusNotifications(repairReadback);
+  notificationContext.api.setReadback(repairReadback);
+  notificationContext.api.renderVehicleStatusNotificationPopup();
+  let notificationSnapshot = notificationContext.api.snapshot();
+  assert.equal(notificationSnapshot.active.notificationId, repairNotification.notificationId);
+  assert.deepEqual(JSON.parse(JSON.stringify(notificationSnapshot.selections)), [{
+    notificationId: "repair-request-2",
+    vehicleId: "74-41",
+    faultId: "fault-74-41-new",
+  }]);
+  assert.deepEqual(JSON.parse(JSON.stringify(notificationSnapshot.audio)), ["repair-request-2"]);
+  assert.match(notificationSnapshot.html, /Ny bestilling av utbedring/);
+  assert.match(notificationSnapshot.html, /74-41/);
+  assert.match(notificationSnapshot.html, /A3/);
+  assert.match(notificationSnapshot.html, /Ny serverbekreftet feil/);
+  assert.match(notificationSnapshot.html, /nb:2026-07-25T11:12:13.000Z/);
+
+  notificationContext.api.reconcileVehicleStatusNotifications(repairReadback);
+  notificationContext.api.renderVehicleStatusNotificationPopup();
+  notificationSnapshot = notificationContext.api.snapshot();
+  assert.equal(notificationSnapshot.selections.length, 1, "polling and rerender must not repeat auto-selection");
+  assert.equal(notificationSnapshot.audio.length, 1, "polling and rerender must not repeat the sound attempt");
+
   console.log(JSON.stringify({
     schemaVersion: "sde-drops-operational-rollout-harness-v1",
     status: "PASS",
@@ -211,6 +357,8 @@ async function main(){
     notificationToneAttempts: 2,
     popupIndependentOfAudio: true,
     notificationDeduplication: "notificationId",
+    reportNotOperationalNotificationAttempts: 0,
+    repairAutoSelectionAttempts: notificationSnapshot.selections.length,
     businessWrite: false,
   }));
 }

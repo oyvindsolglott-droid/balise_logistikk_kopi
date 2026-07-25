@@ -48,10 +48,13 @@ const functionNames = [
   "registerDropsNotOperationalFault",
   "buildDropsNotOperationalPreview",
   "buildDropsReportNotOperationalPayload",
+  "isDropsPilotVehicleAllowed",
   "getDropsVehicleStatusRecord",
   "getDropsRegisterFaultAvailability",
   "getAuthoritativeVehicleStatusPresentation",
   "formatDropsVehicleStatusTimestamp",
+  "formatDropsVehicleStatusDuration",
+  "buildVehicleStatusFaultTimingHtml",
   "hasDropsUnsavedDraft",
   "shouldConfirmDropsVehicleSelectionChange",
   "buildDropsNotOperationalEditorHtml",
@@ -225,17 +228,24 @@ const authoritativeHtml = api.buildDropsVehicleRegistryHtml("74", "74-10", vehic
 assert.match(authoritativeHtml, /data-sde-drops-authoritative-status="74-10"/);
 assert.match(authoritativeHtml, /IKKE DRIFTSKLAR/);
 assert.match(authoritativeHtml, /Dørfeil/);
-assert.doesNotMatch(authoritativeHtml, /data-sde-drops-submit-not-operational/);
-assert.doesNotMatch(authoritativeHtml, /data-sde-drops-not-operational-editor=/);
+assert.match(authoritativeHtml, /data-sde-drops-submit-not-operational/);
+assert.match(authoritativeHtml, /data-sde-drops-not-operational-editor=/);
 
 const operationalReadback = {
   ok: true,
-  writeEnabled: false,
-  vehicleStatusLifecycleCommandsAvailable: false,
+  writeEnabled: true,
+  productionPilotWriteEnabled: true,
+  registerFaultCommandAvailable: true,
+  reportNotOperationalCommandAvailable: true,
+  vehicleStatusLifecycleCommandsAvailable: true,
+  pilotAllowedVehicleIds: ["74-10"],
   items: [{
     vehicleId: "74-10",
     currentStatus: "DRIFTSKLAR",
     operationalAt: "2026-07-24T08:09:10.000Z",
+    caseRevision: 4,
+    statusRevision: 3,
+    activeFaults: [],
   }],
   faults: [{
     vehicleId: "74-10",
@@ -244,6 +254,8 @@ const operationalReadback = {
     category: "A2",
     description: "Løst dørproblem",
     status: "RESOLVED",
+    registeredAt: "2026-07-23T23:57:10.000Z",
+    resolvedAt: "2026-07-24T08:09:10.000Z",
   }],
   repairRequests: [{
     vehicleId: "74-10",
@@ -252,20 +264,87 @@ const operationalReadback = {
   }],
 };
 const operationalHtml = api.buildDropsVehicleRegistryHtml("74", "74-10", vehicleADraft, {
-  availability: { available: false },
+  availability: { available: true },
   readback: operationalReadback,
-  capabilities: {},
+  capabilities: {
+    ok: true,
+    roleResolved: true,
+    roles: ["drops"],
+    capabilities: {
+      "vehicle_status.register_fault": { allowed: true, decision: "ALLOW" },
+      "vehicle_status.report_not_operational": { allowed: true, decision: "ALLOW" },
+      "vehicle_status.request_repair": { allowed: true, decision: "ALLOW" },
+      "vehicle_status.mark_for_turning": { allowed: true, decision: "ALLOW" },
+    },
+  },
 });
 assert.match(operationalHtml, /drops-vehicle-authoritative-sheet is-operational/);
 assert.match(operationalHtml, />DRIFTSKLAR</);
 assert.match(operationalHtml, /Registrert Driftsklar/);
 assert.match(operationalHtml, /Løst dørproblem/);
+assert.match(operationalHtml, /data-sde-drops-not-operational-editor="74-10"/);
+assert.equal((operationalHtml.match(/data-sde-drops-fault-row="\d+"/g) || []).length, 5);
+assert.equal((operationalHtml.match(/data-sde-drops-register-fault="\d+"/g) || []).length, 5);
+assert.match(operationalHtml, /data-sde-drops-register-fault="1" aria-disabled="false"/);
+assert.equal(
+  (operationalHtml.match(/data-sde-drops-register-fault="[2-5]"[^>]*\bdisabled\b/g) || []).length,
+  4,
+  "resolved slot 1 must not occupy any active row, while empty draft rows remain disabled",
+);
+assert.match(operationalHtml, /data-sde-drops-fault-history/);
+assert.match(operationalHtml, /Registrert:/);
+assert.match(operationalHtml, /Utbedret:/);
+assert.match(operationalHtml, /Tid fra innmelding til utbedring: 8 t 12 min/);
 assert.doesNotMatch(operationalHtml, /data-sde-drops-mark-for-turning/);
 
 const workshopOperationalHtml = api.buildWorkshopVehicleRegistryHtml("74", "74-10", operationalReadback, {});
 assert.match(workshopOperationalHtml, /workshop-vehicle-status is-operational/);
 assert.match(workshopOperationalHtml, /data-sde-workshop-report-operational[^>]*disabled[^>]*aria-disabled="true"/);
 assert.match(workshopOperationalHtml, />Registrert Driftsklar</);
+assert.match(workshopOperationalHtml, /data-sde-workshop-fault-history/);
+assert.match(workshopOperationalHtml, /Registrert:/);
+assert.match(workshopOperationalHtml, /Utbedret:/);
+assert.match(workshopOperationalHtml, /Tid fra innmelding til utbedring: 8 t 12 min/);
+
+assert.equal(
+  api.formatDropsVehicleStatusDuration(
+    "2026-07-24T08:00:00.000Z",
+    "2026-07-24T08:42:00.000Z",
+  ),
+  "42 min",
+);
+assert.equal(
+  api.formatDropsVehicleStatusDuration(
+    "2026-07-24T08:00:00.000Z",
+    "2026-07-24T11:42:00.000Z",
+  ),
+  "3 t 42 min",
+);
+assert.equal(
+  api.formatDropsVehicleStatusDuration(
+    "2026-07-24T08:00:00.000Z",
+    "2026-07-25T12:12:00.000Z",
+  ),
+  "1 d 4 t 12 min",
+);
+assert.equal(
+  api.formatDropsVehicleStatusDuration(
+    "2026-10-25T01:30:00+02:00",
+    "2026-10-25T02:30:00+01:00",
+  ),
+  "2 t",
+  "DST must not alter the absolute server duration",
+);
+assert.equal(api.formatDropsVehicleStatusDuration("invalid", "2026-07-24T08:00:00.000Z"), "");
+assert.equal(api.formatDropsVehicleStatusDuration("2026-07-24T09:00:00.000Z", "2026-07-24T08:00:00.000Z"), "");
+const activeTimingHtml = api.buildVehicleStatusFaultTimingHtml({
+  status: "ACTIVE",
+  registeredAt: "2026-07-24T08:00:00.000Z",
+  resolvedAt: null,
+});
+assert.match(activeTimingHtml, /Registrert:/);
+assert.match(activeTimingHtml, /Pågående/);
+assert.doesNotMatch(activeTimingHtml, /Utbedret:|Tid fra innmelding til utbedring:/);
 
 const unknownReadback = {
   ok: true,

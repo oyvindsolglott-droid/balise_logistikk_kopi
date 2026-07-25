@@ -320,6 +320,11 @@ async function main(){
       assert.equal(reportResult.disposition, "NONE");
     });
 
+    await check("16a report-not-operational creates no repair notification", () => {
+      const snapshot = primary.repository.getStorageSnapshot();
+      assert.equal(snapshot.counts.notifications, 0);
+    });
+
     await check("17 legacy 50-contract compatibility remains available", () => {
       assert.equal(typeof primary.repository.executeReportNotOperational, "function");
     });
@@ -400,6 +405,20 @@ async function main(){
       assert.equal(snapshot.counts.notifications, 1);
       assert.equal(repairResult.caseRevision, 2);
       assert.equal(repairResult.status, "REQUESTED");
+    });
+
+    await check("22a repair notification carries exact server request context", () => {
+      const notification = primary.repository.getReadModel({ roles: [ROLE_KEYS.VERKSTED] })
+        .notifications.find((candidate) => candidate.kind === "REPAIR_REQUESTED");
+      assert.ok(notification);
+      assert.equal(notification.targetRole, ROLE_KEYS.VERKSTED);
+      assert.equal(notification.vehicleId, VEHICLE_ID);
+      assert.equal(notification.faultId, faultResult.faultId);
+      assert.equal(notification.repairRequestId, repairResult.repairRequestId);
+      assert.equal(notification.createdAt, repairResult.requestedAt);
+      assert.equal(notification.payload.requestedAt, repairResult.requestedAt);
+      assert.equal(notification.payload.category, faultResult.category);
+      assert.equal(notification.payload.description, faultResult.description);
     });
 
     await check("23 request-repair replay creates no duplicate", () => {
@@ -624,6 +643,109 @@ async function main(){
       assert.equal(lifecycleReadback.faults.length, 1);
       assert.equal(lifecycleReadback.faults[0].status, "RESOLVED");
     });
+
+    const historicalFaultBeforeNextCycle = structuredClone(lifecycleReadback.faults[0]);
+    const historicalEventsBeforeNextCycle = structuredClone(lifecycleReadback.events);
+    const secondCycleRegisterCommand = command(
+      LIFECYCLE_COMMANDS.REGISTER_FAULT,
+      registerFaultPayload({
+        expectedCaseRevision: lifecycleReadback.items[0].caseRevision,
+        slot: 1,
+        category: "A3",
+        description: "Ny feil etter avsluttet syklus"
+      })
+    );
+    const secondCycleFirstFault = primary.repository.executeCommand(
+      LIFECYCLE_COMMANDS.REGISTER_FAULT,
+      secondCycleRegisterCommand,
+      dropsAuthority
+    );
+
+    await check("51a a new fault is allowed after report-operational", () => {
+      assert.equal(secondCycleFirstFault.status, 201);
+      assert.notEqual(secondCycleFirstFault.result.faultId, faultResult.faultId);
+    });
+
+    let nextCaseRevision = secondCycleFirstFault.result.caseRevision;
+    for(let slot = 2; slot <= 5; slot += 1){
+      const outcome = execute(
+        primary.repository,
+        LIFECYCLE_COMMANDS.REGISTER_FAULT,
+        registerFaultPayload({
+          expectedCaseRevision: nextCaseRevision,
+          slot,
+          category: `A${slot}`,
+          description: `Ny syklus slot ${slot}`
+        })
+      );
+      assert.equal(outcome.status, 201);
+      nextCaseRevision = outcome.result.caseRevision;
+    }
+    const secondCycleReadback = primary.repository.getReadModel({ roles: [ROLE_KEYS.DROPS] });
+    const secondCycleRecord = secondCycleReadback.items.find((item) => item.vehicleId === VEHICLE_ID);
+    const secondCycleActiveFaults = secondCycleReadback.faults
+      .filter((fault) => fault.vehicleId === VEHICLE_ID && fault.status === "ACTIVE");
+
+    await check("51b all five active slots can be reused in the new cycle", () => {
+      assert.deepEqual(secondCycleActiveFaults.map((fault) => fault.slot), [1, 2, 3, 4, 5]);
+      assert.equal(secondCycleRecord.activeFaults.length, 5);
+    });
+    await check("51c the completed history remains immutable", () => {
+      assert.deepEqual(
+        secondCycleReadback.faults.find((fault) => fault.faultId === faultResult.faultId),
+        historicalFaultBeforeNextCycle
+      );
+      assert.deepEqual(
+        secondCycleReadback.events.slice(0, historicalEventsBeforeNextCycle.length),
+        historicalEventsBeforeNextCycle
+      );
+    });
+    await check("51d registering faults does not change authoritative status", () => {
+      assert.equal(secondCycleRecord.currentStatus, "DRIFTSKLAR");
+      assert.equal(secondCycleRecord.workshopDisposition, "NONE");
+      assert.equal(secondCycleRecord.statusRevision, lifecycleReadback.items[0].statusRevision);
+      assert.equal(secondCycleRecord.caseRevision, nextCaseRevision);
+    });
+    await check("51e old action replay remains idempotent across cycles", () => {
+      const before = primary.repository.getStorageSnapshot().counts;
+      const replay = primary.repository.executeCommand(
+        LIFECYCLE_COMMANDS.REGISTER_FAULT,
+        secondCycleRegisterCommand,
+        dropsAuthority
+      );
+      assert.equal(replay.status, 200);
+      assert.equal(replay.result.idempotentReplay, true);
+      assert.deepEqual(primary.repository.getStorageSnapshot().counts, before);
+    });
+
+    const notificationCountBeforeSecondStatusPeriod =
+      primary.repository.getStorageSnapshot().counts.notifications;
+    const secondCycleStatusOutcome = execute(
+      primary.repository,
+      LIFECYCLE_COMMANDS.REPORT_NOT_OPERATIONAL,
+      {
+        actionId: actionId(),
+        expectedRevision: secondCycleRecord.statusRevision,
+        vehicleId: VEHICLE_ID,
+        faults: secondCycleActiveFaults.map((fault) => ({
+          faultId: fault.faultId,
+          slot: fault.slot,
+          category: fault.category,
+          description: fault.description
+        }))
+      }
+    );
+    await check("51f a separate command starts the next status period", () => {
+      assert.equal(secondCycleStatusOutcome.status, 201);
+      assert.equal(secondCycleStatusOutcome.result.status, "IKKE_DRIFTSKLAR");
+      assert.equal(secondCycleStatusOutcome.result.statusRevision, secondCycleRecord.statusRevision + 1);
+    });
+    await check("51g the next status period still creates no repair notification", () => {
+      assert.equal(
+        primary.repository.getStorageSnapshot().counts.notifications,
+        notificationCountBeforeSecondStatusPeriod
+      );
+    });
   }finally{
     primary.close();
   }
@@ -818,7 +940,7 @@ async function main(){
     assert.deepEqual(snapshotFiles(Object.keys(productionBefore)), productionBefore);
   });
 
-  assert.equal(passed.length, 70);
+  assert.equal(passed.length, 79);
   console.log(JSON.stringify({
     schemaVersion: "sde-vehicle-status-lifecycle-v2-test-report",
     status: "PASS",

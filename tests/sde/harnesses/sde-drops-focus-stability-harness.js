@@ -135,6 +135,8 @@ async function main() {
     "serializeDropsVehicleRenderValue",
     "getDropsVehicleAuthoritativeRenderSignature",
     "shouldRenderDropsVehicleRegistryForReadback",
+    "reconcileVehicleStatusNotifications",
+    "acceptVehicleStatusReadback",
   ];
   const optionalFunctions = optionalFunctionNames
     .map(name => extractFunction(source, name, false))
@@ -150,6 +152,9 @@ async function main() {
   vm.runInContext(`
     let dropsVehicleRegistrySelectedVehicle = "74-04";
     let dropsVehicleStatusReadback = ${JSON.stringify(initialReadback)};
+    const vehicleStatusNotificationKnownIds = new Set();
+    const vehicleStatusNotificationPending = [];
+    let vehicleStatusNotificationBaselineInitialized = false;
     function renderDropsVehicleRegistry(){
       fullRegistryRenders += 1;
       textareas = textareas.map(field => ({
