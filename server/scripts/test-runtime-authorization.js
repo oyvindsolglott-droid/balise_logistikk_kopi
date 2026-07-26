@@ -286,7 +286,11 @@ async function main(){
       assert.equal(response.headers["cache-control"], "no-store");
       assert.equal(response.body.role, ROLE_KEYS.ADMIN_PILOT);
       assert.equal(response.body.capabilities[CAPABILITY_IDS.READ].allowed, true);
-      for(const capability of Object.values(CAPABILITY_IDS).filter((id) => id !== CAPABILITY_IDS.READ)){
+      assert.equal(response.body.capabilities[CAPABILITY_IDS.ANALYTICS_READ].allowed, true);
+      for(const capability of Object.values(CAPABILITY_IDS).filter((id) =>
+        id !== CAPABILITY_IDS.READ &&
+        id !== CAPABILITY_IDS.ANALYTICS_READ
+      )){
         assert.equal(response.body.capabilities[capability].allowed, false, capability);
       }
     });

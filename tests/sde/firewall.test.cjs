@@ -669,6 +669,22 @@ test("DROPS-PROCESS — repair independence, immutable process events and privac
   );
 });
 
+test("VERKSTED first-open — semantic repeats stay write-free across actionIds and races", () => {
+  assertPassed(
+    run(process.execPath, [
+      path.join(root, "server", "scripts", "test-workshop-first-open-semantic-idempotency.js"),
+    ], { timeout: 90_000 }),
+    "VERKSTED first-open semantic idempotency contract",
+  );
+});
+
+test("VERKSTED first-open UI — authoritative readback prevents repeat technical commands", () => {
+  assertPassed(
+    runHarness("sde-workshop-first-open-frontend-guard-harness.js"),
+    "VERKSTED first-open frontend guard contract",
+  );
+});
+
 test("DROPS-PROCESS-UI — every operational status can request repair without surveillance UI", () => {
   assertPassed(
     runHarness("sde-drops-repair-process-ui-harness.js"),

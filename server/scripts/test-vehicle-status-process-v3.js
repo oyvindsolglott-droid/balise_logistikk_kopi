@@ -194,7 +194,8 @@ function main(){
     }, workshopAuthority);
     check("08 workshop first-open is emitted once per active case", () => {
       assert.equal(opened.status, 201);
-      assert.equal(openedAgain.status, 201);
+      assert.equal(openedAgain.status, 200);
+      assert.equal(openedAgain.result.alreadyRecorded, true);
       assert.equal(openedAgain.result.timelineEventCreated, false);
       assert.equal(processEvents(repository)
         .filter((event) => event.eventType === "WORKSHOP_SHEET_FIRST_OPENED").length, 1);

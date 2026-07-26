@@ -160,6 +160,9 @@ async function main(){
         "vehicle_status_command_meta",
         "vehicle_status_command_records",
         "vehicle_status_faults",
+        "vehicle_status_process_cases",
+        "vehicle_status_process_events",
+        "vehicle_status_process_observations",
         "vehicle_status_repair_requests",
         "vehicle_status_role_notifications"
       ]);
@@ -441,7 +444,10 @@ function emptyCounts(){
     cases: 0,
     faults: 0,
     repairRequests: 0,
-    notifications: 0
+    notifications: 0,
+    processCases: 0,
+    processEvents: 0,
+    processObservations: 0
   };
 }
 
@@ -453,7 +459,10 @@ function legacyCounts(faults){
     cases: 1,
     faults,
     repairRequests: 0,
-    notifications: 0
+    notifications: 0,
+    processCases: 1,
+    processEvents: 1,
+    processObservations: 0
   };
 }
 
