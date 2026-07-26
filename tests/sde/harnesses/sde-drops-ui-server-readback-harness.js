@@ -137,6 +137,7 @@ const functionNames = [
   "submitDropsNotOperationalDraftWithReadback",
   "buildDropsRegisterFaultPayload",
   "submitDropsRegisterFaultWithReadback",
+  "getDropsRequestRepairAvailability",
   "buildDropsRequestRepairPayload",
   "submitDropsRequestRepairWithReadback",
   "buildDropsMarkForTurningPayload",
@@ -167,6 +168,7 @@ function readback(revision = 0, items = [], fields = {}) {
     revision,
     writeEnabled: true,
     productionPilotWriteEnabled: true,
+    vehicleStatusPersistenceReady: true,
     registerFaultCommandAvailable: true,
     reportNotOperationalCommandAvailable: true,
     requestRepairCommandAvailable: true,
@@ -174,6 +176,14 @@ function readback(revision = 0, items = [], fields = {}) {
     reportOperationalCommandAvailable: true,
     vehicleStatusLifecycleCommandsAvailable: true,
     pilotAllowedVehicleIds: ["74-04"],
+    commandReadiness: {
+      requestRepair: {
+        available: true,
+        capabilityAllowed: true,
+        persistenceReady: true,
+        registeredVehicleScopeReady: true,
+      },
+    },
     items,
     faults: [],
     repairRequests: [],
@@ -258,6 +268,24 @@ async function main() {
     assert.equal(firstRegistration.confirmedByReadback, true);
     assert.equal(firstRegistration.fault.slot, 1);
     lifecycleReadback = firstRegistration.readback;
+    const firstRecord = api.getDropsVehicleStatusRecord(lifecycleReadback, "74-04");
+    assert.equal(firstRecord?.currentStatus || null, null);
+    const repairAvailabilityAfterFaultGet = api.getDropsRequestRepairAvailability({
+      vehicleId: "74-04",
+      fault: firstRegistration.fault,
+      repairRequest: null,
+      statusRecord: firstRecord,
+      viewModel: {
+        readback: lifecycleReadback,
+        capabilities: dropsCapabilities,
+        commandInFlight: false,
+      },
+    });
+    assert.equal(
+      repairAvailabilityAfterFaultGet.available,
+      true,
+      `fresh authoritative fault GET must activate request-repair without refresh: ${JSON.stringify(repairAvailabilityAfterFaultGet)}`,
+    );
 
     const secondRegistration = await api.submitDropsRegisterFaultWithReadback(
       draft(),
@@ -544,6 +572,7 @@ async function startFixture() {
       ok: true,
       writeEnabled: true,
       productionPilotWriteEnabled: true,
+      vehicleStatusPersistenceReady: true,
       registerFaultCommandAvailable: role !== "workshop",
       reportNotOperationalCommandAvailable: role !== "workshop",
       requestRepairCommandAvailable: role !== "workshop",
@@ -551,6 +580,14 @@ async function startFixture() {
       reportOperationalCommandAvailable: role === "workshop",
       vehicleStatusLifecycleCommandsAvailable: true,
       pilotAllowedVehicleIds: ["74-04"],
+      commandReadiness: {
+        requestRepair: {
+          available: role !== "workshop",
+          capabilityAllowed: role !== "workshop",
+          persistenceReady: true,
+          registeredVehicleScopeReady: true,
+        },
+      },
       ...repository.getReadModel({ roles }),
       roles,
       trustedRequestAuthority: null,

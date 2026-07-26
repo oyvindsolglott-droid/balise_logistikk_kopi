@@ -3,11 +3,16 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const path = require("node:path");
 const vm = require("node:vm");
 
 const sourcePath = process.argv[2];
 assert.ok(sourcePath, "usage: node sde-drops-repair-process-ui-harness.js <index.html>");
 const source = fs.readFileSync(sourcePath, "utf8");
+const serverSource = fs.readFileSync(
+  path.resolve(__dirname, "../../../server/src/index.js"),
+  "utf8"
+);
 
 function extractFunction(name){
   const marker = `function ${name}(`;
@@ -44,15 +49,27 @@ const context = {
   Object
 };
 vm.createContext(context);
-vm.runInContext(extractFunction("getDropsRequestRepairAvailability"), context);
+vm.runInContext([
+  extractFunction("getDropsRequestRepairAvailability"),
+  extractFunction("getDropsRequestRepairAvailabilityMessage")
+].join("\n"), context);
 
 const baseViewModel = {
   readback: {
     ok: true,
     writeEnabled: true,
     productionPilotWriteEnabled: true,
+    vehicleStatusPersistenceReady: true,
     requestRepairCommandAvailable: true,
-    pilotAllowedVehicleIds: ["74-04"]
+    pilotAllowedVehicleIds: ["74-04"],
+    commandReadiness: {
+      requestRepair: {
+        available: true,
+        capabilityAllowed: true,
+        persistenceReady: true,
+        registeredVehicleScopeReady: true
+      }
+    }
   },
   capabilities: {
     ok: true,
@@ -67,7 +84,7 @@ const baseViewModel = {
   },
   commandInFlight: false
 };
-const activeFault = { faultId: "fault-1", status: "ACTIVE" };
+const activeFault = { faultId: "fault-1", vehicleId: "74-04", status: "ACTIVE" };
 
 for(const statusRecord of [
   { currentStatus: "DRIFTSKLAR", workshopDisposition: "NONE" },
@@ -83,6 +100,9 @@ for(const statusRecord of [
     viewModel: baseViewModel
   });
   assert.equal(result.available, true, JSON.stringify(statusRecord));
+  assert.equal(result.reason, "available");
+  assert.equal(result.checks.faultBelongsToVehicle, true);
+  assert.equal(result.checks.persistenceReady, true);
 }
 
 assert.equal(context.getDropsRequestRepairAvailability({
@@ -101,8 +121,71 @@ assert.equal(context.getDropsRequestRepairAvailability({
   viewModel: baseViewModel
 }).available, false);
 
+assert.equal(context.getDropsRequestRepairAvailability({
+  vehicleId: "74-04",
+  fault: { ...activeFault, vehicleId: "74-10" },
+  repairRequest: null,
+  statusRecord: null,
+  viewModel: baseViewModel
+}).reason, "faultBelongsToVehicle");
+
+assert.equal(context.getDropsRequestRepairAvailability({
+  vehicleId: "74-04",
+  fault: activeFault,
+  repairRequest: { status: "COMPLETED" },
+  statusRecord: null,
+  viewModel: baseViewModel
+}).available, false);
+
+const persistenceUnavailable = context.getDropsRequestRepairAvailability({
+  vehicleId: "74-04",
+  fault: activeFault,
+  repairRequest: null,
+  statusRecord: null,
+  viewModel: {
+    ...baseViewModel,
+    readback: {
+      ...baseViewModel.readback,
+      vehicleStatusPersistenceReady: false,
+      commandReadiness: {
+        requestRepair: {
+          available: false,
+          capabilityAllowed: true,
+          persistenceReady: false,
+          registeredVehicleScopeReady: true
+        }
+      }
+    }
+  }
+});
+assert.equal(persistenceUnavailable.available, false);
+assert.equal(persistenceUnavailable.reason, "persistenceReady");
+assert.match(
+  context.getDropsRequestRepairAvailabilityMessage(persistenceUnavailable),
+  /Serverlagring er ikke tilgjengelig/
+);
+
+const vehicleUnavailable = context.getDropsRequestRepairAvailability({
+  vehicleId: "74-23",
+  fault: { ...activeFault, vehicleId: "74-23" },
+  repairRequest: null,
+  statusRecord: null,
+  viewModel: baseViewModel
+});
+assert.equal(vehicleUnavailable.available, false);
+assert.equal(vehicleUnavailable.reason, "vehicleWriteAllowed");
+assert.match(
+  context.getDropsRequestRepairAvailabilityMessage(vehicleUnavailable),
+  /ikke tillatt i gjeldende write-scope/
+);
+
 assert.doesNotMatch(source, /Aktiveres etter autoritativ Ikke Driftsklar-status/);
 assert.match(source, /Aktiveres etter at feilen er registrert/);
+assert.match(source, /Intern bestilling til Nivå 4 – Verksted/);
+assert.match(source, /getDropsRequestRepairAvailabilityMessage\(repairAvailability\)/);
+assert.match(serverSource, /commandReadiness:\s*\{\s*requestRepair:/);
+assert.match(serverSource, /registeredVehicleScopeReady:/);
+assert.match(serverSource, /persistenceReady:/);
 assert.match(source, /Sakstidslinje/);
 assert.match(source, /Ikke registrert/);
 assert.match(source, /Arbeid påbegynt/);
@@ -117,6 +200,6 @@ assert.match(source, /ikke til rangering av enkeltpersoner/);
 assert.doesNotMatch(source, /raskeste mekaniker|tregeste mekaniker|medarbeiderrangering|tastetrykk|inaktivitetstid/i);
 
 process.stdout.write(JSON.stringify({
-  schemaVersion: "sde-drops-repair-process-ui-harness-v1",
-  counts: { passed: 18, total: 18 }
+  schemaVersion: "sde-drops-repair-process-ui-harness-v2",
+  counts: { passed: 31, total: 31 }
 }) + "\n");
