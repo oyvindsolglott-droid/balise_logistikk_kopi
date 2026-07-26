@@ -471,6 +471,96 @@ def extract_route_vehicle_hits(
     return hits
 
 
+def route_has_station(
+    stops: Iterable[Dict[str, object]],
+    station_name: str,
+    station_ref: str = "",
+) -> bool:
+    clean_name = str(station_name or "").strip().lower()
+    clean_ref = str(station_ref or "").strip().upper()
+    return any(
+        isinstance(row, dict)
+        and (
+            (clean_name and str(row.get("station_name") or "").strip().lower() == clean_name)
+            or (clean_ref and str(row.get("station_ref") or "").strip().upper() == clean_ref)
+        )
+        for row in stops
+    )
+
+
+def resolve_departure_vehicle_composition(
+    selected: Dict[str, object],
+    route_info: Dict[str, str],
+) -> Dict[str, object]:
+    """Avgrens faktisk Skien-avgang med samme routeId observert ved Porsgrunn."""
+    route_id = str(route_info.get("routeId") or "").strip()
+    skien_vehicles = list(selected.get("route_vehicle_hits") or [])
+    route_vehicle_rows_present = "route_vehicle_rows" in selected
+    route_stops_present = "route_stops" in selected
+
+    # Eldre, direkte enhetstestkandidater mangler rå radkontekst. De beholder
+    # den allerede forekomstbundne Skien-kontrakten; productionkandidater har
+    # alltid begge nøklene og går fail-closed dersom API-konteksten mangler.
+    if not route_vehicle_rows_present and not route_stops_present:
+        return {
+            "vehiclesObservedAtSkien": skien_vehicles,
+            "vehiclesContinuingAtPorsgrunn": [],
+            "departureVehicles": skien_vehicles,
+            "detachedAtSkien": [],
+            "vehicleResolutionSource": "skien_occurrence_compatibility",
+            "vehicleError": "",
+        }
+
+    route_vehicle_rows = list(selected.get("route_vehicle_rows") or [])
+    route_stops = list(selected.get("route_stops") or [])
+    skien_vehicles = extract_route_vehicle_hits(route_vehicle_rows, route_id, "Skien")
+    porsgrunn_vehicles = extract_route_vehicle_hits(route_vehicle_rows, route_id, "Porsgrunn")
+    base = {
+        "vehiclesObservedAtSkien": skien_vehicles,
+        "vehiclesContinuingAtPorsgrunn": porsgrunn_vehicles,
+        "departureVehicles": [],
+        "detachedAtSkien": [],
+        "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
+        "vehicleError": "",
+    }
+
+    if not route_has_station(route_stops, "Porsgrunn", "PG"):
+        base["vehicleError"] = (
+            f"Uavklart forekomstbundet materiell: routeId {route_id}; "
+            "samme togforekomst kan ikke bindes til et Porsgrunn-stopp."
+        )
+        return base
+    if not skien_vehicles:
+        base["vehicleError"] = (
+            f"Uavklart forekomstbundet materiell: routeId {route_id}; "
+            "den eksakte Skien-avgangen har ingen kjøretøydata."
+        )
+        return base
+    if not porsgrunn_vehicles:
+        base["vehicleError"] = (
+            f"Uavklart forekomstbundet materiell: routeId {route_id}; "
+            "Porsgrunn-sammensetningen mangler for samme togforekomst."
+        )
+        return base
+
+    skien_set = set(skien_vehicles)
+    if not set(porsgrunn_vehicles).issubset(skien_set):
+        base["vehicleError"] = (
+            f"Uavklart forekomstbundet materiell: routeId {route_id}; "
+            "Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen."
+        )
+        return base
+
+    base["departureVehicles"] = porsgrunn_vehicles
+    base["detachedAtSkien"] = [
+        vehicle
+        for vehicle in skien_vehicles
+        if vehicle not in set(porsgrunn_vehicles)
+    ]
+    base["vehicleResolutionSource"] = "porsgrunn_occurrence_subset"
+    return base
+
+
 def fetch_balise_route_vehicles(
     page,
     route_id: str,
@@ -633,9 +723,21 @@ def resolve_departure_candidate(
     display_train_no = normalize_train_no(selected.get("lookup_train_no")) or requested_train_no
     route_info = selected.get("route_info") if isinstance(selected.get("route_info"), dict) else {}
     exact_occurrence = candidate_matches_exact_departure_occurrence(selected, operational_date)
-    vehicle_ids = list(selected.get("route_vehicle_hits") or []) if exact_occurrence else []
     departure_time = str(selected.get("skien_departure_time") or "").strip()
     route_id = str(route_info.get("routeId") or "").strip()
+    composition = (
+        resolve_departure_vehicle_composition(selected, route_info)
+        if exact_occurrence
+        else {
+            "vehiclesObservedAtSkien": [],
+            "vehiclesContinuingAtPorsgrunn": [],
+            "departureVehicles": [],
+            "detachedAtSkien": [],
+            "vehicleResolutionSource": "unresolved_occurrence_identity",
+            "vehicleError": "",
+        }
+    )
+    vehicle_ids = list(composition["departureVehicles"])
 
     error = ""
     if not exact_occurrence:
@@ -644,6 +746,8 @@ def resolve_departure_candidate(
             f"tog {display_train_no}, dato {operational_date}, routeId {route_id or 'mangler'}; "
             "forekomstidentiteten er ufullstendig eller avviker."
         )
+    elif composition["vehicleError"]:
+        error = str(composition["vehicleError"])
     elif not vehicle_ids:
         error = (
             "Uavklart forekomstbundet materiell: "
@@ -662,6 +766,12 @@ def resolve_departure_candidate(
         "departureTime": departure_time,
         "vehicleIds": vehicle_ids,
         "error": error,
+        "vehiclesObservedAtSkien": list(composition["vehiclesObservedAtSkien"]),
+        "vehiclesContinuingAtPorsgrunn": list(composition["vehiclesContinuingAtPorsgrunn"]),
+        "departureVehicles": vehicle_ids,
+        "detachedAtSkien": list(composition["detachedAtSkien"]),
+        "vehicleResolutionSource": str(composition["vehicleResolutionSource"]),
+        "vehicleError": error,
     }
 
 
@@ -835,7 +945,10 @@ def fetch_vehicle_maps_for_trains(
                     route_info = extract_balise_route_info(
                         navigation_response.text() if navigation_response is not None else page.content()
                     )
+                    route_vehicle_rows = []
                     route_vehicle_hits = []
+                    route_stops = []
+                    route_stops_source_updated_at = ""
                     if route_info.get("routeId"):
                         try:
                             route_vehicle_rows, _vehicle_source_updated_at = fetch_balise_route_vehicles(
@@ -851,20 +964,26 @@ def fetch_vehicle_maps_for_trains(
                         except Exception:  # noqa: BLE001
                             # Materiell må aldri fylles fra en annen rute ved API-feil.
                             # En validert avgang blir i stedet eksplisitt uløst nedenfor.
+                            route_vehicle_rows = []
                             route_vehicle_hits = []
-                    movement_context = None
-                    if skien_stop.get("arrival") and route_info.get("routeId"):
                         try:
-                            route_stops, source_updated_at = fetch_balise_route_stops(
+                            route_stops, route_stops_source_updated_at = fetch_balise_route_stops(
                                 page,
                                 route_info["routeId"],
                                 deadline_at=deadline_at,
                             )
+                        except Exception:  # noqa: BLE001
+                            # Uten samme forekomsts stoppsekvens kan Porsgrunn ikke
+                            # brukes som actual-kontroll. Avgangen blir fail-closed.
+                            route_stops = []
+                    movement_context = None
+                    if skien_stop.get("arrival") and route_info.get("routeId"):
+                        try:
                             movement_context = build_skien_movement_context(
                                 route_info,
                                 route_stops,
                                 datetime.now(OSLO_TZ).isoformat(timespec="seconds"),
-                                source_updated_at,
+                                route_stops_source_updated_at,
                             )
                             if movement_context:
                                 skien_stop["arrival"] = first_time_value(movement_context.get("plannedArrival"))
@@ -884,6 +1003,8 @@ def fetch_vehicle_maps_for_trains(
                                 "departure_hits": departure_hits,
                                 "arrival_hits": arrival_hits,
                                 "route_vehicle_hits": route_vehicle_hits,
+                                "route_vehicle_rows": route_vehicle_rows,
+                                "route_stops": route_stops,
                                 "has_train_content": has_train_content,
                                 "skien_arrival_time": skien_stop.get("arrival"),
                                 "skien_departure_time": skien_stop.get("departure"),
