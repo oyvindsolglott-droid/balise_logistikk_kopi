@@ -203,6 +203,13 @@ test("DROPS hotfix — lifecycle UI is fail-closed and graphic actual state matc
   );
 });
 
+test("VERKSTED hotfix — active faults and open repairs stay visible independently of vehicle status", () => {
+  assertPassed(
+    runHarness("sde-workshop-active-presentation-hotfix-harness.js"),
+    "Verksted active-fault presentation hotfix",
+  );
+});
+
 test("DROPS operational rollout — registered scope and user-activated notification audio stay fail-closed", () => {
   assertPassed(
     runHarness("sde-drops-operational-rollout-harness.js"),
