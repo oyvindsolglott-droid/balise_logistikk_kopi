@@ -22,6 +22,7 @@ const PROCESS_CASE_TABLE = "vehicle_status_process_cases";
 const PROCESS_EVENT_TABLE = "vehicle_status_process_events";
 const PROCESS_OBSERVATION_TABLE = "vehicle_status_process_observations";
 const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
+const SEMANTIC_NOOP = Symbol("vehicle_status_semantic_noop");
 
 class VehicleStatusRepositoryConflict extends Error {
   constructor(code, message, fields = {}, status = 409){
@@ -82,7 +83,16 @@ function createVehicleStatusRepository(options = {}){
         db.exec("COMMIT;");
         return { ok: true, status: 200, result: { ...result, idempotentReplay: true } };
       }
-      const result = implementation(command, authority);
+      const implementationResult = implementation(command, authority);
+      if(implementationResult?.[SEMANTIC_NOOP]){
+        db.exec("COMMIT;");
+        return {
+          ok: true,
+          status: 200,
+          result: implementationResult.result
+        };
+      }
+      const result = implementationResult;
       failureInjector("before_commit");
       insertIdempotency(commandName, command, result);
       db.exec("COMMIT;");
@@ -566,34 +576,49 @@ function createVehicleStatusRepository(options = {}){
     if(!processCase){
       throw conflict("process_case_not_found", "No vehicle process case was found.", {}, 404);
     }
-    const timestamp = now();
-    const eventId = randomUUID();
     const currentCaseRevision = findCase(notification.vehicle_id)?.case_revision || 0;
     const alreadyPresented = db.prepare(`
-      SELECT 1 FROM ${PROCESS_EVENT_TABLE}
+      SELECT process_event_id, action_id, server_timestamp
+      FROM ${PROCESS_EVENT_TABLE}
       WHERE case_id = ? AND event_type = 'WORKSHOP_NOTIFICATION_PRESENTED'
         AND notification_id = ?
+      ORDER BY server_timestamp, process_event_id
+      LIMIT 1
     `).get(processCase.case_id, notification.notification_id);
-    let timelineEventCreated = false;
-    if(!alreadyPresented){
-      timelineEventCreated = insertProcessEvent({
-        eventType: "WORKSHOP_NOTIFICATION_PRESENTED",
-        vehicleId: notification.vehicle_id,
-        caseId: processCase.case_id,
-        faultId: notification.fault_id,
-        repairRequestId: notification.repair_request_id,
-        notificationId: notification.notification_id,
-        actionId: command.actionId,
-        timestamp,
-        authority,
-        payload: {
-          presentationMeaning:
-            "Notification rendered in an authenticated client; not proof of reading or understanding."
-        },
-        idempotencyKey: `notification-presented:${notification.notification_id}`
-      });
-    }
     const eventCommand = { ...command, vehicleId: notification.vehicle_id };
+    if(alreadyPresented){
+      return semanticNoOp(semanticNoOpResult(
+        LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED,
+        eventCommand,
+        originalCommandEventId(alreadyPresented.action_id) || alreadyPresented.process_event_id,
+        {
+          notificationId: notification.notification_id,
+          timelineEventCreated: false,
+          alreadyRecorded: true,
+          presentedAt: alreadyPresented.server_timestamp,
+          presentationProcessEventId: alreadyPresented.process_event_id,
+          caseRevision: currentCaseRevision
+        }
+      ));
+    }
+    const timestamp = now();
+    const eventId = randomUUID();
+    const timelineEventCreated = insertProcessEvent({
+      eventType: "WORKSHOP_NOTIFICATION_PRESENTED",
+      vehicleId: notification.vehicle_id,
+      caseId: processCase.case_id,
+      faultId: notification.fault_id,
+      repairRequestId: notification.repair_request_id,
+      notificationId: notification.notification_id,
+      actionId: command.actionId,
+      timestamp,
+      authority,
+      payload: {
+        presentationMeaning:
+          "Notification rendered in an authenticated client; not proof of reading or understanding."
+      },
+      idempotencyKey: `notification-presented:${notification.notification_id}`
+    });
     insertEvent({
       eventId, command: eventCommand,
       commandName: LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED,
@@ -611,13 +636,8 @@ function createVehicleStatusRepository(options = {}){
     return resultBase(eventCommand, eventId, {
       notificationId: notification.notification_id,
       timelineEventCreated,
-      presentedAt: timelineEventCreated ? timestamp :
-        getFirstProcessEventTimestamp(
-          processCase.case_id,
-          "WORKSHOP_NOTIFICATION_PRESENTED",
-          "notification_id",
-          notification.notification_id
-        ),
+      alreadyRecorded: false,
+      presentedAt: timestamp,
       caseRevision: currentCaseRevision
     });
   }
@@ -629,14 +649,32 @@ function createVehicleStatusRepository(options = {}){
     if(!processCase){
       throw conflict("process_case_not_found", "No vehicle process case was found.", {}, 404);
     }
-    const timestamp = now();
-    const eventId = randomUUID();
     const currentCaseRevision = findCase(command.vehicleId)?.case_revision || 0;
     const alreadyOpened = db.prepare(`
-      SELECT 1 FROM ${PROCESS_EVENT_TABLE}
+      SELECT process_event_id, action_id, server_timestamp
+      FROM ${PROCESS_EVENT_TABLE}
       WHERE case_id = ? AND event_type = 'WORKSHOP_SHEET_FIRST_OPENED'
+      ORDER BY server_timestamp, process_event_id
+      LIMIT 1
     `).get(processCase.case_id);
-    const timelineEventCreated = alreadyOpened ? false : insertProcessEvent({
+    if(alreadyOpened){
+      return semanticNoOp(semanticNoOpResult(
+        LIFECYCLE_COMMANDS.WORKSHOP_SHEET_OPENED,
+        command,
+        originalCommandEventId(alreadyOpened.action_id) || alreadyOpened.process_event_id,
+        {
+          caseId: processCase.case_id,
+          timelineEventCreated: false,
+          alreadyRecorded: true,
+          firstOpenedAt: alreadyOpened.server_timestamp,
+          firstOpenedProcessEventId: alreadyOpened.process_event_id,
+          caseRevision: currentCaseRevision
+        }
+      ));
+    }
+    const timestamp = now();
+    const eventId = randomUUID();
+    const timelineEventCreated = insertProcessEvent({
       eventType: "WORKSHOP_SHEET_FIRST_OPENED",
       vehicleId: command.vehicleId,
       caseId: processCase.case_id,
@@ -662,10 +700,8 @@ function createVehicleStatusRepository(options = {}){
     return resultBase(command, eventId, {
       caseId: processCase.case_id,
       timelineEventCreated,
-      firstOpenedAt: getFirstProcessEventTimestamp(
-        processCase.case_id,
-        "WORKSHOP_SHEET_FIRST_OPENED"
-      ),
+      alreadyRecorded: false,
+      firstOpenedAt: timestamp,
       caseRevision: currentCaseRevision
     });
   }
@@ -1088,6 +1124,34 @@ function createVehicleStatusRepository(options = {}){
       eventId,
       idempotentReplay: false
     };
+  }
+
+  function semanticNoOp(result){
+    return {
+      [SEMANTIC_NOOP]: true,
+      result
+    };
+  }
+
+  function semanticNoOpResult(commandName, command, eventId, fields){
+    return {
+      schemaVersion: LIFECYCLE_SCHEMA_VERSION,
+      command: commandName,
+      actionId: command.actionId,
+      vehicleId: command.vehicleId,
+      ...fields,
+      eventId,
+      idempotentReplay: false
+    };
+  }
+
+  function originalCommandEventId(actionId){
+    if(!actionId) return null;
+    return db.prepare(`
+      SELECT event_id FROM ${EVENT_TABLE}
+      WHERE action_id = ?
+      LIMIT 1
+    `).get(actionId)?.event_id || null;
   }
 
   function eventCommandFromPayload(command){

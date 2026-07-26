@@ -46754,11 +46754,13 @@ function recordVehicleStatusNotificationPresented(notification){
 function recordWorkshopSheetFirstOpened(vehicleId){
   const processCase = getVehicleProcessCase(dropsVehicleStatusReadback,vehicleId);
   const caseId = String(processCase?.caseId || "");
+  const firstOpenedAt = String(processCase?.milestones?.workshopSheetFirstOpenedAt || "");
   const attemptKey = `${vehicleId}|${caseId || "active"}`;
   const capability = dropsRuntimeCapabilities?.capabilities?.["vehicle_status.workshop_sheet_opened"];
   if(
     !vehicleId ||
     !processCase?.active ||
+    firstOpenedAt ||
     workshopSheetOpenAttempts.has(attemptKey) ||
     dropsVehicleStatusReadback?.workshopSheetOpenedCommandAvailable !== true ||
     capability?.allowed !== true
