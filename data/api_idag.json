@@ -1,6 +1,6 @@
 {
   "ok": true,
-  "updatedAt": "26.07.2026 15:06:41",
+  "updatedAt": "26.07.2026 17:32:57",
   "mode": "idag",
   "date": "2026-07-26",
   "source": "balise.no",
@@ -84,16 +84,15 @@
     "80818": "74-45",
     "819": "74-51",
     "80820": "74-18, 74-11",
-    "821": "74-06, 74-08",
     "80822": "74-54, 74-44",
     "823": "74-39",
-    "80824": "74-03, 74-46",
+    "80824": "74-03",
     "825": "74-45",
     "80826": "74-41, 74-46",
     "827": "74-11, 74-18",
     "80828": "74-19, 74-22",
     "829": "74-44, 74-54",
-    "80830": "74-08, 74-06",
+    "80830": "74-08",
     "831": "74-03",
     "80832": "74-39",
     "833": "74-46, 74-41",
@@ -101,6 +100,7 @@
     "835": "74-22, 74-19",
     "80836": "74-18, 74-11",
     "837": "74-08",
+    "80838": "74-54",
     "839": "74-39",
     "80840": "74-03"
   },
@@ -112,13 +112,14 @@
     "80818": "74-45",
     "80820": "74-18, 74-11",
     "80822": "74-54, 74-44",
-    "80824": "74-03, 74-46",
+    "80824": "74-03",
     "80826": "74-41, 74-46",
     "80828": "74-19, 74-22",
-    "80830": "74-08, 74-06",
+    "80830": "74-08",
     "80832": "74-39",
     "80834": "74-45",
     "80836": "74-18, 74-11",
+    "80838": "74-54",
     "80840": "74-03"
   },
   "arrivalVehicles": {
@@ -152,7 +153,7 @@
     "809": "Fant ingen kjøretøy i siden 90809",
     "812": "Fant ingen kjøretøy i siden 90812",
     "813": "Fant ingen kjøretøy i siden 90813",
-    "80838": "Uavklart forekomstbundet materiell: tog 80838, dato 2026-07-26, routeId 01KXVY6KV106RAE9VR0SJY0K20; den eksakte Skien-avgangen har ingen kjøretøydata.",
+    "821": "Uavklart forekomstbundet materiell: tog 80821, dato 2026-07-26, routeId 01KXVY6E0A2SWTRWD8F7Z9FZV1; forekomstidentiteten er ufullstendig eller avviker.",
     "851": "Fant ingen kjøretøy i siden 90851",
     "852": "Fant ingen kjøretøy i siden 90852",
     "853": "Fant ingen kjøretøy i siden 90853",
@@ -213,7 +214,22 @@
         "74-03",
         "74-46"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-03",
+        "74-46"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-03",
+        "74-46"
+      ],
+      "departureVehicles": [
+        "74-03",
+        "74-46"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80810": {
       "operationalDate": "2026-07-26",
@@ -227,7 +243,19 @@
       "vehicleIds": [
         "74-41"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-41"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-41"
+      ],
+      "departureVehicles": [
+        "74-41"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80814": {
       "operationalDate": "2026-07-26",
@@ -242,7 +270,22 @@
         "74-08",
         "74-06"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-08",
+        "74-06"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-08",
+        "74-06"
+      ],
+      "departureVehicles": [
+        "74-08",
+        "74-06"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80816": {
       "operationalDate": "2026-07-26",
@@ -256,7 +299,19 @@
       "vehicleIds": [
         "74-39"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-39"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-39"
+      ],
+      "departureVehicles": [
+        "74-39"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80818": {
       "operationalDate": "2026-07-26",
@@ -270,7 +325,19 @@
       "vehicleIds": [
         "74-45"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-45"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-45"
+      ],
+      "departureVehicles": [
+        "74-45"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80820": {
       "operationalDate": "2026-07-26",
@@ -285,7 +352,40 @@
         "74-18",
         "74-11"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-18",
+        "74-11"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-18",
+        "74-11"
+      ],
+      "departureVehicles": [
+        "74-18",
+        "74-11"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
+    },
+    "821": {
+      "operationalDate": "2026-07-26",
+      "requestedTrainNumber": "821",
+      "displayTrainNumber": "80821",
+      "routeId": "01KXVY6E0A2SWTRWD8F7Z9FZV1",
+      "origin": "Eidsvoll",
+      "destination": "Skien",
+      "station": "Skien",
+      "departureTime": "16:59",
+      "vehicleIds": [],
+      "error": "Uavklart forekomstbundet materiell: tog 80821, dato 2026-07-26, routeId 01KXVY6E0A2SWTRWD8F7Z9FZV1; forekomstidentiteten er ufullstendig eller avviker.",
+      "vehiclesObservedAtSkien": [],
+      "vehiclesContinuingAtPorsgrunn": [],
+      "departureVehicles": [],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "unresolved_occurrence_identity",
+      "vehicleError": "Uavklart forekomstbundet materiell: tog 80821, dato 2026-07-26, routeId 01KXVY6E0A2SWTRWD8F7Z9FZV1; forekomstidentiteten er ufullstendig eller avviker."
     },
     "80822": {
       "operationalDate": "2026-07-26",
@@ -300,7 +400,22 @@
         "74-54",
         "74-44"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-54",
+        "74-44"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-54",
+        "74-44"
+      ],
+      "departureVehicles": [
+        "74-54",
+        "74-44"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80824": {
       "operationalDate": "2026-07-26",
@@ -312,10 +427,24 @@
       "station": "Skien",
       "departureTime": "15:00",
       "vehicleIds": [
+        "74-03"
+      ],
+      "error": "",
+      "vehiclesObservedAtSkien": [
         "74-03",
         "74-46"
       ],
-      "error": ""
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-03"
+      ],
+      "departureVehicles": [
+        "74-03"
+      ],
+      "detachedAtSkien": [
+        "74-46"
+      ],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80826": {
       "operationalDate": "2026-07-26",
@@ -330,7 +459,22 @@
         "74-41",
         "74-46"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-41",
+        "74-46"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-41",
+        "74-46"
+      ],
+      "departureVehicles": [
+        "74-41",
+        "74-46"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80828": {
       "operationalDate": "2026-07-26",
@@ -345,7 +489,22 @@
         "74-19",
         "74-22"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-19",
+        "74-22"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-19",
+        "74-22"
+      ],
+      "departureVehicles": [
+        "74-19",
+        "74-22"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80830": {
       "operationalDate": "2026-07-26",
@@ -357,10 +516,24 @@
       "station": "Skien",
       "departureTime": "18:00",
       "vehicleIds": [
+        "74-08"
+      ],
+      "error": "",
+      "vehiclesObservedAtSkien": [
         "74-08",
         "74-06"
       ],
-      "error": ""
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-08"
+      ],
+      "departureVehicles": [
+        "74-08"
+      ],
+      "detachedAtSkien": [
+        "74-06"
+      ],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80832": {
       "operationalDate": "2026-07-26",
@@ -374,7 +547,19 @@
       "vehicleIds": [
         "74-39"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-39"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-39"
+      ],
+      "departureVehicles": [
+        "74-39"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80834": {
       "operationalDate": "2026-07-26",
@@ -388,7 +573,19 @@
       "vehicleIds": [
         "74-45"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-45"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-45"
+      ],
+      "departureVehicles": [
+        "74-45"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80836": {
       "operationalDate": "2026-07-26",
@@ -403,7 +600,22 @@
         "74-18",
         "74-11"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-18",
+        "74-11"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-18",
+        "74-11"
+      ],
+      "departureVehicles": [
+        "74-18",
+        "74-11"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80838": {
       "operationalDate": "2026-07-26",
@@ -414,8 +626,25 @@
       "destination": "Eidsvoll",
       "station": "Skien",
       "departureTime": "22:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: tog 80838, dato 2026-07-26, routeId 01KXVY6KV106RAE9VR0SJY0K20; den eksakte Skien-avgangen har ingen kjøretøydata."
+      "vehicleIds": [
+        "74-54"
+      ],
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-54",
+        "74-44"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-54"
+      ],
+      "departureVehicles": [
+        "74-54"
+      ],
+      "detachedAtSkien": [
+        "74-44"
+      ],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "80840": {
       "operationalDate": "2026-07-26",
@@ -429,7 +658,19 @@
       "vehicleIds": [
         "74-03"
       ],
-      "error": ""
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-03"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-03"
+      ],
+      "departureVehicles": [
+        "74-03"
+      ],
+      "detachedAtSkien": [],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     }
   },
   "arrivalDisplayTrainNumbers": {
@@ -473,8 +714,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-07-26T15:03:17+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:03:17+02:00",
+        "sourceObservedAt": "2026-07-26T17:29:42+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:29:42+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-39"
@@ -505,8 +746,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-07-26T15:03:31+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:03:31+02:00",
+        "sourceObservedAt": "2026-07-26T17:29:55+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:29:55+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-18"
@@ -537,8 +778,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-07-26T15:03:46+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:03:46+02:00",
+        "sourceObservedAt": "2026-07-26T17:30:09+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:30:09+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-46",
@@ -570,8 +811,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "3",
         "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-07-26T15:03:53+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:03:53+02:00",
+        "sourceObservedAt": "2026-07-26T17:30:16+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:30:16+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-41"
@@ -593,17 +834,17 @@
         "origin": "Eidsvoll",
         "destination": "Skien",
         "plannedArrival": "2026-07-26 15:59:00",
-        "estimatedArrival": "2026-07-26 15:59:00",
-        "actualArrival": null,
+        "estimatedArrival": "2026-07-26 16:00:04",
+        "actualArrival": "2026-07-26 16:00:04",
         "plannedDeparture": null,
         "estimatedDeparture": null,
         "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:04:01+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:04:01+02:00",
+        "movementStatus": "actual_arrival",
+        "sourceObservedAt": "2026-07-26T17:30:23+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:30:23+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-51"
@@ -625,17 +866,17 @@
         "origin": "Eidsvoll",
         "destination": "Skien",
         "plannedArrival": "2026-07-26 16:59:00",
-        "estimatedArrival": "2026-07-26 16:59:00",
-        "actualArrival": null,
+        "estimatedArrival": "2026-07-26 16:59:08",
+        "actualArrival": "2026-07-26 16:59:08",
         "plannedDeparture": null,
         "estimatedDeparture": null,
-        "actualDeparture": null,
+        "actualDeparture": "2026-07-26 16:59:08",
         "platformTrack": "3",
         "rawTrackField": "stop_track",
         "rawTrackValue": "3",
-        "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:04:09+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:04:09+02:00",
+        "movementStatus": "actual_arrival",
+        "sourceObservedAt": "2026-07-26T17:30:31+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:30:31+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-06",
@@ -658,7 +899,7 @@
         "origin": "Eidsvoll",
         "destination": "Skien",
         "plannedArrival": "2026-07-26 17:59:00",
-        "estimatedArrival": "2026-07-26 17:59:00",
+        "estimatedArrival": "2026-07-26 18:01:58",
         "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
@@ -667,8 +908,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:04:17+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:04:17+02:00",
+        "sourceObservedAt": "2026-07-26T17:30:38+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:30:38+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-39"
@@ -699,8 +940,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "3",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:04:24+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:04:24+02:00",
+        "sourceObservedAt": "2026-07-26T17:30:46+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:30:45+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-45"
@@ -731,8 +972,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:04:32+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:04:32+02:00",
+        "sourceObservedAt": "2026-07-26T17:30:53+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:30:53+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-11",
@@ -764,8 +1005,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "3",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:04:40+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:04:40+02:00",
+        "sourceObservedAt": "2026-07-26T17:31:01+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:31:01+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-44",
@@ -797,8 +1038,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:04:48+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:04:48+02:00",
+        "sourceObservedAt": "2026-07-26T17:31:09+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:31:08+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-03"
@@ -829,8 +1070,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "3",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:04:55+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:04:55+02:00",
+        "sourceObservedAt": "2026-07-26T17:31:16+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:31:16+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-46",
@@ -862,8 +1103,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:05:04+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:05:04+02:00",
+        "sourceObservedAt": "2026-07-26T17:31:24+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:31:24+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-22",
@@ -895,8 +1136,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "3",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:05:12+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:05:12+02:00",
+        "sourceObservedAt": "2026-07-26T17:31:31+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:31:31+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-08"
@@ -927,8 +1168,8 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-07-26T15:05:19+02:00",
-        "sourceUpdatedAt": "2026-07-26T15:05:19+02:00",
+        "sourceObservedAt": "2026-07-26T17:31:39+02:00",
+        "sourceUpdatedAt": "2026-07-26T17:31:39+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-39"
