@@ -486,6 +486,21 @@ registerHarnessTest({
   baseline: "ecba507a6ec033fee9f3af4160e60bc23e07c1c3",
 });
 
+test("TURSATT-80824-PORSGRUNN — same occurrence at Porsgrunn determines actual departure consist from Skien", () => {
+  const harness = "sde-tursatt-porsgrunn-consist-harness.js";
+  const baseline = "8b7f729773e7d3c939bd83f9e6e00ec7fd97679b";
+  assertPassed(
+    runHarness(harness, path.join(root, "update_static_data.py")),
+    "TURSATT-80824-PORSGRUNN current contract",
+  );
+  const oldResult = runHarness(harness, materialize(baseline, "update_static_data.py"));
+  assert.notEqual(
+    oldResult.status,
+    0,
+    `TURSATT-80824-PORSGRUNN permanent test did not detect its historical production baseline ${baseline}`,
+  );
+});
+
 test("M2 — generator propagates actual platform provenance without vehicle hardcoding", () => {
   const contract = source => {
     for(const name of [

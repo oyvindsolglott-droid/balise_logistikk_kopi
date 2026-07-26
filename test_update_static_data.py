@@ -11,6 +11,9 @@ import update_static_data as static_data
 OCCURRENCE_FIXTURE = json.loads(
     (Path(__file__).parent / "tests/fixtures/balise_tursatt_occurrences_2026-07-22.json").read_text()
 )
+PORSGRUNN_SPLIT_FIXTURE = json.loads(
+    (Path(__file__).parent / "tests/fixtures/balise_tursatt_porsgrunn_split_2026-07-26.json").read_text()
+)
 
 
 def make_payload(mode, run_date):
@@ -209,6 +212,166 @@ class BaliseOccurrenceBoundDepartureTest(unittest.TestCase):
         self.assertEqual(resolution["departureTime"], "14:45")
         self.assertEqual(resolution["vehicleIds"], ["74-19", "74-49"])
         self.assertNotIn("74-41", resolution["vehicleIds"])
+
+
+class BalisePorsgrunnDepartureCompositionTest(unittest.TestCase):
+    def make_candidate(
+        self,
+        vehicle_rows=None,
+        *,
+        route_info=None,
+        route_stops=None,
+    ):
+        fixture = PORSGRUNN_SPLIT_FIXTURE
+        info = dict(route_info or fixture["routeInfo"])
+        rows = list(fixture["vehicleRows"] if vehicle_rows is None else vehicle_rows)
+        return {
+            "lookup_train_no": fixture["lookupTrainNumber"],
+            "general_hits": ["74-03", "74-46"],
+            "departure_hits": ["74-03", "74-46"],
+            "arrival_hits": [],
+            "route_vehicle_hits": static_data.extract_route_vehicle_hits(
+                rows,
+                info.get("routeId", ""),
+                "Skien",
+            ),
+            "route_vehicle_rows": rows,
+            "route_stops": list(fixture["routeStops"] if route_stops is None else route_stops),
+            "has_train_content": True,
+            "skien_arrival_time": None,
+            "skien_departure_time": fixture["skienDepartureTime"],
+            "route_info": info,
+        }
+
+    def resolve(self, candidate=None, operational_date=None):
+        fixture = PORSGRUNN_SPLIT_FIXTURE
+        return static_data.resolve_departure_candidate(
+            fixture["logicalTrain"],
+            operational_date or fixture["operationalDate"],
+            candidate or self.make_candidate(),
+        )
+
+    def test_documented_80824_split_uses_only_porsgrunn_subset(self):
+        resolution = self.resolve()
+
+        self.assertEqual(resolution["displayTrainNumber"], "80824")
+        self.assertEqual(resolution["departureTime"], "15:00")
+        self.assertEqual(resolution["vehiclesObservedAtSkien"], ["74-03", "74-46"])
+        self.assertEqual(resolution["vehiclesContinuingAtPorsgrunn"], ["74-03"])
+        self.assertEqual(resolution["departureVehicles"], ["74-03"])
+        self.assertEqual(resolution["vehicleIds"], ["74-03"])
+        self.assertEqual(resolution["detachedAtSkien"], ["74-46"])
+        self.assertEqual(resolution["vehicleResolutionSource"], "porsgrunn_occurrence_subset")
+        self.assertEqual(resolution["vehicleError"], "")
+
+    def test_double_set_continuing_at_porsgrunn_remains_double(self):
+        fixture = PORSGRUNN_SPLIT_FIXTURE
+        rows = list(fixture["vehicleRows"]) + [
+            {
+                "sv_route": fixture["routeInfo"]["routeId"],
+                "station_name": "Porsgrunn",
+                "position": 5,
+                "vehicle": "74-46",
+            }
+        ]
+        resolution = self.resolve(self.make_candidate(rows))
+        self.assertEqual(resolution["departureVehicles"], ["74-03", "74-46"])
+        self.assertEqual(resolution["detachedAtSkien"], [])
+
+    def test_single_set_continuing_at_porsgrunn_remains_single(self):
+        fixture = PORSGRUNN_SPLIT_FIXTURE
+        rows = [
+            row
+            for row in fixture["vehicleRows"]
+            if row["vehicle"] == "74-03"
+        ]
+        resolution = self.resolve(self.make_candidate(rows))
+        self.assertEqual(resolution["departureVehicles"], ["74-03"])
+        self.assertEqual(resolution["detachedAtSkien"], [])
+
+    def test_other_operational_date_is_not_combined(self):
+        resolution = self.resolve(operational_date="2026-07-27")
+        self.assertEqual(resolution["departureVehicles"], [])
+        self.assertIn("forekomstidentiteten", resolution["vehicleError"])
+
+    def test_other_route_cannot_supply_porsgrunn_material(self):
+        fixture = PORSGRUNN_SPLIT_FIXTURE
+        rows = [
+            row
+            for row in fixture["vehicleRows"]
+            if row["station_name"] == "Skien"
+        ] + [
+            {
+                "sv_route": "fixture-other-route",
+                "station_name": "Porsgrunn",
+                "position": 0,
+                "vehicle": "74-03",
+            }
+        ]
+        resolution = self.resolve(self.make_candidate(rows))
+        self.assertEqual(resolution["departureVehicles"], [])
+        self.assertIn("Porsgrunn", resolution["vehicleError"])
+
+    def test_unknown_porsgrunn_vehicle_is_fail_closed(self):
+        fixture = PORSGRUNN_SPLIT_FIXTURE
+        rows = [
+            row
+            for row in fixture["vehicleRows"]
+            if row["station_name"] == "Skien"
+        ] + [
+            {
+                "sv_route": fixture["routeInfo"]["routeId"],
+                "station_name": "Porsgrunn",
+                "position": 0,
+                "vehicle": "74-41",
+            }
+        ]
+        resolution = self.resolve(self.make_candidate(rows))
+        self.assertEqual(resolution["departureVehicles"], [])
+        self.assertNotIn("74-41", resolution["vehicleIds"])
+        self.assertIn("delmengde", resolution["vehicleError"])
+
+    def test_missing_porsgrunn_material_is_explicitly_unresolved(self):
+        fixture = PORSGRUNN_SPLIT_FIXTURE
+        rows = [
+            row
+            for row in fixture["vehicleRows"]
+            if row["station_name"] == "Skien"
+        ]
+        resolution = self.resolve(self.make_candidate(rows))
+        self.assertEqual(resolution["departureVehicles"], [])
+        self.assertIn("Porsgrunn", resolution["vehicleError"])
+
+    def test_general_set_difference_supports_more_than_two_vehicles(self):
+        route_id = PORSGRUNN_SPLIT_FIXTURE["routeInfo"]["routeId"]
+        rows = [
+            {"sv_route": route_id, "station_name": "Skien", "position": 0, "vehicle": "74-03"},
+            {"sv_route": route_id, "station_name": "Skien", "position": 5, "vehicle": "74-46"},
+            {"sv_route": route_id, "station_name": "Skien", "position": 10, "vehicle": "74-41"},
+            {"sv_route": route_id, "station_name": "Porsgrunn", "position": 0, "vehicle": "74-46"},
+            {"sv_route": route_id, "station_name": "Porsgrunn", "position": 5, "vehicle": "74-41"},
+        ]
+        resolution = self.resolve(self.make_candidate(rows))
+        self.assertEqual(resolution["departureVehicles"], ["74-46", "74-41"])
+        self.assertEqual(resolution["detachedAtSkien"], ["74-03"])
+
+    def test_porsgrunn_subset_order_selects_actual_vehicle_not_first_skien_vehicle(self):
+        fixture = PORSGRUNN_SPLIT_FIXTURE
+        rows = [
+            row
+            for row in fixture["vehicleRows"]
+            if row["station_name"] == "Skien"
+        ] + [
+            {
+                "sv_route": fixture["routeInfo"]["routeId"],
+                "station_name": "Porsgrunn",
+                "position": 0,
+                "vehicle": "74-46",
+            }
+        ]
+        resolution = self.resolve(self.make_candidate(rows))
+        self.assertEqual(resolution["departureVehicles"], ["74-46"])
+        self.assertEqual(resolution["detachedAtSkien"], ["74-03"])
 
 
 class DepartureCompletenessContractTest(unittest.TestCase):
