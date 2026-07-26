@@ -45295,6 +45295,59 @@ function getAuthoritativeVehicleStatusPresentation(readback,vehicleId){
   const repairRequests = Array.isArray(readback?.repairRequests)
     ? readback.repairRequests.filter(request=>String(request?.vehicleId || "") === cleanVehicleId)
     : [];
+  const uniqueFaults = Array.from(new Map(allFaults
+    .filter(fault=>fault?.status === "ACTIVE" || fault?.status === "RESOLVED")
+    .map(fault=>[
+      String(fault?.faultId || `${fault?.slot || ""}|${fault?.category || ""}|${fault?.registeredAt || ""}`),
+      fault
+    ])).values());
+  const activeFaults = uniqueFaults
+    .filter(fault=>fault?.status === "ACTIVE")
+    .sort((left,right)=>
+      Number(left?.slot || 0) - Number(right?.slot || 0) ||
+      String(left?.registeredAt || "").localeCompare(String(right?.registeredAt || "")) ||
+      String(left?.faultId || "").localeCompare(String(right?.faultId || ""))
+    );
+  const resolvedFaults = uniqueFaults
+    .filter(fault=>fault?.status === "RESOLVED")
+    .sort((left,right)=>
+      String(left?.resolvedAt || "").localeCompare(String(right?.resolvedAt || "")) ||
+      Number(left?.slot || 0) - Number(right?.slot || 0) ||
+      String(left?.faultId || "").localeCompare(String(right?.faultId || ""))
+    );
+  const uniqueRepairRequests = Array.from(new Map(repairRequests
+    .filter(request=>request?.status === "REQUESTED" || request?.status === "COMPLETED")
+    .map(request=>[
+      String(request?.repairRequestId || `${request?.faultId || ""}|${request?.status || ""}|${request?.requestedAt || ""}`),
+      request
+    ])).values());
+  const requestedRepairRequests = uniqueRepairRequests
+    .filter(request=>request?.status === "REQUESTED")
+    .sort((left,right)=>
+      String(left?.requestedAt || "").localeCompare(String(right?.requestedAt || "")) ||
+      String(left?.repairRequestId || left?.faultId || "").localeCompare(
+        String(right?.repairRequestId || right?.faultId || "")
+      )
+    );
+  const completedRepairRequests = uniqueRepairRequests
+    .filter(request=>request?.status === "COMPLETED")
+    .sort((left,right)=>
+      String(left?.completedAt || left?.requestedAt || "").localeCompare(
+        String(right?.completedAt || right?.requestedAt || "")
+      ) ||
+      String(left?.repairRequestId || left?.faultId || "").localeCompare(
+        String(right?.repairRequestId || right?.faultId || "")
+      )
+    );
+  const statusIndependentDimensions = {
+    record,
+    activeFaults,
+    resolvedFaults,
+    requestedRepairRequests,
+    completedRepairRequests,
+    faults:[...activeFaults,...resolvedFaults],
+    repairRequests:[...requestedRepairRequests,...completedRepairRequests]
+  };
   if(record?.currentStatus === "DRIFTSKLAR"){
     return {
       kind:"operational",
@@ -45302,9 +45355,7 @@ function getAuthoritativeVehicleStatusPresentation(readback,vehicleId){
       label:"DRIFTSKLAR",
       registrationLabel:"Registrert Driftsklar",
       timestamp:record.operationalAt || "",
-      record,
-      faults:allFaults.filter(fault=>fault?.status === "RESOLVED"),
-      repairRequests:repairRequests.filter(request=>request?.status === "COMPLETED")
+      ...statusIndependentDimensions
     };
   }
   if(record?.currentStatus === "IKKE_DRIFTSKLAR"){
@@ -45314,9 +45365,7 @@ function getAuthoritativeVehicleStatusPresentation(readback,vehicleId){
       label:"IKKE DRIFTSKLAR",
       registrationLabel:"Registrert Ikke Driftsklar",
       timestamp:record.registeredAt || "",
-      record,
-      faults:allFaults.filter(fault=>fault?.status === "ACTIVE" || fault?.status === "RESOLVED"),
-      repairRequests
+      ...statusIndependentDimensions
     };
   }
   return {
@@ -45325,9 +45374,7 @@ function getAuthoritativeVehicleStatusPresentation(readback,vehicleId){
     label:"Ingen autoritativ status registrert",
     registrationLabel:"Ingen autoritativ status registrert",
     timestamp:"",
-    record,
-    faults:allFaults.filter(fault=>fault?.status === "ACTIVE" || fault?.status === "RESOLVED"),
-    repairRequests
+    ...statusIndependentDimensions
   };
 }
 
@@ -45834,7 +45881,7 @@ function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",r
     roles.includes("verksted") &&
     capabilities?.capabilities?.["vehicle_status.report_operational"]?.allowed === true &&
     capabilities?.capabilities?.["vehicle_status.report_operational"]?.decision === "ALLOW" &&
-    (record?.currentStatus === "IKKE_DRIFTSKLAR" || hasActiveWork);
+    record?.currentStatus === "IKKE_DRIFTSKLAR";
   const operationalActionDisabled = !reportOperationalAvailable;
   const processWriteReady = readback?.ok === true &&
     readback?.writeEnabled === true &&
