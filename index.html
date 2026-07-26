@@ -45441,6 +45441,7 @@ function getDropsRequestRepairAvailability(input){
   const readback = viewModel?.readback;
   const capabilities = viewModel?.capabilities;
   const capability = capabilities?.capabilities?.["vehicle_status.request_repair"];
+  const serverReadiness = readback?.commandReadiness?.requestRepair || null;
   const roles = Array.isArray(capabilities?.roles)
     ? capabilities.roles
     : (Array.isArray(capabilities?.roleSource?.roles)
@@ -45453,18 +45454,33 @@ function getDropsRequestRepairAvailability(input){
     capabilities?.allowedVehicleIds,
     capability?.allowedVehicleIds
   ].find(value=>Array.isArray(value));
+  const capabilityAllowed = capability?.allowed === true &&
+    capability?.decision === "ALLOW" &&
+    (serverReadiness ? serverReadiness.capabilityAllowed === true : true);
+  const persistenceReady = serverReadiness
+    ? serverReadiness.persistenceReady === true
+    : readback?.vehicleStatusPersistenceReady === true;
+  const registeredVehicleScopeReady = serverReadiness
+    ? serverReadiness.registeredVehicleScopeReady === true
+    : true;
+  const commandReady = serverReadiness
+    ? serverReadiness.available === true
+    : readback?.requestRepairCommandAvailable === true;
   const checks = {
     authoritativeActiveFault:Boolean(fault?.faultId) && fault?.status === "ACTIVE",
+    faultBelongsToVehicle:String(fault?.vehicleId || "") === vehicleId,
     noExistingRepairRequest:!repairRequest,
     identityVerified:capabilities?.ok === true && capabilities?.roleResolved === true,
     dropsRole:roles.includes("drops"),
-    capabilityAllowed:capability?.allowed === true && capability?.decision === "ALLOW",
+    capabilityAllowed,
     readbackReady:readback?.ok === true,
-    commandReady:readback?.requestRepairCommandAvailable === true,
+    persistenceReady,
+    registeredVehicleScopeReady,
     writeGateOpen:readback?.writeEnabled === true,
     vehicleWriteAllowed:readback?.productionPilotWriteEnabled === true &&
       Array.isArray(allowedVehicleIds) &&
       allowedVehicleIds.includes(vehicleId),
+    commandReady,
     requestIdle:viewModel?.commandInFlight !== true
   };
   const available = Object.values(checks).every(Boolean);
@@ -45475,6 +45491,25 @@ function getDropsRequestRepairAvailability(input){
       Object.entries(checks).find(([,value])=>!value)?.[0] || "unavailable",
     checks
   };
+}
+
+function getDropsRequestRepairAvailabilityMessage(availability){
+  if(availability?.available === true) return "Intern bestilling til Nivå 4 – Verksted";
+  return ({
+    authoritativeActiveFault:"Aktiveres etter at feilen er registrert",
+    faultBelongsToVehicle:"Feilen tilhører ikke valgt kjøretøy",
+    noExistingRepairRequest:"Bestilt utbedring",
+    identityVerified:"Serververifisert identitet er ikke tilgjengelig",
+    dropsRole:"Brukeren mangler rettighet til å bestille utbedring",
+    capabilityAllowed:"Brukeren mangler rettighet til å bestille utbedring",
+    readbackReady:"Serverreadback er ikke tilgjengelig",
+    persistenceReady:"Serverlagring er ikke tilgjengelig",
+    registeredVehicleScopeReady:"Serverens registrerte kjøretøyscope er ikke klart",
+    writeGateOpen:"Production-write er ikke tilgjengelig",
+    vehicleWriteAllowed:"Kjøretøyet er ikke tillatt i gjeldende write-scope",
+    commandReady:"Serverkommandoen for utbedringsbestilling er ikke tilgjengelig",
+    requestIdle:"Utbedringsbestilling behandles"
+  })[availability?.reason] || "Utbedringsbestilling er ikke tilgjengelig";
 }
 
 function getDropsSubmitErrorMessage(status){
@@ -45675,11 +45710,6 @@ function buildDropsRequestRepairPayload(vehicleId,fault,readback,actionId=""){
 
 function submitDropsRequestRepairWithReadback(vehicleId,fault,readback,capabilities,fetchImpl,actionIdFactory=createDropsNotOperationalActionId){
   return (async()=>{
-    const capability = capabilities?.capabilities?.["vehicle_status.request_repair"];
-    const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [capabilities?.role].filter(Boolean);
-    if(readback?.ok !== true || readback?.writeEnabled !== true || !roles.includes("drops") || capability?.allowed !== true){
-      return {ok:false,error:"command_unavailable",status:404,readback,confirmedByReadback:false};
-    }
     const actionId = String(actionIdFactory());
     const readJson = async response=>response?.json ? response.json().catch(()=>({})) : {};
     const getReadback = async()=>{
@@ -45690,7 +45720,29 @@ function submitDropsRequestRepairWithReadback(vehicleId,fault,readback,capabilit
     };
     try{
       const before = await getReadback();
-      const payload = buildDropsRequestRepairPayload(vehicleId,fault,before,actionId);
+      const presentation = getAuthoritativeVehicleStatusPresentation(before,vehicleId);
+      const authoritativeFault = presentation.activeFaults
+        .find(item=>item?.faultId === fault?.faultId) || null;
+      const existingRepairRequest = presentation.repairRequests
+        .find(item=>item?.faultId === fault?.faultId) || null;
+      const availability = getDropsRequestRepairAvailability({
+        vehicleId,
+        fault:authoritativeFault,
+        repairRequest:existingRepairRequest,
+        statusRecord:presentation.record,
+        viewModel:{readback:before,capabilities,commandInFlight:false}
+      });
+      if(!availability.available){
+        return {
+          ok:false,
+          error:"command_unavailable",
+          reason:availability.reason,
+          status:404,
+          readback:before,
+          confirmedByReadback:false
+        };
+      }
+      const payload = buildDropsRequestRepairPayload(vehicleId,authoritativeFault,before,actionId);
       const response = await fetchImpl("/api/vehicle-status/commands/request-repair",{
         method:"POST",headers:{"Content-Type":"application/json",Accept:"application/json"},
         body:JSON.stringify(payload),credentials:"same-origin"
@@ -45699,7 +45751,7 @@ function submitDropsRequestRepairWithReadback(vehicleId,fault,readback,capabilit
       if(!response?.ok) return {ok:false,error:String(body?.error || "command_rejected"),status:Number(response?.status || 0),readback:response?.status === 409 ? await getReadback().catch(()=>before) : before,confirmedByReadback:false};
       const after = await getReadback();
       const request = (Array.isArray(after?.repairRequests) ? after.repairRequests : [])
-        .find(item=>item?.vehicleId === vehicleId && item?.faultId === fault?.faultId && item?.status === "REQUESTED");
+        .find(item=>item?.vehicleId === vehicleId && item?.faultId === authoritativeFault?.faultId && item?.status === "REQUESTED");
       return request
         ? {ok:true,status:200,readback:after,request,confirmedByReadback:true}
         : {ok:false,error:"readback_confirmation_missing",status:500,readback:after,confirmedByReadback:false};
@@ -46215,7 +46267,7 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
         <span>${repairRequest
           ? `${escapeHtml(repairRequest.status || "REQUESTED")} · serverbekreftet`
           : (authoritativeFault
-            ? (repairAvailability.available ? "Intern bestilling til Nivå 4 – Verksted" : "Utbedringsbestilling er ikke tilgjengelig med gjeldende rolle eller readiness")
+            ? getDropsRequestRepairAvailabilityMessage(repairAvailability)
             : "Aktiveres etter at feilen er registrert")}</span>
       </div>
       ${error ? `<p class="drops-not-operational-fault-error" id="${errorId}" role="alert">${escapeHtml(error)}</p>` : ""}
@@ -46806,6 +46858,8 @@ function getDropsVehicleAuthoritativeRenderSignature(readback,vehicleId){
       registerFaultCommandAvailable:readback?.registerFaultCommandAvailable === true,
       vehicleStatusLifecycleCommandsAvailable:readback?.vehicleStatusLifecycleCommandsAvailable === true,
       requestRepairCommandAvailable:readback?.requestRepairCommandAvailable === true,
+      vehicleStatusPersistenceReady:readback?.vehicleStatusPersistenceReady === true,
+      commandReadiness:readback?.commandReadiness || null,
       workStartedCommandAvailable:readback?.workStartedCommandAvailable === true,
       setWaitReasonCommandAvailable:readback?.setWaitReasonCommandAvailable === true,
       pilotAllowedVehicleIds:Array.isArray(readback?.pilotAllowedVehicleIds)
@@ -46984,9 +47038,21 @@ async function submitDropsRegisterFaultFromUi(index){
 
 async function submitDropsRequestRepairFromUi(faultId){
   if(dropsLifecycleCommandInFlight) return;
-  const record = getDropsVehicleStatusRecord(dropsVehicleStatusReadback,dropsVehicleRegistrySelectedVehicle);
-  const fault = (Array.isArray(record?.activeFaults) ? record.activeFaults : []).find(item=>item?.faultId === faultId);
+  const presentation = getAuthoritativeVehicleStatusPresentation(
+    dropsVehicleStatusReadback,
+    dropsVehicleRegistrySelectedVehicle
+  );
+  const fault = presentation.activeFaults.find(item=>item?.faultId === faultId);
   if(!fault) return;
+  const repairRequest = presentation.repairRequests.find(item=>item?.faultId === faultId) || null;
+  const availability = getDropsRequestRepairAvailability({
+    vehicleId:dropsVehicleRegistrySelectedVehicle,
+    fault,
+    repairRequest,
+    statusRecord:presentation.record,
+    viewModel:getDropsVehicleStatusViewModel()
+  });
+  if(!availability.available) return;
   dropsLifecycleCommandInFlight = true;
   try{
     const result = await submitDropsRequestRepairWithReadback(
