@@ -217,6 +217,13 @@ test("DROPS operational rollout — registered scope and user-activated notifica
   );
 });
 
+test("SPORPLAN exact background — byte-locked artwork and 31 dynamic slot anchors stay isolated from the menu button", () => {
+  assertPassed(
+    runHarness("sde-sporplan-exact-background-harness.js"),
+    "Sporplan exact background and dynamic overlay contract",
+  );
+});
+
 test("G — end-to-end integrity gate is complete and side-effect free", () => {
   const contract = source => {
     assert.equal(countFunction(source, "buildSdeCanonicalIntegrityReport"), 1);

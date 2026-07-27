@@ -86,9 +86,15 @@ assert.match(reconcileNotifications, /vehicleStatusNotificationKnownIds/);
 assert.match(reconcileNotifications, /vehicleStatusNotificationPending/);
 assert.match(reconcileNotifications, /REPAIR_REQUESTED/);
 assert.match(nextNotification, /vehicleStatusNotificationPending/);
-assert.match(popupHtml, /Ny bestilling av utbedring/);
+assert.match(popupHtml, /Bestilling av reparasjon/);
+assert.match(popupHtml, /Kjøretøy:/);
+assert.match(popupHtml, /Feiltype:/);
+assert.match(popupHtml, /Beskrivelse:/);
+assert.match(popupHtml, /Bestilt:/);
+assert.match(popupHtml, /Ny intern utbedringsbestilling fra DROPS/);
 assert.match(popupHtml, /requestedAt/);
 assert.match(popup, /getNextVehicleStatusNotification\(\)/);
+assert.match(popup, /getActiveAccessLevel\(\) !== "4"/);
 assert.match(popup, /selectWorkshopNotificationVehicle\(next\)/);
 assert.match(popup, /host\.innerHTML = buildWorkshopNotificationPopupHtml\(next\)/);
 assert.match(popup, /if\(next\) attemptVehicleStatusNotificationAudio\(next\)/);
@@ -220,6 +226,7 @@ async function main(){
   };
   const notificationSelections = [];
   const notificationAudioAttempts = [];
+  let activeLevel = "1";
   const notificationContext = {
     console,
     Date,
@@ -234,6 +241,9 @@ async function main(){
     },
     formatDropsVehicleStatusTimestamp(value){
       return `nb:${value}`;
+    },
+    getActiveAccessLevel(){
+      return activeLevel;
     },
     document: {
       body: { appendChild(){} },
@@ -269,6 +279,7 @@ async function main(){
       reconcileVehicleStatusNotifications,
       renderVehicleStatusNotificationPopup,
       setReadback(value){ dropsVehicleStatusReadback = value; },
+      setLevel(value){ activeLevel = String(value); },
       snapshot(){
         return {
           active:activeVehicleStatusNotification,
@@ -330,6 +341,23 @@ async function main(){
   notificationContext.api.setReadback(repairReadback);
   notificationContext.api.renderVehicleStatusNotificationPopup();
   let notificationSnapshot = notificationContext.api.snapshot();
+  assert.equal(notificationSnapshot.active, null, "repair notification must stay hidden outside Nivå 4");
+  assert.deepEqual(JSON.parse(JSON.stringify(notificationSnapshot.selections)), []);
+  assert.deepEqual(JSON.parse(JSON.stringify(notificationSnapshot.audio)), []);
+  assert.equal(notificationSnapshot.html, "");
+
+  for(const level of ["0", "1", "2", "3", "5"]){
+    notificationContext.api.setLevel(level);
+    notificationContext.api.renderVehicleStatusNotificationPopup();
+    notificationSnapshot = notificationContext.api.snapshot();
+    assert.deepEqual(JSON.parse(JSON.stringify(notificationSnapshot.selections)), []);
+    assert.deepEqual(JSON.parse(JSON.stringify(notificationSnapshot.audio)), []);
+    assert.equal(notificationSnapshot.html, "");
+  }
+
+  notificationContext.api.setLevel("4");
+  notificationContext.api.renderVehicleStatusNotificationPopup();
+  notificationSnapshot = notificationContext.api.snapshot();
   assert.equal(notificationSnapshot.active.notificationId, repairNotification.notificationId);
   assert.deepEqual(JSON.parse(JSON.stringify(notificationSnapshot.selections)), [{
     notificationId: "repair-request-2",
@@ -337,10 +365,11 @@ async function main(){
     faultId: "fault-74-41-new",
   }]);
   assert.deepEqual(JSON.parse(JSON.stringify(notificationSnapshot.audio)), ["repair-request-2"]);
-  assert.match(notificationSnapshot.html, /Ny bestilling av utbedring/);
+  assert.match(notificationSnapshot.html, /Bestilling av reparasjon/);
+  assert.match(notificationSnapshot.html, /Ny intern utbedringsbestilling fra DROPS/);
   assert.match(notificationSnapshot.html, /74-41/);
-  assert.match(notificationSnapshot.html, /A3/);
-  assert.match(notificationSnapshot.html, /Ny serverbekreftet feil/);
+  assert.match(notificationSnapshot.html, /Feiltype: A3/);
+  assert.match(notificationSnapshot.html, /Beskrivelse: Ny serverbekreftet feil/);
   assert.match(notificationSnapshot.html, /nb:2026-07-25T11:12:13.000Z/);
 
   notificationContext.api.reconcileVehicleStatusNotifications(repairReadback);
