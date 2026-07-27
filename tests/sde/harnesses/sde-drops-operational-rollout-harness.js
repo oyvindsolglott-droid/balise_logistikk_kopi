@@ -70,6 +70,7 @@ const audioControl = extractFunction(source, "buildVehicleStatusAudioControlHtml
 const activateAudio = extractFunction(source, "activateVehicleStatusNotificationAudio");
 const attemptAudio = extractFunction(source, "attemptVehicleStatusNotificationAudio");
 const reconcileNotifications = extractFunction(source, "reconcileVehicleStatusNotifications");
+const notificationVisibility = extractFunction(source, "isVehicleStatusNotificationVisibleInCurrentSurface");
 const nextNotification = extractFunction(source, "getNextVehicleStatusNotification");
 const popupHtml = extractFunction(source, "buildWorkshopNotificationPopupHtml");
 const popup = extractFunction(source, "renderVehicleStatusNotificationPopup");
@@ -94,7 +95,9 @@ assert.match(popupHtml, /Bestilt:/);
 assert.match(popupHtml, /Ny intern utbedringsbestilling fra DROPS/);
 assert.match(popupHtml, /requestedAt/);
 assert.match(popup, /getNextVehicleStatusNotification\(\)/);
-assert.match(popup, /getActiveAccessLevel\(\) !== "4"/);
+assert.match(notificationVisibility, /getActiveAccessLevel\(\)/);
+assert.match(notificationVisibility, /getActiveTabName\(\)/);
+assert.match(notificationVisibility, /level === "4" && tab === "verkstedBestillinger"/);
 assert.match(popup, /selectWorkshopNotificationVehicle\(next\)/);
 assert.match(popup, /host\.innerHTML = buildWorkshopNotificationPopupHtml\(next\)/);
 assert.match(popup, /if\(next\) attemptVehicleStatusNotificationAudio\(next\)/);
@@ -245,6 +248,12 @@ async function main(){
     getActiveAccessLevel(){
       return activeLevel;
     },
+    getActiveTabName(){
+      return activeLevel === "4" ? "verkstedBestillinger" : "grunnoppstilling";
+    },
+    setActiveAccessLevel(value){
+      activeLevel = String(value);
+    },
     document: {
       body: { appendChild(){} },
       createElement(){ return popupNotificationHost; },
@@ -272,6 +281,7 @@ async function main(){
       notificationAudioAttempts.push(notification.notificationId);
     }
     ${reconcileNotifications}
+    ${notificationVisibility}
     ${nextNotification}
     ${popupHtml}
     ${popup}
@@ -279,7 +289,7 @@ async function main(){
       reconcileVehicleStatusNotifications,
       renderVehicleStatusNotificationPopup,
       setReadback(value){ dropsVehicleStatusReadback = value; },
-      setLevel(value){ activeLevel = String(value); },
+      setLevel(value){ setActiveAccessLevel(value); },
       snapshot(){
         return {
           active:activeVehicleStatusNotification,

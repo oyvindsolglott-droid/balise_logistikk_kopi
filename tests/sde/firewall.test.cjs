@@ -707,6 +707,22 @@ test("VERKSTED first-open UI — authoritative readback prevents repeat technica
   );
 });
 
+test("VERKSTED exit — one authoritative request is idempotent, role-notified and visit-bound", () => {
+  assertPassed(
+    run(process.execPath, [
+      path.join(root, "server", "scripts", "test-workshop-exit-request.js"),
+    ], { timeout: 90_000 }),
+    "VERKSTED workshop-exit request contract",
+  );
+});
+
+test("SDE repeated reroute — stale completed history and superseded plans never become permanent locks", () => {
+  assertPassed(
+    runHarness("sde-repeated-reroute-harness.js"),
+    "SDE repeated reroute contract",
+  );
+});
+
 test("DROPS-PROCESS-UI — every operational status can request repair without surveillance UI", () => {
   assertPassed(
     runHarness("sde-drops-repair-process-ui-harness.js"),

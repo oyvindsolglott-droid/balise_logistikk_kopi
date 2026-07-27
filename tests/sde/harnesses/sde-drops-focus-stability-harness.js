@@ -135,6 +135,7 @@ async function main() {
     "serializeDropsVehicleRenderValue",
     "getDropsVehicleAuthoritativeRenderSignature",
     "shouldRenderDropsVehicleRegistryForReadback",
+    "getWorkshopExitPlanningReadbackSignature",
     "reconcileVehicleStatusNotifications",
     "acceptVehicleStatusReadback",
   ];

@@ -164,7 +164,9 @@ async function main(){
         "vehicle_status_process_events",
         "vehicle_status_process_observations",
         "vehicle_status_repair_requests",
-        "vehicle_status_role_notifications"
+        "vehicle_status_role_notifications",
+        "vehicle_status_workshop_exit_events",
+        "vehicle_status_workshop_exit_requests"
       ]);
       assert.deepEqual(fixture.repository.getStorageSnapshot().counts, emptyCounts());
       const readOnlyRepository = createVehicleStatusRepository({
@@ -447,7 +449,9 @@ function emptyCounts(){
     notifications: 0,
     processCases: 0,
     processEvents: 0,
-    processObservations: 0
+    processObservations: 0,
+    workshopExitRequests: 0,
+    workshopExitEvents: 0
   };
 }
 
@@ -462,7 +466,9 @@ function legacyCounts(faults){
     notifications: 0,
     processCases: 1,
     processEvents: 1,
-    processObservations: 0
+    processObservations: 0,
+    workshopExitRequests: 0,
+    workshopExitEvents: 0
   };
 }
 

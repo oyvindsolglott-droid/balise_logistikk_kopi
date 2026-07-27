@@ -89,6 +89,14 @@ const context = {
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#039;");
   },
+  getWorkshopExitRequestAvailability() {
+    return {
+      available: false,
+      activeRequest: null,
+      sourceSlot: "",
+      ariaDisabled: "true",
+    };
+  },
 };
 vm.createContext(context);
 vm.runInContext(`${productionFunctions.join("\n")}\nthis.api={${functionNames.join(",")}};`, context);

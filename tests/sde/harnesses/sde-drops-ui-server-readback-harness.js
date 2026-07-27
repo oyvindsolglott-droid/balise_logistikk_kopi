@@ -11,7 +11,13 @@ const { DatabaseSync } = require("node:sqlite");
 const serverNodeModules = process.env.SDE_SERVER_NODE_MODULES
   ? path.resolve(process.env.SDE_SERVER_NODE_MODULES)
   : path.resolve(__dirname, "../../../server/node_modules");
-const express = require(path.join(serverNodeModules, "express"));
+let express;
+try {
+  express = require(path.join(serverNodeModules, "express"));
+} catch (error) {
+  if (error?.code !== "MODULE_NOT_FOUND") throw error;
+  express = require("express");
+}
 const { ROLE_KEYS } = require("../../../server/src/identityPolicy");
 const {
   COMMAND_DEFINITIONS,

@@ -40,6 +40,14 @@ const context = {
   },
   buildVehicleStatusAudioControlHtml(){
     return "";
+  },
+  getWorkshopExitRequestAvailability(){
+    return {
+      available:false,
+      activeRequest:null,
+      sourceSlot:"",
+      ariaDisabled:"true"
+    };
   }
 };
 vm.createContext(context);
