@@ -8396,6 +8396,140 @@ button{padding:12px 12px}
     margin-right:10px;
   }
 }
+.sporplan-yard-surface{
+  position:relative;
+  width:1448px;
+  height:1086px;
+  min-width:1448px;
+  padding:0;
+  overflow:hidden;
+  background:#101312;
+}
+.sporplan-yard-background{
+  position:absolute;
+  inset:0;
+  display:block;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  pointer-events:none;
+  user-select:none;
+}
+.sporplan-slot-overlay{
+  position:absolute;
+  inset:0;
+  display:block;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+}
+.sporplan-slot-overlay .slot{
+  position:absolute;
+  min-height:0;
+  padding:3px;
+  border:1px solid transparent;
+  border-radius:5px;
+  background:none !important;
+  background-image:none !important;
+  color:#fff;
+  overflow:hidden;
+  pointer-events:none;
+  box-sizing:border-box;
+}
+.sporplan-slot-overlay .slot.filled,
+.sporplan-slot-overlay .slot.wash-filled{
+  background-color:rgba(2,6,23,.14) !important;
+  border-color:rgba(148,163,184,.62);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.16),0 0 8px rgba(15,23,42,.28);
+}
+.sporplan-slot-overlay .slot.sporplan-status-operational{
+  border-color:rgba(74,222,128,.78);
+  box-shadow:inset 0 0 0 1px rgba(187,247,208,.30),0 0 7px rgba(34,197,94,.26);
+}
+.sporplan-slot-overlay .slot.sporplan-status-not-operational,
+.sporplan-slot-overlay .slot.rep-slot{
+  border-color:rgba(248,113,113,.88);
+  box-shadow:inset 0 0 0 1px rgba(254,202,202,.30),0 0 8px rgba(239,68,68,.30);
+}
+.sporplan-slot-overlay .slot.sporplan-status-turn,
+.sporplan-slot-overlay .slot.drei-slot{
+  border-color:rgba(250,204,21,.90);
+  box-shadow:inset 0 0 0 1px rgba(254,240,138,.32),0 0 8px rgba(234,179,8,.28);
+}
+.sporplan-slot-overlay .slot.rep-slot::before{
+  content:none;
+}
+.sporplan-slot-overlay .slot-train-image{
+  inset:6px 15px 24px;
+  opacity:.92;
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.72));
+}
+.sporplan-slot-overlay .slot-train-current{
+  top:7px;
+  transform:translateX(-50%);
+  max-width:calc(100% - 6px);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  color:#e2e8f0 !important;
+  font-size:10px;
+  text-shadow:0 1px 2px rgba(0,0,0,.95);
+}
+.sporplan-slot-overlay .slot-bottom.mat{
+  position:absolute;
+  left:50%;
+  bottom:20px;
+  transform:translateX(-50%);
+  max-width:calc(100% - 6px);
+  margin:0;
+  padding:1px 4px;
+  border:1px solid rgba(255,255,255,.72);
+  border-radius:5px;
+  background:rgba(0,0,0,.80);
+  font-size:11px;
+  line-height:1.05;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+.sporplan-slot-overlay .sporplan-vehicle-status-host{
+  top:auto;
+  right:2px;
+  bottom:2px;
+  left:2px;
+  display:flex;
+  justify-content:center;
+}
+.sporplan-slot-overlay .sporplan-vehicle-status{
+  max-width:100%;
+  padding:1px 3px;
+  font-size:6px;
+}
+.sporplan-slot-overlay .slot-plan-badge,
+.sporplan-slot-overlay .slot-rep-badge{
+  position:absolute;
+  right:2px;
+  left:2px;
+  width:auto;
+  margin:0;
+  padding:1px 2px;
+  border-radius:4px;
+  background:rgba(15,23,42,.84);
+  color:#f8fafc;
+  font-size:6px;
+  line-height:1.05;
+  text-align:center;
+}
+.sporplan-slot-overlay .slot-plan-badge{
+  top:2px;
+}
+.sporplan-slot-overlay .slot-rep-badge{
+  top:12px;
+}
+#sporplan .yard-wrap{
+  padding:0;
+  background:#101312;
+  border-color:#29313a;
+}
 @media(max-width:390px){
   .drops-vehicle-selector-grid{ grid-template-columns:minmax(0,1fr); }
   .drops-standard-sheet-toolbar{ align-items:flex-start; }
@@ -8448,7 +8582,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 21. juli 2026</p>
+<p class="sub">Siste revisjon: 27. juli 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -8632,7 +8766,7 @@ button{padding:12px 12px}
 
 
 <section class="panel active" id="sporplan">
-<div class="note">Tom slot viser nr. på sporplassering. Fylt slot blir grå. Hvis vask-raden er merket med ja/ja1/ja2 = <strong>ja</strong>, blir planlagt sporplassering grønn i stedet.</div>
+<div class="note">Original sporplangrafikk med dynamisk kjøretøy-, status- og planinformasjon plassert over riktig slot.</div>
 <div class="view-tools">
 <span class="label">Sporplan visning</span>
 <button class="compact zoom-out" data-target="yardZoom">Zoom ut</button>
@@ -8641,9 +8775,10 @@ button{padding:12px 12px}
 <button class="compact reset-view" data-target="yardZoom">Standard</button>
 </div>
 <div class="yard-wrap zoom-wrap">
-<div class="yard zoom-inner" id="yardZoom">
-<div class="yard-wash-machine" id="yardWashMachine"></div>
-<div class="yard-grid" id="yardGrid"></div>
+<div class="yard sporplan-yard-surface zoom-inner" id="yardZoom">
+<img class="sporplan-yard-background" src="assets/NY_SPORPLAN.png?v=9510e11f" alt="" aria-hidden="true">
+<div class="yard-wash-machine" id="yardWashMachine" hidden></div>
+<div class="yard-grid sporplan-slot-overlay" id="yardGrid" aria-label="Dynamiske kjøretøy i Sporplan"></div>
 </div>
 </div>
 <div class="stats" id="stats"></div>
@@ -9213,6 +9348,7 @@ const fixedOppstillingRows=[
 
 
 const inputSlots=["1N","1S","2N","2S","3N","3M","3S","4N","4M","4S","5N","5M","5S","6N","6S","6SS","7N","7S","7SS","8N","8S","8SS","9","10N","10S","11N","11S","12N","12S","VN","VS"];
+const SPORPLAN_SLOT_ANCHORS=Object.freeze({"1N":[1338,478,86,187],"1S":[1338,681,86,185],"2N":[1238,478,86,187],"2S":[1238,681,86,185],"3N":[1074,478,86,187],"3M":[1074,681,86,185],"3S":[1074,885,86,177],"4N":[972,478,86,187],"4M":[972,681,86,185],"4S":[972,885,86,177],"5N":[869,478,86,187],"5M":[869,681,86,185],"5S":[869,885,86,177],"6N":[765,478,86,187],"6S":[765,681,86,185],"6SS":[765,885,86,177],"7N":[574,478,93,187],"7S":[574,681,93,185],"7SS":[574,885,93,177],"8N":[469,478,93,187],"8S":[469,681,93,185],"8SS":[469,885,93,177],"9":[381,478,77,187],"10N":[221,478,86,187],"10S":[221,681,86,185],"11N":[120,478,86,187],"11S":[120,681,86,185],"12N":[20,478,86,187],"12S":[20,681,86,185],"VN":[522,42,92,165],"VS":[522,221,92,148]});
 const topRow=["12N","11N","10N","9","8N","7N","platformA","6N","5N","4N","3N","platformB","2N","1N"];
 const midRow=["12S","11S","10S",null,"8S","7S","platformA-skip","6S","5M","4M","3M","platformB-skip","2S","1S"];
 const botRow=[null,null,null,null,"8SS","7SS",null,"6SS","5S","4S","3S",null,null,null];
@@ -14209,7 +14345,7 @@ function buildCanonicalActualPlacementSlotMap(rows=computeCanonicalActualPlaceme
   }));
 }
 
-function buildSporplan(){
+function buildLegacySporplanRetired(){
   const duplicateVehicles = getDuplicateGrunnoppstillingVehicles();
   const sharedCommonView = isSharedSporplanDraftActiveForCommonView();
   const dataRows = computeCanonicalActualPlacementViewRows();
@@ -14434,6 +14570,164 @@ function buildSporplan(){
 
 
   document.getElementById("stats").innerHTML=`<div class="chip">Fylte slots: ${filledCount}</div><div class="chip">Totalt slots: ${inputSlots.length}</div><div class="chip">Vask = ja: ${washCount}</div>`;
+}
+
+function buildSporplanSlotOverlayModel(dataRows,options){
+  dataRows=Array.isArray(dataRows) ? dataRows : [];
+  options=options || {};
+  const data=Object.fromEntries((Array.isArray(dataRows) ? dataRows : []).map(row=>[
+    normalizeSlot(row?.slot),
+    row
+  ]));
+  const repSlots=options?.repSlots instanceof Set ? options.repSlots : new Set();
+  const dreiSlots=options?.dreiSlots instanceof Set ? options.dreiSlots : new Set();
+  const planSkifteMarkers=options?.planSkifteMarkers || {};
+  return inputSlots.map(slot=>{
+    const info=data[slot] || {tog:"",mat:"",wash:false};
+    const vehicleId=String(info?.vehicleId || info?.vehicle || info?.mat || "").trim();
+    const filled=Boolean(String(info?.tog || "").trim() || vehicleId);
+    return {
+      slot,
+      anchor:SPORPLAN_SLOT_ANCHORS[slot],
+      info,
+      vehicleId,
+      filled,
+      isRepair:repSlots.has(normalizeSlot(slot)),
+      isTurn:dreiSlots.has(normalizeSlot(slot)),
+      planMarker:planSkifteMarkers[normalizeSlot(slot)] || null
+    };
+  });
+}
+
+function getSporplanVehicleStatusFrameClass(readback,vehicleText){
+  const vehicleIds=splitVehicleList(vehicleText).map(normalizeVehicleToken).filter(Boolean);
+  const records=vehicleIds.map(vehicleId=>
+    (Array.isArray(readback?.items) ? readback.items : [])
+      .find(item=>normalizeVehicleToken(item?.vehicleId) === vehicleId)
+  ).filter(Boolean);
+  if(records.some(record=>record?.workshopDisposition === "TIL_DREI")){
+    return "sporplan-status-turn";
+  }
+  if(records.some(record=>record?.currentStatus === "IKKE_DRIFTSKLAR")){
+    return "sporplan-status-not-operational";
+  }
+  if(records.length && records.every(record=>record?.currentStatus === "DRIFTSKLAR")){
+    return "sporplan-status-operational";
+  }
+  return "";
+}
+
+function buildSporplan(){
+  const duplicateVehicles=getDuplicateGrunnoppstillingVehicles();
+  const sharedCommonView=isSharedSporplanDraftActiveForCommonView();
+  const dataRows = computeCanonicalActualPlacementViewRows();
+  const repSlots=getKveldRepSlots();
+  const dreiSlots=getDreiSlots();
+  const planSkifteMarkers=getPlanSkifteMarkersBySlot();
+  const grid=document.getElementById("yardGrid");
+  const washGrid=document.getElementById("yardWashMachine");
+  if(!grid) return;
+  grid.innerHTML="";
+  if(washGrid){
+    washGrid.innerHTML="";
+    washGrid.hidden=true;
+  }
+
+  const overlayModels=buildSporplanSlotOverlayModel(dataRows,{
+    repSlots,
+    dreiSlots,
+    planSkifteMarkers
+  });
+
+  overlayModels.forEach(model=>{
+    const {slot,anchor,info,vehicleId,filled,isRepair,isTurn,planMarker}=model;
+    const [left,top,width,height]=anchor;
+    const fillClass=filled
+      ? ((info?.wash && !sharedCommonView) ? "wash-filled" : "filled")
+      : "empty";
+    const div=document.createElement("div");
+    div.className=`slot ${fillClass} ${slotKind(slot)}`;
+    div.dataset.slot=slot;
+    div.style.left=`${left}px`;
+    div.style.top=`${top}px`;
+    div.style.width=`${width}px`;
+    div.style.height=`${height}px`;
+    div.setAttribute("aria-label",filled
+      ? `Slot ${slot}, kjøretøy ${vehicleId || "ikke oppgitt"}`
+      : `Slot ${slot}, tom`);
+
+    const invalidVehicleMessage=vehicleId ? getVehicleNumberValidationMessage(vehicleId) : "";
+    const duplicateVehicleInfo=duplicateVehicles[slot];
+    if(invalidVehicleMessage || duplicateVehicleInfo) div.classList.add("invalid-vehicle");
+    if(isRepair) div.classList.add("rep-slot");
+    if(isTurn) div.classList.add("drei-slot");
+    if(sharedCommonView && filled && info?.sharedDraft) div.classList.add("shared-draft-final-slot");
+    const statusFrameClass=getSporplanVehicleStatusFrameClass(
+      dropsVehicleStatusReadback || {},
+      vehicleId
+    );
+    if(statusFrameClass) div.classList.add(statusFrameClass);
+
+    if(!sharedCommonView){
+      if(planMarker?.from?.length) div.classList.add("plan-fra");
+      if(planMarker?.to?.length) div.classList.add("plan-til");
+      if(planMarker?.service6To?.length) div.classList.add("plan-service6");
+      if(planMarker?.ferdig?.length) div.classList.add("plan-ferdig");
+    }
+
+    const sporplanTexts=getSporplanTextsForSlot(slot,info);
+    const planLabels=[];
+    if(!sharedCommonView && planMarker?.from?.length) planLabels.push(`Fra ${planMarker.from.join(", ")}`);
+    if(!sharedCommonView && planMarker?.to?.length) planLabels.push(`Til ${planMarker.to.join(", ")}`);
+    if(!sharedCommonView && planMarker?.service6To?.length) planLabels.push(`6 ${planMarker.service6To.join(", ")}`);
+    if(!sharedCommonView && planMarker?.ferdig?.length) planLabels.push(`Ferdig ${planMarker.ferdig.join(", ")}`);
+
+    let html="";
+    if(filled) html+='<span class="slot-train-image" aria-hidden="true"></span>';
+    if(sporplanTexts.currentTrain){
+      html+=`<span class="slot-train-current">${escapeHtml(sporplanTexts.currentTrain)}</span>`;
+    }
+    if(vehicleId){
+      const duplicateVehicleMessage=duplicateVehicleInfo
+        ? `${duplicateVehicleInfo.vehicle} er ført opp flere steder: ${duplicateVehicleInfo.slots.join(", ")}`
+        : "";
+      const vehicleLabel=invalidVehicleMessage
+        ? `${escapeHtml(vehicleId)}<br><span class="slot-invalid-vehicle-badge">UGYLDIG</span>`
+        : duplicateVehicleInfo
+          ? `${escapeHtml(vehicleId)}<br><span class="slot-duplicate-vehicle-badge">DUPLIKAT</span>`
+          : escapeHtml(vehicleId);
+      html+=`<span class="slot-bottom mat" title="${escapeHtml(invalidVehicleMessage || duplicateVehicleMessage)}">${vehicleLabel}</span>`;
+      html+=`<span class="sporplan-vehicle-status-host" data-sde-sporplan-vehicle-status data-vehicle-text="${escapeHtml(vehicleId)}">${buildSporplanVehicleStatusBadgesHtml(dropsVehicleStatusReadback || {},vehicleId)}</span>`;
+    }
+    if(planLabels.length){
+      html+=`<span class="slot-plan-badge">${escapeHtml(planLabels.join(" · "))}</span>`;
+    }
+    if(isRepair){
+      html+=`<span class="slot-rep-badge">${isTurn ? "Drei" : "Rep"}</span>`;
+    }
+    div.title=[
+      `Slot ${slot}`,
+      vehicleId ? `Kjøretøy ${vehicleId}` : "Tom",
+      sporplanTexts.currentTrain ? `Tog ${sporplanTexts.currentTrain}` : "",
+      sporplanTexts.nextTrain ? `Neste ${sporplanTexts.nextTrain}` : "",
+      planLabels.join(" · ")
+    ].filter(Boolean).join(" · ");
+    div.innerHTML=html;
+    grid.appendChild(div);
+  });
+
+  const values=Object.values(Object.fromEntries(dataRows.map(row=>[row.slot,row])));
+  const filledCount=values.filter(value=>
+    String(value?.tog || "").trim() || String(value?.mat || "").trim()
+  ).length;
+  const washCount=values.filter(value=>
+    value?.wash &&
+    (String(value?.tog || "").trim() || String(value?.mat || "").trim())
+  ).length;
+  document.getElementById("stats").innerHTML=
+    `<div class="chip">Fylte slots: ${filledCount}</div>`+
+    `<div class="chip">Totalt slots: ${inputSlots.length}</div>`+
+    `<div class="chip">Vask = ja: ${washCount}</div>`;
 }
 
 
@@ -41656,6 +41950,9 @@ function applyAccessLevel(){
   }
   renderDropsVehicleRegistry();
   updateSporplanResetVisibility();
+  if(typeof renderVehicleStatusNotificationPopup === "function"){
+    renderVehicleStatusNotificationPopup();
+  }
 }
 
 function activateTab(name){
@@ -45287,6 +45584,7 @@ function getAuthoritativeVehicleStatusPresentation(readback,vehicleId){
   const recordFaults = Array.isArray(record?.activeFaults)
     ? record.activeFaults.map((fault,index)=>({
         ...fault,
+        vehicleId:cleanVehicleId,
         slot:Number(fault?.slot || fault?.priority || index + 1),
         status:fault?.status || "ACTIVE"
       }))
@@ -46200,16 +46498,13 @@ function buildVehicleStatusAnalyticsPanelHtml(analytics){
   </details>`;
 }
 
-function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
+function buildDropsNotOperationalEditorHtml(draft,viewModel){
+  viewModel=viewModel || {};
   const vehicle = String(draft?.vehicle || "");
   const safeToken = vehicle.replace(/[^A-Za-z0-9_-]/g,"");
   const statusPresentation = getAuthoritativeVehicleStatusPresentation(viewModel?.readback,vehicle);
   const statusRecord = statusPresentation.record;
-  const activeFaults = Array.isArray(statusRecord?.activeFaults)
-    ? statusRecord.activeFaults
-    : (Array.isArray(viewModel?.readback?.faults)
-      ? viewModel.readback.faults.filter(fault=>fault?.vehicleId === vehicle && fault?.status === "ACTIVE")
-      : []);
+  const activeFaults = statusPresentation.activeFaults;
   const repairRequests = Array.isArray(viewModel?.readback?.repairRequests) ? viewModel.readback.repairRequests : [];
   const faults = Array.isArray(draft?.faults) && draft.faults.length
     ? draft.faults.slice(0,5)
@@ -46267,7 +46562,9 @@ function buildDropsNotOperationalEditorHtml(draft,viewModel={}){
         <span>${repairRequest
           ? `${escapeHtml(repairRequest.status || "REQUESTED")} · serverbekreftet`
           : (authoritativeFault
-            ? getDropsRequestRepairAvailabilityMessage(repairAvailability)
+            ? (typeof getDropsRequestRepairAvailabilityMessage === "function"
+              ? getDropsRequestRepairAvailabilityMessage(repairAvailability)
+              : "Bestill Utbedring er ikke tilgjengelig")
             : "Aktiveres etter at feilen er registrert")}</span>
       </div>
       ${error ? `<p class="drops-not-operational-fault-error" id="${errorId}" role="alert">${escapeHtml(error)}</p>` : ""}
@@ -46707,15 +47004,17 @@ function buildWorkshopNotificationPopupHtml(notification){
   const payload = notification.payload || {};
   const repairRequested = notification.kind === "REPAIR_REQUESTED";
   const title = repairRequested
-    ? "Ny bestilling av utbedring"
+    ? "Bestilling av reparasjon"
     : "Kjøretøy registrert Driftsklar";
   const requestedAt = String(payload.requestedAt || notification.createdAt || "");
   return `<section class="vehicle-status-notification-popup${repairRequested ? " is-repair-requested" : " is-operational"}" role="alertdialog" aria-label="${escapeHtml(title)}">
     <button type="button" data-sde-dismiss-vehicle-status-notification aria-label="Lukk varsel">×</button>
     <strong>${escapeHtml(title)}</strong>
     <span>Kjøretøy: ${escapeHtml(notification.vehicleId || "")}</span>
-    ${repairRequested ? `<span>Feil: ${escapeHtml(payload.category || "")} · ${escapeHtml(payload.description || "")}</span>
+    ${repairRequested ? `<span>Feiltype: ${escapeHtml(payload.category || "")}</span>
+    <span>Beskrivelse: ${escapeHtml(payload.description || "")}</span>
     <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>` : ""}
+    ${repairRequested ? `<span>Ny intern utbedringsbestilling fra DROPS</span>` : ""}
     <button type="button" data-sde-open-vehicle-status-notification>Åpne kjøretøy</button>
   </section>`;
 }
@@ -46757,6 +47056,27 @@ function renderVehicleStatusNotificationPopup(){
     host.id = "vehicleStatusNotificationHost";
     host.className = "vehicle-status-notification-host";
     document.body.appendChild(host);
+  }
+  const candidate = (
+    activeVehicleStatusNotification?.notificationId &&
+    !dismissedVehicleStatusNotifications.has(activeVehicleStatusNotification.notificationId)
+  )
+    ? activeVehicleStatusNotification
+    : vehicleStatusNotificationPending.find(notification=>
+        notification?.notificationId &&
+        !dismissedVehicleStatusNotifications.has(notification.notificationId)
+      );
+  const workshopNotificationOutsideLevel4=
+    getActiveAccessLevel() !== "4" &&
+    (typeof activeLevel === "undefined" || String(activeLevel) !== "4");
+  if(
+    candidate?.kind === "REPAIR_REQUESTED" &&
+    candidate?.targetRole === "verksted" &&
+    workshopNotificationOutsideLevel4
+  ){
+    host.classList.remove("audio-blocked");
+    host.innerHTML="";
+    return;
   }
   const next = getNextVehicleStatusNotification();
   if(
