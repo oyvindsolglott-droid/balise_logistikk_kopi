@@ -23,13 +23,13 @@
       "name": "source-7s",
       "placements": [["7SS", "D-7SS"], ["7S", "D-MAIN"], ["7N", "D-7N"]],
       "main": {"vehicle": "D-MAIN", "sourceSlot": "7S", "requestedTarget": "5M", "requestId": "egress-d"},
-      "physicalRelation": "7SS and 7N occupy both physical egress paths from 7S; a complete temporary release/main/recovery chain is possible."
+      "physicalRelation": "7S is an independently accessible workshop bay. Occupancy in 7SS and the separate 7N workshop bay must not create fictitious same-track blockers; the requested move is direct."
     },
     "E": {
       "name": "source-8s",
       "placements": [["8SS", "E-8SS"], ["8S", "E-MAIN"], ["8N", "E-8N"]],
       "main": {"vehicle": "E-MAIN", "sourceSlot": "8S", "requestedTarget": "5M", "requestId": "egress-e"},
-      "physicalRelation": "8SS and 8N occupy both egress paths from 8S; a complete temporary release/main/recovery chain is possible."
+      "physicalRelation": "8S is an independently accessible workshop bay. Occupancy in 8SS and the separate 8N workshop bay must not create fictitious same-track blockers; the requested move is direct."
     },
     "F": {
       "name": "recursive-two-blocker",

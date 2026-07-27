@@ -723,6 +723,20 @@ test("SDE repeated reroute — stale completed history and superseded plans neve
   );
 });
 
+test("SDE workshop drag — independent workshop bays accept direct canonical reroutes", () => {
+  assertPassed(
+    runHarness("sde-workshop-slot-direct-drag-harness.js"),
+    "SDE workshop direct drag contract",
+  );
+});
+
+test("Nivå 4 workshop overview — exact four bays expose canonical read-only vehicle selectors", () => {
+  assertPassed(
+    runHarness("sde-workshop-hall-overview-harness.js"),
+    "Nivå 4 workshop hall overview contract",
+  );
+});
+
 test("DROPS-PROCESS-UI — every operational status can request repair without surveillance UI", () => {
   assertPassed(
     runHarness("sde-drops-repair-process-ui-harness.js"),

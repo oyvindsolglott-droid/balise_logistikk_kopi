@@ -75,6 +75,17 @@ eval(prefix + String.raw`
     && report.reader.integrityReport.status==="PASS"
     && report.reader.reservationProjection.conflicts.length===0
   );
+  const direct=report=>Boolean(
+    report.rows.length===1
+    && report.releases.length===0
+    && report.mains.length===0
+    && report.recoveries.length===0
+    && !report.rows[0].sdePhysicalChainId
+    && report.rows[0].toSlot===report.fixture.main.requestedTarget
+    && projectionComplete(report)
+    && report.reader.integrityReport.status==="PASS"
+    && report.reader.reservationProjection.conflicts.length===0
+  );
   const acyclic=rows=>{
     const byKey=new Map(rows.map(row=>[ctx.getSdeMoveActionKey(row),row]));
     const visiting=new Set(),visited=new Set();
@@ -103,11 +114,11 @@ eval(prefix + String.raw`
 
   const A=built.A;
   put("INV-EGRESS-001",complete(A)&&A.mains[0]?.fromSlot==="4M"&&A.mains[0]?.toSlot==="5M","4M→5M is complete or must fail diagnostic-only; partial release/main materialization is forbidden");
-  put("INV-EGRESS-002",["A","B","C","D","E","F"].every(key=>complete(built[key])),"4M, 5M, 6S, 7S and 8S plus the recursive source produce complete safe source-egress plans");
+  put("INV-EGRESS-002",["A","B","C","F"].every(key=>complete(built[key]))&&["D","E"].every(key=>direct(built[key])),"4M, 5M, 6S and the recursive source produce complete safe source-egress plans; independent workshop bays 7S and 8S remain direct");
   put("INV-EGRESS-003",complete(built.F)&&built.F.releases.length>=2&&built.F.recoveries.length>=2,"recursive F chain has at least two prerequisites and no one-blocker cap");
   put("INV-EGRESS-004",acyclic(built.F.rows)&&built.F.reader?.cardProjection?.actionableCards?.length===1&&built.F.mains[0]?.sdePhysicalDependsOn?.length>0,"dependency DAG is acyclic and only the first prerequisite is actionable");
   put("INV-EGRESS-005",["A","B","C","D","E","F"].every(key=>projectionComplete(built[key])),"every planned step has outcome/card/reservation/overlay/routes/adapter from one revision");
-  put("INV-EGRESS-006",["A","B","C","D","E","F"].every(key=>hasPairing(built[key])&&built[key].recoveries.length===built[key].releases.length),"every temporary release has mandatory recovery");
+  put("INV-EGRESS-006",["A","B","C","F"].every(key=>hasPairing(built[key])&&built[key].recoveries.length===built[key].releases.length)&&["D","E"].every(key=>built[key].releases.length===0&&built[key].recoveries.length===0),"every real temporary release has mandatory recovery while independent workshop bays create none");
 
   let occupiedGate=false;
   try{
@@ -239,8 +250,8 @@ eval(prefix + String.raw`
     }
     reports.K={name:f.K.name,physicalRelation:f.K.physicalRelation,vnRegression};
   }catch(error){ reports.K={name:f.K.name,error:String(error)}; }
-  const direct=Boolean(L.rows.length===1&&!L.rows[0].sdePhysicalChainId&&L.rows[0].toSlot===f.L.main.requestedTarget&&L.reader?.integrityReport?.status==="PASS");
-  put("INV-EGRESS-012",direct&&vnRegression,"direct moves and contextual VN rejection remain intact");
+  const ordinaryDirect=Boolean(L.rows.length===1&&!L.rows[0].sdePhysicalChainId&&L.rows[0].toSlot===f.L.main.requestedTarget&&L.reader?.integrityReport?.status==="PASS");
+  put("INV-EGRESS-012",ordinaryDirect&&vnRegression,"direct moves and contextual VN rejection remain intact");
 
   let recursiveGraphicPath=false;
   try{
