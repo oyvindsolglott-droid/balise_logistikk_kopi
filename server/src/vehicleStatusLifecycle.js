@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v3";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v4";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -43,6 +43,7 @@ const LIFECYCLE_COMMANDS = Object.freeze({
   REGISTER_FAULT: "register_fault",
   REPORT_NOT_OPERATIONAL: "report_not_operational",
   REQUEST_REPAIR: "request_repair",
+  REQUEST_WORKSHOP_EXIT: "request_workshop_exit",
   MARK_FOR_TURNING: "mark_for_turning",
   REPORT_OPERATIONAL: "report_operational",
   NOTIFICATION_PRESENTED: "notification_presented",
@@ -63,6 +64,10 @@ const COMMAND_DEFINITIONS = Object.freeze({
   [LIFECYCLE_COMMANDS.REQUEST_REPAIR]: Object.freeze({
     route: "/api/vehicle-status/commands/request-repair",
     capability: CAPABILITY_IDS.REQUEST_REPAIR
+  }),
+  [LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT]: Object.freeze({
+    route: "/api/vehicle-status/commands/request-workshop-exit",
+    capability: CAPABILITY_IDS.REQUEST_WORKSHOP_EXIT
   }),
   [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: Object.freeze({
     route: "/api/vehicle-status/commands/mark-for-turning",
@@ -99,6 +104,9 @@ const FIELDS = Object.freeze({
   ]),
   [LIFECYCLE_COMMANDS.REQUEST_REPAIR]: new Set([
     "actionId", "expectedCaseRevision", "vehicleId", "faultId"
+  ]),
+  [LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT]: new Set([
+    "actionId", "vehicleId", "expectedPlacementRevision", "expectedVisitId"
   ]),
   [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: new Set([
     "actionId", "expectedStatusRevision", "vehicleId"
@@ -212,6 +220,22 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
     const faultId = normalizeUuid(input.faultId);
     if(!faultId) return invalid(400, "invalid_fault_id", "faultId must be a UUID.");
     normalized = { actionId, expectedCaseRevision, vehicleId, faultId };
+  }else if(commandName === LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT){
+    const expectedPlacementRevision = normalizedText(input.expectedPlacementRevision, 200);
+    const expectedVisitId = normalizedText(input.expectedVisitId, 300);
+    if(!expectedPlacementRevision){
+      return invalid(400, "invalid_expected_placement_revision",
+        "expectedPlacementRevision is required.");
+    }
+    if(!expectedVisitId){
+      return invalid(400, "invalid_expected_visit_id", "expectedVisitId is required.");
+    }
+    normalized = {
+      actionId,
+      vehicleId,
+      expectedPlacementRevision,
+      expectedVisitId
+    };
   }else if(commandName === LIFECYCLE_COMMANDS.MARK_FOR_TURNING){
     const expectedStatusRevision = revision(input.expectedStatusRevision);
     if(expectedStatusRevision === null) return invalidRevision("expectedStatusRevision");
@@ -498,7 +522,14 @@ function invalid(status, error, message, fields = {}){
 
 function sendError(res, status, error, message, fields = {}){
   const safeFields = {};
-  for(const field of ["field", "currentRevision", "currentStatusRevision", "currentCaseRevision"]){
+  for(const field of [
+    "field",
+    "currentRevision",
+    "currentStatusRevision",
+    "currentCaseRevision",
+    "currentPlacementRevision",
+    "currentVisitId"
+  ]){
     if(fields[field] !== undefined) safeFields[field] = fields[field];
   }
   return res.status(status).json({ ok: false, error, message, ...safeFields });

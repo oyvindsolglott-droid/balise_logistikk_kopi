@@ -8185,6 +8185,47 @@ button{padding:12px 12px}
   color:#166534;
   font-size:10px;
 }
+.workshop-exit-action{
+  margin-top:14px;
+  padding:12px;
+  border:1px solid #67e8f9;
+  border-radius:13px;
+  display:grid;
+  grid-template-columns:minmax(170px,.45fr) minmax(0,1fr);
+  align-items:center;
+  gap:10px;
+  background:linear-gradient(135deg,#ecfeff,#dbeafe);
+  color:#164e63;
+}
+.workshop-exit-action button{
+  width:100%;
+  margin:0;
+  border-color:#0891b2;
+  background:linear-gradient(180deg,#22d3ee,#0891b2);
+  color:#083344;
+}
+.workshop-exit-action > span{
+  font-size:10px;
+  font-weight:850;
+  line-height:1.45;
+}
+.workshop-exit-action.is-confirmed{
+  border-color:#86efac;
+  background:linear-gradient(135deg,#f0fdf4,#dcfce7);
+  color:#166534;
+}
+.workshop-exit-action.is-confirmed button:disabled{
+  border-color:#16a34a;
+  background:linear-gradient(180deg,#4ade80,#22c55e);
+  color:#052e16;
+  opacity:1;
+}
+.workshop-vehicle-status .workshop-exit-action:not(.is-confirmed) button:disabled{
+  border-color:#94a3b8;
+  background:#e2e8f0;
+  color:#64748b;
+  opacity:1;
+}
 .vehicle-status-process-transparency,
 .vehicle-status-analysis-boundary{
   padding:9px 11px;
@@ -8328,6 +8369,10 @@ button{padding:12px 12px}
   color:#fff;
   box-shadow:0 18px 50px rgba(15,23,42,.42);
 }
+.vehicle-status-notification-popup.is-workshop-exit-requested{
+  border-color:#22d3ee;
+  background:linear-gradient(145deg,#082f49,#0f172a);
+}
 .vehicle-status-notification-popup > button:first-child{
   justify-self:end;
 }
@@ -8388,7 +8433,8 @@ button{padding:12px 12px}
   .vehicle-process-metrics,
   .vehicle-status-analysis-grid,
   .vehicle-status-analysis-filters,
-  .workshop-process-actions{ grid-template-columns:minmax(0,1fr); }
+  .workshop-process-actions,
+  .workshop-exit-action{ grid-template-columns:minmax(0,1fr); }
   .vehicle-status-analysis-filters button{ grid-column:auto; }
   .vehicle-process-timeline > :not(summary),
   .vehicle-status-analytics-panel > :not(summary){
@@ -25567,6 +25613,18 @@ function getSdeMoveActionSnapshot(row){
     sdeVnRecoveryRequired:Boolean(row.sdeVnRecoveryRequired),
     vnRecoveryRequired:Boolean(row.vnRecoveryRequired),
     isWorkshopMoveNeed:Boolean(row.isWorkshopMoveNeed),
+    isWorkshopExitRequestNeed:Boolean(row.isWorkshopExitRequestNeed),
+    workshopExitRequestId:String(row.workshopExitRequestId || "").trim(),
+    workshopExitVisitId:String(row.workshopExitVisitId || "").trim(),
+    workshopExitPlacementRevision:String(row.workshopExitPlacementRevision || "").trim(),
+    workshopExitClassification:String(row.workshopExitClassification || "").trim(),
+    workshopExitReasonCodes:Array.isArray(row.workshopExitReasonCodes)
+      ? [...row.workshopExitReasonCodes]
+      : [],
+    workshopExitSnapshotClassification:String(row.workshopExitSnapshotClassification || "").trim(),
+    workshopExitSnapshotReasonCodes:Array.isArray(row.workshopExitSnapshotReasonCodes)
+      ? [...row.workshopExitSnapshotReasonCodes]
+      : [],
     isSpor3ProductionNeed:Boolean(row.isSpor3ProductionNeed),
     sdePhysicalReleaseReplanKey:String(row.sdePhysicalReleaseReplanKey || "").trim(),
     sdePhysicalReleaseRoundNumber:Number(row.sdePhysicalReleaseRoundNumber || 0),
@@ -29559,6 +29617,8 @@ function renderSdeCanonicalCardPreview(){
 
 function getSdeMoveNeedKey(row){
   if(!row) return "";
+  const workshopExitRequestId = String(row.workshopExitRequestId || "").trim();
+  if(workshopExitRequestId) return `workshop-exit|${workshopExitRequestId}`;
   const cancellationNeedKey = String(row.sdeCancellationNeedKey || "").trim();
   if(cancellationNeedKey) return cancellationNeedKey;
   const generatedKey = String(row.sdeNightPlacementGeneratedNeedKey || "").trim();
@@ -30535,7 +30595,29 @@ function addSdeCompletedMoveToPlanSkifte(row){
   if(!vehicle || !toSlot) return false;
 
   const existingRepMarker = fromSlot ? String(state.grunnoppstillingRep?.[fromSlot] || "").trim() : "";
-  const nextRepMarker = row.isWorkshopMoveNeed ? "r" : existingRepMarker;
+  const workshopClassification = String(row.workshopExitClassification || "").trim();
+  const nextRepMarker = row.isWorkshopExitRequestNeed
+    ? (
+        workshopClassification === "TIL_DREI"
+          ? "d"
+          : ["TIL_REP","IKKE_DRIFTSKLAR"].includes(workshopClassification)
+            ? "r"
+            : existingRepMarker
+      )
+    : row.isWorkshopMoveNeed
+      ? "r"
+      : existingRepMarker;
+  const workshopPlanMarker = row.isWorkshopExitRequestNeed
+    ? (
+        workshopClassification === "TIL_DREI"
+          ? "d"
+          : ["TIL_REP","IKKE_DRIFTSKLAR"].includes(workshopClassification)
+            ? "r"
+            : ""
+      )
+    : row.isWorkshopMoveNeed
+      ? "r"
+      : "";
 
   Object.entries(state.grunnoppstilling || {}).forEach(([slot,value])=>{
     if(normalizeVehicleToken(value) === normalizeVehicleToken(vehicle)){
@@ -30561,8 +30643,12 @@ function addSdeCompletedMoveToPlanSkifte(row){
     fromSpor:fromSlot,
     toSpor:toSlot,
     crew:"",
-    tilRep:row.isWorkshopMoveNeed ? "r" : "",
-    operationType:row.isWorkshopMoveNeed ? "SDE verkstedflytting" : "SDE automatisk forslag",
+    tilRep:workshopPlanMarker,
+    operationType:row.isWorkshopExitRequestNeed
+      ? "SDE bestilt verkstedutkjøring"
+      : row.isWorkshopMoveNeed
+        ? "SDE verkstedflytting"
+        : "SDE automatisk forslag",
     utfort:"f",
     source:"SDE Skiftebevegelser"
   };
@@ -32662,15 +32748,286 @@ function sortSdeShiftMovesForDisplay(rows){
 }
 
 
-function buildSdeWorkshopMoveNeeds(){
-  if(typeof getDropsVerkstedOrders !== "function") return [];
+function getSdeActiveWorkshopExitRequests(readback){
+  const sourceReadback = readback || (
+    typeof dropsVehicleStatusReadback !== "undefined"
+      ? dropsVehicleStatusReadback
+      : {}
+  );
+  const activeStatuses = new Set(["REQUESTED","CARD_CREATED","REPLAN_REQUIRED"]);
+  return (Array.isArray(sourceReadback?.workshopExitRequests) ? sourceReadback.workshopExitRequests : [])
+    .filter(request=>
+      activeStatuses.has(String(request?.status || "")) &&
+      sanitizeVehicleValue(request?.vehicleId) &&
+      String(request?.exitRequestId || "").trim()
+    )
+    .sort((left,right)=>
+      String(left?.requestedAt || "").localeCompare(String(right?.requestedAt || "")) ||
+      String(left?.exitRequestId || "").localeCompare(String(right?.exitRequestId || ""))
+    );
+}
+
+function getSdeNextDepartureBindingForVehicle(vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token || typeof buildSdeTursattVehicleBindings !== "function") return null;
+  return buildSdeTursattVehicleBindings()
+    .filter(binding=>
+      binding?.role === "departure" &&
+      binding?.mustBeAccessible === true &&
+      normalizeVehicleToken(binding?.vehicle) === token
+    )
+    .sort((left,right)=>
+      Number(left?.sortMinutes ?? 99999) - Number(right?.sortMinutes ?? 99999) ||
+      String(left?.occurrenceId || "").localeCompare(String(right?.occurrenceId || ""))
+    )[0] || null;
+}
+
+function getSdeFreshWorkshopExitClassification(vehicle, request, readback){
+  const sourceReadback = readback || (
+    typeof dropsVehicleStatusReadback !== "undefined"
+      ? dropsVehicleStatusReadback
+      : {}
+  );
+  const token = normalizeVehicleToken(vehicle);
+  const record = typeof getDropsVehicleStatusRecord === "function"
+    ? getDropsVehicleStatusRecord(sourceReadback,vehicle)
+    : null;
+  const activeFaults = Array.isArray(record?.activeFaults)
+    ? record.activeFaults.filter(fault=>fault?.status === "ACTIVE")
+    : [];
+  const repairRequests = (Array.isArray(sourceReadback?.repairRequests) ? sourceReadback.repairRequests : [])
+    .filter(item=>
+      normalizeVehicleToken(item?.vehicleId) === token &&
+      item?.status === "REQUESTED"
+    );
+  const marker = typeof getSdeGrunnoppstillingRepDreiValueForVehicle === "function"
+    ? getSdeGrunnoppstillingRepDreiValueForVehicle(vehicle)
+    : "";
+  const productionNeed = (typeof buildSdeProductionNeeds === "function"
+    ? buildSdeProductionNeeds()
+    : []
+  ).find(need=>normalizeVehicleToken(need?.vehicle) === token) || null;
+  const departure = getSdeNextDepartureBindingForVehicle(vehicle);
+  const isDrei = record?.workshopDisposition === "TIL_DREI" ||
+    isDreiMarker(marker) ||
+    productionNeed?.isDrei === true ||
+    productionNeed?.needType === "drei";
+  const isRep = !isDrei && (
+    record?.workshopDisposition === "TIL_REP" ||
+    isRepMarker(marker) ||
+    productionNeed?.isRep === true ||
+    productionNeed?.needType === "rep" ||
+    activeFaults.length > 0 ||
+    repairRequests.length > 0
+  );
+
+  let classification = "UNKNOWN";
+  if(isDrei){
+    classification = "TIL_DREI";
+  }else if(isRep){
+    classification = "TIL_REP";
+  }else if(departure){
+    classification = "TURSATT";
+  }else if(record?.currentStatus === "DRIFTSKLAR"){
+    classification = "RESERVE";
+  }else if(record?.currentStatus === "IKKE_DRIFTSKLAR"){
+    classification = "IKKE_DRIFTSKLAR";
+  }
+
+  const reasonCodes = [
+    isDrei ? "fresh_disposition_til_drei" : "",
+    isRep ? "fresh_repair_or_rep_context" : "",
+    departure ? `next_departure_${normalizeTognr(departure.train) || "known"}` : "",
+    record?.currentStatus ? `vehicle_status_${String(record.currentStatus).toLowerCase()}` : "",
+    productionNeed ? "active_production_need" : "",
+    activeFaults.length ? "active_fault" : "",
+    repairRequests.length ? "active_repair_request" : "",
+    classification === "UNKNOWN" ? "fresh_classification_ambiguous" : ""
+  ].filter(Boolean);
+
+  return {
+    classification,
+    reasonCodes,
+    record,
+    productionNeed,
+    departure,
+    isDrei,
+    isRep,
+    snapshotClassification:String(request?.classification || "UNKNOWN"),
+    snapshotReasonCodes:Array.isArray(request?.reasonCodes) ? request.reasonCodes : []
+  };
+}
+
+function getSdeWorkshopExitRecommendation(need, reservedSlots){
+  const explicitTarget = normalizeSlot(need?.finalTarget || need?.toSlot);
+  if(explicitTarget && !isSdeWorkshopSlot(explicitTarget) && !reservedSlots.has(explicitTarget)){
+    const candidate = scoreSdeArrivalParkingCandidate(need,explicitTarget);
+    if(candidate?.status !== "rejected"){
+      const evaluation = evaluateSdeParkingDecision(need,candidate,reservedSlots);
+      const score = candidate.score + evaluation.reward - evaluation.penalty;
+      if(score >= 45){
+        return {
+          slot:explicitTarget,
+          score:Math.max(0,Math.min(100,score)),
+          confidence:score >= 85 ? "high" : score >= 60 ? "medium" : "low",
+          reason:[
+            `Eksisterende autoritativ plan prioriterer ${explicitTarget}.`,
+            ...(candidate.reasons || []),
+            ...(evaluation.benefits || []),
+            ...(evaluation.violations || [])
+          ].slice(0,5).join(" "),
+          alternatives:[]
+        };
+      }
+    }
+  }
+  return getSdeArrivalParkingRecommendation(need,reservedSlots);
+}
+
+function buildSdeWorkshopExitMoveNeeds(existingNeeds=[]){
+  const requests = getSdeActiveWorkshopExitRequests();
+  if(!requests.length) return [];
+  const placements = Array.isArray(dropsVehicleStatusReadback?.placements)
+    ? dropsVehicleStatusReadback.placements
+    : [];
+  const reservedSlots = new Map();
+  (Array.isArray(existingNeeds) ? existingNeeds : []).forEach(need=>{
+    const slot = normalizeSlot(need?.recommendedSlot || need?.toSlot);
+    if(slot) reservedSlots.set(slot,{need,recommendation:{slot}});
+  });
+
+  return requests.map(request=>{
+    const vehicle = sanitizeVehicleValue(request.vehicleId);
+    const placement = placements.find(item=>
+      normalizeVehicleToken(item?.vehicleId) === normalizeVehicleToken(vehicle)
+    ) || null;
+    const sourceSlot = normalizeSlot(placement?.slot || request.sourceSlot);
+    if(
+      !vehicle ||
+      !sourceSlot ||
+      placement?.inWorkshop !== true ||
+      !isSdeWorkshopSlot(sourceSlot) ||
+      String(placement?.workshopVisitId || "") !== String(request?.visitId || "")
+    ){
+      return {
+        vehicle,
+        arrivalSlot:sourceSlot,
+        source:"Bestilt utkjøring fra Verksted",
+        arrivalTrainText:"Bestilt utkjøring fra Verksted",
+        showcaseArrivalLabel:"Bestilt utkjøring fra Verksted",
+        recommendationReason:"Aktiv utkjøringsbestilling mangler entydig, fersk canonical verkstedplassering for samme verkstedopphold.",
+        recommendationConfidence:"low",
+        recommendationScore:0,
+        parkingStrategy:"Uavklart utkjøringsbestilling",
+        isWorkshopMoveNeed:true,
+        isWorkshopExitRequestNeed:true,
+        stableActionKey:String(request?.exitRequestId || "")
+          ? `workshop-exit|${String(request.exitRequestId)}`
+          : "",
+        workshopExitRequestId:String(request?.exitRequestId || ""),
+        workshopExitVisitId:String(request?.visitId || ""),
+        workshopExitClassification:"UNKNOWN",
+        workshopExitReasonCodes:["workshop_visit_or_placement_mismatch"]
+      };
+    }
+
+    const context = getSdeFreshWorkshopExitClassification(
+      vehicle,
+      request,
+      dropsVehicleStatusReadback || {}
+    );
+    const productionNeed = context.productionNeed || {};
+    const departure = context.departure || {};
+    const departureTrain = normalizeTognr(
+      departure.train ||
+      productionNeed.nextDepartureTrain ||
+      productionNeed.toTrain
+    );
+    const departurePart = String(
+      departure.part ||
+      productionNeed.nextDeparturePart ||
+      ""
+    ).trim();
+    const departureTime = String(
+      departure.displayTime ||
+      departure.time ||
+      productionNeed.nextDepartureTime ||
+      productionNeed.time ||
+      ""
+    ).trim();
+    const need = {
+      ...productionNeed,
+      source:"Bestilt utkjøring fra Verksted",
+      vehicle,
+      arrivalSlot:sourceSlot,
+      fromSlot:sourceSlot,
+      finalTarget:normalizeSlot(productionNeed.finalTarget || productionNeed.toSlot),
+      arrivalTime:String(request.requestedAt || ""),
+      arrivalTrainText:"Bestilt utkjøring fra Verksted",
+      showcaseArrivalLabel:"Bestilt utkjøring fra Verksted",
+      nextDepartureTrain:departureTrain,
+      nextDeparturePart:departurePart,
+      nextDepartureTime:departureTime,
+      nextDepartureText:departureTrain
+        ? `${departureTrain}${departurePart ? `/${departurePart}` : ""}${departureTime ? ` kl. ${departureTime}` : ""}`
+        : context.classification === "RESERVE"
+          ? "Reservesett"
+          : "Ingen autoritativ avgang",
+      serviceRequired:Boolean(productionNeed.serviceRequired),
+      isRep:context.isRep,
+      isDrei:context.isDrei,
+      needType:context.isDrei ? "drei" : context.isRep ? "rep" : "skifte",
+      isWorkshopMoveNeed:true,
+      isWorkshopExitRequestNeed:true,
+      stableActionKey:`workshop-exit|${String(request.exitRequestId)}`,
+      workshopExitRequestId:String(request.exitRequestId),
+      workshopExitVisitId:String(request.visitId),
+      workshopExitPlacementRevision:String(request.placementRevision || ""),
+      workshopExitClassification:context.classification,
+      workshopExitReasonCodes:context.reasonCodes,
+      workshopExitSnapshotClassification:context.snapshotClassification,
+      workshopExitSnapshotReasonCodes:context.snapshotReasonCodes
+    };
+    const recommendation = getSdeWorkshopExitRecommendation(need,reservedSlots);
+    const unknownClassification = context.classification === "UNKNOWN";
+    const reasonPrefix = unknownClassification
+      ? "Autoritativ operativ klassifisering er tvetydig. Forslaget er bare en fysisk trygg kandidat og må avklares operativt."
+      : `Fersk autoritativ klassifisering: ${context.classification}.`;
+    const result = {
+      ...need,
+      recommendedSlot:normalizeSlot(recommendation.slot),
+      recommendationConfidence:unknownClassification
+        ? "low"
+        : String(recommendation.confidence || "low"),
+      recommendationScore:Number(recommendation.score || 0),
+      recommendationAlternatives:Array.isArray(recommendation.alternatives)
+        ? recommendation.alternatives
+        : [],
+      parkingStrategy:`Verkstedutkjøring · ${context.classification}`,
+      recommendationReason:`${reasonPrefix} ${recommendation.reason || "Ingen fysisk trygg målplassering kunne bevises."}`.trim()
+    };
+    if(result.recommendedSlot){
+      reservedSlots.set(result.recommendedSlot,{need:result,recommendation});
+    }
+    return result;
+  }).filter(Boolean);
+}
+
+function buildSdeWorkshopMoveNeeds(existingNeeds=[]){
+  const exitRequestNeeds = buildSdeWorkshopExitMoveNeeds(existingNeeds);
+  const exitVehicleTokens = new Set(exitRequestNeeds
+    .map(row=>normalizeVehicleToken(row?.vehicle))
+    .filter(Boolean));
+  if(typeof getDropsVerkstedOrders !== "function") return exitRequestNeeds;
 
   const followSdeMode = typeof getDropsDecisionMode === "function" && getDropsDecisionMode() === "sde";
 
-  return getDropsVerkstedOrders()
+  const legacyNeeds = getDropsVerkstedOrders()
     .filter(order => {
       const isApprovedForSdeWorkshopMove = Boolean(order?.dropsApprovedAt || followSdeMode);
-      return order && isApprovedForSdeWorkshopMove;
+      return order &&
+        isApprovedForSdeWorkshopMove &&
+        !exitVehicleTokens.has(normalizeVehicleToken(order?.vehicle));
     })
     .map(order => {
       const vehicle = sanitizeVehicleValue(order.vehicle || "");
@@ -32700,6 +33057,8 @@ function buildSdeWorkshopMoveNeeds(){
       };
     })
     .filter(Boolean);
+
+  return [...legacyNeeds,...exitRequestNeeds];
 }
 
 
@@ -33035,7 +33394,10 @@ function getSdeShiftShowcaseData(){
   const nonSpor3ArrivalNeeds = baseArrivalNeeds.filter(row =>
     !spor3VehicleTokens.has(normalizeVehicleToken(row?.vehicle))
   );
-  const workshopMoveNeeds = buildSdeWorkshopMoveNeeds();
+  const workshopMoveNeeds = buildSdeWorkshopMoveNeeds([
+    ...nonSpor3ArrivalNeeds,
+    ...spor3ProductionNeeds
+  ]);
   const workshopVehicleTokens = new Set(
     workshopMoveNeeds
       .map(row => normalizeVehicleToken(row?.vehicle))
@@ -35584,6 +35946,33 @@ function removeSdeNightPlacementOverridesForVehicle(vehicle){
   });
 }
 
+function supersedeSdeNightPlacementPlanningStateForVehicle(vehicle){
+  const token = normalizeVehicleToken(vehicle);
+  const retired = {overrides:0, authorities:0};
+  if(!token) return retired;
+
+  const overrides = state.sdeNightPlacementManualOverrides;
+  if(overrides && typeof overrides === "object" && !Array.isArray(overrides)){
+    Object.keys(overrides).forEach(key=>{
+      if(normalizeVehicleToken(overrides[key]?.vehicle) !== token) return;
+      delete overrides[key];
+      retired.overrides += 1;
+    });
+  }
+
+  const authorities = state.sdeActiveMoveOutcomes;
+  if(authorities && typeof authorities === "object" && !Array.isArray(authorities)){
+    Object.keys(authorities).forEach(key=>{
+      const authority = authorities[key];
+      if(normalizeVehicleToken(authority?.vehicle || authority?.vehicleId) !== token) return;
+      delete authorities[key];
+      retired.authorities += 1;
+    });
+  }
+
+  return retired;
+}
+
 function removeSdeNightPlacementOverridesForVehicleStep(vehicle, fromSlot){
   const token = normalizeVehicleToken(vehicle);
   const stepFromSlot = normalizeSlot(fromSlot);
@@ -35648,7 +36037,20 @@ function getSdeNightPlacementCompletedLockedSlots(){
     const slot = normalizeSlot(action.toSlot || action?.snapshot?.toSlot);
     const vehicle = sanitizeVehicleValue(action.vehicle || action?.snapshot?.vehicle);
     if(!slot || !vehicle) return;
-    locked[slot] = {slot, vehicle, source:"completedLocked", time:String(action.time || "")};
+    const currentSlot = normalizeSlot(getSdeCurrentSlotForVehicle(vehicle));
+    if(!currentSlot || currentSlot !== slot) return;
+    const candidate = {
+      slot,
+      vehicle,
+      source:"completedLocked",
+      time:String(action.time || "")
+    };
+    if(
+      !locked[slot]
+      || candidate.time.localeCompare(String(locked[slot].time || "")) >= 0
+    ){
+      locked[slot] = candidate;
+    }
   });
   return locked;
 }
@@ -37836,6 +38238,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     const previousAuthorities = cloneSdeCanonicalValue(getSdeActiveMoveOutcomes()) || {};
     const previousBlockedRequest = sdeNightPlacementBlockedMoveRequest;
     try{
+      supersedeSdeNightPlacementPlanningStateForVehicle(assessment.vehicle);
       const physicalSourceSlot = getSdePhysicalSlotForVehicle(assessment.vehicle);
       if(
         !assessment.isProjectedSource
@@ -40275,7 +40678,17 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
   const dependencies = sortSdeCanonicalStrings(card.blockedBy || card.dependencyIds || []);
   const stateLabel = exiting ? "Exiting" : handlerBlocked ? "Handling krever avklaring" : blocked ? "Avventer dependency" : "Canonical aktiv";
   const actionKey = adapter?.actionKey || getSdeMoveActionKey(row) || card.canonicalCardId;
-  return `<article class="sde-shift-card ${priorityClass}${blocked ? " canonical-blocked" : ""}${exiting ? " sde-release-cancelled" : ""}${cancelledCardUi.className}" data-sde-card-key="${escapeHtml(actionKey)}" data-sde-canonical-card-id="${escapeHtml(card.canonicalCardId)}" data-sde-active-outcome-id="${escapeHtml(card.activeOutcomeId)}" data-sde-obligation-id="${escapeHtml(card.obligationId)}" data-sde-step-id="${escapeHtml(card.stepId)}" data-sde-plan-revision="${escapeHtml(reader.planRevision || "")}" data-sde-execution-key="${escapeHtml(adapter?.executionKey || "")}" data-sde-relevant-revision="${escapeHtml(adapter?.relevantRevision || "")}" data-sde-reservation-id="${escapeHtml(adapter?.reservation?.reservationId || "")}" data-sde-overlay-id="${escapeHtml(adapter?.overlay?.overlayId || "")}" data-sde-canonical-card-status="${escapeHtml(card.status)}"${cancelledCardUi.attributes} style="--delay:${index * 55}ms">
+  const workshopExitRequestId = String(row.workshopExitRequestId || "").trim();
+  const workshopExitMetaHtml = row.isWorkshopExitRequestNeed
+    ? `<span class="sde-shift-badge">Bestilt ${escapeHtml(row.arrivalTime || "tid ukjent")}</span>
+      <span class="sde-shift-badge">Klassifisering ${escapeHtml(row.workshopExitClassification || "UNKNOWN")}</span>
+      <span class="sde-shift-badge">Score ${escapeHtml(String(row.recommendationScore ?? "ukjent"))}</span>
+      <span class="sde-shift-badge">Fysisk og rute validert</span>`
+    : "";
+  const workshopExitReasonHtml = row.isWorkshopExitRequestNeed
+    ? `<div class="sde-night-card-override"><strong>Bestilt utkjøring fra Verksted</strong><span>${escapeHtml(row.recommendationReason || "Utkjøringsforslaget følger fersk autoritativ klassifisering og gjeldende fysisk plan.")}</span></div>`
+    : "";
+  return `<article class="sde-shift-card ${priorityClass}${blocked ? " canonical-blocked" : ""}${exiting ? " sde-release-cancelled" : ""}${cancelledCardUi.className}" data-sde-card-key="${escapeHtml(actionKey)}" data-sde-canonical-card-id="${escapeHtml(card.canonicalCardId)}" data-sde-active-outcome-id="${escapeHtml(card.activeOutcomeId)}" data-sde-obligation-id="${escapeHtml(card.obligationId)}" data-sde-step-id="${escapeHtml(card.stepId)}" data-sde-plan-revision="${escapeHtml(reader.planRevision || "")}" data-sde-execution-key="${escapeHtml(adapter?.executionKey || "")}" data-sde-relevant-revision="${escapeHtml(adapter?.relevantRevision || "")}" data-sde-reservation-id="${escapeHtml(adapter?.reservation?.reservationId || "")}" data-sde-overlay-id="${escapeHtml(adapter?.overlay?.overlayId || "")}" data-sde-canonical-card-status="${escapeHtml(card.status)}"${workshopExitRequestId ? ` data-sde-workshop-exit-request-id="${escapeHtml(workshopExitRequestId)}"` : ""}${cancelledCardUi.attributes} style="--delay:${index * 55}ms">
     <div class="sde-shift-card-top">
       <div><div class="sde-shift-eyebrow">Kjøretøy</div><div class="sde-shift-vehicle">${escapeHtml(card.vehicleId || "Ukjent")}</div></div>
       <div class="sde-shift-trains">
@@ -40292,7 +40705,9 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
       ${dependencies.length ? `<span class="sde-shift-badge">Dependency ${escapeHtml(dependencies.join(", "))}</span>` : ""}
       ${card.recoveryRequired ? `<span class="sde-shift-badge sde-night-card-override-badge">${escapeHtml(row?.sdePhysicalResolutionContext === "target_access_temporary_relief" ? "OBLIGATORISK RETUR" : "VN RECOVERY")}</span>` : ""}
       ${adapter?.canDelete ? `<span class="sde-shift-badge">Slett kort tillatt i Annullert-dialog</span>` : ""}
+      ${workshopExitMetaHtml}
     </div>
+    ${workshopExitReasonHtml}
     ${exiting ? `<span class="sde-release-cancelled-message">${escapeHtml(card.visualText || "Annullert. Kortet avsluttes.")}</span>` : ""}
     ${blocked && !handlerBlocked ? `<div class="sde-night-card-override"><strong>Fremtidig kjedesteg</strong><span>${escapeHtml(card.explanation || "Steget åpnes når dependencies er Utført.")}</span><span>Sperret av: ${escapeHtml(dependencies.join(", ") || "ukjent dependency")}</span></div>` : ""}
     ${handlerBlocked ? `<div class="sde-night-card-override"><strong>Handling krever avklaring</strong><span>${escapeHtml(card.explanation || "Canonical handleradapter er ikke entydig og klar.")}</span></div>` : ""}
@@ -40404,7 +40819,11 @@ function renderSdeCanonicalProductionReader(){
   const root = document.getElementById("sdeSkiftebevegelserDashboard");
   if(!root) return null;
   const readiness = getSdeTomorrowJsonReadinessForScore();
-  if(!readiness.ready || readiness.reason === "FRESH_NO_TURSATT_ASSIGNMENTS"){
+  const hasActiveWorkshopExitRequest = getSdeActiveWorkshopExitRequests().length > 0;
+  if(
+    (!readiness.ready || readiness.reason === "FRESH_NO_TURSATT_ASSIGNMENTS") &&
+    !hasActiveWorkshopExitRequest
+  ){
     renderSdeLimitedPlanningMode(root, {
       reason:readiness.reason || "DATA_NOT_READY",
       title:readiness.reason === "FRESH_NO_TURSATT_ASSIGNMENTS" ? "Datagrunnlag oppdatert" : "Avventer datagrunnlag",
@@ -41979,6 +42398,9 @@ function activateTab(name){
   }
 
   updateSporplanResetVisibility();
+  if(typeof renderVehicleStatusNotificationPopup === "function"){
+    renderVehicleStatusNotificationPopup();
+  }
 }
 
 function getActiveTabName(){
@@ -46202,7 +46624,182 @@ function submitWorkshopProcessCommandWithReadback(commandName,vehicleId,readback
   })();
 }
 
-function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",readback={},capabilities={},sheetCollapsed=false){
+function getWorkshopExitRequestForVehicle(readback,vehicleId,currentVisitOnly=true){
+  const token = normalizeVehicleToken(vehicleId);
+  if(!token) return null;
+  const placement = (Array.isArray(readback?.placements) ? readback.placements : [])
+    .find(item=>normalizeVehicleToken(item?.vehicleId) === token) || null;
+  const activeStatuses = new Set(["REQUESTED","CARD_CREATED","REPLAN_REQUIRED"]);
+  return (Array.isArray(readback?.workshopExitRequests) ? readback.workshopExitRequests : [])
+    .filter(request=>
+      normalizeVehicleToken(request?.vehicleId) === token &&
+      activeStatuses.has(String(request?.status || ""))
+    )
+    .filter(request=>
+      currentVisitOnly !== true ||
+      (
+        String(placement?.workshopVisitId || "") !== "" &&
+        String(request?.visitId || "") === String(placement.workshopVisitId)
+      )
+    )
+    .sort((left,right)=>
+      String(right?.requestedAt || "").localeCompare(String(left?.requestedAt || "")) ||
+      String(right?.exitRequestId || "").localeCompare(String(left?.exitRequestId || ""))
+    )[0] || null;
+}
+
+function getWorkshopExitRequestAvailability(readback,capabilities,vehicleId,inFlight=false){
+  const cleanVehicleId = String(vehicleId || "").trim();
+  const catalog = typeof getDropsVehicleCatalog === "function" ? getDropsVehicleCatalog() : {};
+  const registered = Object.values(catalog).some(vehicles=>
+    Array.isArray(vehicles) && vehicles.includes(cleanVehicleId)
+  );
+  const placement = (Array.isArray(readback?.placements) ? readback.placements : [])
+    .find(item=>String(item?.vehicleId || "") === cleanVehicleId) || null;
+  const roles = Array.isArray(capabilities?.roles)
+    ? capabilities.roles
+    : [capabilities?.role].filter(Boolean);
+  const capability = capabilities?.capabilities?.["vehicle_status.request_workshop_exit"];
+  const readiness = readback?.commandReadiness?.requestWorkshopExit || {};
+  const activeRequest = getWorkshopExitRequestForVehicle(readback,cleanVehicleId,true);
+  const sourceSlot = normalizeSlot(placement?.slot);
+  const available =
+    !inFlight &&
+    registered &&
+    readback?.ok === true &&
+    readback?.writeEnabled === true &&
+    readback?.requestWorkshopExitCommandAvailable === true &&
+    readback?.vehicleStatusPersistenceReady === true &&
+    isDropsPilotVehicleAllowed(readback,cleanVehicleId) &&
+    capabilities?.ok === true &&
+    capabilities?.roleResolved === true &&
+    roles.includes("verksted") &&
+    capability?.allowed === true &&
+    capability?.decision === "ALLOW" &&
+    readiness?.available === true &&
+    readiness?.capabilityAllowed === true &&
+    readiness?.persistenceReady === true &&
+    readiness?.registeredVehicleScopeReady === true &&
+    placement?.inWorkshop === true &&
+    isSdeWorkshopSlot(sourceSlot) &&
+    String(placement?.placementRevision || "") !== "" &&
+    String(placement?.workshopVisitId || "") !== "" &&
+    !activeRequest;
+  let reason = "";
+  if(activeRequest) reason = "already_requested";
+  else if(inFlight) reason = "command_in_flight";
+  else if(!registered) reason = "vehicle_not_registered";
+  else if(placement?.inWorkshop !== true || !isSdeWorkshopSlot(sourceSlot)){
+    reason = "current_workshop_placement_required";
+  }else if(!placement?.placementRevision || !placement?.workshopVisitId){
+    reason = "workshop_visit_or_revision_missing";
+  }else if(!isDropsPilotVehicleAllowed(readback,cleanVehicleId)){
+    reason = "vehicle_outside_registered_write_scope";
+  }else if(!available){
+    reason = "command_unavailable";
+  }
+  return {
+    available,
+    reason,
+    placement,
+    activeRequest,
+    sourceSlot,
+    ariaDisabled:available ? "false" : "true"
+  };
+}
+
+function buildWorkshopExitRequestPayload(vehicleId,readback,actionId=""){
+  const placement = (Array.isArray(readback?.placements) ? readback.placements : [])
+    .find(item=>String(item?.vehicleId || "") === String(vehicleId || "")) || null;
+  return {
+    actionId:String(actionId || ""),
+    vehicleId:String(vehicleId || ""),
+    expectedPlacementRevision:String(placement?.placementRevision || ""),
+    expectedVisitId:String(placement?.workshopVisitId || "")
+  };
+}
+
+function submitWorkshopExitRequestWithReadback(vehicleId,readback,capabilities,fetchImpl,actionIdFactory=createDropsNotOperationalActionId){
+  return (async()=>{
+    const readJson = async response=>response?.json ? response.json().catch(()=>({})) : {};
+    const getReadback = async()=>{
+      const response = await fetchImpl("/api/vehicle-status",{
+        method:"GET",
+        headers:{Accept:"application/json"},
+        cache:"no-store",
+        credentials:"same-origin"
+      });
+      const json = await readJson(response);
+      if(!response?.ok || json?.ok !== true) throw new Error("readback_failed");
+      return json;
+    };
+    try{
+      const before = await getReadback();
+      const availability = getWorkshopExitRequestAvailability(
+        before,
+        capabilities,
+        vehicleId,
+        false
+      );
+      if(!availability.available){
+        return {
+          ok:false,
+          error:"command_unavailable",
+          reason:availability.reason,
+          status:availability.activeRequest ? 200 : 404,
+          readback:before,
+          request:availability.activeRequest,
+          confirmedByReadback:Boolean(availability.activeRequest)
+        };
+      }
+      const payload = buildWorkshopExitRequestPayload(
+        vehicleId,
+        before,
+        actionIdFactory()
+      );
+      const response = await fetchImpl("/api/vehicle-status/commands/request-workshop-exit",{
+        method:"POST",
+        headers:{"Content-Type":"application/json",Accept:"application/json"},
+        body:JSON.stringify(payload),
+        credentials:"same-origin"
+      });
+      const body = await readJson(response);
+      if(!response?.ok){
+        const latest = response?.status === 409
+          ? await getReadback().catch(()=>before)
+          : before;
+        return {
+          ok:false,
+          error:String(body?.error || "command_rejected"),
+          status:Number(response?.status || 0),
+          readback:latest,
+          confirmedByReadback:false
+        };
+      }
+      const after = await getReadback();
+      const request = getWorkshopExitRequestForVehicle(after,vehicleId,true);
+      return request
+        ? {ok:true,status:200,readback:after,request,confirmedByReadback:true}
+        : {
+            ok:false,
+            error:"readback_confirmation_missing",
+            status:500,
+            readback:after,
+            confirmedByReadback:false
+          };
+    }catch(unusedError){
+      return {
+        ok:false,
+        error:"network_uncertain",
+        status:0,
+        readback,
+        confirmedByReadback:false
+      };
+    }
+  })();
+}
+
+function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",readback={},capabilities={},sheetCollapsed=false,exitRequestInFlight=false){
   const esc = value=>String(value ?? "").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
   const catalog = typeof getDropsVehicleCatalog === "function" ? getDropsVehicleCatalog() : {};
   const series = Object.hasOwn(catalog,String(selectedSeries || "")) ? String(selectedSeries) : "";
@@ -46249,6 +46846,24 @@ function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",r
     readback?.setWaitReasonCommandAvailable === true &&
     capabilities?.capabilities?.["vehicle_status.set_wait_reason"]?.allowed === true &&
     processCase?.active === true;
+  const exitAvailability = getWorkshopExitRequestAvailability(
+    readback,
+    capabilities,
+    vehicleId,
+    exitRequestInFlight
+  );
+  const exitRequest = exitAvailability.activeRequest;
+  const exitRequestHtml = exitRequest
+    ? `<div class="workshop-exit-action is-confirmed" data-sde-workshop-exit-confirmed>
+        <button type="button" disabled aria-disabled="true">Bestilt utkjøring</button>
+        <span>Serverbekreftet ${esc(formatDropsVehicleStatusTimestamp(exitRequest.requestedAt))} · fra ${esc(exitRequest.sourceSlot || exitAvailability.sourceSlot || "ukjent slot")}</span>
+      </div>`
+    : `<div class="workshop-exit-action">
+        <button type="button" data-sde-workshop-request-exit aria-disabled="${exitAvailability.ariaDisabled}"${exitAvailability.available ? "" : " disabled"}>${exitRequestInFlight ? "Sender og kontrollerer…" : "Bestill utkjøring"}</button>
+        <span>${exitAvailability.available
+          ? `Bestiller utkjøring fra ${esc(exitAvailability.sourceSlot)}. SDE oppretter skiftekort etter serverbekreftet readback.`
+          : "Krever fersk autoritativ verkstedplassering, registrert write-scope og Verksted-autoritet."}</span>
+      </div>`;
   const seriesOptions = [`<option value="">Velg serie</option>`]
     .concat(Object.entries(catalog).map(([key,list])=>`<option value="${key}"${key === series ? " selected" : ""}>Serie ${key} · ${list.length} kjøretøy</option>`)).join("");
   const vehicleOptions = [`<option value="">Velg kjøretøy</option>`]
@@ -46291,6 +46906,7 @@ function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",r
         ${typeof buildVehicleProcessTimelineHtml === "function"
           ? buildVehicleProcessTimelineHtml(readback,vehicleId)
           : ""}
+        ${exitRequestHtml}
         <button type="button" data-sde-workshop-report-operational${operationalActionDisabled ? " disabled aria-disabled=\"true\"" : " aria-disabled=\"false\""}>${reportOperationalAvailable || presentation.kind !== "operational" ? "Registrer Driftsklar" : "Registrert Driftsklar"}</button>
         <p class="vehicle-status-process-transparency">SDE registrerer automatiske prosesstidspunkter for kjøretøy- og saksflyt. Opplysningene brukes til kapasitets- og prosessanalyse, ikke til rangering av enkeltpersoner.</p>
       </section>
@@ -46743,6 +47359,7 @@ let workshopVehicleRegistrySelectedVehicle = "";
 let workshopStandardSheetCollapsed = false;
 let workshopReportOperationalInFlight = false;
 let workshopProcessCommandInFlight = false;
+let workshopExitRequestInFlight = false;
 let activeVehicleStatusNotification = null;
 const dismissedVehicleStatusNotifications = new Set();
 const vehicleStatusNotificationKnownIds = new Set();
@@ -46871,6 +47488,15 @@ function ensureDropsVehicleStatusContext(){
       renderDropsVehicleRegistry();
       renderWorkshopVehicleRegistry();
       renderSporplanVehicleStatusBadges();
+      if(
+        Array.isArray(dropsVehicleStatusReadback?.workshopExitRequests) &&
+        dropsVehicleStatusReadback.workshopExitRequests.some(request=>
+          ["REQUESTED","CARD_CREATED","REPLAN_REQUIRED"].includes(String(request?.status || ""))
+        ) &&
+        typeof renderSdeSkiftebevegelser === "function"
+      ){
+        renderSdeSkiftebevegelser();
+      }
       renderVehicleStatusNotificationPopup();
     });
   return dropsVehicleStatusContextLoadPromise;
@@ -46903,7 +47529,8 @@ function renderWorkshopVehicleRegistry(){
     workshopVehicleRegistrySelectedVehicle,
     dropsVehicleStatusReadback || {},
     dropsRuntimeCapabilities || {},
-    workshopStandardSheetCollapsed
+    workshopStandardSheetCollapsed,
+    workshopExitRequestInFlight
   );
   ensureDropsVehicleStatusContext();
   if(workshopVehicleRegistrySelectedVehicle && !workshopStandardSheetCollapsed){
@@ -46924,7 +47551,8 @@ function reconcileVehicleStatusNotifications(readback){
   const supported = readback.notifications
     .filter(notification=>
       notification?.kind === "VEHICLE_OPERATIONAL" ||
-      notification?.kind === "REPAIR_REQUESTED"
+      notification?.kind === "REPAIR_REQUESTED" ||
+      notification?.kind === "WORKSHOP_EXIT_REQUESTED"
     )
     .filter(notification=>String(notification?.notificationId || "") !== "");
   if(!vehicleStatusNotificationBaselineInitialized){
@@ -46956,23 +47584,50 @@ function reconcileVehicleStatusNotifications(readback){
   return added;
 }
 
-function getNextVehicleStatusNotification(){
+function isVehicleStatusNotificationVisibleInCurrentSurface(notification){
+  if(!notification) return false;
+  const level = getActiveAccessLevel();
+  const tab = getActiveTabName();
+  if(notification.kind === "WORKSHOP_EXIT_REQUESTED"){
+    if(notification.targetRole === "txp"){
+      return level === "2" && tab === "grunnoppstilling";
+    }
+    if(notification.targetRole === "drops"){
+      return level === "1" && tab === "dropsMateriellstyrer";
+    }
+    return false;
+  }
+  if(notification.kind === "REPAIR_REQUESTED" && notification.targetRole === "verksted"){
+    return level === "4" && tab === "verkstedBestillinger";
+  }
+  return true;
+}
+
+function getNextVehicleStatusNotification(predicate=isVehicleStatusNotificationVisibleInCurrentSurface){
   if(
     activeVehicleStatusNotification?.notificationId &&
-    !dismissedVehicleStatusNotifications.has(activeVehicleStatusNotification.notificationId)
+    !dismissedVehicleStatusNotifications.has(activeVehicleStatusNotification.notificationId) &&
+    predicate(activeVehicleStatusNotification)
   ){
     return activeVehicleStatusNotification;
   }
+  if(
+    activeVehicleStatusNotification?.notificationId &&
+    !dismissedVehicleStatusNotifications.has(activeVehicleStatusNotification.notificationId) &&
+    !vehicleStatusNotificationPending.some(item=>
+      item?.notificationId === activeVehicleStatusNotification.notificationId
+    )
+  ){
+    vehicleStatusNotificationPending.unshift(activeVehicleStatusNotification);
+  }
   activeVehicleStatusNotification = null;
-  while(vehicleStatusNotificationPending.length){
-    const candidate = vehicleStatusNotificationPending.shift();
-    if(
-      candidate?.notificationId &&
-      !dismissedVehicleStatusNotifications.has(candidate.notificationId)
-    ){
-      activeVehicleStatusNotification = candidate;
-      break;
-    }
+  const index = vehicleStatusNotificationPending.findIndex(candidate=>
+    candidate?.notificationId &&
+    !dismissedVehicleStatusNotifications.has(candidate.notificationId) &&
+    predicate(candidate)
+  );
+  if(index >= 0){
+    activeVehicleStatusNotification = vehicleStatusNotificationPending.splice(index,1)[0];
   }
   return activeVehicleStatusNotification;
 }
@@ -46980,6 +47635,18 @@ function getNextVehicleStatusNotification(){
 function selectVehicleStatusNotificationVehicle(notification){
   const vehicleId = String(notification?.vehicleId || "");
   const series = vehicleId.split("-")[0];
+  if(notification?.kind === "WORKSHOP_EXIT_REQUESTED"){
+    if(notification?.targetRole === "txp"){
+      activateTab("grunnoppstilling");
+    }else if(notification?.targetRole === "drops"){
+      dropsVehicleRegistrySelectedSeries = series;
+      dropsVehicleRegistrySelectedVehicle = vehicleId;
+      dropsStandardSheetCollapsed = false;
+      activateTab("dropsMateriellstyrer");
+      renderDropsVehicleRegistry();
+    }
+    return;
+  }
   if(notification?.targetRole === "verksted"){
     workshopVehicleRegistrySelectedSeries = series;
     workshopVehicleRegistrySelectedVehicle = vehicleId;
@@ -47003,14 +47670,33 @@ function buildWorkshopNotificationPopupHtml(notification){
   if(!notification) return "";
   const payload = notification.payload || {};
   const repairRequested = notification.kind === "REPAIR_REQUESTED";
-  const title = repairRequested
-    ? "Bestilling av reparasjon"
-    : "Kjøretøy registrert Driftsklar";
+  const workshopExitRequested = notification.kind === "WORKSHOP_EXIT_REQUESTED";
+  const title = workshopExitRequested
+    ? "Bestilt utkjøring fra Verksted"
+    : repairRequested
+      ? "Bestilling av reparasjon"
+      : "Kjøretøy registrert Driftsklar";
   const requestedAt = String(payload.requestedAt || notification.createdAt || "");
-  return `<section class="vehicle-status-notification-popup${repairRequested ? " is-repair-requested" : " is-operational"}" role="alertdialog" aria-label="${escapeHtml(title)}">
+  let suggestedTarget = "";
+  if(workshopExitRequested){
+    try{
+      suggestedTarget = normalizeSlot(
+        buildSdeWorkshopExitMoveNeeds([])
+          .find(row=>String(row?.workshopExitRequestId || "") === String(payload?.exitRequestId || ""))
+          ?.recommendedSlot
+      );
+    }catch(unusedError){
+      suggestedTarget = "";
+    }
+  }
+  return `<section class="vehicle-status-notification-popup${workshopExitRequested ? " is-workshop-exit-requested" : repairRequested ? " is-repair-requested" : " is-operational"}" role="alertdialog" aria-label="${escapeHtml(title)}">
     <button type="button" data-sde-dismiss-vehicle-status-notification aria-label="Lukk varsel">×</button>
     <strong>${escapeHtml(title)}</strong>
     <span>Kjøretøy: ${escapeHtml(notification.vehicleId || "")}</span>
+    ${workshopExitRequested ? `<span>Fra slot: ${escapeHtml(payload.sourceSlot || "Ukjent")}</span>
+    <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>
+    <span>Klassifisering: ${escapeHtml(payload.classification || "UNKNOWN")}</span>
+    ${suggestedTarget ? `<span>Foreslått mål: ${escapeHtml(suggestedTarget)}</span>` : ""}` : ""}
     ${repairRequested ? `<span>Feiltype: ${escapeHtml(payload.category || "")}</span>
     <span>Beskrivelse: ${escapeHtml(payload.description || "")}</span>
     <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>` : ""}
@@ -47057,27 +47743,6 @@ function renderVehicleStatusNotificationPopup(){
     host.className = "vehicle-status-notification-host";
     document.body.appendChild(host);
   }
-  const candidate = (
-    activeVehicleStatusNotification?.notificationId &&
-    !dismissedVehicleStatusNotifications.has(activeVehicleStatusNotification.notificationId)
-  )
-    ? activeVehicleStatusNotification
-    : vehicleStatusNotificationPending.find(notification=>
-        notification?.notificationId &&
-        !dismissedVehicleStatusNotifications.has(notification.notificationId)
-      );
-  const workshopNotificationOutsideLevel4=
-    getActiveAccessLevel() !== "4" &&
-    (typeof activeLevel === "undefined" || String(activeLevel) !== "4");
-  if(
-    candidate?.kind === "REPAIR_REQUESTED" &&
-    candidate?.targetRole === "verksted" &&
-    workshopNotificationOutsideLevel4
-  ){
-    host.classList.remove("audio-blocked");
-    host.innerHTML="";
-    return;
-  }
   const next = getNextVehicleStatusNotification();
   if(
     next?.kind === "REPAIR_REQUESTED" &&
@@ -47090,7 +47755,11 @@ function renderVehicleStatusNotificationPopup(){
   host.classList.remove("audio-blocked");
   host.innerHTML = buildWorkshopNotificationPopupHtml(next);
   if(next) attemptVehicleStatusNotificationAudio(next);
-  if(next && typeof recordVehicleStatusNotificationPresented === "function"){
+  if(
+    next &&
+    next.kind !== "WORKSHOP_EXIT_REQUESTED" &&
+    typeof recordVehicleStatusNotificationPresented === "function"
+  ){
     recordVehicleStatusNotificationPresented(next);
   }
 }
@@ -47170,6 +47839,8 @@ function getDropsVehicleAuthoritativeRenderSignature(readback,vehicleId){
     cases:forSelectedVehicle(readback?.cases),
     faults:forSelectedVehicle(readback?.faults),
     repairRequests:forSelectedVehicle(readback?.repairRequests),
+    workshopExitRequests:forSelectedVehicle(readback?.workshopExitRequests),
+    workshopExitEvents:forSelectedVehicle(readback?.workshopExitEvents),
     processCases:forSelectedVehicle(readback?.processCases),
     placements:forSelectedVehicle(readback?.placements),
     gates:{
@@ -47178,6 +47849,7 @@ function getDropsVehicleAuthoritativeRenderSignature(readback,vehicleId){
       registerFaultCommandAvailable:readback?.registerFaultCommandAvailable === true,
       vehicleStatusLifecycleCommandsAvailable:readback?.vehicleStatusLifecycleCommandsAvailable === true,
       requestRepairCommandAvailable:readback?.requestRepairCommandAvailable === true,
+      requestWorkshopExitCommandAvailable:readback?.requestWorkshopExitCommandAvailable === true,
       vehicleStatusPersistenceReady:readback?.vehicleStatusPersistenceReady === true,
       commandReadiness:readback?.commandReadiness || null,
       workStartedCommandAvailable:readback?.workStartedCommandAvailable === true,
@@ -47190,6 +47862,18 @@ function getDropsVehicleAuthoritativeRenderSignature(readback,vehicleId){
         ? readback.vehicleStatusLifecycleAllowedVehicleIds
         : []
     }
+  });
+}
+
+function getWorkshopExitPlanningReadbackSignature(readback){
+  return serializeDropsVehicleRenderValue({
+    workshopExitRequests:Array.isArray(readback?.workshopExitRequests)
+      ? readback.workshopExitRequests
+      : [],
+    workshopExitEvents:Array.isArray(readback?.workshopExitEvents)
+      ? readback.workshopExitEvents
+      : [],
+    placements:Array.isArray(readback?.placements) ? readback.placements : []
   });
 }
 
@@ -47211,10 +47895,17 @@ async function refreshVehicleStatusReadback(fetchImpl=window.fetch.bind(window))
       readback,
       dropsVehicleRegistrySelectedVehicle
     );
+    const workshopExitPlanningChanged =
+      getWorkshopExitPlanningReadbackSignature(dropsVehicleStatusReadback) !==
+      getWorkshopExitPlanningReadbackSignature(readback);
     acceptVehicleStatusReadback(readback);
     if(refreshSelectedVehicle) renderDropsVehicleRegistry();
     renderWorkshopVehicleRegistry();
     renderSporplanVehicleStatusBadges();
+    if(workshopExitPlanningChanged){
+      if(typeof renderSdeSkiftebevegelser === "function") renderSdeSkiftebevegelser();
+      if(typeof buildSporplan === "function") buildSporplan();
+    }
     renderVehicleStatusNotificationPopup();
   }catch(unusedError){ /* fail closed on last confirmed GET */ }
 }
@@ -47273,6 +47964,11 @@ function handleDropsNotOperationalRegistryClick(event){
   if(event.target.closest("[data-sde-workshop-report-operational]")){
     event.preventDefault();
     submitWorkshopReportOperationalFromUi();
+    return true;
+  }
+  if(event.target.closest("[data-sde-workshop-request-exit]")){
+    event.preventDefault();
+    submitWorkshopExitRequestFromUi();
     return true;
   }
   if(event.target.closest("[data-sde-workshop-work-started]")){
@@ -47418,6 +48114,37 @@ async function submitWorkshopReportOperationalFromUi(){
     renderWorkshopVehicleRegistry();
     renderDropsVehicleRegistry();
     renderSporplanVehicleStatusBadges();
+    renderVehicleStatusNotificationPopup();
+  }
+}
+
+async function submitWorkshopExitRequestFromUi(){
+  if(workshopExitRequestInFlight || !workshopVehicleRegistrySelectedVehicle) return;
+  const availability = getWorkshopExitRequestAvailability(
+    dropsVehicleStatusReadback,
+    dropsRuntimeCapabilities,
+    workshopVehicleRegistrySelectedVehicle,
+    false
+  );
+  if(!availability.available) return;
+  workshopExitRequestInFlight = true;
+  renderWorkshopVehicleRegistry();
+  try{
+    const result = await submitWorkshopExitRequestWithReadback(
+      workshopVehicleRegistrySelectedVehicle,
+      dropsVehicleStatusReadback,
+      dropsRuntimeCapabilities,
+      window.fetch.bind(window)
+    );
+    if(result?.readback) acceptVehicleStatusReadback(result.readback);
+  }finally{
+    workshopExitRequestInFlight = false;
+    renderWorkshopVehicleRegistry();
+    renderDropsVehicleRegistry();
+    renderSporplanVehicleStatusBadges();
+    if(typeof renderSdeSkiftebevegelser === "function"){
+      renderSdeSkiftebevegelser();
+    }
     renderVehicleStatusNotificationPopup();
   }
 }

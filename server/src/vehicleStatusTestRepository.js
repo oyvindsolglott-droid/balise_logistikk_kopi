@@ -21,6 +21,8 @@ const NOTIFICATION_TABLE = "vehicle_status_role_notifications";
 const PROCESS_CASE_TABLE = "vehicle_status_process_cases";
 const PROCESS_EVENT_TABLE = "vehicle_status_process_events";
 const PROCESS_OBSERVATION_TABLE = "vehicle_status_process_observations";
+const WORKSHOP_EXIT_REQUEST_TABLE = "vehicle_status_workshop_exit_requests";
+const WORKSHOP_EXIT_EVENT_TABLE = "vehicle_status_workshop_exit_events";
 const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
 const SEMANTIC_NOOP = Symbol("vehicle_status_semantic_noop");
 
@@ -56,6 +58,7 @@ function createVehicleStatusRepository(options = {}){
       [LIFECYCLE_COMMANDS.REGISTER_FAULT]: executeRegisterFault,
       [LIFECYCLE_COMMANDS.REPORT_NOT_OPERATIONAL]: executeReportNotOperationalV2,
       [LIFECYCLE_COMMANDS.REQUEST_REPAIR]: executeRequestRepair,
+      [LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT]: executeRequestWorkshopExit,
       [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: executeMarkForTurning,
       [LIFECYCLE_COMMANDS.REPORT_OPERATIONAL]: executeReportOperational,
       [LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED]: executeNotificationPresented,
@@ -370,6 +373,159 @@ function createVehicleStatusRepository(options = {}){
       disposition: record?.disposition || null,
       statusRevision: record?.status_revision || 0,
       externalRequestSent: false
+    });
+  }
+
+  function executeRequestWorkshopExit(command, authority){
+    const placementObservation = findObservation(`placement:${command.vehicleId}`);
+    const placement = placementObservation
+      ? safeJson(placementObservation.payload_json, {})
+      : null;
+    const sourceSlot = normalizeSlot(placement?.slot);
+    if(!placement || placement.inWorkshop !== true || !WORKSHOP_SLOTS.has(sourceSlot)){
+      throw conflict(
+        "workshop_current_placement_required",
+        "The vehicle must have a server-confirmed current workshop placement."
+      );
+    }
+    if(placementObservation.source_revision !== command.expectedPlacementRevision){
+      throw conflict(
+        "workshop_placement_revision_mismatch",
+        "The workshop placement revision is stale.",
+        { currentPlacementRevision: placementObservation.source_revision }
+      );
+    }
+    if(placement.workshopVisitId !== command.expectedVisitId){
+      throw conflict(
+        "workshop_visit_mismatch",
+        "The workshop visit is stale.",
+        { currentVisitId: placement.workshopVisitId }
+      );
+    }
+    const existing = db.prepare(`
+      SELECT * FROM ${WORKSHOP_EXIT_REQUEST_TABLE}
+      WHERE vehicle_id = ? AND visit_id = ?
+        AND status IN ('REQUESTED','CARD_CREATED','REPLAN_REQUIRED')
+      ORDER BY requested_at, exit_request_id
+      LIMIT 1
+    `).get(command.vehicleId, placement.workshopVisitId);
+    if(existing){
+      return semanticNoOp(semanticNoOpResult(
+        LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT,
+        command,
+        existing.event_id,
+        {
+          ...mapWorkshopExitRequest(existing),
+          alreadyRequested: true
+        }
+      ));
+    }
+
+    const timestamp = now();
+    const eventId = randomUUID();
+    const exitRequestId = randomUUID();
+    const txpNotificationId = randomUUID();
+    const dropsNotificationId = randomUUID();
+    const record = findRecord(command.vehicleId);
+    const classification = classifyWorkshopExitRequest(record);
+    const reasonCodes = classification === "UNKNOWN"
+      ? ["authoritative_operational_classification_unavailable"]
+      : [`vehicle_status_${classification.toLowerCase()}`];
+    db.prepare(`
+      INSERT INTO ${WORKSHOP_EXIT_REQUEST_TABLE} (
+        exit_request_id, vehicle_id, visit_id, source_slot,
+        placement_revision, classification, reason_codes_json, status,
+        requested_at, requested_by, updated_at, completed_at,
+        completed_slot, completed_placement_revision, event_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'REQUESTED', ?, ?, ?, NULL, NULL, NULL, ?)
+    `).run(
+      exitRequestId,
+      command.vehicleId,
+      placement.workshopVisitId,
+      sourceSlot,
+      placementObservation.source_revision,
+      classification,
+      JSON.stringify(reasonCodes),
+      timestamp,
+      authority.subject,
+      timestamp,
+      eventId
+    );
+    insertWorkshopExitEvent({
+      eventType: "WORKSHOP_EXIT_REQUESTED",
+      exitRequestId,
+      vehicleId: command.vehicleId,
+      visitId: placement.workshopVisitId,
+      timestamp,
+      actorSubject: authority.subject,
+      actorRole: authority.effectiveRole,
+      sourceRevision: placementObservation.source_revision,
+      payload: {
+        sourceSlot,
+        classification,
+        reasonCodes
+      },
+      idempotencyKey: `${command.actionId}:workshop-exit-requested`
+    });
+    for(const [targetRole, notificationId] of [
+      ["txp", txpNotificationId],
+      ["drops", dropsNotificationId]
+    ]){
+      insertNotification({
+        notificationId,
+        eventId,
+        targetRole,
+        kind: "WORKSHOP_EXIT_REQUESTED",
+        priority: "HIGH",
+        vehicleId: command.vehicleId,
+        faultId: null,
+        repairRequestId: null,
+        timestamp,
+        payload: {
+          exitRequestId,
+          sourceSlot,
+          visitId: placement.workshopVisitId,
+          requestedAt: timestamp,
+          classification,
+          reasonCodes
+        }
+      });
+    }
+    const currentCase = findCase(command.vehicleId);
+    const caseRevision = currentCase?.case_revision || 0;
+    insertEvent({
+      eventId,
+      command,
+      commandName: LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT,
+      authority,
+      timestamp,
+      caseBefore: caseRevision,
+      caseAfter: caseRevision,
+      statusBefore: record?.status_revision || 0,
+      statusAfter: record?.status_revision || 0,
+      previousState: {
+        sourceSlot,
+        visitId: placement.workshopVisitId
+      },
+      resultingState: {
+        exitRequestId,
+        status: "REQUESTED",
+        txpNotificationId,
+        dropsNotificationId
+      }
+    });
+    incrementGlobalRevision();
+    return resultBase(command, eventId, {
+      exitRequestId,
+      visitId: placement.workshopVisitId,
+      sourceSlot,
+      placementRevision: placementObservation.source_revision,
+      classification,
+      reasonCodes,
+      status: "REQUESTED",
+      requestedAt: timestamp,
+      requestedBy: authority.subject,
+      notificationIds: [txpNotificationId, dropsNotificationId]
     });
   }
 
@@ -863,6 +1019,8 @@ function createVehicleStatusRepository(options = {}){
     const repairRequests = db.prepare(`
       SELECT * FROM ${REPAIR_TABLE} ORDER BY vehicle_id, requested_at, repair_request_id
     `).all().map(mapRepair);
+    const workshopExitRequests = selectWorkshopExitRequests();
+    const workshopExitEvents = selectWorkshopExitEvents();
     const events = db.prepare(`SELECT * FROM ${EVENT_TABLE} ORDER BY server_timestamp, event_id`).all()
       .map(mapEvent);
     const processEvents = selectProcessEvents();
@@ -934,6 +1092,8 @@ function createVehicleStatusRepository(options = {}){
       cases,
       faults,
       repairRequests,
+      workshopExitRequests,
+      workshopExitEvents,
       events,
       processEvents,
       processCases,
@@ -978,10 +1138,21 @@ function createVehicleStatusRepository(options = {}){
         const previous = findObservation(observerKey);
         if(previous?.source_revision === sourceRevision) continue;
         const previousPayload = previous ? safeJson(previous.payload_json, {}) : null;
+        const fromSlot = normalizeSlot(previousPayload?.slot);
+        const fromWorkshop = WORKSHOP_SLOTS.has(fromSlot);
+        const toWorkshop = WORKSHOP_SLOTS.has(slot);
+        const previousVisitId =
+          typeof previousPayload?.workshopVisitId === "string"
+            ? previousPayload.workshopVisitId
+            : (typeof previousPayload?.lastWorkshopVisitId === "string"
+              ? previousPayload.lastWorkshopVisitId
+              : null);
+        const workshopVisitId = toWorkshop
+          ? (fromWorkshop && previousVisitId
+            ? previousVisitId
+            : `workshop-visit|${vehicleId}|${sourceRevision}`)
+          : null;
         if(previousPayload){
-          const fromSlot = normalizeSlot(previousPayload.slot);
-          const fromWorkshop = WORKSHOP_SLOTS.has(fromSlot);
-          const toWorkshop = WORKSHOP_SLOTS.has(slot);
           const eventType = !fromWorkshop && toWorkshop
             ? "WORKSHOP_AREA_ENTERED"
             : (fromWorkshop && !toWorkshop ? "WORKSHOP_AREA_EXITED" : null);
@@ -1002,11 +1173,24 @@ function createVehicleStatusRepository(options = {}){
                 `placement:${processCase.case_id}:${sourceRevision}:${fromSlot}:${slot}:${eventType}`
             }) ? 1 : 0;
           }
+          if(fromWorkshop && !toWorkshop && previousVisitId){
+            eventsCreated += completeActiveWorkshopExitRequests({
+              vehicleId,
+              visitId: previousVisitId,
+              completedSlot: slot,
+              placementRevision: sourceRevision,
+              timestamp
+            });
+          }
         }
         upsertObservation(observerKey, sourceRevision, {
           vehicleId,
           slot,
-          inWorkshop: WORKSHOP_SLOTS.has(slot)
+          inWorkshop: toWorkshop,
+          placementRevision: sourceRevision,
+          observedAt: timestamp,
+          workshopVisitId,
+          lastWorkshopVisitId: workshopVisitId || previousVisitId
         }, timestamp);
       }
       if(eventsCreated) incrementGlobalRevision();
@@ -1100,7 +1284,9 @@ function createVehicleStatusRepository(options = {}){
         idempotency: countRows(IDEMPOTENCY_TABLE),
         processCases: countRows(PROCESS_CASE_TABLE),
         processEvents: countRows(PROCESS_EVENT_TABLE),
-        processObservations: countRows(PROCESS_OBSERVATION_TABLE)
+        processObservations: countRows(PROCESS_OBSERVATION_TABLE),
+        workshopExitRequests: countRows(WORKSHOP_EXIT_REQUEST_TABLE),
+        workshopExitEvents: countRows(WORKSHOP_EXIT_EVENT_TABLE)
       },
       records: db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all(),
       cases: db.prepare(`SELECT * FROM ${CASE_TABLE} ORDER BY vehicle_id`).all(),
@@ -1110,7 +1296,15 @@ function createVehicleStatusRepository(options = {}){
       events: db.prepare(`SELECT * FROM ${EVENT_TABLE} ORDER BY event_id`).all(),
       idempotency: db.prepare(`SELECT * FROM ${IDEMPOTENCY_TABLE} ORDER BY action_id`).all(),
       processCases: db.prepare(`SELECT * FROM ${PROCESS_CASE_TABLE} ORDER BY vehicle_id, sequence`).all(),
-      processEvents: db.prepare(`SELECT * FROM ${PROCESS_EVENT_TABLE} ORDER BY server_timestamp, process_event_id`).all()
+      processEvents: db.prepare(`SELECT * FROM ${PROCESS_EVENT_TABLE} ORDER BY server_timestamp, process_event_id`).all(),
+      workshopExitRequests: db.prepare(`
+        SELECT * FROM ${WORKSHOP_EXIT_REQUEST_TABLE}
+        ORDER BY requested_at, exit_request_id
+      `).all(),
+      workshopExitEvents: db.prepare(`
+        SELECT * FROM ${WORKSHOP_EXIT_EVENT_TABLE}
+        ORDER BY server_timestamp, workshop_exit_event_id
+      `).all()
     };
   }
 
@@ -1454,6 +1648,134 @@ function createVehicleStatusRepository(options = {}){
       ORDER BY observer_key
     `).all().map((row) => safeJson(row.payload_json, {}));
   }
+  function classifyWorkshopExitRequest(record){
+    if(record?.disposition === "TIL_DREI") return "TIL_DREI";
+    if(record?.disposition === "TIL_REP") return "TIL_REP";
+    if(record?.status === "DRIFTSKLAR") return "DRIFTSKLAR";
+    if(record?.status === "IKKE_DRIFTSKLAR") return "IKKE_DRIFTSKLAR";
+    return "UNKNOWN";
+  }
+  function mapWorkshopExitRequest(row){
+    return {
+      exitRequestId: row.exit_request_id,
+      vehicleId: row.vehicle_id,
+      visitId: row.visit_id,
+      sourceSlot: row.source_slot,
+      placementRevision: row.placement_revision,
+      classification: row.classification,
+      reasonCodes: safeJson(row.reason_codes_json, []),
+      status: row.status,
+      requestedAt: row.requested_at,
+      requestedBy: row.requested_by,
+      updatedAt: row.updated_at,
+      completedAt: row.completed_at,
+      completedSlot: row.completed_slot,
+      completedPlacementRevision: row.completed_placement_revision,
+      eventId: row.event_id
+    };
+  }
+  function selectWorkshopExitRequests(){
+    return db.prepare(`
+      SELECT * FROM ${WORKSHOP_EXIT_REQUEST_TABLE}
+      ORDER BY requested_at, exit_request_id
+    `).all().map(mapWorkshopExitRequest);
+  }
+  function selectWorkshopExitEvents(){
+    return db.prepare(`
+      SELECT * FROM ${WORKSHOP_EXIT_EVENT_TABLE}
+      ORDER BY server_timestamp, workshop_exit_event_id
+    `).all().map((row) => ({
+      workshopExitEventId: row.workshop_exit_event_id,
+      eventType: row.event_type,
+      exitRequestId: row.exit_request_id,
+      vehicleId: row.vehicle_id,
+      visitId: row.visit_id,
+      timestamp: row.server_timestamp,
+      actorSubject: row.actor_subject,
+      actorRole: row.actor_role,
+      sourceRevision: row.source_revision,
+      payload: safeJson(row.payload_json, {}),
+      idempotencyKey: row.idempotency_key
+    }));
+  }
+  function insertWorkshopExitEvent(input){
+    const existing = input.idempotencyKey
+      ? db.prepare(`
+          SELECT 1 FROM ${WORKSHOP_EXIT_EVENT_TABLE}
+          WHERE idempotency_key = ?
+        `).get(input.idempotencyKey)
+      : null;
+    if(existing) return false;
+    db.prepare(`
+      INSERT INTO ${WORKSHOP_EXIT_EVENT_TABLE} (
+        workshop_exit_event_id, event_type, exit_request_id,
+        vehicle_id, visit_id, server_timestamp, actor_subject,
+        actor_role, source_revision, payload_json, idempotency_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      input.workshopExitEventId || randomUUID(),
+      input.eventType,
+      input.exitRequestId,
+      input.vehicleId,
+      input.visitId,
+      input.timestamp || now(),
+      input.actorSubject || null,
+      input.actorRole || null,
+      input.sourceRevision === undefined || input.sourceRevision === null
+        ? null
+        : String(input.sourceRevision),
+      JSON.stringify(input.payload || {}),
+      input.idempotencyKey || null
+    );
+    return true;
+  }
+  function completeActiveWorkshopExitRequests(input){
+    const rows = db.prepare(`
+      SELECT * FROM ${WORKSHOP_EXIT_REQUEST_TABLE}
+      WHERE vehicle_id = ? AND visit_id = ?
+        AND status IN ('REQUESTED','CARD_CREATED','REPLAN_REQUIRED')
+      ORDER BY requested_at, exit_request_id
+    `).all(input.vehicleId, input.visitId);
+    let completed = 0;
+    for(const row of rows){
+      const change = db.prepare(`
+        UPDATE ${WORKSHOP_EXIT_REQUEST_TABLE}
+        SET status = 'COMPLETED',
+            updated_at = ?,
+            completed_at = ?,
+            completed_slot = ?,
+            completed_placement_revision = ?
+        WHERE exit_request_id = ?
+          AND status IN ('REQUESTED','CARD_CREATED','REPLAN_REQUIRED')
+      `).run(
+        input.timestamp,
+        input.timestamp,
+        input.completedSlot,
+        input.placementRevision,
+        row.exit_request_id
+      );
+      if(!change.changes) continue;
+      insertWorkshopExitEvent({
+        eventType: "WORKSHOP_EXIT_COMPLETED",
+        exitRequestId: row.exit_request_id,
+        vehicleId: row.vehicle_id,
+        visitId: row.visit_id,
+        timestamp: input.timestamp,
+        actorSubject: "system|canonical-placement-observer",
+        actorRole: "system",
+        sourceRevision: input.placementRevision,
+        payload: {
+          fromSlot: row.source_slot,
+          completedSlot: input.completedSlot,
+          placementRevision: input.placementRevision
+        },
+        idempotencyKey:
+          `workshop-exit-completed:${row.exit_request_id}:${input.placementRevision}`
+      });
+      completed += 1;
+    }
+    return completed;
+  }
 
   return {
     executeCommand,
@@ -1489,7 +1811,7 @@ function initializeSchema(db){
       DROP TABLE IF EXISTS ${RECORD_TABLE};
       DROP TABLE IF EXISTS ${META_TABLE};
     `);
-  }else if(userVersion > 3){
+  }else if(userVersion > 4){
     throw new Error("vehicle_status_schema_version_unsupported");
   }
 
@@ -1684,9 +2006,77 @@ function initializeSchema(db){
     CREATE TRIGGER IF NOT EXISTS vehicle_status_process_events_immutable_delete
     BEFORE DELETE ON ${PROCESS_EVENT_TABLE}
     BEGIN SELECT RAISE(ABORT, 'vehicle status process events are immutable'); END;
+
+    CREATE TABLE IF NOT EXISTS ${WORKSHOP_EXIT_REQUEST_TABLE} (
+      exit_request_id TEXT PRIMARY KEY,
+      vehicle_id TEXT NOT NULL,
+      visit_id TEXT NOT NULL,
+      source_slot TEXT NOT NULL,
+      placement_revision TEXT NOT NULL,
+      classification TEXT NOT NULL CHECK(classification IN (
+        'TURSATT',
+        'RESERVE',
+        'TIL_DREI',
+        'TIL_REP',
+        'DRIFTSKLAR',
+        'IKKE_DRIFTSKLAR',
+        'UNKNOWN'
+      )),
+      reason_codes_json TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN (
+        'REQUESTED',
+        'CARD_CREATED',
+        'REPLAN_REQUIRED',
+        'COMPLETED',
+        'CANCELLED'
+      )),
+      requested_at TEXT NOT NULL,
+      requested_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      completed_at TEXT,
+      completed_slot TEXT,
+      completed_placement_revision TEXT,
+      event_id TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS vehicle_status_one_active_workshop_exit_per_visit
+      ON ${WORKSHOP_EXIT_REQUEST_TABLE}(vehicle_id, visit_id)
+      WHERE status IN ('REQUESTED','CARD_CREATED','REPLAN_REQUIRED');
+
+    CREATE TABLE IF NOT EXISTS ${WORKSHOP_EXIT_EVENT_TABLE} (
+      workshop_exit_event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL CHECK(event_type IN (
+        'WORKSHOP_EXIT_REQUESTED',
+        'WORKSHOP_EXIT_CARD_CREATED',
+        'WORKSHOP_EXIT_REPLAN_REQUIRED',
+        'WORKSHOP_EXIT_COMPLETED',
+        'WORKSHOP_EXIT_CANCELLED'
+      )),
+      exit_request_id TEXT NOT NULL,
+      vehicle_id TEXT NOT NULL,
+      visit_id TEXT NOT NULL,
+      server_timestamp TEXT NOT NULL,
+      actor_subject TEXT,
+      actor_role TEXT,
+      source_revision TEXT,
+      payload_json TEXT NOT NULL,
+      idempotency_key TEXT UNIQUE,
+      FOREIGN KEY(exit_request_id)
+        REFERENCES ${WORKSHOP_EXIT_REQUEST_TABLE}(exit_request_id)
+    );
+    CREATE INDEX IF NOT EXISTS vehicle_status_workshop_exit_events_request_time
+      ON ${WORKSHOP_EXIT_EVENT_TABLE}(
+        exit_request_id, server_timestamp, workshop_exit_event_id
+      );
+
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_workshop_exit_events_immutable_update
+    BEFORE UPDATE ON ${WORKSHOP_EXIT_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'workshop exit events are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_workshop_exit_events_immutable_delete
+    BEFORE DELETE ON ${WORKSHOP_EXIT_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'workshop exit events are immutable'); END;
   `);
   if(userVersion < 3) backfillProcessHistory(db);
-  db.exec("PRAGMA user_version = 3;");
+  db.exec("PRAGMA user_version = 4;");
 }
 
 function backfillProcessHistory(db){

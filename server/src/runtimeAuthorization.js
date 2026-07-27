@@ -32,6 +32,7 @@ const CAPABILITY_IDS = Object.freeze({
   REGISTER_FAULT: "vehicle_status.register_fault",
   REPORT_NOT_OPERATIONAL: "vehicle_status.report_not_operational",
   REQUEST_REPAIR: "vehicle_status.request_repair",
+  REQUEST_WORKSHOP_EXIT: "vehicle_status.request_workshop_exit",
   MARK_FOR_TURNING: "vehicle_status.mark_for_turning",
   REPORT_OPERATIONAL: "vehicle_status.report_operational",
   PRESENT_NOTIFICATION: "vehicle_status.notification_presented",
@@ -85,6 +86,12 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
     description: "Create one internal repair request for an active fault.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: [ROLE_KEYS.DROPS]
+  },
+  {
+    capability: CAPABILITY_IDS.REQUEST_WORKSHOP_EXIT,
+    description: "Request an authoritative exit from the current workshop visit.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.VERKSTED]
   },
   {
     capability: CAPABILITY_IDS.MARK_FOR_TURNING,
