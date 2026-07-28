@@ -167,11 +167,11 @@ assert.match(workshopHtml,/data-sde-workshop-fault-history/);
 assert.match(workshopHtml,/Historisk stigtrinn/);
 assert.match(workshopHtml,/<strong>COMPLETED<\/strong> · fault-resolved/);
 assert.doesNotMatch(workshopHtml,/other-vehicle|other-request/);
-assert.match(workshopHtml,/data-sde-workshop-work-started>Arbeid påbegynt/);
+assert.doesNotMatch(workshopHtml,/data-sde-workshop-work-started|Arbeid påbegynt|Arbeid startet/);
 assert.match(workshopHtml,/data-sde-workshop-wait-reason>/);
 assert.match(
   workshopHtml,
-  /data-sde-workshop-report-operational disabled aria-disabled="true">Registrert Driftsklar<\/button>/
+  /data-sde-workshop-report-operational aria-disabled="false">Registrer Driftsklar<\/button>/
 );
 
 const collapsedHtml = api.buildWorkshopVehicleRegistryHtml("74","74-04",mixedReadback,capabilities,true);

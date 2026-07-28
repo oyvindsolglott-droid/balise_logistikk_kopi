@@ -233,7 +233,7 @@ assert.match(serverSource, /registeredVehicleScopeReady:/);
 assert.match(serverSource, /persistenceReady:/);
 assert.match(source, /Sakstidslinje/);
 assert.match(source, /Ikke registrert/);
-assert.match(source, /Arbeid påbegynt/);
+assert.doesNotMatch(source, /Arbeid påbegynt|Arbeid startet/);
 assert.match(source, /Årsak til venting/);
 assert.match(source, /Analyse og prosessdata/);
 assert.match(source, /Operativt øyeblikksbilde/);

@@ -224,6 +224,17 @@ test("SPORPLAN exact background — byte-locked artwork and 31 dynamic slot anch
   );
 });
 
+test("NIVÅ 4 — Stadler handlingssenter, verkstedkø, meldinger og Driftsklar-port er autoritative", () => {
+  assertPassed(
+    runHarness("sde-stadler-action-center-server-harness.js"),
+    "Stadler action-center server contract",
+  );
+  assertPassed(
+    runHarness("sde-stadler-action-center-ui-harness.js"),
+    "Stadler action-center UI contract",
+  );
+});
+
 test("G — end-to-end integrity gate is complete and side-effect free", () => {
   const contract = source => {
     assert.equal(countFunction(source, "buildSdeCanonicalIntegrityReport"), 1);
