@@ -235,6 +235,13 @@ test("NIVÅ 4 — Stadler handlingssenter, verkstedkø, meldinger og Driftsklar-
   );
 });
 
+test("SDE common card pipeline — workshop exit and manual drag keep cards, reservations and unresolved follow-up consistent", () => {
+  assertPassed(
+    runHarness("sde-unified-card-pipeline-workshop-drag-harness.js"),
+    "SDE unified workshop/drag card pipeline",
+  );
+});
+
 test("G — end-to-end integrity gate is complete and side-effect free", () => {
   const contract = source => {
     assert.equal(countFunction(source, "buildSdeCanonicalIntegrityReport"), 1);
