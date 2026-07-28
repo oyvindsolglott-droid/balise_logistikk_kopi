@@ -126,7 +126,7 @@ const FIELDS = Object.freeze({
     "expectedQueueRevision", "expectedPlacementRevision"
   ]),
   [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: new Set([
-    "actionId", "targetRole", "message"
+    "actionId", "targetRole", "message", "selectedSlotId", "selectedVehicleId"
   ]),
   [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: new Set([
     "actionId", "expectedStatusRevision", "vehicleId"
@@ -289,13 +289,40 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
   }else if(commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE){
     const targetRole = String(input.targetRole || "").trim().toLowerCase();
     const message = normalizedText(input.message, 250);
+    const selectedSlotId = String(input.selectedSlotId || "").trim().toUpperCase();
+    const selectedVehicleId = input.selectedVehicleId == null || input.selectedVehicleId === ""
+      ? ""
+      : normalizeRegisteredVehicleId(input.selectedVehicleId);
     if(!WORKSHOP_MESSAGE_TARGET_ROLES.has(targetRole)){
       return invalid(400, "invalid_message_target", "targetRole is not allowed.");
     }
     if(!message){
       return invalid(400, "invalid_message", "message must contain 1 to 250 characters.");
     }
-    normalized = { actionId, vehicleId: "WORKSHOP", targetRole, message };
+    if(selectedSlotId && !WORKSHOP_SLOTS.has(selectedSlotId)){
+      return invalid(400, "invalid_workshop_slot",
+        "selectedSlotId must be 8N, 7N, 8S or 7S.");
+    }
+    if(
+      input.selectedVehicleId != null &&
+      input.selectedVehicleId !== "" &&
+      (
+        !selectedVehicleId ||
+        !isRegisteredVehicle(selectedVehicleId) ||
+        (allowedVehicleIds instanceof Set && !allowedVehicleIds.has(selectedVehicleId))
+      )
+    ){
+      return invalid(404, "vehicle_not_found",
+        "selectedVehicleId is not allowed by the authoritative registry.");
+    }
+    normalized = {
+      actionId,
+      vehicleId:"WORKSHOP",
+      targetRole,
+      message,
+      selectedSlotId,
+      selectedVehicleId
+    };
   }else if(commandName === LIFECYCLE_COMMANDS.MARK_FOR_TURNING){
     const expectedStatusRevision = revision(input.expectedStatusRevision);
     if(expectedStatusRevision === null) return invalidRevision("expectedStatusRevision");

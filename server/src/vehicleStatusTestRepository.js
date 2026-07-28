@@ -992,12 +992,15 @@ function createVehicleStatusRepository(options = {}){
     if(command.operation === "ADD"){
       const duplicate = db.prepare(`
         SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
-        WHERE target_slot = ? AND vehicle_id = ?
+        WHERE vehicle_id = ?
           AND status IN ('QUEUED','READY_FOR_ACTIVATION','ACTIVATING','CARD_CREATED','REPLAN_REQUIRED')
-      `).get(command.targetSlot, command.vehicleId);
+      `).get(command.vehicleId);
       if(duplicate){
         throw conflict("workshop_queue_duplicate",
-          "Vehicle already has an active entry for this workshop track.");
+          "Vehicle already has an active workshop ingress entry.", {
+            existingTargetSlot: duplicate.target_slot,
+            existingQueueEntryId: duplicate.queue_entry_id
+          });
       }
       const occupiedBy = workshopSlotOccupant(command.targetSlot);
       const currentSourceSlot = currentVehicleSlot(command.vehicleId);
@@ -1120,7 +1123,11 @@ function createVehicleStatusRepository(options = {}){
     `).run(
       randomUUID(), messageId, command.targetRole, timestamp,
       authority.subject, authority.effectiveRole || null,
-      JSON.stringify({ message: command.message }),
+      JSON.stringify({
+        message:command.message,
+        selectedSlotId:command.selectedSlotId || "",
+        selectedVehicleId:command.selectedVehicleId || ""
+      }),
       `${command.actionId}:workshop-message`
     );
     insertNotification({
@@ -1133,21 +1140,35 @@ function createVehicleStatusRepository(options = {}){
       faultId: null,
       repairRequestId: null,
       timestamp,
-      payload: { messageId, message: command.message, sourceRole: "verksted" }
+      payload: {
+        messageId,
+        message:command.message,
+        sourceRole:"verksted",
+        selectedSlotId:command.selectedSlotId || "",
+        selectedVehicleId:command.selectedVehicleId || ""
+      }
     });
     insertEvent({
       eventId, command: eventCommand, commandName: LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE,
       authority, timestamp,
       caseBefore: 0, caseAfter: 0, statusBefore: 0, statusAfter: 0,
       previousState: {},
-      resultingState: { messageId, notificationId, targetRole: command.targetRole }
+      resultingState: {
+        messageId,
+        notificationId,
+        targetRole:command.targetRole,
+        selectedSlotId:command.selectedSlotId || "",
+        selectedVehicleId:command.selectedVehicleId || ""
+      }
     });
     incrementGlobalRevision();
     return resultBase(command, eventId, {
       messageId,
       notificationId,
       targetRole: command.targetRole,
-      createdAt: timestamp
+      createdAt: timestamp,
+      selectedSlotId:command.selectedSlotId || "",
+      selectedVehicleId:command.selectedVehicleId || ""
     });
   }
 
@@ -2073,8 +2094,10 @@ function createVehicleStatusRepository(options = {}){
   }
   function selectWorkshopMessages(){
     return db.prepare(`
-      SELECT * FROM ${WORKSHOP_MESSAGE_TABLE}
-      ORDER BY created_at, message_id
+      SELECT m.*, e.payload_json
+      FROM ${WORKSHOP_MESSAGE_TABLE} m
+      LEFT JOIN ${WORKSHOP_MESSAGE_EVENT_TABLE} e ON e.message_id=m.message_id
+      ORDER BY m.created_at, m.message_id
     `).all().map(mapWorkshopMessage);
   }
   function selectPlacementObservations(){
@@ -2841,13 +2864,16 @@ function mapWorkshopIngressQueueEvent(row){
 }
 
 function mapWorkshopMessage(row){
+  const context = safeJson(row.payload_json, {});
   return {
     messageId: row.message_id,
     targetRole: row.target_role,
     message: row.message_text,
     createdAt: row.created_at,
     notificationId: row.notification_id,
-    eventId: row.event_id
+    eventId: row.event_id,
+    selectedSlotId:String(context.selectedSlotId || ""),
+    selectedVehicleId:String(context.selectedVehicleId || "")
   };
 }
 
