@@ -37637,8 +37637,16 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
 
   const currentOverview = buildSdeNightPlacementOverviewData(data);
   const projectedEntry = currentOverview.slots?.[targetSlot] || null;
+  const canonicalDropReservationState = getSdeProductionReaderMode(window.location, {
+    technicalFailure:Boolean(sdeProductionReaderFallbackError) || isSdeCanonicalReaderTechnicalFailureTestRequested()
+  }) === "canonical"
+    ? getSdeCanonicalDropTargetReservationState(targetSlot,vehicle)
+    : {available:false,active:false,reservation:null,ownerVehicle:"",ownerCardId:"",sameVehicle:false,staleReservations:[]};
+  const projectedPlanHasCanonicalOwner = canonicalDropReservationState.available === true
+    ? canonicalDropReservationState.active === true
+    : true;
   const projectedCollisionVehicles = getSdeNightPlacementCollisionVehicles(projectedEntry);
-  if(projectedCollisionVehicles.length > 1){
+  if(projectedCollisionVehicles.length > 1 && projectedPlanHasCanonicalOwner){
     const vehicleList = projectedCollisionVehicles.join(", ");
     return {
       ok:false,
@@ -37651,7 +37659,21 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
   }
 
   const projectedReservedVehicle = sanitizeVehicleValue(projectedEntry?.proposedVehicle || projectedEntry?.plannedVehicle);
-  if(projectedReservedVehicle && normalizeVehicleToken(projectedReservedVehicle) !== normalizeVehicleToken(vehicle)){
+  if(
+    canonicalDropReservationState.active &&
+    !canonicalDropReservationState.sameVehicle
+  ){
+    const ownerVehicle = canonicalDropReservationState.ownerVehicle || projectedReservedVehicle;
+    return {
+      ok:false,
+      timeStatus:"CONFLICT_TARGET_OCCUPIED",
+      targetSlotOccupant:ownerVehicle,
+      message:`Plassen er reservert av aktivt canonical kort for ${ownerVehicle}.`,
+      conflicts:[`Målspor ${targetSlot} eies av aktivt kort ${canonicalDropReservationState.ownerCardId}.`],
+      affectedVehicles:[{slot:targetSlot,vehicle:ownerVehicle,reason:"aktiv canonical kortreservasjon"}]
+    };
+  }
+  if(projectedReservedVehicle && normalizeVehicleToken(projectedReservedVehicle) !== normalizeVehicleToken(vehicle) && projectedPlanHasCanonicalOwner){
     return {
       ok:false,
       timeStatus:"CONFLICT_TARGET_OCCUPIED",
@@ -37663,7 +37685,7 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
   }
 
   const projectedOccupant = sanitizeVehicleValue(projectedEntry?.vehicle);
-  if(projectedOccupant && normalizeVehicleToken(projectedOccupant) !== normalizeVehicleToken(vehicle)){
+  if(projectedOccupant && normalizeVehicleToken(projectedOccupant) !== normalizeVehicleToken(vehicle) && projectedPlanHasCanonicalOwner){
     if(projectedEntry?.sourceKind === "move"){
       const isTemporaryTarget = projectedEntry?.stepRole === "temporary_parking";
       return {
@@ -40786,6 +40808,293 @@ function buildSdeCanonicalProductionReader(runtimeSnapshot=null){
   return assertSdeCanonicalProductionReaderContract(reader);
 }
 
+function getSdeCanonicalUnifiedCardSourceType(row={}){
+  if(row?.isWorkshopExitRequestNeed === true || String(row?.workshopExitRequestId || "").trim()){
+    return "WORKSHOP_EXIT";
+  }
+  if(
+    row?.sdeCanonicalGraphicDragOrder === true ||
+    row?.sdeNightPlacementDragOverrideActive === true ||
+    String(row?.canonicalProducer || "").trim() === "graphic_drag_generated_move"
+  ){
+    return "MANUAL_DRAG";
+  }
+  return String(row?.sourceType || row?.canonicalProducer || row?.source || "CANONICAL").trim().toUpperCase();
+}
+
+function buildSdeCanonicalUnifiedCardPipeline(reader, options={}){
+  const workshopExitRequests = Array.isArray(options.workshopExitRequests)
+    ? options.workshopExitRequests
+    : getSdeActiveWorkshopExitRequests();
+  const legacyRows = Array.isArray(reader?.runtimeSnapshot?.legacy?.finalCards)
+    ? reader.runtimeSnapshot.legacy.finalCards
+    : [];
+  const manualPlans = Array.isArray(options.manualPlans)
+    ? options.manualPlans
+    : legacyRows.filter(row=>
+        row?.sdeCanonicalGraphicDragOrder === true &&
+        row?.sdeNightPlacementDragOverrideActive !== false &&
+        row?.sdeOutcomeActive !== false
+      );
+  const projectedCards = getSdeCanonicalProductionProjectedCards(reader);
+  const actionableCards = getSdeCanonicalProductionVisibleCards(reader)
+    .filter(card=>card?.status === "actionable")
+    .map(card=>{
+      const adapter = reader?.handlerAdapters?.[card.canonicalCardId] || null;
+      const row = adapter?.row || adapter?.outcome?.raw || {};
+      const sourceType = getSdeCanonicalUnifiedCardSourceType(row);
+      const sourceReference = sourceType === "WORKSHOP_EXIT"
+        ? String(row?.workshopExitRequestId || "").trim()
+        : sourceType === "MANUAL_DRAG"
+          ? String(row?.sdeNightPlacementDragIdentity || row?.manualPlanId || adapter?.actionKey || "").trim()
+          : String(adapter?.actionKey || card?.activeOutcomeId || "").trim();
+      const planGeneration = String(
+        row?.planGeneration ||
+        row?.sdePlanGeneration ||
+        row?.sdeNightPlacementDragIdentity ||
+        card?.activeOutcomeId ||
+        ""
+      ).trim();
+      const assessmentRevision = String(
+        row?.workshopExitPlacementRevision ||
+        row?.canonicalSourceRevision ||
+        row?.sourceRevision ||
+        reader?.planRevision ||
+        ""
+      ).trim();
+      return {
+        ...card,
+        sourceType,
+        sourceReference,
+        planGeneration,
+        assessmentRevision,
+        semanticCardKey:[
+          normalizeVehicleToken(card?.vehicleId),
+          normalizeSlot(card?.sourceSlot),
+          normalizeSlot(card?.targetSlot),
+          assessmentRevision,
+          planGeneration,
+          sourceType,
+          sourceReference
+        ].join("|")
+      };
+    });
+  const activeCardByOutcomeId = new Map(actionableCards.map(card=>[card.activeOutcomeId,card]));
+  const reservationOwnerCards = [
+    ...actionableCards,
+    ...(reader?.cardProjection?.blockedChainCards || []).map(card=>{
+      const adapter = reader?.handlerAdapters?.[card.canonicalCardId] || null;
+      const row = adapter?.row || adapter?.outcome?.raw || {};
+      return {
+        ...card,
+        sourceType:getSdeCanonicalUnifiedCardSourceType(row),
+        planGeneration:String(row?.planGeneration || row?.sdePlanGeneration || card?.activeOutcomeId || "").trim(),
+        assessmentRevision:String(row?.workshopExitPlacementRevision || row?.canonicalSourceRevision || row?.sourceRevision || reader?.planRevision || "").trim()
+      };
+    })
+  ];
+  const reservationOwnerByOutcomeId = new Map(reservationOwnerCards.map(card=>[card.activeOutcomeId,card]));
+  const reservations = [];
+  const orphanReservations = [];
+  for(const reservation of reader?.reservationProjection?.reservations || []){
+    const card = reservationOwnerByOutcomeId.get(reservation?.activeOutcomeId);
+    const matches = Boolean(
+      card &&
+      sanitizeVehicleValue(card.vehicleId) === sanitizeVehicleValue(reservation.vehicleId) &&
+      normalizeSlot(card.targetSlot) === normalizeSlot(reservation.targetSlot)
+    );
+    if(!matches){
+      orphanReservations.push({
+        ...reservation,
+        diagnosticType:"orphan_reservation",
+        explanation:"Aktiv reservation mangler et samsvarende gjeldende canonical kort og ekskluderes fra den operative projeksjonen."
+      });
+      continue;
+    }
+    reservations.push({
+      ...reservation,
+      ownerCardId:card.canonicalCardId,
+      planGeneration:card.planGeneration,
+      assessmentRevision:card.assessmentRevision
+    });
+  }
+
+  const unresolvedCards = [];
+  const workshopRequestReadback = workshopExitRequests.map(request=>{
+    const exitRequestId = String(request?.exitRequestId || "").trim();
+    const linkedCard = actionableCards.find(card=>
+      card.sourceType === "WORKSHOP_EXIT" &&
+      card.sourceReference === exitRequestId
+    ) || null;
+    if(linkedCard){
+      return {
+        ...request,
+        status:"CARD_CREATED",
+        linkedCardId:linkedCard.canonicalCardId,
+        planGeneration:linkedCard.planGeneration,
+        assessmentRevision:linkedCard.assessmentRevision
+      };
+    }
+    const matchingRows = legacyRows.filter(row=>
+      String(row?.workshopExitRequestId || "").trim() === exitRequestId
+    );
+    const matchingProjectedCard = projectedCards.find(card=>{
+      const adapter = reader?.handlerAdapters?.[card.canonicalCardId] || null;
+      return String(adapter?.row?.workshopExitRequestId || adapter?.outcome?.raw?.workshopExitRequestId || "").trim() === exitRequestId;
+    }) || null;
+    const targetSlot = normalizeSlot(
+      matchingProjectedCard?.targetSlot ||
+      matchingRows.find(row=>normalizeSlot(row?.recommendedSlot || row?.toSlot))?.recommendedSlot ||
+      matchingRows.find(row=>normalizeSlot(row?.recommendedSlot || row?.toSlot))?.toSlot
+    );
+    const targetOccupant = targetSlot
+      ? (reader?.canonicalPlan?.actualPlacements || []).find(item=>
+          normalizeSlot(item?.slot) === targetSlot &&
+          normalizeVehicleToken(item?.vehicleId) !== normalizeVehicleToken(request?.vehicleId)
+        )
+      : null;
+    const sourcePlacement = (reader?.canonicalPlan?.actualPlacements || []).find(item=>
+      normalizeVehicleToken(item?.vehicleId) === normalizeVehicleToken(request?.vehicleId)
+    ) || null;
+    const sourceChanged = Boolean(
+      sourcePlacement?.slot &&
+      normalizeSlot(request?.sourceSlot) &&
+      normalizeSlot(sourcePlacement.slot) !== normalizeSlot(request.sourceSlot)
+    );
+    const status = targetOccupant || sourceChanged || String(request?.status || "") === "REPLAN_REQUIRED"
+      ? "REPLAN_REQUIRED"
+      : "BLOCKED_UNRESOLVED";
+    const explanation = targetOccupant
+      ? `Målsporet ${targetSlot} er opptatt av ${sanitizeVehicleValue(targetOccupant.vehicleId)}. Planen må beregnes på nytt.`
+      : sourceChanged
+        ? `Kjøretøyet står ikke lenger i forventet kildespor ${normalizeSlot(request?.sourceSlot)}. Planen må beregnes på nytt.`
+        : matchingProjectedCard?.handlerBlockReasons?.length
+          ? `Kortet er ikke handlingsklart: ${matchingProjectedCard.handlerBlockReasons[0]}`
+          : "Ingen ledig og fysisk gjennomførbar plass er tilgjengelig, eller requesten mangler et aktivt canonical kort.";
+    unresolvedCards.push({
+      canonicalCardId:`unresolved-workshop-exit|${exitRequestId}`,
+      activeOutcomeId:"",
+      obligationId:`workshop-exit|${exitRequestId}`,
+      stepId:`workshop-exit|${exitRequestId}|unresolved`,
+      vehicleId:sanitizeVehicleValue(request?.vehicleId),
+      sourceSlot:normalizeSlot(sourcePlacement?.slot || request?.sourceSlot),
+      targetSlot,
+      sourceType:"WORKSHOP_EXIT",
+      sourceReference:exitRequestId,
+      status,
+      explanation,
+      active:false,
+      canComplete:false,
+      canCancel:false,
+      canDelete:false,
+      canRetarget:false
+    });
+    return {
+      ...request,
+      status,
+      linkedCardId:null,
+      unresolvedReason:explanation
+    };
+  });
+
+  const activeManualActionKeys = new Set(actionableCards
+    .filter(card=>card.sourceType === "MANUAL_DRAG")
+    .map(card=>String(reader?.handlerAdapters?.[card.canonicalCardId]?.actionKey || "").trim())
+    .filter(Boolean));
+  for(const plan of manualPlans){
+    const actionKey = String(plan?.sdeNightPlacementGeneratedActionKey || plan?.stableActionKey || "").trim();
+    if(!actionKey || activeManualActionKeys.has(actionKey)) continue;
+    if(plan?.sdeOutcomeActive === false || plan?.sdeNightPlacementDragOverrideActive === false) continue;
+    const targetSlot = normalizeSlot(plan?.recommendedSlot || plan?.toSlot);
+    const targetOccupant = targetSlot
+      ? (reader?.canonicalPlan?.actualPlacements || []).find(item=>
+          normalizeSlot(item?.slot) === targetSlot &&
+          normalizeVehicleToken(item?.vehicleId) !== normalizeVehicleToken(plan?.vehicle)
+        )
+      : null;
+    unresolvedCards.push({
+      canonicalCardId:`unresolved-manual-drag|${actionKey}`,
+      activeOutcomeId:"",
+      obligationId:String(plan?.sdeCanonicalOutcomeKey || plan?.sdeOutcomeKey || actionKey).trim(),
+      stepId:`manual-drag|${actionKey}|unresolved`,
+      vehicleId:sanitizeVehicleValue(plan?.vehicle),
+      sourceSlot:normalizeSlot(plan?.fromSlot || plan?.arrivalSlot || plan?.originalFromSlot),
+      targetSlot,
+      sourceType:"MANUAL_DRAG",
+      sourceReference:String(plan?.sdeNightPlacementDragIdentity || plan?.manualPlanId || actionKey).trim(),
+      status:targetOccupant ? "REPLAN_REQUIRED" : "BLOCKED_UNRESOLVED",
+      explanation:targetOccupant
+        ? `Målsporet ${targetSlot} er opptatt av ${sanitizeVehicleValue(targetOccupant.vehicleId)}. Planen må beregnes på nytt.`
+        : "Den manuelle planen mangler et handlingsklart canonical kort. Ingen targetreservation beholdes.",
+      active:false,
+      canComplete:false,
+      canCancel:false,
+      canDelete:false,
+      canRetarget:false
+    });
+  }
+
+  const diagnostics = [
+    ...orphanReservations.map(item=>({
+      diagnosticType:"orphan_reservation",
+      severity:"error",
+      reservationId:item.reservationId,
+      vehicleId:item.vehicleId,
+      targetSlot:item.targetSlot,
+      explanation:item.explanation
+    })),
+    ...unresolvedCards.map(card=>({
+      diagnosticType:card.status === "REPLAN_REQUIRED" ? "replan_required" : "blocked_unresolved",
+      severity:"warning",
+      vehicleId:card.vehicleId,
+      sourceSlot:card.sourceSlot,
+      targetSlot:card.targetSlot,
+      explanation:card.explanation
+    }))
+  ];
+  return {
+    schemaVersion:"sde-canonical-unified-card-pipeline-v1",
+    planRevision:String(reader?.planRevision || "").trim(),
+    actionableCards:sortSdeCanonicalObjects(actionableCards),
+    unresolvedCards:sortSdeCanonicalObjects(unresolvedCards),
+    reservations:sortSdeCanonicalObjects(reservations),
+    orphanReservations:sortSdeCanonicalObjects(orphanReservations),
+    workshopExitRequests:sortSdeCanonicalObjects(workshopRequestReadback),
+    diagnostics:sortSdeCanonicalObjects(diagnostics),
+    activeCardByOutcomeId:Object.fromEntries([...activeCardByOutcomeId.entries()].sort(([left],[right])=>left.localeCompare(right)))
+  };
+}
+
+function getSdeCanonicalDropTargetReservationState(targetSlot, vehicle, reader=null){
+  try{
+    const sourceReader = reader || buildSdeCanonicalProductionReader();
+    const pipeline = buildSdeCanonicalUnifiedCardPipeline(sourceReader);
+    const target = normalizeSlot(targetSlot);
+    const reservation = pipeline.reservations.find(item=>normalizeSlot(item?.targetSlot) === target) || null;
+    const staleReservations = pipeline.orphanReservations.filter(item=>normalizeSlot(item?.targetSlot) === target);
+    return {
+      available:true,
+      active:Boolean(reservation),
+      reservation,
+      ownerCardId:String(reservation?.ownerCardId || "").trim(),
+      ownerVehicle:sanitizeVehicleValue(reservation?.vehicleId),
+      sameVehicle:Boolean(reservation && normalizeVehicleToken(reservation.vehicleId) === normalizeVehicleToken(vehicle)),
+      staleReservations
+    };
+  }catch(error){
+    return {
+      available:false,
+      active:false,
+      reservation:null,
+      ownerCardId:"",
+      ownerVehicle:"",
+      sameVehicle:false,
+      staleReservations:[],
+      error:String(error?.message || error || "canonical targetvurdering feilet")
+    };
+  }
+}
+
 function buildSdeCanonicalProductionDiagnostics(reader){
   const rows = [
     ...(reader.cardProjection.diagnostics || []).map(item=>({...item, diagnosticSource:"cardProjection"})),
@@ -41318,6 +41627,37 @@ async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action, enco
   });
 }
 
+function buildSdeCanonicalUnresolvedFollowupCardHtml(card, index=0){
+  const status = String(card?.status || "BLOCKED_UNRESOLVED").trim();
+  const sourceType = card?.sourceType === "WORKSHOP_EXIT"
+    ? "Bestilt utkjøring fra Verksted"
+    : card?.sourceType === "MANUAL_DRAG"
+      ? "Manuell drag/omruting"
+      : "Canonical oppfølging";
+  const target = normalizeSlot(card?.targetSlot);
+  const targetHtml = target
+    ? `<div class="sde-shift-track to"><strong>${escapeHtml(target)}</strong><span>Tidligere/foreslått mål</span></div>`
+    : `<div class="sde-shift-track to"><strong>UAVKLART</strong><span>Ingen sikkert mål</span></div>`;
+  return `<article class="sde-shift-card canonical-blocked" data-sde-canonical-unresolved-card data-sde-canonical-card-id="${escapeHtml(card?.canonicalCardId || "")}" data-sde-canonical-card-status="${escapeHtml(status)}" data-sde-source-type="${escapeHtml(card?.sourceType || "")}" style="--delay:${index * 55}ms">
+    <div class="sde-shift-card-head">
+      <div><span>Kjøretøy</span><strong>${escapeHtml(card?.vehicleId || "Ukjent")}</strong></div>
+      <div class="sde-shift-card-badges">
+        <span class="sde-shift-state-badge">${escapeHtml(status === "REPLAN_REQUIRED" ? "REPLAN REQUIRED" : "BLOCKED/UNRESOLVED")}</span>
+        <span class="sde-shift-meta-badge">${escapeHtml(sourceType)}</span>
+      </div>
+    </div>
+    <div class="sde-shift-route">
+      <div class="sde-shift-track from"><strong>${escapeHtml(card?.sourceSlot || "UKJENT")}</strong><span>Canonical source</span></div>
+      <div class="sde-shift-arrow">→</div>
+      ${targetHtml}
+    </div>
+    <div class="sde-shift-card-info canonical-card-blocked">
+      <strong>${escapeHtml(status === "REPLAN_REQUIRED" ? "Planen må beregnes på nytt" : "Behovet krever oppfølging")}</strong>
+      <span>${escapeHtml(card?.explanation || "Ingen aktiv targetreservation beholdes.")}</span>
+    </div>
+  </article>`;
+}
+
 function renderSdeCanonicalProductionReader(){
   const root = document.getElementById("sdeSkiftebevegelserDashboard");
   if(!root) return null;
@@ -41339,12 +41679,20 @@ function renderSdeCanonicalProductionReader(){
   }
   const data = getSdeShiftShowcaseData();
   const reader = buildSdeCanonicalProductionReader();
-  const diagnostics = buildSdeCanonicalProductionDiagnostics(reader);
+  const unifiedPipeline = buildSdeCanonicalUnifiedCardPipeline(reader);
+  const diagnostics = sortSdeCanonicalObjects([
+    ...buildSdeCanonicalProductionDiagnostics(reader),
+    ...unifiedPipeline.diagnostics
+  ]);
   const graphicOverview = buildSdeCanonicalGraphicOverviewData(reader);
   const graphicPlanVisible = isSdeGraphicPlanViewMode();
   const viewToggleText = graphicPlanVisible ? "Til Skifte-kort" : "SDE Grafisk planverktøy";
   const projectedCards = getSdeCanonicalProductionVisibleCards(reader);
+  const unresolvedCardsHtml = unifiedPipeline.unresolvedCards
+    .map((card,index)=>buildSdeCanonicalUnresolvedFollowupCardHtml(card,projectedCards.length + index))
+    .join("");
   const cardsHtml = projectedCards.map((card,index)=>buildSdeCanonicalProductionCardHtml(card,reader,index)).filter(Boolean).join("")
+    + unresolvedCardsHtml
     || `<div class="sde-shift-empty">Ingen actionable canonical skiftekort. Se canonical diagnostics for behov som er stanset.</div>`;
   const diagnosticsHtml = buildSdeCanonicalDiagnosticsHtml(diagnostics, reader.integrityReport.status);
   const scorePresentation = buildSdeCanonicalProductionScorePresentation(reader, diagnostics, data.score);
@@ -41366,7 +41714,7 @@ function renderSdeCanonicalProductionReader(){
       <div class="sde-shift-score ${scoreClass}"><div class="sde-shift-eyebrow">SDE-resultat</div><div class="sde-shift-title">Skiftebevegelser</div><div class="sde-shift-score-number${scorePresentation.calculated ? "" : " unavailable"}" data-sde-canonical-score-state="${scorePresentation.calculated ? "calculated" : "not-calculated"}"><strong>${escapeHtml(scorePresentation.label)}</strong><span>${escapeHtml(scorePresentation.detail)}</span></div></div>
       <div class="sde-shift-kpis">
         <div class="sde-shift-kpi"><strong>${escapeHtml(String(activeProposalCount))}</strong><span>canonical aktive forslag</span></div>
-        <div class="sde-shift-kpi"><strong>${escapeHtml(String(reader.cardProjection.actionableCards.length))}</strong><span>actionable kort</span></div>
+        <div class="sde-shift-kpi"><strong>${escapeHtml(String(unifiedPipeline.actionableCards.length))}</strong><span>actionable kort</span></div>
         <div class="sde-shift-kpi"><strong>${escapeHtml(String(reader.cardProjection.blockedChainCards.length))}</strong><span>dependency-sperrede steg</span></div>
         <div class="sde-shift-kpi"><strong>${escapeHtml(String(diagnostics.length))}</strong><span>canonical diagnostics</span></div>
       </div>
