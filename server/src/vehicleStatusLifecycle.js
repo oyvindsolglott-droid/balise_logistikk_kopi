@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v4";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v5";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -38,12 +38,17 @@ const WAIT_REASONS = new Set([
   "OTHER",
   "NONE"
 ]);
+const WORKSHOP_SLOTS = new Set(["8N", "7N", "8S", "7S"]);
+const WORKSHOP_QUEUE_OPERATIONS = new Set(["ADD", "CANCEL", "MOVE_UP", "MOVE_DOWN"]);
+const WORKSHOP_MESSAGE_TARGET_ROLES = new Set(["drops", "txp", "sde_skiftere", "agila"]);
 
 const LIFECYCLE_COMMANDS = Object.freeze({
   REGISTER_FAULT: "register_fault",
   REPORT_NOT_OPERATIONAL: "report_not_operational",
   REQUEST_REPAIR: "request_repair",
   REQUEST_WORKSHOP_EXIT: "request_workshop_exit",
+  MANAGE_WORKSHOP_INGRESS_QUEUE: "manage_workshop_ingress_queue",
+  SEND_WORKSHOP_MESSAGE: "send_workshop_message",
   MARK_FOR_TURNING: "mark_for_turning",
   REPORT_OPERATIONAL: "report_operational",
   NOTIFICATION_PRESENTED: "notification_presented",
@@ -68,6 +73,14 @@ const COMMAND_DEFINITIONS = Object.freeze({
   [LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT]: Object.freeze({
     route: "/api/vehicle-status/commands/request-workshop-exit",
     capability: CAPABILITY_IDS.REQUEST_WORKSHOP_EXIT
+  }),
+  [LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE]: Object.freeze({
+    route: "/api/vehicle-status/commands/manage-workshop-ingress-queue",
+    capability: CAPABILITY_IDS.MANAGE_WORKSHOP_INGRESS_QUEUE
+  }),
+  [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: Object.freeze({
+    route: "/api/vehicle-status/commands/send-workshop-message",
+    capability: CAPABILITY_IDS.SEND_WORKSHOP_MESSAGE
   }),
   [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: Object.freeze({
     route: "/api/vehicle-status/commands/mark-for-turning",
@@ -108,6 +121,13 @@ const FIELDS = Object.freeze({
   [LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT]: new Set([
     "actionId", "vehicleId", "expectedPlacementRevision", "expectedVisitId"
   ]),
+  [LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE]: new Set([
+    "actionId", "operation", "targetSlot", "vehicleId", "queueEntryId",
+    "expectedQueueRevision", "expectedPlacementRevision"
+  ]),
+  [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: new Set([
+    "actionId", "targetRole", "message"
+  ]),
   [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: new Set([
     "actionId", "expectedStatusRevision", "vehicleId"
   ]),
@@ -142,12 +162,16 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
   }
   const actionId = normalizeUuid(input.actionId);
   if(!actionId) return invalid(400, "invalid_action_id", "actionId must be a UUID.");
-  const vehicleId = commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED
+  const vehicleId = (
+    commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED ||
+    commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE
+  )
     ? null
     : normalizeRegisteredVehicleId(input.vehicleId);
   const allowedVehicleIds = options.allowedVehicleIds;
   if(
     commandName !== LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED &&
+    commandName !== LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE &&
     (
       !vehicleId ||
       !isRegisteredVehicle(vehicleId) ||
@@ -236,6 +260,42 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
       expectedPlacementRevision,
       expectedVisitId
     };
+  }else if(commandName === LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE){
+    const operation = String(input.operation || "").trim().toUpperCase();
+    const targetSlot = String(input.targetSlot || "").trim().toUpperCase();
+    const expectedQueueRevision = revision(input.expectedQueueRevision);
+    const expectedPlacementRevision = normalizedText(input.expectedPlacementRevision, 200);
+    const queueEntryId = input.queueEntryId === undefined || input.queueEntryId === null
+      ? null
+      : normalizeUuid(input.queueEntryId);
+    if(!WORKSHOP_QUEUE_OPERATIONS.has(operation)){
+      return invalid(400, "invalid_queue_operation", "operation is not allowed.");
+    }
+    if(!WORKSHOP_SLOTS.has(targetSlot)){
+      return invalid(400, "invalid_workshop_slot", "targetSlot must be 8N, 7N, 8S or 7S.");
+    }
+    if(expectedQueueRevision === null) return invalidRevision("expectedQueueRevision");
+    if(!expectedPlacementRevision){
+      return invalid(400, "invalid_expected_placement_revision",
+        "expectedPlacementRevision is required.");
+    }
+    if(operation !== "ADD" && !queueEntryId){
+      return invalid(400, "invalid_queue_entry_id", "queueEntryId is required.");
+    }
+    normalized = {
+      actionId, operation, targetSlot, vehicleId, queueEntryId,
+      expectedQueueRevision, expectedPlacementRevision
+    };
+  }else if(commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE){
+    const targetRole = String(input.targetRole || "").trim().toLowerCase();
+    const message = normalizedText(input.message, 250);
+    if(!WORKSHOP_MESSAGE_TARGET_ROLES.has(targetRole)){
+      return invalid(400, "invalid_message_target", "targetRole is not allowed.");
+    }
+    if(!message){
+      return invalid(400, "invalid_message", "message must contain 1 to 250 characters.");
+    }
+    normalized = { actionId, vehicleId: "WORKSHOP", targetRole, message };
   }else if(commandName === LIFECYCLE_COMMANDS.MARK_FOR_TURNING){
     const expectedStatusRevision = revision(input.expectedStatusRevision);
     if(expectedStatusRevision === null) return invalidRevision("expectedStatusRevision");

@@ -33,6 +33,8 @@ const CAPABILITY_IDS = Object.freeze({
   REPORT_NOT_OPERATIONAL: "vehicle_status.report_not_operational",
   REQUEST_REPAIR: "vehicle_status.request_repair",
   REQUEST_WORKSHOP_EXIT: "vehicle_status.request_workshop_exit",
+  MANAGE_WORKSHOP_INGRESS_QUEUE: "vehicle_status.manage_workshop_ingress_queue",
+  SEND_WORKSHOP_MESSAGE: "vehicle_status.send_workshop_message",
   MARK_FOR_TURNING: "vehicle_status.mark_for_turning",
   REPORT_OPERATIONAL: "vehicle_status.report_operational",
   PRESENT_NOTIFICATION: "vehicle_status.notification_presented",
@@ -90,6 +92,18 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
   {
     capability: CAPABILITY_IDS.REQUEST_WORKSHOP_EXIT,
     description: "Request an authoritative exit from the current workshop visit.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.VERKSTED]
+  },
+  {
+    capability: CAPABILITY_IDS.MANAGE_WORKSHOP_INGRESS_QUEUE,
+    description: "Manage the authoritative ingress queue for workshop tracks.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.VERKSTED]
+  },
+  {
+    capability: CAPABILITY_IDS.SEND_WORKSHOP_MESSAGE,
+    description: "Send an authoritative workshop message to one operational role.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: [ROLE_KEYS.VERKSTED]
   },

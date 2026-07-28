@@ -23,6 +23,11 @@ const PROCESS_EVENT_TABLE = "vehicle_status_process_events";
 const PROCESS_OBSERVATION_TABLE = "vehicle_status_process_observations";
 const WORKSHOP_EXIT_REQUEST_TABLE = "vehicle_status_workshop_exit_requests";
 const WORKSHOP_EXIT_EVENT_TABLE = "vehicle_status_workshop_exit_events";
+const WORKSHOP_INGRESS_QUEUE_TABLE = "vehicle_status_workshop_ingress_queue";
+const WORKSHOP_INGRESS_QUEUE_META_TABLE = "vehicle_status_workshop_ingress_queue_meta";
+const WORKSHOP_INGRESS_QUEUE_EVENT_TABLE = "vehicle_status_workshop_ingress_queue_events";
+const WORKSHOP_MESSAGE_TABLE = "vehicle_status_workshop_messages";
+const WORKSHOP_MESSAGE_EVENT_TABLE = "vehicle_status_workshop_message_events";
 const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
 const SEMANTIC_NOOP = Symbol("vehicle_status_semantic_noop");
 
@@ -59,6 +64,8 @@ function createVehicleStatusRepository(options = {}){
       [LIFECYCLE_COMMANDS.REPORT_NOT_OPERATIONAL]: executeReportNotOperationalV2,
       [LIFECYCLE_COMMANDS.REQUEST_REPAIR]: executeRequestRepair,
       [LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT]: executeRequestWorkshopExit,
+      [LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE]: executeManageWorkshopIngressQueue,
+      [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: executeSendWorkshopMessage,
       [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: executeMarkForTurning,
       [LIFECYCLE_COMMANDS.REPORT_OPERATIONAL]: executeReportOperational,
       [LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED]: executeNotificationPresented,
@@ -967,6 +974,183 @@ function createVehicleStatusRepository(options = {}){
     });
   }
 
+  function executeManageWorkshopIngressQueue(command, authority){
+    const currentPlacementRevision = currentWorkshopPlacementRevision();
+    if(command.expectedPlacementRevision !== currentPlacementRevision){
+      throw conflict("placement_revision_mismatch",
+        "Expected placement revision does not match current canonical placement.", {
+          currentPlacementRevision
+        });
+    }
+    const currentQueueRevision = workshopQueueRevision(command.targetSlot);
+    requireRevision(command.expectedQueueRevision, currentQueueRevision,
+      "queue_revision_mismatch", { currentQueueRevision });
+    const timestamp = now();
+    const eventId = randomUUID();
+    let queueEntry;
+
+    if(command.operation === "ADD"){
+      const duplicate = db.prepare(`
+        SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
+        WHERE target_slot = ? AND vehicle_id = ?
+          AND status IN ('QUEUED','READY_FOR_ACTIVATION','ACTIVATING','CARD_CREATED','REPLAN_REQUIRED')
+      `).get(command.targetSlot, command.vehicleId);
+      if(duplicate){
+        throw conflict("workshop_queue_duplicate",
+          "Vehicle already has an active entry for this workshop track.");
+      }
+      const occupiedBy = workshopSlotOccupant(command.targetSlot);
+      const currentSourceSlot = currentVehicleSlot(command.vehicleId);
+      const status = !occupiedBy && currentSourceSlot && currentSourceSlot !== command.targetSlot
+        ? "CARD_CREATED"
+        : "QUEUED";
+      const queueEntryId = randomUUID();
+      const linkedCardId = status === "CARD_CREATED"
+        ? `workshop-ingress|${queueEntryId}|${command.vehicleId}|${command.targetSlot}`
+        : null;
+      const position = nextWorkshopQueuePosition(command.targetSlot);
+      db.prepare(`
+        INSERT INTO ${WORKSHOP_INGRESS_QUEUE_TABLE} (
+          queue_entry_id, target_slot, vehicle_id, position, status,
+          created_at, created_by, updated_at, linked_card_id,
+          reason_codes_json, placement_revision
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?)
+      `).run(
+        queueEntryId, command.targetSlot, command.vehicleId, position, status,
+        timestamp, authority.subject, timestamp, linkedCardId,
+        currentPlacementRevision
+      );
+      queueEntry = db.prepare(`
+        SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE} WHERE queue_entry_id = ?
+      `).get(queueEntryId);
+      insertWorkshopQueueEvent({
+        eventType: status === "CARD_CREATED"
+          ? "WORKSHOP_INGRESS_CARD_CREATED"
+          : "WORKSHOP_INGRESS_QUEUED",
+        queueEntry,
+        timestamp,
+        authority,
+        sourceRevision: currentPlacementRevision,
+        payload: { operation: command.operation, linkedCardId },
+        idempotencyKey: `${command.actionId}:workshop-ingress:${status}`
+      });
+    }else{
+      queueEntry = db.prepare(`
+        SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
+        WHERE queue_entry_id = ? AND target_slot = ?
+      `).get(command.queueEntryId, command.targetSlot);
+      if(!queueEntry){
+        throw conflict("workshop_queue_entry_not_found", "Queue entry was not found.", {}, 404);
+      }
+      if(command.operation === "CANCEL"){
+        db.prepare(`
+          UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE}
+          SET status='CANCELLED', updated_at=?, linked_card_id=NULL
+          WHERE queue_entry_id=?
+        `).run(timestamp, queueEntry.queue_entry_id);
+        queueEntry = db.prepare(`
+          SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE} WHERE queue_entry_id=?
+        `).get(queueEntry.queue_entry_id);
+        insertWorkshopQueueEvent({
+          eventType: "WORKSHOP_INGRESS_CANCELLED",
+          queueEntry, timestamp, authority, sourceRevision: currentPlacementRevision,
+          payload: { operation: command.operation },
+          idempotencyKey: `${command.actionId}:workshop-ingress:cancelled`
+        });
+      }else{
+        moveWorkshopQueueEntry(queueEntry, command.operation, timestamp);
+        queueEntry = db.prepare(`
+          SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE} WHERE queue_entry_id=?
+        `).get(queueEntry.queue_entry_id);
+        insertWorkshopQueueEvent({
+          eventType: "WORKSHOP_INGRESS_REORDERED",
+          queueEntry, timestamp, authority, sourceRevision: currentPlacementRevision,
+          payload: { operation: command.operation, position: queueEntry.position },
+          idempotencyKey: `${command.actionId}:workshop-ingress:reordered`
+        });
+      }
+    }
+    const queueRevision = incrementWorkshopQueueRevision(command.targetSlot);
+    normalizeWorkshopQueuePositions(command.targetSlot);
+    insertEvent({
+      eventId, command, commandName: LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE,
+      authority, timestamp,
+      caseBefore: 0, caseAfter: 0, statusBefore: 0, statusAfter: 0,
+      previousState: { queueRevision: currentQueueRevision },
+      resultingState: {
+        queueEntryId: queueEntry.queue_entry_id,
+        targetSlot: queueEntry.target_slot,
+        status: queueEntry.status,
+        queueRevision
+      }
+    });
+    incrementGlobalRevision();
+    return resultBase(command, eventId, {
+      queueEntryId: queueEntry.queue_entry_id,
+      targetSlot: queueEntry.target_slot,
+      vehicleId: queueEntry.vehicle_id,
+      position: queueEntry.position,
+      status: queueEntry.status,
+      linkedCardId: queueEntry.linked_card_id,
+      queueRevision,
+      placementRevision: currentPlacementRevision
+    });
+  }
+
+  function executeSendWorkshopMessage(command, authority){
+    const eventCommand = { ...command, vehicleId: command.vehicleId || "WORKSHOP" };
+    const timestamp = now();
+    const eventId = randomUUID();
+    const messageId = randomUUID();
+    const notificationId = randomUUID();
+    db.prepare(`
+      INSERT INTO ${WORKSHOP_MESSAGE_TABLE} (
+        message_id, target_role, message_text, created_at, created_by,
+        notification_id, event_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      messageId, command.targetRole, command.message, timestamp,
+      authority.subject, notificationId, eventId
+    );
+    db.prepare(`
+      INSERT INTO ${WORKSHOP_MESSAGE_EVENT_TABLE} (
+        workshop_message_event_id, event_type, message_id, target_role,
+        server_timestamp, actor_subject, actor_role, payload_json, idempotency_key
+      ) VALUES (?, 'WORKSHOP_MESSAGE_SENT', ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(), messageId, command.targetRole, timestamp,
+      authority.subject, authority.effectiveRole || null,
+      JSON.stringify({ message: command.message }),
+      `${command.actionId}:workshop-message`
+    );
+    insertNotification({
+      notificationId,
+      eventId,
+      targetRole: command.targetRole,
+      kind: "WORKSHOP_MESSAGE",
+      priority: "NORMAL",
+      vehicleId: "WORKSHOP",
+      faultId: null,
+      repairRequestId: null,
+      timestamp,
+      payload: { messageId, message: command.message, sourceRole: "verksted" }
+    });
+    insertEvent({
+      eventId, command: eventCommand, commandName: LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE,
+      authority, timestamp,
+      caseBefore: 0, caseAfter: 0, statusBefore: 0, statusAfter: 0,
+      previousState: {},
+      resultingState: { messageId, notificationId, targetRole: command.targetRole }
+    });
+    incrementGlobalRevision();
+    return resultBase(command, eventId, {
+      messageId,
+      notificationId,
+      targetRole: command.targetRole,
+      createdAt: timestamp
+    });
+  }
+
   function executeReportNotOperational(command, authority){
     if(!writeEnabled) return unavailable();
     const legacy = command.faults.some((fault) => !fault.faultId);
@@ -1021,6 +1205,12 @@ function createVehicleStatusRepository(options = {}){
     `).all().map(mapRepair);
     const workshopExitRequests = selectWorkshopExitRequests();
     const workshopExitEvents = selectWorkshopExitEvents();
+    const workshopIngressQueue = selectWorkshopIngressQueue();
+    const workshopIngressQueueEvents = selectWorkshopIngressQueueEvents();
+    const allWorkshopMessages = selectWorkshopMessages();
+    const workshopMessages = roles.length
+      ? allWorkshopMessages.filter((message) => roles.includes(message.targetRole))
+      : [];
     const events = db.prepare(`SELECT * FROM ${EVENT_TABLE} ORDER BY server_timestamp, event_id`).all()
       .map(mapEvent);
     const processEvents = selectProcessEvents();
@@ -1094,6 +1284,9 @@ function createVehicleStatusRepository(options = {}){
       repairRequests,
       workshopExitRequests,
       workshopExitEvents,
+      workshopIngressQueue,
+      workshopIngressQueueEvents,
+      workshopMessages,
       events,
       processEvents,
       processCases,
@@ -1130,6 +1323,18 @@ function createVehicleStatusRepository(options = {}){
     try{
       let eventsCreated = 0;
       const timestamp = now();
+      const currentWorkshopOccupants = new Map();
+      for(const raw of input.placements){
+        const slot = normalizeSlot(raw?.slot);
+        const vehicleId = String(raw?.vehicleId || "").trim();
+        if(WORKSHOP_SLOTS.has(slot) && vehicleId){
+          if(currentWorkshopOccupants.has(slot)){
+            currentWorkshopOccupants.set(slot, null);
+          }else{
+            currentWorkshopOccupants.set(slot, vehicleId);
+          }
+        }
+      }
       for(const raw of input.placements){
         const vehicleId = String(raw?.vehicleId || "").trim();
         const slot = normalizeSlot(raw?.slot);
@@ -1193,6 +1398,38 @@ function createVehicleStatusRepository(options = {}){
           lastWorkshopVisitId: workshopVisitId || previousVisitId
         }, timestamp);
       }
+      for(const slot of WORKSHOP_SLOTS){
+        const observerKey = `workshop-slot:${slot}`;
+        const previous = findObservation(observerKey);
+        const previousPayload = previous ? safeJson(previous.payload_json, {}) : {};
+        const previousVehicleId = String(previousPayload?.vehicleId || "");
+        const vehicleId = currentWorkshopOccupants.get(slot) || "";
+        upsertObservation(observerKey, sourceRevision, {
+          slot,
+          vehicleId: vehicleId || null,
+          ambiguous: currentWorkshopOccupants.has(slot) && vehicleId === "",
+          placementRevision: sourceRevision,
+          observedAt: timestamp
+        }, timestamp);
+        if(previous && previousVehicleId && !vehicleId){
+          eventsCreated += activateWorkshopIngressQueueForEmptySlots({
+            slot,
+            sourceRevision,
+            timestamp
+          });
+        }else if(vehicleId){
+          eventsCreated += replanWorkshopIngressCardsForOccupiedSlot({
+            slot,
+            vehicleId,
+            sourceRevision,
+            timestamp
+          });
+        }
+      }
+      upsertObservation("workshop-placement-snapshot", sourceRevision, {
+        placementRevision: sourceRevision,
+        observedAt: timestamp
+      }, timestamp);
       if(eventsCreated) incrementGlobalRevision();
       db.exec("COMMIT;");
       return { eventsCreated, placementRevision: sourceRevision };
@@ -1377,8 +1614,8 @@ function createVehicleStatusRepository(options = {}){
         repairRequests: db.prepare(`SELECT * FROM ${REPAIR_TABLE} WHERE vehicle_id=?`).all(command.vehicleId)
       }),
       timestamp, authority.subject, JSON.stringify(authority.roles || []),
-      authority.effectiveRole || null, authority.identitySource,
-      authority.roleBindingSource, command.payloadHash
+      authority.effectiveRole || null, authority.identitySource || "server_command",
+      authority.roleBindingSource || "server_authority", command.payloadHash
     );
   }
 
@@ -1641,6 +1878,205 @@ function createVehicleStatusRepository(options = {}){
         updated_at = excluded.updated_at
     `).run(observerKey, sourceRevision, JSON.stringify(payload), timestamp);
   }
+  function currentWorkshopPlacementRevision(){
+    return findObservation("workshop-placement-snapshot")?.source_revision || "";
+  }
+  function currentVehicleSlot(vehicleId){
+    const row = findObservation(`placement:${vehicleId}`);
+    return normalizeSlot(safeJson(row?.payload_json, {})?.slot);
+  }
+  function workshopSlotOccupant(slot){
+    const row = findObservation(`workshop-slot:${slot}`);
+    const payload = safeJson(row?.payload_json, {});
+    return payload?.ambiguous === true ? "__AMBIGUOUS__" : String(payload?.vehicleId || "");
+  }
+  function workshopQueueRevision(slot){
+    return db.prepare(`
+      SELECT revision FROM ${WORKSHOP_INGRESS_QUEUE_META_TABLE} WHERE target_slot=?
+    `).get(slot)?.revision || 0;
+  }
+  function incrementWorkshopQueueRevision(slot){
+    db.prepare(`
+      INSERT INTO ${WORKSHOP_INGRESS_QUEUE_META_TABLE} (target_slot, revision)
+      VALUES (?, 1)
+      ON CONFLICT(target_slot) DO UPDATE SET revision=revision+1
+    `).run(slot);
+    return workshopQueueRevision(slot);
+  }
+  function nextWorkshopQueuePosition(slot){
+    return (db.prepare(`
+      SELECT MAX(position) AS position FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
+      WHERE target_slot=? AND status IN (
+        'QUEUED','READY_FOR_ACTIVATION','ACTIVATING','CARD_CREATED','REPLAN_REQUIRED'
+      )
+    `).get(slot)?.position || 0) + 1;
+  }
+  function normalizeWorkshopQueuePositions(slot){
+    const rows = db.prepare(`
+      SELECT queue_entry_id FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
+      WHERE target_slot=? AND status IN (
+        'QUEUED','READY_FOR_ACTIVATION','ACTIVATING','CARD_CREATED','REPLAN_REQUIRED'
+      )
+      ORDER BY position, created_at, queue_entry_id
+    `).all(slot);
+    rows.forEach((row, index) => db.prepare(`
+      UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE} SET position=? WHERE queue_entry_id=?
+    `).run(index + 1, row.queue_entry_id));
+  }
+  function moveWorkshopQueueEntry(entry, operation, timestamp){
+    const direction = operation === "MOVE_UP" ? -1 : 1;
+    const candidate = db.prepare(`
+      SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
+      WHERE target_slot=? AND status IN (
+        'QUEUED','READY_FOR_ACTIVATION','ACTIVATING','CARD_CREATED','REPLAN_REQUIRED'
+      ) AND position ${direction < 0 ? "<" : ">"} ?
+      ORDER BY position ${direction < 0 ? "DESC" : "ASC"} LIMIT 1
+    `).get(entry.target_slot, entry.position);
+    if(!candidate) return;
+    db.prepare(`
+      UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE} SET position=?, updated_at=?
+      WHERE queue_entry_id=?
+    `).run(candidate.position, timestamp, entry.queue_entry_id);
+    db.prepare(`
+      UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE} SET position=?, updated_at=?
+      WHERE queue_entry_id=?
+    `).run(entry.position, timestamp, candidate.queue_entry_id);
+  }
+  function insertWorkshopQueueEvent({
+    eventType, queueEntry, timestamp, authority = {}, sourceRevision,
+    payload = {}, idempotencyKey
+  }){
+    db.prepare(`
+      INSERT OR IGNORE INTO ${WORKSHOP_INGRESS_QUEUE_EVENT_TABLE} (
+        workshop_ingress_event_id, event_type, queue_entry_id, target_slot,
+        vehicle_id, server_timestamp, actor_subject, actor_role,
+        source_revision, payload_json, idempotency_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(), eventType, queueEntry.queue_entry_id, queueEntry.target_slot,
+      queueEntry.vehicle_id, timestamp, authority.subject || null,
+      authority.effectiveRole || null, sourceRevision || null,
+      JSON.stringify(payload), idempotencyKey || null
+    );
+  }
+  function activateWorkshopIngressQueueForEmptySlots({slot, sourceRevision, timestamp}){
+    if(workshopSlotOccupant(slot)) return 0;
+    const entry = db.prepare(`
+      SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
+      WHERE target_slot=? AND status IN ('QUEUED','READY_FOR_ACTIVATION','REPLAN_REQUIRED')
+      ORDER BY position, created_at, queue_entry_id LIMIT 1
+    `).get(slot);
+    if(!entry) return 0;
+    const sourceSlot = currentVehicleSlot(entry.vehicle_id);
+    if(!sourceSlot || sourceSlot === slot){
+      const reasonCodes = !sourceSlot
+        ? ["CURRENT_SOURCE_UNKNOWN"]
+        : ["TARGET_EQUALS_CURRENT_SOURCE"];
+      db.prepare(`
+        UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE}
+        SET status='REPLAN_REQUIRED', updated_at=?, linked_card_id=NULL,
+            reason_codes_json=?, placement_revision=?
+        WHERE queue_entry_id=?
+      `).run(timestamp, JSON.stringify(reasonCodes), sourceRevision, entry.queue_entry_id);
+      const updated = db.prepare(`
+        SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE} WHERE queue_entry_id=?
+      `).get(entry.queue_entry_id);
+      insertWorkshopQueueEvent({
+        eventType: "WORKSHOP_INGRESS_REPLAN_REQUIRED",
+        queueEntry: updated, timestamp, sourceRevision,
+        payload: { reasonCodes },
+        idempotencyKey: `placement:${sourceRevision}:${entry.queue_entry_id}:replan`
+      });
+      incrementWorkshopQueueRevision(slot);
+      return 1;
+    }
+    const linkedCardId =
+      `workshop-ingress|${entry.queue_entry_id}|${entry.vehicle_id}|${slot}`;
+    db.prepare(`
+      UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE}
+      SET status='CARD_CREATED', updated_at=?, linked_card_id=?,
+          reason_codes_json='[]', placement_revision=?
+      WHERE queue_entry_id=?
+    `).run(timestamp, linkedCardId, sourceRevision, entry.queue_entry_id);
+    const updated = db.prepare(`
+      SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE} WHERE queue_entry_id=?
+    `).get(entry.queue_entry_id);
+    insertWorkshopQueueEvent({
+      eventType: "WORKSHOP_INGRESS_CARD_CREATED",
+      queueEntry: updated, timestamp, sourceRevision,
+      payload: { linkedCardId, sourceSlot, targetSlot: slot },
+      idempotencyKey: `placement:${sourceRevision}:${entry.queue_entry_id}:card`
+    });
+    incrementWorkshopQueueRevision(slot);
+    return 1;
+  }
+  function replanWorkshopIngressCardsForOccupiedSlot({
+    slot, vehicleId, sourceRevision, timestamp
+  }){
+    const entries = db.prepare(`
+      SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
+      WHERE target_slot=? AND status='CARD_CREATED'
+    `).all(slot);
+    for(const entry of entries){
+      if(entry.vehicle_id === vehicleId){
+        db.prepare(`
+          UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE}
+          SET status='COMPLETED', updated_at=?, reason_codes_json='[]',
+              placement_revision=?
+          WHERE queue_entry_id=?
+        `).run(timestamp, sourceRevision, entry.queue_entry_id);
+        const completed = db.prepare(`
+          SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE} WHERE queue_entry_id=?
+        `).get(entry.queue_entry_id);
+        insertWorkshopQueueEvent({
+          eventType: "WORKSHOP_INGRESS_COMPLETED",
+          queueEntry: completed, timestamp, sourceRevision,
+          payload: { linkedCardId: entry.linked_card_id, occupiedBy: vehicleId },
+          idempotencyKey: `placement:${sourceRevision}:${entry.queue_entry_id}:completed`
+        });
+        incrementWorkshopQueueRevision(slot);
+        continue;
+      }
+      db.prepare(`
+        UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE}
+        SET status='REPLAN_REQUIRED', updated_at=?, linked_card_id=NULL,
+            reason_codes_json='["TARGET_OCCUPIED"]', placement_revision=?
+        WHERE queue_entry_id=?
+      `).run(timestamp, sourceRevision, entry.queue_entry_id);
+      const updated = db.prepare(`
+        SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE} WHERE queue_entry_id=?
+      `).get(entry.queue_entry_id);
+      insertWorkshopQueueEvent({
+        eventType: "WORKSHOP_INGRESS_REPLAN_REQUIRED",
+        queueEntry: updated, timestamp, sourceRevision,
+        payload: { reasonCodes: ["TARGET_OCCUPIED"], occupiedBy: vehicleId },
+        idempotencyKey: `placement:${sourceRevision}:${entry.queue_entry_id}:occupied`
+      });
+      incrementWorkshopQueueRevision(slot);
+    }
+    return entries.length;
+  }
+  function selectWorkshopIngressQueue(){
+    return db.prepare(`
+      SELECT q.*, m.revision AS queue_revision
+      FROM ${WORKSHOP_INGRESS_QUEUE_TABLE} q
+      LEFT JOIN ${WORKSHOP_INGRESS_QUEUE_META_TABLE} m
+        ON m.target_slot=q.target_slot
+      ORDER BY q.target_slot, q.position, q.created_at, q.queue_entry_id
+    `).all().map(mapWorkshopIngressQueueEntry);
+  }
+  function selectWorkshopIngressQueueEvents(){
+    return db.prepare(`
+      SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_EVENT_TABLE}
+      ORDER BY server_timestamp, workshop_ingress_event_id
+    `).all().map(mapWorkshopIngressQueueEvent);
+  }
+  function selectWorkshopMessages(){
+    return db.prepare(`
+      SELECT * FROM ${WORKSHOP_MESSAGE_TABLE}
+      ORDER BY created_at, message_id
+    `).all().map(mapWorkshopMessage);
+  }
   function selectPlacementObservations(){
     return db.prepare(`
       SELECT payload_json FROM ${PROCESS_OBSERVATION_TABLE}
@@ -1811,7 +2247,7 @@ function initializeSchema(db){
       DROP TABLE IF EXISTS ${RECORD_TABLE};
       DROP TABLE IF EXISTS ${META_TABLE};
     `);
-  }else if(userVersion > 4){
+  }else if(userVersion > 5){
     throw new Error("vehicle_status_schema_version_unsupported");
   }
 
@@ -2074,9 +2510,92 @@ function initializeSchema(db){
     CREATE TRIGGER IF NOT EXISTS vehicle_status_workshop_exit_events_immutable_delete
     BEFORE DELETE ON ${WORKSHOP_EXIT_EVENT_TABLE}
     BEGIN SELECT RAISE(ABORT, 'workshop exit events are immutable'); END;
+
+    CREATE TABLE IF NOT EXISTS ${WORKSHOP_INGRESS_QUEUE_META_TABLE} (
+      target_slot TEXT PRIMARY KEY CHECK(target_slot IN ('8N','7N','8S','7S')),
+      revision INTEGER NOT NULL CHECK(revision>=0)
+    );
+    INSERT OR IGNORE INTO ${WORKSHOP_INGRESS_QUEUE_META_TABLE} (target_slot, revision)
+      VALUES ('8N',0),('7N',0),('8S',0),('7S',0);
+
+    CREATE TABLE IF NOT EXISTS ${WORKSHOP_INGRESS_QUEUE_TABLE} (
+      queue_entry_id TEXT PRIMARY KEY,
+      target_slot TEXT NOT NULL CHECK(target_slot IN ('8N','7N','8S','7S')),
+      vehicle_id TEXT NOT NULL,
+      position INTEGER NOT NULL CHECK(position>=1),
+      status TEXT NOT NULL CHECK(status IN (
+        'QUEUED','READY_FOR_ACTIVATION','ACTIVATING','CARD_CREATED',
+        'REPLAN_REQUIRED','COMPLETED','CANCELLED'
+      )),
+      created_at TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      linked_card_id TEXT,
+      reason_codes_json TEXT NOT NULL,
+      placement_revision TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS vehicle_status_one_active_ingress_vehicle_slot
+      ON ${WORKSHOP_INGRESS_QUEUE_TABLE}(target_slot, vehicle_id)
+      WHERE status IN (
+        'QUEUED','READY_FOR_ACTIVATION','ACTIVATING','CARD_CREATED','REPLAN_REQUIRED'
+      );
+
+    CREATE TABLE IF NOT EXISTS ${WORKSHOP_INGRESS_QUEUE_EVENT_TABLE} (
+      workshop_ingress_event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL CHECK(event_type IN (
+        'WORKSHOP_INGRESS_QUEUED','WORKSHOP_INGRESS_REORDERED',
+        'WORKSHOP_INGRESS_READY','WORKSHOP_INGRESS_ACTIVATING',
+        'WORKSHOP_INGRESS_CARD_CREATED','WORKSHOP_INGRESS_REPLAN_REQUIRED',
+        'WORKSHOP_INGRESS_COMPLETED','WORKSHOP_INGRESS_CANCELLED'
+      )),
+      queue_entry_id TEXT NOT NULL,
+      target_slot TEXT NOT NULL,
+      vehicle_id TEXT NOT NULL,
+      server_timestamp TEXT NOT NULL,
+      actor_subject TEXT,
+      actor_role TEXT,
+      source_revision TEXT,
+      payload_json TEXT NOT NULL,
+      idempotency_key TEXT UNIQUE,
+      FOREIGN KEY(queue_entry_id) REFERENCES ${WORKSHOP_INGRESS_QUEUE_TABLE}(queue_entry_id)
+    );
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_workshop_ingress_events_immutable_update
+    BEFORE UPDATE ON ${WORKSHOP_INGRESS_QUEUE_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'workshop ingress events are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_workshop_ingress_events_immutable_delete
+    BEFORE DELETE ON ${WORKSHOP_INGRESS_QUEUE_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'workshop ingress events are immutable'); END;
+
+    CREATE TABLE IF NOT EXISTS ${WORKSHOP_MESSAGE_TABLE} (
+      message_id TEXT PRIMARY KEY,
+      target_role TEXT NOT NULL CHECK(target_role IN ('drops','txp','sde_skiftere','agila')),
+      message_text TEXT NOT NULL CHECK(length(message_text) BETWEEN 1 AND 250),
+      created_at TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      notification_id TEXT NOT NULL UNIQUE,
+      event_id TEXT NOT NULL UNIQUE
+    );
+    CREATE TABLE IF NOT EXISTS ${WORKSHOP_MESSAGE_EVENT_TABLE} (
+      workshop_message_event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL CHECK(event_type='WORKSHOP_MESSAGE_SENT'),
+      message_id TEXT NOT NULL,
+      target_role TEXT NOT NULL,
+      server_timestamp TEXT NOT NULL,
+      actor_subject TEXT,
+      actor_role TEXT,
+      payload_json TEXT NOT NULL,
+      idempotency_key TEXT UNIQUE,
+      FOREIGN KEY(message_id) REFERENCES ${WORKSHOP_MESSAGE_TABLE}(message_id)
+    );
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_workshop_message_events_immutable_update
+    BEFORE UPDATE ON ${WORKSHOP_MESSAGE_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'workshop message events are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_workshop_message_events_immutable_delete
+    BEFORE DELETE ON ${WORKSHOP_MESSAGE_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'workshop message events are immutable'); END;
   `);
   if(userVersion < 3) backfillProcessHistory(db);
-  db.exec("PRAGMA user_version = 4;");
+  db.exec("PRAGMA user_version = 5;");
 }
 
 function backfillProcessHistory(db){
@@ -2292,6 +2811,46 @@ function mapRepair(row){
   };
 }
 
+function mapWorkshopIngressQueueEntry(row){
+  return {
+    queueEntryId: row.queue_entry_id,
+    targetSlot: row.target_slot,
+    vehicleId: row.vehicle_id,
+    position: row.position,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    linkedCardId: row.linked_card_id,
+    reasonCodes: safeJson(row.reason_codes_json, []),
+    placementRevision: row.placement_revision,
+    queueRevision: row.queue_revision || 0
+  };
+}
+
+function mapWorkshopIngressQueueEvent(row){
+  return {
+    eventId: row.workshop_ingress_event_id,
+    eventType: row.event_type,
+    queueEntryId: row.queue_entry_id,
+    targetSlot: row.target_slot,
+    vehicleId: row.vehicle_id,
+    timestamp: row.server_timestamp,
+    sourceRevision: row.source_revision,
+    payload: safeJson(row.payload_json, {})
+  };
+}
+
+function mapWorkshopMessage(row){
+  return {
+    messageId: row.message_id,
+    targetRole: row.target_role,
+    message: row.message_text,
+    createdAt: row.created_at,
+    notificationId: row.notification_id,
+    eventId: row.event_id
+  };
+}
+
 function mapNotification(row){
   return {
     notificationId: row.notification_id,
@@ -2390,6 +2949,11 @@ module.exports = {
   PROCESS_OBSERVATION_TABLE,
   RECORD_TABLE,
   REPAIR_TABLE,
+  WORKSHOP_INGRESS_QUEUE_EVENT_TABLE,
+  WORKSHOP_INGRESS_QUEUE_META_TABLE,
+  WORKSHOP_INGRESS_QUEUE_TABLE,
+  WORKSHOP_MESSAGE_EVENT_TABLE,
+  WORKSHOP_MESSAGE_TABLE,
   VehicleStatusRepositoryConflict,
   createVehicleStatusRepository,
   createVehicleStatusTestRepository,

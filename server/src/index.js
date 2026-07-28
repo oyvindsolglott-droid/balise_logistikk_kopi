@@ -501,6 +501,10 @@ const vehicleStatusReadHandler = vehicleStatusRepository
         const requestWorkshopExitCommandAvailable =
           vehicleStatusLifecycleCommandAvailable === true &&
           requestWorkshopExitCapabilityAllowed;
+        const manageWorkshopIngressQueueCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.MANAGE_WORKSHOP_INGRESS_QUEUE);
+        const sendWorkshopMessageCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.SEND_WORKSHOP_MESSAGE);
         const markForTurningCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.MARK_FOR_TURNING);
         const reportOperationalCommandAvailable =
@@ -520,6 +524,8 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           reportNotOperationalCommandAvailable,
           requestRepairCommandAvailable,
           requestWorkshopExitCommandAvailable,
+          manageWorkshopIngressQueueCommandAvailable,
+          sendWorkshopMessageCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
           notificationPresentedCommandAvailable,
@@ -547,6 +553,8 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           reportNotOperationalCommandAvailable,
           requestRepairCommandAvailable,
           requestWorkshopExitCommandAvailable,
+          manageWorkshopIngressQueueCommandAvailable,
+          sendWorkshopMessageCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
           notificationPresentedCommandAvailable,
