@@ -90,6 +90,7 @@ repository.observeCanonicalPlacements({
   placementRevision: "shared-sporplan:1",
   placements: [
     {vehicleId: "74-54", slot: "7N"},
+    {vehicleId: "74-07", slot: "7S"},
     {vehicleId: "74-21", slot: "10N"},
   ],
 });
@@ -112,10 +113,60 @@ assert.equal(add.ok, true);
 assert.equal(add.result.status, "QUEUED");
 assert.equal(add.result.position, 1);
 
+const duplicateAcrossSlots = repository.executeCommand(
+  LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE,
+  {
+    actionId: "10000000-0000-4000-8000-000000000010",
+    payloadHash: "duplicate-74-21-other-slot",
+    operation: "ADD",
+    targetSlot: "8N",
+    vehicleId: "74-21",
+    queueEntryId: null,
+    expectedQueueRevision: 0,
+    expectedPlacementRevision: "shared-sporplan:1",
+  },
+  authority
+);
+assert.equal(duplicateAcrossSlots.ok, false);
+assert.equal(duplicateAcrossSlots.error, "workshop_queue_duplicate");
+
+const exitBefore = repository.getReadModel({roles: ["verksted"]});
+const placementBefore = exitBefore.placements.find(item => item.vehicleId === "74-07");
+assert.ok(placementBefore?.placementRevision);
+assert.ok(placementBefore?.workshopVisitId);
+const stateBeforeExit = JSON.stringify({
+  item: exitBefore.items.find(item => item.vehicleId === "74-07") || null,
+  faults: exitBefore.faults.filter(item => item.vehicleId === "74-07"),
+  repairRequests: exitBefore.repairRequests.filter(item => item.vehicleId === "74-07"),
+  placement: placementBefore,
+});
+const exitRequest = repository.executeCommand(
+  LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT,
+  {
+    actionId: "10000000-0000-4000-8000-000000000011",
+    payloadHash: "exit-74-07-7s",
+    vehicleId: "74-07",
+    expectedPlacementRevision: placementBefore.placementRevision,
+    expectedVisitId: placementBefore.workshopVisitId,
+  },
+  authority
+);
+assert.equal(exitRequest.ok, true);
+assert.equal(exitRequest.result.sourceSlot, "7S");
+const exitAfter = repository.getReadModel({roles: ["verksted"]});
+assert.equal(exitAfter.workshopExitRequests.filter(item => item.vehicleId === "74-07").length, 1);
+assert.equal(JSON.stringify({
+  item: exitAfter.items.find(item => item.vehicleId === "74-07") || null,
+  faults: exitAfter.faults.filter(item => item.vehicleId === "74-07"),
+  repairRequests: exitAfter.repairRequests.filter(item => item.vehicleId === "74-07"),
+  placement: exitAfter.placements.find(item => item.vehicleId === "74-07"),
+}), stateBeforeExit);
+
 repository.observeCanonicalPlacements({
   placementRevision: "shared-sporplan:2",
   placements: [
     {vehicleId: "74-54", slot: "9"},
+    {vehicleId: "74-07", slot: "7S"},
     {vehicleId: "74-21", slot: "10N"},
   ],
 });
@@ -130,6 +181,7 @@ repository.observeCanonicalPlacements({
   placementRevision: "shared-sporplan:3",
   placements: [
     {vehicleId: "74-12", slot: "7N"},
+    {vehicleId: "74-07", slot: "7S"},
     {vehicleId: "74-21", slot: "10N"},
   ],
 });
@@ -145,6 +197,8 @@ const message = repository.executeCommand(
     payloadHash: "message-drops",
     targetRole: "drops",
     message: "<b>Kontroller 74-21</b>",
+    selectedSlotId: "7N",
+    selectedVehicleId: "74-12",
   },
   authority
 );
@@ -153,7 +207,11 @@ assert.equal(message.result.targetRole, "drops");
 readback = repository.getReadModel({roles: ["drops"]});
 assert.equal(readback.workshopMessages.length, 1);
 assert.equal(readback.workshopMessages[0].message, "<b>Kontroller 74-21</b>");
+assert.equal(readback.workshopMessages[0].selectedSlotId, "7N");
+assert.equal(readback.workshopMessages[0].selectedVehicleId, "74-12");
 assert.equal(readback.notifications.filter(item => item.kind === "WORKSHOP_MESSAGE").length, 1);
+assert.equal(readback.notifications.find(item => item.kind === "WORKSHOP_MESSAGE").payload.selectedSlotId, "7N");
+assert.equal(readback.notifications.find(item => item.kind === "WORKSHOP_MESSAGE").payload.selectedVehicleId, "74-12");
 assert.equal(repository.getReadModel({roles: ["txp"]}).workshopMessages.length, 0);
 
 const replay = repository.executeCommand(
@@ -163,6 +221,8 @@ const replay = repository.executeCommand(
     payloadHash: "message-drops",
     targetRole: "drops",
     message: "<b>Kontroller 74-21</b>",
+    selectedSlotId: "7N",
+    selectedVehicleId: "74-12",
   },
   authority
 );
@@ -171,8 +231,8 @@ assert.equal(replay.result.idempotentReplay, true);
 assert.equal(repository.getReadModel({roles: ["drops"]}).workshopMessages.length, 1);
 
 console.log(JSON.stringify({
-  schemaVersion: "sde-stadler-action-center-server-harness-v1",
-  tests: 32,
+  schemaVersion: "sde-global-update-stadler-action-center-server-harness-v2",
+  tests: 55,
   queueStatus: queueEntry.status,
   messageCount: 1,
 }));

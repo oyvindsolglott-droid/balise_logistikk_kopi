@@ -63,6 +63,101 @@ for(const token of [
 assert.doesNotMatch(workshop, /Arbeid påbegynt|data-sde-workshop-work-started/);
 assert.doesNotMatch(workshop, /record\?\.currentStatus\s*===\s*"IKKE_DRIFTSKLAR"/);
 
+const refresh = extractFunction("refreshPageKeepingActiveTab");
+for(const token of [
+  "captureGlobalUpdateContext",
+  "refreshGlobalAuthoritativeData",
+  "restoreGlobalUpdateContext",
+]){
+  assert.ok(refresh.includes(token), `global refresh misses ${token}`);
+}
+assert.doesNotMatch(refresh, /window\.location\.(href|reload)/);
+
+const captureContext = extractFunction("captureGlobalUpdateContext");
+for(const token of [
+  "activeTab",
+  "accessLevel",
+  "workshopActionCenterSelectedSlot",
+  "workshopVehicleRegistrySelectedVehicle",
+  "workshopStandardSheetCollapsed",
+  "workshopIngressDraft",
+  "workshopMessageDraft",
+  "scrollX",
+  "scrollY",
+]){
+  assert.ok(captureContext.includes(token), `captured update context misses ${token}`);
+}
+
+const restoreContext = extractFunction("restoreGlobalUpdateContext");
+for(const token of [
+  "workshopActionCenterSelectedSlot",
+  "workshopVehicleRegistrySelectedVehicle",
+  "workshopStandardSheetCollapsed",
+  "workshopIngressDraft",
+  "workshopMessageDraft",
+  "scrollTo",
+]){
+  assert.ok(restoreContext.includes(token), `restored update context misses ${token}`);
+}
+
+const authoritativeRefresh = extractFunction("refreshGlobalAuthoritativeData");
+for(const token of [
+  "fetchBaliseStaticJson",
+  "loadDropsVehicleStatusContext",
+  "Promise.allSettled",
+]){
+  assert.ok(authoritativeRefresh.includes(token), `authoritative refresh misses ${token}`);
+}
+
+const hall = extractFunction("buildWorkshopHallOverviewHtml");
+for(const slot of ["8N", "7N", "8S", "7S"]){
+  assert.ok(hall.includes(`"${slot}"`), `3D hall selector misses ${slot}`);
+}
+for(const token of [
+  "data-sde-workshop-overview-slot",
+  "aria-pressed",
+  "workshop-hall-overview-slot",
+]){
+  assert.ok(hall.includes(token), `3D hall selector misses ${token}`);
+}
+
+const slotCards = extractFunction("buildWorkshopSlotStatusCardsHtml");
+assert.doesNotMatch(slotCards, /data-sde-workshop-select-slot/);
+
+const actionCenter = extractFunction("buildWorkshopActionCenterHtml");
+assert.doesNotMatch(actionCenter, /data-sde-workshop-slot-select/);
+assert.doesNotMatch(actionCenter, />Målspor</);
+for(const token of [
+  "getWorkshopExitRequestAvailability",
+  "data-sde-workshop-open-prebooking",
+  "data-sde-workshop-prebooking-vehicle",
+  "data-sde-workshop-prebooking-slot",
+  "data-sde-workshop-prebooking-summary",
+  "data-sde-workshop-queue-add",
+  "workshopIngressDraft",
+  "data-sde-workshop-message-target",
+  "data-sde-workshop-message-text",
+  "workshopMessageDraft",
+  "selectedSlotId",
+  "selectedVehicleId",
+  "DROPS",
+  "TXP",
+  "Skiftere",
+  "Agilia",
+]){
+  assert.ok(actionCenter.includes(token), `action center misses ${token}`);
+}
+for(const cssClass of [
+  "workshop-action-3d--operational",
+  "workshop-action-3d--exit",
+  "workshop-action-3d--status",
+  "workshop-action-3d--prebooking",
+  "workshop-action-3d--message",
+]){
+  assert.ok(source.includes(cssClass), `3D action system misses ${cssClass}`);
+}
+assert.match(actionCenter, /data-sde-workshop-request-exit[^>]*(disabled|aria-disabled)/);
+
 const popup = extractFunction("buildWorkshopNotificationPopupHtml");
 assert.ok(popup.includes("Åpne statusark"));
 assert.ok(popup.includes("WORKSHOP_MESSAGE"));
@@ -75,8 +170,8 @@ for(const token of ["WORKSHOP_MESSAGE", "drops", "txp", "sde_skiftere", "agila"]
 }
 
 for(const token of [
-  "data-sde-workshop-slot-select",
-  "data-sde-workshop-queue-vehicle",
+  "data-sde-workshop-prebooking-vehicle",
+  "data-sde-workshop-prebooking-slot",
   "data-sde-workshop-queue-add",
   "data-sde-workshop-message-target",
   "data-sde-workshop-message-text",
@@ -90,6 +185,6 @@ assert.ok(source.includes("@media (max-width: 520px)"));
 assert.ok(source.includes("grid-template-columns:repeat(2,minmax(0,1fr))"));
 
 console.log(JSON.stringify({
-  schemaVersion: "sde-stadler-action-center-ui-harness-v1",
-  tests: 30,
+  schemaVersion: "sde-global-update-stadler-action-center-ui-harness-v2",
+  tests: 68,
 }));

@@ -86,7 +86,10 @@ assert.match(html,/data-sde-workshop-overview-vehicle="74-54"/);
 assert.match(html,/data-sde-workshop-overview-status="DRIFTSKLAR"/);
 assert.match(html,/data-sde-workshop-overview-status="TIL REP"/);
 assert.match(html,/data-sde-workshop-overview-status="TIL DREI"/);
-assert.doesNotMatch(html,/data-sde-workshop-overview-slot="8N"/);
+assert.match(html,/data-sde-workshop-overview-slot="8N"/);
+assert.match(html,/data-sde-workshop-overview-vehicle=""/);
+assert.match(html,/aria-label="Velg tomt verkstedspor 8N"/);
+assert.equal((html.match(/data-sde-workshop-overview-slot=/g) || []).length,4);
 assert.doesNotMatch(html,/draggable=/);
 assert.doesNotMatch(html,/<input|<select|<textarea/);
 
@@ -98,7 +101,7 @@ assert.ok(
 );
 
 const clickSource = extractFunction("handleDropsNotOperationalRegistryClick");
-assert.match(clickSource,/data-sde-workshop-overview-vehicle/);
+assert.match(clickSource,/data-sde-workshop-overview-slot/);
 assert.match(clickSource,/selectWorkshopOverviewVehicle/);
 
 const asset = fs.readFileSync(path.join(root,"assets","NY_SPORPLAN.png"));
@@ -112,7 +115,7 @@ console.log(JSON.stringify({
   ok:true,
   exactSlots:["8N","7N","8S","7S"],
   actualVehicles:["74-54","74-45","74-07"],
-  emptySlotClickable:false,
+  emptySlotClickable:true,
   draggable:false,
   authoritativeStatuses:["DRIFTSKLAR","TIL REP","TIL DREI"],
   exactAsset:true
