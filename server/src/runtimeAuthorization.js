@@ -41,6 +41,7 @@ const CAPABILITY_IDS = Object.freeze({
   REQUEST_REPAIR: "vehicle_status.request_repair",
   REQUEST_WORKSHOP_EXIT: "vehicle_status.request_workshop_exit",
   MANAGE_WORKSHOP_INGRESS_QUEUE: "vehicle_status.manage_workshop_ingress_queue",
+  REQUEST_CLEANING_TRACK_SPACE: "vehicle_status.request_cleaning_track_space",
   SEND_OPERATIONAL_MESSAGE: "vehicle_status.send_operational_message",
   SEND_WORKSHOP_MESSAGE: "vehicle_status.send_operational_message",
   MARK_FOR_TURNING: "vehicle_status.mark_for_turning",
@@ -108,6 +109,12 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
     description: "Manage the authoritative ingress queue for workshop tracks.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: [ROLE_KEYS.VERKSTED]
+  },
+  {
+    capability: CAPABILITY_IDS.REQUEST_CLEANING_TRACK_SPACE,
+    description: "Request one authoritative Agilia cleaning-track allocation.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.AGILA]
   },
   {
     capability: CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE,

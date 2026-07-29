@@ -8088,6 +8088,124 @@ button{padding:12px 12px}
 }
 .operational-message-composer__status.is-success{color:#087b3a}
 .operational-message-composer__status.is-error{color:#a41d26}
+.agilia-workspace{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:18px;
+  align-items:stretch;
+}
+.agilia-workspace > section{
+  min-width:0;
+  min-height:100%;
+  padding:16px;
+  border:1px solid rgba(53,142,255,.38);
+  border-radius:18px;
+  background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(231,240,251,.94));
+  box-shadow:0 14px 28px rgba(20,48,84,.12),inset 0 1px 0 rgba(255,255,255,.92);
+}
+.agilia-workspace .operational-message-composer{
+  height:100%;
+  margin:0;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+.agilia-cleaning-request{
+  display:flex;
+  flex-direction:column;
+  gap:14px;
+  color:#10233f;
+}
+.agilia-cleaning-request h3{margin:0;color:#0b2a55;font-size:1rem;font-weight:950}
+.agilia-cleaning-request__info{
+  margin:0;
+  padding:10px 12px;
+  border-left:4px solid #2580e8;
+  border-radius:8px;
+  background:#eaf4ff;
+  color:#24496f;
+  font-size:.82rem;
+  font-weight:750;
+  line-height:1.45;
+}
+.agilia-cleaning-slots{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+  border:0;
+  margin:0;
+  padding:0;
+}
+.agilia-cleaning-slots legend,
+.agilia-cleaning-field > span{margin-bottom:7px;color:#173b69;font-size:.82rem;font-weight:900}
+.agilia-cleaning-slot{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  min-height:44px;
+  padding:8px 11px;
+  border:1px solid #91a8c6;
+  border-radius:12px;
+  background:#fff;
+  font-weight:900;
+}
+.agilia-cleaning-slot:has(input:checked){
+  border-color:#236fff;
+  background:#eaf2ff;
+  box-shadow:0 0 0 2px rgba(35,111,255,.18);
+}
+.agilia-cleaning-datetime{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.agilia-cleaning-field{display:grid;min-width:0}
+.agilia-cleaning-field input{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  border:1px solid #91a8c6;
+  border-radius:12px;
+  background:#fff;
+  color:#10233f;
+  font:inherit;
+  padding:10px 12px;
+}
+.agilia-cleaning-short-notice{
+  padding:11px 12px;
+  border:1px solid #f59e0b;
+  border-radius:12px;
+  background:#fff7d6;
+  color:#7c3d06;
+  font-size:.82rem;
+  font-weight:800;
+  line-height:1.45;
+}
+.agilia-cleaning-short-notice[hidden]{display:none}
+.agilia-cleaning-short-notice label{display:flex;gap:9px;align-items:flex-start;margin-top:8px}
+.agilia-cleaning-summary{
+  margin-top:auto;
+  padding:12px;
+  border:1px solid #bfd2e8;
+  border-radius:13px;
+  background:#f8fbff;
+  font-size:.8rem;
+  line-height:1.5;
+}
+.agilia-cleaning-summary h4{margin:0 0 7px;color:#0b2a55}
+.agilia-cleaning-summary dl{display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin:0}
+.agilia-cleaning-summary dt{font-weight:900}.agilia-cleaning-summary dd{margin:0}
+.agilia-cleaning-submit{
+  min-height:48px;
+  border:1px solid #174da7;
+  border-radius:14px;
+  color:#fff;
+  font-weight:950;
+  cursor:pointer;
+  background:linear-gradient(180deg,#3984ff,#0755d7 64%,#003b9d);
+  box-shadow:0 6px 0 #062e75,0 12px 22px rgba(0,64,160,.25),inset 0 1px 0 rgba(255,255,255,.55);
+}
+.agilia-cleaning-submit:disabled{cursor:not-allowed;opacity:.55;filter:saturate(.3)}
+.agilia-cleaning-status{min-height:1.2em;margin:0;color:#34516f;font-size:.82rem;font-weight:850}
+.agilia-cleaning-status.is-success{color:#087b3a}.agilia-cleaning-status.is-error{color:#a41d26}
 .workshop-action-center-queue-list{
   grid-column:1/-1;
   margin:0;
@@ -8109,6 +8227,8 @@ button{padding:12px 12px}
   .workshop-action-center-queue,
   .workshop-action-center-message,
   .operational-message-composer{grid-template-columns:1fr}
+  .agilia-workspace{grid-template-columns:1fr}
+  .agilia-cleaning-datetime{grid-template-columns:1fr}
   .workshop-action-center-queue-list{grid-column:auto}
 }
 .workshop-hall-overview-vehicle-graphic{
@@ -9354,10 +9474,39 @@ button{padding:12px 12px}
   <div class="drops-hero">
     <div class="drops-eyebrow">Agilia</div>
     <div class="drops-title">Renhold og klargjøring</div>
-    <p class="drops-sub">Egen visningsflate for Agilia. Denne menyen er tilgjengelig på nivå 5 Agilia og nivå 0.</p>
-    <div class="drops-warning">Visningsflate – ingen operativ write</div>
+    <p class="drops-sub">Autoritativ arbeidsflate for direktemeldinger og bestilling av sporplass til hovedrenhold.</p>
+    <div class="drops-warning">Agilia-autoritet – alle bestillinger bekreftes med fersk server-readback</div>
   </div>
-  <div data-sde-operational-message-host data-sde-operational-role="agila"></div>
+  <div class="agilia-workspace" data-sde-agilia-workspace>
+    <section aria-label="Direktemeldinger fra Agilia">
+      <div data-sde-operational-message-host data-sde-operational-role="agila"></div>
+    </section>
+    <section class="agilia-cleaning-request" data-sde-agilia-cleaning-request aria-labelledby="agiliaCleaningTitle">
+      <h3 id="agiliaCleaningTitle">Bestilling av sporplass til hovedrenhold</h3>
+      <p class="agilia-cleaning-request__info">Bestillingen bør foreligge senest 1 døgn før hovedrenholdet skal påbegynnes.</p>
+      <fieldset class="agilia-cleaning-slots">
+        <legend>Velg spor (1–4)</legend>
+        <label class="agilia-cleaning-slot"><input type="checkbox" value="5S" data-sde-agilia-cleaning-slot> 5S</label>
+        <label class="agilia-cleaning-slot"><input type="checkbox" value="5M" data-sde-agilia-cleaning-slot> 5M</label>
+        <label class="agilia-cleaning-slot"><input type="checkbox" value="10S" data-sde-agilia-cleaning-slot> 10S</label>
+        <label class="agilia-cleaning-slot"><input type="checkbox" value="10N" data-sde-agilia-cleaning-slot> 10N</label>
+      </fieldset>
+      <div class="agilia-cleaning-datetime">
+        <label class="agilia-cleaning-field"><span>Dato for hovedrenhold</span><input type="date" data-sde-agilia-cleaning-date></label>
+        <label class="agilia-cleaning-field"><span>Planlagt starttid</span><input type="time" data-sde-agilia-cleaning-time></label>
+      </div>
+      <div class="agilia-cleaning-short-notice" data-sde-agilia-cleaning-short-notice-warning hidden>
+        <strong>Kort varsel: Bestillingen sendes mindre enn 1 døgn før planlagt hovedrenhold.</strong>
+        <label><input type="checkbox" data-sde-agilia-cleaning-short-notice> Jeg forstår at bestillingen sendes med kortere varsel enn anbefalt</label>
+      </div>
+      <div class="agilia-cleaning-summary" data-sde-agilia-cleaning-summary>
+        <h4>Sporplassbestilling</h4>
+        <dl><dt>Valgte spor</dt><dd>Ingen</dd><dt>Dato/start</dt><dd>Ikke valgt</dd><dt>Antall spor</dt><dd>0</dd><dt>Ledetid</dt><dd>Ikke beregnet</dd><dt>Status</dt><dd>Ufullstendig</dd></dl>
+      </div>
+      <button class="agilia-cleaning-submit" type="button" data-sde-agilia-cleaning-submit disabled aria-disabled="true">Bestill sporplass</button>
+      <p class="agilia-cleaning-status" data-sde-agilia-cleaning-status role="status"></p>
+    </section>
+  </div>
 </div>
 </section>
 
@@ -16603,6 +16752,34 @@ function getSdeTargetSlotSafety(vehicle, targetSlot, context={}){
       targetVehicle,
       reasons,
       reason: reasons.join(" ")
+    };
+  }
+
+  const activeWorkshopIngressOwner = (
+    typeof dropsVehicleStatusReadback === "object" &&
+    Array.isArray(dropsVehicleStatusReadback?.workshopIngressQueue)
+      ? dropsVehicleStatusReadback.workshopIngressQueue
+      : []
+  ).find(entry=>
+    normalizeSlot(entry?.targetSlot) === toSlot &&
+    ["ACTIVATING","CARD_CREATED"].includes(String(entry?.status || "")) &&
+    String(entry?.linkedCardId || "") &&
+    normalizeVehicleToken(entry?.vehicleId) !== normalizeVehicleToken(cleanVehicle)
+  );
+  if(activeWorkshopIngressOwner){
+    const reservedByVehicle = sanitizeVehicleValue(activeWorkshopIngressOwner.vehicleId);
+    reasons.push(
+      `Målspor ${toSlot} er fysisk ledig, men reservert av aktivt skiftekort for ${reservedByVehicle}.`
+    );
+    return {
+      status:"blocked",
+      reasonCode:"TARGET_RESERVED_BY_EXISTING_CARD",
+      vehicle:cleanVehicle,
+      targetSlot:toSlot,
+      reservedByVehicle,
+      reservationOwnerCardId:String(activeWorkshopIngressOwner.linkedCardId || ""),
+      reasons,
+      reason:reasons.join(" ")
     };
   }
 
@@ -48053,7 +48230,7 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   const esc = value=>String(value ?? "").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
   const ingressModes = [
     {requestType:"ASAP",priority:"HIGH",label:"Bestilling av innkjøring (ASAP)"},
-    {requestType:"PREBOOKED",priority:"NORMAL",label:"Forhåndsbestilling av innkjøring"}
+    {requestType:"PREBOOKED",priority:"NORMAL",label:"Legg i kø, innkjøring"}
   ];
   const workshopActionCenterContract = [
     "data-sde-workshop-open-prebooking",
@@ -48134,6 +48311,10 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   const targetQueue = (Array.isArray(readback?.workshopIngressQueue) ? readback.workshopIngressQueue : [])
     .filter(entry=>entry?.targetSlot === targetSlot && !["COMPLETED","CANCELLED"].includes(entry?.status))
     .sort((left,right)=>Number(left?.position || 0)-Number(right?.position || 0));
+  const activeTargetCardOwner = targetQueue.find(entry=>
+    ["ACTIVATING","CARD_CREATED"].includes(String(entry?.status || "")) &&
+    String(entry?.linkedCardId || "")
+  ) || null;
   const duplicateQueueEntry = (Array.isArray(readback?.workshopIngressQueue) ? readback.workshopIngressQueue : [])
     .find(entry=>entry?.vehicleId === draftVehicle && !["COMPLETED","CANCELLED"].includes(entry?.status));
   const typeOptions = [`<option value="">Velg type</option>`]
@@ -48163,6 +48344,9 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   if(!draftVehicle) validationErrors.push("Velg kjøretøy.");
   if(!["8N","7N","8S","7S"].includes(targetSlot)) validationErrors.push("Velg verkstedspor.");
   if(duplicateQueueEntry) validationErrors.push(`Kjøretøyet har allerede aktiv køplass i ${duplicateQueueEntry.targetSlot}.`);
+  if(activeTargetCardOwner) validationErrors.push(
+    `${targetSlot} er reservert av aktivt skiftekort for ${activeTargetCardOwner.vehicleId}.`
+  );
   if(!queueReady) validationErrors.push("Køkommando er ikke tilgjengelig.");
   if(!targetPlacementRevision) validationErrors.push("Fersk plasseringsrevisjon mangler.");
   if(workshopActionCenterCommandInFlight) validationErrors.push("En kommando pågår.");
@@ -48177,6 +48361,8 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   };
   const activationText = targetOccupant
     ? `Aktiveres først når ${targetOccupant} har forlatt ${targetSlot} og fersk plassering viser sporet ledig.`
+    : activeTargetCardOwner
+      ? `${targetSlot} er fysisk tomt, men reservert for ${activeTargetCardOwner.vehicleId}.`
     : `Sporet er ledig; serveren kan opprette skiftekort etter bekreftet bestilling.`;
   return `<section class="workshop-action-center" data-sde-workshop-action-center data-sde-workshop-action-vehicle="${esc(vehicleId)}" data-sde-workshop-queue-revision="${Number(targetQueue[0]?.queueRevision ?? 0)}" data-sde-workshop-placement-revision="${esc(targetPlacementRevision)}">
     <h3>Handlingssenter</h3>
@@ -48190,7 +48376,7 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
       <button class="workshop-action-3d workshop-action-3d--operational" type="button" data-sde-workshop-report-operational${reportOperationalReady ? "" : " disabled aria-disabled=\"true\""}>${buildWorkshopActionIcon("operational")}<span>Meld Driftsklart</span></button>
       <button class="workshop-action-3d workshop-action-3d--exit" type="button" data-sde-workshop-request-exit aria-disabled="${exitAvailability.ariaDisabled}"${exitAvailability.available ? "" : " disabled"}>${buildWorkshopActionIcon("exit")}<span>${exitAvailability.activeRequest ? "Bestilt utkjøring" : "Bestill utkjøring"}</span></button>
       <button class="workshop-action-3d workshop-action-3d--status" type="button" data-sde-workshop-open-status-sheet${vehicleId ? "" : " disabled aria-disabled=\"true\""}>${buildWorkshopActionIcon("status")}<span>Åpne statusark</span></button>
-      <button class="workshop-action-3d workshop-action-3d--prebooking" type="button" data-sde-workshop-open-prebooking aria-expanded="${workshopPrebookingPanelOpen ? "true" : "false"}>${buildWorkshopActionIcon("prebooking")}<span>Forhåndsbestill innkjøring</span></button>
+      <button class="workshop-action-3d workshop-action-3d--prebooking" type="button" data-sde-workshop-open-prebooking aria-expanded="${workshopPrebookingPanelOpen ? "true" : "false"} aria-label="Bestill innkjøring">${buildWorkshopActionIcon("prebooking")}<span>Bestill innkjøring</span></button>
     </div>
     <div class="workshop-action-center-queue workshop-prebooking-panel"${workshopPrebookingPanelOpen ? "" : " hidden"} data-sde-workshop-prebooking-panel>
       <h4>Bestill innkjøring</h4>
@@ -48200,7 +48386,11 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
       <div class="workshop-prebooking-summary" data-sde-workshop-prebooking-summary>
         <strong>Innkjøringsbestilling</strong>
         <p>${esc(draftVehicle || "Velg kjøretøy")} → ${esc(targetSlot)}</p>
-        <p>Belegg: ${targetOccupant ? `Opptatt av ${esc(targetOccupant)}` : "Tomt"}. Forventet køplass: ${targetQueue.length + 1}.</p>
+        <p>Belegg: ${targetOccupant
+          ? `Opptatt av ${esc(targetOccupant)}`
+          : (activeTargetCardOwner
+            ? `Fysisk tomt – reservert for ${esc(activeTargetCardOwner.vehicleId)}`
+            : "Tomt og uten aktiv korteier")}. Forventet køplass: ${targetQueue.length + 1}.</p>
         <p>${esc(activationText)}</p>
         ${validationErrors.length ? `<ul>${validationErrors.map(error=>`<li>${esc(error)}</li>`).join("")}</ul>` : ""}
       </div>
@@ -48318,7 +48508,7 @@ function buildWorkshopVehicleRegistryHtml(selectedSeries="",selectedVehicle="",r
     "8N","7N","8S","7S",
     "Meld Driftsklart",
     "Bestill utkjøring",
-    "Forhåndsbestill innkjøring",
+    "Bestill innkjøring",
     "Send beskjed",
     "AVVIK – KONTROLLER SPORPLAN"
   ];
@@ -48852,6 +49042,15 @@ const operationalMessageDrafts = new Map(
 );
 const operationalMessageLastResults = new Map();
 const operationalMessageCommandsInFlight = new Set();
+const AGILIA_CLEANING_SLOTS = Object.freeze(["5S","5M","10S","10N"]);
+const agiliaCleaningDraft = {
+  requestedSlots:new Set(),
+  requestedDate:"",
+  startTime:"",
+  shortNoticeAcknowledged:false
+};
+let agiliaCleaningRequestInFlight = false;
+let agiliaCleaningLastResult = null;
 
 function getActiveOperationalMessageRole(){
   return OPERATIONAL_MESSAGE_LEVEL_ROLES[getActiveAccessLevel()] || "";
@@ -48936,7 +49135,9 @@ function renderOperationalMessageComposers(){
       .join("");
     host.innerHTML = `<section class="operational-message-composer" data-sde-operational-message-composer>
       <div class="operational-message-composer__title">
-        <span>Instantmelding fra ${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[role])}</span>
+        <span>${role === "agila"
+          ? "Direktemeldinger fra Agilia"
+          : `Direktemelding fra ${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[role])}`}</span>
         <span>Serverautoritativ</span>
       </div>
       <label>Mottaker
@@ -48955,6 +49156,7 @@ function renderOperationalMessageComposers(){
     host.dataset.sdeOperationalMessageInitialized = "true";
   });
   updateOperationalMessageComposerStatus();
+  updateAgiliaCleaningRequestUi();
 }
 
 function updateOperationalMessageComposerStatus(){
@@ -49072,7 +49274,7 @@ async function submitOperationalMessageFromUi(role){
       }
     );
     const messageId = String(result?.body?.messageId || "");
-    if(result?.body?.ok !== true || !messageId){
+    if(result?.commandAccepted !== true || !messageId){
       throw new Error(
         String(result?.body?.message || result?.body?.error || "message_server_rejected")
       );
@@ -49115,6 +49317,311 @@ async function submitOperationalMessageFromUi(role){
   }finally{
     operationalMessageCommandsInFlight.delete(role);
     updateOperationalMessageComposerStatus();
+  }
+}
+
+function resolveEuropeOsloLocalDateTime(requestedDate,startTime){
+  if(
+    !/^\d{4}-\d{2}-\d{2}$/.test(String(requestedDate || "")) ||
+    !/^\d{2}:\d{2}$/.test(String(startTime || ""))
+  ) return null;
+  const [year,month,day] = requestedDate.split("-").map(Number);
+  const [hour,minute] = startTime.split(":").map(Number);
+  const desiredUtc = Date.UTC(year,month - 1,day,hour,minute,0,0);
+  const formatter = new Intl.DateTimeFormat("en-CA",{
+    timeZone:"Europe/Oslo",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit",
+    hour:"2-digit",
+    minute:"2-digit",
+    hourCycle:"h23"
+  });
+  let candidate = desiredUtc;
+  for(let pass=0;pass<2;pass+=1){
+    const parts = Object.fromEntries(
+      formatter.formatToParts(new Date(candidate))
+        .filter(part=>part.type !== "literal")
+        .map(part=>[part.type,Number(part.value)])
+    );
+    const observedUtc = Date.UTC(
+      parts.year,
+      parts.month - 1,
+      parts.day,
+      parts.hour,
+      parts.minute,
+      0,
+      0
+    );
+    candidate += desiredUtc - observedUtc;
+  }
+  const verified = Object.fromEntries(
+    formatter.formatToParts(new Date(candidate))
+      .filter(part=>part.type !== "literal")
+      .map(part=>[part.type,String(part.value)])
+  );
+  const matches =
+    verified.year === String(year).padStart(4,"0") &&
+    verified.month === String(month).padStart(2,"0") &&
+    verified.day === String(day).padStart(2,"0") &&
+    verified.hour === String(hour).padStart(2,"0") &&
+    verified.minute === String(minute).padStart(2,"0");
+  return matches ? new Date(candidate) : null;
+}
+
+function getAgiliaCleaningRequestAvailability(){
+  const roles = Array.isArray(dropsRuntimeCapabilities?.roles)
+    ? dropsRuntimeCapabilities.roles
+    : [];
+  const capability =
+    dropsRuntimeCapabilities?.capabilities?.["vehicle_status.request_cleaning_track_space"];
+  const plannedStart = resolveEuropeOsloLocalDateTime(
+    agiliaCleaningDraft.requestedDate,
+    agiliaCleaningDraft.startTime
+  );
+  const leadTimeMinutes = plannedStart
+    ? Math.floor((plannedStart.getTime() - Date.now()) / 60000)
+    : null;
+  const shortNotice = Number.isFinite(leadTimeMinutes) &&
+    leadTimeMinutes > 0 &&
+    leadTimeMinutes < 24 * 60;
+  const checks = {
+    correctSurface:getActiveOperationalMessageRole() === "agila",
+    identityVerified:
+      dropsRuntimeCapabilities?.ok === true &&
+      dropsRuntimeCapabilities?.roleResolved === true,
+    roleAllowed:roles.includes("agila"),
+    capabilityAllowed:
+      capability?.allowed === true &&
+      capability?.decision === "ALLOW",
+    readbackReady:dropsVehicleStatusReadback?.ok === true,
+    writeGateOpen:dropsVehicleStatusReadback?.writeEnabled === true,
+    commandReady:
+      dropsVehicleStatusReadback?.requestCleaningTrackSpaceCommandAvailable === true,
+    slotsValid:
+      agiliaCleaningDraft.requestedSlots.size >= 1 &&
+      agiliaCleaningDraft.requestedSlots.size <= 4 &&
+      [...agiliaCleaningDraft.requestedSlots].every(slot=>
+        AGILIA_CLEANING_SLOTS.includes(slot)
+      ),
+    plannedStartValid:Boolean(plannedStart && leadTimeMinutes > 0),
+    shortNoticeAcknowledged:
+      !shortNotice || agiliaCleaningDraft.shortNoticeAcknowledged === true,
+    requestIdle:!agiliaCleaningRequestInFlight
+  };
+  const failed = Object.entries(checks).find(([,value])=>!value)?.[0] || "";
+  const reasons = {
+    correctSurface:"Bestillingen sendes fra Nivå 5 – Agilia.",
+    identityVerified:"Verifisert identitet mangler.",
+    roleAllowed:"Pålogget identitet mangler Agilia-rollen.",
+    capabilityAllowed:"Sporplassbestilling er ikke autorisert.",
+    readbackReady:"Autoritativ readback er ikke klar.",
+    writeGateOpen:"Produksjonsskriving er ikke åpnet.",
+    commandReady:"Sporplasskommandoen er ikke klar på serveren.",
+    slotsValid:"Velg mellom ett og fire godkjente spor.",
+    plannedStartValid:"Velg en gyldig dato og starttid i fremtiden.",
+    shortNoticeAcknowledged:"Bekreft at bestillingen sendes med kortere varsel enn anbefalt.",
+    requestIdle:"Bestillingen sendes."
+  };
+  return {
+    available:failed === "",
+    reason:failed ? reasons[failed] : "Klar til å bestille.",
+    checks,
+    plannedStart,
+    leadTimeMinutes,
+    shortNotice
+  };
+}
+
+function formatAgiliaCleaningLeadTime(minutes){
+  if(!Number.isFinite(minutes) || minutes <= 0) return "Ikke beregnet";
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return `${hours} t ${remainder} min`;
+}
+
+function updateAgiliaCleaningRequestUi(){
+  const host = document.querySelector("[data-sde-agilia-cleaning-request]");
+  if(!host) return;
+  host.querySelectorAll("[data-sde-agilia-cleaning-slot]").forEach(input=>{
+    const checked = agiliaCleaningDraft.requestedSlots.has(String(input.value || ""));
+    if(document.activeElement !== input && input.checked !== checked) input.checked = checked;
+  });
+  const dateInput = host.querySelector("[data-sde-agilia-cleaning-date]");
+  const timeInput = host.querySelector("[data-sde-agilia-cleaning-time]");
+  const acknowledgement = host.querySelector("[data-sde-agilia-cleaning-short-notice]");
+  if(dateInput && document.activeElement !== dateInput){
+    dateInput.value = agiliaCleaningDraft.requestedDate;
+  }
+  if(timeInput && document.activeElement !== timeInput){
+    timeInput.value = agiliaCleaningDraft.startTime;
+  }
+  if(acknowledgement && document.activeElement !== acknowledgement){
+    acknowledgement.checked = agiliaCleaningDraft.shortNoticeAcknowledged;
+  }
+  const availability = getAgiliaCleaningRequestAvailability();
+  const warning = host.querySelector("[data-sde-agilia-cleaning-short-notice-warning]");
+  if(warning) warning.hidden = !availability.shortNotice;
+  const selectedSlots = AGILIA_CLEANING_SLOTS.filter(slot=>
+    agiliaCleaningDraft.requestedSlots.has(slot)
+  );
+  const summary = host.querySelector("[data-sde-agilia-cleaning-summary]");
+  if(summary){
+    summary.innerHTML = `<h4>Sporplassbestilling</h4><dl>
+      <dt>Valgte spor</dt><dd>${selectedSlots.length ? selectedSlots.join(", ") : "Ingen"}</dd>
+      <dt>Dato/start</dt><dd>${agiliaCleaningDraft.requestedDate && agiliaCleaningDraft.startTime
+        ? `${agiliaCleaningDraft.requestedDate} kl. ${agiliaCleaningDraft.startTime} · Europe/Oslo`
+        : "Ikke valgt"}</dd>
+      <dt>Antall spor</dt><dd>${selectedSlots.length}</dd>
+      <dt>Ledetid</dt><dd>${formatAgiliaCleaningLeadTime(availability.leadTimeMinutes)}</dd>
+      <dt>Status</dt><dd>${availability.shortNotice ? "Kort varsel" : availability.reason}</dd>
+    </dl>`;
+  }
+  const button = host.querySelector("[data-sde-agilia-cleaning-submit]");
+  if(button){
+    button.disabled = !availability.available;
+    button.setAttribute("aria-disabled",availability.available ? "false" : "true");
+  }
+  const status = host.querySelector("[data-sde-agilia-cleaning-status]");
+  if(status){
+    status.textContent = agiliaCleaningLastResult?.message || availability.reason;
+    status.classList.toggle("is-success",agiliaCleaningLastResult?.kind === "success");
+    status.classList.toggle("is-error",agiliaCleaningLastResult?.kind === "error");
+  }
+}
+
+function handleAgiliaCleaningRequestChange(event){
+  const slot = event.target.closest?.("[data-sde-agilia-cleaning-slot]");
+  if(slot){
+    const value = String(slot.value || "");
+    if(!AGILIA_CLEANING_SLOTS.includes(value)) return true;
+    if(slot.checked) agiliaCleaningDraft.requestedSlots.add(value);
+    else agiliaCleaningDraft.requestedSlots.delete(value);
+    agiliaCleaningLastResult = null;
+    updateAgiliaCleaningRequestUi();
+    return true;
+  }
+  const date = event.target.closest?.("[data-sde-agilia-cleaning-date]");
+  if(date){
+    agiliaCleaningDraft.requestedDate = String(date.value || "");
+    agiliaCleaningDraft.shortNoticeAcknowledged = false;
+    agiliaCleaningLastResult = null;
+    updateAgiliaCleaningRequestUi();
+    return true;
+  }
+  const time = event.target.closest?.("[data-sde-agilia-cleaning-time]");
+  if(time){
+    agiliaCleaningDraft.startTime = String(time.value || "");
+    agiliaCleaningDraft.shortNoticeAcknowledged = false;
+    agiliaCleaningLastResult = null;
+    updateAgiliaCleaningRequestUi();
+    return true;
+  }
+  const acknowledgement = event.target.closest?.(
+    "[data-sde-agilia-cleaning-short-notice]"
+  );
+  if(acknowledgement){
+    agiliaCleaningDraft.shortNoticeAcknowledged = acknowledgement.checked === true;
+    agiliaCleaningLastResult = null;
+    updateAgiliaCleaningRequestUi();
+    return true;
+  }
+  return false;
+}
+
+function findAgiliaCleaningRequestReceipt(readback,cleaningRequestId){
+  return (Array.isArray(readback?.cleaningTrackSpaceRequests)
+    ? readback.cleaningTrackSpaceRequests
+    : []).find(request=>
+      String(request?.cleaningRequestId || "") === String(cleaningRequestId || "")
+    ) || null;
+}
+
+async function waitForAgiliaCleaningRequestReceipt({
+  cleaningRequestId,
+  initialReadback=null,
+  attempts=4,
+  delayMs=250,
+  fetchImpl=window.fetch.bind(window)
+}={}){
+  const immediate = findAgiliaCleaningRequestReceipt(initialReadback,cleaningRequestId);
+  if(immediate) return {ok:true,request:immediate,readback:initialReadback};
+  for(let attempt=0;attempt<attempts;attempt+=1){
+    if(attempt > 0) await new Promise(resolve=>window.setTimeout(resolve,delayMs));
+    const response = await fetchImpl("/api/vehicle-status",{
+      method:"GET",
+      headers:{Accept:"application/json"},
+      cache:"no-store",
+      credentials:"same-origin"
+    });
+    const readback = await response.json().catch(()=>null);
+    if(!response.ok || readback?.ok !== true) continue;
+    acceptVehicleStatusReadback(readback);
+    const request = findAgiliaCleaningRequestReceipt(readback,cleaningRequestId);
+    if(request) return {ok:true,request,readback};
+  }
+  return {ok:false,request:null,readback:null};
+}
+
+async function submitAgiliaCleaningRequestFromUi(){
+  const availability = getAgiliaCleaningRequestAvailability();
+  if(!availability.available) return;
+  agiliaCleaningRequestInFlight = true;
+  agiliaCleaningLastResult = {kind:"",message:"Sporplassbestillingen sendes …"};
+  updateAgiliaCleaningRequestUi();
+  try{
+    const requestedSlots = AGILIA_CLEANING_SLOTS.filter(slot=>
+      agiliaCleaningDraft.requestedSlots.has(slot)
+    );
+    const result = await postWorkshopActionCenterCommand(
+      "/api/vehicle-status/commands/request-cleaning-track-space",
+      {
+        requestedSlots,
+        requestedDate:agiliaCleaningDraft.requestedDate,
+        startTime:agiliaCleaningDraft.startTime,
+        shortNoticeAcknowledged:agiliaCleaningDraft.shortNoticeAcknowledged
+      }
+    );
+    if(result.commandAccepted !== true){
+      throw new Error(String(
+        result?.body?.message ||
+        result?.body?.error ||
+        "cleaning_request_rejected"
+      ));
+    }
+    const cleaningRequestId = String(
+      result?.body?.cleaningRequestId ||
+      result?.body?.result?.cleaningRequestId ||
+      ""
+    );
+    if(!cleaningRequestId) throw new Error("cleaning_request_id_missing");
+    const confirmation = await waitForAgiliaCleaningRequestReceipt({
+      cleaningRequestId,
+      initialReadback:result.readback
+    });
+    if(!confirmation.ok){
+      const delayed = new Error("cleaning_request_readback_not_confirmed");
+      delayed.cleaningRequestId = cleaningRequestId;
+      throw delayed;
+    }
+    agiliaCleaningLastResult = {
+      kind:"success",
+      message:`Sporplassbestilling ${cleaningRequestId} er serverbekreftet.`
+    };
+    agiliaCleaningDraft.requestedSlots.clear();
+    agiliaCleaningDraft.requestedDate = "";
+    agiliaCleaningDraft.startTime = "";
+    agiliaCleaningDraft.shortNoticeAcknowledged = false;
+  }catch(error){
+    agiliaCleaningLastResult = {
+      kind:"error",
+      message:error?.cleaningRequestId
+        ? `Serveren mottok bestilling ${error.cleaningRequestId}, men autoritativ readback ble ikke bekreftet innen kontrollvinduet. Valgene er beholdt.`
+        : `Bestillingen ble avvist: ${String(error?.message || "ukjent feil")}. Valgene er beholdt.`
+    };
+  }finally{
+    agiliaCleaningRequestInFlight = false;
+    updateAgiliaCleaningRequestUi();
   }
 }
 
@@ -49211,6 +49718,9 @@ function acceptVehicleStatusReadback(readback){
   if(typeof updateOperationalMessageComposerStatus === "function"){
     updateOperationalMessageComposerStatus();
   }
+  if(typeof updateAgiliaCleaningRequestUi === "function"){
+    updateAgiliaCleaningRequestUi();
+  }
 }
 
 async function loadDropsVehicleStatusContext(fetchImpl=window.fetch.bind(window)){
@@ -49237,6 +49747,9 @@ function ensureDropsVehicleStatusContext(){
       dropsRuntimeCapabilities = context.capabilities;
       dropsVehicleStatusAnalytics = context.analytics;
       dropsVehicleStatusContextLoaded = true;
+      if(typeof updateAgiliaCleaningRequestUi === "function"){
+        updateAgiliaCleaningRequestUi();
+      }
     })
     .catch(()=>{
       acceptVehicleStatusReadback(null);
@@ -49375,7 +49888,8 @@ function reconcileVehicleStatusNotifications(readback){
       notification?.kind === "WORKSHOP_EXIT_REQUESTED" ||
       notification?.kind === "WORKSHOP_INGRESS_REQUESTED" ||
       notification?.kind === "OPERATIONAL_MESSAGE" ||
-      notification?.kind === "WORKSHOP_MESSAGE"
+      notification?.kind === "WORKSHOP_MESSAGE" ||
+      notification?.kind === "CLEANING_TRACK_SPACE_REQUESTED"
     )
     .filter(notification=>String(notification?.notificationId || "") !== "");
   if(!vehicleStatusNotificationBaselineInitialized){
@@ -49385,7 +49899,8 @@ function reconcileVehicleStatusNotifications(readback){
       if(
         (
           notification.kind === "OPERATIONAL_MESSAGE" ||
-          notification.kind === "WORKSHOP_MESSAGE"
+          notification.kind === "WORKSHOP_MESSAGE" ||
+          notification.kind === "CLEANING_TRACK_SPACE_REQUESTED"
         ) &&
         !notification.presentedAt
       ){
@@ -49437,6 +49952,15 @@ function isVehicleStatusNotificationVisibleInCurrentSurface(notification){
     const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[String(notification.targetRole || "")];
     return Boolean(target && level === target.level && tab === target.tab);
   }
+  if(notification.kind === "CLEANING_TRACK_SPACE_REQUESTED"){
+    if(notification.targetRole === "txp"){
+      return level === "2" && tab === "grunnoppstilling";
+    }
+    if(notification.targetRole === "drops"){
+      return level === "1" && tab === "dropsMateriellstyrer";
+    }
+    return false;
+  }
   if(
     notification.kind === "OPERATIONAL_MESSAGE" ||
     notification.kind === "WORKSHOP_MESSAGE"
@@ -49479,6 +50003,14 @@ function getNextVehicleStatusNotification(predicate=isVehicleStatusNotificationV
 function selectVehicleStatusNotificationVehicle(notification){
   const vehicleId = String(notification?.vehicleId || "");
   const series = vehicleId.split("-")[0];
+  if(notification?.kind === "CLEANING_TRACK_SPACE_REQUESTED"){
+    if(notification?.targetRole === "txp"){
+      activateTab("grunnoppstilling");
+    }else if(notification?.targetRole === "drops"){
+      activateTab("dropsMateriellstyrer");
+    }
+    return;
+  }
   if(notification?.kind === "WORKSHOP_INGRESS_REQUESTED"){
     const targetRole = String(notification?.targetRole || "");
     const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[targetRole];
@@ -49549,6 +50081,8 @@ function buildWorkshopNotificationPopupHtml(notification){
   const repairRequested = notification.kind === "REPAIR_REQUESTED";
   const workshopExitRequested = notification.kind === "WORKSHOP_EXIT_REQUESTED";
   const workshopIngressRequested = notification.kind === "WORKSHOP_INGRESS_REQUESTED";
+  const cleaningTrackSpaceRequested =
+    notification.kind === "CLEANING_TRACK_SPACE_REQUESTED";
   const operationalMessage =
     notification.kind === "OPERATIONAL_MESSAGE" ||
     notification.kind === "WORKSHOP_MESSAGE";
@@ -49562,7 +50096,11 @@ function buildWorkshopNotificationPopupHtml(notification){
     messageContext.vehicleId &&
     ["drops","verksted"].includes(String(notification.targetRole || ""))
   );
-  const title = operationalMessage
+  const title = cleaningTrackSpaceRequested
+    ? (notification.targetRole === "txp"
+      ? "Ny sporplassbestilling fra Agilia"
+      : "Agilia har bestilt sporplass til hovedrenhold")
+    : operationalMessage
     ? `Beskjed fra ${sourceLabel || "operativt nivå"}`
     : workshopIngressRequested
     ? "Bestilling av innkjøring (ASAP)"
@@ -49584,7 +50122,7 @@ function buildWorkshopNotificationPopupHtml(notification){
       suggestedTarget = "";
     }
   }
-  return `<section class="vehicle-status-notification-popup${operationalMessage ? " is-workshop-message" : workshopExitRequested ? " is-workshop-exit-requested" : repairRequested ? " is-repair-requested" : " is-operational"}" role="alertdialog" aria-label="${escapeHtml(title)}">
+  return `<section class="vehicle-status-notification-popup${operationalMessage || cleaningTrackSpaceRequested ? " is-workshop-message" : workshopExitRequested ? " is-workshop-exit-requested" : repairRequested ? " is-repair-requested" : " is-operational"}" role="alertdialog" aria-label="${escapeHtml(title)}">
     <button type="button" data-sde-dismiss-vehicle-status-notification aria-label="Lukk varsel">×</button>
     <strong>${escapeHtml(title)}</strong>
     ${operationalMessage ? `<span>${escapeHtml(payload.message || "")}</span>` : `<span>Kjøretøy: ${escapeHtml(notification.vehicleId || "")}</span>`}
@@ -49603,7 +50141,14 @@ function buildWorkshopNotificationPopupHtml(notification){
     <span>Status: ${escapeHtml(payload.status || "Ukjent")}</span>
     <span>Prioritet: ${escapeHtml(payload.priority || notification.priority || "HIGH")}</span>
     <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>` : ""}
-    ${operationalMessage
+    ${cleaningTrackSpaceRequested ? `<span>Spor: ${escapeHtml(
+      Array.isArray(payload.requestedSlots) ? payload.requestedSlots.join(", ") : ""
+    )}</span>
+    <span>Dato/start: ${escapeHtml(payload.requestedDate || "")} kl. ${escapeHtml(payload.startTime || "")} · Europe/Oslo</span>
+    <span>Status: REQUESTED</span>
+    ${payload.shortNotice ? "<span>Kort varsel: bekreftet av Agilia</span>" : ""}
+    <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>` : ""}
+    ${operationalMessage || cleaningTrackSpaceRequested
       ? (messageHasStatusSheet
         ? `<button type="button" data-sde-open-vehicle-status-notification aria-label="Åpne statusark">Åpne statusark</button>`
         : "")
@@ -50133,6 +50678,16 @@ async function submitWorkshopExitRequestFromUi(requestedVehicleId=workshopVehicl
   }
 }
 
+function isSuccessfulLifecycleCommandBody(response,body){
+  return Boolean(
+    response?.ok &&
+    body &&
+    typeof body === "object" &&
+    body.ok !== false &&
+    !body.error
+  );
+}
+
 async function postWorkshopActionCenterCommand(route,payload){
   const response = await window.fetch(route,{
     method:"POST",
@@ -50141,8 +50696,15 @@ async function postWorkshopActionCenterCommand(route,payload){
     credentials:"same-origin"
   });
   const body = await response.json().catch(()=>null);
-  if(!response.ok || body?.ok !== true){
-    return {ok:false,status:response.status,body};
+  const commandAccepted = isSuccessfulLifecycleCommandBody(response,body);
+  if(!commandAccepted){
+    return {
+      ok:false,
+      commandAccepted:false,
+      readbackConfirmed:false,
+      status:response.status,
+      body
+    };
   }
   const readbackResponse = await window.fetch("/api/vehicle-status",{
     method:"GET",
@@ -50152,10 +50714,24 @@ async function postWorkshopActionCenterCommand(route,payload){
   });
   const readback = await readbackResponse.json().catch(()=>null);
   if(!readbackResponse.ok || readback?.ok !== true){
-    return {ok:false,status:readbackResponse.status,body,readback:null};
+    return {
+      ok:true,
+      commandAccepted:true,
+      readbackConfirmed:false,
+      status:response.status,
+      body,
+      readback:null
+    };
   }
   acceptVehicleStatusReadback(readback);
-  return {ok:true,status:response.status,body,readback};
+  return {
+    ok:true,
+    commandAccepted:true,
+    readbackConfirmed:true,
+    status:response.status,
+    body,
+    readback
+  };
 }
 
 function findOperationalMessageReceipt(readback,messageId,sourceRole,targetRole){
@@ -50208,6 +50784,72 @@ async function waitForOperationalMessageReceipt({
   return {ok:false,receipt:null,readback:null};
 }
 
+function findWorkshopIngressQueueReceipt(readback,queueEntryId,vehicleId,targetSlot){
+  return (Array.isArray(readback?.workshopIngressQueue)
+    ? readback.workshopIngressQueue
+    : []).find(entry=>
+      (
+        queueEntryId
+          ? String(entry?.queueEntryId || "") === String(queueEntryId)
+          : (
+              String(entry?.vehicleId || "") === String(vehicleId || "") &&
+              String(entry?.targetSlot || "") === String(targetSlot || "")
+            )
+      ) &&
+      !["COMPLETED","CANCELLED"].includes(String(entry?.status || ""))
+    ) || null;
+}
+
+async function waitForWorkshopIngressQueueReceipt({
+  queueEntryId="",
+  vehicleId="",
+  targetSlot="",
+  initialReadback=null,
+  attempts=4,
+  delayMs=250,
+  fetchImpl=window.fetch.bind(window)
+}={}){
+  const immediate = findWorkshopIngressQueueReceipt(
+    initialReadback,
+    queueEntryId,
+    vehicleId,
+    targetSlot
+  );
+  if(immediate) return {ok:true,entry:immediate,readback:initialReadback};
+  for(let attempt=0;attempt<attempts;attempt+=1){
+    if(attempt > 0){
+      await new Promise(resolve=>window.setTimeout(resolve,delayMs));
+    }
+    const response = await fetchImpl("/api/vehicle-status",{
+      method:"GET",
+      headers:{Accept:"application/json"},
+      cache:"no-store",
+      credentials:"same-origin"
+    });
+    const readback = await response.json().catch(()=>null);
+    if(!response.ok || readback?.ok !== true) continue;
+    acceptVehicleStatusReadback(readback);
+    const entry = findWorkshopIngressQueueReceipt(
+      readback,
+      queueEntryId,
+      vehicleId,
+      targetSlot
+    );
+    if(entry) return {ok:true,entry,readback};
+  }
+  return {ok:false,entry:null,readback:null};
+}
+
+function formatWorkshopIngressCommandError(result,targetSlot){
+  const error = String(result?.body?.error || "command_rejected");
+  if(error === "workshop_target_reserved"){
+    const owner = String(result?.body?.reservedByVehicleId || "et annet kjøretøy");
+    return `${targetSlot} er reservert av aktivt skiftekort for ${owner}`;
+  }
+  const message = String(result?.body?.message || "").trim();
+  return message || `Innkjøringsbestillingen ble avvist av serveren (${error}).`;
+}
+
 async function submitWorkshopIngressQueueFromUi(requestType="PREBOOKED"){
   if(workshopActionCenterCommandInFlight) return;
   const normalizedRequestType = requestType === "ASAP" ? "ASAP" : "PREBOOKED";
@@ -50236,9 +50878,26 @@ async function submitWorkshopIngressQueueFromUi(requestType="PREBOOKED"){
         expectedPlacementRevision
       }
     );
-    if(!result.ok){
-      window.alert("Forhåndsbestillingen kunne ikke bekreftes fra fersk server-readback.");
+    if(result.commandAccepted !== true){
+      window.alert(formatWorkshopIngressCommandError(result,targetSlot));
     }else{
+      const queueEntryId = String(
+        result?.body?.queueEntryId ||
+        result?.body?.result?.queueEntryId ||
+        ""
+      );
+      const confirmation = await waitForWorkshopIngressQueueReceipt({
+        queueEntryId,
+        vehicleId,
+        targetSlot,
+        initialReadback:result.readback
+      });
+      if(!confirmation.ok){
+        window.alert(
+          "Bestillingen er mottatt av serveren. Venter på autoritativ bekreftelse"
+        );
+        return;
+      }
       workshopIngressDraft = {
         incomingVehicleType:"",
         incomingVehicleId:"",
@@ -51228,6 +51887,12 @@ function renderDropsPanels(){
 function initDropsPanels(){
   startVehicleStatusVisiblePolling();
   document.addEventListener("click", event=>{
+    const agiliaCleaningSubmit = event.target.closest("[data-sde-agilia-cleaning-submit]");
+    if(agiliaCleaningSubmit){
+      event.preventDefault();
+      submitAgiliaCleaningRequestFromUi();
+      return;
+    }
     const operationalMessageSend = event.target.closest("[data-sde-operational-message-send]");
     if(operationalMessageSend){
       event.preventDefault();
@@ -51241,6 +51906,7 @@ function initDropsPanels(){
     handleDropsNotOperationalRegistryInput(event);
   });
   document.addEventListener("change",event=>{
+    if(handleAgiliaCleaningRequestChange(event)) return;
     if(handleOperationalMessageComposerChange(event)) return;
     if(handleDropsVehicleRegistrySelectionChange(event)) return;
     handleDropsNotOperationalRegistryInput(event);

@@ -503,6 +503,8 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestWorkshopExitCapabilityAllowed;
         const manageWorkshopIngressQueueCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.MANAGE_WORKSHOP_INGRESS_QUEUE);
+        const requestCleaningTrackSpaceCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.REQUEST_CLEANING_TRACK_SPACE);
         const sendOperationalMessageCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE);
         const sendWorkshopMessageCommandAvailable =
@@ -527,6 +529,7 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestRepairCommandAvailable,
           requestWorkshopExitCommandAvailable,
           manageWorkshopIngressQueueCommandAvailable,
+          requestCleaningTrackSpaceCommandAvailable,
           sendOperationalMessageCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
@@ -564,6 +567,7 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestRepairCommandAvailable,
           requestWorkshopExitCommandAvailable,
           manageWorkshopIngressQueueCommandAvailable,
+          requestCleaningTrackSpaceCommandAvailable,
           sendOperationalMessageCommandAvailable,
           sendWorkshopMessageCommandAvailable,
           markForTurningCommandAvailable,
@@ -610,6 +614,7 @@ app.get("/api/vehicle-status", async (req, res) => {
       sendWorkshopMessageCommandAvailable: false,
       reportNotOperationalCommandAvailable: false,
       requestWorkshopExitCommandAvailable: false,
+      requestCleaningTrackSpaceCommandAvailable: false,
       vehicleStatusPersistenceReady: false,
       commandReadiness: {
         registerFault: {
@@ -659,6 +664,7 @@ app.get("/api/vehicle-status", async (req, res) => {
       sendWorkshopMessageCommandAvailable: false,
       reportNotOperationalCommandAvailable: false,
       requestWorkshopExitCommandAvailable: false,
+      requestCleaningTrackSpaceCommandAvailable: false,
       vehicleStatusPersistenceReady: false,
       commandReadiness: {
         registerFault: {

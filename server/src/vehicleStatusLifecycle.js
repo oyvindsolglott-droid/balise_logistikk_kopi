@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v7";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v8";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -42,6 +42,7 @@ const WAIT_REASONS = new Set([
 const WORKSHOP_SLOTS = new Set(["8N", "7N", "8S", "7S"]);
 const WORKSHOP_QUEUE_OPERATIONS = new Set(["ADD", "CANCEL", "MOVE_UP", "MOVE_DOWN"]);
 const WORKSHOP_INGRESS_REQUEST_TYPES = new Set(["ASAP", "PREBOOKED"]);
+const CLEANING_TRACK_SLOTS = new Set(["5S", "5M", "10S", "10N"]);
 const OPERATIONAL_MESSAGE_ROLES = new Set([
   "drops",
   "txp",
@@ -56,6 +57,7 @@ const LIFECYCLE_COMMANDS = Object.freeze({
   REQUEST_REPAIR: "request_repair",
   REQUEST_WORKSHOP_EXIT: "request_workshop_exit",
   MANAGE_WORKSHOP_INGRESS_QUEUE: "manage_workshop_ingress_queue",
+  REQUEST_CLEANING_TRACK_SPACE: "request_cleaning_track_space",
   SEND_OPERATIONAL_MESSAGE: "send_operational_message",
   SEND_WORKSHOP_MESSAGE: "send_workshop_message",
   MARK_FOR_TURNING: "mark_for_turning",
@@ -86,6 +88,10 @@ const COMMAND_DEFINITIONS = Object.freeze({
   [LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE]: Object.freeze({
     route: "/api/vehicle-status/commands/manage-workshop-ingress-queue",
     capability: CAPABILITY_IDS.MANAGE_WORKSHOP_INGRESS_QUEUE
+  }),
+  [LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE]: Object.freeze({
+    route: "/api/vehicle-status/commands/request-cleaning-track-space",
+    capability: CAPABILITY_IDS.REQUEST_CLEANING_TRACK_SPACE
   }),
   [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: Object.freeze({
     route: "/api/vehicle-status/commands/send-operational-message/:sourceRole",
@@ -138,6 +144,10 @@ const FIELDS = Object.freeze({
     "actionId", "operation", "targetSlot", "vehicleId", "queueEntryId",
     "requestType", "priority", "expectedQueueRevision", "expectedPlacementRevision"
   ]),
+  [LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE]: new Set([
+    "actionId", "requestedSlots", "requestedDate", "startTime",
+    "shortNoticeAcknowledged"
+  ]),
   [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: new Set([
     "actionId", "targetRole", "message", "context"
   ]),
@@ -182,16 +192,19 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
     commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE ||
     commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE
   );
-  const vehicleId = (
+  const isNonVehicleCommand = (
     commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED ||
+    commandName === LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE ||
     isMessageCommand
+  );
+  const vehicleId = (
+    isNonVehicleCommand
   )
     ? null
     : normalizeRegisteredVehicleId(input.vehicleId);
   const allowedVehicleIds = options.allowedVehicleIds;
   if(
-    commandName !== LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED &&
-    !isMessageCommand &&
+    !isNonVehicleCommand &&
     (
       !vehicleId ||
       !isRegisteredVehicle(vehicleId) ||
@@ -318,6 +331,45 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
       requestType:operation === "ADD" ? requestType : null,
       priority:operation === "ADD" ? priority : null,
       expectedQueueRevision, expectedPlacementRevision
+    };
+  }else if(commandName === LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE){
+    if(!Array.isArray(input.requestedSlots) ||
+       input.requestedSlots.length < 1 ||
+       input.requestedSlots.length > 4){
+      return invalid(400, "invalid_cleaning_track_slots",
+        "requestedSlots must contain one to four cleaning-track slots.");
+    }
+    const requestedSlots = input.requestedSlots.map((slot) =>
+      String(slot || "").trim().toUpperCase());
+    if(requestedSlots.some((slot) => !CLEANING_TRACK_SLOTS.has(slot))){
+      return invalid(400, "invalid_cleaning_target_slot",
+        "requestedSlots may only contain 5S, 5M, 10S or 10N.");
+    }
+    if(new Set(requestedSlots).size !== requestedSlots.length){
+      return invalid(400, "duplicate_cleaning_target_slot",
+        "requestedSlots must not contain duplicates.");
+    }
+    const requestedDate = normalizeCalendarDate(input.requestedDate);
+    if(!requestedDate){
+      return invalid(400, "invalid_cleaning_request_date",
+        "requestedDate must be a valid date in YYYY-MM-DD format.");
+    }
+    const startTime = normalizeClockTime(input.startTime);
+    if(!startTime){
+      return invalid(400, "invalid_cleaning_start_time",
+        "startTime must be a valid time in HH:MM format.");
+    }
+    if(typeof input.shortNoticeAcknowledged !== "boolean"){
+      return invalid(400, "invalid_short_notice_acknowledgement",
+        "shortNoticeAcknowledged must be a boolean.");
+    }
+    normalized = {
+      actionId,
+      vehicleId:"CLEANING_TRACK_SPACE",
+      requestedSlots,
+      requestedDate,
+      startTime,
+      shortNoticeAcknowledged:input.shortNoticeAcknowledged
     };
   }else if(commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE){
     const sourceRole = String(options.sourceRole || "").trim().toLowerCase();
@@ -669,6 +721,24 @@ function normalizedMessageText(value, maxLength){
   return normalized;
 }
 
+function normalizeCalendarDate(value){
+  if(typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const [year, month, day] = value.split("-").map(Number);
+  const candidate = new Date(Date.UTC(year, month - 1, day));
+  return (
+    candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() === month - 1 &&
+    candidate.getUTCDate() === day
+  ) ? value : null;
+}
+
+function normalizeClockTime(value){
+  if(typeof value !== "string" || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)){
+    return null;
+  }
+  return value;
+}
+
 function normalizeOperationalMessageContext(input, allowedVehicleIds){
   if(input == null) return {ok:true, value:{}};
   if(!isPlainObject(input)){
@@ -741,7 +811,11 @@ function sendError(res, status, error, message, fields = {}){
     "currentStatusRevision",
     "currentCaseRevision",
     "currentPlacementRevision",
-    "currentVisitId"
+    "currentVisitId",
+    "reservedByVehicleId",
+    "reservedByQueueEntryId",
+    "targetSlot",
+    "cleaningRequestId"
   ]){
     if(fields[field] !== undefined) safeFields[field] = fields[field];
   }

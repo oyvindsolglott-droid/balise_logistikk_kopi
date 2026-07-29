@@ -30,7 +30,9 @@ const WORKSHOP_MESSAGE_TABLE = "vehicle_status_workshop_messages";
 const WORKSHOP_MESSAGE_EVENT_TABLE = "vehicle_status_workshop_message_events";
 const OPERATIONAL_MESSAGE_TABLE = "vehicle_status_operational_messages";
 const OPERATIONAL_MESSAGE_EVENT_TABLE = "vehicle_status_operational_message_events";
+const CLEANING_TRACK_REQUEST_TABLE = "vehicle_status_cleaning_track_space_requests";
 const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
+const CLEANING_TRACK_SLOTS = new Set(["5S", "5M", "10S", "10N"]);
 const SEMANTIC_NOOP = Symbol("vehicle_status_semantic_noop");
 
 class VehicleStatusRepositoryConflict extends Error {
@@ -67,6 +69,7 @@ function createVehicleStatusRepository(options = {}){
       [LIFECYCLE_COMMANDS.REQUEST_REPAIR]: executeRequestRepair,
       [LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT]: executeRequestWorkshopExit,
       [LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE]: executeManageWorkshopIngressQueue,
+      [LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE]: executeRequestCleaningTrackSpace,
       [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: executeSendOperationalMessage,
       [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: executeSendOperationalMessage,
       [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: executeMarkForTurning,
@@ -1070,6 +1073,24 @@ function createVehicleStatusRepository(options = {}){
         });
     }
     const currentQueueRevision = workshopQueueRevision(command.targetSlot);
+    const reservedTargetOwner = command.operation === "ADD" &&
+      command.requestType === "ASAP"
+      ? activeWorkshopIngressCardOwner(command.targetSlot)
+      : null;
+    if(
+      reservedTargetOwner &&
+      reservedTargetOwner.vehicle_id !== command.vehicleId
+    ){
+      throw conflict(
+        "workshop_target_reserved",
+        "Target slot is reserved by an existing active workshop ingress card.",
+        {
+          targetSlot: command.targetSlot,
+          reservedByVehicleId: reservedTargetOwner.vehicle_id,
+          reservedByQueueEntryId: reservedTargetOwner.queue_entry_id
+        }
+      );
+    }
     requireRevision(command.expectedQueueRevision, currentQueueRevision,
       "queue_revision_mismatch", { currentQueueRevision });
     const timestamp = now();
@@ -1091,8 +1112,15 @@ function createVehicleStatusRepository(options = {}){
           });
       }
       const occupiedBy = workshopSlotOccupant(command.targetSlot);
+      const activeCardOwner = reservedTargetOwner ||
+        activeWorkshopIngressCardOwner(command.targetSlot);
       const currentSourceSlot = currentVehicleSlot(command.vehicleId);
-      const canActivate = !occupiedBy && currentSourceSlot && currentSourceSlot !== command.targetSlot;
+      const canActivate = (
+        !occupiedBy &&
+        !activeCardOwner &&
+        currentSourceSlot &&
+        currentSourceSlot !== command.targetSlot
+      );
       initialStatus = canActivate
         ? (command.requestType === "ASAP" ? "CARD_CREATED" : "READY_FOR_ACTIVATION")
         : "QUEUED";
@@ -1103,9 +1131,11 @@ function createVehicleStatusRepository(options = {}){
       const position = nextWorkshopQueuePosition(command.targetSlot);
       const reasonCodes = canActivate
         ? []
-        : [command.requestType === "ASAP"
-          ? "HIGH_PRIORITY_WAITING_FOR_SLOT"
-          : "WAITING_FOR_SLOT"];
+        : [activeCardOwner
+          ? "TARGET_RESERVED_BY_EXISTING_CARD"
+          : (command.requestType === "ASAP"
+            ? "HIGH_PRIORITY_WAITING_FOR_SLOT"
+            : "WAITING_FOR_SLOT")];
       db.prepare(`
         INSERT INTO ${WORKSHOP_INGRESS_QUEUE_TABLE} (
           queue_entry_id, target_slot, vehicle_id, position, status,
@@ -1255,6 +1285,123 @@ function createVehicleStatusRepository(options = {}){
       linkedCardId: queueEntry.linked_card_id,
       queueRevision,
       placementRevision: currentPlacementRevision
+    });
+  }
+
+  function executeRequestCleaningTrackSpace(command, authority){
+    const timestamp = now();
+    const requestedStart = resolveEuropeOsloDateTime(
+      command.requestedDate,
+      command.startTime
+    );
+    if(!requestedStart){
+      throw conflict(
+        "invalid_cleaning_start_time",
+        "The requested Europe/Oslo start time is invalid.",
+        {},
+        400
+      );
+    }
+    const leadTimeMinutes = Math.floor(
+      (Date.parse(requestedStart) - Date.parse(timestamp)) / 60000
+    );
+    if(!Number.isFinite(leadTimeMinutes) || leadTimeMinutes <= 0){
+      throw conflict(
+        "cleaning_start_time_not_future",
+        "The requested cleaning start must be in the future.",
+        {},
+        400
+      );
+    }
+    const shortNotice = leadTimeMinutes < 24 * 60;
+    if(shortNotice && command.shortNoticeAcknowledged !== true){
+      throw conflict(
+        "cleaning_short_notice_acknowledgement_required",
+        "Requests less than 24 hours ahead require explicit acknowledgement."
+      );
+    }
+
+    const eventId = randomUUID();
+    const cleaningRequestId = randomUUID();
+    const reasonCodes = shortNotice ? ["SHORT_NOTICE_ACKNOWLEDGED"] : [];
+    db.prepare(`
+      INSERT INTO ${CLEANING_TRACK_REQUEST_TABLE} (
+        cleaning_request_id, requested_slots_json, requested_date, start_time,
+        time_zone, planned_start_at, lead_time_minutes, short_notice,
+        short_notice_acknowledged, status, reason_codes_json,
+        requested_at, requested_by, updated_at, event_id
+      ) VALUES (?, ?, ?, ?, 'Europe/Oslo', ?, ?, ?, ?, 'REQUESTED', ?, ?, ?, ?, ?)
+    `).run(
+      cleaningRequestId,
+      JSON.stringify(command.requestedSlots),
+      command.requestedDate,
+      command.startTime,
+      requestedStart,
+      leadTimeMinutes,
+      shortNotice ? 1 : 0,
+      command.shortNoticeAcknowledged ? 1 : 0,
+      JSON.stringify(reasonCodes),
+      timestamp,
+      authority.subject,
+      timestamp,
+      eventId
+    );
+    for(const targetRole of ["txp", "drops"]){
+      insertNotification({
+        notificationId:randomUUID(),
+        eventId,
+        targetRole,
+        kind:"CLEANING_TRACK_SPACE_REQUESTED",
+        priority:shortNotice ? "HIGH" : "NORMAL",
+        vehicleId:"CLEANING_TRACK_SPACE",
+        faultId:null,
+        repairRequestId:null,
+        timestamp,
+        payload:{
+          cleaningRequestId,
+          requestedSlots:command.requestedSlots,
+          requestedDate:command.requestedDate,
+          startTime:command.startTime,
+          timeZone:"Europe/Oslo",
+          plannedStartAt:requestedStart,
+          shortNotice,
+          requestedAt:timestamp
+        }
+      });
+    }
+    insertEvent({
+      eventId,
+      command,
+      commandName:LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE,
+      authority,
+      timestamp,
+      caseBefore:0,
+      caseAfter:0,
+      statusBefore:0,
+      statusAfter:0,
+      previousState:{},
+      resultingState:{
+        cleaningRequestId,
+        requestedSlots:command.requestedSlots,
+        plannedStartAt:requestedStart,
+        status:"REQUESTED",
+        shortNotice
+      }
+    });
+    incrementGlobalRevision();
+    return resultBase(command, eventId, {
+      cleaningRequestId,
+      requestedSlots:command.requestedSlots,
+      requestedDate:command.requestedDate,
+      startTime:command.startTime,
+      timeZone:"Europe/Oslo",
+      plannedStartAt:requestedStart,
+      leadTimeMinutes,
+      shortNotice,
+      shortNoticeAcknowledged:command.shortNoticeAcknowledged,
+      reasonCodes,
+      status:"REQUESTED",
+      requestedAt:timestamp
     });
   }
 
@@ -1413,6 +1560,12 @@ function createVehicleStatusRepository(options = {}){
     const workshopExitEvents = selectWorkshopExitEvents();
     const workshopIngressQueue = selectWorkshopIngressQueue();
     const workshopIngressQueueEvents = selectWorkshopIngressQueueEvents();
+    const cleaningTrackSpaceRequests = roles.includes("agila")
+      ? db.prepare(`
+          SELECT * FROM ${CLEANING_TRACK_REQUEST_TABLE}
+          ORDER BY requested_at, cleaning_request_id
+        `).all().map(mapCleaningTrackSpaceRequest)
+      : [];
     const allOperationalMessages = selectOperationalMessages();
     const operationalMessages = roles.length
       ? allOperationalMessages.filter((message) => roles.includes(message.targetRole))
@@ -1514,6 +1667,7 @@ function createVehicleStatusRepository(options = {}){
       workshopExitEvents,
       workshopIngressQueue,
       workshopIngressQueueEvents,
+      cleaningTrackSpaceRequests,
       operationalMessages,
       operationalMessageReceipts,
       workshopMessages:operationalMessages,
@@ -1755,7 +1909,8 @@ function createVehicleStatusRepository(options = {}){
         workshopExitRequests: countRows(WORKSHOP_EXIT_REQUEST_TABLE),
         workshopExitEvents: countRows(WORKSHOP_EXIT_EVENT_TABLE),
         operationalMessages: countRows(OPERATIONAL_MESSAGE_TABLE),
-        operationalMessageEvents: countRows(OPERATIONAL_MESSAGE_EVENT_TABLE)
+        operationalMessageEvents: countRows(OPERATIONAL_MESSAGE_EVENT_TABLE),
+        cleaningTrackSpaceRequests: countRows(CLEANING_TRACK_REQUEST_TABLE)
       },
       records: db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all(),
       cases: db.prepare(`SELECT * FROM ${CASE_TABLE} ORDER BY vehicle_id`).all(),
@@ -1780,6 +1935,10 @@ function createVehicleStatusRepository(options = {}){
       operationalMessageEvents: db.prepare(`
         SELECT * FROM ${OPERATIONAL_MESSAGE_EVENT_TABLE}
         ORDER BY server_timestamp, operational_message_event_id
+      `).all(),
+      cleaningTrackSpaceRequests: db.prepare(`
+        SELECT * FROM ${CLEANING_TRACK_REQUEST_TABLE}
+        ORDER BY requested_at, cleaning_request_id
       `).all()
     };
   }
@@ -2128,6 +2287,14 @@ function createVehicleStatusRepository(options = {}){
     const row = findObservation(`workshop-slot:${slot}`);
     const payload = safeJson(row?.payload_json, {});
     return payload?.ambiguous === true ? "__AMBIGUOUS__" : String(payload?.vehicleId || "");
+  }
+  function activeWorkshopIngressCardOwner(slot){
+    return db.prepare(`
+      SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
+      WHERE target_slot=? AND status IN ('ACTIVATING','CARD_CREATED')
+      ORDER BY COALESCE(requested_at, created_at), position, created_at, queue_entry_id
+      LIMIT 1
+    `).get(slot) || null;
   }
   function workshopQueueRevision(slot){
     return db.prepare(`
@@ -2497,7 +2664,7 @@ function initializeSchema(db){
       DROP TABLE IF EXISTS ${RECORD_TABLE};
       DROP TABLE IF EXISTS ${META_TABLE};
     `);
-  }else if(userVersion > 7){
+  }else if(userVersion > 8){
     throw new Error("vehicle_status_schema_version_unsupported");
   }
 
@@ -2816,6 +2983,27 @@ function initializeSchema(db){
     BEFORE DELETE ON ${WORKSHOP_INGRESS_QUEUE_EVENT_TABLE}
     BEGIN SELECT RAISE(ABORT, 'workshop ingress events are immutable'); END;
 
+    CREATE TABLE IF NOT EXISTS ${CLEANING_TRACK_REQUEST_TABLE} (
+      cleaning_request_id TEXT PRIMARY KEY,
+      requested_slots_json TEXT NOT NULL,
+      requested_date TEXT NOT NULL,
+      start_time TEXT NOT NULL,
+      time_zone TEXT NOT NULL CHECK(time_zone='Europe/Oslo'),
+      planned_start_at TEXT NOT NULL,
+      lead_time_minutes INTEGER NOT NULL CHECK(lead_time_minutes>0),
+      short_notice INTEGER NOT NULL CHECK(short_notice IN (0,1)),
+      short_notice_acknowledged INTEGER NOT NULL
+        CHECK(short_notice_acknowledged IN (0,1)),
+      status TEXT NOT NULL CHECK(status IN (
+        'REQUESTED','APPROVED','REJECTED','COMPLETED','CANCELLED'
+      )),
+      reason_codes_json TEXT NOT NULL,
+      requested_at TEXT NOT NULL,
+      requested_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      event_id TEXT NOT NULL UNIQUE
+    );
+
     CREATE TABLE IF NOT EXISTS ${WORKSHOP_MESSAGE_TABLE} (
       message_id TEXT PRIMARY KEY,
       target_role TEXT NOT NULL CHECK(target_role IN ('drops','txp','sde_skiftere','agila')),
@@ -2888,8 +3076,16 @@ function initializeSchema(db){
   if(userVersion < 7){
     migrateWorkshopIngressRequestTypes(db);
   }
+  if(userVersion < 8){
+    reconcileWorkshopIngressCardOwnership(db);
+  }
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS vehicle_status_one_active_ingress_card_per_target
+      ON ${WORKSHOP_INGRESS_QUEUE_TABLE}(target_slot)
+      WHERE status IN ('ACTIVATING','CARD_CREATED');
+  `);
   if(userVersion < 3) backfillProcessHistory(db);
-  db.exec("PRAGMA user_version = 7;");
+  db.exec("PRAGMA user_version = 8;");
 }
 
 function migrateWorkshopIngressRequestTypes(db){
@@ -2917,6 +3113,80 @@ function migrateWorkshopIngressRequestTypes(db){
           ELSE queued_at
         END;
   `);
+}
+
+function reconcileWorkshopIngressCardOwnership(db){
+  const activeRows = db.prepare(`
+    SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE}
+    WHERE status IN ('ACTIVATING','CARD_CREATED')
+    ORDER BY target_slot, COALESCE(requested_at, created_at),
+      position, created_at, queue_entry_id
+  `).all();
+  if(activeRows.length === 0) return 0;
+  const timestamp = activeRows
+    .map((row) => row.updated_at || row.requested_at || row.created_at || "")
+    .filter(Boolean)
+    .sort()
+    .at(-1) || "1970-01-01T00:00:00.000Z";
+  let changed = 0;
+  for(const targetSlot of WORKSHOP_SLOTS){
+    const rows = activeRows.filter((row) => row.target_slot === targetSlot);
+    if(rows.length === 0) continue;
+    const validRows = rows.filter((row) => {
+      if(!row.linked_card_id) return false;
+      const observation = db.prepare(`
+        SELECT payload_json FROM ${PROCESS_OBSERVATION_TABLE}
+        WHERE observer_key=?
+      `).get(`placement:${row.vehicle_id}`);
+      const sourceSlot = normalizeSlot(safeJson(observation?.payload_json, {})?.slot);
+      return Boolean(sourceSlot && sourceSlot !== targetSlot);
+    });
+    const owner = validRows[0] || null;
+    for(const row of rows){
+      if(owner && row.queue_entry_id === owner.queue_entry_id) continue;
+      const reasonCodes = [
+        owner ? "TARGET_RESERVED_BY_EXISTING_CARD" : "STALE_OR_INVALID_CARD_OWNER"
+      ];
+      db.prepare(`
+        UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE}
+        SET status='REPLAN_REQUIRED', linked_card_id=NULL, updated_at=?,
+          reason_codes_json=?
+        WHERE queue_entry_id=?
+      `).run(timestamp, JSON.stringify(reasonCodes), row.queue_entry_id);
+      db.prepare(`
+        INSERT OR IGNORE INTO ${WORKSHOP_INGRESS_QUEUE_EVENT_TABLE} (
+          workshop_ingress_event_id, event_type, queue_entry_id, target_slot,
+          vehicle_id, server_timestamp, actor_subject, actor_role,
+          source_revision, payload_json, idempotency_key
+        ) VALUES (?, 'WORKSHOP_INGRESS_REPLAN_REQUIRED', ?, ?, ?, ?,
+          'schema-v8-migration', NULL, ?, ?, ?)
+      `).run(
+        `schema-v8-reconcile:${row.queue_entry_id}`,
+        row.queue_entry_id,
+        row.target_slot,
+        row.vehicle_id,
+        timestamp,
+        row.placement_revision,
+        JSON.stringify({
+          reasonCodes,
+          retainedOwnerQueueEntryId:owner?.queue_entry_id || null,
+          retainedOwnerVehicleId:owner?.vehicle_id || null
+        }),
+        `schema-v8-reconcile:${row.queue_entry_id}`
+      );
+      db.prepare(`
+        UPDATE ${WORKSHOP_INGRESS_QUEUE_META_TABLE}
+        SET revision=revision+1 WHERE target_slot=?
+      `).run(targetSlot);
+      changed += 1;
+    }
+  }
+  if(changed){
+    db.prepare(`
+      UPDATE ${META_TABLE} SET revision=revision+1 WHERE id='main'
+    `).run();
+  }
+  return changed;
 }
 
 function migrateWorkshopMessagesToOperationalMessages(db){
@@ -3219,6 +3489,26 @@ function mapWorkshopIngressQueueEvent(row){
   };
 }
 
+function mapCleaningTrackSpaceRequest(row){
+  return {
+    cleaningRequestId:row.cleaning_request_id,
+    requestedSlots:safeJson(row.requested_slots_json, []),
+    requestedDate:row.requested_date,
+    startTime:row.start_time,
+    timeZone:row.time_zone,
+    plannedStartAt:row.planned_start_at,
+    leadTimeMinutes:row.lead_time_minutes,
+    shortNotice:row.short_notice === 1,
+    shortNoticeAcknowledged:row.short_notice_acknowledged === 1,
+    status:row.status,
+    reasonCodes:safeJson(row.reason_codes_json, []),
+    requestedAt:row.requested_at,
+    requestedBy:row.requested_by,
+    updatedAt:row.updated_at,
+    eventId:row.event_id
+  };
+}
+
 function mapOperationalMessage(row){
   const context = safeJson(row.context_json, {});
   return {
@@ -3326,12 +3616,51 @@ function normalizeSlot(value){
   return /^[1-9][0-9]?(?:N|S|M|SS)?$/.test(normalized) ? normalized : "";
 }
 
+function resolveEuropeOsloDateTime(requestedDate, startTime){
+  const [year, month, day] = String(requestedDate).split("-").map(Number);
+  const [hour, minute] = String(startTime).split(":").map(Number);
+  if(
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day) ||
+    !Number.isInteger(hour) ||
+    !Number.isInteger(minute)
+  ) return null;
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone:"Europe/Oslo",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit",
+    hour:"2-digit",
+    minute:"2-digit",
+    hourCycle:"h23"
+  });
+  const utcGuess = Date.UTC(year, month - 1, day, hour, minute);
+  for(let offsetHours = -3; offsetHours <= 3; offsetHours += 1){
+    const candidate = new Date(utcGuess + offsetHours * 60 * 60 * 1000);
+    const parts = Object.fromEntries(formatter.formatToParts(candidate)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]));
+    if(
+      Number(parts.year) === year &&
+      Number(parts.month) === month &&
+      Number(parts.day) === day &&
+      Number(parts.hour) === hour &&
+      Number(parts.minute) === minute
+    ){
+      return candidate.toISOString();
+    }
+  }
+  return null;
+}
+
 function validEvidenceType(value){
   return value === "ACTUAL_DEPARTURE" || value === "TURSATT_SCHEDULED";
 }
 
 module.exports = {
   CASE_TABLE,
+  CLEANING_TRACK_REQUEST_TABLE,
   EVENT_TABLE,
   FAULT_TABLE,
   IDEMPOTENCY_TABLE,
