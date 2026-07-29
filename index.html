@@ -48226,6 +48226,26 @@ function buildWorkshopActionIcon(kind){
   return `<svg class="workshop-action-3d-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[kind] || paths.status}</svg>`;
 }
 
+function getWorkshopReportOperationalReadiness(
+  readback={},
+  capabilities={},
+  vehicleId="",
+  workshopAuthority=false
+){
+  const presentation = getAuthoritativeVehicleStatusPresentation(readback,vehicleId);
+  const activeRelevantCase = presentation.activeFaults.length > 0 ||
+    presentation.requestedRepairRequests.length > 0 ||
+    presentation.record?.workshopDisposition === "TIL_REP" ||
+    presentation.record?.workshopDisposition === "TIL_DREI" ||
+    getVehicleProcessCase(readback,vehicleId)?.active === true;
+  return Boolean(
+    vehicleId && activeRelevantCase && workshopAuthority &&
+    readback?.writeEnabled === true &&
+    readback?.reportOperationalCommandAvailable === true &&
+    capabilities?.capabilities?.["vehicle_status.report_operational"]?.allowed === true
+  );
+}
+
 function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot="8N",selectedVehicle=""){
   const esc = value=>String(value ?? "").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
   const ingressModes = [
@@ -48258,20 +48278,15 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   const vehicleId = slotVehicle;
   void selectedVehicle;
   const presentation = getAuthoritativeVehicleStatusPresentation(readback,vehicleId);
-  const activeRelevantCase = presentation.activeFaults.length > 0 ||
-    presentation.requestedRepairRequests.length > 0 ||
-    presentation.record?.workshopDisposition === "TIL_REP" ||
-    presentation.record?.workshopDisposition === "TIL_DREI" ||
-    getVehicleProcessCase(readback,vehicleId)?.active === true;
   const roles = Array.isArray(capabilities?.roles) ? capabilities.roles : [];
   const workshopAuthority = capabilities?.ok === true &&
     capabilities?.roleResolved === true &&
     roles.includes("verksted");
-  const reportOperationalReady = Boolean(
-    vehicleId && activeRelevantCase && workshopAuthority &&
-    readback?.writeEnabled === true &&
-    readback?.reportOperationalCommandAvailable === true &&
-    capabilities?.capabilities?.["vehicle_status.report_operational"]?.allowed === true
+  const reportOperationalReady = getWorkshopReportOperationalReadiness(
+    readback,
+    capabilities,
+    vehicleId,
+    workshopAuthority
   );
   const queueReady = Boolean(
     workshopAuthority && readback?.writeEnabled === true &&
@@ -48344,9 +48359,6 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   if(!draftVehicle) validationErrors.push("Velg kjøretøy.");
   if(!["8N","7N","8S","7S"].includes(targetSlot)) validationErrors.push("Velg verkstedspor.");
   if(duplicateQueueEntry) validationErrors.push(`Kjøretøyet har allerede aktiv køplass i ${duplicateQueueEntry.targetSlot}.`);
-  if(activeTargetCardOwner) validationErrors.push(
-    `${targetSlot} er reservert av aktivt skiftekort for ${activeTargetCardOwner.vehicleId}.`
-  );
   if(!queueReady) validationErrors.push("Køkommando er ikke tilgjengelig.");
   if(!targetPlacementRevision) validationErrors.push("Fersk plasseringsrevisjon mangler.");
   if(workshopActionCenterCommandInFlight) validationErrors.push("En kommando pågår.");
@@ -49935,40 +49947,20 @@ function reconcileVehicleStatusNotifications(readback){
 function isVehicleStatusNotificationVisibleInCurrentSurface(notification){
   if(!notification) return false;
   const level = getActiveAccessLevel();
-  const tab = getActiveTabName();
-  if(notification.kind === "WORKSHOP_EXIT_REQUESTED"){
-    if(notification.targetRole === "txp"){
-      return level === "2" && tab === "grunnoppstilling";
-    }
-    if(notification.targetRole === "drops"){
-      return level === "1" && tab === "dropsMateriellstyrer";
-    }
-    return false;
-  }
-  if(notification.kind === "REPAIR_REQUESTED" && notification.targetRole === "verksted"){
-    return level === "4" && tab === "verkstedBestillinger";
-  }
-  if(notification.kind === "WORKSHOP_INGRESS_REQUESTED"){
-    const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[String(notification.targetRole || "")];
-    return Boolean(target && level === target.level && tab === target.tab);
-  }
-  if(notification.kind === "CLEANING_TRACK_SPACE_REQUESTED"){
-    if(notification.targetRole === "txp"){
-      return level === "2" && tab === "grunnoppstilling";
-    }
-    if(notification.targetRole === "drops"){
-      return level === "1" && tab === "dropsMateriellstyrer";
-    }
-    return false;
-  }
-  if(
-    notification.kind === "OPERATIONAL_MESSAGE" ||
-    notification.kind === "WORKSHOP_MESSAGE"
-  ){
-    const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[String(notification.targetRole || "")];
-    return Boolean(target && level === target.level && tab === target.tab);
-  }
-  return true;
+  const levelWideKinds = new Set([
+    "VEHICLE_OPERATIONAL",
+    "REPAIR_REQUESTED",
+    "WORKSHOP_EXIT_REQUESTED",
+    "WORKSHOP_INGRESS_REQUESTED",
+    "OPERATIONAL_MESSAGE",
+    "WORKSHOP_MESSAGE",
+    "CLEANING_TRACK_SPACE_REQUESTED"
+  ]);
+  if(!levelWideKinds.has(String(notification.kind || ""))) return false;
+  const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[
+    String(notification.targetRole || "")
+  ];
+  return Boolean(target && level === target.level);
 }
 
 function getNextVehicleStatusNotification(predicate=isVehicleStatusNotificationVisibleInCurrentSurface){

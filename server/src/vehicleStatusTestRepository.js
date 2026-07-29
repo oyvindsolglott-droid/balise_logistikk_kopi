@@ -1073,24 +1073,6 @@ function createVehicleStatusRepository(options = {}){
         });
     }
     const currentQueueRevision = workshopQueueRevision(command.targetSlot);
-    const reservedTargetOwner = command.operation === "ADD" &&
-      command.requestType === "ASAP"
-      ? activeWorkshopIngressCardOwner(command.targetSlot)
-      : null;
-    if(
-      reservedTargetOwner &&
-      reservedTargetOwner.vehicle_id !== command.vehicleId
-    ){
-      throw conflict(
-        "workshop_target_reserved",
-        "Target slot is reserved by an existing active workshop ingress card.",
-        {
-          targetSlot: command.targetSlot,
-          reservedByVehicleId: reservedTargetOwner.vehicle_id,
-          reservedByQueueEntryId: reservedTargetOwner.queue_entry_id
-        }
-      );
-    }
     requireRevision(command.expectedQueueRevision, currentQueueRevision,
       "queue_revision_mismatch", { currentQueueRevision });
     const timestamp = now();
@@ -1112,30 +1094,39 @@ function createVehicleStatusRepository(options = {}){
           });
       }
       const occupiedBy = workshopSlotOccupant(command.targetSlot);
-      const activeCardOwner = reservedTargetOwner ||
-        activeWorkshopIngressCardOwner(command.targetSlot);
+      const activeCardOwner = activeWorkshopIngressCardOwner(command.targetSlot);
       const currentSourceSlot = currentVehicleSlot(command.vehicleId);
+      const routeNeedsReplan = (
+        !currentSourceSlot ||
+        currentSourceSlot === command.targetSlot
+      );
       const canActivate = (
+        !routeNeedsReplan &&
         !occupiedBy &&
         !activeCardOwner &&
-        currentSourceSlot &&
-        currentSourceSlot !== command.targetSlot
+        currentSourceSlot
       );
-      initialStatus = canActivate
-        ? (command.requestType === "ASAP" ? "CARD_CREATED" : "READY_FOR_ACTIVATION")
-        : "QUEUED";
+      initialStatus = routeNeedsReplan
+        ? "REPLAN_REQUIRED"
+        : (canActivate
+          ? (command.requestType === "ASAP" ? "CARD_CREATED" : "READY_FOR_ACTIVATION")
+          : "QUEUED");
       const queueEntryId = randomUUID();
       const linkedCardId = initialStatus === "CARD_CREATED"
         ? `workshop-ingress|${queueEntryId}|${command.vehicleId}|${command.targetSlot}`
         : null;
       const position = nextWorkshopQueuePosition(command.targetSlot);
-      const reasonCodes = canActivate
-        ? []
-        : [activeCardOwner
-          ? "TARGET_RESERVED_BY_EXISTING_CARD"
-          : (command.requestType === "ASAP"
-            ? "HIGH_PRIORITY_WAITING_FOR_SLOT"
-            : "WAITING_FOR_SLOT")];
+      const reasonCodes = routeNeedsReplan
+        ? [currentSourceSlot
+          ? "TARGET_EQUALS_CURRENT_SOURCE"
+          : "SOURCE_SLOT_UNRESOLVED"]
+        : (canActivate
+          ? []
+          : [activeCardOwner
+            ? "TARGET_RESERVED_BY_EXISTING_CARD"
+            : (command.requestType === "ASAP"
+              ? "HIGH_PRIORITY_WAITING_FOR_SLOT"
+              : "WAITING_FOR_SLOT")]);
       db.prepare(`
         INSERT INTO ${WORKSHOP_INGRESS_QUEUE_TABLE} (
           queue_entry_id, target_slot, vehicle_id, position, status,
@@ -1148,7 +1139,7 @@ function createVehicleStatusRepository(options = {}){
         timestamp, authority.subject, timestamp, linkedCardId,
         JSON.stringify(reasonCodes), currentPlacementRevision,
         command.requestType, command.priority, timestamp,
-        canActivate ? null : timestamp
+        canActivate || routeNeedsReplan ? null : timestamp
       );
       queueEntry = db.prepare(`
         SELECT * FROM ${WORKSHOP_INGRESS_QUEUE_TABLE} WHERE queue_entry_id = ?
@@ -1158,7 +1149,9 @@ function createVehicleStatusRepository(options = {}){
           ? "WORKSHOP_INGRESS_CARD_CREATED"
           : (initialStatus === "READY_FOR_ACTIVATION"
             ? "WORKSHOP_INGRESS_READY"
-            : "WORKSHOP_INGRESS_QUEUED"),
+            : (initialStatus === "REPLAN_REQUIRED"
+              ? "WORKSHOP_INGRESS_REPLAN_REQUIRED"
+              : "WORKSHOP_INGRESS_QUEUED")),
         queueEntry,
         timestamp,
         authority,
@@ -1168,7 +1161,7 @@ function createVehicleStatusRepository(options = {}){
           requestType: command.requestType,
           priority: command.priority,
           requestedAt: timestamp,
-          queuedAt: canActivate ? null : timestamp,
+          queuedAt: canActivate || routeNeedsReplan ? null : timestamp,
           initialStatus,
           linkedCardId
         },
@@ -1191,9 +1184,11 @@ function createVehicleStatusRepository(options = {}){
               requestType: command.requestType,
               priority: command.priority,
               targetSlot: command.targetSlot,
-              status: canActivate
+              status: initialStatus === "REPLAN_REQUIRED"
                 ? initialStatus
-                : "HIGH_PRIORITY_WAITING_FOR_SLOT",
+                : (canActivate
+                  ? initialStatus
+                  : "HIGH_PRIORITY_WAITING_FOR_SLOT"),
               requestedAt: timestamp,
               linkedCardId
             }
@@ -2386,8 +2381,10 @@ function createVehicleStatusRepository(options = {}){
     `).get(slot);
     if(!entry) return 0;
     const sourceSlot = currentVehicleSlot(entry.vehicle_id);
-    if(sourceSlot === slot){
-      const reasonCodes = ["TARGET_EQUALS_CURRENT_SOURCE"];
+    if(!sourceSlot || sourceSlot === slot){
+      const reasonCodes = [sourceSlot
+        ? "TARGET_EQUALS_CURRENT_SOURCE"
+        : "SOURCE_SLOT_UNRESOLVED"];
       db.prepare(`
         UPDATE ${WORKSHOP_INGRESS_QUEUE_TABLE}
         SET status='REPLAN_REQUIRED', updated_at=?, linked_card_id=NULL,
