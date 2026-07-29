@@ -44,6 +44,7 @@ const CAPABILITY_IDS = Object.freeze({
   REQUEST_CLEANING_TRACK_SPACE: "vehicle_status.request_cleaning_track_space",
   SEND_OPERATIONAL_MESSAGE: "vehicle_status.send_operational_message",
   SEND_WORKSHOP_MESSAGE: "vehicle_status.send_operational_message",
+  ACKNOWLEDGE_OPERATIONAL_MESSAGE: "vehicle_status.acknowledge_operational_message",
   MARK_FOR_TURNING: "vehicle_status.mark_for_turning",
   REPORT_OPERATIONAL: "vehicle_status.report_operational",
   PRESENT_NOTIFICATION: "vehicle_status.notification_presented",
@@ -119,6 +120,12 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
   {
     capability: CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE,
     description: "Send an authoritative message to one other operational role.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: OPERATIONAL_MESSAGE_ROLES
+  },
+  {
+    capability: CAPABILITY_IDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE,
+    description: "Acknowledge receipt of an authoritative operational message.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: OPERATIONAL_MESSAGE_ROLES
   },

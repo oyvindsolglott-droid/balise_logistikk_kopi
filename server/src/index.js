@@ -507,6 +507,8 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           capabilityAvailable(CAPABILITY_IDS.REQUEST_CLEANING_TRACK_SPACE);
         const sendOperationalMessageCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE);
+        const acknowledgeOperationalMessageCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE);
         const sendWorkshopMessageCommandAvailable =
           sendOperationalMessageCommandAvailable;
         const markForTurningCommandAvailable =
@@ -531,6 +533,7 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           manageWorkshopIngressQueueCommandAvailable,
           requestCleaningTrackSpaceCommandAvailable,
           sendOperationalMessageCommandAvailable,
+          acknowledgeOperationalMessageCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
           notificationPresentedCommandAvailable,
@@ -569,6 +572,7 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           manageWorkshopIngressQueueCommandAvailable,
           requestCleaningTrackSpaceCommandAvailable,
           sendOperationalMessageCommandAvailable,
+          acknowledgeOperationalMessageCommandAvailable,
           sendWorkshopMessageCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,

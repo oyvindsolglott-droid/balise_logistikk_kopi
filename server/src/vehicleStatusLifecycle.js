@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v8";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v9";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -60,6 +60,7 @@ const LIFECYCLE_COMMANDS = Object.freeze({
   REQUEST_CLEANING_TRACK_SPACE: "request_cleaning_track_space",
   SEND_OPERATIONAL_MESSAGE: "send_operational_message",
   SEND_WORKSHOP_MESSAGE: "send_workshop_message",
+  ACKNOWLEDGE_OPERATIONAL_MESSAGE: "acknowledge_operational_message",
   MARK_FOR_TURNING: "mark_for_turning",
   REPORT_OPERATIONAL: "report_operational",
   NOTIFICATION_PRESENTED: "notification_presented",
@@ -100,6 +101,10 @@ const COMMAND_DEFINITIONS = Object.freeze({
   [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: Object.freeze({
     route: "/api/vehicle-status/commands/send-workshop-message",
     capability: CAPABILITY_IDS.SEND_WORKSHOP_MESSAGE
+  }),
+  [LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE]: Object.freeze({
+    route: "/api/vehicle-status/commands/acknowledge-operational-message/:sourceRole",
+    capability: CAPABILITY_IDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE
   }),
   [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: Object.freeze({
     route: "/api/vehicle-status/commands/mark-for-turning",
@@ -154,6 +159,9 @@ const FIELDS = Object.freeze({
   [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: new Set([
     "actionId", "targetRole", "message", "selectedSlotId", "selectedVehicleId"
   ]),
+  [LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE]: new Set([
+    "actionId", "messageId", "notificationId"
+  ]),
   [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: new Set([
     "actionId", "expectedStatusRevision", "vehicleId"
   ]),
@@ -194,6 +202,7 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
   );
   const isNonVehicleCommand = (
     commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED ||
+    commandName === LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE ||
     commandName === LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE ||
     isMessageCommand
   );
@@ -417,6 +426,26 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
       ...compatibility.value,
       legacyCommandName:LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE
     };
+  }else if(commandName === LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE){
+    const sourceRole = String(options.sourceRole || "").trim().toLowerCase();
+    const messageId = normalizeUuid(input.messageId);
+    const notificationId = normalizeUuid(input.notificationId);
+    if(!OPERATIONAL_MESSAGE_ROLES.has(sourceRole)){
+      return invalid(403, "message_target_role_forbidden", "target role is not allowed.");
+    }
+    if(!messageId){
+      return invalid(400, "invalid_message_id", "messageId must be a UUID.");
+    }
+    if(!notificationId){
+      return invalid(400, "invalid_notification_id", "notificationId must be a UUID.");
+    }
+    normalized = {
+      actionId,
+      vehicleId:"OPERATIONAL_MESSAGE",
+      sourceRole,
+      messageId,
+      notificationId
+    };
   }else if(commandName === LIFECYCLE_COMMANDS.MARK_FOR_TURNING){
     const expectedStatusRevision = revision(input.expectedStatusRevision);
     if(expectedStatusRevision === null) return invalidRevision("expectedStatusRevision");
@@ -519,6 +548,7 @@ function createVehicleStatusLifecycleHandler(options = {}){
         ? "verksted"
         : (
           commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE ||
+          commandName === LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE ||
           commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED
         )
           ? String(options.fixedSourceRole || req.params?.sourceRole || "").trim().toLowerCase()

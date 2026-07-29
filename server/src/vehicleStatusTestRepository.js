@@ -30,6 +30,8 @@ const WORKSHOP_MESSAGE_TABLE = "vehicle_status_workshop_messages";
 const WORKSHOP_MESSAGE_EVENT_TABLE = "vehicle_status_workshop_message_events";
 const OPERATIONAL_MESSAGE_TABLE = "vehicle_status_operational_messages";
 const OPERATIONAL_MESSAGE_EVENT_TABLE = "vehicle_status_operational_message_events";
+const OPERATIONAL_MESSAGE_ACK_TABLE =
+  "vehicle_status_operational_message_acknowledgements";
 const CLEANING_TRACK_REQUEST_TABLE = "vehicle_status_cleaning_track_space_requests";
 const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
 const CLEANING_TRACK_SLOTS = new Set(["5S", "5M", "10S", "10N"]);
@@ -72,6 +74,8 @@ function createVehicleStatusRepository(options = {}){
       [LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE]: executeRequestCleaningTrackSpace,
       [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: executeSendOperationalMessage,
       [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: executeSendOperationalMessage,
+      [LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE]:
+        executeAcknowledgeOperationalMessage,
       [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: executeMarkForTurning,
       [LIFECYCLE_COMMANDS.REPORT_OPERATIONAL]: executeReportOperational,
       [LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED]: executeNotificationPresented,
@@ -895,6 +899,102 @@ function createVehicleStatusRepository(options = {}){
     });
   }
 
+  function executeAcknowledgeOperationalMessage(command, authority){
+    const notification = db.prepare(`
+      SELECT * FROM ${NOTIFICATION_TABLE} WHERE notification_id=?
+    `).get(command.notificationId);
+    if(!notification){
+      throw conflict("notification_not_found", "The notification was not found.", {}, 404);
+    }
+    if(
+      authority.effectiveRole !== notification.target_role ||
+      !(authority.roles || []).includes(notification.target_role)
+    ){
+      throw conflict("notification_role_mismatch",
+        "The message does not target the authenticated role.", {}, 403);
+    }
+    const message = db.prepare(`
+      SELECT * FROM ${OPERATIONAL_MESSAGE_TABLE}
+      WHERE message_id=? AND notification_id=?
+    `).get(command.messageId, command.notificationId);
+    if(!message){
+      throw conflict("operational_message_not_found",
+        "The operational message was not found.", {}, 404);
+    }
+    const existing = db.prepare(`
+      SELECT * FROM ${OPERATIONAL_MESSAGE_ACK_TABLE}
+      WHERE notification_id=?
+    `).get(command.notificationId);
+    const eventCommand = {...command, vehicleId:"OPERATIONAL_MESSAGE"};
+    if(existing){
+      return semanticNoOp(semanticNoOpResult(
+        LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE,
+        eventCommand,
+        existing.acknowledgement_id,
+        {
+          acknowledgementId:existing.acknowledgement_id,
+          messageId:existing.message_id,
+          notificationId:existing.notification_id,
+          targetRole:existing.target_role,
+          acknowledgedAt:existing.acknowledged_at,
+          acknowledgedByRole:existing.acknowledged_by_role,
+          alreadyRecorded:true,
+          caseRevision:0
+        }
+      ));
+    }
+    const timestamp = now();
+    const eventId = randomUUID();
+    const acknowledgementId = randomUUID();
+    db.prepare(`
+      INSERT INTO ${OPERATIONAL_MESSAGE_ACK_TABLE} (
+        acknowledgement_id, message_id, notification_id, target_role,
+        acknowledged_at, acknowledged_by_role, actor_subject,
+        action_id, idempotency_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      acknowledgementId,
+      message.message_id,
+      notification.notification_id,
+      notification.target_role,
+      timestamp,
+      authority.effectiveRole,
+      authority.subject,
+      command.actionId,
+      `operational-message-acknowledged:${notification.notification_id}`
+    );
+    insertEvent({
+      eventId,
+      command:eventCommand,
+      commandName:LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE,
+      authority,
+      timestamp,
+      caseBefore:0,
+      caseAfter:0,
+      statusBefore:0,
+      statusAfter:0,
+      previousState:{},
+      resultingState:{
+        acknowledgementId,
+        messageId:message.message_id,
+        notificationId:notification.notification_id,
+        targetRole:notification.target_role,
+        acknowledgedAt:timestamp
+      }
+    });
+    incrementGlobalRevision();
+    return resultBase(eventCommand, eventId, {
+      acknowledgementId,
+      messageId:message.message_id,
+      notificationId:notification.notification_id,
+      targetRole:notification.target_role,
+      acknowledgedAt:timestamp,
+      acknowledgedByRole:authority.effectiveRole,
+      alreadyRecorded:false,
+      caseRevision:0
+    });
+  }
+
   function executeWorkshopSheetOpened(command, authority){
     const processCase = command.caseId
       ? findProcessCase(command.caseId, command.vehicleId)
@@ -1577,6 +1677,14 @@ function createVehicleStatusRepository(options = {}){
             messageRevision:message.eventId
           }))
       : [];
+    const operationalMessageAcknowledgements = roles.length
+      ? db.prepare(`
+          SELECT * FROM ${OPERATIONAL_MESSAGE_ACK_TABLE}
+          ORDER BY acknowledged_at, acknowledgement_id
+        `).all()
+          .filter((acknowledgement) => roles.includes(acknowledgement.target_role))
+          .map(mapOperationalMessageAcknowledgement)
+      : [];
     const events = db.prepare(`SELECT * FROM ${EVENT_TABLE} ORDER BY server_timestamp, event_id`).all()
       .map(mapEvent);
     const processEvents = selectProcessEvents();
@@ -1593,7 +1701,12 @@ function createVehicleStatusRepository(options = {}){
           AND e.event_type='OPERATIONAL_MESSAGE_PRESENTED'
         ORDER BY e.server_timestamp, e.operational_message_event_id
         LIMIT 1
-      ) AS presented_at
+      ) AS presented_at, (
+        SELECT a.acknowledged_at
+        FROM ${OPERATIONAL_MESSAGE_ACK_TABLE} a
+        WHERE a.notification_id=n.notification_id
+        LIMIT 1
+      ) AS acknowledged_at
       FROM ${NOTIFICATION_TABLE} n
       ORDER BY n.created_at, n.notification_id
     `).all().map(mapNotification);
@@ -1665,6 +1778,7 @@ function createVehicleStatusRepository(options = {}){
       cleaningTrackSpaceRequests,
       operationalMessages,
       operationalMessageReceipts,
+      operationalMessageAcknowledgements,
       workshopMessages:operationalMessages,
       events,
       processEvents,
@@ -1905,6 +2019,7 @@ function createVehicleStatusRepository(options = {}){
         workshopExitEvents: countRows(WORKSHOP_EXIT_EVENT_TABLE),
         operationalMessages: countRows(OPERATIONAL_MESSAGE_TABLE),
         operationalMessageEvents: countRows(OPERATIONAL_MESSAGE_EVENT_TABLE),
+        operationalMessageAcknowledgements: countRows(OPERATIONAL_MESSAGE_ACK_TABLE),
         cleaningTrackSpaceRequests: countRows(CLEANING_TRACK_REQUEST_TABLE)
       },
       records: db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all(),
@@ -1930,6 +2045,10 @@ function createVehicleStatusRepository(options = {}){
       operationalMessageEvents: db.prepare(`
         SELECT * FROM ${OPERATIONAL_MESSAGE_EVENT_TABLE}
         ORDER BY server_timestamp, operational_message_event_id
+      `).all(),
+      operationalMessageAcknowledgements: db.prepare(`
+        SELECT * FROM ${OPERATIONAL_MESSAGE_ACK_TABLE}
+        ORDER BY acknowledged_at, acknowledgement_id
       `).all(),
       cleaningTrackSpaceRequests: db.prepare(`
         SELECT * FROM ${CLEANING_TRACK_REQUEST_TABLE}
@@ -2661,7 +2780,7 @@ function initializeSchema(db){
       DROP TABLE IF EXISTS ${RECORD_TABLE};
       DROP TABLE IF EXISTS ${META_TABLE};
     `);
-  }else if(userVersion > 8){
+  }else if(userVersion > 9){
     throw new Error("vehicle_status_schema_version_unsupported");
   }
 
@@ -3066,6 +3185,26 @@ function initializeSchema(db){
     CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_events_immutable_delete
     BEFORE DELETE ON ${OPERATIONAL_MESSAGE_EVENT_TABLE}
     BEGIN SELECT RAISE(ABORT, 'operational message events are immutable'); END;
+
+    CREATE TABLE IF NOT EXISTS ${OPERATIONAL_MESSAGE_ACK_TABLE} (
+      acknowledgement_id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      notification_id TEXT NOT NULL UNIQUE,
+      target_role TEXT NOT NULL
+        CHECK(target_role IN ('drops','txp','sde_skiftere','verksted','agila')),
+      acknowledged_at TEXT NOT NULL,
+      acknowledged_by_role TEXT NOT NULL,
+      actor_subject TEXT NOT NULL,
+      action_id TEXT NOT NULL UNIQUE,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      FOREIGN KEY(message_id) REFERENCES ${OPERATIONAL_MESSAGE_TABLE}(message_id)
+    );
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_ack_immutable_update
+    BEFORE UPDATE ON ${OPERATIONAL_MESSAGE_ACK_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'operational message acknowledgements are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_ack_immutable_delete
+    BEFORE DELETE ON ${OPERATIONAL_MESSAGE_ACK_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'operational message acknowledgements are immutable'); END;
   `);
   if(userVersion < 6){
     migrateWorkshopMessagesToOperationalMessages(db);
@@ -3082,7 +3221,7 @@ function initializeSchema(db){
       WHERE status IN ('ACTIVATING','CARD_CREATED');
   `);
   if(userVersion < 3) backfillProcessHistory(db);
-  db.exec("PRAGMA user_version = 8;");
+  db.exec("PRAGMA user_version = 9;");
 }
 
 function migrateWorkshopIngressRequestTypes(db){
@@ -3523,6 +3662,19 @@ function mapOperationalMessage(row){
   };
 }
 
+function mapOperationalMessageAcknowledgement(row){
+  return {
+    acknowledgementId:row.acknowledgement_id,
+    messageId:row.message_id,
+    notificationId:row.notification_id,
+    targetRole:row.target_role,
+    acknowledgedAt:row.acknowledged_at,
+    acknowledgedByRole:row.acknowledged_by_role,
+    actorSubject:row.actor_subject,
+    actionId:row.action_id
+  };
+}
+
 function publicWorkshopIngressStatus(row){
   if(row?.status !== "QUEUED") return row?.status;
   return row?.request_type === "ASAP"
@@ -3543,6 +3695,7 @@ function mapNotification(row){
     repairRequestId: row.repair_request_id,
     createdAt: row.created_at,
     presentedAt: row.presented_at || null,
+    acknowledgedAt: row.acknowledged_at || null,
     payload: JSON.parse(row.payload_json)
   };
 }
@@ -3664,6 +3817,7 @@ module.exports = {
   META_TABLE,
   NOTIFICATION_TABLE,
   OPERATIONAL_MESSAGE_EVENT_TABLE,
+  OPERATIONAL_MESSAGE_ACK_TABLE,
   OPERATIONAL_MESSAGE_TABLE,
   PROCESS_CASE_TABLE,
   PROCESS_EVENT_TABLE,
