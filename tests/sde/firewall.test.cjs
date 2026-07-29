@@ -242,6 +242,20 @@ test("GLOBAL instantmelding — alle 20 rolle-retninger er serverautoritative, m
   );
 });
 
+test("NIVÅ 4 innkjøring — fysisk tomt spor kan ha nøyaktig én autoritativ kort-/reservasjonseier", () => {
+  assertPassed(
+    runHarness("sde-ingress-card-authority-harness.js"),
+    "workshop ingress card authority",
+  );
+});
+
+test("NIVÅ 5 Agilia — hovedrenholdsbestilling er rolleavgrenset, tidsvalidert og serverautoritativ", () => {
+  assertPassed(
+    runHarness("sde-agilia-cleaning-request-harness.js"),
+    "Agilia cleaning track-space request",
+  );
+});
+
 test("DROPS register-feil — alle 176 registrerte kjøretøy bruker scope, revisjon og ledig aktiv feilplass", () => {
   assertPassed(
     runHarness("sde-drops-register-fault-generalization-harness.js"),

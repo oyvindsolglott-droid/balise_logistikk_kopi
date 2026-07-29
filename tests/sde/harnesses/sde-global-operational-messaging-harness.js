@@ -45,7 +45,7 @@ for(const token of [
   "OPERATIONAL_MESSAGE",
   "vehicle_status_operational_messages",
   "vehicle_status_operational_message_events",
-  "PRAGMA user_version = 7",
+  "PRAGMA user_version = 8",
 ]){
   assert.ok(
     `${lifecycleSource}\n${repositorySource}\n${serverSource}`.includes(token),
@@ -61,9 +61,28 @@ for(const token of [
   "waitForOperationalMessageReceipt",
   "Beskjeden er mottatt av serveren. Venter på autoritativ bekreftelse",
   "OPERATIONAL_MESSAGE",
+  "isSuccessfulLifecycleCommandBody",
 ]){
   assert.ok(frontendSource.includes(token), `frontend implementation misses ${token}`);
 }
+const postCommand = frontendSource.match(
+  /async function postWorkshopActionCenterCommand\([\s\S]*?\n\}/
+)?.[0] || "";
+const submitMessage = frontendSource.match(
+  /async function submitOperationalMessageFromUi\([\s\S]*?\n\}/
+)?.[0] || "";
+assert.ok(postCommand, "postWorkshopActionCenterCommand must exist");
+assert.ok(submitMessage, "submitOperationalMessageFromUi must exist");
+assert.doesNotMatch(
+  postCommand,
+  /body\?\.ok\s*!==\s*true/,
+  "a successful lifecycle response has no top-level ok field"
+);
+assert.doesNotMatch(
+  submitMessage,
+  /result\?\.body\?\.ok\s*!==\s*true/,
+  "message acceptance must use HTTP success and messageId"
+);
 
 const {
   LIFECYCLE_COMMANDS,

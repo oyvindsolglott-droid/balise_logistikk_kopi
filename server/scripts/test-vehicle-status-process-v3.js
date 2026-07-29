@@ -122,7 +122,7 @@ function main(){
   try{
     const { repository, db } = fixture;
     check("01 schema migrates through v7 without resetting lifecycle tables", () => {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 7);
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 8);
       assert.ok(db.prepare(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?"
       ).get(PROCESS_EVENT_TABLE));

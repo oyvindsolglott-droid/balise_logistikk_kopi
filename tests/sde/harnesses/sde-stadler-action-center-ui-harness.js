@@ -54,7 +54,7 @@ for(const token of [
   "7S",
   "Meld Driftsklart",
   "Bestill utkjøring",
-  "Forhåndsbestill innkjøring",
+  "Bestill innkjøring",
   "Send beskjed",
   "AVVIK – KONTROLLER SPORPLAN",
 ]){
@@ -139,7 +139,7 @@ for(const token of [
   "data-sde-workshop-queue-add",
   "workshopIngressDraft",
   "Bestilling av innkjøring (ASAP)",
-  "Forhåndsbestilling av innkjøring",
+  "Legg i kø, innkjøring",
   "Type 69",
   "Type 70",
   "Type 74",
@@ -212,6 +212,8 @@ for(const token of [
 }
 assert.ok((source.match(/data-sde-operational-message-host/g) || []).length >= 5);
 assert.ok(source.includes("operationalMessageReceipts"));
+assert.ok(source.includes("Direktemeldinger fra Agilia"));
+assert.ok(source.includes("Bestilling av sporplass til hovedrenhold"));
 assert.doesNotMatch(actionCenter, /data-sde-operational-message-(?:target|text|send)/);
 assert.ok(source.includes("@media (max-width: 520px)"));
 assert.ok(source.includes("grid-template-columns:repeat(2,minmax(0,1fr))"));
