@@ -251,6 +251,13 @@ async function main(){
     getActiveTabName(){
       return activeLevel === "4" ? "verkstedBestillinger" : "grunnoppstilling";
     },
+    OPERATIONAL_MESSAGE_ROLE_LABELS: Object.freeze({
+      drops: "DROPS",
+      txp: "TXP",
+      sde_skiftere: "Skiftere",
+      verksted: "Verksted",
+      agila: "Agilia",
+    }),
     setActiveAccessLevel(value){
       activeLevel = String(value);
     },

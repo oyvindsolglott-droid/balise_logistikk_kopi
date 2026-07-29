@@ -81,7 +81,8 @@ for(const token of [
   "workshopVehicleRegistrySelectedVehicle",
   "workshopStandardSheetCollapsed",
   "workshopIngressDraft",
-  "workshopMessageDraft",
+  "operationalMessageDrafts",
+  "operationalMessageEditorContext",
   "scrollX",
   "scrollY",
 ]){
@@ -94,7 +95,8 @@ for(const token of [
   "workshopVehicleRegistrySelectedVehicle",
   "workshopStandardSheetCollapsed",
   "workshopIngressDraft",
-  "workshopMessageDraft",
+  "operationalMessageDrafts",
+  "restoreOperationalMessageEditorContext",
   "scrollTo",
 ]){
   assert.ok(restoreContext.includes(token), `restored update context misses ${token}`);
@@ -135,15 +137,6 @@ for(const token of [
   "data-sde-workshop-prebooking-summary",
   "data-sde-workshop-queue-add",
   "workshopIngressDraft",
-  "data-sde-workshop-message-target",
-  "data-sde-workshop-message-text",
-  "workshopMessageDraft",
-  "selectedSlotId",
-  "selectedVehicleId",
-  "DROPS",
-  "TXP",
-  "Skiftere",
-  "Agilia",
 ]){
   assert.ok(actionCenter.includes(token), `action center misses ${token}`);
 }
@@ -160,31 +153,35 @@ assert.match(actionCenter, /data-sde-workshop-request-exit[^>]*(disabled|aria-di
 
 const popup = extractFunction("buildWorkshopNotificationPopupHtml");
 assert.ok(popup.includes("Åpne statusark"));
-assert.ok(popup.includes("WORKSHOP_MESSAGE"));
+assert.ok(popup.includes("OPERATIONAL_MESSAGE"));
 assert.ok(popup.includes("aria-label"));
 assert.ok(popup.includes("escapeHtml") || popup.includes("esc("));
 
 const visibility = extractFunction("isVehicleStatusNotificationVisibleInCurrentSurface");
-for(const token of ["WORKSHOP_MESSAGE", "drops", "txp", "sde_skiftere", "agila"]){
+for(const token of ["OPERATIONAL_MESSAGE", "OPERATIONAL_MESSAGE_ROLE_SURFACES"]){
   assert.ok(visibility.includes(token), `message routing misses ${token}`);
 }
-
-for(const token of [
-  "data-sde-workshop-prebooking-vehicle",
-  "data-sde-workshop-prebooking-slot",
-  "data-sde-workshop-queue-add",
-  "data-sde-workshop-message-target",
-  "data-sde-workshop-message-text",
-  "maxlength=\"250\"",
-  "workshopIngressQueue",
-  "workshopMessages",
-]){
-  assert.ok(source.includes(token), `action center misses ${token}`);
+for(const role of ["drops", "txp", "sde_skiftere", "verksted", "agila"]){
+  assert.ok(source.includes(`${role}:`), `message surface map misses ${role}`);
 }
+
+const globalComposer = extractFunction("renderOperationalMessageComposers");
+for(const token of [
+  "data-sde-operational-message-host",
+  "data-sde-operational-message-target",
+  "data-sde-operational-message-text",
+  "data-sde-operational-message-send",
+  "maxlength=\"250\"",
+]){
+  assert.ok(globalComposer.includes(token) || source.includes(token), `global message composer misses ${token}`);
+}
+assert.ok((source.match(/data-sde-operational-message-host/g) || []).length >= 5);
+assert.ok(source.includes("operationalMessageReceipts"));
+assert.doesNotMatch(actionCenter, /data-sde-operational-message-(?:target|text|send)/);
 assert.ok(source.includes("@media (max-width: 520px)"));
 assert.ok(source.includes("grid-template-columns:repeat(2,minmax(0,1fr))"));
 
 console.log(JSON.stringify({
   schemaVersion: "sde-global-update-stadler-action-center-ui-harness-v2",
-  tests: 68,
+  tests: 72,
 }));

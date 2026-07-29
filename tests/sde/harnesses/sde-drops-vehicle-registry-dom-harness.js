@@ -243,10 +243,20 @@ const operationalReadback = {
   ok: true,
   writeEnabled: true,
   productionPilotWriteEnabled: true,
+  vehicleStatusPersistenceReady: true,
+  vehicleWriteScope: "REGISTERED_VEHICLES",
   registerFaultCommandAvailable: true,
   reportNotOperationalCommandAvailable: true,
   vehicleStatusLifecycleCommandsAvailable: true,
   pilotAllowedVehicleIds: ["74-10"],
+  commandReadiness: {
+    registerFault: {
+      available: true,
+      capabilityAllowed: true,
+      persistenceReady: true,
+      registeredVehicleScopeReady: true,
+    },
+  },
   items: [{
     vehicleId: "74-10",
     currentStatus: "DRIFTSKLAR",

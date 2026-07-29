@@ -228,7 +228,7 @@ assert.match(
   /const activeFaults = statusPresentation\.activeFaults;/,
   "the editor must consume the normalized authoritative presentation"
 );
-assert.match(serverSource, /commandReadiness:\s*\{\s*requestRepair:/);
+assert.match(serverSource, /commandReadiness:\s*\{[\s\S]*?requestRepair:/);
 assert.match(serverSource, /registeredVehicleScopeReady:/);
 assert.match(serverSource, /persistenceReady:/);
 assert.match(source, /Sakstidslinje/);

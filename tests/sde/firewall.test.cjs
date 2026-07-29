@@ -235,6 +235,27 @@ test("NIVÅ 4 — Stadler handlingssenter, verkstedkø, meldinger og Driftsklar-
   );
 });
 
+test("GLOBAL instantmelding — alle 20 rolle-retninger er serverautoritative, målfiltrerte og idempotente", () => {
+  assertPassed(
+    runHarness("sde-global-operational-messaging-harness.js"),
+    "global operational messaging contract",
+  );
+});
+
+test("DROPS register-feil — alle 176 registrerte kjøretøy bruker scope, revisjon og ledig aktiv feilplass", () => {
+  assertPassed(
+    runHarness("sde-drops-register-fault-generalization-harness.js"),
+    "DROPS registered-vehicle fault generalization",
+  );
+});
+
+test("GLOBAL instantmelding — uendret polling og Oppdater bevarer textarea-node, fokus, markør og usendt tekst", () => {
+  assertPassed(
+    runHarness("sde-operational-message-focus-stability-harness.js"),
+    "operational message focus stability",
+  );
+});
+
 test("SDE common card pipeline — workshop exit and manual drag keep cards, reservations and unresolved follow-up consistent", () => {
   assertPassed(
     runHarness("sde-unified-card-pipeline-workshop-drag-harness.js"),

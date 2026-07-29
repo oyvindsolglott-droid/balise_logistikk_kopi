@@ -172,6 +172,7 @@ async function main() {
     }
     function renderWorkshopVehicleRegistry(){ workshopRenders += 1; }
     function renderSporplanVehicleStatusBadges(){ sporplanRenders += 1; }
+    function updateOperationalMessageComposerStatus(){}
     function renderVehicleStatusNotificationPopup(){ notificationRenders += 1; }
     ${optionalFunctions.join("\n")}
     ${refreshFunction}

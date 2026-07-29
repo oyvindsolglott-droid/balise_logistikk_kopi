@@ -100,6 +100,7 @@ const context = {
   inputSlots,
   washMachineSlots: [],
   DROPS_VEHICLE_REGISTRY_TOTAL: 176,
+  REGISTERED_VEHICLES_SCOPE: "REGISTERED_VEHICLES",
   escapeHtml(value) {
     return String(value ?? "")
       .replaceAll("&", "&amp;")
@@ -202,7 +203,17 @@ function readback(items = [], fields = {}) {
     ok: true,
     writeEnabled: true,
     vehicleStatusLifecycleCommandsAvailable: true,
-    productionPilotWriteEnabled: false,
+    productionPilotWriteEnabled: true,
+    vehicleStatusPersistenceReady: true,
+    vehicleWriteScope: "REGISTERED_VEHICLES",
+    commandReadiness: {
+      registerFault: {
+        available: true,
+        capabilityAllowed: true,
+        persistenceReady: true,
+        registeredVehicleScopeReady: true,
+      },
+    },
     items,
     faults: [],
     repairRequests: [],
@@ -232,9 +243,7 @@ const gateOffView = {
 };
 const openView = {
   readback: readback([], {
-    productionPilotWriteEnabled: true,
     registerFaultCommandAvailable: true,
-    pilotAllowedVehicleIds: ["74-04"],
   }),
   capabilities: capabilities(),
   commandInFlight: false,
@@ -244,7 +253,17 @@ for (const [label, view] of [
   ["identity", { readback: readback(), capabilities: { ...capabilities(), ok: false }, commandInFlight: false }],
   ["role", { readback: readback(), capabilities: { ...capabilities(), roles: ["verksted"] }, commandInFlight: false }],
   ["capability", { readback: readback(), capabilities: capabilities(false), commandInFlight: false }],
-  ["readiness", { readback: readback([], { vehicleStatusLifecycleCommandsAvailable: false }), capabilities: capabilities(), commandInFlight: false }],
+  ["readiness", { readback: readback([], {
+    vehicleStatusLifecycleCommandsAvailable: false,
+    commandReadiness: {
+      registerFault: {
+        available: false,
+        capabilityAllowed: true,
+        persistenceReady: true,
+        registeredVehicleScopeReady: true,
+      },
+    },
+  }), capabilities: capabilities(), commandInFlight: false }],
   ["write gate", { readback: readback([], { writeEnabled: false }), capabilities: capabilities(), commandInFlight: false }],
   ["request in flight", { readback: readback(), capabilities: capabilities(), commandInFlight: true }],
 ]) {
@@ -264,24 +283,21 @@ assert.equal(
 assert.equal(
   api.getDropsRegisterFaultAvailability(validDraft("74-10"), 0, {
     ...openView,
-    readback: readback([], {
-      productionPilotWriteEnabled: true,
-      pilotAllowedVehicleIds: ["74-04"],
-    }),
+    readback: readback(),
   }).available,
-  false,
-  "pilot allowlist",
+  true,
+  "every registered vehicle must use the shared server-authoritative scope",
 );
 const registerAvailabilitySource = extractFunction(source, "getDropsRegisterFaultAvailability");
-assert.match(
-  registerAvailabilitySource,
-  /pilotAllowedVehicleIds/,
-  "frontend availability must consume the server-computed pilot allowlist",
-);
 assert.doesNotMatch(
   registerAvailabilitySource,
-  /74-04/,
-  "frontend availability must not hardcode the production pilot vehicle",
+  /pilotAllowedVehicleIds/,
+  "register-fault availability must not retain the historical pilot allowlist",
+);
+assert.match(
+  registerAvailabilitySource,
+  /registeredVehicleScopeReady/,
+  "frontend availability must consume server-computed registered scope readiness",
 );
 
 // B — color and truth labels come only from authoritative GET records.

@@ -21,7 +21,7 @@ const repositorySource = fs.readFileSync(
 
 for(const token of [
   "vehicle_status.manage_workshop_ingress_queue",
-  "vehicle_status.send_workshop_message",
+  "vehicle_status.send_operational_message",
 ]){
   assert.ok(runtimeAuthorization.includes(token), `missing capability ${token}`);
 }
@@ -31,18 +31,20 @@ assert.match(
 );
 assert.match(
   runtimeAuthorization,
-  /SEND_WORKSHOP_MESSAGE[\s\S]*allowedRoles:\s*\[ROLE_KEYS\.VERKSTED\]/
+  /SEND_OPERATIONAL_MESSAGE[\s\S]*allowedRoles:\s*OPERATIONAL_MESSAGE_ROLES/
 );
 
 for(const token of [
   "manage_workshop_ingress_queue",
-  "send_workshop_message",
+  "send_operational_message",
   "/api/vehicle-status/commands/manage-workshop-ingress-queue",
-  "/api/vehicle-status/commands/send-workshop-message",
+  "/api/vehicle-status/commands/send-operational-message/:sourceRole",
   "expectedQueueRevision",
   "expectedPlacementRevision",
+  "sourceRole",
   "targetRole",
   "message",
+  "context",
 ]){
   assert.ok(lifecycleSource.includes(token), `lifecycle misses ${token}`);
 }
@@ -50,8 +52,8 @@ for(const token of [
 for(const token of [
   "vehicle_status_workshop_ingress_queue",
   "vehicle_status_workshop_ingress_queue_events",
-  "vehicle_status_workshop_messages",
-  "vehicle_status_workshop_message_events",
+  "vehicle_status_operational_messages",
+  "vehicle_status_operational_message_events",
   "READY_FOR_ACTIVATION",
   "ACTIVATING",
   "CARD_CREATED",
@@ -60,7 +62,7 @@ for(const token of [
 ]){
   assert.ok(repositorySource.includes(token), `repository misses ${token}`);
 }
-assert.match(repositorySource, /PRAGMA user_version = 5/);
+assert.match(repositorySource, /PRAGMA user_version = 6/);
 
 const {
   createVehicleStatusTestRepository,
@@ -191,48 +193,58 @@ assert.equal(queueEntry.status, "REPLAN_REQUIRED");
 assert.equal(queueEntry.linkedCardId, null);
 
 const message = repository.executeCommand(
-  LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE,
+  LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
   {
     actionId: "10000000-0000-4000-8000-000000000002",
     payloadHash: "message-drops",
+    sourceRole: "verksted",
     targetRole: "drops",
     message: "<b>Kontroller 74-21</b>",
-    selectedSlotId: "7N",
-    selectedVehicleId: "74-12",
+    context: {
+      surface: "verksted",
+      slotId: "7N",
+      vehicleId: "74-12",
+    },
   },
   authority
 );
 assert.equal(message.ok, true);
+assert.equal(message.result.sourceRole, "verksted");
 assert.equal(message.result.targetRole, "drops");
 readback = repository.getReadModel({roles: ["drops"]});
-assert.equal(readback.workshopMessages.length, 1);
-assert.equal(readback.workshopMessages[0].message, "<b>Kontroller 74-21</b>");
-assert.equal(readback.workshopMessages[0].selectedSlotId, "7N");
-assert.equal(readback.workshopMessages[0].selectedVehicleId, "74-12");
-assert.equal(readback.notifications.filter(item => item.kind === "WORKSHOP_MESSAGE").length, 1);
-assert.equal(readback.notifications.find(item => item.kind === "WORKSHOP_MESSAGE").payload.selectedSlotId, "7N");
-assert.equal(readback.notifications.find(item => item.kind === "WORKSHOP_MESSAGE").payload.selectedVehicleId, "74-12");
-assert.equal(repository.getReadModel({roles: ["txp"]}).workshopMessages.length, 0);
+assert.equal(readback.operationalMessages.length, 1);
+assert.equal(readback.operationalMessages[0].sourceRole, "verksted");
+assert.equal(readback.operationalMessages[0].message, "<b>Kontroller 74-21</b>");
+assert.equal(readback.operationalMessages[0].selectedSlotId, "7N");
+assert.equal(readback.operationalMessages[0].selectedVehicleId, "74-12");
+assert.equal(readback.notifications.filter(item => item.kind === "OPERATIONAL_MESSAGE").length, 1);
+assert.equal(readback.notifications.find(item => item.kind === "OPERATIONAL_MESSAGE").payload.selectedSlotId, "7N");
+assert.equal(readback.notifications.find(item => item.kind === "OPERATIONAL_MESSAGE").payload.selectedVehicleId, "74-12");
+assert.equal(repository.getReadModel({roles: ["txp"]}).operationalMessages.length, 0);
 
 const replay = repository.executeCommand(
-  LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE,
+  LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
   {
     actionId: "10000000-0000-4000-8000-000000000002",
     payloadHash: "message-drops",
+    sourceRole: "verksted",
     targetRole: "drops",
     message: "<b>Kontroller 74-21</b>",
-    selectedSlotId: "7N",
-    selectedVehicleId: "74-12",
+    context: {
+      surface: "verksted",
+      slotId: "7N",
+      vehicleId: "74-12",
+    },
   },
   authority
 );
 assert.equal(replay.ok, true);
 assert.equal(replay.result.idempotentReplay, true);
-assert.equal(repository.getReadModel({roles: ["drops"]}).workshopMessages.length, 1);
+assert.equal(repository.getReadModel({roles: ["drops"]}).operationalMessages.length, 1);
 
 console.log(JSON.stringify({
   schemaVersion: "sde-global-update-stadler-action-center-server-harness-v2",
-  tests: 55,
+  tests: 62,
   queueStatus: queueEntry.status,
   messageCount: 1,
 }));
