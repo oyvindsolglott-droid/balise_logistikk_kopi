@@ -378,11 +378,11 @@ const unknownHtml = api.buildDropsVehicleRegistryHtml("74", "74-10", vehicleADra
   capabilities: {},
 });
 assert.match(unknownHtml, /drops-not-operational-editor is-unknown/);
-assert.match(unknownHtml, /Ingen autoritativ status registrert/);
+assert.match(unknownHtml, /STATUS IKKE REGISTRERT/);
 assert.doesNotMatch(unknownHtml, /drops-not-operational-editor is-operational|drops-not-operational-editor is-not-operational/);
 const workshopUnknownHtml = api.buildWorkshopVehicleRegistryHtml("74", "74-10", unknownReadback, {});
 assert.match(workshopUnknownHtml, /workshop-vehicle-status is-unknown/);
-assert.match(workshopUnknownHtml, /Ingen autoritativ status registrert/);
+assert.match(workshopUnknownHtml, /STATUS IKKE REGISTRERT/);
 
 const vehicleBDraft = api.createDropsNotOperationalEditorDraft("75-10");
 assert.equal(vehicleBDraft.faults.length, 5);

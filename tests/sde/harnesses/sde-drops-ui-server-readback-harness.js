@@ -488,7 +488,7 @@ async function main() {
     ["42 Sporplan shows TIL DREI separately", /TIL DREI/],
     ["43 Sporplan removes red markers after operational GET", /currentStatus\s*===\s*\"DRIFTSKLAR\"/],
     ["44 Sporplan shows green operational badge", /DRIFTSKLAR/],
-    ["45 missing record gives no false green badge", /if\(!record\)\s*return\s*\"\"/],
+    ["45 missing record gives a neutral badge, never false green", /kind:"unknown"[\s\S]*?label:"STATUS IKKE REGISTRERT"/],
     ["46 readback does not add vehicles to Sporplan", /buildSporplanVehicleStatusBadgesHtml/],
     ["47 readback does not mutate parked-where", /data-slot/],
     ["48 readback does not mutate Sporplan draft", /buildSporplanVehicleStatusBadgesHtml/],

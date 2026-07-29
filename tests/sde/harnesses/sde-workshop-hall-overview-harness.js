@@ -84,8 +84,9 @@ assert.match(html,/assets\/NY_SPORPLAN\.png\?v=9510e11f/);
 assert.match(html,/data-sde-workshop-overview-slot="7N"/);
 assert.match(html,/data-sde-workshop-overview-vehicle="74-54"/);
 assert.match(html,/data-sde-workshop-overview-status="DRIFTSKLAR"/);
-assert.match(html,/data-sde-workshop-overview-status="TIL REP"/);
-assert.match(html,/data-sde-workshop-overview-status="TIL DREI"/);
+assert.match(html,/data-sde-workshop-overview-status="IKKE DRIFTSKLAR"/);
+assert.match(html,/workshop-hall-overview-disposition is-repair">TIL REP</);
+assert.match(html,/workshop-hall-overview-disposition is-turning">TIL DREI</);
 assert.match(html,/data-sde-workshop-overview-slot="8N"/);
 assert.match(html,/data-sde-workshop-overview-vehicle=""/);
 assert.match(html,/aria-label="Velg tomt verkstedspor 8N"/);
@@ -117,6 +118,7 @@ console.log(JSON.stringify({
   actualVehicles:["74-54","74-45","74-07"],
   emptySlotClickable:true,
   draggable:false,
-  authoritativeStatuses:["DRIFTSKLAR","TIL REP","TIL DREI"],
+  authoritativeStatuses:["DRIFTSKLAR","IKKE DRIFTSKLAR"],
+  separateDispositions:["TIL REP","TIL DREI"],
   exactAsset:true
 },null,2));

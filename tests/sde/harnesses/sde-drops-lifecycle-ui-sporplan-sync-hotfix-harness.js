@@ -339,7 +339,7 @@ assert.equal(notOperationalPresentation.timestamp, "2026-07-24T07:08:09.000Z");
 assert.equal(notOperationalPresentation.record.workshopDisposition, "TIL_DREI");
 const unknownPresentation = api.getAuthoritativeVehicleStatusPresentation(readback(), "74-04");
 assert.equal(unknownPresentation.className, "is-unknown");
-assert.equal(unknownPresentation.label, "Ingen autoritativ status registrert");
+assert.equal(unknownPresentation.label, "STATUS IKKE REGISTRERT");
 
 // C — Sporplan and SDE must consume the same immutable actual-placement snapshot.
 const beforeState = JSON.stringify(state);

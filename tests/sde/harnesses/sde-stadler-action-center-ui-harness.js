@@ -46,7 +46,7 @@ for(const token of ["getSdeTargetSlotSafety", "REPLAN_REQUIRED", "target_occupan
 
 const workshop = extractFunction("buildWorkshopVehicleRegistryHtml");
 for(const token of [
-  "buildWorkshopSlotStatusCardsHtml",
+  "buildWorkshopHallOverviewHtml",
   "buildWorkshopActionCenterHtml",
   "8N",
   "7N",
@@ -60,6 +60,12 @@ for(const token of [
 ]){
   assert.ok(workshop.includes(token), `workshop UI misses ${token}`);
 }
+assert.match(source, /data-sde-workshop-single-context/);
+assert.doesNotMatch(
+  workshop,
+  /buildWorkshopSlotStatusCardsHtml/,
+  "the four parallel workshop status cards must not be rendered beside the hall"
+);
 assert.doesNotMatch(workshop, /Arbeid påbegynt|data-sde-workshop-work-started/);
 assert.doesNotMatch(workshop, /record\?\.currentStatus\s*===\s*"IKKE_DRIFTSKLAR"/);
 
@@ -187,7 +193,9 @@ for(const token of [
 }
 
 const popup = extractFunction("buildWorkshopNotificationPopupHtml");
-assert.ok(popup.includes("Åpne statusark"));
+assert.ok(source.includes('label:"Åpne statusark"'));
+assert.ok(popup.includes("operationalDeepLink.label"));
+assert.ok(popup.includes("data-sde-acknowledge-operational-message"));
 assert.ok(popup.includes("OPERATIONAL_MESSAGE"));
 assert.ok(popup.includes("aria-label"));
 assert.ok(popup.includes("escapeHtml") || popup.includes("esc("));

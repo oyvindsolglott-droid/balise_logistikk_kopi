@@ -45,7 +45,7 @@ for(const token of [
   "OPERATIONAL_MESSAGE",
   "vehicle_status_operational_messages",
   "vehicle_status_operational_message_events",
-  "PRAGMA user_version = 8",
+  "PRAGMA user_version = 9",
 ]){
   assert.ok(
     `${lifecycleSource}\n${repositorySource}\n${serverSource}`.includes(token),

@@ -120,9 +120,20 @@ assert.equal(
   true
 );
 
+const repRepository = createRepository([
+  {vehicleId:"74-38",slot:"3S"},
+]);
+const repIngress = addIngress(repRepository,{
+  vehicleId:"74-38",
+  targetSlot:"7S",
+});
+assert.equal(repIngress.ok, true);
+assert.equal(repIngress.result.status, "CARD_CREATED");
+assert.ok(repIngress.result.linkedCardId);
+
 const unresolvedRepository = createRepository([]);
 const unresolved = addIngress(unresolvedRepository,{
-  vehicleId:"74-38",
+  vehicleId:"74-39",
   targetSlot:"7S",
 });
 assert.equal(unresolved.ok, true);
@@ -196,6 +207,7 @@ console.log(JSON.stringify({
     safe:"CARD_CREATED",
     occupied:"HIGH_PRIORITY_WAITING_FOR_SLOT",
     reserved:"HIGH_PRIORITY_WAITING_FOR_SLOT",
+    repIn3S:"CARD_CREATED",
     unresolved:"REPLAN_REQUIRED",
     sameSource:"REPLAN_REQUIRED",
   },

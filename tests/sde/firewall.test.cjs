@@ -284,6 +284,20 @@ test("VERKSTED innkjøring — status er irrelevant og fysisk utfall klassifiser
   );
 });
 
+test("GLOBAL direktemelding — eksplisitt serverkvittering er idempotent og dypkoblingen er allowlistet", () => {
+  assertPassed(
+    runHarness("sde-operational-message-acknowledgement-harness.js"),
+    "operational message acknowledgement",
+  );
+});
+
+test("NIVÅ 4/TURSATT/STATUS — enkeltkontekst, kollaps og felles presentasjon er permanente kontrakter", () => {
+  assertPassed(
+    runHarness("sde-single-context-collapse-status-harness.js"),
+    "single context, diagnostics collapse and unified status",
+  );
+});
+
 test("SDE common card pipeline — workshop exit and manual drag keep cards, reservations and unresolved follow-up consistent", () => {
   assertPassed(
     runHarness("sde-unified-card-pipeline-workshop-drag-harness.js"),
