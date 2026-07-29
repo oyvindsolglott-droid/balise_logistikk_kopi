@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v6";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v7";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -41,6 +41,7 @@ const WAIT_REASONS = new Set([
 ]);
 const WORKSHOP_SLOTS = new Set(["8N", "7N", "8S", "7S"]);
 const WORKSHOP_QUEUE_OPERATIONS = new Set(["ADD", "CANCEL", "MOVE_UP", "MOVE_DOWN"]);
+const WORKSHOP_INGRESS_REQUEST_TYPES = new Set(["ASAP", "PREBOOKED"]);
 const OPERATIONAL_MESSAGE_ROLES = new Set([
   "drops",
   "txp",
@@ -135,7 +136,7 @@ const FIELDS = Object.freeze({
   ]),
   [LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE]: new Set([
     "actionId", "operation", "targetSlot", "vehicleId", "queueEntryId",
-    "expectedQueueRevision", "expectedPlacementRevision"
+    "requestType", "priority", "expectedQueueRevision", "expectedPlacementRevision"
   ]),
   [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: new Set([
     "actionId", "targetRole", "message", "context"
@@ -287,6 +288,8 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
     const queueEntryId = input.queueEntryId === undefined || input.queueEntryId === null
       ? null
       : normalizeUuid(input.queueEntryId);
+    const requestType = String(input.requestType || "").trim().toUpperCase();
+    const priority = String(input.priority || "").trim().toUpperCase();
     if(!WORKSHOP_QUEUE_OPERATIONS.has(operation)){
       return invalid(400, "invalid_queue_operation", "operation is not allowed.");
     }
@@ -301,8 +304,19 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
     if(operation !== "ADD" && !queueEntryId){
       return invalid(400, "invalid_queue_entry_id", "queueEntryId is required.");
     }
+    if(operation === "ADD" && !WORKSHOP_INGRESS_REQUEST_TYPES.has(requestType)){
+      return invalid(400, "invalid_workshop_ingress_request_type",
+        "requestType must be ASAP or PREBOOKED.");
+    }
+    const expectedPriority = requestType === "ASAP" ? "HIGH" : "NORMAL";
+    if(operation === "ADD" && priority !== expectedPriority){
+      return invalid(400, "invalid_workshop_ingress_priority",
+        `priority must be ${expectedPriority} for ${requestType}.`);
+    }
     normalized = {
       actionId, operation, targetSlot, vehicleId, queueEntryId,
+      requestType:operation === "ADD" ? requestType : null,
+      priority:operation === "ADD" ? priority : null,
       expectedQueueRevision, expectedPlacementRevision
     };
   }else if(commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE){

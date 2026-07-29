@@ -9105,7 +9105,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 28. juli 2026</p>
+<p class="sub">Siste revisjon: 29. juli 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -43445,6 +43445,9 @@ function restoreGlobalUpdateContext(context={}){
     : "8N";
   workshopPrebookingPanelOpen = Boolean(context.workshopPrebookingPanelOpen);
   workshopIngressDraft = {
+    incomingVehicleType:["69","70","74","75"].includes(context.workshopIngressDraft?.incomingVehicleType)
+      ? context.workshopIngressDraft.incomingVehicleType
+      : "",
     incomingVehicleId:String(context.workshopIngressDraft?.incomingVehicleId || ""),
     targetWorkshopSlot:["8N","7N","8S","7S"].includes(context.workshopIngressDraft?.targetWorkshopSlot)
       ? context.workshopIngressDraft.targetWorkshopSlot
@@ -48048,18 +48051,31 @@ function buildWorkshopActionIcon(kind){
 
 function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot="8N",selectedVehicle=""){
   const esc = value=>String(value ?? "").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
+  const ingressModes = [
+    {requestType:"ASAP",priority:"HIGH",label:"Bestilling av innkjøring (ASAP)"},
+    {requestType:"PREBOOKED",priority:"NORMAL",label:"Forhåndsbestilling av innkjøring"}
+  ];
   const workshopActionCenterContract = [
     "data-sde-workshop-open-prebooking",
-    "data-sde-workshop-prebooking-vehicle",
+    "data-sde-workshop-prebooking-type",
+    "data-sde-workshop-prebooking-individual",
     "data-sde-workshop-prebooking-slot",
     "data-sde-workshop-prebooking-summary",
     "data-sde-workshop-queue-add",
     "workshopIngressDraft",
+    "Type 69",
+    "Type 70",
+    "Type 74",
+    "Type 75",
+    "Individnr.",
     '<button data-sde-workshop-request-exit disabled aria-disabled="true">'
   ];
   void workshopActionCenterContract;
   const catalog = typeof getDropsVehicleCatalog === "function" ? getDropsVehicleCatalog() : {};
-  const allVehicles = Object.values(catalog).flat();
+  const allowedTypes = ["69","70","74","75"];
+  const catalogVehicles = allowedTypes.flatMap(type=>
+    Array.isArray(catalog[type]) ? catalog[type] : []
+  );
   const actualBySlot = buildCanonicalActualPlacementSlotMap(computeCanonicalActualPlacementRows());
   const slotVehicle = sanitizeVehicleValue(actualBySlot[selectedSlot]);
   const vehicleId = slotVehicle;
@@ -48100,8 +48116,18 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   if(!["8N","7N","8S","7S"].includes(workshopIngressDraft.targetWorkshopSlot)){
     workshopIngressDraft.targetWorkshopSlot = selectedSlot;
   }
-  const draftVehicle = allVehicles.includes(workshopIngressDraft.incomingVehicleId)
-    ? workshopIngressDraft.incomingVehicleId
+  const storedVehicle = String(workshopIngressDraft.incomingVehicleId || "");
+  const storedType = String(workshopIngressDraft.incomingVehicleType || "");
+  const inferredType = allowedTypes.find(type=>storedVehicle.startsWith(`${type}-`)) || "";
+  const draftType = allowedTypes.includes(storedType) ? storedType : inferredType;
+  const typeVehicles = draftType && Array.isArray(catalog[draftType])
+    ? catalog[draftType].slice().sort((left,right)=>
+      Number(String(left).split("-").at(-1)) - Number(String(right).split("-").at(-1))
+    )
+    : [];
+  const draftVehicle = typeVehicles.includes(storedVehicle) &&
+    catalogVehicles.includes(storedVehicle)
+    ? storedVehicle
     : "";
   const targetSlot = workshopIngressDraft.targetWorkshopSlot || selectedSlot;
   const targetOccupant = sanitizeVehicleValue(actualBySlot[targetSlot]);
@@ -48110,9 +48136,13 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
     .sort((left,right)=>Number(left?.position || 0)-Number(right?.position || 0));
   const duplicateQueueEntry = (Array.isArray(readback?.workshopIngressQueue) ? readback.workshopIngressQueue : [])
     .find(entry=>entry?.vehicleId === draftVehicle && !["COMPLETED","CANCELLED"].includes(entry?.status));
-  const vehicleOptions = [`<option value="">Velg kjøretøy</option>`]
-    .concat(allVehicles.filter(candidate=>candidate !== targetOccupant)
-      .map(candidate=>`<option value="${esc(candidate)}"${candidate === draftVehicle ? " selected" : ""}${queuedVehicles.has(candidate) && candidate !== draftVehicle ? " disabled" : ""}>${esc(candidate)}</option>`)).join("");
+  const typeOptions = [`<option value="">Velg type</option>`]
+    .concat(allowedTypes.map(type=>
+      `<option value="${type}"${type === draftType ? " selected" : ""}>Type ${type}</option>`
+    )).join("");
+  const individualOptions = [`<option value="">Velg individnr.</option>`]
+    .concat(typeVehicles.filter(candidate=>candidate !== targetOccupant)
+      .map(candidate=>`<option value="${esc(candidate)}"${candidate === draftVehicle ? " selected" : ""}${queuedVehicles.has(candidate) && candidate !== draftVehicle ? " disabled" : ""}>${esc(String(candidate).split("-").at(-1))}</option>`)).join("");
   const queueRevision = queue[0]?.queueRevision ?? 0;
   const placementRevision = String(
     (Array.isArray(readback?.placements) ? readback.placements : [])
@@ -48121,7 +48151,7 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
     ""
   );
   const queueHtml = queue.length
-    ? queue.map(entry=>`<li>${esc(entry.position)}. ${esc(entry.vehicleId)} · ${esc(entry.status)}</li>`).join("")
+    ? queue.map(entry=>`<li>${esc(entry.position)}. ${esc(entry.vehicleId)} · ${esc(entry.requestType || "PREBOOKED")} · ${esc(entry.status)}</li>`).join("")
     : "<li>Ingen forhåndsbestillinger.</li>";
   const targetPlacementRevision = String(
     (Array.isArray(readback?.placements) ? readback.placements : [])
@@ -48129,6 +48159,7 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
     placementRevision
   );
   const validationErrors = [];
+  if(!draftType) validationErrors.push("Velg type.");
   if(!draftVehicle) validationErrors.push("Velg kjøretøy.");
   if(!["8N","7N","8S","7S"].includes(targetSlot)) validationErrors.push("Velg verkstedspor.");
   if(duplicateQueueEntry) validationErrors.push(`Kjøretøyet har allerede aktiv køplass i ${duplicateQueueEntry.targetSlot}.`);
@@ -48137,6 +48168,7 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   if(workshopActionCenterCommandInFlight) validationErrors.push("En kommando pågår.");
   const prebookingReady = validationErrors.length === 0;
   workshopIngressDraft = {
+    incomingVehicleType:draftType,
     incomingVehicleId:draftVehicle,
     targetWorkshopSlot:targetSlot,
     canonicalOccupant:targetOccupant,
@@ -48161,17 +48193,18 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
       <button class="workshop-action-3d workshop-action-3d--prebooking" type="button" data-sde-workshop-open-prebooking aria-expanded="${workshopPrebookingPanelOpen ? "true" : "false"}>${buildWorkshopActionIcon("prebooking")}<span>Forhåndsbestill innkjøring</span></button>
     </div>
     <div class="workshop-action-center-queue workshop-prebooking-panel"${workshopPrebookingPanelOpen ? "" : " hidden"} data-sde-workshop-prebooking-panel>
-      <h4>Forhåndsbestilling</h4>
-      <label>Velg kjøretøy<select data-sde-workshop-prebooking-vehicle>${vehicleOptions}</select></label>
+      <h4>Bestill innkjøring</h4>
+      <label>Type<select data-sde-workshop-prebooking-type>${typeOptions}</select></label>
+      <label>Individnr.<select data-sde-workshop-prebooking-individual${draftType ? "" : " disabled"}>${individualOptions}</select></label>
       <label>Velg verkstedspor<select data-sde-workshop-prebooking-slot>${["8N","7N","8S","7S"].map(slot=>`<option value="${slot}"${slot === targetSlot ? " selected" : ""}>${slot}</option>`).join("")}</select></label>
       <div class="workshop-prebooking-summary" data-sde-workshop-prebooking-summary>
-        <strong>Forhåndsbestilling</strong>
+        <strong>Innkjøringsbestilling</strong>
         <p>${esc(draftVehicle || "Velg kjøretøy")} → ${esc(targetSlot)}</p>
         <p>Belegg: ${targetOccupant ? `Opptatt av ${esc(targetOccupant)}` : "Tomt"}. Forventet køplass: ${targetQueue.length + 1}.</p>
         <p>${esc(activationText)}</p>
         ${validationErrors.length ? `<ul>${validationErrors.map(error=>`<li>${esc(error)}</li>`).join("")}</ul>` : ""}
       </div>
-      <button class="workshop-action-3d workshop-action-3d--prebooking" type="button" data-sde-workshop-queue-add${prebookingReady ? "" : " disabled aria-disabled=\"true\""}>${buildWorkshopActionIcon("prebooking")}<span>Bekreft forhåndsbestilling</span></button>
+      ${ingressModes.map(mode=>`<button class="workshop-action-3d workshop-action-3d--prebooking" type="button" data-sde-workshop-queue-add data-sde-workshop-request-type="${mode.requestType}" data-sde-workshop-priority="${mode.priority}"${prebookingReady ? "" : " disabled aria-disabled=\"true\""}>${buildWorkshopActionIcon("prebooking")}<span>${mode.label}</span></button>`).join("")}
       <ol class="workshop-action-center-queue-list">${queueHtml}</ol>
     </div>
   </section>`;
@@ -48772,6 +48805,7 @@ let workshopActionCenterSelectedSlot = "8N";
 let workshopActionCenterCommandInFlight = false;
 let workshopPrebookingPanelOpen = false;
 let workshopIngressDraft = {
+  incomingVehicleType:"",
   incomingVehicleId:"",
   targetWorkshopSlot:"8N",
   canonicalOccupant:"",
@@ -49038,23 +49072,45 @@ async function submitOperationalMessageFromUi(role){
       }
     );
     const messageId = String(result?.body?.messageId || "");
-    const confirmed = result.ok && messageId && (
-      Array.isArray(result.readback?.operationalMessageReceipts) &&
-      result.readback.operationalMessageReceipts.some(receipt=>
-        receipt?.messageId === messageId &&
-        receipt?.sourceRole === role &&
-        receipt?.targetRole === draft.targetRole
-      )
+    if(result?.body?.ok !== true || !messageId){
+      throw new Error(
+        String(result?.body?.message || result?.body?.error || "message_server_rejected")
+      );
+    }
+    let confirmedReceipt = findOperationalMessageReceipt(
+      result.readback,
+      messageId,
+      role,
+      draft.targetRole
     );
-    if(!confirmed){
-      throw new Error("message_readback_not_confirmed");
+    if(!confirmedReceipt){
+      operationalMessageLastResults.set(role,{
+        kind:"",
+        message:"Beskjeden er mottatt av serveren. Venter på autoritativ bekreftelse"
+      });
+      updateOperationalMessageComposerStatus();
+      const confirmation = await waitForOperationalMessageReceipt({
+        messageId,
+        sourceRole:role,
+        targetRole:draft.targetRole,
+        initialReadback:result.readback
+      });
+      confirmedReceipt = confirmation.receipt;
+    }
+    if(!confirmedReceipt){
+      const confirmationError = new Error("message_readback_not_confirmed");
+      confirmationError.messageId = messageId;
+      throw confirmationError;
     }
     draft.message = "";
     operationalMessageLastResults.set(role,{kind:"success",message:"Beskjed sendt"});
-  }catch(unusedError){
+  }catch(error){
+    const acceptedMessageId = String(error?.messageId || "");
     operationalMessageLastResults.set(role,{
       kind:"error",
-      message:"Beskjeden ble ikke bekreftet av autoritativ readback."
+      message:acceptedMessageId
+        ? `Serveren mottok beskjed ${acceptedMessageId}, men autoritativ sender-readback ble ikke bekreftet innen kontrollvinduet. Utkastet er beholdt.`
+        : `Beskjeden ble avvist før serverkvittering: ${String(error?.message || "ukjent feil")}. Utkastet er beholdt.`
     });
   }finally{
     operationalMessageCommandsInFlight.delete(role);
@@ -49226,9 +49282,47 @@ function renderDropsVehicleRegistry(){
   ensureDropsVehicleStatusContext();
 }
 
-function renderWorkshopVehicleRegistry(){
+let workshopRegistryRenderDeferred = false;
+
+function shouldDeferWorkshopRegistryRender(){
+  const active = document.activeElement;
+  if(!active?.closest?.("#workshopVehicleRegistry")) return false;
+  return Boolean(active.matches?.(
+    "[data-sde-workshop-prebooking-type]," +
+    "[data-sde-workshop-prebooking-individual]," +
+    "[data-sde-workshop-prebooking-slot]"
+  ));
+}
+
+function getWorkshopVehicleRegistryReadbackSignature(readback){
+  return serializeDropsVehicleRenderValue({
+    revision:readback?.revision ?? null,
+    items:Array.isArray(readback?.items) ? readback.items : [],
+    faults:Array.isArray(readback?.faults) ? readback.faults : [],
+    repairRequests:Array.isArray(readback?.repairRequests) ? readback.repairRequests : [],
+    processCases:Array.isArray(readback?.processCases) ? readback.processCases : [],
+    placements:Array.isArray(readback?.placements) ? readback.placements : [],
+    workshopIngressQueue:Array.isArray(readback?.workshopIngressQueue)
+      ? readback.workshopIngressQueue
+      : [],
+    workshopExitRequests:Array.isArray(readback?.workshopExitRequests)
+      ? readback.workshopExitRequests
+      : []
+  });
+}
+
+function shouldRenderWorkshopVehicleRegistryForReadback(previousReadback,nextReadback){
+  return getWorkshopVehicleRegistryReadbackSignature(previousReadback) !==
+    getWorkshopVehicleRegistryReadbackSignature(nextReadback);
+}
+
+function renderWorkshopVehicleRegistry({force=false}={}){
   const host = document.getElementById("workshopVehicleRegistry");
   if(!host) return;
+  if(!force && shouldDeferWorkshopRegistryRender()){
+    workshopRegistryRenderDeferred = true;
+    return;
+  }
   host.innerHTML = buildWorkshopVehicleRegistryHtml(
     workshopVehicleRegistrySelectedSeries,
     workshopVehicleRegistrySelectedVehicle,
@@ -49237,6 +49331,7 @@ function renderWorkshopVehicleRegistry(){
     workshopStandardSheetCollapsed,
     workshopExitRequestInFlight
   );
+  workshopRegistryRenderDeferred = false;
   ensureDropsVehicleStatusContext();
   if(workshopVehicleRegistrySelectedVehicle && !workshopStandardSheetCollapsed){
     recordWorkshopSheetFirstOpened(workshopVehicleRegistrySelectedVehicle);
@@ -49278,6 +49373,7 @@ function reconcileVehicleStatusNotifications(readback){
       notification?.kind === "VEHICLE_OPERATIONAL" ||
       notification?.kind === "REPAIR_REQUESTED" ||
       notification?.kind === "WORKSHOP_EXIT_REQUESTED" ||
+      notification?.kind === "WORKSHOP_INGRESS_REQUESTED" ||
       notification?.kind === "OPERATIONAL_MESSAGE" ||
       notification?.kind === "WORKSHOP_MESSAGE"
     )
@@ -49337,6 +49433,10 @@ function isVehicleStatusNotificationVisibleInCurrentSurface(notification){
   if(notification.kind === "REPAIR_REQUESTED" && notification.targetRole === "verksted"){
     return level === "4" && tab === "verkstedBestillinger";
   }
+  if(notification.kind === "WORKSHOP_INGRESS_REQUESTED"){
+    const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[String(notification.targetRole || "")];
+    return Boolean(target && level === target.level && tab === target.tab);
+  }
   if(
     notification.kind === "OPERATIONAL_MESSAGE" ||
     notification.kind === "WORKSHOP_MESSAGE"
@@ -49379,6 +49479,18 @@ function getNextVehicleStatusNotification(predicate=isVehicleStatusNotificationV
 function selectVehicleStatusNotificationVehicle(notification){
   const vehicleId = String(notification?.vehicleId || "");
   const series = vehicleId.split("-")[0];
+  if(notification?.kind === "WORKSHOP_INGRESS_REQUESTED"){
+    const targetRole = String(notification?.targetRole || "");
+    const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[targetRole];
+    if(targetRole === "drops" && vehicleId){
+      dropsVehicleRegistrySelectedSeries = series;
+      dropsVehicleRegistrySelectedVehicle = vehicleId;
+      dropsStandardSheetCollapsed = false;
+      renderDropsVehicleRegistry();
+    }
+    if(target?.tab) activateTab(target.tab);
+    return;
+  }
   if(
     notification?.kind === "OPERATIONAL_MESSAGE" ||
     notification?.kind === "WORKSHOP_MESSAGE"
@@ -49436,6 +49548,7 @@ function buildWorkshopNotificationPopupHtml(notification){
   const payload = notification.payload || {};
   const repairRequested = notification.kind === "REPAIR_REQUESTED";
   const workshopExitRequested = notification.kind === "WORKSHOP_EXIT_REQUESTED";
+  const workshopIngressRequested = notification.kind === "WORKSHOP_INGRESS_REQUESTED";
   const operationalMessage =
     notification.kind === "OPERATIONAL_MESSAGE" ||
     notification.kind === "WORKSHOP_MESSAGE";
@@ -49451,6 +49564,8 @@ function buildWorkshopNotificationPopupHtml(notification){
   );
   const title = operationalMessage
     ? `Beskjed fra ${sourceLabel || "operativt nivå"}`
+    : workshopIngressRequested
+    ? "Bestilling av innkjøring (ASAP)"
     : workshopExitRequested
     ? "Bestilt utkjøring fra Verksted"
     : repairRequested
@@ -49484,6 +49599,10 @@ function buildWorkshopNotificationPopupHtml(notification){
     <span>Beskrivelse: ${escapeHtml(payload.description || "")}</span>
     <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>` : ""}
     ${repairRequested ? `<span>Ny intern utbedringsbestilling fra DROPS</span>` : ""}
+    ${workshopIngressRequested ? `<span>Målspor: ${escapeHtml(payload.targetSlot || "Ukjent")}</span>
+    <span>Status: ${escapeHtml(payload.status || "Ukjent")}</span>
+    <span>Prioritet: ${escapeHtml(payload.priority || notification.priority || "HIGH")}</span>
+    <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>` : ""}
     ${operationalMessage
       ? (messageHasStatusSheet
         ? `<button type="button" data-sde-open-vehicle-status-notification aria-label="Åpne statusark">Åpne statusark</button>`
@@ -49693,12 +49812,16 @@ async function refreshVehicleStatusReadback(fetchImpl=window.fetch.bind(window))
       readback,
       dropsVehicleRegistrySelectedVehicle
     );
+    const refreshWorkshopRegistry = shouldRenderWorkshopVehicleRegistryForReadback(
+      dropsVehicleStatusReadback,
+      readback
+    );
     const workshopExitPlanningChanged =
       getWorkshopExitPlanningReadbackSignature(dropsVehicleStatusReadback) !==
       getWorkshopExitPlanningReadbackSignature(readback);
     acceptVehicleStatusReadback(readback);
     if(refreshSelectedVehicle) renderDropsVehicleRegistry();
-    renderWorkshopVehicleRegistry();
+    if(refreshWorkshopRegistry) renderWorkshopVehicleRegistry();
     renderSporplanVehicleStatusBadges();
     if(workshopExitPlanningChanged){
       if(typeof renderSdeSkiftebevegelser === "function") renderSdeSkiftebevegelser();
@@ -49768,9 +49891,12 @@ function handleDropsNotOperationalRegistryClick(event){
     document.querySelector("[data-sde-workshop-prebooking-vehicle]")?.focus?.();
     return true;
   }
-  if(event.target.closest("[data-sde-workshop-queue-add]")){
+  const workshopIngressAction = event.target.closest("[data-sde-workshop-queue-add]");
+  if(workshopIngressAction){
     event.preventDefault();
-    submitWorkshopIngressQueueFromUi();
+    submitWorkshopIngressQueueFromUi(
+      String(workshopIngressAction.dataset.sdeWorkshopRequestType || "PREBOOKED")
+    );
     return true;
   }
   if(event.target.closest("[data-sde-workshop-send-message]")){
@@ -50032,8 +50158,60 @@ async function postWorkshopActionCenterCommand(route,payload){
   return {ok:true,status:response.status,body,readback};
 }
 
-async function submitWorkshopIngressQueueFromUi(){
+function findOperationalMessageReceipt(readback,messageId,sourceRole,targetRole){
+  return (Array.isArray(readback?.operationalMessageReceipts)
+    ? readback.operationalMessageReceipts
+    : []).find(receipt=>
+      String(receipt?.messageId || "") === String(messageId || "") &&
+      receipt?.sourceRole === sourceRole &&
+      receipt?.targetRole === targetRole
+    ) || null;
+}
+
+async function waitForOperationalMessageReceipt({
+  messageId,
+  sourceRole,
+  targetRole,
+  initialReadback=null,
+  attempts=4,
+  delayMs=250,
+  fetchImpl=window.fetch.bind(window)
+}={}){
+  const immediateReceipt = findOperationalMessageReceipt(
+    initialReadback,
+    messageId,
+    sourceRole,
+    targetRole
+  );
+  if(immediateReceipt) return {ok:true,receipt:immediateReceipt,readback:initialReadback};
+  for(let attempt=0;attempt<attempts;attempt+=1){
+    if(attempt > 0){
+      await new Promise(resolve=>window.setTimeout(resolve,delayMs));
+    }
+    const response = await fetchImpl("/api/vehicle-status",{
+      method:"GET",
+      headers:{Accept:"application/json"},
+      cache:"no-store",
+      credentials:"same-origin"
+    });
+    const readback = await response.json().catch(()=>null);
+    if(!response.ok || readback?.ok !== true) continue;
+    acceptVehicleStatusReadback(readback);
+    const receipt = findOperationalMessageReceipt(
+      readback,
+      messageId,
+      sourceRole,
+      targetRole
+    );
+    if(receipt) return {ok:true,receipt,readback};
+  }
+  return {ok:false,receipt:null,readback:null};
+}
+
+async function submitWorkshopIngressQueueFromUi(requestType="PREBOOKED"){
   if(workshopActionCenterCommandInFlight) return;
+  const normalizedRequestType = requestType === "ASAP" ? "ASAP" : "PREBOOKED";
+  const priority = normalizedRequestType === "ASAP" ? "HIGH" : "NORMAL";
   const host = document.querySelector("[data-sde-workshop-action-center]");
   const vehicleId = String(workshopIngressDraft.incomingVehicleId || "").trim();
   const targetSlot = String(workshopIngressDraft.targetWorkshopSlot || "");
@@ -50052,6 +50230,8 @@ async function submitWorkshopIngressQueueFromUi(){
         operation:"ADD",
         targetSlot,
         vehicleId,
+        requestType:normalizedRequestType,
+        priority,
         expectedQueueRevision,
         expectedPlacementRevision
       }
@@ -50060,6 +50240,7 @@ async function submitWorkshopIngressQueueFromUi(){
       window.alert("Forhåndsbestillingen kunne ikke bekreftes fra fersk server-readback.");
     }else{
       workshopIngressDraft = {
+        incomingVehicleType:"",
         incomingVehicleId:"",
         targetWorkshopSlot:targetSlot,
         canonicalOccupant:String(workshopIngressDraft.canonicalOccupant || ""),
@@ -50244,10 +50425,24 @@ function handleDropsNotOperationalRegistryInput(event){
 }
 
 function handleDropsVehicleRegistrySelectionChange(event){
-  const prebookingVehicle = event.target.closest("[data-sde-workshop-prebooking-vehicle]");
-  if(prebookingVehicle){
-    workshopIngressDraft.incomingVehicleId = String(prebookingVehicle.value || "");
-    renderWorkshopVehicleRegistry();
+  const prebookingType = event.target.closest("[data-sde-workshop-prebooking-type]");
+  if(prebookingType){
+    workshopIngressDraft.incomingVehicleType = ["69","70","74","75"].includes(prebookingType.value)
+      ? prebookingType.value
+      : "";
+    workshopIngressDraft.incomingVehicleId = "";
+    renderWorkshopVehicleRegistry({force:true});
+    document.querySelector("[data-sde-workshop-prebooking-individual]")?.focus?.();
+    return true;
+  }
+  const prebookingIndividual = event.target.closest("[data-sde-workshop-prebooking-individual]");
+  if(prebookingIndividual){
+    const allowedVehicles = getDropsVehicleCatalog()[workshopIngressDraft.incomingVehicleType] || [];
+    workshopIngressDraft.incomingVehicleId = allowedVehicles.includes(prebookingIndividual.value)
+      ? String(prebookingIndividual.value)
+      : "";
+    renderWorkshopVehicleRegistry({force:true});
+    document.querySelector("[data-sde-workshop-prebooking-individual]")?.focus?.();
     return true;
   }
   const prebookingSlot = event.target.closest("[data-sde-workshop-prebooking-slot]");
@@ -50255,7 +50450,7 @@ function handleDropsVehicleRegistrySelectionChange(event){
     workshopIngressDraft.targetWorkshopSlot = ["8N","7N","8S","7S"].includes(prebookingSlot.value)
       ? prebookingSlot.value
       : workshopActionCenterSelectedSlot;
-    renderWorkshopVehicleRegistry();
+    renderWorkshopVehicleRegistry({force:true});
     return true;
   }
   const workshopMessageTarget = event.target.closest("[data-sde-workshop-message-target]");
@@ -51049,6 +51244,11 @@ function initDropsPanels(){
     if(handleOperationalMessageComposerChange(event)) return;
     if(handleDropsVehicleRegistrySelectionChange(event)) return;
     handleDropsNotOperationalRegistryInput(event);
+  });
+  document.addEventListener("focusout",event=>{
+    if(!event.target.closest?.("#workshopVehicleRegistry")) return;
+    if(!workshopRegistryRenderDeferred) return;
+    window.setTimeout(()=>renderWorkshopVehicleRegistry(),0);
   });
 
   const form = document.getElementById("verkstedBestillingForm");
