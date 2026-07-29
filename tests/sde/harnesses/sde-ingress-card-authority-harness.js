@@ -25,7 +25,6 @@ assert.match(
   /CREATE UNIQUE INDEX IF NOT EXISTS vehicle_status_one_active_ingress_card_per_target[\s\S]*ON[\s\S]*\(target_slot\)[\s\S]*ACTIVATING[\s\S]*CARD_CREATED/
 );
 for(const token of [
-  "workshop_target_reserved",
   "TARGET_RESERVED_BY_EXISTING_CARD",
   "activeWorkshopIngressCardOwner",
   "reconcileWorkshopIngressCardOwnership",
@@ -100,16 +99,14 @@ const second = repository.executeCommand(
     requestType: "ASAP",
     priority: "HIGH",
     queueEntryId: null,
-    expectedQueueRevision: 1,
+    expectedQueueRevision: first.result.queueRevision,
     expectedPlacementRevision: "shared-sporplan:246",
   },
   authority
 );
-assert.equal(second.ok, false);
-assert.equal(second.status, 409);
-assert.equal(second.error, "workshop_target_reserved");
-assert.equal(second.reservedByVehicleId, "74-23");
-assert.equal(second.reservedByQueueEntryId, first.result.queueEntryId);
+assert.equal(second.ok, true);
+assert.equal(second.result.status, "HIGH_PRIORITY_WAITING_FOR_SLOT");
+assert.equal(second.result.linkedCardId, null);
 
 const readback = repository.getReadModel({roles: ["verksted"]});
 const activeOwners = readback.workshopIngressQueue.filter(entry =>
@@ -119,8 +116,14 @@ const activeOwners = readback.workshopIngressQueue.filter(entry =>
 assert.equal(activeOwners.length, 1);
 assert.equal(activeOwners[0].vehicleId, "74-23");
 assert.equal(
-  readback.workshopIngressQueue.some(entry => entry.vehicleId === "74-38"),
-  false
+  readback.workshopIngressQueue.find(entry => entry.vehicleId === "74-38").status,
+  "HIGH_PRIORITY_WAITING_FOR_SLOT"
+);
+assert.equal(
+  readback.workshopIngressQueue
+    .find(entry => entry.vehicleId === "74-38")
+    .reasonCodes.includes("TARGET_RESERVED_BY_EXISTING_CARD"),
+  true
 );
 
 console.log(JSON.stringify({
@@ -128,5 +131,5 @@ console.log(JSON.stringify({
   targetSlot: "8N",
   activeCardOwners: activeOwners.length,
   ownerVehicleId: activeOwners[0].vehicleId,
-  rejectedVehicleId: "74-38",
+  waitingVehicleId: "74-38",
 }));

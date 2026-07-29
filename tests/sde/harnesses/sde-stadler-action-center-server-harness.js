@@ -142,7 +142,7 @@ const asap = repository.executeCommand(
   authority
 );
 assert.equal(asap.ok, true);
-assert.equal(asap.result.status, "HIGH_PRIORITY_WAITING_FOR_SLOT");
+assert.equal(asap.result.status, "REPLAN_REQUIRED");
 assert.equal(asap.result.requestType, "ASAP");
 assert.equal(asap.result.priority, "HIGH");
 assert.equal(asap.result.position, 1);
@@ -212,12 +212,12 @@ repository.observeCanonicalPlacements({
 });
 let readback = repository.getReadModel({roles: ["verksted"]});
 let queueEntry = readback.workshopIngressQueue.find(entry => entry.vehicleId === "74-10");
-assert.equal(queueEntry.status, "CARD_CREATED");
+assert.equal(queueEntry.status, "REPLAN_REQUIRED");
 assert.equal(queueEntry.targetSlot, "7N");
 assert.equal(queueEntry.requestType, "ASAP");
 assert.equal(queueEntry.priority, "HIGH");
-assert.ok(queueEntry.linkedCardId);
-assert.equal(readback.workshopIngressQueue.filter(entry => entry.status === "CARD_CREATED").length, 1);
+assert.equal(queueEntry.linkedCardId, null);
+assert.equal(readback.workshopIngressQueue.filter(entry => entry.status === "CARD_CREATED").length, 0);
 assert.equal(
   readback.workshopIngressQueue.find(entry => entry.vehicleId === "74-21").status,
   "WAITING_FOR_SLOT"

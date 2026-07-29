@@ -270,6 +270,20 @@ test("GLOBAL instantmelding — uendret polling og Oppdater bevarer textarea-nod
   );
 });
 
+test("EIERIDENTITET — seks eksplisitte roller gir ingen override og popupen følger hele målnivået", () => {
+  assertPassed(
+    runHarness("sde-owner-global-popup-harness.js"),
+    "owner identity and global level popup",
+  );
+});
+
+test("VERKSTED innkjøring — status er irrelevant og fysisk utfall klassifiseres fail-closed", () => {
+  assertPassed(
+    runHarness("sde-status-independent-ingress-harness.js"),
+    "status-independent workshop ingress",
+  );
+});
+
 test("SDE common card pipeline — workshop exit and manual drag keep cards, reservations and unresolved follow-up consistent", () => {
   assertPassed(
     runHarness("sde-unified-card-pipeline-workshop-drag-harness.js"),

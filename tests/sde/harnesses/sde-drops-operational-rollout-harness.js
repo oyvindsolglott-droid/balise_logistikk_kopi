@@ -96,8 +96,13 @@ assert.match(popupHtml, /Ny intern utbedringsbestilling fra DROPS/);
 assert.match(popupHtml, /requestedAt/);
 assert.match(popup, /getNextVehicleStatusNotification\(\)/);
 assert.match(notificationVisibility, /getActiveAccessLevel\(\)/);
-assert.match(notificationVisibility, /getActiveTabName\(\)/);
-assert.match(notificationVisibility, /level === "4" && tab === "verkstedBestillinger"/);
+assert.doesNotMatch(
+  notificationVisibility,
+  /getActiveTabName\(\)/,
+  "notification visibility must follow the complete target level, not one tab",
+);
+assert.match(notificationVisibility, /OPERATIONAL_MESSAGE_ROLE_SURFACES/);
+assert.match(notificationVisibility, /level === target\.level/);
 assert.match(popup, /selectWorkshopNotificationVehicle\(next\)/);
 assert.match(popup, /host\.innerHTML = buildWorkshopNotificationPopupHtml\(next\)/);
 assert.match(popup, /if\(next\) attemptVehicleStatusNotificationAudio\(next\)/);
@@ -257,6 +262,13 @@ async function main(){
       sde_skiftere: "Skiftere",
       verksted: "Verksted",
       agila: "Agilia",
+    }),
+    OPERATIONAL_MESSAGE_ROLE_SURFACES: Object.freeze({
+      drops: Object.freeze({ level: "1" }),
+      txp: Object.freeze({ level: "2" }),
+      sde_skiftere: Object.freeze({ level: "3" }),
+      verksted: Object.freeze({ level: "4" }),
+      agila: Object.freeze({ level: "5" }),
     }),
     setActiveAccessLevel(value){
       activeLevel = String(value);
