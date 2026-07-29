@@ -503,8 +503,10 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestWorkshopExitCapabilityAllowed;
         const manageWorkshopIngressQueueCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.MANAGE_WORKSHOP_INGRESS_QUEUE);
+        const sendOperationalMessageCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE);
         const sendWorkshopMessageCommandAvailable =
-          capabilityAvailable(CAPABILITY_IDS.SEND_WORKSHOP_MESSAGE);
+          sendOperationalMessageCommandAvailable;
         const markForTurningCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.MARK_FOR_TURNING);
         const reportOperationalCommandAvailable =
@@ -525,7 +527,7 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestRepairCommandAvailable,
           requestWorkshopExitCommandAvailable,
           manageWorkshopIngressQueueCommandAvailable,
-          sendWorkshopMessageCommandAvailable,
+          sendOperationalMessageCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
           notificationPresentedCommandAvailable,
@@ -546,6 +548,14 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           persistenceReady: Boolean(vehicleStatusRepository),
           registeredVehicleScopeReady: vehicleStatusLifecycleAllowedScopeReady
         };
+        const registerFaultReadiness = {
+          available:
+            registerFaultCommandAvailable &&
+            vehicleStatusLifecycleAllowedScopeReady,
+          capabilityAllowed: capabilityAllowed(CAPABILITY_IDS.REGISTER_FAULT),
+          persistenceReady: Boolean(vehicleStatusRepository),
+          registeredVehicleScopeReady: vehicleStatusLifecycleAllowedScopeReady
+        };
         return {
           productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
           vehicleStatusPersistenceReady: true,
@@ -554,6 +564,7 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestRepairCommandAvailable,
           requestWorkshopExitCommandAvailable,
           manageWorkshopIngressQueueCommandAvailable,
+          sendOperationalMessageCommandAvailable,
           sendWorkshopMessageCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
@@ -567,6 +578,7 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           allowedVehicleCount: vehicleStatusLifecycleAllowedVehicleIds.size,
           pilotAllowedVehicleIds,
           commandReadiness: {
+            registerFault: registerFaultReadiness,
             requestRepair: requestRepairReadiness,
             requestWorkshopExit: {
               available:
@@ -594,10 +606,18 @@ app.get("/api/vehicle-status", async (req, res) => {
       productionPilotWriteEnabled: false,
       vehicleWriteScope: "NONE",
       allowedVehicleCount: 0,
+      sendOperationalMessageCommandAvailable: false,
+      sendWorkshopMessageCommandAvailable: false,
       reportNotOperationalCommandAvailable: false,
       requestWorkshopExitCommandAvailable: false,
       vehicleStatusPersistenceReady: false,
       commandReadiness: {
+        registerFault: {
+          available: false,
+          capabilityAllowed: false,
+          persistenceReady: false,
+          registeredVehicleScopeReady: false
+        },
         requestRepair: {
           available: false,
           capabilityAllowed: false,
@@ -635,10 +655,18 @@ app.get("/api/vehicle-status", async (req, res) => {
       productionPilotWriteEnabled: VEHICLE_STATUS_PRODUCTION_PILOT_WRITE_STATUS.enabled,
       vehicleWriteScope: vehicleStatusLifecycleWriteScope,
       allowedVehicleCount: vehicleStatusLifecycleAllowedVehicleIds.size,
+      sendOperationalMessageCommandAvailable: false,
+      sendWorkshopMessageCommandAvailable: false,
       reportNotOperationalCommandAvailable: false,
       requestWorkshopExitCommandAvailable: false,
       vehicleStatusPersistenceReady: false,
       commandReadiness: {
+        registerFault: {
+          available: false,
+          capabilityAllowed: false,
+          persistenceReady: false,
+          registeredVehicleScopeReady: false
+        },
         requestRepair: {
           available: false,
           capabilityAllowed: false,
@@ -664,15 +692,28 @@ if(vehicleStatusRepository){
   );
   for(const commandName of Object.values(VEHICLE_STATUS_LIFECYCLE_COMMANDS)){
     const definition = VEHICLE_STATUS_LIFECYCLE_COMMAND_DEFINITIONS[commandName];
+    const handler = createVehicleStatusLifecycleHandler({
+      commandName,
+      repository: vehicleStatusRepository,
+      allowedVehicleIds: vehicleStatusLifecycleAllowedVehicleIds,
+      isCommandAvailable: () => vehicleStatusLifecycleCommandAvailable
+    });
     app.post(
       definition.route,
-      createVehicleStatusLifecycleHandler({
-        commandName,
-        repository: vehicleStatusRepository,
-        allowedVehicleIds: vehicleStatusLifecycleAllowedVehicleIds,
-        isCommandAvailable: () => vehicleStatusLifecycleCommandAvailable
-      })
+      handler
     );
+    if(commandName === VEHICLE_STATUS_LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED){
+      app.post(
+        "/api/vehicle-status/commands/notification-presented",
+        createVehicleStatusLifecycleHandler({
+          commandName,
+          repository: vehicleStatusRepository,
+          allowedVehicleIds: vehicleStatusLifecycleAllowedVehicleIds,
+          fixedSourceRole: "verksted",
+          isCommandAvailable: () => vehicleStatusLifecycleCommandAvailable
+        })
+      );
+    }
   }
   if(
     !Object.values(VEHICLE_STATUS_LIFECYCLE_COMMAND_DEFINITIONS)

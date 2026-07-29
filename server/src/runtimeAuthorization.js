@@ -26,6 +26,13 @@ const VEHICLE_STATUS_ROLES = Object.freeze([
   ROLE_KEYS.VERKSTED
 ]);
 const VEHICLE_STATUS_ROLE_SET = new Set(VEHICLE_STATUS_ROLES);
+const OPERATIONAL_MESSAGE_ROLES = Object.freeze([
+  ROLE_KEYS.AGILA,
+  ROLE_KEYS.DROPS,
+  ROLE_KEYS.SDE_SKIFTERE,
+  ROLE_KEYS.TXP,
+  ROLE_KEYS.VERKSTED
+]);
 
 const CAPABILITY_IDS = Object.freeze({
   READ: "vehicle_status.read",
@@ -34,7 +41,8 @@ const CAPABILITY_IDS = Object.freeze({
   REQUEST_REPAIR: "vehicle_status.request_repair",
   REQUEST_WORKSHOP_EXIT: "vehicle_status.request_workshop_exit",
   MANAGE_WORKSHOP_INGRESS_QUEUE: "vehicle_status.manage_workshop_ingress_queue",
-  SEND_WORKSHOP_MESSAGE: "vehicle_status.send_workshop_message",
+  SEND_OPERATIONAL_MESSAGE: "vehicle_status.send_operational_message",
+  SEND_WORKSHOP_MESSAGE: "vehicle_status.send_operational_message",
   MARK_FOR_TURNING: "vehicle_status.mark_for_turning",
   REPORT_OPERATIONAL: "vehicle_status.report_operational",
   PRESENT_NOTIFICATION: "vehicle_status.notification_presented",
@@ -102,10 +110,10 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
     allowedRoles: [ROLE_KEYS.VERKSTED]
   },
   {
-    capability: CAPABILITY_IDS.SEND_WORKSHOP_MESSAGE,
-    description: "Send an authoritative workshop message to one operational role.",
+    capability: CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE,
+    description: "Send an authoritative message to one other operational role.",
     status: CAPABILITY_STATUSES.ACTIVE,
-    allowedRoles: [ROLE_KEYS.VERKSTED]
+    allowedRoles: OPERATIONAL_MESSAGE_ROLES
   },
   {
     capability: CAPABILITY_IDS.MARK_FOR_TURNING,
@@ -121,9 +129,9 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
   },
   {
     capability: CAPABILITY_IDS.PRESENT_NOTIFICATION,
-    description: "Record that a workshop notification was rendered in an authenticated client.",
+    description: "Record that an operational notification was rendered in an authenticated client.",
     status: CAPABILITY_STATUSES.ACTIVE,
-    allowedRoles: [ROLE_KEYS.VERKSTED]
+    allowedRoles: OPERATIONAL_MESSAGE_ROLES
   },
   {
     capability: CAPABILITY_IDS.OPEN_WORKSHOP_SHEET,

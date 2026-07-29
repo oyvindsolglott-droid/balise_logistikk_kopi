@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v5";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v6";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -27,6 +27,7 @@ const REGISTERED_VEHICLE_IDS = Object.freeze(Object.values(VEHICLE_REGISTRY).fla
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/;
+const CONTROL_CHARACTERS_GLOBAL = /[\u0000-\u001f\u007f]/g;
 const FAULT_CATEGORIES = new Set(["A1", "A2", "A3", "A4", "A5", "A6"]);
 const WAIT_REASONS = new Set([
   "WAITING_FOR_SHUNTING",
@@ -40,7 +41,13 @@ const WAIT_REASONS = new Set([
 ]);
 const WORKSHOP_SLOTS = new Set(["8N", "7N", "8S", "7S"]);
 const WORKSHOP_QUEUE_OPERATIONS = new Set(["ADD", "CANCEL", "MOVE_UP", "MOVE_DOWN"]);
-const WORKSHOP_MESSAGE_TARGET_ROLES = new Set(["drops", "txp", "sde_skiftere", "agila"]);
+const OPERATIONAL_MESSAGE_ROLES = new Set([
+  "drops",
+  "txp",
+  "sde_skiftere",
+  "verksted",
+  "agila"
+]);
 
 const LIFECYCLE_COMMANDS = Object.freeze({
   REGISTER_FAULT: "register_fault",
@@ -48,6 +55,7 @@ const LIFECYCLE_COMMANDS = Object.freeze({
   REQUEST_REPAIR: "request_repair",
   REQUEST_WORKSHOP_EXIT: "request_workshop_exit",
   MANAGE_WORKSHOP_INGRESS_QUEUE: "manage_workshop_ingress_queue",
+  SEND_OPERATIONAL_MESSAGE: "send_operational_message",
   SEND_WORKSHOP_MESSAGE: "send_workshop_message",
   MARK_FOR_TURNING: "mark_for_turning",
   REPORT_OPERATIONAL: "report_operational",
@@ -78,6 +86,10 @@ const COMMAND_DEFINITIONS = Object.freeze({
     route: "/api/vehicle-status/commands/manage-workshop-ingress-queue",
     capability: CAPABILITY_IDS.MANAGE_WORKSHOP_INGRESS_QUEUE
   }),
+  [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: Object.freeze({
+    route: "/api/vehicle-status/commands/send-operational-message/:sourceRole",
+    capability: CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE
+  }),
   [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: Object.freeze({
     route: "/api/vehicle-status/commands/send-workshop-message",
     capability: CAPABILITY_IDS.SEND_WORKSHOP_MESSAGE
@@ -91,7 +103,7 @@ const COMMAND_DEFINITIONS = Object.freeze({
     capability: CAPABILITY_IDS.REPORT_OPERATIONAL
   }),
   [LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED]: Object.freeze({
-    route: "/api/vehicle-status/commands/notification-presented",
+    route: "/api/vehicle-status/commands/notification-presented/:sourceRole",
     capability: CAPABILITY_IDS.PRESENT_NOTIFICATION
   }),
   [LIFECYCLE_COMMANDS.WORKSHOP_SHEET_OPENED]: Object.freeze({
@@ -124,6 +136,9 @@ const FIELDS = Object.freeze({
   [LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE]: new Set([
     "actionId", "operation", "targetSlot", "vehicleId", "queueEntryId",
     "expectedQueueRevision", "expectedPlacementRevision"
+  ]),
+  [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: new Set([
+    "actionId", "targetRole", "message", "context"
   ]),
   [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: new Set([
     "actionId", "targetRole", "message", "selectedSlotId", "selectedVehicleId"
@@ -162,16 +177,20 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
   }
   const actionId = normalizeUuid(input.actionId);
   if(!actionId) return invalid(400, "invalid_action_id", "actionId must be a UUID.");
+  const isMessageCommand = (
+    commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE ||
+    commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE
+  );
   const vehicleId = (
     commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED ||
-    commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE
+    isMessageCommand
   )
     ? null
     : normalizeRegisteredVehicleId(input.vehicleId);
   const allowedVehicleIds = options.allowedVehicleIds;
   if(
     commandName !== LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED &&
-    commandName !== LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE &&
+    !isMessageCommand &&
     (
       !vehicleId ||
       !isRegisteredVehicle(vehicleId) ||
@@ -286,42 +305,51 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
       actionId, operation, targetSlot, vehicleId, queueEntryId,
       expectedQueueRevision, expectedPlacementRevision
     };
-  }else if(commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE){
+  }else if(commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE){
+    const sourceRole = String(options.sourceRole || "").trim().toLowerCase();
     const targetRole = String(input.targetRole || "").trim().toLowerCase();
-    const message = normalizedText(input.message, 250);
-    const selectedSlotId = String(input.selectedSlotId || "").trim().toUpperCase();
-    const selectedVehicleId = input.selectedVehicleId == null || input.selectedVehicleId === ""
-      ? ""
-      : normalizeRegisteredVehicleId(input.selectedVehicleId);
-    if(!WORKSHOP_MESSAGE_TARGET_ROLES.has(targetRole)){
+    const message = normalizedMessageText(input.message, 250);
+    const contextResult = normalizeOperationalMessageContext(input.context, allowedVehicleIds);
+    if(!OPERATIONAL_MESSAGE_ROLES.has(sourceRole)){
+      return invalid(403, "message_source_role_forbidden", "source role is not allowed.");
+    }
+    if(!OPERATIONAL_MESSAGE_ROLES.has(targetRole)){
       return invalid(400, "invalid_message_target", "targetRole is not allowed.");
+    }
+    if(sourceRole === targetRole){
+      return invalid(400, "message_self_target_forbidden", "A role cannot send to itself.");
     }
     if(!message){
       return invalid(400, "invalid_message", "message must contain 1 to 250 characters.");
     }
-    if(selectedSlotId && !WORKSHOP_SLOTS.has(selectedSlotId)){
-      return invalid(400, "invalid_workshop_slot",
-        "selectedSlotId must be 8N, 7N, 8S or 7S.");
-    }
-    if(
-      input.selectedVehicleId != null &&
-      input.selectedVehicleId !== "" &&
-      (
-        !selectedVehicleId ||
-        !isRegisteredVehicle(selectedVehicleId) ||
-        (allowedVehicleIds instanceof Set && !allowedVehicleIds.has(selectedVehicleId))
-      )
-    ){
-      return invalid(404, "vehicle_not_found",
-        "selectedVehicleId is not allowed by the authoritative registry.");
-    }
+    if(!contextResult.ok) return contextResult;
     normalized = {
       actionId,
-      vehicleId:"WORKSHOP",
+      vehicleId:"OPERATIONAL_MESSAGE",
+      sourceRole,
       targetRole,
       message,
-      selectedSlotId,
-      selectedVehicleId
+      context:contextResult.value
+    };
+  }else if(commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE){
+    const compatibility = normalizeLifecycleCommand(
+      LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
+      {
+        actionId,
+        targetRole:input.targetRole,
+        message:input.message,
+        context:{
+          surface:"verksted",
+          slotId:input.selectedSlotId,
+          vehicleId:input.selectedVehicleId
+        }
+      },
+      {...options, sourceRole:"verksted"}
+    );
+    if(!compatibility.ok) return compatibility;
+    normalized = {
+      ...compatibility.value,
+      legacyCommandName:LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE
     };
   }else if(commandName === LIFECYCLE_COMMANDS.MARK_FOR_TURNING){
     const expectedStatusRevision = revision(input.expectedStatusRevision);
@@ -421,7 +449,28 @@ function createVehicleStatusLifecycleHandler(options = {}){
       if(authorization.allowed !== true){
         return sendError(res, 403, "capability_forbidden", "The verified identity lacks the capability.");
       }
-      const normalized = normalizeLifecycleCommand(commandName, req.body, { allowedVehicleIds });
+      const requiredEffectiveRole = commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE
+        ? "verksted"
+        : (
+          commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE ||
+          commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED
+        )
+          ? String(options.fixedSourceRole || req.params?.sourceRole || "").trim().toLowerCase()
+          : null;
+      if(
+        requiredEffectiveRole &&
+        (
+          !OPERATIONAL_MESSAGE_ROLES.has(requiredEffectiveRole) ||
+          !authorization.capabilitySourceRoles.includes(requiredEffectiveRole)
+        )
+      ){
+        return sendError(res, 403, "effective_role_forbidden",
+          "The verified identity lacks the required operational role.");
+      }
+      const normalized = normalizeLifecycleCommand(commandName, req.body, {
+        allowedVehicleIds,
+        sourceRole:requiredEffectiveRole
+      });
       if(!normalized.ok){
         return sendError(res, normalized.status, normalized.error, normalized.message, {
           field: normalized.field
@@ -430,7 +479,7 @@ function createVehicleStatusLifecycleHandler(options = {}){
       const authority = {
         subject: identityResult.identity.subject,
         roles: roleResult.roles,
-        effectiveRole: authorization.capabilitySourceRoles[0],
+        effectiveRole: requiredEffectiveRole || authorization.capabilitySourceRoles[0],
         capabilitySourceRoles: authorization.capabilitySourceRoles,
         identitySource: identityResult.identity.identitySource || "cloudflare_access_jwt",
         roleBindingSource: roleResult.roleBindingSource || "server_config",
@@ -597,6 +646,69 @@ function normalizedText(value, maxLength){
   const normalized = value.trim();
   if(!normalized || normalized.length > maxLength || CONTROL_CHARACTERS.test(normalized)) return null;
   return normalized;
+}
+
+function normalizedMessageText(value, maxLength){
+  if(typeof value !== "string") return null;
+  const normalized = value.replace(CONTROL_CHARACTERS_GLOBAL, "").trim();
+  if(!normalized || normalized.length > maxLength) return null;
+  return normalized;
+}
+
+function normalizeOperationalMessageContext(input, allowedVehicleIds){
+  if(input == null) return {ok:true, value:{}};
+  if(!isPlainObject(input)){
+    return invalid(400, "invalid_message_context", "context must be an object or null.");
+  }
+  const allowedFields = new Set(["surface", "moduleContext", "slotId", "vehicleId"]);
+  const forbidden = Object.keys(input).find((field) => !allowedFields.has(field));
+  if(forbidden){
+    return invalid(400, "forbidden_request_field", `context.${forbidden} is not allowed.`, {
+      field:`context.${forbidden}`
+    });
+  }
+  const surface = input.surface == null || input.surface === ""
+    ? ""
+    : normalizedText(input.surface, 100);
+  const moduleContext = input.moduleContext == null || input.moduleContext === ""
+    ? ""
+    : normalizedText(input.moduleContext, 100);
+  const slotId = input.slotId == null || input.slotId === ""
+    ? ""
+    : normalizedText(String(input.slotId).toUpperCase(), 30);
+  const vehicleId = input.vehicleId == null || input.vehicleId === ""
+    ? ""
+    : normalizeRegisteredVehicleId(input.vehicleId);
+  if(input.surface != null && input.surface !== "" && !surface){
+    return invalid(400, "invalid_message_context", "context.surface is invalid.");
+  }
+  if(input.moduleContext != null && input.moduleContext !== "" && !moduleContext){
+    return invalid(400, "invalid_message_context", "context.moduleContext is invalid.");
+  }
+  if(input.slotId != null && input.slotId !== "" && !slotId){
+    return invalid(400, "invalid_message_context", "context.slotId is invalid.");
+  }
+  if(
+    input.vehicleId != null &&
+    input.vehicleId !== "" &&
+    (
+      !vehicleId ||
+      !isRegisteredVehicle(vehicleId) ||
+      (allowedVehicleIds instanceof Set && !allowedVehicleIds.has(vehicleId))
+    )
+  ){
+    return invalid(404, "vehicle_not_found",
+      "context.vehicleId is not allowed by the authoritative registry.");
+  }
+  return {
+    ok:true,
+    value:{
+      ...(surface ? {surface} : {}),
+      ...(moduleContext ? {moduleContext} : {}),
+      ...(slotId ? {slotId} : {}),
+      ...(vehicleId ? {vehicleId} : {})
+    }
+  };
 }
 
 function invalidRevision(field){

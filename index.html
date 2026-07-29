@@ -8006,6 +8006,88 @@ button{padding:12px 12px}
 .workshop-prebooking-summary p{display:block;margin:0 0 4px}
 .workshop-prebooking-summary ul{margin:5px 0 0;padding-left:17px;color:#9a3412}
 .workshop-action-center-message{grid-template-columns:150px minmax(0,1fr) auto}
+.operational-message-composer{
+  display:grid;
+  grid-template-columns:minmax(140px,.7fr) minmax(240px,2fr) auto;
+  gap:12px;
+  align-items:end;
+  margin:16px 0;
+  padding:16px;
+  border:1px solid rgba(53,142,255,.38);
+  border-radius:18px;
+  background:linear-gradient(145deg,rgba(255,255,255,.96),rgba(231,240,251,.94));
+  box-shadow:0 14px 28px rgba(20,48,84,.12),inset 0 1px 0 rgba(255,255,255,.92);
+}
+.operational-message-composer__title{
+  grid-column:1/-1;
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  align-items:center;
+  color:#0b2a55;
+  font-weight:900;
+}
+.operational-message-composer label{
+  display:grid;
+  gap:6px;
+  min-width:0;
+  color:#173b69;
+  font-size:.85rem;
+  font-weight:850;
+}
+.operational-message-composer select,
+.operational-message-composer textarea{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  border:1px solid #91a8c6;
+  border-radius:12px;
+  background:#fff;
+  color:#10233f;
+  font:inherit;
+  padding:10px 12px;
+}
+.operational-message-composer textarea{min-height:76px;resize:vertical}
+.operational-message-composer textarea:focus-visible,
+.operational-message-composer select:focus-visible{
+  outline:3px solid rgba(35,113,255,.32);
+  outline-offset:2px;
+  border-color:#236fff;
+}
+.operational-message-composer__meta{
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  color:#536b89;
+  font-size:.76rem;
+  font-weight:750;
+}
+.operational-message-composer__send{
+  min-height:48px;
+  padding:11px 18px;
+  border:1px solid #174da7;
+  border-radius:14px;
+  color:#fff;
+  font-weight:900;
+  cursor:pointer;
+  background:linear-gradient(180deg,#3984ff,#0755d7 64%,#003b9d);
+  box-shadow:0 6px 0 #062e75,0 12px 22px rgba(0,64,160,.25),inset 0 1px 0 rgba(255,255,255,.55);
+}
+.operational-message-composer__send:active:not(:disabled){
+  transform:translateY(3px);
+  box-shadow:0 3px 0 #062e75,0 7px 14px rgba(0,64,160,.2);
+}
+.operational-message-composer__send:disabled{cursor:not-allowed;opacity:.55;filter:saturate(.3)}
+.operational-message-composer__status{
+  grid-column:1/-1;
+  min-height:1.2em;
+  margin:0;
+  color:#34516f;
+  font-size:.82rem;
+  font-weight:800;
+}
+.operational-message-composer__status.is-success{color:#087b3a}
+.operational-message-composer__status.is-error{color:#a41d26}
 .workshop-action-center-queue-list{
   grid-column:1/-1;
   margin:0;
@@ -8025,7 +8107,8 @@ button{padding:12px 12px}
   .workshop-action-center-context{grid-template-columns:1fr 1fr}
   .workshop-action-center-actions,
   .workshop-action-center-queue,
-  .workshop-action-center-message{grid-template-columns:1fr}
+  .workshop-action-center-message,
+  .operational-message-composer{grid-template-columns:1fr}
   .workshop-action-center-queue-list{grid-column:auto}
 }
 .workshop-hall-overview-vehicle-graphic{
@@ -9188,6 +9271,7 @@ button{padding:12px 12px}
 
 <section class="panel" id="grunnoppstilling">
 <div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for Sporplan og videre SDE-arbeid.</div>
+<div data-sde-operational-message-host data-sde-operational-role="txp"></div>
 <div class="note" id="sharedSporplanDraftStatus">Ikke synkronisert — delt sporplan er ikke lest ennå. Lokal visning er ikke felles situasjonsbilde.</div>
 <div class="shared-sporplan-draft-readback" id="sharedSporplanDraftReadback" aria-live="polite"></div>
 <div class="view-tools" aria-label="Delt sporplan-draft">
@@ -9236,6 +9320,7 @@ button{padding:12px 12px}
     <p class="drops-sub">Verksted ser registrerte feil og utbedringsbestillinger fra serveren, og kan sette et kontrollert kjøretøy Driftsklart.</p>
     <div class="drops-warning">Adgangsmerking: Verkstedside – alle statuser bekreftes med fersk server-readback</div>
   </div>
+  <div data-sde-operational-message-host data-sde-operational-role="verksted"></div>
   <div id="workshopVehicleRegistry" class="drops-vehicle-registry workshop-vehicle-registry" data-sde-workshop-vehicle-registry></div>
 </div>
 </section>
@@ -9250,6 +9335,7 @@ button{padding:12px 12px}
     <div class="drops-warning">Operativt kontrollark – ikke SDE-motor</div>
     <div id="dropsHeroModeBar"></div>
   </div>
+  <div data-sde-operational-message-host data-sde-operational-role="drops"></div>
 
   <div id="dropsVehicleRegistry" class="drops-vehicle-registry" data-sde-drops-vehicle-registry data-sde-access-level="1" hidden></div>
 
@@ -9271,6 +9357,7 @@ button{padding:12px 12px}
     <p class="drops-sub">Egen visningsflate for Agilia. Denne menyen er tilgjengelig på nivå 5 Agilia og nivå 0.</p>
     <div class="drops-warning">Visningsflate – ingen operativ write</div>
   </div>
+  <div data-sde-operational-message-host data-sde-operational-role="agila"></div>
 </div>
 </section>
 
@@ -9354,6 +9441,7 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 <section class="panel" id="sdeSkiftebevegelser">
 <div class="sde-shift-showcase">
 <div class="sde-shift-content">
+<div data-sde-operational-message-host data-sde-operational-role="sde_skiftere"></div>
 <div id="sdeSkiftebevegelserDashboard">
 <div class="sde-shift-empty">SDE Skiftebevegelser bygges når SDE-motoren har beregnet forslag.</div>
 </div>
@@ -43219,6 +43307,7 @@ function applyAccessLevel(){
     activateTab(getDefaultTabForCurrentLevel());
   }
   renderDropsVehicleRegistry();
+  renderOperationalMessageComposers();
   updateSporplanResetVisibility();
   if(typeof renderVehicleStatusNotificationPopup === "function"){
     renderVehicleStatusNotificationPopup();
@@ -43249,6 +43338,7 @@ function activateTab(name){
   }
 
   updateSporplanResetVisibility();
+  updateOperationalMessageComposerStatus();
   if(typeof renderVehicleStatusNotificationPopup === "function"){
     renderVehicleStatusNotificationPopup();
   }
@@ -43301,6 +43391,7 @@ function getGlobalUpdateControlKey(element,index){
 
 function captureGlobalUpdateContext(){
   const activePanel = document.querySelector(".panel.active");
+  const operationalMessageEditorContext = captureOperationalMessageEditorContext();
   const controls = Array.from(activePanel?.querySelectorAll("input,select,textarea") || [])
     .map((element,index)=>({
       key:getGlobalUpdateControlKey(element,index),
@@ -43332,7 +43423,10 @@ function captureGlobalUpdateContext(){
     workshopActionCenterSelectedSlot,
     workshopPrebookingPanelOpen,
     workshopIngressDraft:{...workshopIngressDraft},
-    workshopMessageDraft:{...workshopMessageDraft}
+    workshopMessageDraft:{...workshopMessageDraft},
+    operationalMessageDrafts:Array.from(operationalMessageDrafts.entries())
+      .map(([role,draft])=>[role,{...draft}]),
+    operationalMessageEditorContext
   };
 }
 
@@ -43367,6 +43461,18 @@ function restoreGlobalUpdateContext(context={}){
       : "drops",
     message:String(context.workshopMessageDraft?.message || "")
   };
+  (Array.isArray(context.operationalMessageDrafts) ? context.operationalMessageDrafts : [])
+    .forEach(([role,draft])=>{
+      if(!OPERATIONAL_MESSAGE_ROLES.includes(role)) return;
+      const targetRole = OPERATIONAL_MESSAGE_ROLES.includes(draft?.targetRole) &&
+        draft.targetRole !== role
+        ? draft.targetRole
+        : OPERATIONAL_MESSAGE_ROLES.find(candidate=>candidate !== role);
+      operationalMessageDrafts.set(role,{
+        targetRole,
+        message:String(draft?.message || "").slice(0,250)
+      });
+    });
 
   const actualBySlot = buildCanonicalActualPlacementSlotMap(computeCanonicalActualPlacementRows());
   const currentOccupant = sanitizeVehicleValue(actualBySlot[workshopActionCenterSelectedSlot]);
@@ -43382,6 +43488,7 @@ function restoreGlobalUpdateContext(context={}){
   renderDropsVehicleRegistry();
   renderWorkshopVehicleRegistry();
   activateTab(context.activeTab || getDefaultTabForCurrentLevel());
+  renderOperationalMessageComposers();
   const activePanel = document.querySelector(".panel.active");
   const controlsByKey = new Map(
     Array.from(activePanel?.querySelectorAll("input,select,textarea") || [])
@@ -43398,6 +43505,8 @@ function restoreGlobalUpdateContext(context={}){
     const dialog = document.getElementById(id);
     if(dialog && !dialog.open) dialog.showModal?.();
   });
+  updateOperationalMessageComposerStatus();
+  restoreOperationalMessageEditorContext(context.operationalMessageEditorContext);
   window.scrollTo(Number(context.scrollX || 0),Number(context.scrollY || 0));
 }
 
@@ -47114,12 +47223,15 @@ function getAuthoritativeVehicleStatusPresentation(readback,vehicleId){
   };
 }
 
+const REGISTERED_VEHICLES_SCOPE = "REGISTERED_VEHICLES";
+
 function getDropsRegisterFaultAvailability(draft,index,viewModel={}){
   const vehicleId = String(draft?.vehicle || "");
   const fault = (Array.isArray(draft?.faults) ? draft.faults : [])[index] || null;
   const readback = viewModel?.readback;
   const capabilities = viewModel?.capabilities;
   const capability = capabilities?.capabilities?.["vehicle_status.register_fault"];
+  const serverReadiness = readback?.commandReadiness?.registerFault || null;
   const roles = Array.isArray(capabilities?.roles)
     ? capabilities.roles
     : (Array.isArray(capabilities?.roleSource?.roles)
@@ -47128,20 +47240,20 @@ function getDropsRegisterFaultAvailability(draft,index,viewModel={}){
   const record = getDropsVehicleStatusRecord(readback,vehicleId);
   const registered = (Array.isArray(record?.activeFaults) ? record.activeFaults : [])
     .some(item=>Number(item?.slot) === index + 1 && item?.status === "ACTIVE");
-  const commandReady = readback?.registerFaultCommandAvailable === true ||
-    readback?.vehicleStatusLifecycleCommandsAvailable === true;
-  const allowlistCandidates = [
-    readback?.pilotAllowedVehicleIds,
-    readback?.allowedVehicleIds,
-    readback?.vehicleStatusLifecycleAllowedVehicleIds,
-    capabilities?.allowedVehicleIds,
-    capability?.allowedVehicleIds
-  ].find(value=>Array.isArray(value));
-  const pilotVehicleAllowed = readback?.productionPilotWriteEnabled === true &&
-    (Array.isArray(allowlistCandidates) && allowlistCandidates.includes(vehicleId));
-  const stateAllowsRegistration = !record ||
-    record.currentStatus === "DRIFTSKLAR" ||
-    record.currentStatus === "IKKE_DRIFTSKLAR";
+  const commandReady = serverReadiness
+    ? serverReadiness.available === true
+    : readback?.registerFaultCommandAvailable === true;
+  const capabilityAllowed = capability?.allowed === true &&
+    capability?.decision === "ALLOW" &&
+    (serverReadiness ? serverReadiness.capabilityAllowed === true : true);
+  const persistenceReady = serverReadiness
+    ? serverReadiness.persistenceReady === true
+    : readback?.vehicleStatusPersistenceReady === true;
+  const registeredVehicleScopeReady = serverReadiness
+    ? serverReadiness.registeredVehicleScopeReady === true
+    : readback?.vehicleWriteScope === REGISTERED_VEHICLES_SCOPE;
+  const vehicleWriteScope = readback?.vehicleWriteScope === REGISTERED_VEHICLES_SCOPE;
+  const caseRevision = Number(record?.caseRevision ?? 0);
   const rowValid = Boolean(
     fault &&
     getDropsNotOperationalFaultCategories().includes(String(fault.category || "")) &&
@@ -47149,14 +47261,16 @@ function getDropsRegisterFaultAvailability(draft,index,viewModel={}){
   );
   const checks = {
     identityVerified:capabilities?.ok === true && capabilities?.roleResolved === true,
-    capabilityAllowed:roles.includes("drops") && capability?.allowed === true && capability?.decision === "ALLOW",
+    capabilityAllowed:roles.includes("drops") && capabilityAllowed,
     readbackReady:readback?.ok === true,
     commandReady,
     writeGateOpen:readback?.writeEnabled === true,
-    pilotVehicleAllowed,
+    persistenceReady,
+    registeredVehicleScopeReady,
+    vehicleWriteScope,
+    caseRevision:Number.isInteger(caseRevision) && caseRevision >= 0,
     rowUnregistered:!registered,
     requestIdle:viewModel?.commandInFlight !== true,
-    stateAllowsRegistration,
     rowValid
   };
   const available = Object.values(checks).every(Boolean);
@@ -47940,13 +48054,7 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
     "data-sde-workshop-prebooking-slot",
     "data-sde-workshop-prebooking-summary",
     "data-sde-workshop-queue-add",
-    "data-sde-workshop-message-target",
-    "data-sde-workshop-message-text",
     "workshopIngressDraft",
-    "workshopMessageDraft",
-    "selectedSlotId",
-    "selectedVehicleId",
-    "DROPS","TXP","Skiftere","Agilia",
     '<button data-sde-workshop-request-exit disabled aria-disabled="true">'
   ];
   void workshopActionCenterContract;
@@ -47976,11 +48084,6 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
     workshopAuthority && readback?.writeEnabled === true &&
     readback?.manageWorkshopIngressQueueCommandAvailable === true &&
     capabilities?.capabilities?.["vehicle_status.manage_workshop_ingress_queue"]?.allowed === true
-  );
-  const messageReady = Boolean(
-    workshopAuthority && readback?.writeEnabled === true &&
-    readback?.sendWorkshopMessageCommandAvailable === true &&
-    capabilities?.capabilities?.["vehicle_status.send_workshop_message"]?.allowed === true
   );
   const exitAvailability = getWorkshopExitRequestAvailability(
     readback,
@@ -48020,14 +48123,6 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   const queueHtml = queue.length
     ? queue.map(entry=>`<li>${esc(entry.position)}. ${esc(entry.vehicleId)} · ${esc(entry.status)}</li>`).join("")
     : "<li>Ingen forhåndsbestillinger.</li>";
-  const workshopMessages = (Array.isArray(readback?.workshopMessages) ? readback.workshopMessages : [])
-    .slice(-3)
-    .reverse();
-  const workshopMessagesHtml = workshopMessages.length
-    ? `<ul class="workshop-action-center-message-history">${workshopMessages.map(item=>
-        `<li><strong>${esc(String(item?.targetRole || "").toUpperCase())}</strong> ${esc(item?.message || "")}</li>`
-      ).join("")}</ul>`
-    : "";
   const targetPlacementRevision = String(
     (Array.isArray(readback?.placements) ? readback.placements : [])
       .find(item=>item?.slot === targetSlot)?.placementRevision ||
@@ -48051,8 +48146,7 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
   const activationText = targetOccupant
     ? `Aktiveres først når ${targetOccupant} har forlatt ${targetSlot} og fersk plassering viser sporet ledig.`
     : `Sporet er ledig; serveren kan opprette skiftekort etter bekreftet bestilling.`;
-  const messageContext = {selectedSlotId:selectedSlot,selectedVehicleId:vehicleId || ""};
-  return `<section class="workshop-action-center" data-sde-workshop-action-center data-sde-workshop-action-vehicle="${esc(vehicleId)}" data-sde-workshop-queue-revision="${Number(targetQueue[0]?.queueRevision ?? 0)}" data-sde-workshop-placement-revision="${esc(targetPlacementRevision)}" data-sde-workshop-message-context="${esc(JSON.stringify(messageContext))}">
+  return `<section class="workshop-action-center" data-sde-workshop-action-center data-sde-workshop-action-vehicle="${esc(vehicleId)}" data-sde-workshop-queue-revision="${Number(targetQueue[0]?.queueRevision ?? 0)}" data-sde-workshop-placement-revision="${esc(targetPlacementRevision)}">
     <h3>Handlingssenter</h3>
     <div class="workshop-action-center-context">
       <div><strong>Valgt verkstedspor</strong><p>${esc(selectedSlot)}</p></div>
@@ -48079,13 +48173,6 @@ function buildWorkshopActionCenterHtml(readback={},capabilities={},selectedSlot=
       </div>
       <button class="workshop-action-3d workshop-action-3d--prebooking" type="button" data-sde-workshop-queue-add${prebookingReady ? "" : " disabled aria-disabled=\"true\""}>${buildWorkshopActionIcon("prebooking")}<span>Bekreft forhåndsbestilling</span></button>
       <ol class="workshop-action-center-queue-list">${queueHtml}</ol>
-    </div>
-    <div class="workshop-action-center-message">
-      <label>Mottaker<select data-sde-workshop-message-target><option value="drops"${workshopMessageDraft.targetRole === "drops" ? " selected" : ""}>DROPS</option><option value="txp"${workshopMessageDraft.targetRole === "txp" ? " selected" : ""}>TXP</option><option value="sde_skiftere"${workshopMessageDraft.targetRole === "sde_skiftere" ? " selected" : ""}>Skiftere</option><option value="agila"${workshopMessageDraft.targetRole === "agila" ? " selected" : ""}>Agilia</option></select></label>
-      <label>Beskjed<textarea data-sde-workshop-message-text maxlength="250" rows="3" placeholder="Skriv din beskjed her …">${esc(workshopMessageDraft.message)}</textarea></label>
-      <button class="workshop-action-3d workshop-action-3d--message" type="button" data-sde-workshop-send-message${messageReady ? "" : " disabled aria-disabled=\"true\""}>${buildWorkshopActionIcon("message")}<span>Send beskjed</span></button>
-      ${workshopMessageLastResult ? `<p class="workshop-message-result" role="status">${esc(workshopMessageLastResult)}</p>` : ""}
-      ${workshopMessagesHtml}
     </div>
   </section>`;
 }
@@ -48696,6 +48783,285 @@ let workshopMessageDraft = {
   message:""
 };
 let workshopMessageLastResult = "";
+const OPERATIONAL_MESSAGE_ROLES = Object.freeze([
+  "drops","txp","sde_skiftere","verksted","agila"
+]);
+const OPERATIONAL_MESSAGE_ROLE_LABELS = Object.freeze({
+  drops:"DROPS",
+  txp:"TXP",
+  sde_skiftere:"Skiftere",
+  verksted:"Verksted",
+  agila:"Agilia"
+});
+const OPERATIONAL_MESSAGE_LEVEL_ROLES = Object.freeze({
+  "1":"drops",
+  "2":"txp",
+  "3":"sde_skiftere",
+  "4":"verksted",
+  "5":"agila"
+});
+const OPERATIONAL_MESSAGE_ROLE_SURFACES = Object.freeze({
+  drops:{level:"1",tab:"dropsMateriellstyrer"},
+  txp:{level:"2",tab:"grunnoppstilling"},
+  sde_skiftere:{level:"3",tab:"sdeSkiftebevegelser"},
+  verksted:{level:"4",tab:"verkstedBestillinger"},
+  agila:{level:"5",tab:"agilia"}
+});
+const operationalMessageDrafts = new Map(
+  OPERATIONAL_MESSAGE_ROLES.map((role,index)=>[
+    role,
+    {
+      targetRole:OPERATIONAL_MESSAGE_ROLES.filter(candidate=>candidate !== role)[index % 4],
+      message:""
+    }
+  ])
+);
+const operationalMessageLastResults = new Map();
+const operationalMessageCommandsInFlight = new Set();
+
+function getActiveOperationalMessageRole(){
+  return OPERATIONAL_MESSAGE_LEVEL_ROLES[getActiveAccessLevel()] || "";
+}
+
+function getOperationalMessageContext(role){
+  const context = {
+    surface:role,
+    moduleContext:OPERATIONAL_MESSAGE_ROLE_SURFACES[role]?.tab || role
+  };
+  if(role === "drops" && dropsVehicleRegistrySelectedVehicle){
+    context.vehicleId = dropsVehicleRegistrySelectedVehicle;
+  }
+  if(role === "verksted"){
+    if(workshopVehicleRegistrySelectedVehicle){
+      context.vehicleId = workshopVehicleRegistrySelectedVehicle;
+    }
+    if(["8N","7N","8S","7S"].includes(workshopActionCenterSelectedSlot)){
+      context.slotId = workshopActionCenterSelectedSlot;
+    }
+  }
+  return context;
+}
+
+function getOperationalMessageAvailability(role){
+  const draft = operationalMessageDrafts.get(role) || {};
+  const capability = dropsRuntimeCapabilities
+    ?.capabilities?.["vehicle_status.send_operational_message"];
+  const roles = Array.isArray(dropsRuntimeCapabilities?.roles)
+    ? dropsRuntimeCapabilities.roles
+    : [];
+  const checks = {
+    correctSurface:getActiveOperationalMessageRole() === role,
+    identityVerified:
+      dropsRuntimeCapabilities?.ok === true &&
+      dropsRuntimeCapabilities?.roleResolved === true,
+    roleAllowed:roles.includes(role),
+    capabilityAllowed:
+      capability?.allowed === true &&
+      capability?.decision === "ALLOW",
+    readbackReady:dropsVehicleStatusReadback?.ok === true,
+    writeGateOpen:dropsVehicleStatusReadback?.writeEnabled === true,
+    commandReady:
+      dropsVehicleStatusReadback?.sendOperationalMessageCommandAvailable === true,
+    targetValid:
+      OPERATIONAL_MESSAGE_ROLES.includes(draft.targetRole) &&
+      draft.targetRole !== role,
+    messageValid:
+      String(draft.message || "").trim().length > 0 &&
+      String(draft.message || "").length <= 250,
+    requestIdle:!operationalMessageCommandsInFlight.has(role)
+  };
+  const failed = Object.entries(checks).find(([,value])=>!value)?.[0] || "";
+  const reasons = {
+    correctSurface:"Meldinger sendes fra nivåets egen operative flate.",
+    identityVerified:"Verifisert identitet mangler.",
+    roleAllowed:"Pålogget identitet mangler rollen for dette nivået.",
+    capabilityAllowed:"Meldingstilgang er ikke autorisert.",
+    readbackReady:"Autoritativ readback er ikke klar.",
+    writeGateOpen:"Produksjonsskriving er ikke åpnet.",
+    commandReady:"Meldingskommandoen er ikke klar på serveren.",
+    targetValid:"Velg et annet mottakernivå.",
+    messageValid:"Skriv en beskjed på 1–250 tegn.",
+    requestIdle:"Beskjeden sendes."
+  };
+  return {
+    available:failed === "",
+    reason:failed ? reasons[failed] : "Klar til å sende.",
+    checks
+  };
+}
+
+function renderOperationalMessageComposers(){
+  document.querySelectorAll("[data-sde-operational-message-host]").forEach(host=>{
+    const role = String(host.dataset.sdeOperationalRole || "");
+    if(!OPERATIONAL_MESSAGE_ROLES.includes(role)) return;
+    host.hidden = getActiveOperationalMessageRole() !== role;
+    if(host.dataset.sdeOperationalMessageInitialized === "true") return;
+    const targets = OPERATIONAL_MESSAGE_ROLES
+      .filter(candidate=>candidate !== role)
+      .map(candidate=>`<option value="${candidate}">${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[candidate])}</option>`)
+      .join("");
+    host.innerHTML = `<section class="operational-message-composer" data-sde-operational-message-composer>
+      <div class="operational-message-composer__title">
+        <span>Instantmelding fra ${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[role])}</span>
+        <span>Serverautoritativ</span>
+      </div>
+      <label>Mottaker
+        <select data-sde-operational-message-target data-sde-operational-role="${role}">${targets}</select>
+      </label>
+      <label>Beskjed
+        <textarea data-sde-operational-message-text data-sde-operational-role="${role}" maxlength="250" rows="3" placeholder="Skriv din beskjed her …"></textarea>
+        <span class="operational-message-composer__meta">
+          <span data-sde-operational-message-reason></span>
+          <span data-sde-operational-message-count>0 / 250</span>
+        </span>
+      </label>
+      <button class="operational-message-composer__send" type="button" data-sde-operational-message-send data-sde-operational-role="${role}">Send beskjed</button>
+      <p class="operational-message-composer__status" data-sde-operational-message-status role="status"></p>
+    </section>`;
+    host.dataset.sdeOperationalMessageInitialized = "true";
+  });
+  updateOperationalMessageComposerStatus();
+}
+
+function updateOperationalMessageComposerStatus(){
+  document.querySelectorAll("[data-sde-operational-message-host]").forEach(host=>{
+    const role = String(host.dataset.sdeOperationalRole || "");
+    const draft = operationalMessageDrafts.get(role);
+    if(!draft) return;
+    host.hidden = getActiveOperationalMessageRole() !== role;
+    const target = host.querySelector("[data-sde-operational-message-target]");
+    const textarea = host.querySelector("[data-sde-operational-message-text]");
+    const counter = host.querySelector("[data-sde-operational-message-count]");
+    const reason = host.querySelector("[data-sde-operational-message-reason]");
+    const button = host.querySelector("[data-sde-operational-message-send]");
+    const status = host.querySelector("[data-sde-operational-message-status]");
+    if(target && document.activeElement !== target && target.value !== draft.targetRole){
+      target.value = draft.targetRole;
+    }
+    if(textarea && document.activeElement !== textarea && textarea.value !== draft.message){
+      textarea.value = draft.message;
+    }
+    if(counter) counter.textContent = `${String(draft.message || "").length} / 250`;
+    const availability = getOperationalMessageAvailability(role);
+    if(reason) reason.textContent = availability.reason;
+    if(button){
+      button.disabled = !availability.available;
+      button.setAttribute("aria-disabled",availability.available ? "false" : "true");
+    }
+    const result = operationalMessageLastResults.get(role) || null;
+    if(status){
+      status.textContent = result?.message || "";
+      status.classList.toggle("is-success",result?.kind === "success");
+      status.classList.toggle("is-error",result?.kind === "error");
+    }
+  });
+}
+
+function captureOperationalMessageEditorContext(){
+  const active = document.activeElement;
+  if(
+    !active ||
+    String(active.nodeName || "").toUpperCase() !== "TEXTAREA" ||
+    !Object.prototype.hasOwnProperty.call(active.dataset || {},"sdeOperationalMessageText")
+  ) return null;
+  const role = String(active.dataset?.sdeOperationalRole || "");
+  if(!role) return null;
+  return {
+    node:active,
+    role,
+    value:String(active.value || ""),
+    selectionStart:Number(active.selectionStart ?? 0),
+    selectionEnd:Number(active.selectionEnd ?? 0),
+    scrollTop:Number(active.scrollTop || 0)
+  };
+}
+
+function restoreOperationalMessageEditorContext(context){
+  if(!context?.role) return false;
+  const host = document.querySelector(
+    `[data-sde-operational-message-host][data-sde-operational-role="${context.role}"]`
+  );
+  const current = host?.querySelector("[data-sde-operational-message-text]");
+  if(!current || current !== context.node) return false;
+  current.value = String(context.value || "");
+  current.scrollTop = Number(context.scrollTop || 0);
+  current.focus();
+  current.setSelectionRange?.(
+    Number(context.selectionStart || 0),
+    Number(context.selectionEnd || 0)
+  );
+  return true;
+}
+
+function handleOperationalMessageComposerInput(event){
+  const textarea = event.target.closest?.("[data-sde-operational-message-text]");
+  if(!textarea) return false;
+  const role = String(textarea.dataset.sdeOperationalRole || "");
+  const draft = operationalMessageDrafts.get(role);
+  if(!draft) return false;
+  draft.message = String(textarea.value || "").slice(0,250);
+  operationalMessageLastResults.delete(role);
+  updateOperationalMessageComposerStatus();
+  return true;
+}
+
+function handleOperationalMessageComposerChange(event){
+  const select = event.target.closest?.("[data-sde-operational-message-target]");
+  if(!select) return false;
+  const role = String(select.dataset.sdeOperationalRole || "");
+  const draft = operationalMessageDrafts.get(role);
+  const targetRole = String(select.value || "");
+  if(!draft || !OPERATIONAL_MESSAGE_ROLES.includes(targetRole) || targetRole === role){
+    return false;
+  }
+  draft.targetRole = targetRole;
+  operationalMessageLastResults.delete(role);
+  updateOperationalMessageComposerStatus();
+  return true;
+}
+
+async function submitOperationalMessageFromUi(role){
+  role = String(role || "");
+  const availability = getOperationalMessageAvailability(role);
+  if(!availability.available) return;
+  const draft = operationalMessageDrafts.get(role);
+  operationalMessageCommandsInFlight.add(role);
+  operationalMessageLastResults.set(role,{kind:"",message:"Beskjeden sendes …"});
+  updateOperationalMessageComposerStatus();
+  try{
+    const result = await postWorkshopActionCenterCommand(
+      `/api/vehicle-status/commands/send-operational-message/${encodeURIComponent(role)}`,
+      {
+        targetRole:draft.targetRole,
+        message:draft.message,
+        context:getOperationalMessageContext(role)
+      }
+    );
+    const messageId = String(result?.body?.messageId || "");
+    const confirmed = result.ok && messageId && (
+      Array.isArray(result.readback?.operationalMessageReceipts) &&
+      result.readback.operationalMessageReceipts.some(receipt=>
+        receipt?.messageId === messageId &&
+        receipt?.sourceRole === role &&
+        receipt?.targetRole === draft.targetRole
+      )
+    );
+    if(!confirmed){
+      throw new Error("message_readback_not_confirmed");
+    }
+    draft.message = "";
+    operationalMessageLastResults.set(role,{kind:"success",message:"Beskjed sendt"});
+  }catch(unusedError){
+    operationalMessageLastResults.set(role,{
+      kind:"error",
+      message:"Beskjeden ble ikke bekreftet av autoritativ readback."
+    });
+  }finally{
+    operationalMessageCommandsInFlight.delete(role);
+    updateOperationalMessageComposerStatus();
+  }
+}
+
 let activeVehicleStatusNotification = null;
 const dismissedVehicleStatusNotifications = new Set();
 const vehicleStatusNotificationKnownIds = new Set();
@@ -48786,6 +49152,9 @@ function getDropsVehicleStatusViewModel(){
 function acceptVehicleStatusReadback(readback){
   if(readback?.ok === true) reconcileVehicleStatusNotifications(readback);
   dropsVehicleStatusReadback = readback;
+  if(typeof updateOperationalMessageComposerStatus === "function"){
+    updateOperationalMessageComposerStatus();
+  }
 }
 
 async function loadDropsVehicleStatusContext(fetchImpl=window.fetch.bind(window)){
@@ -48909,15 +49278,26 @@ function reconcileVehicleStatusNotifications(readback){
       notification?.kind === "VEHICLE_OPERATIONAL" ||
       notification?.kind === "REPAIR_REQUESTED" ||
       notification?.kind === "WORKSHOP_EXIT_REQUESTED" ||
+      notification?.kind === "OPERATIONAL_MESSAGE" ||
       notification?.kind === "WORKSHOP_MESSAGE"
     )
     .filter(notification=>String(notification?.notificationId || "") !== "");
   if(!vehicleStatusNotificationBaselineInitialized){
     supported.forEach(notification=>{
-      vehicleStatusNotificationKnownIds.add(String(notification.notificationId));
+      const notificationId = String(notification.notificationId);
+      vehicleStatusNotificationKnownIds.add(notificationId);
+      if(
+        (
+          notification.kind === "OPERATIONAL_MESSAGE" ||
+          notification.kind === "WORKSHOP_MESSAGE"
+        ) &&
+        !notification.presentedAt
+      ){
+        vehicleStatusNotificationPending.push(notification);
+      }
     });
     vehicleStatusNotificationBaselineInitialized = true;
-    return [];
+    return vehicleStatusNotificationPending.slice();
   }
   const added = [];
   supported.forEach(notification=>{
@@ -48957,14 +49337,11 @@ function isVehicleStatusNotificationVisibleInCurrentSurface(notification){
   if(notification.kind === "REPAIR_REQUESTED" && notification.targetRole === "verksted"){
     return level === "4" && tab === "verkstedBestillinger";
   }
-  if(notification.kind === "WORKSHOP_MESSAGE"){
-    const targetSurfaces = {
-      drops:{level:"1",tab:"dropsMateriellstyrer"},
-      txp:{level:"2",tab:"grunnoppstilling"},
-      sde_skiftere:{level:"3",tab:"sdeSkiftebevegelser"},
-      agila:{level:"5",tab:"agilia"}
-    };
-    const target = targetSurfaces[String(notification.targetRole || "")];
+  if(
+    notification.kind === "OPERATIONAL_MESSAGE" ||
+    notification.kind === "WORKSHOP_MESSAGE"
+  ){
+    const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[String(notification.targetRole || "")];
     return Boolean(target && level === target.level && tab === target.tab);
   }
   return true;
@@ -49002,15 +49379,25 @@ function getNextVehicleStatusNotification(predicate=isVehicleStatusNotificationV
 function selectVehicleStatusNotificationVehicle(notification){
   const vehicleId = String(notification?.vehicleId || "");
   const series = vehicleId.split("-")[0];
-  if(notification?.kind === "WORKSHOP_MESSAGE"){
-    const targetTabs = {
-      drops:"dropsMateriellstyrer",
-      txp:"grunnoppstilling",
-      sde_skiftere:"sdeSkiftebevegelser",
-      agila:"agilia"
-    };
-    const targetTab = targetTabs[String(notification?.targetRole || "")];
-    if(targetTab) activateTab(targetTab);
+  if(
+    notification?.kind === "OPERATIONAL_MESSAGE" ||
+    notification?.kind === "WORKSHOP_MESSAGE"
+  ){
+    const targetRole = String(notification?.targetRole || "");
+    const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[targetRole];
+    const contextVehicleId = String(notification?.payload?.context?.vehicleId || "");
+    if(targetRole === "drops" && contextVehicleId){
+      dropsVehicleRegistrySelectedSeries = contextVehicleId.split("-")[0];
+      dropsVehicleRegistrySelectedVehicle = contextVehicleId;
+      dropsStandardSheetCollapsed = false;
+      renderDropsVehicleRegistry();
+    }else if(targetRole === "verksted" && contextVehicleId){
+      workshopVehicleRegistrySelectedSeries = contextVehicleId.split("-")[0];
+      workshopVehicleRegistrySelectedVehicle = contextVehicleId;
+      workshopStandardSheetCollapsed = false;
+      renderWorkshopVehicleRegistry();
+    }
+    if(target?.tab) activateTab(target.tab);
     return;
   }
   if(notification?.kind === "WORKSHOP_EXIT_REQUESTED"){
@@ -49049,9 +49436,21 @@ function buildWorkshopNotificationPopupHtml(notification){
   const payload = notification.payload || {};
   const repairRequested = notification.kind === "REPAIR_REQUESTED";
   const workshopExitRequested = notification.kind === "WORKSHOP_EXIT_REQUESTED";
-  const workshopMessage = notification.kind === "WORKSHOP_MESSAGE";
-  const title = workshopMessage
-    ? "Melding fra Verksted"
+  const operationalMessage =
+    notification.kind === "OPERATIONAL_MESSAGE" ||
+    notification.kind === "WORKSHOP_MESSAGE";
+  const messageContext = payload.context || {
+    vehicleId:payload.selectedVehicleId || "",
+    slotId:payload.selectedSlotId || ""
+  };
+  const sourceRole = String(payload.sourceRole || (notification.kind === "WORKSHOP_MESSAGE" ? "verksted" : ""));
+  const sourceLabel = OPERATIONAL_MESSAGE_ROLE_LABELS[sourceRole] || sourceRole;
+  const messageHasStatusSheet = Boolean(
+    messageContext.vehicleId &&
+    ["drops","verksted"].includes(String(notification.targetRole || ""))
+  );
+  const title = operationalMessage
+    ? `Beskjed fra ${sourceLabel || "operativt nivå"}`
     : workshopExitRequested
     ? "Bestilt utkjøring fra Verksted"
     : repairRequested
@@ -49070,10 +49469,13 @@ function buildWorkshopNotificationPopupHtml(notification){
       suggestedTarget = "";
     }
   }
-  return `<section class="vehicle-status-notification-popup${workshopMessage ? " is-workshop-message" : workshopExitRequested ? " is-workshop-exit-requested" : repairRequested ? " is-repair-requested" : " is-operational"}" role="alertdialog" aria-label="${escapeHtml(title)}">
+  return `<section class="vehicle-status-notification-popup${operationalMessage ? " is-workshop-message" : workshopExitRequested ? " is-workshop-exit-requested" : repairRequested ? " is-repair-requested" : " is-operational"}" role="alertdialog" aria-label="${escapeHtml(title)}">
     <button type="button" data-sde-dismiss-vehicle-status-notification aria-label="Lukk varsel">×</button>
     <strong>${escapeHtml(title)}</strong>
-    ${workshopMessage ? `<span>${escapeHtml(payload.message || "")}</span>` : `<span>Kjøretøy: ${escapeHtml(notification.vehicleId || "")}</span>`}
+    ${operationalMessage ? `<span>${escapeHtml(payload.message || "")}</span>` : `<span>Kjøretøy: ${escapeHtml(notification.vehicleId || "")}</span>`}
+    ${operationalMessage && messageContext.vehicleId ? `<span>Kjøretøy: ${escapeHtml(messageContext.vehicleId)}</span>` : ""}
+    ${operationalMessage && messageContext.slotId ? `<span>Slot: ${escapeHtml(messageContext.slotId)}</span>` : ""}
+    ${operationalMessage ? `<span>Sendt: ${escapeHtml(formatDropsVehicleStatusTimestamp(payload.sentAt || notification.createdAt || ""))}</span>` : ""}
     ${workshopExitRequested ? `<span>Fra slot: ${escapeHtml(payload.sourceSlot || "Ukjent")}</span>
     <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>
     <span>Klassifisering: ${escapeHtml(payload.classification || "UNKNOWN")}</span>
@@ -49082,7 +49484,11 @@ function buildWorkshopNotificationPopupHtml(notification){
     <span>Beskrivelse: ${escapeHtml(payload.description || "")}</span>
     <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>` : ""}
     ${repairRequested ? `<span>Ny intern utbedringsbestilling fra DROPS</span>` : ""}
-    <button type="button" data-sde-open-vehicle-status-notification aria-label="${workshopMessage ? "Åpne statusark" : "Åpne kjøretøy"}">${workshopMessage ? "Åpne statusark" : "Åpne kjøretøy"}</button>
+    ${operationalMessage
+      ? (messageHasStatusSheet
+        ? `<button type="button" data-sde-open-vehicle-status-notification aria-label="Åpne statusark">Åpne statusark</button>`
+        : "")
+      : `<button type="button" data-sde-open-vehicle-status-notification aria-label="Åpne kjøretøy">Åpne kjøretøy</button>`}
   </section>`;
 }
 
@@ -49169,7 +49575,12 @@ function recordVehicleStatusNotificationPresented(notification){
     capability?.allowed !== true
   ) return;
   vehicleStatusNotificationPresentationAttempts.add(notificationId);
-  postVehicleStatusTechnicalCommand("notification-presented",{notificationId})
+  const sourceRole = getActiveOperationalMessageRole();
+  if(!sourceRole) return;
+  postVehicleStatusTechnicalCommand(
+    `notification-presented/${encodeURIComponent(sourceRole)}`,
+    {notificationId}
+  )
     .catch(()=>vehicleStatusNotificationPresentationAttempts.delete(notificationId));
 }
 
@@ -49293,6 +49704,7 @@ async function refreshVehicleStatusReadback(fetchImpl=window.fetch.bind(window))
       if(typeof renderSdeSkiftebevegelser === "function") renderSdeSkiftebevegelser();
       if(typeof buildSporplan === "function") buildSporplan();
     }
+    updateOperationalMessageComposerStatus();
     renderVehicleStatusNotificationPopup();
   }catch(unusedError){ /* fail closed on last confirmed GET */ }
 }
@@ -50621,10 +51033,20 @@ function renderDropsPanels(){
 function initDropsPanels(){
   startVehicleStatusVisiblePolling();
   document.addEventListener("click", event=>{
+    const operationalMessageSend = event.target.closest("[data-sde-operational-message-send]");
+    if(operationalMessageSend){
+      event.preventDefault();
+      submitOperationalMessageFromUi(operationalMessageSend.dataset.sdeOperationalRole);
+      return;
+    }
     handleDropsNotOperationalRegistryClick(event);
   });
-  document.addEventListener("input",handleDropsNotOperationalRegistryInput);
+  document.addEventListener("input",event=>{
+    if(handleOperationalMessageComposerInput(event)) return;
+    handleDropsNotOperationalRegistryInput(event);
+  });
   document.addEventListener("change",event=>{
+    if(handleOperationalMessageComposerChange(event)) return;
     if(handleDropsVehicleRegistrySelectionChange(event)) return;
     handleDropsNotOperationalRegistryInput(event);
   });
@@ -50764,6 +51186,7 @@ function initDropsPanels(){
   });
 
   renderDropsPanels();
+  renderOperationalMessageComposers();
 }
 
 initDropsPanels();

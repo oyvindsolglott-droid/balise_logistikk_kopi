@@ -28,6 +28,8 @@ const WORKSHOP_INGRESS_QUEUE_META_TABLE = "vehicle_status_workshop_ingress_queue
 const WORKSHOP_INGRESS_QUEUE_EVENT_TABLE = "vehicle_status_workshop_ingress_queue_events";
 const WORKSHOP_MESSAGE_TABLE = "vehicle_status_workshop_messages";
 const WORKSHOP_MESSAGE_EVENT_TABLE = "vehicle_status_workshop_message_events";
+const OPERATIONAL_MESSAGE_TABLE = "vehicle_status_operational_messages";
+const OPERATIONAL_MESSAGE_EVENT_TABLE = "vehicle_status_operational_message_events";
 const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
 const SEMANTIC_NOOP = Symbol("vehicle_status_semantic_noop");
 
@@ -65,7 +67,8 @@ function createVehicleStatusRepository(options = {}){
       [LIFECYCLE_COMMANDS.REQUEST_REPAIR]: executeRequestRepair,
       [LIFECYCLE_COMMANDS.REQUEST_WORKSHOP_EXIT]: executeRequestWorkshopExit,
       [LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE]: executeManageWorkshopIngressQueue,
-      [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: executeSendWorkshopMessage,
+      [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: executeSendOperationalMessage,
+      [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: executeSendOperationalMessage,
       [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: executeMarkForTurning,
       [LIFECYCLE_COMMANDS.REPORT_OPERATIONAL]: executeReportOperational,
       [LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED]: executeNotificationPresented,
@@ -730,9 +733,93 @@ function createVehicleStatusRepository(options = {}){
     if(!notification){
       throw conflict("notification_not_found", "The notification was not found.", {}, 404);
     }
-    if(!(authority.roles || []).includes(notification.target_role)){
+    if(
+      authority.effectiveRole !== notification.target_role ||
+      !(authority.roles || []).includes(notification.target_role)
+    ){
       throw conflict("notification_role_mismatch",
         "The notification does not target the authenticated role.", {}, 403);
+    }
+    if(notification.kind === "OPERATIONAL_MESSAGE" || notification.kind === "WORKSHOP_MESSAGE"){
+      const message = db.prepare(`
+        SELECT * FROM ${OPERATIONAL_MESSAGE_TABLE} WHERE notification_id = ?
+      `).get(notification.notification_id);
+      if(!message){
+        throw conflict("operational_message_not_found",
+          "The operational message was not found.", {}, 404);
+      }
+      const alreadyPresented = db.prepare(`
+        SELECT operational_message_event_id, server_timestamp
+        FROM ${OPERATIONAL_MESSAGE_EVENT_TABLE}
+        WHERE message_id = ? AND event_type = 'OPERATIONAL_MESSAGE_PRESENTED'
+        ORDER BY server_timestamp, operational_message_event_id
+        LIMIT 1
+      `).get(message.message_id);
+      const eventCommand = {...command, vehicleId:notification.vehicle_id};
+      if(alreadyPresented){
+        return semanticNoOp(semanticNoOpResult(
+          LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED,
+          eventCommand,
+          alreadyPresented.operational_message_event_id,
+          {
+            notificationId:notification.notification_id,
+            timelineEventCreated:false,
+            alreadyRecorded:true,
+            presentedAt:alreadyPresented.server_timestamp,
+            presentationMessageEventId:alreadyPresented.operational_message_event_id,
+            caseRevision:0
+          }
+        ));
+      }
+      const timestamp = now();
+      const eventId = randomUUID();
+      const presentationMessageEventId = randomUUID();
+      db.prepare(`
+        INSERT INTO ${OPERATIONAL_MESSAGE_EVENT_TABLE} (
+          operational_message_event_id, event_type, message_id, source_role,
+          target_role, server_timestamp, actor_subject, actor_role,
+          payload_json, idempotency_key
+        ) VALUES (?, 'OPERATIONAL_MESSAGE_PRESENTED', ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        presentationMessageEventId,
+        message.message_id,
+        message.source_role,
+        message.target_role,
+        timestamp,
+        authority.subject,
+        authority.effectiveRole,
+        JSON.stringify({
+          notificationId:notification.notification_id,
+          presentationMeaning:
+            "Notification rendered in the authenticated target surface; not proof of reading."
+        }),
+        `operational-message-presented:${notification.notification_id}`
+      );
+      insertEvent({
+        eventId,
+        command:eventCommand,
+        commandName:LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED,
+        authority,
+        timestamp,
+        caseBefore:0,
+        caseAfter:0,
+        statusBefore:0,
+        statusAfter:0,
+        previousState:{},
+        resultingState:{
+          notificationId:notification.notification_id,
+          presentationMessageEventId
+        }
+      });
+      incrementGlobalRevision();
+      return resultBase(eventCommand, eventId, {
+        notificationId:notification.notification_id,
+        timelineEventCreated:true,
+        alreadyRecorded:false,
+        presentedAt:timestamp,
+        presentationMessageEventId,
+        caseRevision:0
+      });
     }
     const processCase = findActiveProcessCase(notification.vehicle_id) ||
       findLatestProcessCase(notification.vehicle_id);
@@ -1100,75 +1187,101 @@ function createVehicleStatusRepository(options = {}){
     });
   }
 
-  function executeSendWorkshopMessage(command, authority){
-    const eventCommand = { ...command, vehicleId: command.vehicleId || "WORKSHOP" };
+  function executeSendOperationalMessage(command, authority){
+    if(command.sourceRole !== authority.effectiveRole){
+      throw conflict("message_source_role_mismatch",
+        "The message source does not match the authenticated effective role.", {}, 403);
+    }
+    const eventCommand = {
+      ...command,
+      vehicleId:command.context?.vehicleId || command.vehicleId || "OPERATIONAL_MESSAGE"
+    };
     const timestamp = now();
     const eventId = randomUUID();
     const messageId = randomUUID();
     const notificationId = randomUUID();
     db.prepare(`
-      INSERT INTO ${WORKSHOP_MESSAGE_TABLE} (
-        message_id, target_role, message_text, created_at, created_by,
-        notification_id, event_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO ${OPERATIONAL_MESSAGE_TABLE} (
+        message_id, source_role, target_role, message_text, context_json,
+        created_at, created_by, notification_id, event_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      messageId, command.targetRole, command.message, timestamp,
-      authority.subject, notificationId, eventId
+      messageId,
+      command.sourceRole,
+      command.targetRole,
+      command.message,
+      JSON.stringify(command.context || {}),
+      timestamp,
+      authority.subject,
+      notificationId,
+      eventId
     );
     db.prepare(`
-      INSERT INTO ${WORKSHOP_MESSAGE_EVENT_TABLE} (
-        workshop_message_event_id, event_type, message_id, target_role,
-        server_timestamp, actor_subject, actor_role, payload_json, idempotency_key
-      ) VALUES (?, 'WORKSHOP_MESSAGE_SENT', ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO ${OPERATIONAL_MESSAGE_EVENT_TABLE} (
+        operational_message_event_id, event_type, message_id, source_role,
+        target_role, server_timestamp, actor_subject, actor_role,
+        payload_json, idempotency_key
+      ) VALUES (?, 'OPERATIONAL_MESSAGE_SENT', ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      randomUUID(), messageId, command.targetRole, timestamp,
-      authority.subject, authority.effectiveRole || null,
+      randomUUID(),
+      messageId,
+      command.sourceRole,
+      command.targetRole,
+      timestamp,
+      authority.subject,
+      authority.effectiveRole,
       JSON.stringify({
         message:command.message,
-        selectedSlotId:command.selectedSlotId || "",
-        selectedVehicleId:command.selectedVehicleId || ""
+        context:command.context || {}
       }),
-      `${command.actionId}:workshop-message`
+      `${command.actionId}:operational-message`
     );
     insertNotification({
       notificationId,
       eventId,
       targetRole: command.targetRole,
-      kind: "WORKSHOP_MESSAGE",
+      kind: "OPERATIONAL_MESSAGE",
       priority: "NORMAL",
-      vehicleId: "WORKSHOP",
+      vehicleId: command.context?.vehicleId || "OPERATIONAL_MESSAGE",
       faultId: null,
       repairRequestId: null,
       timestamp,
       payload: {
         messageId,
         message:command.message,
-        sourceRole:"verksted",
-        selectedSlotId:command.selectedSlotId || "",
-        selectedVehicleId:command.selectedVehicleId || ""
+        sourceRole:command.sourceRole,
+        targetRole:command.targetRole,
+        context:command.context || {},
+        selectedSlotId:command.context?.slotId || "",
+        selectedVehicleId:command.context?.vehicleId || "",
+        sentAt:timestamp
       }
     });
     insertEvent({
-      eventId, command: eventCommand, commandName: LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE,
+      eventId,
+      command:eventCommand,
+      commandName:LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
       authority, timestamp,
       caseBefore: 0, caseAfter: 0, statusBefore: 0, statusAfter: 0,
       previousState: {},
       resultingState: {
         messageId,
         notificationId,
+        sourceRole:command.sourceRole,
         targetRole:command.targetRole,
-        selectedSlotId:command.selectedSlotId || "",
-        selectedVehicleId:command.selectedVehicleId || ""
+        context:command.context || {}
       }
     });
     incrementGlobalRevision();
     return resultBase(command, eventId, {
       messageId,
       notificationId,
+      sourceRole:command.sourceRole,
       targetRole: command.targetRole,
       createdAt: timestamp,
-      selectedSlotId:command.selectedSlotId || "",
-      selectedVehicleId:command.selectedVehicleId || ""
+      context:command.context || {},
+      selectedSlotId:command.context?.slotId || "",
+      selectedVehicleId:command.context?.vehicleId || ""
     });
   }
 
@@ -1228,9 +1341,20 @@ function createVehicleStatusRepository(options = {}){
     const workshopExitEvents = selectWorkshopExitEvents();
     const workshopIngressQueue = selectWorkshopIngressQueue();
     const workshopIngressQueueEvents = selectWorkshopIngressQueueEvents();
-    const allWorkshopMessages = selectWorkshopMessages();
-    const workshopMessages = roles.length
-      ? allWorkshopMessages.filter((message) => roles.includes(message.targetRole))
+    const allOperationalMessages = selectOperationalMessages();
+    const operationalMessages = roles.length
+      ? allOperationalMessages.filter((message) => roles.includes(message.targetRole))
+      : [];
+    const operationalMessageReceipts = roles.length
+      ? allOperationalMessages
+          .filter((message) => roles.includes(message.sourceRole))
+          .map((message) => ({
+            messageId:message.messageId,
+            notificationId:message.notificationId,
+            sourceRole:message.sourceRole,
+            targetRole:message.targetRole,
+            sentAt:message.sentAt
+          }))
       : [];
     const events = db.prepare(`SELECT * FROM ${EVENT_TABLE} ORDER BY server_timestamp, event_id`).all()
       .map(mapEvent);
@@ -1240,7 +1364,17 @@ function createVehicleStatusRepository(options = {}){
       events: processEvents
     });
     const allNotifications = db.prepare(`
-      SELECT * FROM ${NOTIFICATION_TABLE} ORDER BY created_at, notification_id
+      SELECT n.*, (
+        SELECT e.server_timestamp
+        FROM ${OPERATIONAL_MESSAGE_TABLE} m
+        JOIN ${OPERATIONAL_MESSAGE_EVENT_TABLE} e ON e.message_id=m.message_id
+        WHERE m.notification_id=n.notification_id
+          AND e.event_type='OPERATIONAL_MESSAGE_PRESENTED'
+        ORDER BY e.server_timestamp, e.operational_message_event_id
+        LIMIT 1
+      ) AS presented_at
+      FROM ${NOTIFICATION_TABLE} n
+      ORDER BY n.created_at, n.notification_id
     `).all().map(mapNotification);
     const notifications = roles.length
       ? allNotifications.filter((notification) => roles.includes(notification.targetRole))
@@ -1307,7 +1441,9 @@ function createVehicleStatusRepository(options = {}){
       workshopExitEvents,
       workshopIngressQueue,
       workshopIngressQueueEvents,
-      workshopMessages,
+      operationalMessages,
+      operationalMessageReceipts,
+      workshopMessages:operationalMessages,
       events,
       processEvents,
       processCases,
@@ -1544,7 +1680,9 @@ function createVehicleStatusRepository(options = {}){
         processEvents: countRows(PROCESS_EVENT_TABLE),
         processObservations: countRows(PROCESS_OBSERVATION_TABLE),
         workshopExitRequests: countRows(WORKSHOP_EXIT_REQUEST_TABLE),
-        workshopExitEvents: countRows(WORKSHOP_EXIT_EVENT_TABLE)
+        workshopExitEvents: countRows(WORKSHOP_EXIT_EVENT_TABLE),
+        operationalMessages: countRows(OPERATIONAL_MESSAGE_TABLE),
+        operationalMessageEvents: countRows(OPERATIONAL_MESSAGE_EVENT_TABLE)
       },
       records: db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all(),
       cases: db.prepare(`SELECT * FROM ${CASE_TABLE} ORDER BY vehicle_id`).all(),
@@ -1562,6 +1700,13 @@ function createVehicleStatusRepository(options = {}){
       workshopExitEvents: db.prepare(`
         SELECT * FROM ${WORKSHOP_EXIT_EVENT_TABLE}
         ORDER BY server_timestamp, workshop_exit_event_id
+      `).all(),
+      operationalMessages: db.prepare(`
+        SELECT * FROM ${OPERATIONAL_MESSAGE_TABLE} ORDER BY created_at, message_id
+      `).all(),
+      operationalMessageEvents: db.prepare(`
+        SELECT * FROM ${OPERATIONAL_MESSAGE_EVENT_TABLE}
+        ORDER BY server_timestamp, operational_message_event_id
       `).all()
     };
   }
@@ -2092,13 +2237,12 @@ function createVehicleStatusRepository(options = {}){
       ORDER BY server_timestamp, workshop_ingress_event_id
     `).all().map(mapWorkshopIngressQueueEvent);
   }
-  function selectWorkshopMessages(){
+  function selectOperationalMessages(){
     return db.prepare(`
-      SELECT m.*, e.payload_json
-      FROM ${WORKSHOP_MESSAGE_TABLE} m
-      LEFT JOIN ${WORKSHOP_MESSAGE_EVENT_TABLE} e ON e.message_id=m.message_id
+      SELECT m.*
+      FROM ${OPERATIONAL_MESSAGE_TABLE} m
       ORDER BY m.created_at, m.message_id
-    `).all().map(mapWorkshopMessage);
+    `).all().map(mapOperationalMessage);
   }
   function selectPlacementObservations(){
     return db.prepare(`
@@ -2270,7 +2414,7 @@ function initializeSchema(db){
       DROP TABLE IF EXISTS ${RECORD_TABLE};
       DROP TABLE IF EXISTS ${META_TABLE};
     `);
-  }else if(userVersion > 5){
+  }else if(userVersion > 6){
     throw new Error("vehicle_status_schema_version_unsupported");
   }
 
@@ -2616,9 +2760,103 @@ function initializeSchema(db){
     CREATE TRIGGER IF NOT EXISTS vehicle_status_workshop_message_events_immutable_delete
     BEFORE DELETE ON ${WORKSHOP_MESSAGE_EVENT_TABLE}
     BEGIN SELECT RAISE(ABORT, 'workshop message events are immutable'); END;
+
+    CREATE TABLE IF NOT EXISTS ${OPERATIONAL_MESSAGE_TABLE} (
+      message_id TEXT PRIMARY KEY,
+      source_role TEXT NOT NULL
+        CHECK(source_role IN ('drops','txp','sde_skiftere','verksted','agila')),
+      target_role TEXT NOT NULL
+        CHECK(target_role IN ('drops','txp','sde_skiftere','verksted','agila')),
+      message_text TEXT NOT NULL CHECK(length(message_text) BETWEEN 1 AND 250),
+      context_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      created_by TEXT NOT NULL,
+      notification_id TEXT NOT NULL UNIQUE,
+      event_id TEXT NOT NULL UNIQUE,
+      CHECK(source_role <> target_role)
+    );
+    CREATE TABLE IF NOT EXISTS ${OPERATIONAL_MESSAGE_EVENT_TABLE} (
+      operational_message_event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL CHECK(event_type IN (
+        'OPERATIONAL_MESSAGE_SENT','OPERATIONAL_MESSAGE_PRESENTED'
+      )),
+      message_id TEXT NOT NULL,
+      source_role TEXT NOT NULL
+        CHECK(source_role IN ('drops','txp','sde_skiftere','verksted','agila')),
+      target_role TEXT NOT NULL
+        CHECK(target_role IN ('drops','txp','sde_skiftere','verksted','agila')),
+      server_timestamp TEXT NOT NULL,
+      actor_subject TEXT,
+      actor_role TEXT,
+      payload_json TEXT NOT NULL,
+      idempotency_key TEXT UNIQUE,
+      FOREIGN KEY(message_id) REFERENCES ${OPERATIONAL_MESSAGE_TABLE}(message_id)
+    );
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_events_immutable_update
+    BEFORE UPDATE ON ${OPERATIONAL_MESSAGE_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'operational message events are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_events_immutable_delete
+    BEFORE DELETE ON ${OPERATIONAL_MESSAGE_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'operational message events are immutable'); END;
   `);
+  if(userVersion < 6){
+    migrateWorkshopMessagesToOperationalMessages(db);
+  }
   if(userVersion < 3) backfillProcessHistory(db);
-  db.exec("PRAGMA user_version = 5;");
+  db.exec("PRAGMA user_version = 6;");
+}
+
+function migrateWorkshopMessagesToOperationalMessages(db){
+  const messages = db.prepare(`
+    SELECT m.*, e.workshop_message_event_id, e.server_timestamp,
+      e.actor_subject, e.actor_role, e.payload_json, e.idempotency_key
+    FROM ${WORKSHOP_MESSAGE_TABLE} m
+    LEFT JOIN ${WORKSHOP_MESSAGE_EVENT_TABLE} e ON e.message_id=m.message_id
+    ORDER BY m.created_at, m.message_id
+  `).all();
+  const insertMessage = db.prepare(`
+    INSERT OR IGNORE INTO ${OPERATIONAL_MESSAGE_TABLE} (
+      message_id, source_role, target_role, message_text, context_json,
+      created_at, created_by, notification_id, event_id
+    ) VALUES (?, 'verksted', ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertEvent = db.prepare(`
+    INSERT OR IGNORE INTO ${OPERATIONAL_MESSAGE_EVENT_TABLE} (
+      operational_message_event_id, event_type, message_id, source_role,
+      target_role, server_timestamp, actor_subject, actor_role,
+      payload_json, idempotency_key
+    ) VALUES (?, 'OPERATIONAL_MESSAGE_SENT', ?, 'verksted', ?, ?, ?, ?, ?, ?)
+  `);
+  for(const row of messages){
+    const legacyContext = safeJson(row.payload_json, {});
+    const context = {
+      surface:"verksted",
+      ...(legacyContext.selectedSlotId ? {slotId:String(legacyContext.selectedSlotId)} : {}),
+      ...(legacyContext.selectedVehicleId
+        ? {vehicleId:String(legacyContext.selectedVehicleId)}
+        : {})
+    };
+    insertMessage.run(
+      row.message_id,
+      row.target_role,
+      row.message_text,
+      JSON.stringify(context),
+      row.created_at,
+      row.created_by,
+      row.notification_id,
+      row.event_id
+    );
+    insertEvent.run(
+      row.workshop_message_event_id || `legacy-operational-message:${row.message_id}`,
+      row.message_id,
+      row.target_role,
+      row.server_timestamp || row.created_at,
+      row.actor_subject || row.created_by,
+      row.actor_role || "verksted",
+      JSON.stringify({message:row.message_text, context, migratedFrom:"WORKSHOP_MESSAGE"}),
+      row.idempotency_key || `legacy-operational-message:${row.message_id}`
+    );
+  }
 }
 
 function backfillProcessHistory(db){
@@ -2863,17 +3101,20 @@ function mapWorkshopIngressQueueEvent(row){
   };
 }
 
-function mapWorkshopMessage(row){
-  const context = safeJson(row.payload_json, {});
+function mapOperationalMessage(row){
+  const context = safeJson(row.context_json, {});
   return {
     messageId: row.message_id,
+    sourceRole: row.source_role,
     targetRole: row.target_role,
     message: row.message_text,
+    sentAt: row.created_at,
     createdAt: row.created_at,
     notificationId: row.notification_id,
     eventId: row.event_id,
-    selectedSlotId:String(context.selectedSlotId || ""),
-    selectedVehicleId:String(context.selectedVehicleId || "")
+    context,
+    selectedSlotId:String(context.slotId || ""),
+    selectedVehicleId:String(context.vehicleId || "")
   };
 }
 
@@ -2889,6 +3130,7 @@ function mapNotification(row){
     faultId: row.fault_id,
     repairRequestId: row.repair_request_id,
     createdAt: row.created_at,
+    presentedAt: row.presented_at || null,
     payload: JSON.parse(row.payload_json)
   };
 }
@@ -2970,6 +3212,8 @@ module.exports = {
   IDEMPOTENCY_TABLE,
   META_TABLE,
   NOTIFICATION_TABLE,
+  OPERATIONAL_MESSAGE_EVENT_TABLE,
+  OPERATIONAL_MESSAGE_TABLE,
   PROCESS_CASE_TABLE,
   PROCESS_EVENT_TABLE,
   PROCESS_OBSERVATION_TABLE,
