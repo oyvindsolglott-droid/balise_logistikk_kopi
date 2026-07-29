@@ -132,11 +132,23 @@ assert.doesNotMatch(actionCenter, />Målspor</);
 for(const token of [
   "getWorkshopExitRequestAvailability",
   "data-sde-workshop-open-prebooking",
-  "data-sde-workshop-prebooking-vehicle",
+  "data-sde-workshop-prebooking-type",
+  "data-sde-workshop-prebooking-individual",
   "data-sde-workshop-prebooking-slot",
   "data-sde-workshop-prebooking-summary",
   "data-sde-workshop-queue-add",
   "workshopIngressDraft",
+  "Bestilling av innkjøring (ASAP)",
+  "Forhåndsbestilling av innkjøring",
+  "Type 69",
+  "Type 70",
+  "Type 74",
+  "Type 75",
+  "Individnr.",
+  'requestType:"ASAP"',
+  'priority:"HIGH"',
+  'requestType:"PREBOOKED"',
+  'priority:"NORMAL"',
 ]){
   assert.ok(actionCenter.includes(token), `action center misses ${token}`);
 }
@@ -150,6 +162,29 @@ for(const cssClass of [
   assert.ok(source.includes(cssClass), `3D action system misses ${cssClass}`);
 }
 assert.match(actionCenter, /data-sde-workshop-request-exit[^>]*(disabled|aria-disabled)/);
+assert.doesNotMatch(actionCenter, /allVehicles[\s\S]*<option/);
+
+const workshopRenderer = extractFunction("renderWorkshopVehicleRegistry");
+assert.ok(
+  workshopRenderer.includes("shouldDeferWorkshopRegistryRender"),
+  "workshop renderer must preserve an active Type/Individ selector"
+);
+const readbackRefresh = extractFunction("refreshVehicleStatusReadback");
+assert.ok(
+  readbackRefresh.includes("shouldRenderWorkshopVehicleRegistryForReadback"),
+  "unchanged polling must not rebuild the workshop registry"
+);
+assert.doesNotMatch(
+  readbackRefresh,
+  /acceptVehicleStatusReadback\(readback\);\s*renderWorkshopVehicleRegistry\(\);/
+);
+for(const token of [
+  "workshopIngressDraft.incomingVehicleType",
+  "data-sde-workshop-prebooking-type",
+  "data-sde-workshop-prebooking-individual",
+]){
+  assert.ok(source.includes(token), `stable Type/Individ flow misses ${token}`);
+}
 
 const popup = extractFunction("buildWorkshopNotificationPopupHtml");
 assert.ok(popup.includes("Åpne statusark"));

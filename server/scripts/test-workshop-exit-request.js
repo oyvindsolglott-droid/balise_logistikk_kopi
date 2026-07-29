@@ -78,8 +78,8 @@ function main(){
     randomUUID: uuid
   });
   try{
-    check("01 schema v6 persists workshop exit requests and immutable events", () => {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 6);
+    check("01 schema v7 persists workshop exit requests and immutable events", () => {
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 7);
       const tables = db.prepare(`
         SELECT name FROM sqlite_master
         WHERE type='table' AND name LIKE 'vehicle_status_workshop_exit_%'

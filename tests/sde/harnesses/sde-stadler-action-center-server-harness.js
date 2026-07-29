@@ -55,6 +55,12 @@ for(const token of [
   "vehicle_status_operational_messages",
   "vehicle_status_operational_message_events",
   "READY_FOR_ACTIVATION",
+  "HIGH_PRIORITY_WAITING_FOR_SLOT",
+  "WAITING_FOR_SLOT",
+  "request_type",
+  "priority",
+  "requested_at",
+  "queued_at",
   "ACTIVATING",
   "CARD_CREATED",
   "REPLAN_REQUIRED",
@@ -62,7 +68,7 @@ for(const token of [
 ]){
   assert.ok(repositorySource.includes(token), `repository misses ${token}`);
 }
-assert.match(repositorySource, /PRAGMA user_version = 6/);
+assert.match(repositorySource, /PRAGMA user_version = 7/);
 
 const {
   createVehicleStatusTestRepository,
@@ -105,6 +111,8 @@ const add = repository.executeCommand(
     operation: "ADD",
     targetSlot: "7N",
     vehicleId: "74-21",
+    requestType: "PREBOOKED",
+    priority: "NORMAL",
     queueEntryId: null,
     expectedQueueRevision: 0,
     expectedPlacementRevision: "shared-sporplan:1",
@@ -112,8 +120,36 @@ const add = repository.executeCommand(
   authority
 );
 assert.equal(add.ok, true);
-assert.equal(add.result.status, "QUEUED");
+assert.equal(add.result.status, "WAITING_FOR_SLOT");
+assert.equal(add.result.requestType, "PREBOOKED");
+assert.equal(add.result.priority, "NORMAL");
 assert.equal(add.result.position, 1);
+
+const asap = repository.executeCommand(
+  LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE,
+  {
+    actionId: "10000000-0000-4000-8000-000000000009",
+    payloadHash: "asap-74-10-7n",
+    operation: "ADD",
+    targetSlot: "7N",
+    vehicleId: "74-10",
+    requestType: "ASAP",
+    priority: "HIGH",
+    queueEntryId: null,
+    expectedQueueRevision: 1,
+    expectedPlacementRevision: "shared-sporplan:1",
+  },
+  authority
+);
+assert.equal(asap.ok, true);
+assert.equal(asap.result.status, "HIGH_PRIORITY_WAITING_FOR_SLOT");
+assert.equal(asap.result.requestType, "ASAP");
+assert.equal(asap.result.priority, "HIGH");
+assert.equal(asap.result.position, 1);
+let priorityReadback = repository.getReadModel({roles: ["verksted"]})
+  .workshopIngressQueue.filter(entry => entry.targetSlot === "7N");
+assert.deepEqual(priorityReadback.map(entry => entry.vehicleId), ["74-10", "74-21"]);
+assert.deepEqual(priorityReadback.map(entry => entry.position), [1, 2]);
 
 const duplicateAcrossSlots = repository.executeCommand(
   LIFECYCLE_COMMANDS.MANAGE_WORKSHOP_INGRESS_QUEUE,
@@ -123,6 +159,8 @@ const duplicateAcrossSlots = repository.executeCommand(
     operation: "ADD",
     targetSlot: "8N",
     vehicleId: "74-21",
+    requestType: "ASAP",
+    priority: "HIGH",
     queueEntryId: null,
     expectedQueueRevision: 0,
     expectedPlacementRevision: "shared-sporplan:1",
@@ -173,11 +211,17 @@ repository.observeCanonicalPlacements({
   ],
 });
 let readback = repository.getReadModel({roles: ["verksted"]});
-let queueEntry = readback.workshopIngressQueue.find(entry => entry.vehicleId === "74-21");
+let queueEntry = readback.workshopIngressQueue.find(entry => entry.vehicleId === "74-10");
 assert.equal(queueEntry.status, "CARD_CREATED");
 assert.equal(queueEntry.targetSlot, "7N");
+assert.equal(queueEntry.requestType, "ASAP");
+assert.equal(queueEntry.priority, "HIGH");
 assert.ok(queueEntry.linkedCardId);
 assert.equal(readback.workshopIngressQueue.filter(entry => entry.status === "CARD_CREATED").length, 1);
+assert.equal(
+  readback.workshopIngressQueue.find(entry => entry.vehicleId === "74-21").status,
+  "WAITING_FOR_SLOT"
+);
 
 repository.observeCanonicalPlacements({
   placementRevision: "shared-sporplan:3",
@@ -188,7 +232,7 @@ repository.observeCanonicalPlacements({
   ],
 });
 readback = repository.getReadModel({roles: ["verksted"]});
-queueEntry = readback.workshopIngressQueue.find(entry => entry.vehicleId === "74-21");
+queueEntry = readback.workshopIngressQueue.find(entry => entry.vehicleId === "74-10");
 assert.equal(queueEntry.status, "REPLAN_REQUIRED");
 assert.equal(queueEntry.linkedCardId, null);
 

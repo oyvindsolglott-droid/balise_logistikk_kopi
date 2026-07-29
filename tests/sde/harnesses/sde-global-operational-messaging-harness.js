@@ -45,7 +45,7 @@ for(const token of [
   "OPERATIONAL_MESSAGE",
   "vehicle_status_operational_messages",
   "vehicle_status_operational_message_events",
-  "PRAGMA user_version = 6",
+  "PRAGMA user_version = 7",
 ]){
   assert.ok(
     `${lifecycleSource}\n${repositorySource}\n${serverSource}`.includes(token),
@@ -58,6 +58,8 @@ for(const token of [
   "data-sde-operational-message-text",
   "getActiveOperationalMessageRole",
   "submitOperationalMessageFromUi",
+  "waitForOperationalMessageReceipt",
+  "Beskjeden er mottatt av serveren. Venter på autoritativ bekreftelse",
   "OPERATIONAL_MESSAGE",
 ]){
   assert.ok(frontendSource.includes(token), `frontend implementation misses ${token}`);
@@ -159,6 +161,9 @@ for(const sourceRole of roles){
     );
     assert.equal(result.ok, true, `${sourceRole} -> ${targetRole} must persist`);
     assert.equal(result.result.sourceRole, sourceRole);
+    assert.ok(result.result.messageId);
+    assert.ok(result.result.notificationId);
+    assert.ok(result.result.messageRevision);
     const targetReadback = repository.getReadModel({roles: [targetRole]});
     const saved = targetReadback.operationalMessages.at(-1);
     assert.equal(saved.sourceRole, sourceRole);
@@ -169,6 +174,18 @@ for(const sourceRole of roles){
       notification.targetRole === targetRole &&
       notification.kind === "OPERATIONAL_MESSAGE"
     ));
+    const senderReadback = repository.getReadModel({roles: [sourceRole]});
+    const receipt = senderReadback.operationalMessageReceipts.find(candidate =>
+      candidate.messageId === result.result.messageId
+    );
+    assert.deepEqual(receipt, {
+      messageId: result.result.messageId,
+      notificationId: result.result.notificationId,
+      messageRevision: result.result.messageRevision,
+      sourceRole,
+      targetRole,
+      sentAt: result.result.createdAt,
+    });
     for(const otherRole of roles.filter(role => role !== targetRole)){
       assert.equal(
         repository.getReadModel({roles: [otherRole]}).operationalMessages
@@ -190,6 +207,14 @@ for(const sourceRole of roles){
 const full = repository.getReadModel({roles});
 assert.equal(full.operationalMessages.length, 20);
 assert.equal(full.notifications.filter(item => item.kind === "OPERATIONAL_MESSAGE").length, 20);
+assert.match(
+  frontendSource,
+  /waitForOperationalMessageReceipt[\s\S]*method:"GET"[\s\S]*cache:"no-store"/
+);
+assert.match(
+  frontendSource,
+  /submitOperationalMessageFromUi[\s\S]*postWorkshopActionCenterCommand[\s\S]*waitForOperationalMessageReceipt/
+);
 
 console.log(JSON.stringify({
   schemaVersion: "sde-global-operational-messaging-harness-v1",
