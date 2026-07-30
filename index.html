@@ -8036,10 +8036,10 @@ button{padding:12px 12px}
 .workshop-action-center-message{grid-template-columns:150px minmax(0,1fr) auto}
 .operational-message-composer{
   display:grid;
-  grid-template-columns:minmax(140px,.7fr) minmax(240px,2fr) auto;
+  grid-template-columns:minmax(0,1fr) auto;
   gap:12px;
   align-items:end;
-  margin:16px 0;
+  margin:0;
   padding:16px;
   border:1px solid rgba(53,142,255,.38);
   border-radius:18px;
@@ -8055,6 +8055,34 @@ button{padding:12px 12px}
   color:#0b2a55;
   font-weight:900;
 }
+.operational-message-thread-picker{
+  grid-column:1/-1;
+  display:grid;
+  grid-template-columns:minmax(0,1fr);
+  gap:6px;
+  color:#173b69;
+  font-size:.85rem;
+  font-weight:850;
+}
+.operational-message-thread-picker select{
+  width:100%;
+  min-width:0;
+  box-sizing:border-box;
+  border:1px solid #91a8c6;
+  border-radius:12px;
+  background:#fff;
+  color:#10233f;
+  font:inherit;
+  padding:9px 12px;
+}
+.operational-message-active-target{
+  display:block;
+  margin:0;
+  color:#34516f;
+  font-size:.8rem;
+  font-weight:800;
+}
+.operational-message-active-target[hidden]{display:none}
 .operational-message-composer label{
   display:grid;
   gap:6px;
@@ -8117,23 +8145,48 @@ button{padding:12px 12px}
 .operational-message-composer__status.is-success{color:#087b3a}
 .operational-message-composer__status.is-error{color:#a41d26}
 .operational-message-threads{
-  display:grid;
-  gap:12px;
-  margin:0 0 18px;
+  position:relative;
+  display:block;
+  max-height:290px;
+  margin:0;
+  overflow:auto;
+  overscroll-behavior:contain;
+  scroll-behavior:smooth;
+  border:1px solid #bfd4ee;
+  border-radius:14px;
+  background:rgba(255,255,255,.86);
 }
 .operational-message-thread{
-  padding:14px;
-  border:1px solid #bfd4ee;
-  border-radius:16px;
-  background:rgba(255,255,255,.88);
+  padding:10px;
 }
-.operational-message-thread h3{margin:0 0 10px;color:#173b69}
+.operational-message-thread__empty{
+  margin:0;
+  padding:20px 12px;
+  color:#536b89;
+  text-align:center;
+}
 .operational-message-thread__message{
-  margin:9px 0 0 min(calc(var(--message-depth,0) * 10px),200px);
-  padding:12px;
+  max-width:min(82%,680px);
+  margin:7px 0;
+  padding:9px 11px;
   border-left:3px solid #5c8fd7;
   border-radius:10px;
   background:#f3f7fc;
+}
+.operational-message-thread__message.is-sent{
+  margin-left:auto;
+  border-right:3px solid #334155;
+  border-left:0;
+  background:#eef2f7;
+  color:#0f172a;
+  font-style:normal;
+}
+.operational-message-thread__message.is-received{
+  margin-right:auto;
+  border-left-color:#1f5fa9;
+  background:#e9f2ff;
+  color:#123b72;
+  font-style:italic;
 }
 .operational-message-thread__meta{
   display:flex;
@@ -8148,41 +8201,26 @@ button{padding:12px 12px}
   color:#087b3a;
   font-weight:850;
 }
-.operational-message-thread__message > p{margin:8px 0;color:#10233f;white-space:pre-wrap}
-.operational-message-reply{
-  display:grid;
-  grid-template-columns:minmax(0,1fr) auto;
-  gap:8px 12px;
-  align-items:end;
-  margin-top:10px;
+.operational-message-thread__message > p{
+  margin:6px 0 0;
+  color:inherit;
+  white-space:pre-wrap;
 }
-.operational-message-reply label{display:grid;gap:6px;color:#173b69;font-weight:800}
-.operational-message-reply textarea{
-  width:100%;
-  min-width:0;
-  box-sizing:border-box;
-  padding:9px 11px;
-  border:1px solid #91a8c6;
-  border-radius:10px;
-  background:#fff;
-  color:#10233f;
-  font:inherit;
-  resize:vertical;
-}
-.operational-message-reply textarea:focus-visible{
-  outline:3px solid rgba(35,113,255,.32);
-  outline-offset:2px;
-}
-.operational-message-reply button{
-  min-height:44px;
-  padding:9px 16px;
+.operational-message-newer{
+  position:sticky;
+  right:10px;
+  bottom:8px;
+  float:right;
+  margin:0 8px 8px 0;
+  padding:7px 11px;
   border:1px solid #174da7;
-  border-radius:12px;
+  border-radius:999px;
+  background:#0755d7;
   color:#fff;
-  font-weight:900;
-  background:linear-gradient(180deg,#3984ff,#0755d7 64%,#003b9d);
+  font-weight:850;
   cursor:pointer;
 }
+.operational-message-newer[hidden]{display:none}
 .operational-message-reply button:disabled{cursor:not-allowed;opacity:.55;filter:saturate(.3)}
 .operational-message-reply [data-sde-operational-message-status]{
   grid-column:1/-1;
@@ -8407,8 +8445,7 @@ button{padding:12px 12px}
   .workshop-action-center-actions,
   .workshop-action-center-queue,
   .workshop-action-center-message,
-  .operational-message-composer,
-  .operational-message-reply{grid-template-columns:1fr}
+  .operational-message-composer{grid-template-columns:1fr}
   .operational-message-thread__message{margin-left:0}
   .agilia-workspace{grid-template-columns:1fr}
   .agilia-cleaning-datetime{grid-template-columns:1fr}
@@ -9363,15 +9400,9 @@ button{padding:12px 12px}
   border-color:rgba(74,222,128,.78);
   box-shadow:inset 0 0 0 1px rgba(187,247,208,.30),0 0 7px rgba(34,197,94,.26);
 }
-.sporplan-slot-overlay .slot.sporplan-status-not-operational,
-.sporplan-slot-overlay .slot.rep-slot{
+.sporplan-slot-overlay .slot.sporplan-status-not-operational{
   border-color:rgba(248,113,113,.88);
   box-shadow:inset 0 0 0 1px rgba(254,202,202,.30),0 0 8px rgba(239,68,68,.30);
-}
-.sporplan-slot-overlay .slot.sporplan-status-turn,
-.sporplan-slot-overlay .slot.drei-slot{
-  border-color:rgba(250,204,21,.90);
-  box-shadow:inset 0 0 0 1px rgba(254,240,138,.32),0 0 8px rgba(234,179,8,.28);
 }
 .sporplan-slot-overlay .slot.rep-slot::before{
   content:none;
@@ -9499,7 +9530,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 29. juli 2026</p>
+<p class="sub">Siste revisjon: 30. juli 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -15428,9 +15459,8 @@ function buildLegacySporplanRetired(){
         html += `<span class="slot-plan-badge plan-ferdig">FERDIG: ${escapeHtml(planMarker.ferdig.join(", "))}</span>`;
       }
 
-      if(repSlots.has(normalizeSlot(slot))){
-        const repText = dreiSlots.has(normalizeSlot(slot)) ? "Drei" : "Rep";
-        html += `<span class="slot-rep-badge">${repText}</span>`;
+      if(dreiSlots.has(normalizeSlot(slot))){
+        html += '<span class="slot-rep-badge">Dreies</span>';
       }
 
       div.innerHTML=html;
@@ -15560,19 +15590,42 @@ function buildSporplanSlotOverlayModel(dataRows,options){
   });
 }
 
-function getSporplanVehicleStatusFrameClass(readback,vehicleText){
+function getSporplanVehicleStatusPresentations(readback,vehicleText){
   const vehicleIds=splitVehicleList(vehicleText).map(normalizeVehicleToken).filter(Boolean);
-  const records=vehicleIds.map(vehicleId=>
-    (Array.isArray(readback?.items) ? readback.items : [])
-      .find(item=>normalizeVehicleToken(item?.vehicleId) === vehicleId)
-  ).filter(Boolean);
-  if(records.some(record=>record?.currentStatus === "IKKE_DRIFTSKLAR")){
+  return vehicleIds.map(vehicleId=>({
+    vehicleId,
+    presentation:getAuthoritativeVehicleStatusPresentation(readback,vehicleId)
+  }));
+}
+
+function getSporplanVehicleStatusFrameClass(readback,vehicleText){
+  const presentations=getSporplanVehicleStatusPresentations(readback,vehicleText);
+  if(presentations.some(({presentation})=>
+    presentation?.effectiveStatus === "IKKE_DRIFTSKLAR"
+  )){
     return "sporplan-status-not-operational";
   }
-  if(vehicleIds.length){
+  if(presentations.length){
     return "sporplan-status-operational";
   }
   return "";
+}
+
+function getSporplanVehicleAccessibilityLabel(readback,vehicleText){
+  return getSporplanVehicleStatusPresentations(readback,vehicleText)
+    .map(({vehicleId,presentation})=>{
+      const details=[
+        presentation?.accessibleLabel || presentation?.label || "Driftsklar",
+        presentation?.activeFaults?.length
+          ? `${presentation.activeFaults.length} aktive feil`
+          : "",
+        presentation?.requestedRepairRequests?.length
+          ? `${presentation.requestedRepairRequests.length} åpne utbedringsbestillinger`
+          : ""
+      ].filter(Boolean).join(", ");
+      return `${vehicleId}: ${details}`;
+    })
+    .join(". ");
 }
 
 function buildSporplan(){
@@ -15610,8 +15663,12 @@ function buildSporplan(){
     div.style.top=`${top}px`;
     div.style.width=`${width}px`;
     div.style.height=`${height}px`;
+    const statusAccessibilityLabel=getSporplanVehicleAccessibilityLabel(
+      dropsVehicleStatusReadback || {},
+      vehicleId
+    );
     div.setAttribute("aria-label",filled
-      ? `Slot ${slot}, kjøretøy ${vehicleId || "ikke oppgitt"}`
+      ? `Slot ${slot}, kjøretøy ${vehicleId || "ikke oppgitt"}${statusAccessibilityLabel ? `. ${statusAccessibilityLabel}` : ""}`
       : `Slot ${slot}, tom`);
 
     const invalidVehicleMessage=vehicleId ? getVehicleNumberValidationMessage(vehicleId) : "";
@@ -15660,14 +15717,15 @@ function buildSporplan(){
     if(planLabels.length){
       html+=`<span class="slot-plan-badge">${escapeHtml(planLabels.join(" · "))}</span>`;
     }
-    if(isRepair){
-      html+=`<span class="slot-rep-badge">${isTurn ? "Drei" : "Rep"}</span>`;
+    if(isTurn){
+      html+='<span class="slot-rep-badge">Dreies</span>';
     }
     div.title=[
       `Slot ${slot}`,
       vehicleId ? `Kjøretøy ${vehicleId}` : "Tom",
       sporplanTexts.currentTrain ? `Tog ${sporplanTexts.currentTrain}` : "",
       sporplanTexts.nextTrain ? `Neste ${sporplanTexts.nextTrain}` : "",
+      statusAccessibilityLabel,
       planLabels.join(" · ")
     ].filter(Boolean).join(" · ");
     div.innerHTML=html;
@@ -44181,6 +44239,11 @@ function captureGlobalUpdateContext(){
       .map(([role,draft])=>[role,{...draft}]),
     operationalMessageReplyDrafts:Array.from(operationalMessageReplyDrafts.entries())
       .map(([key,draft])=>[key,{...draft}]),
+    operationalMessageActiveThreadByRole:Array.from(
+      operationalMessageActiveThreadByRole.entries()
+    ),
+    operationalMessageTranscriptContexts:
+      captureOperationalMessageTranscriptContexts(),
     operationalMessageEditorContext
   };
 }
@@ -44246,6 +44309,16 @@ function restoreGlobalUpdateContext(context={}){
         parentMessageId:String(draft?.parentMessageId || "")
       });
     });
+  operationalMessageActiveThreadByRole.clear();
+  (Array.isArray(context.operationalMessageActiveThreadByRole)
+    ? context.operationalMessageActiveThreadByRole
+    : [])
+    .forEach(([role,threadId])=>{
+      if(!OPERATIONAL_MESSAGE_ROLES.includes(role)) return;
+      const cleanThreadId = String(threadId || "");
+      if(!cleanThreadId) return;
+      operationalMessageActiveThreadByRole.set(role,cleanThreadId);
+    });
 
   const actualBySlot = buildCanonicalActualPlacementSlotMap(computeCanonicalActualPlacementRows());
   const currentOccupant = sanitizeVehicleValue(actualBySlot[workshopActionCenterSelectedSlot]);
@@ -44279,6 +44352,9 @@ function restoreGlobalUpdateContext(context={}){
     if(dialog && !dialog.open) dialog.showModal?.();
   });
   updateOperationalMessageComposerStatus();
+  restoreOperationalMessageTranscriptContexts(
+    context.operationalMessageTranscriptContexts
+  );
   restoreOperationalMessageEditorContext(context.operationalMessageEditorContext);
   window.scrollTo(Number(context.scrollX || 0),Number(context.scrollY || 0));
 }
@@ -49179,15 +49255,10 @@ function buildSporplanVehicleStatusBadgesHtml(readback,vehicleText){
   const esc = value=>String(value ?? "").replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[char]));
   const vehicleIds = String(vehicleText || "").split(/[\s,;+]+/).map(value=>value.trim()).filter(Boolean);
   return vehicleIds.map(vehicleId=>{
-    const record = (Array.isArray(readback?.items) ? readback.items : []).find(item=>item?.vehicleId === vehicleId);
     const presentation = getAuthoritativeVehicleStatusPresentation(readback,vehicleId);
-    const status = presentation.label;
-    const statusClass = presentation.className;
-    const disposition = presentation.dispositionLabel
-      ? `<span class="sporplan-vehicle-disposition ${esc(presentation.dispositionClassName)}">${esc(presentation.dispositionLabel)}</span>`
+    return presentation.disposition === "TIL_DREI"
+      ? `<span class="sporplan-vehicle-disposition is-turning" data-vehicle-status="${esc(vehicleId)}">Dreies</span>`
       : "";
-    return '<span class="sporplan-vehicle-status ' + statusClass + '" data-vehicle-status="' +
-      esc(vehicleId) + '"><span>' + esc(status) + "</span>" + disposition + "</span>";
   }).join("");
 }
 
@@ -49666,8 +49737,10 @@ const operationalMessageDrafts = new Map(
   ])
 );
 const operationalMessageReplyDrafts = new Map();
+const operationalMessageActiveThreadByRole = new Map();
 const operationalMessageLastResults = new Map();
 const operationalMessageCommandsInFlight = new Set();
+const OPERATIONAL_MESSAGE_NEW_THREAD_KEY = "__new__";
 const AGILIA_CLEANING_SLOTS = Object.freeze(["5S","5M","10S","10N"]);
 const agiliaCleaningDraft = {
   requestedSlots:new Set(),
@@ -49718,7 +49791,63 @@ function getOperationalMessageDraft(role,draftKey="root",messageRecord=null){
       parentMessageId:String(messageRecord.messageId || "")
     });
   }
-  return operationalMessageReplyDrafts.get(mapKey) || null;
+  const draft = operationalMessageReplyDrafts.get(mapKey) || null;
+  if(draft && messageRecord){
+    draft.targetRole = messageRecord.sourceRole === role
+      ? messageRecord.targetRole
+      : messageRecord.sourceRole;
+    draft.threadId = String(messageRecord.threadId || messageRecord.messageId || "");
+    draft.rootMessageId = String(messageRecord.rootMessageId || messageRecord.messageId || "");
+    draft.parentMessageId = String(messageRecord.messageId || "");
+  }
+  return draft;
+}
+
+function getOperationalMessageThreadGroupsForRole(role,messages){
+  role = String(role || "");
+  const chronological = (Array.isArray(messages) ? messages : [])
+    .filter(message=>message?.sourceRole === role || message?.targetRole === role)
+    .slice()
+    .sort((left,right)=>
+      String(left?.sentAt || "").localeCompare(String(right?.sentAt || "")) ||
+      Number(left?.depth || 0) - Number(right?.depth || 0) ||
+      String(left?.messageId || "").localeCompare(String(right?.messageId || ""))
+    );
+  const grouped = new Map();
+  chronological.forEach(message=>{
+    const threadId = String(
+      message?.threadId || message?.rootMessageId || message?.messageId || ""
+    );
+    if(!threadId) return;
+    if(!grouped.has(threadId)) grouped.set(threadId,[]);
+    grouped.get(threadId).push(message);
+  });
+  return Array.from(grouped,([threadId,threadMessages])=>{
+    const latest = threadMessages.at(-1) || {};
+    const counterpartRole = latest.sourceRole === role
+      ? latest.targetRole
+      : latest.sourceRole;
+    return {
+      threadId,
+      counterpartRole:String(counterpartRole || ""),
+      latestAt:String(latest.sentAt || ""),
+      messages:threadMessages
+    };
+  }).sort((left,right)=>
+    right.latestAt.localeCompare(left.latestAt) ||
+    left.threadId.localeCompare(right.threadId)
+  );
+}
+
+function getActiveOperationalMessageThreadId(role,groups){
+  const available = new Set((Array.isArray(groups) ? groups : []).map(group=>group.threadId));
+  let active = String(operationalMessageActiveThreadByRole.get(role) || "");
+  if(active !== OPERATIONAL_MESSAGE_NEW_THREAD_KEY && !available.has(active)){
+    active = groups?.[0]?.threadId || OPERATIONAL_MESSAGE_NEW_THREAD_KEY;
+  }
+  if(!active) active = OPERATIONAL_MESSAGE_NEW_THREAD_KEY;
+  operationalMessageActiveThreadByRole.set(role,active);
+  return active;
 }
 
 function getOperationalMessageAvailability(role,draftKey="root"){
@@ -49786,20 +49915,27 @@ function renderOperationalMessageComposers(){
           : `Direktemelding fra ${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[role])}`}</span>
         <span>Serverautoritativ</span>
       </div>
-      <label>Mottaker
+      <label class="operational-message-thread-picker">Samtale
+        <select data-sde-operational-message-thread-selector data-sde-operational-role="${role}" aria-label="Velg meldingstråd"></select>
+      </label>
+      <section class="operational-message-threads" data-sde-operational-message-thread-list data-sde-operational-role="${role}" aria-label="Aktiv meldingstråd">
+        <div class="operational-message-thread" data-sde-operational-message-thread-items></div>
+        <button class="operational-message-newer" type="button" data-sde-operational-message-newer hidden>Ny melding ↓</button>
+      </section>
+      <label data-sde-operational-message-target-field>Mottaker
         <select data-sde-operational-message-target data-sde-operational-role="${role}">${targets}</select>
       </label>
+      <p class="operational-message-active-target" data-sde-operational-message-active-target hidden></p>
       <label>Beskjed
-        <textarea data-sde-operational-message-text data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root" data-sde-operational-message-id="" maxlength="250" rows="3" placeholder="Skriv din beskjed her …"></textarea>
+        <textarea data-sde-operational-message-text data-sde-operational-message-reply data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root" data-sde-operational-message-id="" maxlength="250" rows="3" placeholder="Skriv din beskjed her …"></textarea>
         <span class="operational-message-composer__meta">
           <span data-sde-operational-message-reason></span>
           <span data-sde-operational-message-count>0 / 250</span>
         </span>
       </label>
-      <button class="operational-message-composer__send" type="button" data-sde-operational-message-send data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root">Send beskjed</button>
+      <button class="operational-message-composer__send" type="button" data-sde-operational-message-send data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root">Send svar</button>
       <p class="operational-message-composer__status" data-sde-operational-message-status role="status"></p>
-    </section>
-    <section class="operational-message-threads" data-sde-operational-message-thread-list data-sde-operational-role="${role}" aria-label="Meldingstråder"></section>`;
+    </section>`;
     host.dataset.sdeOperationalMessageInitialized = "true";
   });
   renderOperationalMessageThreads();
@@ -49817,88 +49953,129 @@ function renderOperationalMessageThreads(){
   document.querySelectorAll("[data-sde-operational-message-thread-list]").forEach(list=>{
     const role = String(list.dataset.sdeOperationalRole || "");
     if(!OPERATIONAL_MESSAGE_ROLES.includes(role)) return;
-    const messages = (Array.isArray(dropsVehicleStatusReadback?.operationalMessages)
+    const groups = getOperationalMessageThreadGroupsForRole(
+      role,
+      Array.isArray(dropsVehicleStatusReadback?.operationalMessages)
       ? dropsVehicleStatusReadback.operationalMessages
-      : [])
-      .filter(message=>
-        message?.sourceRole === role || message?.targetRole === role
-      )
-      .slice()
-      .sort((left,right)=>
-        String(left?.sentAt || "").localeCompare(String(right?.sentAt || "")) ||
-        Number(left?.depth || 0) - Number(right?.depth || 0)
-      );
-    const grouped = new Map();
-    messages.forEach(message=>{
-      const threadId = String(message?.threadId || message?.rootMessageId || message?.messageId || "");
-      if(!threadId) return;
-      if(!grouped.has(threadId)) grouped.set(threadId,[]);
-      grouped.get(threadId).push(message);
-    });
-    grouped.forEach((threadMessages,threadId)=>{
-      let thread = Array.from(list.querySelectorAll("[data-sde-operational-message-thread]"))
-        .find(candidate=>candidate.dataset.sdeOperationalMessageThread === threadId);
-      if(!thread){
-        list.insertAdjacentHTML(
-          "beforeend",
-          `<section class="operational-message-thread" data-sde-operational-message-thread="${escapeHtml(threadId)}">
-            <h3>Meldingstråd</h3>
-            <div data-sde-operational-message-thread-items></div>
-          </section>`
-        );
-        thread = Array.from(list.querySelectorAll("[data-sde-operational-message-thread]"))
-          .find(candidate=>candidate.dataset.sdeOperationalMessageThread === threadId);
+      : []
+    );
+    const host = list.closest("[data-sde-operational-message-host]");
+    const selector = host?.querySelector("[data-sde-operational-message-thread-selector]");
+    const items = list.querySelector("[data-sde-operational-message-thread-items]");
+    const newer = list.querySelector("[data-sde-operational-message-newer]");
+    if(!host || !selector || !items || !newer) return;
+
+    const desiredOptions = [
+      {
+        value:OPERATIONAL_MESSAGE_NEW_THREAD_KEY,
+        label:"Ny samtale"
+      },
+      ...groups.map(group=>({
+        value:group.threadId,
+        label:`${OPERATIONAL_MESSAGE_ROLE_LABELS[group.counterpartRole] || group.counterpartRole} · ${formatDropsVehicleStatusTimestamp(group.latestAt)}`
+      }))
+    ];
+    desiredOptions.forEach(({value,label},index)=>{
+      let option=Array.from(selector.options).find(candidate=>candidate.value === value);
+      if(!option){
+        option=document.createElement("option");
+        option.value=value;
+        selector.add(option,index);
       }
-      const items = thread?.querySelector("[data-sde-operational-message-thread-items]");
-      if(!items) return;
-      threadMessages.forEach(message=>{
-        const messageId = String(message?.messageId || "");
+      option.textContent=label;
+    });
+    Array.from(selector.options).forEach(option=>{
+      if(!desiredOptions.some(candidate=>candidate.value === option.value)){
+        option.remove();
+      }
+    });
+
+    const activeThreadId=getActiveOperationalMessageThreadId(role,groups);
+    if(selector.value !== activeThreadId) selector.value=activeThreadId;
+    const activeGroup=groups.find(group=>group.threadId === activeThreadId) || null;
+    const threadChanged=String(items.dataset.sdeOperationalMessageThread || "") !== activeThreadId;
+    const wasNearBottom=
+      list.scrollHeight - list.scrollTop - list.clientHeight <= 40;
+    if(threadChanged){
+      items.innerHTML="";
+      items.dataset.sdeOperationalMessageThread=activeThreadId;
+      newer.hidden=true;
+    }
+
+    if(!activeGroup){
+      if(!items.querySelector("[data-sde-operational-message-empty]")){
+        items.innerHTML='<p class="operational-message-thread__empty" data-sde-operational-message-empty>Velg mottaker og skriv en ny melding.</p>';
+      }
+    }else{
+      items.querySelector("[data-sde-operational-message-empty]")?.remove();
+      let appended=false;
+      activeGroup.messages.forEach(message=>{
+        const messageId=String(message?.messageId || "");
         if(!messageId) return;
-        let article = Array.from(items.querySelectorAll("[data-sde-operational-message-id]"))
-          .find(candidate=>
-            candidate.matches?.("article") &&
-            candidate.dataset.sdeOperationalMessageId === messageId
-          );
-        const draftKey = `reply:${messageId}`;
-        getOperationalMessageDraft(role,draftKey,message);
+        let article=Array.from(items.querySelectorAll("[data-sde-operational-message-id]"))
+          .find(candidate=>candidate.dataset.sdeOperationalMessageId === messageId);
+        const direction=message.sourceRole === role ? "is-sent" : "is-received";
         if(!article){
-          const counterpart = message.sourceRole === role
-            ? message.targetRole
-            : message.sourceRole;
-          const sourceLabel = OPERATIONAL_MESSAGE_ROLE_LABELS[message.sourceRole] || message.sourceRole;
-          const targetLabel = OPERATIONAL_MESSAGE_ROLE_LABELS[counterpart] || counterpart;
+          const sourceLabel=OPERATIONAL_MESSAGE_ROLE_LABELS[message.sourceRole] || message.sourceRole;
           items.insertAdjacentHTML(
             "beforeend",
-            `<article class="operational-message-thread__message" data-sde-operational-message-id="${escapeHtml(messageId)}" style="--message-depth:${Math.min(Number(message.depth || 0),20)}">
+            `<article class="operational-message-thread__message ${direction}" data-sde-operational-message-id="${escapeHtml(messageId)}">
               <div class="operational-message-thread__meta">
                 <strong>${escapeHtml(sourceLabel)}</strong>
-                <span>til ${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[message.targetRole] || message.targetRole)}</span>
+                <time datetime="${escapeHtml(String(message.sentAt || ""))}">${escapeHtml(formatDropsVehicleStatusTimestamp(message.sentAt))}</time>
                 <span data-sde-operational-message-delivery>${escapeHtml(getOperationalMessageDeliveryLabel(message))}</span>
               </div>
               <p>${escapeHtml(String(message.message || ""))}</p>
-              <section class="operational-message-reply" data-sde-operational-message-reply>
-                <label>Svar til ${escapeHtml(targetLabel)}
-                  <textarea data-sde-operational-message-text data-sde-operational-role="${escapeHtml(role)}" data-sde-operational-message-draft-key="${escapeHtml(draftKey)}" data-sde-operational-message-id="${escapeHtml(messageId)}" maxlength="250" rows="2" placeholder="Skriv et svar …"></textarea>
-                  <span class="operational-message-composer__meta">
-                    <span data-sde-operational-message-reason></span>
-                    <span data-sde-operational-message-count>0 / 250</span>
-                  </span>
-                </label>
-                <button type="button" data-sde-operational-message-send data-sde-operational-role="${escapeHtml(role)}" data-sde-operational-message-draft-key="${escapeHtml(draftKey)}">Svar</button>
-                <p data-sde-operational-message-status role="status"></p>
-              </section>
             </article>`
           );
-          article = Array.from(items.querySelectorAll("[data-sde-operational-message-id]"))
-            .find(candidate=>
-              candidate.matches?.("article") &&
-              candidate.dataset.sdeOperationalMessageId === messageId
-            );
+          appended=true;
+          article=Array.from(items.querySelectorAll("[data-sde-operational-message-id]"))
+            .find(candidate=>candidate.dataset.sdeOperationalMessageId === messageId);
         }
-        const delivery = article?.querySelector("[data-sde-operational-message-delivery]");
-        if(delivery) delivery.textContent = getOperationalMessageDeliveryLabel(message);
+        article?.classList.toggle("is-sent",direction === "is-sent");
+        article?.classList.toggle("is-received",direction === "is-received");
+        const delivery=article?.querySelector("[data-sde-operational-message-delivery]");
+        if(delivery) delivery.textContent=getOperationalMessageDeliveryLabel(message);
       });
-    });
+      if(threadChanged || (appended && wasNearBottom)){
+        window.requestAnimationFrame?.(()=>{ list.scrollTop=list.scrollHeight; });
+      }else if(appended){
+        newer.hidden=false;
+      }
+    }
+
+    const textarea=host.querySelector("textarea");
+    const sendButton=host.querySelector("[data-sde-operational-message-send]");
+    const targetField=host.querySelector("[data-sde-operational-message-target-field]");
+    const targetSelect=host.querySelector("[data-sde-operational-message-target]");
+    const activeTarget=host.querySelector("[data-sde-operational-message-active-target]");
+    const latestMessage=activeGroup?.messages?.at(-1) || null;
+    const draftKey=activeGroup ? `thread:${activeGroup.threadId}` : "root";
+    const draft=getOperationalMessageDraft(role,draftKey,latestMessage);
+    if(textarea){
+      const previousDraftKey=String(textarea.dataset.sdeOperationalMessageDraftKey || "root");
+      textarea.dataset.sdeOperationalMessageDraftKey=draftKey;
+      textarea.dataset.sdeOperationalMessageId=String(latestMessage?.messageId || "");
+      textarea.placeholder=activeGroup ? "Skriv et svar …" : "Skriv din beskjed her …";
+      if(
+        document.activeElement !== textarea ||
+        previousDraftKey !== draftKey
+      ){
+        textarea.value=String(draft?.message || "");
+      }
+    }
+    if(sendButton){
+      sendButton.dataset.sdeOperationalMessageDraftKey=draftKey;
+      sendButton.textContent=activeGroup ? "Send svar" : "Send beskjed";
+    }
+    if(targetField) targetField.hidden=Boolean(activeGroup);
+    if(targetSelect) targetSelect.disabled=Boolean(activeGroup);
+    if(activeTarget){
+      activeTarget.hidden=!activeGroup;
+      activeTarget.textContent=activeGroup
+        ? `Svar til ${OPERATIONAL_MESSAGE_ROLE_LABELS[activeGroup.counterpartRole] || activeGroup.counterpartRole}`
+        : "";
+    }
   });
 }
 
@@ -49915,11 +50092,7 @@ function updateOperationalMessageComposerStatus(){
       const draftKey = String(textarea.dataset.sdeOperationalMessageDraftKey || "root");
       const draft = getOperationalMessageDraft(role,draftKey);
       if(!draft) return;
-      const scope = textarea.closest?.(
-        draftKey === "root"
-          ? "[data-sde-operational-message-composer]"
-          : "[data-sde-operational-message-reply]"
-      ) || host;
+      const scope = textarea.closest?.("[data-sde-operational-message-composer]") || host;
       const counter = scope.querySelector("[data-sde-operational-message-count]");
       const reason = scope.querySelector("[data-sde-operational-message-reason]");
       const button = scope.querySelector("[data-sde-operational-message-send]");
@@ -49941,6 +50114,38 @@ function updateOperationalMessageComposerStatus(){
         status.classList.toggle("is-error",result?.kind === "error");
       }
     });
+  });
+}
+
+function captureOperationalMessageTranscriptContexts(){
+  return Array.from(
+    document.querySelectorAll("[data-sde-operational-message-thread-list]")
+  ).map(list=>({
+    role:String(list.dataset.sdeOperationalRole || ""),
+    threadId:String(
+      list.querySelector("[data-sde-operational-message-thread-items]")
+        ?.dataset?.sdeOperationalMessageThread || ""
+    ),
+    scrollTop:Number(list.scrollTop || 0),
+    nearBottom:list.scrollHeight - list.scrollTop - list.clientHeight <= 40
+  })).filter(context=>context.role);
+}
+
+function restoreOperationalMessageTranscriptContexts(contexts){
+  (Array.isArray(contexts) ? contexts : []).forEach(context=>{
+    const list = Array.from(
+      document.querySelectorAll("[data-sde-operational-message-thread-list]")
+    ).find(candidate=>
+      String(candidate.dataset.sdeOperationalRole || "") === String(context.role || "")
+    );
+    const threadId = String(
+      list?.querySelector("[data-sde-operational-message-thread-items]")
+        ?.dataset?.sdeOperationalMessageThread || ""
+    );
+    if(!list || threadId !== String(context.threadId || "")) return;
+    list.scrollTop = context.nearBottom
+      ? list.scrollHeight
+      : Number(context.scrollTop || 0);
   });
 }
 
@@ -50000,6 +50205,31 @@ function handleOperationalMessageComposerInput(event){
 }
 
 function handleOperationalMessageComposerChange(event){
+  const threadSelector = event.target.closest?.(
+    "[data-sde-operational-message-thread-selector]"
+  );
+  if(threadSelector){
+    const role = String(threadSelector.dataset.sdeOperationalRole || "");
+    const threadId = String(threadSelector.value || "");
+    if(
+      !OPERATIONAL_MESSAGE_ROLES.includes(role) ||
+      (
+        threadId !== OPERATIONAL_MESSAGE_NEW_THREAD_KEY &&
+        !getOperationalMessageThreadGroupsForRole(
+          role,
+          Array.isArray(dropsVehicleStatusReadback?.operationalMessages)
+            ? dropsVehicleStatusReadback.operationalMessages
+            : []
+        ).some(group=>group.threadId === threadId)
+      )
+    ){
+      return false;
+    }
+    operationalMessageActiveThreadByRole.set(role,threadId);
+    renderOperationalMessageThreads();
+    updateOperationalMessageComposerStatus();
+    return true;
+  }
   const select = event.target.closest?.("[data-sde-operational-message-target]");
   if(!select) return false;
   const role = String(select.dataset.sdeOperationalRole || "");
@@ -50069,6 +50299,15 @@ async function submitOperationalMessageFromUi(role,draftKey="root"){
       confirmationError.messageId = messageId;
       throw confirmationError;
     }
+    const confirmedThreadId = String(
+      confirmedReceipt?.threadId ||
+      result?.body?.threadId ||
+      confirmedReceipt?.rootMessageId ||
+      messageId
+    );
+    if(confirmedThreadId){
+      operationalMessageActiveThreadByRole.set(role,confirmedThreadId);
+    }
     draft.message = "";
     operationalMessageLastResults.set(commandKey,{
       kind:"success",
@@ -50084,6 +50323,7 @@ async function submitOperationalMessageFromUi(role,draftKey="root"){
     });
   }finally{
     operationalMessageCommandsInFlight.delete(commandKey);
+    renderOperationalMessageThreads();
     updateOperationalMessageComposerStatus();
   }
 }
@@ -52347,82 +52587,39 @@ function getDropsSkienStationVehicleStatus(item){
   const vehicle = sanitizeVehicleValue(item?.vehicle || "");
   const slot = normalizeSlot(item?.slot || "");
   const dropsOrder = getSdeDropsOrderForVehicle(vehicle);
-  const dropsReady = !!dropsOrder?.driftsklarAt;
-  const dropsWorkComplete = !!dropsOrder?.workCompleteAt;
-  const repDreiValue = getSdeGrunnoppstillingRepDreiValueForVehicle(vehicle);
-  const isDrei = isDreiMarker(repDreiValue);
-  const isRep = isRepMarker(repDreiValue) && !isDrei;
+  const presentation = getAuthoritativeVehicleStatusPresentation(
+    dropsVehicleStatusReadback || {},
+    vehicle
+  );
   const departureLabel = getSporplanDepartureLabelsForVehicle(vehicle);
   const onWorkshopSlot = isSdeWorkshopSlot(slot);
-
-  if(isDrei || isRep){
-    const label = isDrei ? "DREI" : "REP";
-    return {
-      cls:"blocked",
-      status:label,
-      detail:`${label}-markert. Ikke driftsklart. Skal ikke behandles som trafikkklart.${dropsOrder && !dropsOrder.dropsApprovedAt ? " Verkstedbestilling avventer DROPS-godkjenning." : ""}`
-    };
+  const attention = [];
+  if(presentation.disposition === "TIL_DREI") attention.push("Dreies");
+  if(presentation.disposition === "TIL_REP") attention.push("Til reparasjon");
+  if(presentation.activeFaults.length){
+    attention.push(`${presentation.activeFaults.length} aktive feil`);
   }
-
+  if(presentation.requestedRepairRequests.length){
+    attention.push(`${presentation.requestedRepairRequests.length} åpne utbedringsbestillinger`);
+  }
   if(dropsOrder && !dropsOrder.dropsApprovedAt){
-    return {
-      cls:"warning",
-      status:"Ikke driftsklart",
-      detail:"Verkstedbehov registrert. Avventer at DROPS godkjenner bestilling av kjøretøy til verksted."
-    };
+    attention.push("verkstedbestilling avventer DROPS-godkjenning");
+  }else if(dropsOrder?.workCompleteAt){
+    attention.push("utkjøring bestilt");
   }
-
-  if(dropsWorkComplete){
-    return {
-      cls:dropsReady ? "action ready-context" : "action",
-      status:"Bestilt utkjøring",
-      detail:dropsReady
-        ? "KREVER HANDLING: kjøretøyet er driftsklart, men verkstedspor må frigjøres raskt."
-        : "Krever handling: frigjør verkstedspor raskt. Kjøretøyet er fortsatt ikke driftsklart."
-    };
+  if(departureLabel) attention.push(`tursatt til ${departureLabel}`);
+  if(onWorkshopSlot) attention.push(`står på verkstedspor ${slot}`);
+  if(presentation.defaultOperational){
+    attention.push("Driftsklar som standard – ingen eksplisitt status registrert");
   }
-
-  if(isDrei || isRep){
-    const label = isDrei ? "DREI" : "REP";
-    return {
-      cls:"blocked",
-      status:label,
-      detail:`${label}-markert. Ikke driftsklart. Skal ikke behandles som trafikkklart.`
-    };
-  }
-
-  if(dropsReady){
-    return {
-      cls:"ready",
-      status:departureLabel ? `Tursatt til ${departureLabel}` : "Res.",
-      detail:onWorkshopSlot
-        ? "Driftsklart bekreftet. Verkstedstatus overstyrt; behandles som tilgjengelig materiell."
-        : "Driftsklart / tilgjengelig materiell."
-    };
-  }
-
-  if(dropsOrder || onWorkshopSlot){
-    return {
-      cls:dropsWorkComplete ? "action" : "warning",
-      status:dropsWorkComplete ? "Bestilt utkjøring" : "Verkstedbundet",
-      detail:dropsWorkComplete
-        ? "Krever handling: frigjør verkstedspor raskt. Kjøretøyet er fortsatt ikke driftsklart."
-        : "På verksted / avventer driftsklar-kvittering."
-    };
-  }
-
-  if(departureLabel){
-    return {
-      cls:"ready",
-      status:`Tursatt til ${departureLabel}`,
-      detail:"Kjøretøyet har tursatt avgang i grunnlaget."
-    };
-  }
-
   return {
-    cls:"ready",
-    status:"Res.",
-    detail:"Ingen tursatt avgang funnet i grunnlaget."
+    cls:presentation.effectiveStatus === "IKKE_DRIFTSKLAR" ? "blocked" : "ready",
+    status:presentation.effectiveStatus === "IKKE_DRIFTSKLAR"
+      ? "Ikke driftsklar"
+      : "Driftsklar",
+    detail:attention.length
+      ? attention.join(" · ")
+      : "Ingen operative merknader registrert."
   };
 }
 
@@ -52801,6 +52998,18 @@ function renderDropsPanels(){
 function initDropsPanels(){
   startVehicleStatusVisiblePolling();
   document.addEventListener("click", event=>{
+    const operationalMessageNewer = event.target.closest(
+      "[data-sde-operational-message-newer]"
+    );
+    if(operationalMessageNewer){
+      event.preventDefault();
+      const list = operationalMessageNewer.closest(
+        "[data-sde-operational-message-thread-list]"
+      );
+      if(list) list.scrollTop = list.scrollHeight;
+      operationalMessageNewer.hidden = true;
+      return;
+    }
     const agiliaCleaningSubmit = event.target.closest("[data-sde-agilia-cleaning-submit]");
     if(agiliaCleaningSubmit){
       event.preventDefault();
