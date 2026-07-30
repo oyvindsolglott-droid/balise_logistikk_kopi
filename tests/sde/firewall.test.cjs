@@ -242,6 +242,20 @@ test("GLOBAL instantmelding — alle 20 rolle-retninger er serverautoritative, m
   );
 });
 
+registerHarnessTest({
+  phase:"SDE statusparitet",
+  name:"Sporplan, Verksted og DROPS følger samme ferske statusmodell ved polling",
+  harness:"sde-status-parity-polling-harness.js",
+  baseline:"ec0fe9f6fadfda191c34221aa4bf627829f62b12",
+});
+
+registerHarnessTest({
+  phase:"SDE direktemelding",
+  name:"popup-svar og normal modul deler én stabil serverautoritativ tråd",
+  harness:"sde-popup-reply-thread-surfacing-harness.js",
+  baseline:"ec0fe9f6fadfda191c34221aa4bf627829f62b12",
+});
+
 test("NIVÅ 4 innkjøring — fysisk tomt spor kan ha nøyaktig én autoritativ kort-/reservasjonseier", () => {
   assertPassed(
     runHarness("sde-ingress-card-authority-harness.js"),
