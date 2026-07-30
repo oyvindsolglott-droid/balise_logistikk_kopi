@@ -121,12 +121,20 @@ assert.equal(repair.dispositionClassName,"is-repair");
 assert.equal(repair.kind,"operational");
 
 const frameSource = extractFunction("getSporplanVehicleStatusFrameClass");
+const framePresentationsSource = extractFunction("getSporplanVehicleStatusPresentations");
 const frameContext = {
+  getDropsVehicleStatusRecord:(readback,vehicleId)=>
+    (readback?.items || []).find(item=>item.vehicleId === vehicleId) || null,
   splitVehicleList:value=>String(value || "").split(/\s*,\s*/),
   normalizeVehicleToken:value=>String(value || "").trim(),
 };
 vm.createContext(frameContext);
-vm.runInContext(`${frameSource}; this.frame=getSporplanVehicleStatusFrameClass;`,frameContext);
+vm.runInContext(`
+  ${presentationSource}
+  ${framePresentationsSource}
+  ${frameSource}
+  this.frame=getSporplanVehicleStatusFrameClass;
+`,frameContext);
 assert.equal(frameContext.frame({items:[]},"74-10"),"sporplan-status-operational");
 assert.equal(frameContext.frame({
   items:[{vehicleId:"74-10",currentStatus:"IKKE_DRIFTSKLAR"}],

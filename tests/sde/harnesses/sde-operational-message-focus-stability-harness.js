@@ -45,9 +45,10 @@ for(const token of [
   "restoreOperationalMessageEditorContext",
   "updateOperationalMessageComposerStatus",
   "operationalMessageDrafts",
+  "operationalMessageActiveThreadByRole",
   "data-sde-operational-message-text",
   "data-sde-operational-message-draft-key",
-  "data-sde-operational-message-id",
+  "data-sde-operational-message-thread-selector",
 ]){
   assert.ok(source.includes(token), `message focus contract misses ${token}`);
 }
@@ -62,6 +63,7 @@ assert.equal(
 const globalCapture = extractFunction("captureGlobalUpdateContext");
 const globalRestore = extractFunction("restoreGlobalUpdateContext");
 assert.ok(globalCapture.includes("operationalMessageEditorContext"));
+assert.ok(globalCapture.includes("operationalMessageActiveThreadByRole"));
 assert.ok(globalRestore.includes("restoreOperationalMessageEditorContext"));
 
 const capture = extractFunction("captureOperationalMessageEditorContext");
@@ -76,8 +78,8 @@ const textarea = {
   dataset: {
     sdeOperationalMessageText:"",
     sdeOperationalRole:"verksted",
-    sdeOperationalMessageDraftKey:"reply:message-20",
-    sdeOperationalMessageId:"message-20",
+    sdeOperationalMessageDraftKey:"thread:thread-20",
+    sdeOperationalMessageId:"",
   },
   focusCalls: 0,
   focus(){ this.focusCalls += 1; document.activeElement = this; },
@@ -86,7 +88,7 @@ const textarea = {
 const host = {
   dataset: {sdeOperationalMessageHost: "", sdeOperationalRole: "verksted"},
   querySelector(selector){
-    return selector === '[data-sde-operational-message-text][data-sde-operational-message-draft-key="reply:message-20"]'
+    return selector === '[data-sde-operational-message-text][data-sde-operational-message-draft-key="thread:thread-20"]'
       ? textarea
       : null;
   },
@@ -111,8 +113,8 @@ vm.runInContext(`
 
 const saved = context.capture();
 assert.equal(saved.role, "verksted");
-assert.equal(saved.draftKey,"reply:message-20");
-assert.equal(saved.messageId,"message-20");
+assert.equal(saved.draftKey,"thread:thread-20");
+assert.equal(saved.messageId,"");
 assert.equal(saved.value, textarea.value);
 assert.equal(saved.selectionStart, 14);
 assert.equal(saved.selectionEnd, 21);

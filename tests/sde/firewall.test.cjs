@@ -270,6 +270,20 @@ test("GLOBAL instantmelding — uendret polling og Oppdater bevarer textarea-nod
   );
 });
 
+test("DROPS/SPORPLAN — bare eksplisitt Ikke Driftsklar er rød, og bare Dreies er synlig statusbadge", () => {
+  assertPassed(
+    runHarness("sde-default-status-sporplan-simplification-harness.js"),
+    "default status and simplified Sporplan presentation",
+  );
+});
+
+test("GLOBAL meldingstråd — én aktiv kronologisk tråd har nøyaktig ett stabilt svarfelt", () => {
+  assertPassed(
+    runHarness("sde-single-operational-thread-ui-harness.js"),
+    "single operational message thread UI",
+  );
+});
+
 test("SIKKERHETSINVARIANTER — målspor, default Driftsklar og rollefiltrert veiledning er sentralisert", () => {
   assertPassed(
     runHarness("sde-absolute-target-default-status-guide-harness.js"),
