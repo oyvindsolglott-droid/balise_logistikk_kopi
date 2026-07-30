@@ -9255,6 +9255,70 @@ button{padding:12px 12px}
   gap:10px;
   margin-top:8px;
 }
+.vehicle-status-notification-reply{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:10px;
+  align-items:end;
+  padding:14px;
+  border:1px solid rgba(147,197,253,.65);
+  border-radius:16px;
+  background:rgba(15,23,42,.78);
+}
+.vehicle-status-notification-reply label{
+  display:grid;
+  gap:6px;
+  min-width:0;
+  font-weight:850;
+}
+.vehicle-status-notification-reply textarea{
+  box-sizing:border-box;
+  width:100%;
+  min-height:86px;
+  resize:vertical;
+  border:2px solid #93c5fd;
+  border-radius:12px;
+  padding:10px 12px;
+  background:#fff;
+  color:#0f172a;
+  font:inherit;
+  line-height:1.35;
+}
+.vehicle-status-notification-reply textarea:focus-visible{
+  outline:3px solid #60a5fa;
+  outline-offset:2px;
+}
+.vehicle-status-notification-reply .operational-message-composer__meta{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  color:#dbeafe;
+  font-size:.78em;
+}
+.vehicle-status-notification-reply > button{
+  min-height:46px;
+  border:1px solid rgba(255,255,255,.45);
+  border-radius:12px;
+  padding:10px 16px;
+  background:#1d4ed8;
+  color:#fff;
+  font:inherit;
+  font-weight:900;
+  cursor:pointer;
+}
+.vehicle-status-notification-reply > button:disabled{
+  cursor:not-allowed;
+  opacity:.55;
+}
+.vehicle-status-notification-reply [data-sde-operational-message-status]{
+  grid-column:1/-1;
+  min-height:1.2em;
+  margin:0;
+  font-size:.78em;
+  font-weight:850;
+}
+.vehicle-status-notification-reply [data-sde-operational-message-status].is-success{color:#86efac}
+.vehicle-status-notification-reply [data-sde-operational-message-status].is-error{color:#fca5a5}
 .vehicle-status-notification-popup .vehicle-status-notification-actions button{
   min-height:46px;
   border:1px solid rgba(255,255,255,.45);
@@ -9285,6 +9349,20 @@ button{padding:12px 12px}
   color:#fde68a;
   font-size:10px;
   font-weight:800;
+}
+@media(max-width:640px){
+  .vehicle-status-notification-host{
+    inset:10px 50% auto auto;
+    width:calc(100vw - 20px);
+  }
+  .vehicle-status-notification-popup{
+    max-height:calc(100dvh - 20px);
+    overflow:auto;
+    overscroll-behavior:contain;
+    padding:16px;
+  }
+  .vehicle-status-notification-reply{grid-template-columns:1fr}
+  .vehicle-status-notification-reply > button{width:100%}
 }
 @media(max-width:1100px){
   .drops-vehicle-groups{ grid-template-columns:repeat(2,minmax(0,1fr)); }
@@ -15720,14 +15798,15 @@ function buildSporplan(){
     if(isTurn){
       html+='<span class="slot-rep-badge">Dreies</span>';
     }
-    div.title=[
+    const baseTitle=[
       `Slot ${slot}`,
       vehicleId ? `Kjøretøy ${vehicleId}` : "Tom",
       sporplanTexts.currentTrain ? `Tog ${sporplanTexts.currentTrain}` : "",
       sporplanTexts.nextTrain ? `Neste ${sporplanTexts.nextTrain}` : "",
-      statusAccessibilityLabel,
       planLabels.join(" · ")
     ].filter(Boolean).join(" · ");
+    div.dataset.sdeSporplanBaseTitle=baseTitle;
+    div.title=[baseTitle,statusAccessibilityLabel].filter(Boolean).join(" · ");
     div.innerHTML=html;
     grid.appendChild(div);
   });
@@ -48807,26 +48886,37 @@ function getWorkshopHallOverviewStatus(readback,vehicleId){
   const cleanVehicleId = String(vehicleId || "");
   const presentation = typeof getAuthoritativeVehicleStatusPresentation === "function"
     ? getAuthoritativeVehicleStatusPresentation(readback,cleanVehicleId)
-    : (() => {
-        const fallbackRecord = getDropsVehicleStatusRecord(readback,cleanVehicleId);
-        const fallbackKind = fallbackRecord?.currentStatus === "DRIFTSKLAR"
-          ? "operational"
-          : (fallbackRecord?.currentStatus === "IKKE_DRIFTSKLAR" ? "not-operational" : "unknown");
+    : (()=>{
+        /*
+         * The permanent workshop harness evaluates this function in isolation.
+         * Production always takes the shared authoritative branch above.
+         */
+        const frameClass = getSporplanVehicleStatusFrameClass(readback,cleanVehicleId);
+        const record = getDropsVehicleStatusRecord(readback,cleanVehicleId);
+        const disposition = String(record?.workshopDisposition || "");
         return {
-          record:fallbackRecord,
-          kind:fallbackKind,
-          className:fallbackKind === "operational"
-            ? "is-operational"
-            : (fallbackKind === "not-operational" ? "is-not-operational" : "is-unknown"),
-          label:fallbackKind === "operational"
-            ? "DRIFTSKLAR"
-            : (fallbackKind === "not-operational" ? "IKKE DRIFTSKLAR" : "STATUS IKKE REGISTRERT"),
-          dispositionLabel:fallbackRecord?.workshopDisposition === "TIL_REP"
+          label:frameClass === "sporplan-status-not-operational"
+            ? "IKKE DRIFTSKLAR"
+            : frameClass === "sporplan-status-operational" ||
+              frameClass === "sporplan-status-turn"
+              ? "DRIFTSKLAR"
+              : "STATUS IKKE REGISTRERT",
+          className:frameClass === "sporplan-status-not-operational"
+            ? "is-not-operational"
+            : frameClass === "sporplan-status-operational" ||
+              frameClass === "sporplan-status-turn"
+              ? "is-operational"
+              : "is-unknown",
+          dispositionLabel:disposition === "TIL_REP"
             ? "TIL REP"
-            : (fallbackRecord?.workshopDisposition === "TIL_DREI" ? "TIL DREI" : ""),
-          dispositionClassName:fallbackRecord?.workshopDisposition === "TIL_REP"
+            : disposition === "TIL_DREI"
+              ? "TIL DREI"
+              : "",
+          dispositionClassName:disposition === "TIL_REP"
             ? "is-repair"
-            : (fallbackRecord?.workshopDisposition === "TIL_DREI" ? "is-turning" : "")
+            : disposition === "TIL_DREI"
+              ? "is-turning"
+              : ""
         };
       })();
   return {
@@ -49803,6 +49893,126 @@ function getOperationalMessageDraft(role,draftKey="root",messageRecord=null){
   return draft;
 }
 
+function getOperationalMessageNotificationRecord(notification){
+  if(
+    notification?.kind !== "OPERATIONAL_MESSAGE" &&
+    notification?.kind !== "WORKSHOP_MESSAGE"
+  ) return null;
+  const payload = notification?.payload || {};
+  const messageId = String(payload.messageId || "");
+  const threadId = String(payload.threadId || payload.rootMessageId || messageId);
+  const rootMessageId = String(payload.rootMessageId || messageId);
+  const sourceRole = String(payload.sourceRole || "");
+  const targetRole = String(notification?.targetRole || payload.targetRole || "");
+  if(
+    !messageId ||
+    !threadId ||
+    !rootMessageId ||
+    !OPERATIONAL_MESSAGE_ROLES.includes(sourceRole) ||
+    !OPERATIONAL_MESSAGE_ROLES.includes(targetRole) ||
+    sourceRole === targetRole
+  ) return null;
+  return {
+    messageId,
+    threadId,
+    rootMessageId,
+    parentMessageId:String(payload.parentMessageId || ""),
+    sourceRole,
+    targetRole,
+    message:String(payload.message || ""),
+    context:payload.context || {
+      vehicleId:String(payload.selectedVehicleId || ""),
+      slotId:String(payload.selectedSlotId || "")
+    },
+    sentAt:String(payload.sentAt || notification?.createdAt || ""),
+    depth:Number(payload.depth || 0),
+    deliveryState:notification?.acknowledgedAt
+      ? "acknowledged"
+      : (notification?.presentedAt ? "presented" : "sent")
+  };
+}
+
+function getOperationalMessagePopupReplyContext(notification){
+  const messageRecord = getOperationalMessageNotificationRecord(notification);
+  if(!messageRecord) return null;
+  const role = messageRecord.targetRole;
+  if(!hasOperationalMessageReplyCapability(role)) return null;
+  const draftKey = `thread:${messageRecord.threadId}`;
+  const draft = getOperationalMessageDraft(role,draftKey,messageRecord);
+  return draft ? {role,draftKey,draft,messageRecord} : null;
+}
+
+function hasOperationalMessageReplyCapability(role){
+  role = String(role || "");
+  const capability = dropsRuntimeCapabilities
+    ?.capabilities?.["vehicle_status.send_operational_message"];
+  const roles = Array.isArray(dropsRuntimeCapabilities?.roles)
+    ? dropsRuntimeCapabilities.roles
+    : [];
+  return (
+    getActiveOperationalMessageRole() === role &&
+    dropsRuntimeCapabilities?.ok === true &&
+    dropsRuntimeCapabilities?.roleResolved === true &&
+    roles.includes(role) &&
+    capability?.allowed === true &&
+    capability?.decision === "ALLOW"
+  );
+}
+
+function hasProtectedOperationalMessageActivity(role,incomingThreadId=""){
+  role = String(role || "");
+  incomingThreadId = String(incomingThreadId || "");
+  const activeThreadId = String(operationalMessageActiveThreadByRole.get(role) || "");
+  if(
+    activeThreadId &&
+    activeThreadId !== OPERATIONAL_MESSAGE_NEW_THREAD_KEY &&
+    activeThreadId !== incomingThreadId
+  ) return true;
+  const rootDraft = getOperationalMessageDraft(role,"root");
+  if(String(rootDraft?.message || "").trim()) return true;
+  for(const [mapKey,draft] of operationalMessageReplyDrafts.entries()){
+    if(
+      mapKey.startsWith(`${role}|`) &&
+      String(draft?.threadId || "") !== incomingThreadId &&
+      String(draft?.message || "").trim()
+    ) return true;
+  }
+  const focused = typeof document !== "undefined" ? document.activeElement : null;
+  const focusedEditor = focused?.closest?.(
+    `[data-sde-operational-message-host][data-sde-operational-role="${role}"]`
+  );
+  if(focusedEditor){
+    const focusedDraftKey = String(
+      focused?.dataset?.sdeOperationalMessageDraftKey || ""
+    );
+    if(
+      focusedDraftKey.startsWith("thread:") &&
+      focusedDraftKey !== `thread:${incomingThreadId}`
+    ) return true;
+  }
+  return false;
+}
+
+function activateOperationalMessageThreadFromNotification(notification,{force=false}={}){
+  const messageRecord = getOperationalMessageNotificationRecord(notification);
+  if(!messageRecord) return false;
+  const role = messageRecord.targetRole;
+  if(
+    !force &&
+    hasProtectedOperationalMessageActivity(role,messageRecord.threadId)
+  ) return false;
+  const currentThreadId = String(
+    operationalMessageActiveThreadByRole.get(role) || ""
+  ).trim();
+  operationalMessageActiveThreadByRole.set(role,messageRecord.threadId);
+  getOperationalMessageDraft(
+    role,
+    `thread:${messageRecord.threadId}`,
+    messageRecord
+  );
+  return currentThreadId !== messageRecord.threadId;
+}
+
 function getOperationalMessageThreadGroupsForRole(role,messages){
   role = String(role || "");
   const chronological = (Array.isArray(messages) ? messages : [])
@@ -49831,6 +50041,10 @@ function getOperationalMessageThreadGroupsForRole(role,messages){
       threadId,
       counterpartRole:String(counterpartRole || ""),
       latestAt:String(latest.sentAt || ""),
+      hasUnread:
+        latest.targetRole === role &&
+        latest.deliveryState !== "acknowledged" &&
+        !latest.acknowledgedAt,
       messages:threadMessages
     };
   }).sort((left,right)=>
@@ -49842,6 +50056,14 @@ function getOperationalMessageThreadGroupsForRole(role,messages){
 function getActiveOperationalMessageThreadId(role,groups){
   const available = new Set((Array.isArray(groups) ? groups : []).map(group=>group.threadId));
   let active = String(operationalMessageActiveThreadByRole.get(role) || "");
+  const newestThreadId = String(groups?.[0]?.threadId || "");
+  if(
+    active === OPERATIONAL_MESSAGE_NEW_THREAD_KEY &&
+    newestThreadId &&
+    !hasProtectedOperationalMessageActivity(role,newestThreadId)
+  ){
+    active = newestThreadId;
+  }
   if(active !== OPERATIONAL_MESSAGE_NEW_THREAD_KEY && !available.has(active)){
     active = groups?.[0]?.threadId || OPERATIONAL_MESSAGE_NEW_THREAD_KEY;
   }
@@ -49926,7 +50148,7 @@ function renderOperationalMessageComposers(){
         <select data-sde-operational-message-target data-sde-operational-role="${role}">${targets}</select>
       </label>
       <p class="operational-message-active-target" data-sde-operational-message-active-target hidden></p>
-      <label>Beskjed
+      <label><span data-sde-operational-message-editor-label>Beskjed</span>
         <textarea data-sde-operational-message-text data-sde-operational-message-reply data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root" data-sde-operational-message-id="" maxlength="250" rows="3" placeholder="Skriv din beskjed her …"></textarea>
         <span class="operational-message-composer__meta">
           <span data-sde-operational-message-reason></span>
@@ -49972,7 +50194,7 @@ function renderOperationalMessageThreads(){
       },
       ...groups.map(group=>({
         value:group.threadId,
-        label:`${OPERATIONAL_MESSAGE_ROLE_LABELS[group.counterpartRole] || group.counterpartRole} · ${formatDropsVehicleStatusTimestamp(group.latestAt)}`
+        label:`${OPERATIONAL_MESSAGE_ROLE_LABELS[group.counterpartRole] || group.counterpartRole} · ${formatDropsVehicleStatusTimestamp(group.latestAt)}${group.hasUnread ? " · Ny" : ""}`
       }))
     ];
     desiredOptions.forEach(({value,label},index)=>{
@@ -50049,6 +50271,7 @@ function renderOperationalMessageThreads(){
     const targetField=host.querySelector("[data-sde-operational-message-target-field]");
     const targetSelect=host.querySelector("[data-sde-operational-message-target]");
     const activeTarget=host.querySelector("[data-sde-operational-message-active-target]");
+    const editorLabel=host.querySelector("[data-sde-operational-message-editor-label]");
     const latestMessage=activeGroup?.messages?.at(-1) || null;
     const draftKey=activeGroup ? `thread:${activeGroup.threadId}` : "root";
     const draft=getOperationalMessageDraft(role,draftKey,latestMessage);
@@ -50076,7 +50299,83 @@ function renderOperationalMessageThreads(){
         ? `Svar til ${OPERATIONAL_MESSAGE_ROLE_LABELS[activeGroup.counterpartRole] || activeGroup.counterpartRole}`
         : "";
     }
+    if(editorLabel) editorLabel.textContent=activeGroup ? "Svar" : "Beskjed";
   });
+}
+
+function syncOperationalMessagePopupReplyUi(){
+  const popupReply = document.querySelector(
+    "#vehicleStatusNotificationHost [data-sde-operational-message-popup-reply]"
+  );
+  document.querySelectorAll(
+    "[data-sde-operational-message-popup-disabled='true']"
+  ).forEach(control=>{
+    if(control.matches("textarea")){
+      control.disabled =
+        control.dataset.sdeOperationalMessagePopupPreviousDisabled === "true";
+      const previousTabindex =
+        control.dataset.sdeOperationalMessagePopupPreviousTabindex;
+      if(previousTabindex === "") control.removeAttribute("tabindex");
+      else if(previousTabindex != null) control.setAttribute("tabindex",previousTabindex);
+    }
+    delete control.dataset.sdeOperationalMessagePopupDisabled;
+    delete control.dataset.sdeOperationalMessagePopupPreviousDisabled;
+    delete control.dataset.sdeOperationalMessagePopupPreviousTabindex;
+  });
+  if(!popupReply) return;
+  const context = getOperationalMessagePopupReplyContext(
+    activeVehicleStatusNotification
+  );
+  if(!context) return;
+  const {role,draftKey,draft} = context;
+  const textarea = popupReply.querySelector("[data-sde-operational-message-text]");
+  const counter = popupReply.querySelector("[data-sde-operational-message-count]");
+  const reason = popupReply.querySelector("[data-sde-operational-message-reason]");
+  const button = popupReply.querySelector("[data-sde-operational-message-send]");
+  const status = popupReply.querySelector("[data-sde-operational-message-status]");
+  if(textarea && document.activeElement !== textarea){
+    textarea.value = String(draft.message || "");
+  }
+  if(counter) counter.textContent = `${String(draft.message || "").length} / 250`;
+  const availability = getOperationalMessageAvailability(role,draftKey);
+  if(reason) reason.textContent = availability.reason;
+  if(button){
+    button.disabled = !availability.available;
+    button.setAttribute("aria-disabled",availability.available ? "false" : "true");
+  }
+  const result = operationalMessageLastResults.get(`${role}|${draftKey}`) || null;
+  if(status){
+    status.textContent = result?.message || "";
+    status.classList.toggle("is-success",result?.kind === "success");
+    status.classList.toggle("is-error",result?.kind === "error");
+  }
+  const backgroundHost = document.querySelector(
+    `[data-sde-operational-message-host][data-sde-operational-role="${role}"]`
+  );
+  const backgroundTextarea = Array.from(
+    backgroundHost?.querySelectorAll("[data-sde-operational-message-text]") || []
+  ).find(control=>
+    String(control.dataset.sdeOperationalMessageDraftKey || "root") === draftKey
+  );
+  const backgroundButton = Array.from(
+    backgroundHost?.querySelectorAll("[data-sde-operational-message-send]") || []
+  ).find(control=>
+    String(control.dataset.sdeOperationalMessageDraftKey || "root") === draftKey
+  );
+  if(backgroundTextarea){
+    backgroundTextarea.dataset.sdeOperationalMessagePopupDisabled = "true";
+    backgroundTextarea.dataset.sdeOperationalMessagePopupPreviousDisabled =
+      backgroundTextarea.disabled ? "true" : "false";
+    backgroundTextarea.dataset.sdeOperationalMessagePopupPreviousTabindex =
+      backgroundTextarea.getAttribute("tabindex") || "";
+    backgroundTextarea.disabled = true;
+    backgroundTextarea.setAttribute("tabindex","-1");
+  }
+  if(backgroundButton){
+    backgroundButton.dataset.sdeOperationalMessagePopupDisabled = "true";
+    backgroundButton.disabled = true;
+    backgroundButton.setAttribute("aria-disabled","true");
+  }
 }
 
 function updateOperationalMessageComposerStatus(){
@@ -50115,6 +50414,7 @@ function updateOperationalMessageComposerStatus(){
       }
     });
   });
+  syncOperationalMessagePopupReplyUi();
 }
 
 function captureOperationalMessageTranscriptContexts(){
@@ -50881,12 +51181,49 @@ function selectWorkshopOverviewVehicle(vehicleId){
   return true;
 }
 
-function renderSporplanVehicleStatusBadges(){
+function renderSporplanVehicleStatusPresentation(){
   document.querySelectorAll(".slot[data-slot]").forEach(slot=>{
     const host = slot.querySelector("[data-sde-sporplan-vehicle-status]");
     if(!host) return;
-    host.innerHTML = buildSporplanVehicleStatusBadgesHtml(dropsVehicleStatusReadback || {},host.dataset.vehicleText || "");
+    const readback = dropsVehicleStatusReadback || {};
+    const vehicleText = String(host.dataset.vehicleText || "");
+    const statusFrameClass = getSporplanVehicleStatusFrameClass(readback,vehicleText);
+    const statusAccessibilityLabel = getSporplanVehicleAccessibilityLabel(readback,vehicleText);
+    const primaryVehicleId = splitVehicleList(vehicleText)
+      .map(normalizeVehicleToken)
+      .find(Boolean) || "";
+    const primaryPresentation = primaryVehicleId
+      ? getAuthoritativeVehicleStatusPresentation(readback,primaryVehicleId)
+      : null;
+    slot.classList.remove(
+      "sporplan-status-operational",
+      "sporplan-status-not-operational"
+    );
+    if(statusFrameClass) slot.classList.add(statusFrameClass);
+    const slotId = String(slot.dataset.slot || "");
+    slot.setAttribute(
+      "aria-label",
+      `Slot ${slotId}, kjøretøy ${vehicleText || "ikke oppgitt"}${
+        statusAccessibilityLabel ? `. ${statusAccessibilityLabel}` : ""
+      }`
+    );
+    const baseTitle = String(
+      slot.dataset.sdeSporplanBaseTitle ||
+      `Slot ${slotId} · Kjøretøy ${vehicleText || "ikke oppgitt"}`
+    );
+    slot.title = [
+      baseTitle,
+      statusAccessibilityLabel ||
+        primaryPresentation?.accessibleLabel ||
+        primaryPresentation?.label ||
+        ""
+    ].filter(Boolean).join(" · ");
+    host.innerHTML = buildSporplanVehicleStatusBadgesHtml(readback,vehicleText);
   });
+}
+
+function renderSporplanVehicleStatusBadges(){
+  renderSporplanVehicleStatusPresentation();
 }
 
 function reconcileVehicleStatusNotifications(readback){
@@ -51098,6 +51435,9 @@ function selectVehicleStatusNotificationVehicle(notification){
   ){
     const deepLink = resolveOperationalMessageDeepLink(notification);
     if(!deepLink) return;
+    activateOperationalMessageThreadFromNotification(notification,{force:true});
+    renderOperationalMessageThreads();
+    updateOperationalMessageComposerStatus();
     const targetRole = deepLink.targetRole;
     const target = OPERATIONAL_MESSAGE_ROLE_SURFACES[targetRole];
     const contextVehicleId = deepLink.vehicleId;
@@ -51167,6 +51507,9 @@ function buildWorkshopNotificationPopupHtml(notification){
     typeof resolveOperationalMessageDeepLink === "function"
       ? resolveOperationalMessageDeepLink(notification)
       : null;
+  const replyContext = operationalMessage
+    ? getOperationalMessagePopupReplyContext(notification)
+    : null;
   const acknowledgedAt = String(notification.acknowledgedAt || "");
   const title = cleaningTrackSpaceRequested
     ? (notification.targetRole === "txp"
@@ -51194,7 +51537,7 @@ function buildWorkshopNotificationPopupHtml(notification){
       suggestedTarget = "";
     }
   }
-  return `<section class="vehicle-status-notification-popup${operationalMessage || cleaningTrackSpaceRequested ? " is-workshop-message" : workshopExitRequested ? " is-workshop-exit-requested" : repairRequested ? " is-repair-requested" : " is-operational"}${acknowledgedAt ? " is-acknowledged" : ""}" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
+  return `<section class="vehicle-status-notification-popup${operationalMessage || cleaningTrackSpaceRequested ? " is-workshop-message" : workshopExitRequested ? " is-workshop-exit-requested" : repairRequested ? " is-repair-requested" : " is-operational"}${acknowledgedAt ? " is-acknowledged" : ""}" data-sde-notification-id="${escapeHtml(String(notification.notificationId || ""))}" data-sde-popup-reply-authorized="${replyContext ? "true" : "false"}" role="alertdialog" aria-modal="true" aria-label="${escapeHtml(title)}">
     <button type="button" data-sde-dismiss-vehicle-status-notification aria-label="Lukk varsel">×</button>
     <strong>${escapeHtml(title)}</strong>
     ${operationalMessage ? `<span>${escapeHtml(payload.message || "")}</span>` : `<span>Kjøretøy: ${escapeHtml(notification.vehicleId || "")}</span>`}
@@ -51222,6 +51565,17 @@ function buildWorkshopNotificationPopupHtml(notification){
     <span>Status: REQUESTED</span>
     ${payload.shortNotice ? "<span>Kort varsel: bekreftet av Agilia</span>" : ""}
     <span>Bestilt: ${escapeHtml(formatDropsVehicleStatusTimestamp(requestedAt))}</span>` : ""}
+    ${replyContext ? `<section class="vehicle-status-notification-reply operational-message-reply" data-sde-operational-message-popup-reply data-sde-operational-role="${escapeHtml(replyContext.role)}" data-sde-operational-message-draft-key="${escapeHtml(replyContext.draftKey)}" aria-label="Svar på direktemelding">
+      <label><span>Svar</span>
+        <textarea data-sde-operational-message-text data-sde-operational-message-reply data-sde-operational-role="${escapeHtml(replyContext.role)}" data-sde-operational-message-draft-key="${escapeHtml(replyContext.draftKey)}" data-sde-operational-message-id="${escapeHtml(replyContext.messageRecord.messageId)}" maxlength="250" rows="3" placeholder="Skriv et svar …"></textarea>
+        <span class="operational-message-composer__meta">
+          <span data-sde-operational-message-reason></span>
+          <span data-sde-operational-message-count>0 / 250</span>
+        </span>
+      </label>
+      <button type="button" data-sde-operational-message-send data-sde-operational-role="${escapeHtml(replyContext.role)}" data-sde-operational-message-draft-key="${escapeHtml(replyContext.draftKey)}">Send svar</button>
+      <p data-sde-operational-message-status role="status"></p>
+    </section>` : ""}
     <div class="vehicle-status-notification-actions">
       ${operationalMessage
         ? (operationalDeepLink
@@ -51245,6 +51599,7 @@ function dismissVehicleStatusNotificationPopup(){
   activeVehicleStatusNotification = null;
   document.getElementById("vehicleStatusNotificationHost")?.replaceChildren();
   renderVehicleStatusNotificationPopup();
+  updateOperationalMessageComposerStatus();
   if(!activeVehicleStatusNotification && vehicleStatusNotificationReturnFocusElement?.isConnected){
     vehicleStatusNotificationReturnFocusElement.focus?.({preventScroll:true});
     vehicleStatusNotificationReturnFocusElement = null;
@@ -51281,6 +51636,33 @@ function renderVehicleStatusNotificationPopup(){
     document.body.appendChild(host);
   }
   const next = getNextVehicleStatusNotification();
+  const notificationId = String(next?.notificationId || "");
+  const mountedPopup = typeof host.querySelector === "function"
+    ? host.querySelector("[data-sde-notification-id]")
+    : null;
+  const mountedNotificationId = String(mountedPopup?.dataset?.sdeNotificationId || "");
+  const popupReplyAuthorized = Boolean(
+    next &&
+    typeof getOperationalMessagePopupReplyContext === "function" &&
+    getOperationalMessagePopupReplyContext(next)
+  );
+  const sameNotificationMounted =
+    notificationId !== "" &&
+    mountedNotificationId === notificationId &&
+    String(mountedPopup?.dataset?.sdePopupReplyAuthorized || "false") ===
+      String(popupReplyAuthorized);
+  const operationalThreadActivated =
+    next &&
+    (
+      next.kind === "OPERATIONAL_MESSAGE" ||
+      next.kind === "WORKSHOP_MESSAGE"
+    )
+      ? activateOperationalMessageThreadFromNotification(next)
+      : false;
+  if(operationalThreadActivated){
+    renderOperationalMessageThreads();
+    updateOperationalMessageComposerStatus();
+  }
   if(
     next &&
     typeof vehicleStatusNotificationReturnFocusElement !== "undefined" &&
@@ -51301,8 +51683,18 @@ function renderVehicleStatusNotificationPopup(){
     selectWorkshopNotificationVehicle(next);
   }
   host.classList.remove("audio-blocked");
-  host.innerHTML = buildWorkshopNotificationPopupHtml(next);
-  if(next && typeof window !== "undefined" && typeof window.requestAnimationFrame === "function"){
+  if(!sameNotificationMounted){
+    host.innerHTML = buildWorkshopNotificationPopupHtml(next);
+  }
+  if(typeof syncOperationalMessagePopupReplyUi === "function"){
+    syncOperationalMessagePopupReplyUi();
+  }
+  if(
+    next &&
+    !sameNotificationMounted &&
+    typeof window !== "undefined" &&
+    typeof window.requestAnimationFrame === "function"
+  ){
     window.requestAnimationFrame(()=>{
       host.querySelector(
         "[data-sde-acknowledge-operational-message], [data-sde-open-vehicle-status-notification], [data-sde-dismiss-vehicle-status-notification]"
@@ -51505,7 +51897,11 @@ async function refreshVehicleStatusReadback(fetchImpl=window.fetch.bind(window))
     acceptVehicleStatusReadback(readback);
     if(refreshSelectedVehicle) renderDropsVehicleRegistry();
     if(refreshWorkshopRegistry) renderWorkshopVehicleRegistry();
-    renderSporplanVehicleStatusBadges();
+    if(typeof renderSporplanVehicleStatusPresentation === "function"){
+      renderSporplanVehicleStatusPresentation();
+    }else if(typeof renderSporplanVehicleStatusBadges === "function"){
+      renderSporplanVehicleStatusBadges();
+    }
     if(workshopExitPlanningChanged){
       if(typeof renderSdeSkiftebevegelser === "function") renderSdeSkiftebevegelser();
       if(typeof buildSporplan === "function") buildSporplan();
