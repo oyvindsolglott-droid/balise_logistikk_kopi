@@ -120,6 +120,16 @@ assert.match(
 );
 assert.match(
   source,
+  /\.sporplan-slot-overlay\s+\.slot\.sporplan-status-operational\s*\{[\s\S]{0,220}border-color:\s*rgba\(74,222,128,\.78\)\s*!important/,
+  "authoritative Driftsklar must override the legacy repair-slot border color",
+);
+assert.match(
+  source,
+  /\.sporplan-slot-overlay\s+\.slot\.rep-slot\s+\.slot-bottom\.mat\s*\{[\s\S]{0,300}background:\s*rgba\(0,0,0,\.80\)[\s\S]{0,180}box-shadow:\s*none/,
+  "repair metadata must not recolor the neutral vehicle identity in Sporplan",
+);
+assert.match(
+  source,
   /\.sporplan-slot-overlay\s+\.slot\s*\{[\s\S]{0,500}color:\s*#fff/,
   "vehicle identity must remain white regardless of status",
 );
@@ -136,6 +146,7 @@ process.stdout.write(JSON.stringify({
     noWorkshopParallelFallback: true,
     pollingUpdatesCompleteSporplanPresentation: true,
     neutralVehicleIdentity: true,
+    repairMetadataCannotOverrideMainStatus: true,
     selectionIndependent: true,
   },
 }) + "\n");
