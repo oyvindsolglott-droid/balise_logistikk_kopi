@@ -66,7 +66,7 @@ const repository = createVehicleStatusTestRepository({
   randomUUID: () =>
     `00000000-0000-4000-8000-${String(uuid++).padStart(12, "0")}`,
 });
-assert.equal(db.prepare("PRAGMA user_version").get().user_version, 9);
+assert.equal(db.prepare("PRAGMA user_version").get().user_version, 10);
 
 const agiliaAuthority = {
   subject: "agilia-authority-test",
@@ -196,7 +196,7 @@ assert.equal(
 
 console.log(JSON.stringify({
   schemaVersion: "sde-agilia-cleaning-request-harness-v1",
-  schemaUserVersion: 9,
+  schemaUserVersion: 10,
   requests: agiliaReadback.cleaningTrackSpaceRequests.length,
   requestedSlots: agiliaReadback.cleaningTrackSpaceRequests.map(item => item.requestedSlots),
   txpNotifications: 2,

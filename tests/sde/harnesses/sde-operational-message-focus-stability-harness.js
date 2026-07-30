@@ -46,6 +46,8 @@ for(const token of [
   "updateOperationalMessageComposerStatus",
   "operationalMessageDrafts",
   "data-sde-operational-message-text",
+  "data-sde-operational-message-draft-key",
+  "data-sde-operational-message-id",
 ]){
   assert.ok(source.includes(token), `message focus contract misses ${token}`);
 }
@@ -71,7 +73,12 @@ const textarea = {
   selectionStart: 14,
   selectionEnd: 21,
   scrollTop: 37,
-  dataset: {sdeOperationalMessageText: "", sdeOperationalRole: "verksted"},
+  dataset: {
+    sdeOperationalMessageText:"",
+    sdeOperationalRole:"verksted",
+    sdeOperationalMessageDraftKey:"reply:message-20",
+    sdeOperationalMessageId:"message-20",
+  },
   focusCalls: 0,
   focus(){ this.focusCalls += 1; document.activeElement = this; },
   setSelectionRange(start, end){ this.selectionStart = start; this.selectionEnd = end; },
@@ -79,7 +86,9 @@ const textarea = {
 const host = {
   dataset: {sdeOperationalMessageHost: "", sdeOperationalRole: "verksted"},
   querySelector(selector){
-    return selector === "[data-sde-operational-message-text]" ? textarea : null;
+    return selector === '[data-sde-operational-message-text][data-sde-operational-message-draft-key="reply:message-20"]'
+      ? textarea
+      : null;
   },
 };
 const document = {
@@ -102,6 +111,8 @@ vm.runInContext(`
 
 const saved = context.capture();
 assert.equal(saved.role, "verksted");
+assert.equal(saved.draftKey,"reply:message-20");
+assert.equal(saved.messageId,"message-20");
 assert.equal(saved.value, textarea.value);
 assert.equal(saved.selectionStart, 14);
 assert.equal(saved.selectionEnd, 21);

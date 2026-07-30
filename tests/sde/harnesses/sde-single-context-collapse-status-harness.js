@@ -57,7 +57,8 @@ for(const token of [
   "dispositionLabel",
   "dispositionClassName",
   "accessibleLabel",
-  "STATUS IKKE REGISTRERT",
+  "defaultOperational",
+  "effectiveStatus",
 ]){
   assert.ok(presentation.includes(token),`presentation misses ${token}`);
 }

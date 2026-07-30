@@ -321,7 +321,7 @@ const operationalReadback = readback([operationalRecord], {
 const notOperationalReadback = readback([notOperationalRecord], {
   faults: notOperationalRecord.activeFaults,
 });
-assert.equal(api.getAuthoritativeVehicleStatusPresentation(readback(), "74-04").kind, "unknown");
+assert.equal(api.getAuthoritativeVehicleStatusPresentation(readback(), "74-04").kind, "operational");
 assert.equal(api.getAuthoritativeVehicleStatusPresentation(operationalReadback, "74-04").kind, "operational");
 assert.equal(api.getAuthoritativeVehicleStatusPresentation(notOperationalReadback, "74-04").kind, "not-operational");
 
@@ -338,8 +338,11 @@ assert.equal(notOperationalPresentation.label, "IKKE DRIFTSKLAR");
 assert.equal(notOperationalPresentation.timestamp, "2026-07-24T07:08:09.000Z");
 assert.equal(notOperationalPresentation.record.workshopDisposition, "TIL_DREI");
 const unknownPresentation = api.getAuthoritativeVehicleStatusPresentation(readback(), "74-04");
-assert.equal(unknownPresentation.className, "is-unknown");
-assert.equal(unknownPresentation.label, "STATUS IKKE REGISTRERT");
+assert.match(unknownPresentation.className, /is-operational/);
+assert.equal(unknownPresentation.label, "DRIFTSKLAR");
+assert.equal(unknownPresentation.effectiveStatus, "DRIFTSKLAR");
+assert.equal(unknownPresentation.defaultOperational, true);
+assert.equal(unknownPresentation.explicitStatus, false);
 
 // C — Sporplan and SDE must consume the same immutable actual-placement snapshot.
 const beforeState = JSON.stringify(state);

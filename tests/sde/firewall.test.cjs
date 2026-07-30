@@ -270,6 +270,13 @@ test("GLOBAL instantmelding — uendret polling og Oppdater bevarer textarea-nod
   );
 });
 
+test("SIKKERHETSINVARIANTER — målspor, default Driftsklar og rollefiltrert veiledning er sentralisert", () => {
+  assertPassed(
+    runHarness("sde-absolute-target-default-status-guide-harness.js"),
+    "absolute target, default status and role guide contract",
+  );
+});
+
 test("EIERIDENTITET — seks eksplisitte roller gir ingen override og popupen følger hele målnivået", () => {
   assertPassed(
     runHarness("sde-owner-global-popup-harness.js"),

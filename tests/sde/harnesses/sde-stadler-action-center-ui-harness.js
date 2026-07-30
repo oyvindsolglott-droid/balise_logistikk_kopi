@@ -36,12 +36,21 @@ function extractFunction(name){
 }
 
 const safety = extractFunction("getSdeTargetSlotSafety");
-assert.match(safety, /if\s*\(targetVehicle\)\s*\{[\s\S]*status:\s*"blocked"/);
-assert.doesNotMatch(safety, /if\s*\(targetVehicle\s*&&\s*!haveSameSdeVehicleTokens/);
+assert.match(
+  safety,
+  /return\s+evaluateSdeAbsoluteTargetSlotSafety\(vehicle,\s*targetSlot,\s*context\)/
+);
+const absoluteSafety = extractFunction("evaluateSdeAbsoluteTargetSlotSafety");
+assert.match(absoluteSafety, /if\s*\(targetVehicle\)\s*\{[\s\S]*status:\s*"blocked"/);
+assert.doesNotMatch(absoluteSafety, /if\s*\(targetVehicle\s*&&\s*!haveSameSdeVehicleTokens/);
 
 const actionValidation = extractFunction("getSdeShiftMoveActionBlockReason");
-for(const token of ["getSdeTargetSlotSafety", "REPLAN_REQUIRED", "target_occupancy_changed"]){
+for(const token of ["revalidateSdeAbsoluteTargetBeforeAction", "!targetValidation.ok"]){
   assert.ok(actionValidation.includes(token), `stale-action gate misses ${token}`);
+}
+const absoluteRevalidation = extractFunction("revalidateSdeAbsoluteTargetBeforeAction");
+for(const token of ["REPLAN_REQUIRED", "PLACEMENT_REVISION_CHANGED", "releaseReservation:true"]){
+  assert.ok(absoluteRevalidation.includes(token), `absolute target revalidation misses ${token}`);
 }
 
 const workshop = extractFunction("buildWorkshopVehicleRegistryHtml");

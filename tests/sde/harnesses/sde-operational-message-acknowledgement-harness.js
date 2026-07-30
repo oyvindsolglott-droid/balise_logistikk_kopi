@@ -79,10 +79,27 @@ assert.equal(replay.ok,true);
 assert.equal(replay.result.idempotentReplay,true);
 const readback = repository.getReadModel({roles:["drops"]});
 assert.equal(readback.operationalMessageAcknowledgements.length,1);
+const acknowledgedMessage = readback.operationalMessages.find(
+  item=>item.messageId === sent.result.messageId
+);
+assert.equal(acknowledgedMessage.deliveryState,"acknowledged");
+assert.equal(acknowledgedMessage.acknowledgedAt,acknowledged.result.acknowledgedAt);
 assert.equal(
   readback.notifications.find(item=>item.notificationId === sent.result.notificationId)
     .acknowledgedAt,
   acknowledged.result.acknowledgedAt
+);
+const senderReadback = repository.getReadModel({roles:["verksted"]});
+const senderMessage = senderReadback.operationalMessages.find(
+  item=>item.messageId === sent.result.messageId
+);
+assert.equal(senderMessage.deliveryState,"acknowledged");
+assert.equal(senderMessage.acknowledgedAt,acknowledged.result.acknowledgedAt);
+assert.equal(
+  senderReadback.operationalMessageReceipts.find(
+    item=>item.messageId === sent.result.messageId
+  ).acknowledgedAt,
+  acknowledged.result.acknowledgedAt,
 );
 
 for(const token of [

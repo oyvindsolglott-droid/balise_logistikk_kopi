@@ -45,7 +45,7 @@ for(const token of [
   "OPERATIONAL_MESSAGE",
   "vehicle_status_operational_messages",
   "vehicle_status_operational_message_events",
-  "PRAGMA user_version = 9",
+  "PRAGMA user_version = 10",
 ]){
   assert.ok(
     `${lifecycleSource}\n${repositorySource}\n${serverSource}`.includes(token),
@@ -59,6 +59,11 @@ for(const token of [
   "getActiveOperationalMessageRole",
   "submitOperationalMessageFromUi",
   "waitForOperationalMessageReceipt",
+  "data-sde-operational-message-thread",
+  "data-sde-operational-message-reply",
+  "threadId",
+  "rootMessageId",
+  "parentMessageId",
   "Beskjeden er mottatt av serveren. Venter på autoritativ bekreftelse",
   "OPERATIONAL_MESSAGE",
   "isSuccessfulLifecycleCommandBody",
@@ -94,14 +99,21 @@ const {
 
 const validAction = value =>
   `10000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
-const normalize = (sourceRole, targetRole, message = "  Sikker <b>tekst</b>  ") =>
+let normalizedAction = 900000;
+const normalize = (
+  sourceRole,
+  targetRole,
+  message = "  Sikker <b>tekst</b>  ",
+  threading = {},
+) =>
   normalizeLifecycleCommand(
     LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
     {
-      actionId: validAction(900000 + roles.indexOf(sourceRole) * 10 + roles.indexOf(targetRole)),
+      actionId: validAction(normalizedAction++),
       targetRole,
       message,
       context: {surface: sourceRole, vehicleId: "74-10", slotId: "7N"},
+      ...threading,
     },
     {sourceRole}
   );
@@ -121,6 +133,9 @@ for(const sourceRole of roles){
         {...result.value.context},
         {surface: sourceRole, vehicleId: "74-10", slotId: "7N"}
       );
+      assert.equal(result.value.threadId,null);
+      assert.equal(result.value.rootMessageId,null);
+      assert.equal(result.value.parentMessageId,null);
     }
   }
 }
@@ -205,7 +220,9 @@ for(const sourceRole of roles){
       targetRole,
       sentAt: result.result.createdAt,
     });
-    for(const otherRole of roles.filter(role => role !== targetRole)){
+    for(const otherRole of roles.filter(role =>
+      role !== targetRole && role !== sourceRole
+    )){
       assert.equal(
         repository.getReadModel({roles: [otherRole]}).operationalMessages
           .some(message => message.messageId === result.result.messageId),
@@ -223,9 +240,72 @@ for(const sourceRole of roles){
   }
 }
 
+// One root plus twenty alternating replies prove that deep threads never flatten.
+const rootNormalized = normalize("drops","txp","Rotmelding");
+assert.equal(rootNormalized.ok,true);
+const dropsAuthority = {
+  subject:"drops-subject",
+  roles:["drops"],
+  effectiveRole:"drops",
+  capabilitySourceRoles:["drops"],
+};
+const txpAuthority = {
+  subject:"txp-subject",
+  roles:["txp"],
+  effectiveRole:"txp",
+  capabilitySourceRoles:["txp"],
+};
+const rootResult = repository.executeCommand(
+  LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
+  rootNormalized.value,
+  dropsAuthority,
+);
+assert.equal(rootResult.ok,true);
+assert.equal(rootResult.result.messageId,rootResult.result.rootMessageId);
+assert.equal(rootResult.result.messageId,rootResult.result.threadId);
+assert.equal(rootResult.result.parentMessageId,null);
+let parentMessageId = rootResult.result.messageId;
+for(let depth = 1; depth <= 20; depth += 1){
+  const sourceRole = depth % 2 ? "txp" : "drops";
+  const targetRole = sourceRole === "txp" ? "drops" : "txp";
+  const normalized = normalize(
+    sourceRole,
+    targetRole,
+    `Svar ${depth}`,
+    {
+      threadId:rootResult.result.threadId,
+      rootMessageId:rootResult.result.rootMessageId,
+      parentMessageId,
+    },
+  );
+  assert.equal(normalized.ok,true,`reply ${depth} must normalize`);
+  const reply = repository.executeCommand(
+    LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
+    normalized.value,
+    sourceRole === "txp" ? txpAuthority : dropsAuthority,
+  );
+  assert.equal(reply.ok,true,`reply ${depth} must persist`);
+  assert.equal(reply.result.threadId,rootResult.result.threadId);
+  assert.equal(reply.result.rootMessageId,rootResult.result.rootMessageId);
+  assert.equal(reply.result.parentMessageId,parentMessageId);
+  parentMessageId = reply.result.messageId;
+}
+const threadedReadback = repository.getReadModel({roles:["drops"]});
+const thread = threadedReadback.operationalMessages
+  .filter(message=>message.threadId === rootResult.result.threadId);
+assert.equal(thread.length,21);
+assert.equal(thread[0].depth,0);
+assert.equal(thread.at(-1).depth,20);
+assert.equal(thread.at(-1).parentMessageId,thread.at(-2).messageId);
+assert.ok(thread.every(message=>
+  Object.hasOwn(message,"presentedAt") &&
+  Object.hasOwn(message,"acknowledgedAt") &&
+  ["sent","presented","acknowledged"].includes(message.deliveryState)
+));
+
 const full = repository.getReadModel({roles});
-assert.equal(full.operationalMessages.length, 20);
-assert.equal(full.notifications.filter(item => item.kind === "OPERATIONAL_MESSAGE").length, 20);
+assert.equal(full.operationalMessages.length, 41);
+assert.equal(full.notifications.filter(item => item.kind === "OPERATIONAL_MESSAGE").length, 41);
 assert.match(
   frontendSource,
   /waitForOperationalMessageReceipt[\s\S]*method:"GET"[\s\S]*cache:"no-store"/
@@ -238,6 +318,7 @@ assert.match(
 console.log(JSON.stringify({
   schemaVersion: "sde-global-operational-messaging-harness-v1",
   directions: 20,
+  threadDepth:20,
   roles: roles.length,
   persisted: full.operationalMessages.length,
 }));

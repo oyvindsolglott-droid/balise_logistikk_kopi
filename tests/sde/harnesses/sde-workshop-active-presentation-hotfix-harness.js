@@ -212,10 +212,10 @@ const unknownReadback = baseReadback({
   repairRequests:[requestedRepair]
 });
 const unknownHtml = api.buildWorkshopVehicleRegistryHtml("74","74-04",unknownReadback,capabilities,false);
-assert.match(unknownHtml,/workshop-vehicle-status is-unknown/);
+assert.match(unknownHtml,/workshop-vehicle-status is-operational/);
 assert.match(unknownHtml,/Aktiv dørfeil/);
 assert.match(unknownHtml,/Bestilt utbedring/);
-assert.doesNotMatch(unknownHtml,/workshop-vehicle-status is-operational|workshop-vehicle-status is-not-operational/);
+assert.doesNotMatch(unknownHtml,/workshop-vehicle-status is-unknown|workshop-vehicle-status is-not-operational/);
 
 assert.doesNotMatch(extractFunction("getAuthoritativeVehicleStatusPresentation"),/fetch\(|localStorage|sessionStorage/);
 

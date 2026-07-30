@@ -174,6 +174,7 @@ async function main() {
     }
     function renderWorkshopVehicleRegistry(){ workshopRenders += 1; }
     function renderSporplanVehicleStatusBadges(){ sporplanRenders += 1; }
+    function renderOperationalMessageThreads(){}
     function updateOperationalMessageComposerStatus(){}
     function renderVehicleStatusNotificationPopup(){ notificationRenders += 1; }
     ${optionalFunctions.join("\n")}
@@ -181,6 +182,11 @@ async function main() {
     this.api = {
       refreshVehicleStatusReadback,
       getReadback:()=>dropsVehicleStatusReadback,
+      getRenderCounts:()=>({
+        notificationRenders,
+        workshopRenders,
+        sporplanRenders
+      }),
       setVisibility:value=>{ document.visibilityState=value; },
       setSelectedVehicle:value=>{ dropsVehicleRegistrySelectedVehicle=value; }
     };
@@ -221,9 +227,10 @@ async function main() {
     notifications: [{ notificationId: "other-vehicle", vehicleId: "74-10", kind: "REPAIR_REQUESTED" }],
   }));
   assert.equal(context.fullRegistryRenders, 0, "other-vehicle readback and notifications must not replace the selected editor");
-  assert.equal(context.notificationRenders, 4, "notification readback must still update independently");
-  assert.equal(context.workshopRenders, 4, "workshop readback must still update independently");
-  assert.equal(context.sporplanRenders, 4, "Sporplan badges must still update independently");
+  const renderCounts = context.api.getRenderCounts();
+  assert.equal(renderCounts.notificationRenders, 4, "notification readback must still update independently");
+  assert.equal(renderCounts.workshopRenders, 4, "workshop readback must still update independently");
+  assert.equal(renderCounts.sporplanRenders, 4, "Sporplan badges must still update independently");
 
   const authoritativeSelectedVehicle = makeReadback({
     revision: 21,
