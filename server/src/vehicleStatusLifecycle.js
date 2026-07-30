@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v9";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v10";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -154,7 +154,8 @@ const FIELDS = Object.freeze({
     "shortNoticeAcknowledged"
   ]),
   [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: new Set([
-    "actionId", "targetRole", "message", "context"
+    "actionId", "targetRole", "message", "context",
+    "threadId", "rootMessageId", "parentMessageId"
   ]),
   [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: new Set([
     "actionId", "targetRole", "message", "selectedSlotId", "selectedVehicleId"
@@ -398,13 +399,30 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
       return invalid(400, "invalid_message", "message must contain 1 to 250 characters.");
     }
     if(!contextResult.ok) return contextResult;
+    const threadFields = ["threadId","rootMessageId","parentMessageId"];
+    const suppliedThreadFields = threadFields.filter(field=>
+      input[field] !== undefined && input[field] !== null && String(input[field]).trim() !== ""
+    );
+    if(suppliedThreadFields.length !== 0 && suppliedThreadFields.length !== threadFields.length){
+      return invalid(400, "incomplete_message_thread",
+        "threadId, rootMessageId and parentMessageId must be supplied together for a reply.");
+    }
+    const threading = Object.fromEntries(threadFields.map(field=>[
+      field,
+      suppliedThreadFields.length ? normalizeUuid(input[field]) : null
+    ]));
+    if(suppliedThreadFields.length && Object.values(threading).some(value=>!value)){
+      return invalid(400, "invalid_message_thread",
+        "message thread identifiers must be UUID values.");
+    }
     normalized = {
       actionId,
       vehicleId:"OPERATIONAL_MESSAGE",
       sourceRole,
       targetRole,
       message,
-      context:contextResult.value
+      context:contextResult.value,
+      ...threading
     };
   }else if(commandName === LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE){
     const compatibility = normalizeLifecycleCommand(

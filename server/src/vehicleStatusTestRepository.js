@@ -1513,11 +1513,48 @@ function createVehicleStatusRepository(options = {}){
     const eventId = randomUUID();
     const messageId = randomUUID();
     const notificationId = randomUUID();
+    let threadId = messageId;
+    let rootMessageId = messageId;
+    let parentMessageId = null;
+    let depth = 0;
+    if(command.parentMessageId){
+      const parent = db.prepare(`
+        SELECT * FROM ${OPERATIONAL_MESSAGE_TABLE} WHERE message_id=?
+      `).get(command.parentMessageId);
+      if(!parent){
+        throw conflict("message_parent_not_found",
+          "The parent message does not exist.", {}, 404);
+      }
+      const sameParticipants = new Set([
+        parent.source_role,
+        parent.target_role
+      ]);
+      if(
+        !sameParticipants.has(command.sourceRole) ||
+        !sameParticipants.has(command.targetRole) ||
+        command.sourceRole === command.targetRole
+      ){
+        throw conflict("message_thread_participant_mismatch",
+          "Replies must stay between the original thread participants.", {}, 403);
+      }
+      if(
+        command.threadId !== parent.thread_id ||
+        command.rootMessageId !== parent.root_message_id
+      ){
+        throw conflict("message_thread_identity_mismatch",
+          "Reply thread identity does not match its parent.", {}, 409);
+      }
+      threadId = parent.thread_id;
+      rootMessageId = parent.root_message_id;
+      parentMessageId = parent.message_id;
+      depth = Number(parent.depth || 0) + 1;
+    }
     db.prepare(`
       INSERT INTO ${OPERATIONAL_MESSAGE_TABLE} (
         message_id, source_role, target_role, message_text, context_json,
-        created_at, created_by, notification_id, event_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        created_at, created_by, notification_id, event_id,
+        thread_id, root_message_id, parent_message_id, depth
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       messageId,
       command.sourceRole,
@@ -1527,7 +1564,11 @@ function createVehicleStatusRepository(options = {}){
       timestamp,
       authority.subject,
       notificationId,
-      eventId
+      eventId,
+      threadId,
+      rootMessageId,
+      parentMessageId,
+      depth
     );
     db.prepare(`
       INSERT INTO ${OPERATIONAL_MESSAGE_EVENT_TABLE} (
@@ -1545,7 +1586,11 @@ function createVehicleStatusRepository(options = {}){
       authority.effectiveRole,
       JSON.stringify({
         message:command.message,
-        context:command.context || {}
+        context:command.context || {},
+        threadId,
+        rootMessageId,
+        parentMessageId,
+        depth
       }),
       `${command.actionId}:operational-message`
     );
@@ -1565,6 +1610,10 @@ function createVehicleStatusRepository(options = {}){
         sourceRole:command.sourceRole,
         targetRole:command.targetRole,
         context:command.context || {},
+        threadId,
+        rootMessageId,
+        parentMessageId,
+        depth,
         selectedSlotId:command.context?.slotId || "",
         selectedVehicleId:command.context?.vehicleId || "",
         sentAt:timestamp
@@ -1582,7 +1631,11 @@ function createVehicleStatusRepository(options = {}){
         notificationId,
         sourceRole:command.sourceRole,
         targetRole:command.targetRole,
-        context:command.context || {}
+        context:command.context || {},
+        threadId,
+        rootMessageId,
+        parentMessageId,
+        depth
       }
     });
     incrementGlobalRevision();
@@ -1592,6 +1645,10 @@ function createVehicleStatusRepository(options = {}){
       messageRevision:eventId,
       sourceRole:command.sourceRole,
       targetRole: command.targetRole,
+      threadId,
+      rootMessageId,
+      parentMessageId,
+      depth,
       createdAt: timestamp,
       context:command.context || {},
       selectedSlotId:command.context?.slotId || "",
@@ -1663,7 +1720,9 @@ function createVehicleStatusRepository(options = {}){
       : [];
     const allOperationalMessages = selectOperationalMessages();
     const operationalMessages = roles.length
-      ? allOperationalMessages.filter((message) => roles.includes(message.targetRole))
+      ? allOperationalMessages.filter((message) =>
+          roles.includes(message.targetRole) || roles.includes(message.sourceRole)
+        )
       : [];
     const operationalMessageReceipts = roles.length
       ? allOperationalMessages
@@ -1674,7 +1733,9 @@ function createVehicleStatusRepository(options = {}){
             sourceRole:message.sourceRole,
             targetRole:message.targetRole,
             sentAt:message.sentAt,
-            messageRevision:message.eventId
+            messageRevision:message.eventId,
+            ...(message.presentedAt ? {presentedAt:message.presentedAt} : {}),
+            ...(message.acknowledgedAt ? {acknowledgedAt:message.acknowledgedAt} : {})
           }))
       : [];
     const operationalMessageAcknowledgements = roles.length
@@ -2605,7 +2666,20 @@ function createVehicleStatusRepository(options = {}){
   }
   function selectOperationalMessages(){
     return db.prepare(`
-      SELECT m.*
+      SELECT m.*, (
+        SELECT e.server_timestamp
+        FROM ${OPERATIONAL_MESSAGE_EVENT_TABLE} e
+        WHERE e.message_id=m.message_id
+          AND e.event_type='OPERATIONAL_MESSAGE_PRESENTED'
+        ORDER BY e.server_timestamp, e.operational_message_event_id
+        LIMIT 1
+      ) AS presented_at, (
+        SELECT a.acknowledged_at
+        FROM ${OPERATIONAL_MESSAGE_ACK_TABLE} a
+        WHERE a.message_id=m.message_id
+        ORDER BY a.acknowledged_at, a.acknowledgement_id
+        LIMIT 1
+      ) AS acknowledged_at
       FROM ${OPERATIONAL_MESSAGE_TABLE} m
       ORDER BY m.created_at, m.message_id
     `).all().map(mapOperationalMessage);
@@ -2780,7 +2854,7 @@ function initializeSchema(db){
       DROP TABLE IF EXISTS ${RECORD_TABLE};
       DROP TABLE IF EXISTS ${META_TABLE};
     `);
-  }else if(userVersion > 9){
+  }else if(userVersion > 10){
     throw new Error("vehicle_status_schema_version_unsupported");
   }
 
@@ -3160,6 +3234,10 @@ function initializeSchema(db){
       created_by TEXT NOT NULL,
       notification_id TEXT NOT NULL UNIQUE,
       event_id TEXT NOT NULL UNIQUE,
+      thread_id TEXT,
+      root_message_id TEXT,
+      parent_message_id TEXT,
+      depth INTEGER NOT NULL DEFAULT 0 CHECK(depth>=0),
       CHECK(source_role <> target_role)
     );
     CREATE TABLE IF NOT EXISTS ${OPERATIONAL_MESSAGE_EVENT_TABLE} (
@@ -3215,13 +3293,42 @@ function initializeSchema(db){
   if(userVersion < 8){
     reconcileWorkshopIngressCardOwnership(db);
   }
+  if(userVersion < 10){
+    migrateOperationalMessageThreads(db);
+  }
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS vehicle_status_one_active_ingress_card_per_target
       ON ${WORKSHOP_INGRESS_QUEUE_TABLE}(target_slot)
       WHERE status IN ('ACTIVATING','CARD_CREATED');
   `);
   if(userVersion < 3) backfillProcessHistory(db);
-  db.exec("PRAGMA user_version = 9;");
+  db.exec("PRAGMA user_version = 10;");
+}
+
+function migrateOperationalMessageThreads(db){
+  const columns = new Set(db.prepare(`
+    PRAGMA table_info(${OPERATIONAL_MESSAGE_TABLE})
+  `).all().map(column=>column.name));
+  const additions = [
+    ["thread_id","TEXT"],
+    ["root_message_id","TEXT"],
+    ["parent_message_id","TEXT"],
+    ["depth","INTEGER NOT NULL DEFAULT 0 CHECK(depth>=0)"]
+  ];
+  for(const [name,definition] of additions){
+    if(!columns.has(name)){
+      db.exec(`ALTER TABLE ${OPERATIONAL_MESSAGE_TABLE} ADD COLUMN ${name} ${definition};`);
+    }
+  }
+  db.exec(`
+    UPDATE ${OPERATIONAL_MESSAGE_TABLE}
+    SET thread_id=COALESCE(NULLIF(thread_id,''),message_id),
+        root_message_id=COALESCE(NULLIF(root_message_id,''),message_id),
+        depth=COALESCE(depth,0)
+    WHERE thread_id IS NULL OR thread_id=''
+       OR root_message_id IS NULL OR root_message_id=''
+       OR depth IS NULL;
+  `);
 }
 
 function migrateWorkshopIngressRequestTypes(db){
@@ -3656,6 +3763,15 @@ function mapOperationalMessage(row){
     createdAt: row.created_at,
     notificationId: row.notification_id,
     eventId: row.event_id,
+    threadId:row.thread_id || row.message_id,
+    rootMessageId:row.root_message_id || row.message_id,
+    parentMessageId:row.parent_message_id || null,
+    depth:Number(row.depth || 0),
+    presentedAt:row.presented_at || null,
+    acknowledgedAt:row.acknowledged_at || null,
+    deliveryState:row.acknowledged_at
+      ? "acknowledged"
+      : (row.presented_at ? "presented" : "sent"),
     context,
     selectedSlotId:String(context.slotId || ""),
     selectedVehicleId:String(context.vehicleId || "")
