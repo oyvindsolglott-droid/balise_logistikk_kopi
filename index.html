@@ -9475,11 +9475,11 @@ button{padding:12px 12px}
   box-shadow:inset 0 0 0 1px rgba(255,255,255,.16),0 0 8px rgba(15,23,42,.28);
 }
 .sporplan-slot-overlay .slot.sporplan-status-operational{
-  border-color:rgba(74,222,128,.78);
+  border-color:rgba(74,222,128,.78) !important;
   box-shadow:inset 0 0 0 1px rgba(187,247,208,.30),0 0 7px rgba(34,197,94,.26);
 }
 .sporplan-slot-overlay .slot.sporplan-status-not-operational{
-  border-color:rgba(248,113,113,.88);
+  border-color:rgba(248,113,113,.88) !important;
   box-shadow:inset 0 0 0 1px rgba(254,202,202,.30),0 0 8px rgba(239,68,68,.30);
 }
 .sporplan-slot-overlay .slot.rep-slot::before{
@@ -9516,6 +9516,12 @@ button{padding:12px 12px}
   white-space:nowrap;
   overflow:hidden;
   text-overflow:ellipsis;
+}
+.sporplan-slot-overlay .slot.rep-slot .slot-bottom.mat{
+  background:rgba(0,0,0,.80);
+  color:#fff;
+  border:1px solid rgba(255,255,255,.72);
+  box-shadow:none;
 }
 .sporplan-slot-overlay .sporplan-vehicle-status-host{
   top:auto;
