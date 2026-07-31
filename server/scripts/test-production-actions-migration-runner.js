@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require("node:child_process");
+const fs = require("node:fs");
 const path = require("node:path");
 const { PRODUCTION_DB_PATH } = require("../src/actionsMigration");
 const {
@@ -16,7 +17,7 @@ function main(){
   assertTmpTarget(tmpDb);
   assertProductionDbRejected();
 
-  sqliteBackup(PRODUCTION_DB_PATH, tmpDb);
+  createPreMigrationFixture(tmpDb);
   const before = inspectReadOnlyDatabase(tmpDb);
   assertPreMigrationCopy(before);
 
@@ -35,7 +36,7 @@ function main(){
   assertIdempotentSecondRun(secondRun);
 
   console.log(`tmpDb: ${tmpDb}`);
-  console.log("backup: ok");
+  console.log("preMigrationFixture: ok");
   console.log("precheck: ok");
   console.log(`firstRun: ok changed=${firstRun.changed}`);
   console.log(`idempotencyRun: ok changed=${secondRun.changed}`);
@@ -43,10 +44,13 @@ function main(){
   console.log("result: PASS_B13H_PRODUCTION_MIGRATION_RUNNER_TEST");
 }
 
-function sqliteBackup(sourceDb, targetDb){
+function createPreMigrationFixture(targetDb){
+  for(const file of [targetDb, `${targetDb}-shm`, `${targetDb}-wal`]){
+    fs.rmSync(file, { force: true });
+  }
   execFileSync("sqlite3", [
-    sourceDb,
-    `.backup '${targetDb}'`
+    targetDb,
+    "PRAGMA user_version=0;"
   ], {
     stdio: "pipe"
   });

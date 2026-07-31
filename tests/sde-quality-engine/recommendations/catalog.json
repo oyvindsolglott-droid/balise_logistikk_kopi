@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0.0",
+  "items": [
+    {"match":"BLOCKED","priority":"P2","action":"Etabler en isolert, autorisert testflate eller eksplisitt testoracle. Ikke omgå manglende testbarhet med produksjonswrite."},
+    {"match":"UNKNOWN","priority":"P1","action":"Koble funksjonen til minst én reproduserbar kontrakt og evidenskilde før den kan kvalifiseres."},
+    {"match":"RED","priority":"P0","action":"Stopp release for kritisk kontrakt, reproduser feilen isolert og rett produksjonsårsaken uten å svekke testen."},
+    {"match":"AMBER","priority":"P2","action":"Avklar evidensgapet og løft kontrollen til GREEN eller eksplisitt BLOCKED med begrunnelse."}
+  ]
+}

@@ -635,7 +635,16 @@ function emptyCounts(){
     cases: 0,
     faults: 0,
     repairRequests: 0,
-    notifications: 0
+    notifications: 0,
+    processCases: 0,
+    processEvents: 0,
+    processObservations: 0,
+    workshopExitRequests: 0,
+    workshopExitEvents: 0,
+    operationalMessages: 0,
+    operationalMessageEvents: 0,
+    operationalMessageAcknowledgements: 0,
+    cleaningTrackSpaceRequests: 0
   };
 }
 
@@ -647,7 +656,16 @@ function legacyCounts(faults){
     cases: 1,
     faults,
     repairRequests: 0,
-    notifications: 0
+    notifications: 0,
+    processCases: 1,
+    processEvents: 1,
+    processObservations: 0,
+    workshopExitRequests: 0,
+    workshopExitEvents: 0,
+    operationalMessages: 0,
+    operationalMessageEvents: 0,
+    operationalMessageAcknowledgements: 0,
+    cleaningTrackSpaceRequests: 0
   };
 }
 

@@ -155,18 +155,27 @@ async function main(){
     await withFixture(async (fixture) => {
       assert.deepEqual(sqliteTables(fixture.databasePath), [
         "vehicle_status_cases",
+        "vehicle_status_cleaning_track_space_requests",
         "vehicle_status_command_events",
         "vehicle_status_command_idempotency",
         "vehicle_status_command_meta",
         "vehicle_status_command_records",
         "vehicle_status_faults",
+        "vehicle_status_operational_message_acknowledgements",
+        "vehicle_status_operational_message_events",
+        "vehicle_status_operational_messages",
         "vehicle_status_process_cases",
         "vehicle_status_process_events",
         "vehicle_status_process_observations",
         "vehicle_status_repair_requests",
         "vehicle_status_role_notifications",
         "vehicle_status_workshop_exit_events",
-        "vehicle_status_workshop_exit_requests"
+        "vehicle_status_workshop_exit_requests",
+        "vehicle_status_workshop_ingress_queue",
+        "vehicle_status_workshop_ingress_queue_events",
+        "vehicle_status_workshop_ingress_queue_meta",
+        "vehicle_status_workshop_message_events",
+        "vehicle_status_workshop_messages"
       ]);
       assert.deepEqual(fixture.repository.getStorageSnapshot().counts, emptyCounts());
       const readOnlyRepository = createVehicleStatusRepository({
@@ -451,7 +460,11 @@ function emptyCounts(){
     processEvents: 0,
     processObservations: 0,
     workshopExitRequests: 0,
-    workshopExitEvents: 0
+    workshopExitEvents: 0,
+    operationalMessages: 0,
+    operationalMessageEvents: 0,
+    operationalMessageAcknowledgements: 0,
+    cleaningTrackSpaceRequests: 0
   };
 }
 
@@ -468,7 +481,11 @@ function legacyCounts(faults){
     processEvents: 1,
     processObservations: 0,
     workshopExitRequests: 0,
-    workshopExitEvents: 0
+    workshopExitEvents: 0,
+    operationalMessages: 0,
+    operationalMessageEvents: 0,
+    operationalMessageAcknowledgements: 0,
+    cleaningTrackSpaceRequests: 0
   };
 }
 

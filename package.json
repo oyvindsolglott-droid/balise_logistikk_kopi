@@ -10,7 +10,16 @@
     "test:sde:determinism": "node tests/sde/strict/determinism-audit.cjs",
     "test:sde:mutations": "node tests/sde/strict/mutation-audit.cjs",
     "test:sde:contracts": "node --test --test-concurrency=1 tests/sde/firewall.test.cjs",
-    "test:sde:qualification": "npm run test:sde:determinism && npm run test:sde:contracts && npm run test:sde:mutations"
+    "test:sde:qualification": "npm run test:sde:determinism && npm run test:sde:contracts && npm run test:sde:mutations",
+    "test:sde:all": "node tests/sde-quality-engine/run.cjs --suite all",
+    "test:sde:balise": "node tests/sde-quality-engine/run.cjs --suite balise",
+    "test:sde:integration": "node tests/sde-quality-engine/run.cjs --suite integration",
+    "test:sde:e2e": "node tests/sde-quality-engine/run.cjs --suite e2e",
+    "test:sde:regression": "node tests/sde-quality-engine/run.cjs --suite regression",
+    "test:sde:production-readonly": "node tests/sde-quality-engine/run.cjs --suite production-readonly",
+    "test:sde:report": "node tests/sde-quality-engine/run.cjs --suite report",
+    "test:sde:qe:unit": "node --test tests/sde-quality-engine/unit/*.test.cjs",
+    "test:sde:qe:ci": "node tests/sde-quality-engine/run.cjs --suite ci"
   },
   "engines": {
     "node": ">=24"

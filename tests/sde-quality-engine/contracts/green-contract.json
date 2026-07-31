@@ -1,0 +1,262 @@
+{
+  "schemaVersion": "1.0.0",
+  "name": "SDE Quality Engine green contract",
+  "description": "Maskinlesbar definisjon av hva GREEN betyr for SDE uten å gjøre produksjonsskriving.",
+  "statuses": {
+    "GREEN": "Kontrakten er bevist med fersk, reproduserbar evidens.",
+    "AMBER": "Kontrakten er delvis bevist eller har et ikke-kritisk avvik.",
+    "RED": "Kontrakten er motbevist eller en kritisk test feiler.",
+    "BLOCKED": "Kontrakten kan ikke bevises fordi nødvendig testbarhet eller autoritet mangler.",
+    "UNKNOWN": "Kontrakten mangler tilstrekkelig evidens til klassifisering."
+  },
+  "contracts": [
+    {
+      "id": "QE-CORE-001",
+      "area": "quality-engine",
+      "name": "Kontrakt- og matrisefiler er gyldige",
+      "critical": true,
+      "expected": "Alle kontrakter og funksjoner har unik ID, eierområde, forventning og testkobling.",
+      "evidence": ["schema-validation"]
+    },
+    {
+      "id": "QE-CORE-002",
+      "area": "quality-engine",
+      "name": "Rapportsett er komplett",
+      "critical": true,
+      "expected": "Samme kjøring produserer JSON, Markdown, JUnit XML og HTML med identisk resultatsammendrag.",
+      "evidence": ["reporter-self-test"]
+    },
+    {
+      "id": "QE-SAFE-001",
+      "area": "production-safety",
+      "name": "Produksjonskontroll er teknisk read-only",
+      "critical": true,
+      "expected": "Quality Engine tillater bare GET og HEAD mot produksjon og avviser andre metoder før nettverkskall.",
+      "evidence": ["method-guard-unit-test", "request-ledger"]
+    },
+    {
+      "id": "BALISE-001",
+      "area": "tursatt-balise",
+      "name": "Dagens payload har korrekt operativ dato",
+      "critical": true,
+      "expected": "api_idag.date samsvarer med forventet Europe/Oslo-dato.",
+      "evidence": ["data/api_idag.json"]
+    },
+    {
+      "id": "BALISE-002",
+      "area": "tursatt-balise",
+      "name": "Morgendagens payload følger tidsvinduet",
+      "critical": true,
+      "expected": "api_imorgen.date følger 07:00/15:00-kontrakten i Europe/Oslo.",
+      "evidence": ["data/api_imorgen.json", "workflow-boundary-fixtures"]
+    },
+    {
+      "id": "BALISE-003",
+      "area": "tursatt-balise",
+      "name": "Payload er fersk og datert",
+      "critical": true,
+      "expected": "Begge payloadfiler har parsebar updatedAt og er ikke eldre enn kontraktens ferskhetsgrense.",
+      "evidence": ["updatedAt"]
+    },
+    {
+      "id": "BALISE-004",
+      "area": "tursatt-balise",
+      "name": "Forekomstidentiteter er entydige",
+      "critical": true,
+      "expected": "Alle forekomstbundne movementContext-objekter har unik occurrenceId og korrekt operationalDate.",
+      "evidence": ["movementContext.occurrenceId"]
+    },
+    {
+      "id": "BALISE-005",
+      "area": "tursatt-balise",
+      "name": "Tognummer og materiell er forekomstbundet",
+      "critical": true,
+      "expected": "Materiellvalg kan spores til riktig tognummer, route/occurrence og tidspunkt uten vilkårlig dagsforekomst.",
+      "evidence": ["movementContext", "generator-tests"]
+    },
+    {
+      "id": "BALISE-006",
+      "area": "tursatt-balise",
+      "name": "Dobbeltsett har komplett og unik sammensetning",
+      "critical": true,
+      "expected": "Ingen dobbeltsett mangler del, har duplikat eller gjenbruker samme kjøretøy i samme forekomst.",
+      "evidence": ["arrival/departure-composition", "generator-tests"]
+    },
+    {
+      "id": "BALISE-007",
+      "area": "tursatt-balise",
+      "name": "Plattformspor har actual provenance",
+      "critical": true,
+      "expected": "Actual plattformspor er tidsbundet til korrekt forekomst og inneholder kilde/proveniens; plan/historikk brukes ikke som actual.",
+      "evidence": ["movementContext.platformTrack", "movementContext.sourceUpdatedAt"]
+    },
+    {
+      "id": "BALISE-008",
+      "area": "tursatt-balise",
+      "name": "Overstyring skilles fra rådata",
+      "critical": true,
+      "expected": "Manuelle overrides er eksplisitte og kan ikke maskere eller endre rå Balise-proveniens.",
+      "evidence": ["override-contract", "generator-tests"]
+    },
+    {
+      "id": "BALISE-009",
+      "area": "tursatt-balise",
+      "name": "DST- og 07:00-grenser er deterministiske",
+      "critical": true,
+      "expected": "Vintertid, sommertid og eksakte tidsgrenser gir samme forventede fil-/datovalg på gjentatte kjøringer.",
+      "evidence": ["boundary-fixtures", "sync-tests"]
+    },
+    {
+      "id": "ACCESS-001",
+      "area": "access",
+      "name": "Alle seks tilgangsnivåer finnes",
+      "critical": true,
+      "expected": "Nivå 0–5 er deklarert og menytilgang følger eksplisitte data-levels.",
+      "evidence": ["index-navigation-inventory"]
+    },
+    {
+      "id": "ACCESS-002",
+      "area": "access",
+      "name": "Identity-to-role er serverautoritativ",
+      "critical": true,
+      "expected": "Klienten kan ikke gi seg selv rolle eller capability; serverpolicy og runtime-autorisasjon er testet.",
+      "evidence": ["server-auth-tests"]
+    },
+    {
+      "id": "NAV-001",
+      "area": "navigation",
+      "name": "Alle hovedmoduler er inventarisert",
+      "critical": true,
+      "expected": "Tursatt, DROPS, Sporplan, TXP, Vaktplan, Skiftebevegelser, turnering, Verksted og Agilia finnes i funksjonsmatrisen.",
+      "evidence": ["navigation-inventory", "function-matrix"]
+    },
+    {
+      "id": "STATE-001",
+      "area": "shared-state",
+      "name": "Shared draft har optimistisk samtidighetsvern",
+      "critical": true,
+      "expected": "Stale revision avvises og idempotente retries skaper ikke ekstra revisjon eller duplikat.",
+      "evidence": ["shared-draft-server-tests"]
+    },
+    {
+      "id": "STATE-002",
+      "area": "operational-state",
+      "name": "Operational events og snapshot er konsistente",
+      "critical": true,
+      "expected": "Revisjon, eventrekkefølge, readback og autoritet er deterministisk og append-only der kontrakten krever det.",
+      "evidence": ["operational-state-server-tests"]
+    },
+    {
+      "id": "STATUS-001",
+      "area": "vehicle-status",
+      "name": "Kjøretøystatus har én autoritativ kontrakt",
+      "critical": true,
+      "expected": "DROPS, Verksted, Sporplan og SDE viser samme normaliserte serverstatus etter readback.",
+      "evidence": ["vehicle-status-contract-tests", "ui-contracts"]
+    },
+    {
+      "id": "STATUS-002",
+      "area": "vehicle-status",
+      "name": "Ny feilsyklus og utbedring er idempotent",
+      "critical": true,
+      "expected": "Rapportering, bestilling, verkstedbehandling og tilbakeføring tåler retry uten duplikattilstand.",
+      "evidence": ["vehicle-lifecycle-server-tests"]
+    },
+    {
+      "id": "SDE-001",
+      "area": "skiftebevegelser",
+      "name": "Kjedeordre og fysiske avhengigheter bevares",
+      "critical": true,
+      "expected": "Frigjøring, hovedskift og eventuell retur vises og kan kvitteres bare i fysisk gyldig rekkefølge.",
+      "evidence": ["strict-firewall", "determinism-audit"]
+    },
+    {
+      "id": "SDE-002",
+      "area": "skiftebevegelser",
+      "name": "Gjentatt flytting gjenbruker ikke historisk identitet",
+      "critical": true,
+      "expected": "Ny ordre får ny kjede-/action-identitet og blokkeres ikke av historisk fullført eller annullert ordre.",
+      "evidence": ["permanent-regression-contracts"]
+    },
+    {
+      "id": "SDE-003",
+      "area": "skiftebevegelser",
+      "name": "Manuell målplassering avviser bare fysisk ugyldig mål",
+      "critical": true,
+      "expected": "Ledig og tilgjengelig slot kan bestilles; opptatt eller fysisk utilgjengelig slot avvises fail-closed.",
+      "evidence": ["drag-target-contracts", "mutation-audit"]
+    },
+    {
+      "id": "SDE-004",
+      "area": "skiftebevegelser",
+      "name": "Utført og annullert gir korrekt livssyklus",
+      "critical": true,
+      "expected": "Kvittering/annullering oppdaterer kort, reservasjon, overlay og actual state uten foreldede rester.",
+      "evidence": ["strict-firewall", "browser-harnesses"]
+    },
+    {
+      "id": "WORKSHOP-001",
+      "area": "verksted",
+      "name": "Verkstedhandlinger er serverbekreftet",
+      "critical": true,
+      "expected": "Status, utbedring, utkjøring og innkjøring er fail-closed til fersk server-readback.",
+      "evidence": ["workshop-server-tests"]
+    },
+    {
+      "id": "MSG-001",
+      "area": "messages",
+      "name": "Direktemeldinger har stabil avsender, mottaker og rekkefølge",
+      "critical": true,
+      "expected": "Melding vises én gang per mottakskontekst, kan kvitteres, overlever refresh og mister ikke thread-identitet.",
+      "evidence": ["message-contracts", "server-note-tests"]
+    },
+    {
+      "id": "MSG-002",
+      "area": "messages",
+      "name": "Popupvisning er nivåglobal uten business-write",
+      "critical": false,
+      "expected": "Førstegangspresentasjon styres av readback/presentasjonsstate og oppretter ikke operativ business-write.",
+      "evidence": ["popup-browser-contracts"]
+    },
+    {
+      "id": "API-001",
+      "area": "server-api",
+      "name": "Server-API har kontrakts- og autorisasjonstester",
+      "critical": true,
+      "expected": "Alle eksponerte API-ruter inventariseres; write-ruter er policybeskyttet og sentrale read-ruter har tester.",
+      "evidence": ["route-inventory", "server-tests"]
+    },
+    {
+      "id": "ROBUST-001",
+      "area": "robustness",
+      "name": "Timeout, ugyldig JSON og nettverksfeil er fail-closed",
+      "critical": true,
+      "expected": "Ugyldig eller manglende readback gir tydelig feil/blocked, ingen skjult write og ingen falsk GREEN.",
+      "evidence": ["error-path-contracts"]
+    },
+    {
+      "id": "CONCURRENCY-001",
+      "area": "multiuser",
+      "name": "Samtidige klienter taper ikke autoritativ state",
+      "critical": true,
+      "expected": "Stale klient avvises, retry er idempotent og to klienter kan ikke overskrive hverandre lydløst.",
+      "evidence": ["revision-tests", "idempotency-tests"]
+    },
+    {
+      "id": "UX-001",
+      "area": "ux",
+      "name": "Desktop og 390 px er uten kritisk overflow",
+      "critical": false,
+      "expected": "Hovedmeny, modulkort og handlingsflater er lesbare og uten horisontal sidescroll.",
+      "evidence": ["browser-contracts", "responsive-static-check"]
+    },
+    {
+      "id": "UX-002",
+      "area": "ux",
+      "name": "Kritiske kontroller er tastatur- og skjermleserbare",
+      "critical": false,
+      "expected": "Knapper beholder semantikk, aria-label og synlig focus der bilde brukes som label.",
+      "evidence": ["markup-accessibility-check"]
+    }
+  ]
+}

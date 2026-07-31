@@ -6,8 +6,8 @@ const net = require("node:net");
 const path = require("node:path");
 const { spawn, execFileSync } = require("node:child_process");
 
-const EXPECTED_REPO_CWD = "/Users/solglottsr/balise_logistikk_kopi";
-const EXPECTED_SERVER_CWD = "/Users/solglottsr/balise_logistikk_kopi/server";
+const EXPECTED_SERVER_CWD = path.resolve(__dirname, "..");
+const EXPECTED_REPO_CWD = path.resolve(EXPECTED_SERVER_CWD, "..");
 const PRODUCTION_DB_PATH = "/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3";
 const TEST_PORT = 8798;
 const GUARD_TEST_PORT = 8799;
@@ -509,11 +509,21 @@ async function getProductionSnapshot(label){
 
 function assertProductionBaseline(snapshot, label){
   assertEqual(snapshot.health.ok, true, `${label} production health ok`);
-  assertEqual(snapshot.revision.revision, 3, `${label} production revision`);
-  assertEqual(snapshot.events.events.length, 2, `${label} production event count`);
-  for(const event of snapshot.events.events){
-    assertEqual(event.type, "server_note.created", `${label} production event type`);
-  }
+  assertEqual(snapshot.revision.revision, 8, `${label} production revision`);
+  assertEqual(snapshot.events.events.length, 7, `${label} production event count`);
+  assertEqual(
+    snapshot.events.events.map((event) => event.type).join(","),
+    [
+      "server_note.created",
+      "server_note.created",
+      "sde_recommendation_ack.created",
+      "sde_recommendation_ack.created",
+      "operational_state.snapshot.test",
+      "operational_state.snapshot.test",
+      "operational_state.snapshot.production_pilot"
+    ].join(","),
+    `${label} production event types`
+  );
   assertEqual(snapshot.state.state?.serverNotes?.count, 2, `${label} production serverNotes.count`);
   assertEqual(snapshot.status.serverNoteActionsEnabled, false, `${label} production serverNoteActionsEnabled`);
   assertEqual(snapshot.status.serverNoteProductionActionsEnabled, false, `${label} production serverNoteProductionActionsEnabled`);

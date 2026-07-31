@@ -38,5 +38,20 @@ jobs:
       - name: Install Python test imports
         run: python -m pip install -r requirements.txt
 
+      - name: Install server contract dependencies
+        run: npm ci --prefix server
+
       - name: Run mandatory SDE regression firewall
         run: npm run test:sde:strict
+
+      - name: Run SDE Quality Engine contracts and data parity
+        run: npm run test:sde:qe:ci
+
+      - name: Upload SDE Quality Engine reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sde-quality-engine-reports
+          path: tests/sde-quality-engine/reports/
+          if-no-files-found: warn
+          retention-days: 14

@@ -17,3 +17,7 @@ update_static_data_backup_*
 
 # Lokal live-status fra Sporplan/SDE
 sde_live_sporplan_snapshot.json
+
+# Genererte rapporter fra SDE Quality Engine
+tests/sde-quality-engine/reports/*
+!tests/sde-quality-engine/reports/.gitignore

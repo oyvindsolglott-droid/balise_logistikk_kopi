@@ -6,7 +6,7 @@ const net = require("node:net");
 const path = require("node:path");
 const { spawn, execFileSync } = require("node:child_process");
 
-const EXPECTED_CWD = "/Users/solglottsr/balise_logistikk_kopi/server";
+const EXPECTED_CWD = path.resolve(__dirname, "..");
 const PRODUCTION_DB_PATH = "/Users/solglottsr/balise_logistikk_kopi/server/data/sde-server.sqlite3";
 const TEST_PORT = 8788;
 const TEST_HOST = "127.0.0.1";
