@@ -1,0 +1,1146 @@
+SDE – BRUKERVEILEDNING
+Normativ brukerrettet tekst
+Versjon: 30. juli 2026
+
+VIKTIG
+Denne teksten er godkjent brukerrettet ordlyd. Den skal installeres ordrett. Overskrifter, avsnitt og punktlister kan struktureres som innholdsfortegnelse, søk og nedtrekksfelt, men teksten skal ikke omskrives, forkortes eller suppleres av Codex.
+
+======================================================================
+NIVÅ 0 – MASTER / HELHETSOVERSIKT
+======================================================================
+
+SDE – SKIEN DECISION ENGINE
+
+SDE er et felles arbeidsverktøy for bedre oversikt, tydeligere samhandling og tryggere beslutningsstøtte rundt materiell, spor, oppgaver og skiftebevegelser i Skien.
+
+SDE samler informasjon som ellers kan ligge spredt mellom flere fagmiljøer. Systemet viser hva som er registrert, hvilke avhengigheter som finnes, hvor det kan oppstå konflikt, og hvilke handlinger som kan være aktuelle. SDE skal støtte den operative kompetansen, ikke erstatte den.
+
+KOM RASKT I GANG
+
+1. Kontroller datoen og tidspunktet for siste datakontroll øverst på siden.
+2. Velg riktig visningsnivå.
+3. Åpne arbeidsflaten du trenger.
+4. Kontroller faktisk plassering og aktuell status før du handler.
+5. Les varsler, meldinger, reservasjoner og avhengigheter.
+6. Bruk «Oppdater» når du trenger en fersk innlesing.
+7. Behandle et forslag som et forslag helt til det er godkjent og markert «Utført».
+
+SDE PÅ TO MINUTTER
+
+Nivå 0 – Master:
+Helhetsoversikt over systemet, funksjonene og samhandlingen. Nivå 0 gir oversikt, men er ikke i seg selv en automatisk overstyringsrett.
+
+Nivå 1 – DROPS:
+Materiellstatus, feil, utbedringsbehov og disposisjoner.
+
+Nivå 2 – TXP:
+Sporinformasjon, planlagt sporbruk og relevante forhold ved infrastrukturen.
+
+Nivå 3 – Skiftere:
+Skiftebevegelser, gjennomførbarhet, skiftekort, kø, reservasjoner og utførelse.
+
+Nivå 4 – Verksted:
+Verkstedspor, kjøretøy i verkstedområdet, inn- og utkjøringsbehov og relevant teknisk kontekst.
+
+Nivå 5 – Agilia:
+Renholds- og boningsrelatert arbeidsinformasjon og kommunikasjon om materiell, tilgjengelighet og behov.
+
+Tilgangen din bestemmer hvilke nivåer og kontroller du kan bruke. Et nivå skal bare vise funksjoner du faktisk har tilgang til.
+
+HVA SDE ER MENT Å GJØRE
+
+SDE skal:
+
+• samle oppdatert informasjon i én felles arbeidsflate
+• vise faktisk sporplassering
+• vise ankomster, avganger og Tursatt-informasjon
+• synliggjøre materiellstatus, feil og utbedringsbehov
+• skille mellom hovedstatus, feil og disposisjon
+• vise verksted- og renholdsbehov
+• foreslå gjennomførbare skiftebevegelser
+• synliggjøre fysiske blokkeringer og avhengigheter
+• støtte kø, reservasjoner og skiftekort
+• støtte direktemeldinger mellom nivåene
+• gjøre det tydelig hva som er foreslått, godkjent og utført
+• redusere risikoen for at ulike fagmiljøer arbeider med forskjellige situasjonsbilder
+
+HVA SDE IKKE GJØR
+
+SDE:
+
+• erstatter ikke operativ kompetanse eller gjeldende regelverk
+• flytter ikke et kjøretøy fysisk
+• gjør ikke et forslag til en utført handling
+• skal ikke endre faktisk plassering bare fordi en visning åpnes
+• skal ikke gjøre et kjøretøy «Ikke driftsklart» bare fordi det har en feil, en utbedringsbestilling eller disposisjonen «Til rep» eller «Dreies»
+• skal ikke foreslå et fysisk opptatt målspor
+• skal ikke gi en bruker flere rettigheter enn serveren har tildelt
+• skal ikke behandle en lest melding som kvittert
+• skal ikke skjule en konflikt for å få en plan til å se gjennomførbar ut
+
+KAPASITET OG AVGRENSNING
+
+SDE kan sammenstille store deler av informasjonen som trengs for å planlegge og koordinere materiell i Skien, blant annet:
+
+• hvilket kjøretøy som faktisk står i hvilken slot
+• hvilke kjøretøy som ankommer og skal avgå
+• hvilke kjøretøy som er satt opp i Tursatt
+• hvilke kjøretøy som har feil eller åpne utbedringsbehov
+• hvilke kjøretøy som er disponert «Til rep» eller «Dreies»
+• hvilke spor som er opptatt, reservert eller utilgjengelige
+• hvilke skiftebevegelser som er foreslått
+• hvilke bevegelser som er blokkert av andre kjøretøy eller oppgaver
+• hvilke oppgaver som venter på ledig spor eller trygg rute
+• hvem som har sendt eller mottatt en operativ melding
+
+SDE er avgrenset til informasjonen systemet faktisk har mottatt. Manglende, forsinkede eller feilregistrerte data kan gi et ufullstendig situasjonsbilde. Kontroller derfor ferskhet, faktisk plassering og relevant operativ informasjon før en handling gjennomføres.
+
+OPERATIVT DØGN OG DATA
+
+Det operative døgnet skifter klokken 07:00, Europe/Oslo.
+
+I SDE betyr dette normalt:
+
+• ankomster gjelder i dag
+• avganger gjelder i morgen
+
+Tursatt har høyere autoritet enn annen materiellkobling for samme tog eller togdel. Tursatt skal knyttes til riktig togforekomst. Informasjon fra ett tog eller én forekomst skal ikke brukes som tilfeldig reserve for et annet tog.
+
+Øverst i løsningen vises dato og tidspunkt for siste kontroll. «Oppdater» henter en ferskere visning. En oppdatering skal i seg selv ikke opprette en operativ handling.
+
+NIVÅENE OG INFORMASJONSFLYTEN
+
+Hvert nivå eier sin del av situasjonsbildet:
+
+• DROPS beskriver materiellstatus, feil, utbedringsbehov og disposisjon.
+• TXP beskriver relevante sporforhold og planlagt bruk.
+• Skiftere bruker faktisk plassering, sporforhold og registrerte behov til å planlegge og gjennomføre skiftebevegelser.
+• Verksted beskriver verkstedrelaterte behov og arbeider med kjøretøy i verkstedområdet.
+• Agilia beskriver renholds- og boningsrelaterte behov og oppgaver.
+• Master gir helhetsinnsikt i hvordan opplysningene henger sammen.
+
+Informasjon skal registreres på nivået som eier opplysningen. Andre nivåer skal kunne se nødvendig kontekst, men skal ikke få operative kontroller de ikke har tilgang til.
+
+SPORPLAN
+
+Sporplan viser den faktiske, kanoniske plasseringen SDE kjenner til.
+
+• En slot kan være fysisk opptatt, fysisk tom, reservert eller utilgjengelig.
+• Fysisk tom betyr ikke nødvendigvis at slotten kan brukes.
+• Et fysisk opptatt målspor skal ikke foreslås, reserveres eller brukes som reserve.
+• Faktisk plassering endres først når en autorisert handling er markert «Utført».
+• Å åpne, lukke eller bytte visning skal ikke endre faktisk plassering.
+
+Status i Sporplan:
+
+• Tynn grønn ramme betyr at kjøretøyet ikke har en eksplisitt status «Ikke driftsklar».
+• Tynn rød ramme betyr at kjøretøyet er eksplisitt meldt «Ikke driftsklar».
+• Kjøretøy-ID skal vises nøytralt og skal ikke brukes som eget statussignal.
+• «Dreies» kan vises som en separat disposisjon.
+• «Til rep» beholdes i systemet, men skal ikke vises som eget klistremerke i Sporplan.
+• Valgt kjøretøy eller slot markeres separat og skal ikke endre hovedstatusen.
+
+TURSATT
+
+Tursatt viser registrert materiellbruk for aktuelle tog og togforekomster. Det brukes som analysegrunnlag for kjøretøyvalg, ankomst og avgang, deling og skjøting, rekkefølge og plassering.
+
+Tursatt er ikke det samme som en utført skiftebevegelse og er ikke en operativ ordre i seg selv.
+
+STATUS, FEIL OG DISPOSISJON
+
+SDE skiller mellom:
+
+Hovedstatus:
+• Driftsklar
+• Ikke driftsklar
+
+Feil og utbedringsbehov:
+• aktive feil
+• utbedringsbestillinger
+• oppfølging av utbedring
+
+Disposisjon:
+• Til rep
+• Dreies
+
+Bare en eksplisitt registrering av «Ikke driftsklar» skal gi rød hovedstatus.
+
+En aktiv feil, en utbedringsbestilling, «Til rep», «Dreies», verkstedplassering eller manglende statusregistrering gjør ikke i seg selv kjøretøyet «Ikke driftsklart».
+
+Dersom ingen eksplisitt status er registrert, presenteres kjøretøyet som effektivt driftsklart. Dette skal ikke opprette en ny statusregistrering eller et nytt historikkelement.
+
+ARBEIDSFLATENE I HELHETEN
+
+DROPS:
+Brukes til å finne kjøretøy, se og registrere feil, bestille utbedring, følge åpne behov, registrere «Til rep» eller «Dreies» og melde «Driftsklar» eller «Ikke driftsklar».
+
+TXP:
+Brukes til å registrere og kontrollere relevante opplysninger om spor, slotter, begrensninger og planlagt sporbruk. Registrert plan er ikke det samme som faktisk plassering.
+
+Skiftere:
+Brukes til å vurdere forslag, blokkeringer, avhengigheter, kø, reservasjoner og skiftekort. Faktisk plassering endres først etter autorisert «Utført».
+
+Verksted:
+Brukes for sporene 8N, 7N, 8S og 7S. Valgt slot skal vise fersk canonical occupant og relevant status, disposisjon, feil, behov og tilgjengelige inn- eller utkjøringshandlinger.
+
+Agilia:
+Brukes til renholds- og boningsrelatert oppgaveinformasjon og kommunikasjon om materiell, plassering og behov.
+
+FORESPØRSEL, KØ, RESERVASJON, SKIFTEKORT OG UTFØRT
+
+Forespørsel:
+Et registrert behov. Behovet kan være gyldig selv om det ikke kan gjennomføres med en gang.
+
+Kø:
+Behovet venter på ledig kapasitet, ledig slot eller en annen forutsetning.
+
+Reservasjon:
+En slot er holdt av til en bestemt plan eller et bestemt kort. Reservasjon betyr ikke at kjøretøyet står der.
+
+Skiftekort:
+En konkret, kontrollerbar handling som er gjort klar for behandling.
+
+Godkjenning:
+En autorisert bruker godkjenner handlingen etter gjeldende arbeidsflyt.
+
+Utført:
+Handlingen er bekreftet gjennomført. Først da kan faktisk plassering oppdateres.
+
+Annullert:
+Handlingen skal ikke gjennomføres. Annullering skal ikke fremstilles som «Utført».
+
+REPLAN_REQUIRED:
+Den tidligere planen kan ikke lenger gjennomføres sikkert. Gammel reservasjon skal frigjøres, og ny vurdering skal bruke fersk faktisk plassering.
+
+FYSISK SIKKERHET OG MÅLSPOR
+
+SDE skal kontrollere målsporet før vurdering, scoring, kortopprettelse, aktivering, godkjenning og «Utført».
+
+Hvis målsporet blir opptatt, skal handlingen stoppe og kreve ny plan. Systemet skal ikke flytte kjøretøyet, beholde en ugyldig reservasjon eller bruke et opptatt spor som reserve.
+
+Lokale forhold omfatter blant annet:
+
+• verkstedsporene brukes gjennom verkstedflytene
+• VS er adkomsten til vaskesporet
+• VN ligger innerst
+• VN og VS er ikke vanlige parkeringsspor
+• buttsporene 10, 11 og 12 har bestemt rekkefølge ved inn- og utkjøring
+• fysiske blokkeringer i nord- og sørenden skal respekteres
+• spor 6 har egne tids- og skjøtingsforhold
+
+DIREKTEMELDINGER
+
+Direktemeldinger brukes til å avklare behov og dele operativ informasjon mellom nivåene. En melding kan inneholde kjøretøy, slot, tema eller sakskontekst.
+
+Når en ordinær melding mottas, kan brukeren lese meldingen, svare i samme tråd, kvittere mottatt, følge en trygg intern lenke når den finnes, eller lukke meldingen.
+
+Å lese eller lukke meldingen er ikke det samme som å kvittere.
+
+«Kvitter mottatt» registrerer en serverstyrt kvittering. Et svar er en ny melding i samme samtale. Svar og kvittering er to forskjellige handlinger og kan utføres i valgfri rekkefølge.
+
+Samtalen vises kronologisk:
+
+• eldste melding øverst
+• nyeste melding nederst
+• sendte meldinger mørke og uten kursiv
+• mottatte meldinger mørkeblå og i kursiv
+
+Teknisk kvitteringsinformasjon skal ikke starte en ny kvitteringssløyfe.
+
+VANLIGE ARBEIDSFLYTER
+
+Feil og utbedring:
+
+1. DROPS registrerer eller finner en feil.
+2. Utbedring bestilles ved behov.
+3. Hovedstatus vurderes separat.
+4. Disposisjon registreres separat.
+5. Verksted og andre relevante nivåer ser nødvendig kontekst.
+6. Skiftere planlegger eventuell flytting.
+7. Meldinger brukes når noe må avklares.
+
+Verkstedinnkjøring:
+
+1. Verksted registrerer behovet.
+2. SDE vurderer slot, rute og fysisk plassering.
+3. Behovet kan vente på ledig slot eller trygg rute.
+4. Skiftere ser relevant oppgave eller kort.
+5. Bevegelsen gjennomføres operativt.
+6. Først etter «Utført» oppdateres faktisk plassering.
+
+Nytt sporforhold:
+
+1. TXP registrerer eller oppdaterer sporinformasjon.
+2. SDE bruker fersk informasjon.
+3. Ugyldige mål filtreres bort.
+4. Berørte nivåer får nødvendig oversikt eller melding.
+5. Utrygge kort krever ny plan.
+
+Renholds- eller boningsbehov:
+
+1. Agilia registrerer eller følger opp oppgaven.
+2. Materiell og plassering kontrolleres.
+3. Behov for tilgang eller flytting kommuniseres.
+4. Riktig nivå behandler den delen det har myndighet til.
+5. Agilia følger opp uten å endre faktisk plassering.
+
+Direktemelding:
+
+1. Avsender velger mottakernivå og skriver en tydelig beskjed.
+2. Mottakeren ser meldingen i popup og samtale.
+3. Mottakeren kan svare og kvittere i valgfri rekkefølge.
+4. Samtalen beholder historikken.
+5. Oppgaven behandles i riktig arbeidsflate. Meldingen utfører ikke oppgaven.
+
+VANLIGE PROBLEMER
+
+Jeg ser gamle data:
+Kontroller tidspunktet for siste datakontroll og bruk «Oppdater». Kontroller også riktig operativt døgn.
+
+Jeg ser ikke en knapp eller funksjon:
+Tilgangen bestemmes av serverens rolle- og rettighetsmodell. Bytte av visningsnivå gir ikke i seg selv flere rettigheter.
+
+Et spor ser tomt ut, men kan ikke velges:
+Sporet kan være reservert, utilgjengelig eller blokkert av ruten.
+
+SDE foreslår ikke en bevegelse:
+Det kan mangle trygg rute, gyldig mål, nødvendig data eller ledig slot. Se diagnoser og avhengigheter.
+
+Et skiftekort har stoppet:
+Målsporet eller en annen forutsetning kan ha endret seg. Kortet kan kreve ny plan.
+
+Kjøretøyet har feil, men vises driftsklart:
+Feil og hovedstatus er separate. Bare eksplisitt «Ikke driftsklar» gir rød hovedstatus.
+
+Jeg har lest en melding, men den er ikke kvittert:
+Lesing og lukking er ikke kvittering. Bruk «Kvitter mottatt».
+
+En ny melding vises ikke i samtalen:
+Kontroller samtalevelgeren. En pågående tekst eller annen aktiv samtale skal ikke tvangsbyttes.
+
+BEGREPSLISTE
+
+Actual placement:
+Faktisk, kanonisk registrert plassering.
+
+Canonical:
+Den autoritative versjonen av opplysningen.
+
+Capability:
+Serverstyrt rettighet til å se eller utføre en bestemt funksjon.
+
+Disposition:
+Operativ merking som «Til rep» eller «Dreies». Dette er ikke hovedstatus.
+
+Driftsklar:
+Kjøretøyet har ikke en eksplisitt status «Ikke driftsklar».
+
+Fault:
+Registrert feil.
+
+Kvitter mottatt:
+Eksplisitt serverregistrert bekreftelse på mottak.
+
+Notification presented:
+Teknisk registrering av at et varsel er vist. Dette er ikke kvittering.
+
+Repair request:
+Bestilling eller behov for utbedring.
+
+Reservation:
+Slot holdt av til en bestemt plan eller handling.
+
+REPLAN_REQUIRED:
+Tidligere plan kan ikke lenger gjennomføres og må vurderes på nytt.
+
+Skiftekort:
+Konkret, kontrollert handling i skifteflyten.
+
+Slot:
+Definert plass i Sporplan.
+
+Thread:
+Sammenhengende meldingssamtale.
+
+Tursatt:
+Registrert materiellkobling til riktig tog eller togforekomst.
+
+Utført:
+Autorisert bekreftelse på at handlingen er gjennomført. Først da kan faktisk plassering endres.
+
+======================================================================
+NIVÅ 1 – DROPS
+======================================================================
+
+DROPS – MATERIELLSTATUS, FEIL OG UTBEDRING
+
+DROPS-nivået brukes til å holde oversikt over materiellstatus, feil, utbedringsbehov og disposisjon. Opplysningene du registrerer blir en viktig del av situasjonsbildet for Verksted, Skiftere, TXP og andre autoriserte brukere.
+
+KOM RASKT I GANG
+
+1. Finn riktig kjøretøy.
+2. Kontroller hovedstatus, feil, åpne utbedringsbehov og disposisjon hver for seg.
+3. Registrer bare opplysningen du faktisk skal endre.
+4. Bruk melding når et annet nivå må handle eller avklare noe.
+5. Kontroller fersk servervisning etter en registrering.
+
+DINE FUNKSJONER
+
+På DROPS-nivået kan autoriserte brukere:
+
+• søke etter og filtrere kjøretøy
+• se hovedstatus
+• se og registrere feil
+• bestille utbedring
+• se åpne utbedringsbehov
+• registrere «Til rep»
+• registrere «Dreies»
+• melde «Ikke driftsklar»
+• melde «Driftsklar»
+• se relevant spor- og kjøretøykontekst
+• sende, motta, svare på og kvittere direktemeldinger
+
+HOVEDSTATUS, FEIL OG DISPOSISJON
+
+Hovedstatus er enten Driftsklar eller Ikke driftsklar.
+
+Bare en eksplisitt registrering av «Ikke driftsklar» skal gi rød hovedstatus. En aktiv feil, utbedringsbestilling, «Til rep» eller «Dreies» gjør ikke kjøretøyet automatisk «Ikke driftsklart».
+
+Dersom ingen eksplisitt status er registrert, vises kjøretøyet som effektivt driftsklart. Dette oppretter ikke en ny statusregistrering.
+
+En feil beskriver et registrert avvik. «Bestill utbedring» oppretter et utbedringsbehov. Bestillingen skal ikke endre hovedstatus med mindre en autorisert bruker også registrerer en egen statusendring.
+
+«Til rep» og «Dreies» er disposisjoner. De beholdes som egne opplysninger, kan brukes i planlegging, endrer ikke hovedstatus alene og flytter ikke kjøretøyet.
+
+VANLIGE OPPGAVER
+
+Registrere en feil:
+
+1. Finn kjøretøyet.
+2. Kontroller vehicleId.
+3. Åpne feilregistreringen.
+4. Skriv en kort og presis beskrivelse.
+5. Lagre.
+6. Kontroller at feilen vises på riktig kjøretøy.
+
+Bestille utbedring:
+
+1. Finn riktig feil eller kjøretøy.
+2. Velg «Bestill utbedring».
+3. Kontroller konteksten.
+4. Send bestillingen.
+5. Kontroller fersk servervisning.
+
+Melde Ikke driftsklar eller Driftsklar:
+
+1. Finn kjøretøyet.
+2. Kontroller aktuell status og situasjon.
+3. Velg riktig statuskommando.
+4. Bekreft handlingen.
+5. Kontroller at hovedstatusen er riktig.
+
+Registrere Til rep eller Dreies:
+
+1. Finn kjøretøyet.
+2. Velg riktig disposisjon.
+3. Kontroller at disposisjonen vises separat.
+4. Kontroller at hovedstatusen ikke er endret av disposisjonen alene.
+
+HVA DU MOTTAR FRA ANDRE NIVÅER
+
+DROPS kan motta:
+
+• spørsmål om materiellstatus
+• informasjon om faktisk plassering
+• behov for statusavklaring
+• verkstedrelatert oppfølging
+• spørsmål om feil eller utbedringsbehov
+• meldinger knyttet til kjøretøy, slot eller sak
+
+HVA DU SENDER VIDERE
+
+DROPS sender videre:
+
+• oppdatert hovedstatus
+• registrerte feil
+• utbedringsbestillinger
+• disposisjon
+• presise direktemeldinger når et annet nivå må følge opp
+
+MELDINGER OG KVITTERINGER
+
+• «Send svar» sender en ny melding i samme samtale.
+• «Kvitter mottatt» bekrefter mottak.
+• Svar og kvittering kan gjøres i valgfri rekkefølge.
+• Å lese eller lukke meldingen er ikke kvittering.
+
+RELEVANTE STATUSSIGNALER
+
+• Grønn hovedstatus: Driftsklar.
+• Rød hovedstatus: Eksplisitt Ikke driftsklar.
+• Til rep: Disposisjon, ikke hovedstatus.
+• Dreies: Disposisjon, ikke hovedstatus.
+• Aktiv feil: Egen opplysning.
+• Åpen utbedringsbestilling: Egen opplysning.
+
+VANLIGE PROBLEMER
+
+Feilen gjør kjøretøyet rødt:
+Dette skal ikke skje alene. Kontroller om det også finnes en eksplisitt status «Ikke driftsklar».
+
+«Til rep» eller «Dreies» har endret hovedstatus:
+Disposisjon og hovedstatus skal være separate. Oppdater og kontroller servervisningen.
+
+Jeg finner ikke kjøretøyet:
+Kontroller søk, filtre, dato og vehicleId.
+
+Jeg ser ikke en handling:
+Tilgangen styres av serveren. Du kan bare bruke funksjoner rollen din har fått.
+
+KORT BEGREPSLISTE
+
+Hovedstatus:
+Driftsklar eller Ikke driftsklar.
+
+Feil:
+Registrert teknisk eller operativt avvik.
+
+Utbedringsbestilling:
+Registrert behov for å følge opp en feil.
+
+Til rep:
+Disposisjon for reparasjonsbehov.
+
+Dreies:
+Disposisjon for behov for dreiing.
+
+Readback:
+Fersk servervisning etter at en handling er sendt.
+
+======================================================================
+NIVÅ 2 – TXP
+======================================================================
+
+TXP – SPORINFORMASJON OG PLANLAGT SPORBRUK
+
+TXP-nivået brukes til å registrere og kontrollere relevant informasjon om spor, slotter og planlagt bruk. Opplysningene er en viktig del av grunnlaget for Skiftere, Verksted, Agilia og SDEs vurderinger.
+
+KOM RASKT I GANG
+
+1. Kontroller dato og ferskhet.
+2. Åpne TXP-flaten.
+3. Kontroller riktig operativt døgn.
+4. Registrer eller oppdater bare sporopplysningene du har ansvar for.
+5. Lagre når lagring er tilgjengelig.
+6. Kontroller at den lagrede versjonen er lest tilbake.
+7. Send melding dersom en endring påvirker andre nivåer.
+
+DINE FUNKSJONER
+
+På TXP-nivået kan autoriserte brukere:
+
+• se faktisk Sporplan
+• se relevant planlagt sporbruk
+• registrere eller oppdatere TXP-input
+• markere relevante forhold ved spor eller infrastruktur
+• kontrollere lagret utkast og revisjon når dette er tilgjengelig
+• se nødvendig materiell- og oppgavekontekst
+• sende, motta, svare på og kvittere direktemeldinger
+
+FAKTISK PLASSERING OG PLANLAGT BRUK
+
+Faktisk plassering viser hvor kjøretøyet er registrert nå. Planlagt bruk viser hva som er ønsket eller forventet.
+
+En planlagt plassering er ikke det samme som en utført plassering. TXP-input skal ikke flytte kjøretøyet automatisk.
+
+En fysisk tom slot kan fortsatt være reservert, utilgjengelig, blokkert av ruten eller uegnet for oppgaven.
+
+LAGRING OG REVISJON
+
+Når lagring er tilgjengelig:
+
+1. Kontroller at du har riktig versjon.
+2. Gjør endringen.
+3. Lagre.
+4. Kontroller fersk readback og revisjon.
+5. Ved konflikt skal du hente fersk versjon før du prøver igjen.
+
+Ikke anta at lokal visning er lagret før serveren har bekreftet det.
+
+VANLIGE OPPGAVER
+
+Oppdatere sporinformasjon:
+
+1. Velg riktig spor eller slot.
+2. Kontroller eksisterende verdi.
+3. Registrer endringen.
+4. Lagre dersom lagring er tilgjengelig.
+5. Kontroller readback.
+6. Meld fra dersom endringen påvirker en pågående arbeidsflyt.
+
+Kontrollere planlagt sporbruk:
+
+1. Sammenlign planen med faktisk Sporplan.
+2. Se etter opptatte, reserverte eller utilgjengelige mål.
+3. Kontroller relevante meldinger.
+4. Avklar avvik med Skiftere eller annet ansvarlig nivå.
+
+HVA DU MOTTAR FRA ANDRE NIVÅER
+
+TXP kan motta:
+
+• behov for sporavklaring
+• informasjon om planlagte skiftebevegelser
+• verksted- eller renholdsbehov som påvirker sporbruk
+• spørsmål om en slot er tilgjengelig
+• melding om at en tidligere plan ikke lenger er gjennomførbar
+
+HVA DU SENDER VIDERE
+
+TXP sender videre:
+
+• oppdatert sporinformasjon
+• planlagt sporbruk
+• informasjon om begrensninger
+• avklaringer som påvirker andre nivåer
+• direktemeldinger med relevant slot- eller sakskontekst
+
+MELDINGER OG KVITTERINGER
+
+Bruk meldinger når en sporendring må forstås eller behandles av et annet nivå.
+
+• Svar i samme samtale.
+• Kvitter mottatt separat.
+• Ikke bruk meldingen som erstatning for nødvendig registrering i TXP-flaten.
+• En melding utfører ikke en skiftebevegelse.
+
+RELEVANTE STATUSSIGNALER
+
+• Faktisk plassering: Kanonisk registrert slot.
+• Planlagt bruk: Ønsket eller registrert plan.
+• Reservert: Slotten er holdt av til en bestemt plan.
+• Utilgjengelig: Slotten skal ikke brukes.
+• REPLAN_REQUIRED: Tidligere plan må vurderes på nytt.
+
+VANLIGE PROBLEMER
+
+Jeg kan ikke lagre:
+Kontroller tilgang, serverstatus og om lagringsfunksjonen er aktiv.
+
+Jeg får versjonskonflikt:
+Hent fersk versjon og sammenlign før du lagrer på nytt.
+
+Et tomt spor kan ikke brukes:
+Sporet kan være reservert, utilgjengelig eller fysisk blokkert.
+
+Planen og faktisk Sporplan er forskjellige:
+Dette kan være korrekt dersom planen ikke er utført. Kontroller skiftekort og historikk.
+
+KORT BEGREPSLISTE
+
+Faktisk plassering:
+Hvor kjøretøyet er registrert nå.
+
+Planlagt sporbruk:
+Registrert ønske eller plan for senere plassering.
+
+Revisjon:
+Serverens versjonsnummer for lagret informasjon.
+
+Slot:
+Definert plass i Sporplan.
+
+Uvirksom infrastruktur:
+Spor eller del av infrastrukturen som ikke skal brukes.
+
+======================================================================
+NIVÅ 3 – SKIFTERE
+======================================================================
+
+SKIFTERE – PLANLEGGING OG GJENNOMFØRING AV SKIFTEBEVEGELSER
+
+Skifternivået brukes til å vurdere og følge opp skiftebevegelser på grunnlag av faktisk plassering, Tursatt, sporforhold, verkstedbehov, materiellinformasjon og andre registrerte oppgaver.
+
+KOM RASKT I GANG
+
+1. Kontroller fersk Sporplan.
+2. Kontroller Tursatt og aktuelle behov.
+3. Åpne SDE Skiftebevegelser.
+4. Les forslag, blokkeringer, avhengigheter og diagnoser.
+5. Kontroller målsporet fysisk og systemmessig.
+6. Bruk riktig skiftekort eller overstyring.
+7. Marker først «Utført» når handlingen faktisk er gjennomført.
+
+DINE FUNKSJONER
+
+På Skifternivået kan autoriserte brukere:
+
+• se faktisk Sporplan
+• se Tursatt
+• se SDEs forslag og diagnoser
+• se skiftebevegelser og avhengige steg
+• bruke grafisk planverktøy
+• opprette eller behandle skiftekort gjennom tilgjengelig arbeidsflyt
+• se kø og reservasjoner
+• bruke tilgjengelig overstyring til et fysisk gyldig mål
+• markere handlinger «Utført» eller «Annullert» når kontrollen er tilgjengelig
+• sende, motta, svare på og kvittere direktemeldinger
+
+SDE-FORSLAG
+
+Et forslag kan vise kjøretøy, fra-slot, målspor, score, prioritet, rutevurdering, blokkering, avhengig steg, reservasjon eller behov for ny plan.
+
+Et forslag er ikke en ordre og ikke en utført handling.
+
+FYSISK KONTROLL
+
+Et fysisk opptatt målspor skal aldri brukes.
+
+SDE skal kontrollere målsporet før vurdering, scoring, kortopprettelse, aktivering, godkjenning og «Utført».
+
+Dersom målsporet blir opptatt, skal kortet stoppe og kreve ny plan.
+
+OVERSTYRING
+
+Overstyring brukes når et annet gjennomførbart mål er nødvendig.
+
+En overstyring skal:
+
+• bare tilby fysisk gyldige mål
+• bevare faktisk plassering til handlingen er utført
+• ikke skjule en blokkering
+• ikke bruke et opptatt mål som reserve
+• inngå i samme sikkerhetskontroll som automatiske forslag
+
+KØ, RESERVASJON OG SKIFTEKORT
+
+Kø:
+Oppgaven venter på en forutsetning.
+
+Reservasjon:
+Målsporet er holdt av til en bestemt plan. Kjøretøyet står ikke nødvendigvis der.
+
+Skiftekort:
+Den konkrete handlingen som skal behandles.
+
+REPLAN_REQUIRED:
+Kortet kan ikke lenger gjennomføres sikkert. Gammel reservasjon skal frigjøres, og ny plan skal bruke fersk faktisk plassering.
+
+UTFØRT OG ANNULLERT
+
+«Utført» skal bare brukes når skiftebevegelsen faktisk er gjennomført. Da kan faktisk plassering oppdateres.
+
+«Annullert» betyr at handlingen ikke skal gjennomføres. Annullering skal ikke oppdatere faktisk plassering som om handlingen var utført.
+
+VANLIGE OPPGAVER
+
+Behandle et forslag:
+
+1. Kontroller kjøretøy og fra-slot.
+2. Kontroller målspor.
+3. Les rutevurdering og blokkeringer.
+4. Kontroller reservasjoner og avhengige steg.
+5. Godkjenn eller overstyr etter gjeldende arbeidsflyt.
+6. Gjennomfør skiftet.
+7. Marker «Utført».
+8. Kontroller at faktisk Sporplan er oppdatert.
+
+Velge et annet mål:
+
+1. Åpne tilgjengelig overstyring.
+2. Velg bare et fysisk gyldig mål.
+3. Kontroller ny rute og nye avhengigheter.
+4. Bekreft planen.
+5. Ikke marker «Utført» før bevegelsen er gjennomført.
+
+Håndtere et blokkert kort:
+
+1. Les hvorfor kortet er blokkert.
+2. Kontroller om en annen handling må utføres først.
+3. Kontroller om målsporet er opptatt eller reservert.
+4. Bruk ny plan når kortet viser REPLAN_REQUIRED.
+5. Ikke omgå blokkeringen ved å bruke stale data.
+
+HVA DU MOTTAR FRA ANDRE NIVÅER
+
+Skiftere kan motta:
+
+• materiellstatus og utbedringsbehov fra DROPS
+• sporinformasjon fra TXP
+• inn- og utkjøringsbehov fra Verksted
+• renholds- eller boningsbehov fra Agilia
+• Tursatt-informasjon
+• direktemeldinger med kjøretøy-, slot- eller sakskontekst
+
+HVA DU SENDER VIDERE
+
+Skiftere sender videre:
+
+• status for planlagt og utført skiftebevegelse
+• informasjon om blokkering eller behov for ny plan
+• avklaringer om målspor
+• meldinger til nivået som eier behovet
+• faktisk oppdatert plassering etter autorisert «Utført»
+
+MELDINGER OG KVITTERINGER
+
+Meldinger brukes til avklaring, ikke som erstatning for skiftekort eller «Utført».
+
+• Svar i samme popup eller samtale.
+• Kvitter mottatt separat.
+• Behold kjøretøy- og slot-kontekst når den er relevant.
+• Les hele samtalen før du svarer.
+
+RELEVANTE STATUSSIGNALER
+
+• Grønn ramme: Driftsklar.
+• Rød ramme: Eksplisitt Ikke driftsklar.
+• Dreies: Separat disposisjon.
+• Fysisk opptatt: Kan ikke brukes som mål.
+• Reservert: Holdt av til en bestemt plan.
+• REPLAN_REQUIRED: Ny plan er nødvendig.
+• Utført: Faktisk gjennomført.
+
+VANLIGE PROBLEMER
+
+Jeg får rød ramme rundt en slot ved overstyring:
+Slotten er ikke gyldig som mål. Kontroller fysisk occupancy, reservasjon og rute.
+
+Et tilbudt mål kan ikke gjennomføres:
+Stopp og dokumenter avviket. Ikke marker kortet «Utført». Hent fersk state og krev ny plan.
+
+Kortet viser gammel plassering:
+Oppdater og kontroller canonical actual. Ikke bruk et stale kort.
+
+Jeg mister en draft når det kommer ny melding:
+Dette skal ikke skje. Aktiv tekst og tråd skal bevares gjennom polling.
+
+KORT BEGREPSLISTE
+
+Actionable:
+Klar til behandling innenfor gjeldende kontroller.
+
+Dependency:
+En annen handling eller forutsetning må løses først.
+
+Målspor:
+Slotten kjøretøyet er planlagt flyttet til.
+
+Overstyring:
+Brukerstyrt valg av et annet fysisk gyldig mål.
+
+REPLAN_REQUIRED:
+Planen må vurderes på nytt.
+
+Utført:
+Bekreftet faktisk gjennomføring.
+
+======================================================================
+NIVÅ 4 – VERKSTED
+======================================================================
+
+VERKSTED – VERKSTEDSPOR, KJØRETØY OG INN-/UTKJØRINGSBEHOV
+
+Verkstednivået brukes til å arbeide med kjøretøy og behov knyttet til verkstedområdet.
+
+Verkstedsporene er:
+
+• 8N
+• 7N
+• 8S
+• 7S
+
+KOM RASKT I GANG
+
+1. Velg riktig verkstedslot.
+2. Kontroller hvilket kjøretøy som faktisk står der.
+3. Les hovedstatus, disposisjon, feil og åpne utbedringsbehov hver for seg.
+4. Registrer relevant behov.
+5. Kontroller om behovet er klart, venter eller krever ny plan.
+6. Bruk melding når Skiftere, DROPS eller TXP må avklare noe.
+
+DINE FUNKSJONER
+
+På Verkstednivået kan autoriserte brukere:
+
+• se verkstedsporene
+• velge én verkstedslot om gangen
+• se fersk canonical occupant
+• se om slotten er tom, opptatt eller reservert
+• se kjøretøyets hovedstatus
+• se disposisjon
+• se aktive feil og åpne utbedringsbehov
+• registrere tilgjengelige inn- eller utkjøringsbehov
+• følge behov som venter på slot eller trygg rute
+• sende, motta, svare på og kvittere direktemeldinger
+
+HANDLINGSSENTERET
+
+Handlingssenteret skal alltid gjelde valgt slot og kjøretøyet som faktisk står der.
+
+Når du velger en ny slot:
+
+• tidligere kjøretøyinformasjon skal fjernes
+• ny canonical occupant skal leses
+• handlingene skal gjelde riktig vehicleId
+• status og kontekst skal oppdateres
+
+Ved tom slot skal det ikke vises kjøretøyhandlinger.
+
+STATUS, FEIL OG DISPOSISJON
+
+Verksted skal bruke samme hovedstatus som Sporplan og DROPS.
+
+• Grønn hovedstatus betyr Driftsklar.
+• Rød hovedstatus betyr eksplisitt Ikke driftsklar.
+• «Til rep» og «Dreies» er disposisjoner.
+• Feil og utbedringsbehov vises separat.
+
+Et kjøretøy kan være driftsklart og samtidig ha en feil, utbedringsbestilling eller disposisjonen «Til rep» eller «Dreies».
+
+INN- OG UTKJØRINGSBEHOV
+
+Et behov kan registreres selv om kjøretøyet er Driftsklart, Ikke driftsklart, Til rep, skal Dreies, har aktive feil, har åpne utbedringsbehov eller mangler eksplisitt statusregistrering.
+
+Registrert behov betyr ikke at kjøretøyet er flyttet.
+
+Behovet kan få en ventetilstand, for eksempel:
+
+• CARD_CREATED
+• HIGH_PRIORITY_WAITING_FOR_SLOT
+• WAITING_FOR_SLOT
+• REPLAN_REQUIRED
+
+Skiftere og SDE behandler gjennomførbarheten. Faktisk plassering endres først etter autorisert «Utført».
+
+VANLIGE OPPGAVER
+
+Kontrollere et kjøretøy i verkstedet:
+
+1. Velg slotten.
+2. Kontroller vehicleId.
+3. Les hovedstatus.
+4. Les disposisjon.
+5. Les feil og utbedringsbehov.
+6. Kontroller relevante meldinger.
+
+Registrere innkjøringsbehov:
+
+1. Velg relevant verkstedslot eller kontekst.
+2. Kontroller at behovet gjelder riktig kjøretøy.
+3. Registrer behovet.
+4. Kontroller serverreadback.
+5. Følg status for kort, venting eller ny plan.
+6. Meld Skiftere dersom noe må avklares.
+
+Registrere utkjøringsbehov:
+
+1. Velg slotten kjøretøyet står i.
+2. Kontroller vehicleId og aktuell kontekst.
+3. Registrer behovet gjennom tilgjengelig kontroll.
+4. Kontroller at behovet er lagret.
+5. Følg videre plan og meldinger.
+6. Ikke endre faktisk plassering manuelt.
+
+HVA DU MOTTAR FRA ANDRE NIVÅER
+
+Verksted kan motta:
+
+• materiellstatus, feil og utbedringsbehov fra DROPS
+• informasjon om planlagt skifte fra Skiftere
+• sporavklaringer fra TXP
+• meldinger om kjøretøy, slot, prioritet eller behov
+• status på venting, reservasjon eller ny plan
+
+HVA DU SENDER VIDERE
+
+Verksted sender videre:
+
+• inn- og utkjøringsbehov
+• nødvendig verkstedkontekst
+• avklaringer om kjøretøy eller slot
+• meldinger til tillatte nivåer
+• oppfølging av behov som ikke kan gjennomføres med en gang
+
+MELDINGER OG KVITTERINGER
+
+• Svar i samme samtale.
+• Kvitter mottatt separat.
+• Oppgi kjøretøy og slot når det er relevant.
+• Meldingen flytter ikke kjøretøyet og oppretter ikke automatisk skiftekort.
+
+RELEVANTE STATUSSIGNALER
+
+• Tom: Ingen canonical occupant.
+• Opptatt: Et kjøretøy står i slotten.
+• Reservert: Slotten er holdt av til en plan.
+• Driftsklar: Grønn hovedstatus.
+• Ikke driftsklar: Rød hovedstatus.
+• Til rep eller Dreies: Separat disposisjon.
+• WAITING_FOR_SLOT: Behovet venter på ledig slot.
+• REPLAN_REQUIRED: Ny plan er nødvendig.
+
+VANLIGE PROBLEMER
+
+Feil kjøretøy vises etter at jeg bytter slot:
+Oppdater visningen. Handlingssenteret skal bare vise canonical occupant for valgt slot.
+
+En tom slot viser kjøretøyhandlinger:
+Dette er feil. Ikke utfør handlingen. Oppdater og dokumenter avviket.
+
+Behovet flytter ikke kjøretøyet:
+Det er riktig. Behov, skiftekort og faktisk flytting er forskjellige trinn.
+
+Kjøretøyet er rødt i én visning og grønt i en annen:
+Dette er en statusdiskrepans. Begge visninger skal bruke samme autoritative hovedstatus.
+
+KORT BEGREPSLISTE
+
+Canonical occupant:
+Kjøretøyet som autoritativt er registrert i slotten.
+
+Handlingssenter:
+Arbeidsflaten for valgt verkstedslot.
+
+Innkjøringsbehov:
+Registrert behov for å få kjøretøy inn i verkstedområdet.
+
+Utkjøringsbehov:
+Registrert behov for å få kjøretøy ut av verkstedområdet.
+
+WAITING_FOR_SLOT:
+Behovet venter på en ledig og gyldig slot.
+
+======================================================================
+NIVÅ 5 – AGILIA
+======================================================================
+
+AGILIA – RENHOLD, BONING OG SAMHANDLING OM MATERIELL
+
+Agilia-nivået brukes til å se og følge opp renholds- og boningsrelatert arbeidsinformasjon for materiell i Skien.
+
+KOM RASKT I GANG
+
+1. Finn riktig oppgave eller kjøretøy.
+2. Kontroller aktuell plassering og oppgavekontekst.
+3. Bruk bare kontrollene som er tilgjengelige på Agilia-nivået.
+4. Registrer eller oppdater renholdsinformasjon gjennom riktig arbeidsflyt.
+5. Send melding når tilgang, plassering eller prioritet må avklares.
+6. Kontroller serverreadback etter en registrering.
+
+DINE FUNKSJONER
+
+På Agilia-nivået kan autoriserte brukere:
+
+• se relevante renholds- og boningsoppgaver
+• se hvilket materiell oppgaven gjelder
+• se aktuell plassering når den er tilgjengelig
+• bruke tilgjengelige registrerings- og oppfølgingskontroller
+• se nødvendig status- og oppgavekontekst
+• kommunisere behov for tilgang eller flytting
+• sende, motta, svare på og kvittere direktemeldinger
+
+RENHOLDS- OG BONINGSOPPGAVER
+
+En oppgave skal knyttes til riktig kjøretøy og riktig situasjon.
+
+Kontroller vehicleId, aktuell slot når den er tilgjengelig, oppgavetype, eventuelle avhengigheter, meldinger og om materiellet er tilgjengelig for arbeidet.
+
+Agilia skal ikke endre hovedstatus eller faktisk plassering.
+
+BEHOV FOR TILGANG ELLER FLYTTING
+
+Dersom oppgaven krever flytting eller tilgang:
+
+1. Kontroller kjøretøy og aktuell plassering.
+2. Beskriv behovet presist.
+3. Send melding til riktig nivå.
+4. Følg svar og kvittering i samme samtale.
+5. Kontroller Sporplan før arbeidet starter.
+6. Ikke anta at kjøretøyet er flyttet før faktisk plassering viser det.
+
+VANLIGE OPPGAVER
+
+Følge opp en oppgave:
+
+1. Åpne riktig oppgave.
+2. Kontroller materiell og kontekst.
+3. Utfør tilgjengelig registrering eller oppfølging.
+4. Kontroller serverreadback.
+5. Meld fra dersom et annet nivå må utføre noe.
+
+Be om tilgang til kjøretøy:
+
+1. Finn kjøretøyet.
+2. Kontroller aktuell slot.
+3. Send tydelig direktemelding med kjøretøy, behov og ønsket tidspunkt når relevant.
+4. Følg samtalen.
+5. Kvitter mottatt når du har mottatt viktig informasjon.
+6. Kontroller faktisk Sporplan før arbeidet begynner.
+
+HVA DU MOTTAR FRA ANDRE NIVÅER
+
+Agilia kan motta:
+
+• informasjon om aktuell plassering
+• svar på behov for tilgang
+• planlagt skifte eller endret prioritet
+• materiellstatus som er relevant for oppgaven
+• melding om at en tidligere plan må endres
+
+HVA DU SENDER VIDERE
+
+Agilia sender videre:
+
+• renholds- eller boningsrelatert oppgaveinformasjon
+• behov for tilgang
+• behov for avklaring
+• relevant kjøretøy- og slot-kontekst
+• direktemeldinger til tillatte nivåer
+
+MELDINGER OG KVITTERINGER
+
+• Svar i samme samtale.
+• Kvitter mottatt separat.
+• Oppgi kjøretøy og behov tydelig.
+• En melding utfører ikke en flytting.
+• Les hele samtalen før du handler.
+
+RELEVANTE STATUSSIGNALER
+
+• Faktisk plassering: Hvor kjøretøyet er registrert.
+• Oppgave: Registrert renholds- eller boningsarbeid.
+• Avhengighet: Noe annet må avklares eller utføres først.
+• Driftsklar eller Ikke driftsklar: Hovedstatus som vises som kontekst.
+• Til rep eller Dreies: Disposisjon som kan være relevant kontekst.
+
+VANLIGE PROBLEMER
+
+Kjøretøyet står ikke der oppgaven forventer:
+Kontroller fersk Sporplan og send melding til riktig nivå.
+
+Jeg kan ikke flytte kjøretøyet:
+Det er riktig. Agilia registrerer og kommuniserer behov. Autorisert skifteflyt håndterer flyttingen.
+
+Jeg ser ikke en funksjon:
+Tilgangen bestemmes av serverens rolle- og capabilitymodell.
+
+Meldingen er lest, men ikke kvittert:
+Bruk «Kvitter mottatt». Lesing er ikke kvittering.
+
+KORT BEGREPSLISTE
+
+Agilia:
+Nivået for renholds- og boningsrelatert arbeidsinformasjon.
+
+Avhengighet:
+En forutsetning som må avklares eller utføres.
+
+Faktisk plassering:
+Canonical slot for kjøretøyet.
+
+Oppgavekontekst:
+Kjøretøy, plassering, oppgavetype og relevant informasjon samlet.
+
+Readback:
+Fersk serverbekreftet visning etter en registrering.

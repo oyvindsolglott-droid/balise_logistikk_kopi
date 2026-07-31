@@ -8232,6 +8232,7 @@ button{padding:12px 12px}
 .operational-message-reply [data-sde-operational-message-status].is-success{color:#087b3a}
 .operational-message-reply [data-sde-operational-message-status].is-error{color:#a41d26}
 .sde-role-guide{
+  min-width:0;
   display:grid;
   gap:16px;
   padding:clamp(14px,2.4vw,26px);
@@ -8248,6 +8249,12 @@ button{padding:12px 12px}
 }
 .sde-role-guide__header h2,
 .sde-role-guide__header p{margin:0}
+.sde-role-guide__intro{
+  margin-top:10px!important;
+  color:#314a69;
+  line-height:1.55;
+  white-space:pre-wrap;
+}
 .sde-role-guide__eyebrow{
   color:#1764c0;
   font-size:.78rem;
@@ -8255,7 +8262,8 @@ button{padding:12px 12px}
   letter-spacing:.12em;
   text-transform:uppercase;
 }
-.sde-role-guide__search{display:grid;gap:6px;color:#173b69;font-weight:850}
+.sde-role-guide__search{display:grid;grid-template-columns:1fr auto;gap:7px;color:#173b69;font-weight:850}
+.sde-role-guide__search label{display:grid;gap:6px;min-width:0}
 .sde-role-guide__search input{
   width:100%;
   box-sizing:border-box;
@@ -8271,6 +8279,30 @@ button{padding:12px 12px}
   outline-offset:2px;
   border-color:#236fff;
 }
+.sde-role-guide__search button,
+.sde-role-guide__controls button,
+.sde-role-guide__toc button{
+  min-height:40px;
+  border:1px solid #9db4d0;
+  border-radius:11px;
+  padding:8px 12px;
+  background:#fff;
+  color:#12345c;
+  font:inherit;
+  font-weight:850;
+  cursor:pointer;
+}
+.sde-role-guide__search button{align-self:end}
+.sde-role-guide__controls{display:flex;gap:8px;flex-wrap:wrap}
+.sde-role-guide__toc{
+  min-width:0;
+  display:flex;
+  gap:7px;
+  overflow-x:auto;
+  padding-bottom:4px;
+  scrollbar-width:thin;
+}
+.sde-role-guide__toc button{flex:0 0 auto}
 .sde-role-guide__entries{display:grid;gap:10px}
 .sde-role-guide__entries article{
   border:1px solid #cbdcf0;
@@ -8286,25 +8318,22 @@ button{padding:12px 12px}
   cursor:pointer;
   font-weight:950;
 }
-.sde-role-guide__entries summary small{color:#536b89;font-weight:700}
-.sde-role-guide__content{padding:0 16px 16px;color:#243b5a}
-.sde-role-guide__content h3{margin:4px 0 8px}
-.sde-role-guide__content ol{margin:0 0 12px;padding-left:22px}
-.sde-role-guide__boundary{
-  padding:10px 12px;
-  border-left:4px solid #f59e0b;
-  border-radius:8px;
-  background:#fffbeb;
+.sde-role-guide__section-body{
+  min-width:0;
+  padding:0 16px 16px;
+  color:#243b5a;
+  line-height:1.58;
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
 }
-.sde-role-guide__content button{
-  min-height:40px;
-  border:1px solid #174da7;
-  border-radius:12px;
-  padding:8px 14px;
-  background:linear-gradient(180deg,#3984ff,#0755d7);
-  color:#fff;
-  font-weight:900;
-  cursor:pointer;
+.sde-role-guide__empty{
+  margin:0;
+  padding:14px;
+  border:1px solid #cbdcf0;
+  border-radius:14px;
+  color:#536b89;
+  text-align:center;
+  font-weight:850;
 }
 .agilia-workspace{
   display:grid;
@@ -8438,6 +8467,12 @@ button{padding:12px 12px}
   .sde-role-guide__header{grid-template-columns:1fr}
 }
 @media (max-width: 520px){
+  .sde-role-guide{padding:12px;gap:12px}
+  .sde-role-guide__search{grid-template-columns:1fr}
+  .sde-role-guide__search button{justify-self:start}
+  .sde-role-guide__toc{max-width:100%}
+  .sde-role-guide__entries summary,
+  .sde-role-guide__section-body{padding-left:12px;padding-right:12px}
   .workshop-slot-status-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
   .workshop-slot-status-card{padding:9px}
   .workshop-slot-status-card h3{font-size:18px}
@@ -9989,243 +10024,7 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 
 
 
-<section class="panel" id="hjelp">
-<div class="note">Kort brukerveiledning for Skien sporplan / SDE. Bruk denne siden for rask oppstart, riktig arbeidsflyt og trygg tolking av forslag.</div>
-
-<div class="api-box">
-<h2>Brukerveiledning</h2>
-
-<h3>Hva SDE er</h3>
-<p><strong>SDE / Skien sporplan er operativ beslutningsstøtte for skifting på Skien.</strong></p>
-<p>Programmet samler Tursatt/Balise, TXP Input Sporplan, Turnering Kveld, Turnering Natt, Sporplan og skiftebevegelser i ett felles bilde.</p>
-<p>Målet er å gjøre det lettere å se hva som står hvor, hva som må flyttes, hva som haster, og hvilke avvik som må kontrolleres.</p>
-
-<h3>Hva SDE ikke er</h3>
-<p><strong>SDE er ikke en fasit og ikke et automatisk styringssystem.</strong></p>
-<p>Forslag må alltid vurderes opp mot faktisk situasjon, lokale regler, signal-/sporforhold, tilgjengelig personell og praktisk gjennomførbarhet.</p>
-
-<hr>
-
-<h2>Kom i gang</h2>
-<ol>
-<li><strong>Kontroller Tursatt.</strong> Se hvilke tog og kjøretøy som kommer inn og skal ut.</li>
-<li><strong>Oppdater TXP Input Sporplan.</strong> Registrer faktisk oppstilling etter fysisk kontroll.</li>
-<li><strong>Kontroller Turnering Kveld/Natt.</strong> Se produksjonsflyt, servicebehov, verkstedbehov og avvik.</li>
-<li><strong>Planlegg skifter med + Skifte.</strong> Fyll inn kjøretøy, fra spor, til spor, skifter og eventuell operasjonstype.</li>
-<li><strong>Bruk SDE som kontroll.</strong> Se anbefalte handlinger, score, varsler og planlagte bevegelser.</li>
-<li><strong>Marker utført først når skiftet faktisk er gjort.</strong> Skriv <strong>f</strong> i Utført-feltet.</li>
-</ol>
-
-<h3>Viktigste regel</h3>
-<p><strong>Sporplan skal vise faktisk nåsituasjon.</strong></p>
-<p>Hvis TXP Input Sporplan eller Sporplan er feil, får SDE feil utgangspunkt.</p>
-<p>Planlagte bevegelser kan vises som <strong>PLAN FRA</strong> og <strong>PLAN TIL</strong>. Først når <strong>Utført = f</strong> er satt, regner programmet kjøretøyet som flyttet.</p>
-
-<hr>
-
-<h2>Visningsnivåer og roller</h2>
-<p>Visningsnivåene simulerer hvilken tilgang hver operativ gruppe har til programmet.</p>
-<p>Hensikten er å vise hvordan ulike roller kan bidra med egne input til SDE, uten at alle brukere må forholde seg til alle funksjoner.</p>
-<p>Dette er visningsnivåer i prototypen, ikke ekte innlogging eller sikkerhetstilgang.</p>
-
-<table>
-<thead>
-<tr><th>Nivå</th><th>Rolle</th><th>Hva rollen bidrar med</th></tr>
-</thead>
-<tbody>
-<tr><td>0</td><td>Alle funksjoner</td><td>Full oversikt over alle ark, input og beslutningsfunksjoner.</td></tr>
-<tr><td>1</td><td>DROPS</td><td>Materiellbeslutninger, vurdering av tilgjengelig materiell, verkstedstatus og SDE Vaktplan.</td></tr>
-<tr><td>2</td><td>TXP</td><td>Simulert operativ input gjennom TXP Input Sporplan, Turnering Kveld og Turnering Natt. TXP kan overstyre SDE-grunnlaget ved behov.</td></tr>
-<tr><td>3</td><td>Skiftere</td><td>Oversikt over Tursatt, Sporplan og anbefalte skiftebevegelser fra SDE.</td></tr>
-<tr><td>4</td><td>Verksted</td><td>Oversikt i Tursatt og Sporplan, samt registrering av verkstedbehov, ønsket mottak, kjøretøy, sporønske og status.</td></tr>
-<tr><td>5</td><td>Agilia</td><td>Lesetilgang til Tursatt, Sporplan og egen Agilia-meny for operativ oversikt.</td></tr>
-</tbody>
-</table>
-
-<p>Blå knapper representerer simulert TXP-input. I en videre løsning kan deler av dette datagrunnlaget komme fra TXP, Tog i Ro eller andre operative systemer.</p>
-<p>SDE samler disse inputene og prosesserer dem til beslutningsstøtte, men operative roller kan fortsatt korrigere eller overstyre grunnlaget når faktisk situasjon tilsier det.</p>
-
-<hr>
-
-<h2>Arkene</h2>
-
-<pre>Grønn ring: operativt grunnbilde
-Blå ring: simulert TXP-input
-Mørk blå beslutningsknapp: SDE-beslutningsstøtte
-Rød ring: simulert verksted-input</pre>
-
-<h3>1. Tursatt</h3>
-<p><strong>Operativt grunnbilde.</strong> Viser ankomster og avganger med kjøretøy fra Balise-data.</p>
-<p>Brukes til å kontrollere hva som kommer inn, hva som skal ut, og om kjøretøy mangler eller må avklares manuelt.</p>
-
-<h3>2. SDE Skiftebevegelser</h3>
-<p><strong>Beslutningsstøtte for konkrete skifteforslag.</strong></p>
-<p>Her viser SDE hvilke kjøretøy som anbefales flyttet, fra hvilket spor, til hvilket spor, og hvorfor flyttingen anbefales.</p>
-<p>Arket kan vise score, skiftevindu, varsler, planlagte bevegelser, avvik og kontrollpunkter. Forslagene skal hjelpe brukeren å prioritere, men må alltid vurderes mot faktisk situasjon.</p>
-<p><strong>SDE-selvlæring og skyggediagnose.</strong> Når et SDE-forslag markeres som <strong>Utført</strong> eller <strong>Annullert</strong>, kan brukeren registrere én eller flere årsaker. SDE-selvlæring viser registrerte hendelser og årsaker som observasjon av hvordan forslagene fungerer i praksis.</p>
-<p>Ved <strong>Annullert → Feil spor</strong> kan SDE vise et adaptivt nytt forslag for samme behov. Skyggediagnosen viser en foreløpig læringsindikasjon, men <strong>brukes ikke i aktiv SDE-motor, score eller sortering</strong>. Få hendelser skal bare leses som tidlig indikasjon, ikke som beslutningsgrunnlag.</p>
-
-<h3>3. SDE Vaktplan</h3>
-<p><strong>Beslutningsstøtte for helheten i kveldsvakt og nattevakt.</strong></p>
-<p>SDE Vaktplan er kontroll- og oversiktsarket som viser hvordan Tursatt, Sporplan, TXP Input Sporplan, Turnering Kveld/Natt, verkstedstatus og planlagte skifter henger sammen.</p>
-<p>Arket skal gjøre det lettere å oppdage fra-spor-avvik, målspor som er opptatt, ruteproblemer, manglende kjøretøy, verkstedbindinger og andre forhold som bør avklares før skifting gjennomføres.</p>
-<p>Dette arket er ikke en ordre til skifter, men et samlet beslutningsgrunnlag for å forstå konsekvensene av planen.</p>
-
-<h3>4. DROPS Materiellstyrer</h3>
-<p><strong>Materielloversikt og beslutningsstøtte for DROPS.</strong></p>
-<p>Arket gir oversikt over kjøretøy, status, verksted-/reparasjonsforhold, tilgjengelighet og mulige materiellvalg.</p>
-<p>DROPS beholder den taktiske materiellbeslutningen, men SDE kan gjøre informasjonsmengden mer strukturert og lettere å handle på.</p>
-
-<h3>5. Sporplan</h3>
-<p><strong>Faktisk operativt nåbilde.</strong></p>
-<p>Sporplan viser hva som står hvor på Skien. Dette er et av de viktigste grunnlagene for SDE.</p>
-<p>Hvis Sporplan ikke stemmer med virkeligheten, vil også SDE-forslagene få feil utgangspunkt.</p>
-
-<h3>6. TXP Input Sporplan</h3>
-<p><strong>Simulert TXP-input.</strong></p>
-<p>Dette arket erstatter tidligere Grunnoppstilling-navn i menyen. Her registreres fysisk oppstilling etter kontroll av tomta.</p>
-<p>Blå ring betyr at arket representerer manuell eller simulert input fra TXP. I prototypen brukes dette som en simulering av data og vurderinger som normalt ville kommet fra TXP, eller på sikt fra systemer som Tog i Ro.</p>
-<p>TXP kan bruke slike input til å overstyre SDE-grunnlaget når faktisk situasjon, lokale vurderinger eller operative hensyn tilsier det. Dette gjør at SDE forblir beslutningsstøtte, mens TXP fortsatt kan legge inn operative føringer.</p>
-
-<h3>7. Turnering Kveld</h3>
-<p><strong>Simulert TXP-input for kveldsvakt.</strong></p>
-<p>Arket viser og korrigerer kjøretøyflyt på kveldsvakten: ankomster, videre produksjon, tømming/fylling, verkstedbehov og kjøretøy som må flyttes bort fra togspor.</p>
-<p>TXP kan her manuelt registrere eller bestille skifteoperasjoner som SDE skal ta hensyn til.</p>
-
-<h3>8. Turnering Natt</h3>
-<p><strong>Simulert TXP-input for nattevakt.</strong></p>
-<p>Arket brukes for å kontrollere nattens kjøretøyflyt og at kjøretøy står riktig før morgenproduksjonen starter.</p>
-<p>Også her kan TXP overstyre eller supplere SDE ved å legge inn manuelle skiftebehov og operative vurderinger.</p>
-
-<h3>9. Input verksted</h3>
-<p><strong>Simulert verksted-input.</strong></p>
-<p>Her registreres verkstedbestillinger, ønsket mottak, kjøretøy, sporønske og hva som skal utbedres eller kontrolleres.</p>
-<p>Rød ring betyr at arket representerer input fra verksted, slik at SDE og DROPS får bedre grunnlag for å vurdere verkstedbindinger, driftsklarhet og videre disponering.</p>
-
-<hr>
-
-<h2>Planlegge skiftebevegelser</h2>
-
-<h3>+ Skifte</h3>
-<p>Bruk <strong>+ Skifte</strong> i Turnering Kveld/Natt for konkrete skifteoppdrag.</p>
-<pre>klokkeslett
-kjøretøy
-fra spor
-til spor
-skifter
-til rep
-operasjonstype
-utført</pre>
-
-<h3>Fra spor og Til spor</h3>
-<p>Skriv alltid nøyaktig sporplassering når sporet har flere posisjoner.</p>
-<pre>3n
-5m
-6ss
-11s
-12n</pre>
-<p>For spor med plass til flere kjøretøy må kjøretøyets faktiske eller planlagte plassering oppgis med riktig sporadresse. Eksempel: 3N, 3M, 3S, 5N, 5M, 5S, 6N, 6S, 6SS, 11N, 11S eller 12N/12S. Spor 9 skrives som <strong>9</strong>.</p>
-
-<h3>Utført</h3>
-<p>Skriv <strong>f</strong> når oppdraget faktisk er utført.</p>
-<pre>Kjøretøy: 74-42
-Fra spor: 3n
-Til spor: 6n
-Utført: f</pre>
-<p>Da regner programmet kjøretøyet som flyttet til ny plassering, og tidligere spor frigjøres.</p>
-
-<hr>
-
-<h2>Korte koder</h2>
-<table>
-<thead>
-<tr><th>Felt</th><th>Verdi</th><th>Betydning</th></tr>
-</thead>
-<tbody>
-<tr><td>Utført</td><td><strong>f</strong></td><td>Skifteoppdraget er utført</td></tr>
-<tr><td>WC/vann</td><td><strong>j</strong></td><td>Kjøretøyet skal via spor 6</td></tr>
-<tr><td>Tømme</td><td><strong>j</strong></td><td>Kjøretøyet skal via spor 6</td></tr>
-<tr><td>Til tog</td><td><strong>rep</strong></td><td>Reparasjon/verkstedflyt</td></tr>
-<tr><td>Til rep</td><td><strong>r</strong></td><td>Markerer reparasjon/verkstedflyt</td></tr>
-<tr><td>Settnr</td><td><strong>1</strong> eller <strong>2</strong></td><td>Angir del av dobbeltsett</td></tr>
-</tbody>
-</table>
-
-<p>Bruk standardkodene der det er mulig. Unngå varianter som “x”, “ja”, “rep.” eller “verksted” hvis standardkode finnes.</p>
-
-<h3>Hvordan SDE tolker kodene</h3>
-<pre>WC/vann = j
-→ kjøretøyet skal via spor 6 for tømming/fylling
-
-Tømme = j
-→ kjøretøyet skal via spor 6 for tømming/fylling
-
-Til tog = rep
-→ kjøretøyet behandles som reparasjon/verkstedflyt
-
-Til rep = r
-→ kjøretøyet markeres som reparasjon/verkstedflyt
-
-Utført = f
-→ skiftebevegelsen er gjennomført, og Sporplan oppdateres
-
-Settnr = 1 eller 2
-→ angir hvilken del av dobbeltsettet som menes</pre>
-
-<h3>Motsatt deling</h3>
-<p><strong>Motsatt deling</strong> brukes når et tog med to kjøretøy deles motsatt av normal forventning.</p>
-<p>Typisk betyr det at søndre kjøretøy skal parkeres, mens nordre kjøretøy skal returnere eller kjøres videre mot Oslo som nytt tognummer.</p>
-<p>SDE viser operasjonstypen som et viktig kontrollpunkt, men flytter ikke kjøretøy automatisk på grunnlag av teksten alene.</p>
-
-<h3>Vanlige feil å kontrollere</h3>
-<pre>TXP Input Sporplan stemmer ikke med faktisk oppstilling
-Tursatt mangler kjøretøy eller har feil rekkefølge
-Skifteoppdrag er utført, men Utført = f mangler
-Sporplassering er skrevet for grovt, for eksempel 3 i stedet for 3n
-Kjøretøy er merket til WC/vann uten at spor 6 faktisk er tilgjengelig
-Rep-/verkstedstatus er lagt inn med ulik tekst i stedet for standardkode</pre>
-
-<hr>
-
-<h2>Viktige sporregler</h2>
-
-<h3>Spor 6</h3>
-<p>Spor 6 brukes til WC/vann, tømming og fylling.</p>
-<pre>6ss
-6s
-6n</pre>
-
-<h3>Buttspor 10, 11 og 12</h3>
-<p>Spor 10, 11 og 12 er buttspor.</p>
-<p><strong>S må inn før N hvis begge posisjoner skal brukes.</strong></p>
-<pre>10s før 10n
-11s før 11n
-12s før 12n</pre>
-
-<h3>Togspor 1, 2 og 3</h3>
-<p>Spor 1, 2 og 3 er togspor. Spor 2 og 3 bør normalt ikke brukes til langtidsparkering fordi de er plattformspor.</p>
-<pre>3s
-3m
-3n</pre>
-
-<h3>Spor 9</h3>
-<p>Spor 9 har bare én plass og skrives bare som:</p>
-<pre>9</pre>
-
-<hr>
-
-<h2>Lokal lagring</h2>
-<p>Manuelle registreringer lagres bare på den enheten og i den nettleseren der de er skrevet inn.</p>
-<p>Ulike enheter kan derfor vise ulike manuelle endringer, for eksempel dersom samme løsning åpnes på to smarttelefoner og en laptop.</p>
-<p>Kontroller alltid Sporplan mot faktisk situasjon når du overtar eller starter planlegging.</p>
-
-<hr>
-
-<h2>Operativ sluttregel</h2>
-<p>SDE skal gjøre planen tydeligere, men operativ vurdering og gjennomføring må fortsatt gjøres av bruker.</p>
-</div>
-</section>
-
+<section class="panel" id="hjelp"></section>
 <section class="panel" id="oppstilling">
 <div class="api-box">
   <div class="note" id="oppstillingDateStatus">Tursatt viser: dato ikke lest ennå</div>
@@ -44000,8 +43799,20 @@ const GUIDE_ALLOWED_TABS = Object.freeze([
   "verkstedBestillinger",
   "agilia"
 ]);
+const SDE_GUIDE_RESOURCE_URL = "assets/sde-brukerveiledning-normativ-2026-07-30.txt";
+const SDE_GUIDE_RESOURCE_BYTES = 38708;
+const SDE_GUIDE_RESOURCE_RANGES = Object.freeze({
+  "0":{start:404,end:14926},
+  "1":{start:14927,end:19497},
+  "2":{start:19498,end:23675},
+  "3":{start:23676,end:29303},
+  "4":{start:29304,end:34581},
+  "5":{start:34582,end:38707}
+});
+const sdeGuideInteractionStateByLevel = new Map();
+let sdeGuideRenderGeneration = 0;
 
-function getSdeGuideCapabilityModel(level){
+function getSdeGuideCapabilityModel(level,capabilityReadback){
   const cleanLevel = ["0","1","2","3","4","5"].includes(String(level))
     ? String(level)
     : "0";
@@ -44013,167 +43824,344 @@ function getSdeGuideCapabilityModel(level){
     "4":["verksted","collaboration"],
     "5":["agila","collaboration"]
   };
+  const requiredRolesByLevel = {
+    "0":["drops","txp","sde_skiftere","verksted","agila"],
+    "1":["drops"],
+    "2":["txp"],
+    "3":["sde_skiftere"],
+    "4":["verksted"],
+    "5":["agila"]
+  };
+  const legacyContractCall = arguments.length < 2;
+  const roles = Array.isArray(capabilityReadback?.roles)
+    ? capabilityReadback.roles.map(role=>String(role || ""))
+    : (Array.isArray(capabilityReadback?.roleSource?.roles)
+      ? capabilityReadback.roleSource.roles.map(role=>String(role || ""))
+      : [String(capabilityReadback?.role || "")].filter(Boolean));
+  const authorized = legacyContractCall || (
+    capabilityReadback?.ok === true &&
+    capabilityReadback?.roleResolved === true &&
+    requiredRolesByLevel[cleanLevel].every(role=>roles.includes(role))
+  );
   return {
     level:cleanLevel,
-    allowedEntryIds:entriesByLevel[cleanLevel].slice(),
-    canSearch:true,
-    progressiveDisclosure:true
+    authorized,
+    allowedEntryIds:authorized ? entriesByLevel[cleanLevel].slice() : [],
+    canSearch:authorized,
+    progressiveDisclosure:authorized
   };
 }
 
 function buildSdeRoleGuideEntries(capabilityModel){
-  const catalog = [
-    {
-      id:"overview",
-      title:"SDE – felles operativt bilde",
-      summary:"SDE samler faktisk plassering, planer og autoritative arbeidsflyter uten å erstatte operativ kompetanse.",
-      tasks:[
-        "Kontroller at canonical actual og Sporplan viser samme fysiske situasjon.",
-        "Bruk målspor bare når det er tomt, lovlig og uten annen aktiv reservasjon.",
-        "Actual placement endres først gjennom autorisert Utført-gjennomføring."
-      ],
-      boundary:"Forslag er ikke ordre. Fysisk occupancy, stengte spor, rute og reservasjoner har alltid forrang.",
-      tab:"sporplan"
-    },
-    {
-      id:"txp",
-      title:"Nivå 2 – TXP",
-      summary:"TXP vedlikeholder operativ sporinput og koordinerer inn- og utkjøring.",
-      tasks:[
-        "Kontroller Sporplan og TXP-input mot fysisk situasjon.",
-        "Vurder innkjøring, utkjøring og målspor før bestilling.",
-        "Følg REPLAN_REQUIRED når et tidligere mål ikke lenger er sikkert."
-      ],
-      boundary:"Et grafisk ledig spor er ikke tilgjengelig dersom canonical actual eller en gyldig reservasjon sier noe annet.",
-      tab:"grunnoppstilling"
-    },
-    {
-      id:"sde",
-      title:"Nivå 3 – Skiftere",
-      summary:"Skiftere mottar autoritative skiftekort i fysisk gjennomførbar rekkefølge.",
-      tasks:[
-        "Kontroller kjøretøy, fra-spor, målspor og rute før handling.",
-        "Kvitter Utført først etter fysisk gjennomføring.",
-        "Bruk Annullert når oppdraget ikke skal gjennomføres; omgå aldri et reelt occupancyvern."
-      ],
-      boundary:"Målsporet revalideres før handling. Endret sporstatus gir REPLAN_REQUIRED og ingen flytting.",
-      tab:"sdeSkiftebevegelser"
-    },
-    {
-      id:"drops",
-      title:"Nivå 1 – DROPS",
-      summary:"DROPS forvalter materiellstatus, aktive feil og utbedringsbestillinger.",
-      tasks:[
-        "Registrer aktiv feil med riktig kategori og beskrivelse.",
-        "Bestill utbedring og kontroller serverautoritativ readback.",
-        "Tolk manglende status som operativ standard DRIFTSKLAR uten å opprette en statusrecord."
-      ],
-      boundary:"Rød status krever eksplisitt IKKE DRIFTSKLAR. Drei og Rep er separate disposisjoner.",
-      tab:"dropsMateriellstyrer"
-    },
-    {
-      id:"verksted",
-      title:"Nivå 4 – Verksted",
-      summary:"Verksted følger aktive feil, disposisjon og bestilt inn-/utkjøring.",
-      tasks:[
-        "Åpne statusarket for valgt kjøretøy og kontroller aktiv feil.",
-        "Registrer Drei eller Rep som egen disposisjon uten å endre driftsklarstatus.",
-        "Bestill innkjøring eller utkjøring og vent på fersk server-readback."
-      ],
-      boundary:"Verkstedstatus og fysisk plassering er to ulike autoriteter; ingen actual flyttes av en bestilling alene.",
-      tab:"verkstedBestillinger"
-    },
-    {
-      id:"agila",
-      title:"Nivå 5 – Agilia",
-      summary:"Agilia bestiller sporplass for hovedrenhold og samarbeider gjennom operative meldinger.",
-      tasks:[
-        "Velg godkjente rengjøringsspor og tidspunkt.",
-        "Kontroller ledetid og bekreft kort varsel når det kreves.",
-        "Følg autoritativ kvittering før bestillingen regnes som mottatt."
-      ],
-      boundary:"Sporplassbestilling reserverer ikke fysisk målspor uten serverautoritativ card-/reservation-owner.",
-      tab:"agilia"
-    },
-    {
-      id:"collaboration",
-      title:"Samarbeid og direktemeldinger",
-      summary:"Alle operative nivåer kan sende, lese, kvittere og svare i serverautoritative meldingstråder.",
-      tasks:[
-        "Velg riktig mottakernivå og skriv én tydelig operativ beskjed.",
-        "Skille mellom sendt, presentert og kvittert.",
-        "Svar i samme tråd slik at konteksten og lesebekreftelsen bevares."
-      ],
-      boundary:"En melding er ikke kvittert bare fordi den er vist. Meldinger endrer ikke actual placement eller business-state.",
-      tab:""
-    }
-  ];
   const allowed = Array.isArray(capabilityModel?.allowedEntryIds)
     ? capabilityModel.allowedEntryIds
     : [];
-  return allowed
-    .map(id=>catalog.find(entry=>entry.id === id))
-    .filter(Boolean)
-    .map(entry=>({...entry,tasks:entry.tasks.slice()}));
+  return allowed.map(id=>({id:String(id || "")})).filter(entry=>entry.id);
+}
+
+function parseSdeGuideLevelText(text){
+  const lines = String(text || "").replaceAll("\r\n","\n").replaceAll("\r","\n").split("\n");
+  const isSeparator = line=>/^={20,}$/.test(String(line || "").trim());
+  const isHeading = line=>{
+    const clean = String(line || "").trim();
+    if(clean === "KOM RASKT I GANG") return true;
+    return Boolean(
+      clean &&
+      clean.length <= 120 &&
+      /[A-ZÆØÅ]/.test(clean) &&
+      clean === clean.toLocaleUpperCase("nb-NO") &&
+      !clean.startsWith("NIVÅ ") &&
+      !clean.startsWith("•") &&
+      !/^\d/.test(clean) &&
+      !clean.endsWith(":") &&
+      !isSeparator(clean)
+    );
+  };
+  while(lines.length && !String(lines[0] || "").trim()) lines.shift();
+  const levelLabel = String(lines.shift() || "").trim();
+  while(lines.length && (isSeparator(lines[0]) || !String(lines[0] || "").trim())) lines.shift();
+  const title = String(lines.shift() || "").trim();
+  while(lines.length && !String(lines[0] || "").trim()) lines.shift();
+  const introLines = [];
+  while(lines.length && !isHeading(lines[0])){
+    if(!isSeparator(lines[0])) introLines.push(lines.shift());
+    else lines.shift();
+  }
+  const sections = [];
+  while(lines.length){
+    while(lines.length && (isSeparator(lines[0]) || !String(lines[0] || "").trim())) lines.shift();
+    if(!lines.length) break;
+    const heading = String(lines.shift() || "").trim();
+    if(!isHeading(heading)){
+      if(sections.length) sections[sections.length - 1].body += `\n${heading}`;
+      continue;
+    }
+    const bodyLines = [];
+    while(lines.length && !isHeading(lines[0])){
+      if(!isSeparator(lines[0])) bodyLines.push(lines.shift());
+      else lines.shift();
+    }
+    while(bodyLines.length && !String(bodyLines[0] || "").trim()) bodyLines.shift();
+    while(bodyLines.length && !String(bodyLines[bodyLines.length - 1] || "").trim()) bodyLines.pop();
+    sections.push({
+      id:`sde-guide-section-${sections.length}`,
+      heading,
+      body:bodyLines.join("\n")
+    });
+  }
+  return {
+    levelLabel,
+    title,
+    intro:introLines.join("\n").trim(),
+    sections
+  };
+}
+
+function captureSdeGuideInteractionState(wrapper){
+  if(!wrapper) return {query:"",openSectionIds:[]};
+  const query = String(wrapper.querySelector("[data-sde-guide-search]")?.value || "");
+  const openSectionIds = Array.from(wrapper.querySelectorAll("details[data-sde-guide-section-id][open]"))
+    .map(details=>String(details.dataset.sdeGuideSectionId || ""))
+    .filter(Boolean);
+  return {query,openSectionIds};
+}
+
+function restoreSdeGuideInteractionState(wrapper,state){
+  if(!wrapper) return;
+  const cleanState = state && typeof state === "object"
+    ? state
+    : {query:"",openSectionIds:[]};
+  const search = wrapper.querySelector("[data-sde-guide-search]");
+  if(search) search.value = String(cleanState.query || "");
+  const openSectionIds = new Set(
+    Array.isArray(cleanState.openSectionIds) ? cleanState.openSectionIds : []
+  );
+  wrapper.querySelectorAll("details[data-sde-guide-section-id]").forEach(details=>{
+    details.open = openSectionIds.has(String(details.dataset.sdeGuideSectionId || ""));
+    const summary = details.querySelector(":scope > summary");
+    summary?.setAttribute("aria-expanded",details.open ? "true" : "false");
+  });
+}
+
+function filterSdeGuideSections(wrapper,rawQuery){
+  if(!wrapper) return;
+  const query = String(rawQuery || "").trim().toLocaleLowerCase("nb-NO");
+  let visibleCount = 0;
+  wrapper.querySelectorAll("[data-sde-guide-entry]").forEach(article=>{
+    const matches = !query ||
+      String(article.textContent || "").toLocaleLowerCase("nb-NO").includes(query);
+    article.hidden = !matches;
+    if(matches){
+      visibleCount += 1;
+      if(query){
+        const details = article.querySelector("details");
+        if(details){
+          details.open = true;
+          details.querySelector(":scope > summary")
+            ?.setAttribute("aria-expanded","true");
+        }
+      }
+    }
+  });
+  const empty = wrapper.querySelector("[data-sde-guide-empty]");
+  if(empty) empty.hidden = visibleCount > 0;
+}
+
+function requestSdeGuideLevelText(level,fetchImpl=window.fetch.bind(window)){
+  const cleanLevel = String(level || "");
+  const range = SDE_GUIDE_RESOURCE_RANGES[cleanLevel];
+  if(!range) return Promise.reject(new Error("guide_level_not_allowed"));
+  const expectedContentRange = `bytes ${range.start}-${range.end}/${SDE_GUIDE_RESOURCE_BYTES}`;
+  return fetchImpl(SDE_GUIDE_RESOURCE_URL,{
+    method:"GET",
+    headers:{
+      Accept:"text/plain",
+      Range:`bytes=${range.start}-${range.end}`
+    },
+    cache:"no-store",
+    credentials:"same-origin"
+  }).then(async response=>{
+    if(response.status !== 206) throw new Error("guide_partial_response_required");
+    if(String(response.headers.get("Content-Range") || "") !== expectedContentRange){
+      throw new Error("guide_content_range_mismatch");
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    if(bytes.byteLength !== range.end - range.start + 1){
+      throw new Error("guide_range_length_mismatch");
+    }
+    return new TextDecoder("utf-8",{fatal:true}).decode(bytes);
+  });
 }
 
 function renderSdeRoleGuide(){
   const host = document.getElementById("hjelp");
   if(!host) return;
-  const model = getSdeGuideCapabilityModel(getActiveAccessLevel());
+  if(!Array.isArray(GUIDE_ALLOWED_TABS)) return;
+  if(!dropsRuntimeCapabilities){
+    ensureDropsVehicleStatusContext();
+    host.replaceChildren();
+    return;
+  }
+  const existing = host.querySelector(".sde-role-guide");
+  if(existing){
+    const existingLevel = String(existing.dataset.sdeGuideLevel || "");
+    if(existingLevel){
+      sdeGuideInteractionStateByLevel.set(
+        existingLevel,
+        captureSdeGuideInteractionState(existing)
+      );
+    }
+  }
+  host.replaceChildren();
+  const level = getActiveAccessLevel();
+  const model = getSdeGuideCapabilityModel(level,dropsRuntimeCapabilities);
   const entries = buildSdeRoleGuideEntries(model);
-  const wrapper = document.createElement("div");
-  wrapper.className = "sde-role-guide";
-  wrapper.innerHTML = `
-    <header class="sde-role-guide__header">
-      <div>
-        <p class="sde-role-guide__eyebrow">Rollebasert brukerveiledning</p>
-        <h2>Oppgaver og sikkerhetsgrenser</h2>
-        <p>Viser bare funksjoner som er autorisert for aktivt nivå.</p>
-      </div>
-      <label class="sde-role-guide__search">
-        <span>Søk i veiledningen</span>
-        <input type="search" data-sde-guide-search autocomplete="off" placeholder="Søk etter oppgave eller begrep">
-      </label>
-    </header>
-    <div class="sde-role-guide__entries">
-      ${entries.map((entry,index)=>`
-        <article data-sde-guide-entry data-sde-guide-search-text="${escapeHtml(
-          [entry.title,entry.summary,entry.tasks.join(" "),entry.boundary].join(" ").toLowerCase()
-        )}">
-          <details ${index === 0 ? "open" : ""}>
-            <summary>
-              <span>${escapeHtml(entry.title)}</span>
-              <small>${escapeHtml(entry.summary)}</small>
-            </summary>
-            <div class="sde-role-guide__content">
-              <h3>Oppgaver</h3>
-              <ol>${entry.tasks.map(task=>`<li>${escapeHtml(task)}</li>`).join("")}</ol>
-              <p class="sde-role-guide__boundary"><strong>Sikkerhetsgrense:</strong> ${escapeHtml(entry.boundary)}</p>
-              ${entry.tab && GUIDE_ALLOWED_TABS.includes(entry.tab)
-                ? `<button type="button" data-sde-guide-tab="${escapeHtml(entry.tab)}">Åpne relevant arbeidsflate</button>`
-                : ""}
-            </div>
-          </details>
-        </article>
-      `).join("")}
-    </div>`;
-  host.replaceChildren(wrapper);
-  const search = wrapper.querySelector("[data-sde-guide-search]");
-  search?.addEventListener("input",()=>{
-    const query = String(search.value || "").trim().toLowerCase();
-    wrapper.querySelectorAll("[data-sde-guide-entry]").forEach(entry=>{
-      entry.hidden = Boolean(query) &&
-        !String(entry.dataset.sdeGuideSearchText || "").includes(query);
+  if(!model.authorized || entries.length === 0) return;
+  const generation = ++sdeGuideRenderGeneration;
+  const savedState = sdeGuideInteractionStateByLevel.get(level) || null;
+  requestSdeGuideLevelText(level).then(text=>{
+    if(generation !== sdeGuideRenderGeneration || getActiveAccessLevel() !== level) return;
+    const parsed = parseSdeGuideLevelText(text);
+    const wrapper = document.createElement("div");
+    wrapper.className = "sde-role-guide";
+    wrapper.dataset.sdeGuideLevel = level;
+
+    const header = document.createElement("header");
+    header.className = "sde-role-guide__header";
+    const headingGroup = document.createElement("div");
+    const eyebrow = document.createElement("p");
+    eyebrow.className = "sde-role-guide__eyebrow";
+    eyebrow.textContent = parsed.levelLabel;
+    const title = document.createElement("h2");
+    title.textContent = parsed.title;
+    const intro = document.createElement("p");
+    intro.className = "sde-role-guide__intro";
+    intro.textContent = parsed.intro;
+    headingGroup.append(eyebrow,title,intro);
+
+    const searchGroup = document.createElement("div");
+    searchGroup.className = "sde-role-guide__search";
+    const searchLabel = document.createElement("label");
+    searchLabel.textContent = "Søk";
+    const search = document.createElement("input");
+    search.type = "search";
+    search.autocomplete = "off";
+    search.placeholder = "Søk";
+    search.setAttribute("aria-label","Søk");
+    search.setAttribute("data-sde-guide-search","");
+    searchLabel.append(search);
+    const clearSearch = document.createElement("button");
+    clearSearch.type = "button";
+    clearSearch.textContent = "Tøm søk";
+    searchGroup.append(searchLabel,clearSearch);
+    header.append(headingGroup,searchGroup);
+
+    const controls = document.createElement("div");
+    controls.className = "sde-role-guide__controls";
+    const openAll = document.createElement("button");
+    openAll.type = "button";
+    openAll.textContent = "Åpne alle";
+    const closeAll = document.createElement("button");
+    closeAll.type = "button";
+    closeAll.textContent = "Lukk alle";
+    controls.append(openAll,closeAll);
+
+    const toc = document.createElement("nav");
+    toc.className = "sde-role-guide__toc";
+    parsed.sections.forEach(section=>{
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = section.heading;
+      button.dataset.sdeGuideToc = section.id;
+      toc.append(button);
     });
-  });
-  wrapper.addEventListener("click",event=>{
-    const button = event.target.closest?.("[data-sde-guide-tab]");
-    if(!button) return;
-    const tab = String(button.dataset.sdeGuideTab || "");
-    if(!GUIDE_ALLOWED_TABS.includes(tab) || !isTabAllowedAtCurrentLevel(tab)) return;
-    rememberActiveTab(tab);
-    activateTab(tab);
+
+    const entriesHost = document.createElement("div");
+    entriesHost.className = "sde-role-guide__entries";
+    parsed.sections.forEach(section=>{
+      const article = document.createElement("article");
+      article.setAttribute("data-sde-guide-entry","");
+      const details = document.createElement("details");
+      details.dataset.sdeGuideSectionId = section.id;
+      details.open = section.heading === "KOM RASKT I GANG";
+      const summary = document.createElement("summary");
+      summary.setAttribute("aria-expanded",details.open ? "true" : "false");
+      const heading = document.createElement("span");
+      heading.textContent = section.heading;
+      summary.append(heading);
+      const body = document.createElement("div");
+      body.className = "sde-role-guide__section-body";
+      body.textContent = section.body;
+      details.append(summary,body);
+      details.addEventListener("toggle",()=>{
+        summary.setAttribute("aria-expanded",details.open ? "true" : "false");
+        sdeGuideInteractionStateByLevel.set(
+          level,
+          captureSdeGuideInteractionState(wrapper)
+        );
+      });
+      article.append(details);
+      entriesHost.append(article);
+    });
+    const noResults = document.createElement("p");
+    noResults.className = "sde-role-guide__empty";
+    noResults.setAttribute("data-sde-guide-empty","");
+    noResults.textContent = "Ingen treff";
+    noResults.hidden = true;
+
+    wrapper.append(header,controls,toc,entriesHost,noResults);
+    host.replaceChildren(wrapper);
+
+    search.addEventListener("input",()=>{
+      filterSdeGuideSections(wrapper,search.value);
+      sdeGuideInteractionStateByLevel.set(
+        level,
+        captureSdeGuideInteractionState(wrapper)
+      );
+    });
+    clearSearch.addEventListener("click",()=>{
+      search.value = "";
+      filterSdeGuideSections(wrapper,"");
+      search.focus();
+    });
+    openAll.addEventListener("click",()=>{
+      wrapper.querySelectorAll("details").forEach(details=>{
+        details.open = true;
+      });
+    });
+    closeAll.addEventListener("click",()=>{
+      wrapper.querySelectorAll("details").forEach(details=>{
+        details.open = false;
+      });
+    });
+    toc.addEventListener("click",event=>{
+      const button = event.target.closest?.("[data-sde-guide-toc]");
+      if(!button) return;
+      const details = wrapper.querySelector(
+        `details[data-sde-guide-section-id="${CSS.escape(String(button.dataset.sdeGuideToc || ""))}"]`
+      );
+      if(!details) return;
+      details.open = true;
+      details.querySelector("summary")?.focus();
+      details.scrollIntoView({block:"start",behavior:"smooth"});
+    });
+    wrapper.addEventListener("keydown",event=>{
+      const summary = event.target.closest?.("summary");
+      if(!summary || !["ArrowDown","ArrowUp"].includes(event.key)) return;
+      const summaries = Array.from(wrapper.querySelectorAll("summary"));
+      const currentIndex = summaries.indexOf(summary);
+      if(currentIndex < 0) return;
+      event.preventDefault();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      summaries[(currentIndex + step + summaries.length) % summaries.length]?.focus();
+    });
+
+    if(savedState){
+      restoreSdeGuideInteractionState(wrapper,savedState);
+      filterSdeGuideSections(wrapper,savedState.query);
+    }
+  }).catch(()=>{
+    if(generation === sdeGuideRenderGeneration) host.replaceChildren();
   });
 }
 
@@ -44191,7 +44179,10 @@ function applyAccessLevel(){
       : String(btn.dataset.levels || "0").split(/\s+/).includes(level);
     btn.classList.toggle("level-hidden", !allowed);
     btn.disabled = isLockedTxpEntry() && !isAllowedTxpRestrictedTab(btn.dataset.tab);
-    btn.setAttribute("aria-hidden", isLockedTxpEntry() && !isAllowedTxpRestrictedTab(btn.dataset.tab) ? "true" : "false");
+    btn.setAttribute(
+      "aria-hidden",
+      isLockedTxpEntry() && !isAllowedTxpRestrictedTab(btn.dataset.tab) ? "true" : "false"
+    );
   });
 
   const activeBtn = document.querySelector(".seg.active");
@@ -44466,6 +44457,7 @@ async function refreshGlobalAuthoritativeData(){
     dropsRuntimeCapabilities = results[2].value.capabilities;
     dropsVehicleStatusAnalytics = results[2].value.analytics;
     dropsVehicleStatusContextLoaded = true;
+    renderSdeRoleGuide();
     refreshed = true;
   }
   if(!refreshed){
@@ -51075,6 +51067,7 @@ function ensureDropsVehicleStatusContext(){
     })
     .finally(()=>{
       dropsVehicleStatusContextLoadPromise = null;
+      renderSdeRoleGuide();
       renderDropsVehicleRegistry();
       renderWorkshopVehicleRegistry();
       renderSporplanVehicleStatusBadges();
