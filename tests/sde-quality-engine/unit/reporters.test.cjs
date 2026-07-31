@@ -8,6 +8,7 @@ const test = require("node:test");
 const { result, summarize } = require("../lib/core.cjs");
 const { mapFunctionStatuses } = require("../lib/checks.cjs");
 const {
+  recommendationsFor,
   renderHtml,
   renderJUnit,
   renderMarkdown,
@@ -62,6 +63,25 @@ test("alle fire rapportformatene rendres fra samme modell", () => {
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("anbefalinger er undersøkelsesforslag med risiko og eksplisitt fullmaktskrav", () => {
+  const report = sampleReport();
+  report.results = [result({
+    id: "BALISE-010-LIVE",
+    area: "tursatt-balise",
+    name: "Live",
+    status: "AMBER",
+    critical: true,
+    summary: "Må undersøkes.",
+    recommendation: "Sammenlign snapshotproveniens."
+  })];
+  const [recommendation] = recommendationsFor(report);
+  assert.equal(recommendation.recommendationId, "REC-BALISE-010-LIVE");
+  assert.equal(recommendation.investigation, "Sammenlign snapshotproveniens.");
+  assert.match(recommendation.requiredAuthority, /uttrykkelig systemeiergodkjenning/);
+  assert.ok(recommendation.risks.prematureChange);
+  assert.ok(recommendation.risks.noAction);
 });
 
 test("funksjon forblir UNKNOWN når én av flere kontrakter mangler", () => {

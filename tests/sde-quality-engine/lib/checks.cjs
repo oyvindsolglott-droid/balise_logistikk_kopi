@@ -14,8 +14,11 @@ const {
 const { buildInventory } = require("./inventory.cjs");
 const { validateBaselineAccounting } = require("./accounting.cjs");
 const {
+  FINDING_TYPES,
   PARITY_CATEGORIES,
+  THREE_WAY_CATEGORIES,
   compareRecords,
+  compareThreeWay,
   evaluateFreshness,
   validateOverride
 } = require("./balise-parity.cjs");
@@ -331,9 +334,18 @@ function baliseChecks(now = new Date()) {
 
   const parityFixture = readJson(path.join(root, "tests/sde-quality-engine/fixtures/balise-parity-cases.json"));
   const syntheticParity = compareRecords([parityFixture.baseBalise], [parityFixture.baseSde]);
+  const syntheticThreeWay = compareThreeWay({
+    baliseRecords: [parityFixture.baseBalise],
+    candidateRecords: [parityFixture.baseSde],
+    publishedRecords: [parityFixture.baseSde],
+    observedAt: now.toISOString()
+  });
   const categoryContractGreen =
     JSON.stringify([...PARITY_CATEGORIES]) === JSON.stringify(parityFixture.expectedCategories) &&
+    FINDING_TYPES.length === 9 &&
+    THREE_WAY_CATEGORIES.length === 17 &&
     syntheticParity.counts.unauthorized_difference === 0 &&
+    syntheticThreeWay.findingCount === 0 &&
     validateOverride(parityFixture.validOverride).valid;
   results.push(result({
     id: "BALISE-010-CONTRACT",
@@ -343,14 +355,20 @@ function baliseChecks(now = new Date()) {
     status: categoryContractGreen ? "GREEN" : "RED",
     critical: true,
     summary: categoryContractGreen
-      ? `${PARITY_CATEGORIES.length} eksplisitte differansekategorier og full override-proveniens er permanent testet.`
+      ? `${THREE_WAY_CATEGORIES.length} treveiskategorier, ${FINDING_TYPES.length} funntyper og full override-proveniens er permanent testet.`
       : "Paritetskategorier, syntetisk null-diff eller override-proveniens avviker.",
     evidence: [
       "tests/sde-quality-engine/lib/balise-parity.cjs",
       "tests/sde-quality-engine/fixtures/balise-parity-cases.json",
       "tests/sde-quality-engine/unit/balise-parity.test.cjs"
     ],
-    details: { categories: [...PARITY_CATEGORIES], counts: syntheticParity.counts }
+    details: {
+      legacyCategories: [...PARITY_CATEGORIES],
+      threeWayCategories: [...THREE_WAY_CATEGORIES],
+      findingTypes: [...FINDING_TYPES],
+      counts: syntheticParity.counts,
+      threeWay: syntheticThreeWay
+    }
   }));
 
   const liveCommand = runCommand("node", ["tests/sde-quality-engine/lib/balise-parity.cjs"], {
@@ -362,22 +380,25 @@ function baliseChecks(now = new Date()) {
   } catch (_error) {
     live = null;
   }
-  const unavailable = live?.blockedReason === "BLOCKED – AUTHORITATIVE BALISE SOURCE UNAVAILABLE";
-  const liveCounts = live?.parity?.counts || {};
-  const disallowedCategories = PARITY_CATEGORIES.filter((category) => category !== "authorized_override");
-  const liveGreen = Boolean(live?.ok) && disallowedCategories.every((category) => Number(liveCounts[category] || 0) === 0);
+  const unavailable = live?.status === "BLOCKED" || live?.threeWay?.releaseStatus === "BLOCKED";
+  const liveCounts = live?.threeWay?.findingTypeCounts || {};
+  const releaseStatus = live?.threeWay?.releaseStatus || null;
+  const liveGreen = Boolean(live?.ok) && releaseStatus === "SDE_GREEN";
+  const liveNoGo = Boolean(live?.ok) && releaseStatus === "SDE_NO_GO";
   results.push(result({
     id: "BALISE-010-LIVE",
     contractId: "BALISE-010",
     area: "tursatt-balise",
-    name: "Ekte Balise-kilde har symmetrisk paritet med SDE",
-    status: liveGreen ? "GREEN" : unavailable ? "BLOCKED" : "RED",
+    name: "Ekte Balise, kandidat og publisert SDE er treveis klassifisert",
+    status: liveGreen ? "GREEN" : unavailable ? "BLOCKED" : liveNoGo ? "RED" : "AMBER",
     critical: true,
     summary: liveGreen
       ? `${live.coverage.baliseRecords} autoritative Balise-forekomster er sammenlignet uavhengig og symmetrisk uten uautoriserte differanser.`
       : unavailable
-        ? "BLOCKED – AUTHORITATIVE BALISE SOURCE UNAVAILABLE"
-        : `Live paritet er ikke grønn: ${JSON.stringify(liveCounts)}.`,
+        ? live?.publishedSnapshot?.blockedReason || live?.blockedReason || "BLOCKED – AUTHORITATIVE SOURCE UNAVAILABLE"
+        : liveNoGo
+          ? `SDE-kontrakten har sannsynlige eller bekreftede brudd: ${JSON.stringify(liveCounts)}.`
+          : `Treveis observasjon krever videre undersøkelse: ${JSON.stringify(liveCounts)}.`,
     evidence: [
       "GET https://balise.no/api/station/SKN?content=all&passthru=true",
       "GET https://balise.no/api/train/vehicles?route=<routeId>",
@@ -394,7 +415,7 @@ function baliseChecks(now = new Date()) {
       ? null
       : unavailable
         ? "Gjenoppta først når den uavhengige autoritative Balise-kilden kan leses; intern konsistens er ikke live paritet."
-        : "Undersøk hver eksplisitte differansekategori uten å gjenbruke produksjonstransformen eller hardkode dagens tog."
+        : "Undersøk hvert sporbare funn separat. Ikke endre SDE før systemeier har vurdert kontrakt, snapshot-skew og alternative forklaringer."
   }));
   return results;
 }

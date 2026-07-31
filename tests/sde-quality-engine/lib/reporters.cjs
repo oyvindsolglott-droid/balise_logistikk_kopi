@@ -26,13 +26,23 @@ function recommendationsFor(report) {
     .filter((item) => item.status !== "GREEN")
     .map((item) => {
       const template = catalog.items.find((entry) => entry.match === item.status);
+      const investigation = item.recommendation || template?.action || "Avklar og dokumenter avviket.";
       return {
         id: item.id,
+        recommendationId: `REC-${item.id}`,
         status: item.status,
         priority: template?.priority || "P2",
         area: item.area,
         problem: item.summary,
-        action: item.recommendation || template?.action || "Avklar og dokumenter avviket."
+        finding: item.details?.threeWay?.findings?.[0]?.findingType || item.details?.findingType || "UNKNOWN",
+        investigation,
+        why: "Avklar om funnet skyldes SDE, testkontrakten, en autorisert overstyring eller tidsforskjell før endring vurderes.",
+        risks: {
+          prematureChange: "Kan endre korrekt operativ atferd eller skjule en test-orakelfeil.",
+          noAction: item.critical ? "Et mulig kritisk kontraktbrudd kan bli stående uavklart." : "Observasjonen kan forbli uavklart."
+        },
+        requiredAuthority: "Separat, uttrykkelig systemeiergodkjenning kreves før kode, data eller kontrakt endres.",
+        action: investigation
       };
     });
 }
@@ -44,6 +54,9 @@ function renderMarkdown(report) {
   const balise = report.results.filter((item) => item.area === "tursatt-balise");
   const recommendations = report.recommendations || recommendationsFor(report);
   const accounting = report.accounting || null;
+  const liveFindings = report.results
+    .find((item) => item.id === "BALISE-010-LIVE")
+    ?.details?.threeWay?.findings || [];
   const lines = [
     "# SDE Quality Engine",
     "",
@@ -90,6 +103,14 @@ function renderMarkdown(report) {
     "|---|---|---|",
     ...balise.map((item) => `| ${item.name} | ${item.status} | ${String(item.summary).replace(/\|/g, "\\|")} |`),
     "",
+    "### Treveis funnbevis",
+    "",
+    ...(liveFindings.length ? [
+      "| Test | Occurrence | Tog | Dato | Felt | Kandidat | Publisert | Funntype | Sikkerhet |",
+      "|---|---|---|---|---|---|---|---|---|",
+      ...liveFindings.map((finding) => `| ${finding.testId} | ${finding.occurrenceId || "–"} | ${finding.trainNumber || "–"} | ${finding.operationalDate || "–"} | ${finding.field} | ${JSON.stringify(finding.candidate)} | ${JSON.stringify(finding.published)} | ${finding.findingType} | ${finding.confidence} |`)
+    ] : ["- Ingen treveis livefunn i denne kjøringen, eller publisert kilde var utilgjengelig."]),
+    "",
     "## 7. Kritiske funn",
     "",
     ...(critical.length
@@ -105,7 +126,7 @@ function renderMarkdown(report) {
     "## 9. Prioriterte anbefalinger",
     "",
     ...(recommendations.length
-      ? recommendations.map((item) => `- **${item.priority} ${item.id}:** ${item.action}`)
+      ? recommendations.map((item) => `- **${item.priority} ${item.recommendationId}:** ${item.investigation} Hvorfor: ${item.why} Risiko ved forhastet endring: ${item.risks.prematureChange} Risiko ved å avvente: ${item.risks.noAction} Fullmakt: ${item.requiredAuthority}`)
       : ["- Ingen anbefalinger; alle kjørte kontroller er GREEN."]),
     "",
     "## 10. Produksjonssikkerhet",
@@ -179,7 +200,7 @@ function renderHtml(report) {
       <td>${escapeHtml(item.testTypes.join(", "))}</td>
     </tr>`).join("");
   const recommendationItems = recommendations.map((item) =>
-    `<li><strong>${escapeHtml(item.priority)} ${escapeHtml(item.id)}</strong> — ${escapeHtml(item.action)}</li>`
+    `<li><strong>${escapeHtml(item.priority)} ${escapeHtml(item.recommendationId)}</strong> — ${escapeHtml(item.investigation)}<br><small>${escapeHtml(item.why)} Risiko: ${escapeHtml(item.risks.prematureChange)} Fullmakt: ${escapeHtml(item.requiredAuthority)}</small></li>`
   ).join("") || "<li>Ingen anbefalinger; alle kjørte kontroller er GREEN.</li>";
   const accountingPanel = report.accounting ? `
   <section class="panel"><h2>Statusregnskap</h2><p>${report.accounting.testCases.total} testcases/assertions · ${report.accounting.contracts.total} kontrakter · ${report.accounting.functions.total} funksjoner · ${report.accounting.recommendations.total} anbefalinger · ${report.accounting.releaseGates.total} kritiske releaseporter.</p><p>Kritisk BLOCKED/UNKNOWN: <code>${escapeHtml(report.accounting.releaseGates.criticalBlocked.map((item) => item.id).join(", ") || "ingen")}</code></p></section>` : "";

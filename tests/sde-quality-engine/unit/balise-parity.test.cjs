@@ -5,8 +5,11 @@ const path = require("node:path");
 const test = require("node:test");
 const { readJson, repoRoot } = require("../lib/core.cjs");
 const {
+  FINDING_TYPES,
   PARITY_CATEGORIES,
+  THREE_WAY_CATEGORIES,
   compareRecords,
+  compareThreeWay,
   evaluateFreshness,
   validateOverride
 } = require("../lib/balise-parity.cjs");
@@ -20,6 +23,72 @@ function changed(base, field, value) {
 
 test("paritetskategoriene er komplette og stabile", () => {
   assert.deepEqual([...PARITY_CATEGORIES], fixture.expectedCategories);
+  assert.deepEqual([...FINDING_TYPES], [
+    "CONFIRMED_DEFECT", "PROBABLE_DEFECT", "POSSIBLE_FALSE_POSITIVE",
+    "EXPECTED_DIFFERENCE", "AUTHORIZED_OVERRIDE", "CONTRACT_AMBIGUITY",
+    "TEST_ORACLE_DEFECT", "BLOCKED", "UNKNOWN"
+  ]);
+  assert.deepEqual([...THREE_WAY_CATEGORIES], [
+    "balise_only_candidate", "candidate_only", "balise_only_published", "published_only",
+    "vehicle_mismatch_candidate", "vehicle_mismatch_published",
+    "consist_mismatch_candidate", "consist_mismatch_published",
+    "track_mismatch_candidate", "track_mismatch_published",
+    "date_mismatch_candidate", "date_mismatch_published",
+    "authorized_override", "expected_difference", "unauthorized_difference",
+    "possible_false_positive", "contract_ambiguity"
+  ]);
+});
+
+test("treveis diagnostikk skiller occurrence-, felt- og funntype", () => {
+  const published = changed(fixture.baseSde, "vehicleIds", ["74-02"]);
+  const observed = compareThreeWay({
+    baliseRecords: [fixture.baseBalise],
+    candidateRecords: [fixture.baseSde],
+    publishedRecords: [published],
+    observedAt: "2026-07-31T12:00:00.000Z"
+  });
+  assert.equal(observed.occurrenceLevelDiscrepancies.balise_only_candidate, 0);
+  assert.equal(observed.fieldLevelDiscrepancies.vehicle_mismatch_published, 1);
+  assert.equal(observed.findingTypeCounts.POSSIBLE_FALSE_POSITIVE, 1);
+  assert.equal(observed.findings[0].testId, "BALISE-010-LIVE");
+  assert.equal(observed.findings[0].observedAt, "2026-07-31T12:00:00.000Z");
+  assert.ok(Array.isArray(observed.findings[0].additionalEvidenceRequired));
+});
+
+test("departure-spor som ikke finnes i payloadkontrakten er orakelavvik, ikke SDE-defekt", () => {
+  const balise = {
+    ...fixture.baseBalise,
+    occurrenceId: "2099-01-01|departure|10001|10:00",
+    direction: "departure",
+    track: "2"
+  };
+  const sde = {
+    ...fixture.baseSde,
+    occurrenceId: balise.occurrenceId,
+    direction: "departure",
+    track: null
+  };
+  const observed = compareThreeWay({
+    baliseRecords: [balise],
+    candidateRecords: [sde],
+    publishedRecords: [sde]
+  });
+  assert.equal(observed.findingTypeCounts.TEST_ORACLE_DEFECT, 2);
+  assert.equal(observed.fieldLevelDiscrepancies.expected_difference, 2);
+  assert.equal(observed.releaseStatus, "HOLD");
+});
+
+test("utilgjengelig publisert kilde blokkerer C uten å produsere falske published-differanser", () => {
+  const observed = compareThreeWay({
+    baliseRecords: [fixture.baseBalise],
+    candidateRecords: [fixture.baseSde],
+    publishedRecords: [],
+    sourceAvailability: { balise: true, candidate: true, published: false }
+  });
+  assert.equal(observed.releaseStatus, "BLOCKED");
+  assert.equal(observed.findingTypeCounts.BLOCKED, 1);
+  assert.equal(observed.occurrenceLevelDiscrepancies.balise_only_published, 0);
+  assert.equal(observed.findings[0].field, "source");
 });
 
 test("symmetrisk diff finner Balise-only, SDE-only og alle feltdifferanser", () => {
