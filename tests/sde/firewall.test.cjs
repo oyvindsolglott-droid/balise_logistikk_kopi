@@ -15,6 +15,10 @@ const harnessDirectory = path.join(__dirname, "harnesses");
 const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "sde-regression-firewall-"));
 const currentHtml = fs.readFileSync(indexPath, "utf8");
 const currentServerIndex = fs.readFileSync(serverIndexPath, "utf8");
+const normativeGuide = fs.readFileSync(
+  path.join(root, "assets", "sde-brukerveiledning-normativ-2026-07-30.txt"),
+  "utf8",
+);
 
 after(() => fs.rmSync(fixtureDirectory, {recursive: true, force: true}));
 
@@ -207,6 +211,20 @@ test("VERKSTED hotfix — active faults and open repairs stay visible independen
   assertPassed(
     runHarness("sde-workshop-active-presentation-hotfix-harness.js"),
     "Verksted active-fault presentation hotfix",
+  );
+});
+
+test("Guide Port E — Appendix A stays byte-exact and server-authorized without cross-level DOM/runtime leakage", () => {
+  assertPassed(
+    runHarness("sde-guide-normative-access-harness.js"),
+    "Guide normative wording and capability isolation",
+  );
+});
+
+test("Guide Port E — active-level search, accordions, keyboard and polling state remain stable and responsive", () => {
+  assertPassed(
+    runHarness("sde-guide-interaction-contract-harness.js"),
+    "Guide interaction and responsive contract",
   );
 });
 
@@ -1316,7 +1334,7 @@ test("AGILIA-UI — corrected level identity and dedicated graphic menu are perm
   assert.equal((currentHtml.match(/<img class="seg-agilia-graphic__image"/g) || []).length, 1, "there must be exactly one Agilia menu button");
   assert.match(currentHtml, /<section class="panel" id="agilia">/, "Agilia must open a dedicated panel");
   assert.match(currentHtml, /<option value="5">Nivå 5 – Agilia<\/option>/, "level 5 must use the corrected Agilia spelling");
-  assert.match(currentHtml, /<tr><td>5<\/td><td>Agilia<\/td>/, "the access overview must use the corrected Agilia spelling");
+  assert.match(normativeGuide, /^NIVÅ 5 – AGILIA$/m, "the normative level-5 guide must use the corrected Agilia spelling");
   assert.match(currentHtml, /\{level:"Agilia", functions:\["Sporplan", "Agilia"\]\}/, "the shared access readmodel must use the corrected Agilia identity");
   assert.doesNotMatch(currentHtml, /\bAgila\b/, "the misspelled Agila identity must not remain");
   assert.match(currentServerIndex, /\["agilia-button\.png", path\.join\(REPO_ROOT, "assets", "agilia-button\.png"\)\]/, "the production appserver must serve the exact supplied Agilia asset");
@@ -1326,7 +1344,7 @@ test("LEVEL-4-MENU — workshop keeps Tursatt and Sporplan without Agilia", () =
   assert.match(currentHtml, /data-tab="oppstilling" data-levels="0 1 2 3 4 5"/, "level 4 must retain Tursatt");
   assert.match(currentHtml, /data-tab="sporplan" data-levels="0 1 2 3 4 5"/, "level 4 must retain Sporplan");
   assert.match(currentHtml, /\{level:"Verksted", functions:\["Tursatt", "Sporplan", "DROPS-relevante behov", "verksted\/materiellstatus"\]\}/, "the shared access readmodel must include both level-4 overview surfaces");
-  assert.match(currentHtml, /<tr><td>4<\/td><td>Verksted<\/td><td>Oversikt i Tursatt og Sporplan, samt registrering av verkstedbehov/, "the access overview must describe the level-4 menu");
+  assert.match(normativeGuide, /^NIVÅ 4 – VERKSTED$/m, "the normative guide must retain the level-4 workshop identity");
   assert.match(currentHtml, /data-tab="agilia" data-levels="0 5"/, "Agilia must remain excluded from level 4");
 });
 
