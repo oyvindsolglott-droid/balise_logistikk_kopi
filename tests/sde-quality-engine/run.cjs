@@ -20,8 +20,10 @@ const {
   runStrictSuite,
   runUnitSuite,
   staticChecks,
+  validateAccounting,
   validateRegistry
 } = require("./lib/checks.cjs");
+const { buildAccounting } = require("./lib/accounting.cjs");
 const { buildInventory } = require("./lib/inventory.cjs");
 const {
   ALLOWED_METHODS,
@@ -57,12 +59,11 @@ function selectedSuite(argv) {
 }
 
 function changedFiles() {
-  const porcelain = gitValue(["status", "--porcelain=v1", "--untracked-files=all"]) || "";
+  const tracked = gitValue(["diff", "--name-only", "HEAD"]) || "";
+  const untracked = gitValue(["ls-files", "--others", "--exclude-standard"]) || "";
   return [...new Set(
-    porcelain.split("\n")
+    `${tracked}\n${untracked}`.split("\n")
       .filter(Boolean)
-      .map((line) => line.slice(3))
-      .map((file) => file.includes(" -> ") ? file.split(" -> ").at(-1) : file)
   )].sort();
 }
 
@@ -104,8 +105,14 @@ function projectedResult(contractId, area, name, sources, summary) {
     else if (sourceStatuses.includes("AMBER")) status = "AMBER";
     else status = "GREEN";
   }
+  const projectionScope = `${area}-${name}`
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toUpperCase();
   return result({
-    id: `QE-PROJECTION-${contractId}`,
+    id: `QE-PROJECTION-${contractId}-${projectionScope}`,
     contractId,
     area,
     name,
@@ -268,7 +275,7 @@ async function main() {
   const matrix = readJson(path.join(root, "tests/sde-quality-engine/matrix/function-matrix.json"));
   const productionSafety = { guardVerified: true, ledger: [] };
   const report = baseReport(suite, inventory, productionSafety);
-  const results = [validateRegistry(), guardResult()];
+  const results = [validateRegistry(), validateAccounting(), guardResult()];
 
   if (suite !== "production-readonly") {
     results.push(...staticChecks(inventory), ...baliseChecks());
@@ -312,6 +319,12 @@ async function main() {
     report.results.map((item) => item.details?.command).filter(Boolean)
   )];
   report.recommendations = recommendationsFor(report);
+  report.accounting = buildAccounting({
+    results: report.results,
+    functionMatrix: report.functionMatrix,
+    recommendations: report.recommendations,
+    contracts: readJson(path.join(root, "tests/sde-quality-engine/contracts/green-contract.json"))
+  });
 
   const output = writeReports(
     report,

@@ -65,7 +65,8 @@ async function runProductionReadOnly(baseUrl, endpoints = DEFAULT_ENDPOINTS) {
       ledger: [],
       results: [
         result({
-          id: "QE-SAFE-001",
+          id: "PROD-READONLY-URL",
+          contractId: "QE-SAFE-001",
           area: "production-safety",
           name: "Produksjonskontroll er teknisk read-only",
           status: "BLOCKED",

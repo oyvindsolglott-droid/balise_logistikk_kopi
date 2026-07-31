@@ -4,7 +4,8 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 const {
   assertReadOnlyMethod,
-  normalizeEndpoint
+  normalizeEndpoint,
+  runProductionReadOnly
 } = require("../lib/production-readonly.cjs");
 const { buildInventory } = require("../lib/inventory.cjs");
 const { serverScriptArgument, validateRegistry } = require("../lib/checks.cjs");
@@ -25,6 +26,15 @@ test("production endpoint må være lokal absolutt path", () => {
   for (const endpoint of ["api/health", "//evil.example/api", "", null]) {
     assert.throws(() => normalizeEndpoint(endpoint), /Ugyldig production-endepunkt/);
   }
+});
+
+test("manglende production-URL gir en unik, eksplisitt blokkering uten nettverkskall", async () => {
+  const observed = await runProductionReadOnly("");
+  assert.deepEqual(observed.ledger, []);
+  assert.equal(observed.results.length, 1);
+  assert.equal(observed.results[0].id, "PROD-READONLY-URL");
+  assert.equal(observed.results[0].contractId, "QE-SAFE-001");
+  assert.equal(observed.results[0].status, "BLOCKED");
 });
 
 test("kontraktregister og funksjonsmatrise er sammenhengende", () => {

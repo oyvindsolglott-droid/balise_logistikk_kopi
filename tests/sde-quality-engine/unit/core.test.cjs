@@ -65,7 +65,7 @@ test("kritiske ukjente porter gir HOLD og kritisk RED gir NO-GO", () => {
   );
 });
 
-test("kjent isolert-worktree-vakt klassifiseres BLOCKED, ikke produkt-RED", () => {
+test("migrasjonsfeil i en testkommando klassifiseres RED og kan ikke skjules som miljøblokkering", () => {
   const observed = externalResult(
     "x",
     "x",
@@ -81,14 +81,10 @@ test("kjent isolert-worktree-vakt klassifiseres BLOCKED, ikke produkt-RED", () =
       stderr: "Runtime schema migration must run from the approved server directory.",
       durationMs: 1
     },
-    true,
-    {
-      blockedPattern: /approved server directory/i,
-      blockedSummary: "isolert worktree avvist"
-    }
+    true
   );
-  assert.equal(observed.status, "BLOCKED");
-  assert.match(observed.summary, /MANGLER TESTBARHET/);
+  assert.equal(observed.status, "RED");
+  assert.doesNotMatch(observed.summary, /MANGLER TESTBARHET/);
 });
 
 test("samlet qualification har et realistisk standardbudsjett", () => {

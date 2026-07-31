@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "1.0.0",
+  "candidate": "c1cd1e7e8e66a927d20368efc9a48a52eed573a2",
+  "resultTotal": 57,
+  "blockedResultTotal": 5,
+  "criticalBlockedResultTotal": 3,
+  "blockedResults": [
+    {
+      "id": "MULTIUSER-LIVE-001",
+      "critical": false,
+      "reason": "authenticated_multi_client_race_not_write_free"
+    },
+    {
+      "id": "UX-LIVE-001",
+      "critical": false,
+      "reason": "authenticated_desktop_and_390px_matrix_not_in_standard_engine"
+    },
+    {
+      "id": "QE-SERVER-TEST-ACTIONS-TABLE-REGRESSION",
+      "critical": true,
+      "reason": "isolated_worktree_migration_guard"
+    },
+    {
+      "id": "QE-SERVER-TEST-SDE-RECOMMENDATION-ACK-ACTION",
+      "critical": true,
+      "reason": "isolated_worktree_migration_guard"
+    },
+    {
+      "id": "QE-SERVER-TEST-SERVER-NOTE-ACTION",
+      "critical": true,
+      "reason": "isolated_worktree_migration_guard"
+    }
+  ],
+  "functionTotal": 38,
+  "blockedFunctionTotal": 14,
+  "groups": [
+    {
+      "reason": "isolated_worktree_migration_guard",
+      "ids": ["F-SDE-005", "F-SDE-006", "F-MSG-001", "F-MSG-002", "F-API-001", "F-API-002", "F-API-003"]
+    },
+    {
+      "reason": "authenticated_multi_client_race_not_write_free",
+      "ids": ["F-TXP-001", "F-TXP-002", "F-VERK-003", "F-VERK-004", "F-ROBUST-002"]
+    },
+    {
+      "reason": "authenticated_desktop_and_390px_matrix_not_in_standard_engine",
+      "ids": ["F-DROPS-004", "F-UX-001"]
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { migrateActionsSchema, PRODUCTION_DB_PATH } = require("./actionsMigration");
+const { validateApprovedServerRoot } = require("./repositoryServerRoot");
 
-const EXPECTED_SERVER_CWD = "/Users/solglottsr/balise_logistikk_kopi/server";
 const SCHEMA_MIGRATIONS_FLAG = "SDE_ENABLE_SCHEMA_MIGRATIONS";
 
 class RuntimeMigrationModeError extends Error{
@@ -117,11 +117,16 @@ function getRuntimeMigrationGuardFailure({ port, rawPort, databasePath, cwd, env
     );
   }
 
-  if(path.resolve(cwd) !== EXPECTED_SERVER_CWD){
+  const serverRootValidation = validateApprovedServerRoot(cwd);
+  if(!serverRootValidation.ok){
     return guardFailure(
       "schema_migrations_wrong_cwd",
       "Runtime schema migration must run from the approved server directory.",
-      { cwd }
+      {
+        cwd,
+        validationReason: serverRootValidation.reason,
+        validationDetails: serverRootValidation.details
+      }
     );
   }
 
@@ -174,6 +179,7 @@ function isProductionDatabasePath(databasePath){
 
 module.exports = {
   RuntimeMigrationModeError,
+  getRuntimeMigrationGuardFailure,
   prepareRuntimeMigrationMode,
   runRuntimeMigrationIfEnabled
 };

@@ -12,6 +12,13 @@ const {
   runCommand
 } = require("./core.cjs");
 const { buildInventory } = require("./inventory.cjs");
+const { validateBaselineAccounting } = require("./accounting.cjs");
+const {
+  PARITY_CATEGORIES,
+  compareRecords,
+  evaluateFreshness,
+  validateOverride
+} = require("./balise-parity.cjs");
 
 function duplicateValues(values) {
   const seen = new Set();
@@ -74,6 +81,23 @@ function validateRegistry() {
     evidence: [path.relative(root, contractFile), path.relative(root, matrixFile)],
     details: { problems, contractCount: registry.contracts.length, functionCount: matrix.functions.length },
     recommendation: problems.length ? "Rett registeret før nye funksjoner kvalifiseres." : null
+  });
+}
+
+function validateAccounting() {
+  const observed = validateBaselineAccounting();
+  return result({
+    id: "QE-CORE-003",
+    area: "quality-engine",
+    name: "QE-0-statusregnskap er disjunkt og reproduserbart",
+    status: observed.valid ? "GREEN" : "RED",
+    critical: true,
+    summary: observed.valid
+      ? `${observed.fixture.blockedFunctionTotal} blokkerte QE-0-funksjoner er fordelt i disjunkte grupper på ${observed.fixture.groups.map((group) => group.ids.length).join("+")}.`
+      : observed.problems.join("; "),
+    evidence: ["tests/sde-quality-engine/fixtures/qe0-accounting-baseline.json"],
+    details: observed,
+    recommendation: observed.valid ? null : "Rett det maskinlesbare statusregnskapet før releaseklassifisering."
   });
 }
 
@@ -162,22 +186,29 @@ function baliseChecks(now = new Date()) {
   }));
 
   for (const [mode, payload] of Object.entries(data)) {
-    const updated = parseUpdatedAt(payload.updatedAt);
-    const ageHours = updated == null ? null : Math.max(0, (now.getTime() - updated) / 3_600_000);
-    const stale = ageHours == null || ageHours > 30;
+    const freshnessContract = readJson(path.join(root, "tests/sde-quality-engine/fixtures/balise-freshness-contract.json"));
+    const freshness = evaluateFreshness({
+      now,
+      sourceReadAt: now,
+      sourceResponseDate: now.toUTCString(),
+      sourceOwnTimestamp: null,
+      sdeGeneratedAt: payload.updatedAt,
+      serverLastUpdate: null,
+      contract: freshnessContract
+    });
     results.push(result({
       id: `BALISE-003-${mode.toUpperCase()}`,
       contractId: "BALISE-003",
       area: "tursatt-balise",
-      name: `${mode} payload er fersk og datert`,
-      status: updated == null ? "RED" : stale ? "AMBER" : "GREEN",
+      name: `${mode} payload følger faktisk refreshplan`,
+      status: freshness.sdeStatus === "FRESH" ? "GREEN" : "RED",
       critical: true,
-      summary: updated == null
+      summary: freshness.sdeGeneratedAtIso == null
         ? `updatedAt kan ikke parses: ${payload.updatedAt}`
-        : `updatedAt=${payload.updatedAt}, alder=${ageHours.toFixed(2)} timer`,
-      evidence: [`data/api_${mode}.json`],
-      details: { updatedAt: payload.updatedAt, ageHours },
-      recommendation: stale ? "Bekreft automatisk refresh og datakilden før operative vurderinger." : null
+        : `updatedAt=${payload.updatedAt}; generert=${freshness.sdeGeneratedAtIso}; påkrevd grense=${freshness.requiredRefreshBoundary}; alder=${freshness.sdeAgeSeconds.toFixed(0)} s; tillatt=${freshness.allowedSdeAgeSeconds.toFixed(0)} s.`,
+      evidence: [`data/api_${mode}.json`, "tests/sde-quality-engine/fixtures/balise-freshness-contract.json"],
+      details: freshness,
+      recommendation: freshness.sdeStatus === "FRESH" ? null : "Bekreft automatisk refresh mot faktisk Europe/Oslo-plan; ikke bruk en fast seks- eller trettitimersgrense."
     }));
   }
 
@@ -296,6 +327,74 @@ function baliseChecks(now = new Date()) {
     summary: `${boundaryFixture.cases.length - boundaryErrors.length}/${boundaryFixture.cases.length} 07:00/15:00/DST-fixtures er korrekte.`,
     evidence: ["tests/sde-quality-engine/fixtures/balise-boundaries.json", "server/scripts/test_sync_production_balise_data.py"],
     details: { failures: boundaryErrors }
+  }));
+
+  const parityFixture = readJson(path.join(root, "tests/sde-quality-engine/fixtures/balise-parity-cases.json"));
+  const syntheticParity = compareRecords([parityFixture.baseBalise], [parityFixture.baseSde]);
+  const categoryContractGreen =
+    JSON.stringify([...PARITY_CATEGORIES]) === JSON.stringify(parityFixture.expectedCategories) &&
+    syntheticParity.counts.unauthorized_difference === 0 &&
+    validateOverride(parityFixture.validOverride).valid;
+  results.push(result({
+    id: "BALISE-010-CONTRACT",
+    contractId: "BALISE-010",
+    area: "tursatt-balise",
+    name: "Symmetrisk Balise-paritetskontrakt er komplett",
+    status: categoryContractGreen ? "GREEN" : "RED",
+    critical: true,
+    summary: categoryContractGreen
+      ? `${PARITY_CATEGORIES.length} eksplisitte differansekategorier og full override-proveniens er permanent testet.`
+      : "Paritetskategorier, syntetisk null-diff eller override-proveniens avviker.",
+    evidence: [
+      "tests/sde-quality-engine/lib/balise-parity.cjs",
+      "tests/sde-quality-engine/fixtures/balise-parity-cases.json",
+      "tests/sde-quality-engine/unit/balise-parity.test.cjs"
+    ],
+    details: { categories: [...PARITY_CATEGORIES], counts: syntheticParity.counts }
+  }));
+
+  const liveCommand = runCommand("node", ["tests/sde-quality-engine/lib/balise-parity.cjs"], {
+    timeoutMs: 3 * 60 * 1000
+  });
+  let live = null;
+  try {
+    live = JSON.parse(String(liveCommand.stdout || "").trim());
+  } catch (_error) {
+    live = null;
+  }
+  const unavailable = live?.blockedReason === "BLOCKED – AUTHORITATIVE BALISE SOURCE UNAVAILABLE";
+  const liveCounts = live?.parity?.counts || {};
+  const disallowedCategories = PARITY_CATEGORIES.filter((category) => category !== "authorized_override");
+  const liveGreen = Boolean(live?.ok) && disallowedCategories.every((category) => Number(liveCounts[category] || 0) === 0);
+  results.push(result({
+    id: "BALISE-010-LIVE",
+    contractId: "BALISE-010",
+    area: "tursatt-balise",
+    name: "Ekte Balise-kilde har symmetrisk paritet med SDE",
+    status: liveGreen ? "GREEN" : unavailable ? "BLOCKED" : "RED",
+    critical: true,
+    summary: liveGreen
+      ? `${live.coverage.baliseRecords} autoritative Balise-forekomster er sammenlignet uavhengig og symmetrisk uten uautoriserte differanser.`
+      : unavailable
+        ? "BLOCKED – AUTHORITATIVE BALISE SOURCE UNAVAILABLE"
+        : `Live paritet er ikke grønn: ${JSON.stringify(liveCounts)}.`,
+    evidence: [
+      "GET https://balise.no/api/station/SKN?content=all&passthru=true",
+      "GET https://balise.no/api/train/vehicles?route=<routeId>",
+      liveCommand.command,
+      compactOutput(liveCommand)
+    ],
+    details: live || {
+      command: liveCommand.command,
+      exitCode: liveCommand.status,
+      error: liveCommand.error
+    },
+    durationMs: liveCommand.durationMs,
+    recommendation: liveGreen
+      ? null
+      : unavailable
+        ? "Gjenoppta først når den uavhengige autoritative Balise-kilden kan leses; intern konsistens er ikke live paritet."
+        : "Undersøk hver eksplisitte differansekategori uten å gjenbruke produksjonstransformen eller hardkode dagens tog."
   }));
   return results;
 }
@@ -552,12 +651,7 @@ function runServerSuite(inventory = buildInventory()) {
       "server-api",
       `Serverkontrakt ${path.basename(file)}`,
       command,
-      true,
-      {
-        blockedPattern: /Runtime schema migration must run from the approved server directory/i,
-        blockedSummary: "runtime-migrasjonsvakten er låst til hovedrepoets serverkatalog og avviser isolerte kandidatworktrees.",
-        blockedRecommendation: "Gjør den godkjente serverkatalogen portabel med en separat, sikker endring; ikke svekk migrasjonsvakten i denne fasen."
-      }
+      true
     );
   });
 }
@@ -602,5 +696,6 @@ module.exports = {
   runStrictSuite,
   runUnitSuite,
   staticChecks,
+  validateAccounting,
   validateRegistry
 };

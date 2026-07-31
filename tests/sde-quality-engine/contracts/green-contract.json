@@ -107,6 +107,14 @@
       "evidence": ["boundary-fixtures", "sync-tests"]
     },
     {
+      "id": "BALISE-010",
+      "area": "tursatt-balise",
+      "name": "Uavhengig og symmetrisk live Balise-paritet",
+      "critical": true,
+      "expected": "Autoritativ Balise-kilde leses uavhengig og sammenlignes symmetrisk mot SDE med eksplisitt ferskhet, proveniens, override-authority og differansekategorier.",
+      "evidence": ["balise.no/api/station/SKN", "balise.no/api/train/vehicles", "balise-parity-contract"]
+    },
+    {
       "id": "ACCESS-001",
       "area": "access",
       "name": "Alle seks tilgangsnivåer finnes",

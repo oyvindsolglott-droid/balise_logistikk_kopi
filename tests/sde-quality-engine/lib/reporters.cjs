@@ -43,6 +43,7 @@ function renderMarkdown(report) {
   const critical = report.results.filter((item) => item.critical && item.status !== "GREEN");
   const balise = report.results.filter((item) => item.area === "tursatt-balise");
   const recommendations = report.recommendations || recommendationsFor(report);
+  const accounting = report.accounting || null;
   const lines = [
     "# SDE Quality Engine",
     "",
@@ -76,6 +77,12 @@ function renderMarkdown(report) {
     "| Status | Antall |",
     "|---|---:|",
     ...Object.entries(summary.counts).map(([status, count]) => `| ${status} | ${count} |`),
+    "",
+    ...(accounting ? [
+      `Maskinlesbart regnskap: ${accounting.testCases.total} testcases/assertions, ${accounting.contracts.total} kontrakter, ${accounting.functions.total} funksjoner, ${accounting.recommendations.total} anbefalinger og ${accounting.releaseGates.total} kritiske releaseporter.`,
+      `Kritisk BLOCKED/UNKNOWN: ${accounting.releaseGates.criticalBlocked.map((item) => item.id).join(", ") || "ingen"}.`,
+      `QE-0-baseline: ${accounting.qe0BaselineBlockedFunctions.total}/${accounting.qe0BaselineBlockedFunctions.functionTotal} blokkerte funksjoner (${accounting.qe0BaselineBlockedFunctions.groups.map((group) => `${group.reason}=${group.ids.length}`).join(", ")}).`
+    ] : ["Maskinlesbart statusregnskap bygges ved full QE-kjøring."]),
     "",
     "## 6. Tursatt/Balise-resultat",
     "",
@@ -174,6 +181,8 @@ function renderHtml(report) {
   const recommendationItems = recommendations.map((item) =>
     `<li><strong>${escapeHtml(item.priority)} ${escapeHtml(item.id)}</strong> — ${escapeHtml(item.action)}</li>`
   ).join("") || "<li>Ingen anbefalinger; alle kjørte kontroller er GREEN.</li>";
+  const accountingPanel = report.accounting ? `
+  <section class="panel"><h2>Statusregnskap</h2><p>${report.accounting.testCases.total} testcases/assertions · ${report.accounting.contracts.total} kontrakter · ${report.accounting.functions.total} funksjoner · ${report.accounting.recommendations.total} anbefalinger · ${report.accounting.releaseGates.total} kritiske releaseporter.</p><p>Kritisk BLOCKED/UNKNOWN: <code>${escapeHtml(report.accounting.releaseGates.criticalBlocked.map((item) => item.id).join(", ") || "ingen")}</code></p></section>` : "";
   return `<!doctype html>
 <html lang="no">
 <head>
@@ -199,6 +208,7 @@ function renderHtml(report) {
     <div class="metrics">${statusCards}</div>
   </section>
   <section class="panel"><h2>Kontrollresultater</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Område</th><th>Kontroll</th><th>Status</th><th>Evidenssammendrag</th></tr></thead><tbody>${resultRows}</tbody></table></div></section>
+  ${accountingPanel}
   <section class="panel"><h2>Funksjonsmatrise</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Modul</th><th>Funksjon</th><th>Status</th><th>Testtyper</th></tr></thead><tbody>${matrixRows}</tbody></table></div></section>
   <section class="panel"><h2>Anbefalinger</h2><ul>${recommendationItems}</ul></section>
   <section class="panel"><h2>Produksjonssikkerhet</h2><p>Kun ${escapeHtml(report.productionSafety.allowedMethods.join("/"))}. Andre metoder avvises før fetch. Ledger: <code>${escapeHtml(JSON.stringify(report.productionSafety.ledger))}</code></p></section>

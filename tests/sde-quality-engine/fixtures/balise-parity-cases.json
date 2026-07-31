@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Synthetic, date-neutral cases for every symmetric Balise/SDE parity category. These are contracts, not a hard-coded live train list.",
+  "baseBalise": {
+    "routeId": "route-a",
+    "occurrenceId": "2099-01-01|arrival|10001|10:00",
+    "operationalDate": "2099-01-01",
+    "direction": "arrival",
+    "trainNumber": "10001",
+    "time": "10:00",
+    "stopId": "stop-a",
+    "track": "2",
+    "vehicleIds": ["74-01"],
+    "consist": "single_set",
+    "sourceTimestamp": "2099-01-01T09:59:00Z",
+    "provenance": "balise.no/api/station/SKN + balise.no/api/train/vehicles"
+  },
+  "baseSde": {
+    "routeId": "route-a",
+    "occurrenceId": "2099-01-01|arrival|10001|10:00",
+    "operationalDate": "2099-01-01",
+    "direction": "arrival",
+    "trainNumber": "10001",
+    "time": "10:00",
+    "stopId": "stop-a",
+    "track": "2",
+    "vehicleIds": ["74-01"],
+    "consist": "single_set",
+    "sourceTimestamp": "2099-01-01T09:59:00Z",
+    "provenance": "data/api_idag.json:movementContext"
+  },
+  "expectedCategories": [
+    "balise_only",
+    "sde_only",
+    "identity_mismatch",
+    "vehicle_mismatch",
+    "consist_mismatch",
+    "track_mismatch",
+    "date_mismatch",
+    "occurrence_mismatch",
+    "stale_source",
+    "stale_sde_dataset",
+    "provenance_missing",
+    "authorized_override",
+    "unauthorized_difference"
+  ],
+  "validOverride": {
+    "trainNumber": "10001",
+    "occurrenceId": "2099-01-01|arrival|10001|10:00",
+    "vehicleId": "74-01",
+    "part": "track",
+    "timestamp": "2099-01-01T10:01:00Z",
+    "rawValue": "2",
+    "originalValue": "2",
+    "overrideValue": "3",
+    "source": "authorized_dispatcher",
+    "provenance": "signed-test-authority",
+    "scope": "2099-01-01|arrival|10001|10:00|track"
+  }
+}
