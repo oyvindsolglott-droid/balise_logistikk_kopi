@@ -14,6 +14,12 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from playwright.sync_api import sync_playwright
 
+from sde_data_provenance import (
+    GenerationProvenance,
+    dataset_json_bytes,
+    sha256_bytes,
+)
+
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -21,6 +27,7 @@ PAYLOAD_FILENAMES = {
     "idag": "api_idag.json",
     "imorgen": "api_imorgen.json",
 }
+PROVENANCE_FILENAME = "sde-data-provenance.json"
 DEFAULT_PAGE_GOTO_TIMEOUT_MS = 30000
 
 OSLO_TZ = ZoneInfo("Europe/Oslo")
@@ -434,6 +441,72 @@ def fetch_balise_route_stops(
         return ([row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []), source_updated_at
     finally:
         response.dispose()
+
+
+def fetch_balise_route_response(
+    page,
+    endpoint: str,
+    route_id: str,
+    deadline_at: Optional[float] = None,
+) -> Tuple[List[Dict[str, object]], str, bytes]:
+    """Return normalized rows plus the exact response bytes used for provenance."""
+    clean_route_id = str(route_id or "").strip()
+    if endpoint not in {"stops", "vehicles"} or not clean_route_id:
+        return [], "", b""
+    response = page.context.request.get(
+        f"https://balise.no/api/train/{endpoint}?route={clean_route_id}",
+        timeout=remaining_timeout_ms(deadline_at),
+    )
+    try:
+        if not response.ok:
+            return [], "", b""
+        raw = response.body()
+        payload = json.loads(raw.decode("utf-8"))
+        rows = payload.get("data") if isinstance(payload, dict) else None
+        source_updated_at = normalize_balise_source_datetime(response.headers.get("date"))
+        return (
+            [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else [],
+            source_updated_at,
+            raw,
+        )
+    finally:
+        response.dispose()
+
+
+def capture_balise_route_snapshot(
+    page,
+    route_id: str,
+    deadline_at: Optional[float] = None,
+) -> Dict[str, object]:
+    """Observe stops → vehicles → stops; retry the complete read once on drift."""
+    capture = None
+    for attempt in (1, 2):
+        stops_before, before_observed_at, before_raw = fetch_balise_route_response(
+            page, "stops", route_id, deadline_at
+        )
+        vehicle_rows, vehicle_observed_at, _vehicle_raw = fetch_balise_route_response(
+            page, "vehicles", route_id, deadline_at
+        )
+        stops_after, after_observed_at, after_raw = fetch_balise_route_response(
+            page, "stops", route_id, deadline_at
+        )
+        stable = bool(before_raw) and sha256_bytes(before_raw) == sha256_bytes(after_raw)
+        capture = {
+            "stops": stops_after or stops_before,
+            "vehicleRows": vehicle_rows,
+            "stationBeforeRaw": before_raw,
+            "stationAfterRaw": after_raw,
+            "observedAt": after_observed_at or vehicle_observed_at or before_observed_at,
+            "stopsObservedAt": after_observed_at or before_observed_at,
+            "stable": stable,
+            "attempts": attempt,
+        }
+        if stable:
+            break
+    return capture or {
+        "stops": [], "vehicleRows": [], "stationBeforeRaw": b"", "stationAfterRaw": b"",
+        "observedAt": "", "stopsObservedAt": "", "stable": False, "attempts": 2,
+    }
 
 
 def extract_route_vehicle_hits(
@@ -880,6 +953,8 @@ def fetch_vehicle_maps_for_trains(
     train_numbers: Iterable[str],
     run_date: date,
     deadline_at: Optional[float] = None,
+    provenance: Optional[GenerationProvenance] = None,
+    provenance_mode: str = "",
 ) -> Tuple[
     Dict[str, str],
     Dict[str, str],
@@ -951,11 +1026,31 @@ def fetch_vehicle_maps_for_trains(
                     route_stops_source_updated_at = ""
                     if route_info.get("routeId"):
                         try:
-                            route_vehicle_rows, _vehicle_source_updated_at = fetch_balise_route_vehicles(
-                                page,
-                                route_info["routeId"],
-                                deadline_at=deadline_at,
-                            )
+                            if provenance is not None:
+                                snapshot = capture_balise_route_snapshot(
+                                    page, route_info["routeId"], deadline_at=deadline_at
+                                )
+                                route_vehicle_rows = list(snapshot["vehicleRows"])
+                                route_stops = list(snapshot["stops"])
+                                route_stops_source_updated_at = str(snapshot["stopsObservedAt"] or "")
+                                provenance.add_capture(
+                                    mode=provenance_mode,
+                                    operational_date=run_date.isoformat(),
+                                    train_number=lookup_train_no,
+                                    route_id=route_info["routeId"],
+                                    station_before=bytes(snapshot["stationBeforeRaw"]),
+                                    station_after=bytes(snapshot["stationAfterRaw"]),
+                                    vehicle_rows=route_vehicle_rows,
+                                    observed_at=str(snapshot["observedAt"] or ""),
+                                    stable=bool(snapshot["stable"]),
+                                    attempts=int(snapshot["attempts"]),
+                                )
+                            else:
+                                route_vehicle_rows, _vehicle_source_updated_at = fetch_balise_route_vehicles(
+                                    page,
+                                    route_info["routeId"],
+                                    deadline_at=deadline_at,
+                                )
                             route_vehicle_hits = extract_route_vehicle_hits(
                                 route_vehicle_rows,
                                 route_info["routeId"],
@@ -966,16 +1061,17 @@ def fetch_vehicle_maps_for_trains(
                             # En validert avgang blir i stedet eksplisitt uløst nedenfor.
                             route_vehicle_rows = []
                             route_vehicle_hits = []
-                        try:
-                            route_stops, route_stops_source_updated_at = fetch_balise_route_stops(
-                                page,
-                                route_info["routeId"],
-                                deadline_at=deadline_at,
-                            )
-                        except Exception:  # noqa: BLE001
-                            # Uten samme forekomsts stoppsekvens kan Porsgrunn ikke
-                            # brukes som actual-kontroll. Avgangen blir fail-closed.
-                            route_stops = []
+                        if provenance is None:
+                            try:
+                                route_stops, route_stops_source_updated_at = fetch_balise_route_stops(
+                                    page,
+                                    route_info["routeId"],
+                                    deadline_at=deadline_at,
+                                )
+                            except Exception:  # noqa: BLE001
+                                # Uten samme forekomsts stoppsekvens kan Porsgrunn ikke
+                                # brukes som actual-kontroll. Avgangen blir fail-closed.
+                                route_stops = []
                     movement_context = None
                     if skien_stop.get("arrival") and route_info.get("routeId"):
                         try:
@@ -1121,11 +1217,24 @@ def all_relevant_trains() -> List[str]:
     )
 
 
-def build_payload(mode: str, deadline_at: Optional[float] = None) -> Dict[str, object]:
+def build_payload(
+    mode: str,
+    deadline_at: Optional[float] = None,
+    provenance: Optional[GenerationProvenance] = None,
+) -> Dict[str, object]:
     operational_dates = get_operational_tursatt_dates()
     run_date = operational_dates["departure_date"] if mode == "imorgen" else operational_dates["arrival_date"]
     trains = all_relevant_trains()
-    fetched = fetch_vehicle_maps_for_trains(trains, run_date, deadline_at=deadline_at)
+    if provenance is None:
+        fetched = fetch_vehicle_maps_for_trains(trains, run_date, deadline_at=deadline_at)
+    else:
+        fetched = fetch_vehicle_maps_for_trains(
+            trains,
+            run_date,
+            deadline_at=deadline_at,
+            provenance=provenance,
+            provenance_mode=mode,
+        )
     if len(fetched) == 11:
         (
             vehicles,
@@ -1282,35 +1391,43 @@ def build_payloads(
     build_func: Callable[..., Dict[str, object]] = build_payload,
     deadline_at: Optional[float] = None,
     log: Callable[[str], None] = print,
+    provenance: Optional[GenerationProvenance] = None,
 ) -> Dict[str, Dict[str, object]]:
     payloads: Dict[str, Dict[str, object]] = {}
 
     for mode in ("idag", "imorgen"):
         log(f"Build start: {mode}")
-        payload = build_func(mode, deadline_at=deadline_at)
+        if provenance is not None and build_func is build_payload:
+            payload = build_func(mode, deadline_at=deadline_at, provenance=provenance)
+        else:
+            payload = build_func(mode, deadline_at=deadline_at)
         payloads[mode] = validate_payload(mode, payload)
         log(f"Build complete: {mode} date={payloads[mode].get('date')}")
 
     return payloads
 
 
-def write_temp_payload(path: Path, payload: Dict[str, object]) -> Path:
+def write_temp_bytes(path: Path, content: bytes) -> Path:
     with tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
+        "wb",
         dir=str(path.parent),
         prefix=f".{path.name}.",
         suffix=".tmp",
         delete=False,
     ) as temp_file:
-        temp_file.write(json.dumps(payload, ensure_ascii=False, indent=2))
+        temp_file.write(content)
         return Path(temp_file.name)
+
+
+def write_temp_payload(path: Path, payload: Dict[str, object]) -> Path:
+    return write_temp_bytes(path, dataset_json_bytes(payload))
 
 
 def atomic_write_payloads(
     payloads: Dict[str, Dict[str, object]],
     output_dir: Path = DATA_DIR,
     log: Callable[[str], None] = print,
+    manifest: Optional[Dict[str, object]] = None,
 ) -> None:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -1323,6 +1440,12 @@ def atomic_write_payloads(
             payload = validate_payload(mode, payloads.get(mode))
             final_path = output_dir / PAYLOAD_FILENAMES[mode]
             temp_path = write_temp_payload(final_path, payload)
+            temp_paths.append(temp_path)
+            planned_replacements.append((temp_path, final_path))
+
+        if manifest is not None:
+            final_path = output_dir / PROVENANCE_FILENAME
+            temp_path = write_temp_bytes(final_path, dataset_json_bytes(manifest))
             temp_paths.append(temp_path)
             planned_replacements.append((temp_path, final_path))
 
@@ -1349,13 +1472,21 @@ def refresh_static_data(
     log: Callable[[str], None] = print,
 ) -> Dict[str, Dict[str, object]]:
     deadline_at = deadline_from_seconds(deadline_seconds)
-    payloads = build_payloads(build_func=build_func, deadline_at=deadline_at, log=log)
+    provenance = GenerationProvenance()
+    payloads = build_payloads(
+        build_func=build_func,
+        deadline_at=deadline_at,
+        log=log,
+        provenance=provenance if build_func is build_payload else None,
+    )
 
     if dry_run:
         log("Dry-run complete: no data files replaced")
         return payloads
 
-    atomic_write_payloads(payloads, output_dir=Path(output_dir), log=log)
+    serialized = {mode: dataset_json_bytes(payload) for mode, payload in payloads.items()}
+    manifest = provenance.build_manifest(payloads, serialized) if build_func is build_payload else None
+    atomic_write_payloads(payloads, output_dir=Path(output_dir), log=log, manifest=manifest)
     return payloads
 
 

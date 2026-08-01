@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 import update_static_data as static_data
+from sde_data_provenance import GenerationProvenance, dataset_json_bytes, sha256_bytes
+from sde_data_release_attestation import build_attestation
 
 
 OCCURRENCE_FIXTURE = json.loads(
@@ -660,6 +662,85 @@ class AtomicStaticDataRefreshTest(unittest.TestCase):
             self.assertEqual(built_modes, ["idag", "imorgen"])
             self.assertFalse((output_dir / "api_idag.json").exists())
             self.assertFalse((output_dir / "api_imorgen.json").exists())
+
+
+class StaticDataProvenanceTest(unittest.TestCase):
+    def test_route_snapshot_retries_once_and_preserves_second_attempt(self):
+        responses = [
+            ([{"stop_id": "a"}], "2026-08-01T10:00:00+02:00", b"station-a"),
+            ([{"vehicle": "74-10"}], "2026-08-01T10:00:01+02:00", b"vehicle-a"),
+            ([{"stop_id": "a"}], "2026-08-01T10:00:02+02:00", b"station-b"),
+            ([{"stop_id": "a"}], "2026-08-01T10:00:03+02:00", b"station-c"),
+            ([{"vehicle": "74-10"}], "2026-08-01T10:00:04+02:00", b"vehicle-c"),
+            ([{"stop_id": "a"}], "2026-08-01T10:00:05+02:00", b"station-c"),
+        ]
+        with patch.object(static_data, "fetch_balise_route_response", side_effect=responses):
+            snapshot = static_data.capture_balise_route_snapshot(object(), "route-1")
+        self.assertTrue(snapshot["stable"])
+        self.assertEqual(snapshot["attempts"], 2)
+        self.assertEqual(snapshot["stationBeforeRaw"], b"station-c")
+        self.assertEqual(snapshot["stationAfterRaw"], b"station-c")
+
+    def test_manifest_hashes_exact_dataset_bytes_and_never_embeds_raw_source(self):
+        provenance = GenerationProvenance()
+        provenance.add_capture(
+            mode="idag",
+            operational_date="2026-08-01",
+            train_number="80810",
+            route_id="route-secret-free",
+            station_before=b'{"data":[{"station_ref":"SKN"}]}',
+            station_after=b'{"data":[{"station_ref":"SKN"}]}',
+            vehicle_rows=[{"vehicle": "74-10", "sv_route": "route-secret-free"}],
+            observed_at="2026-08-01T10:00:00+02:00",
+            stable=True,
+            attempts=1,
+        )
+        payloads = {
+            "idag": make_payload("idag", "2026-08-01"),
+            "imorgen": make_payload("imorgen", "2026-08-02"),
+        }
+        serialized = {mode: dataset_json_bytes(payload) for mode, payload in payloads.items()}
+        manifest = provenance.build_manifest(payloads, serialized)
+        self.assertEqual(manifest["schema"], "sde-data-provenance/v1")
+        self.assertTrue(manifest["source"]["snapshotStable"])
+        self.assertEqual(manifest["datasets"]["idag"]["sha256"], sha256_bytes(serialized["idag"]))
+        encoded = json.dumps(manifest)
+        self.assertNotIn("station_ref", encoded)
+        self.assertNotIn("cookies", encoded.lower())
+
+    def test_atomic_write_can_publish_manifest_in_same_replace_phase(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            payloads = {
+                "idag": make_payload("idag", "2026-08-01"),
+                "imorgen": make_payload("imorgen", "2026-08-02"),
+            }
+            manifest = {"schema": "sde-data-provenance/v1", "generationId": "test"}
+            static_data.atomic_write_payloads(
+                payloads,
+                output_dir=output_dir,
+                log=lambda _: None,
+                manifest=manifest,
+            )
+            self.assertEqual(
+                json.loads((output_dir / "sde-data-provenance.json").read_text()),
+                manifest,
+            )
+
+    def test_release_attestation_breaks_commit_hash_cycle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest_path = Path(tmp) / "manifest.json"
+            manifest_path.write_bytes(dataset_json_bytes({
+                "schema": "sde-data-provenance/v1",
+                "generationId": "generation-1",
+                "git": {"commit": None, "tree": None},
+            }))
+            attestation = build_attestation(
+                manifest_path, "commit-sha", "tree-sha", "owner/repo", "42"
+            )
+            self.assertEqual(attestation["generationId"], "generation-1")
+            self.assertEqual(attestation["git"]["commit"], "commit-sha")
+            self.assertEqual(attestation["publication"]["pagesConclusion"], "PENDING_EXTERNAL_VERIFICATION")
 
 
 if __name__ == "__main__":

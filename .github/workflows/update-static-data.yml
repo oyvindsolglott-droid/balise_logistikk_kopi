@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: update-static-balise-data
@@ -56,6 +57,19 @@ jobs:
           event_name = os.environ.get("GITHUB_EVENT_NAME", "")
           now = datetime.now(ZoneInfo("Europe/Oslo"))
           today = now.date()
+
+          cycle_candidates = []
+          for day_offset in (-1, 0):
+              candidate_date = today + timedelta(days=day_offset)
+              for cycle_hour in (4, 7, 15, 21):
+                  candidate = datetime.combine(
+                      candidate_date,
+                      datetime.min.time(),
+                      tzinfo=ZoneInfo("Europe/Oslo"),
+                  ).replace(hour=cycle_hour)
+                  if candidate <= now:
+                      cycle_candidates.append(candidate)
+          intended_cycle = max(cycle_candidates)
 
           if now.hour < 7:
               expected_today = today - timedelta(days=1)
@@ -146,6 +160,9 @@ jobs:
               out.write(f"actual_idag={idag_date}\n")
               out.write(f"actual_imorgen={imorgen_date}\n")
               out.write(f"reason={' | '.join(reason_parts)}\n")
+              out.write(f"intended_cycle_date={intended_cycle.date().isoformat()}\n")
+              out.write(f"intended_cycle_hour={intended_cycle.strftime('%H')}\n")
+              out.write(f"actual_workflow_start={now.isoformat(timespec='seconds')}\n")
 
           print("Oslo time:", now.strftime("%Y-%m-%d %H:%M:%S"))
           print("Window:", window)
@@ -166,6 +183,17 @@ jobs:
           echo "api_idag: ${{ steps.update-check.outputs.actual_idag }} / forventet ${{ steps.update-check.outputs.expected_idag }}"
           echo "api_imorgen: ${{ steps.update-check.outputs.actual_imorgen }} / forventet ${{ steps.update-check.outputs.expected_imorgen }}"
 
+      - name: Record intended cycle and execution decision
+        if: always()
+        run: |
+          {
+            echo "## Static Balise data cycle"
+            echo "- Intended cycle: ${{ steps.update-check.outputs.intended_cycle_date }}T${{ steps.update-check.outputs.intended_cycle_hour }}:00 Europe/Oslo"
+            echo "- Actual workflow start: ${{ steps.update-check.outputs.actual_workflow_start }}"
+            echo "- Generator selected: ${{ steps.update-check.outputs.should_run }}"
+            echo "- Decision reason: ${{ steps.update-check.outputs.reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Set up Python
         if: steps.update-check.outputs.should_run == 'true'
         uses: actions/setup-python@v5
@@ -181,6 +209,10 @@ jobs:
 
       - name: Generate static JSON files
         if: steps.update-check.outputs.should_run == 'true'
+        env:
+          SDE_INTENDED_CYCLE_DATE: ${{ steps.update-check.outputs.intended_cycle_date }}
+          SDE_INTENDED_CYCLE_HOUR: ${{ steps.update-check.outputs.intended_cycle_hour }}
+          SDE_ACTUAL_WORKFLOW_START: ${{ steps.update-check.outputs.actual_workflow_start }}
         run: python update_static_data.py
 
       - name: Show generated dates
@@ -190,20 +222,21 @@ jobs:
           import json
           from pathlib import Path
 
-          for f in ["data/api_idag.json", "data/api_imorgen.json"]:
+          for f in ["data/api_idag.json", "data/api_imorgen.json", "data/sde-data-provenance.json"]:
               data = json.loads(Path(f).read_text(encoding="utf-8"))
-              print(f"{f}: date={data.get('date')} updatedAt={data.get('updatedAt')} vehicles={len(data.get('vehicles', {}) or {})}")
+              print(f"{f}: date={data.get('date')} updatedAt={data.get('updatedAt')} generationId={data.get('generationId')} vehicles={len(data.get('vehicles', {}) or {})}")
           PY2
 
       - name: Commit and push updated data
+        id: data-push
         if: steps.update-check.outputs.should_run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/api_idag.json data/api_imorgen.json
+          git add data/api_idag.json data/api_imorgen.json data/sde-data-provenance.json
 
           staged_files="$(git diff --cached --name-only)"
-          unexpected_files="$(printf '%s\n' "$staged_files" | grep -vE '^data/api_(idag|imorgen)\.json$' || true)"
+          unexpected_files="$(printf '%s\n' "$staged_files" | grep -vE '^data/(api_(idag|imorgen)\.json|sde-data-provenance\.json)$' || true)"
           if [ -n "$unexpected_files" ]; then
             echo "Uventede filer er staged:"
             printf '%s\n' "$unexpected_files"
@@ -221,3 +254,25 @@ jobs:
           git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
           git rebase "origin/$branch"
           git push origin "HEAD:$branch"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "tree=$(git rev-parse HEAD^{tree})" >> "$GITHUB_OUTPUT"
+
+      - name: Create non-circular data release attestation
+        if: steps.data-push.outputs.commit != ''
+        run: >-
+          python sde_data_release_attestation.py
+          --manifest data/sde-data-provenance.json
+          --commit "${{ steps.data-push.outputs.commit }}"
+          --tree "${{ steps.data-push.outputs.tree }}"
+          --repository "${{ github.repository }}"
+          --run-id "${{ github.run_id }}"
+          --output "$RUNNER_TEMP/sde-data-release-attestation.json"
+
+      - name: Upload data release attestation
+        if: steps.data-push.outputs.commit != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sde-data-release-attestation-${{ steps.data-push.outputs.commit }}
+          path: ${{ runner.temp }}/sde-data-release-attestation.json
+          if-no-files-found: error
+          retention-days: 30
