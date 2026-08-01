@@ -50,6 +50,30 @@ npm run test:sde:qe:ci
 
 Den krever ingen produksjonshemmeligheter og gjør ingen produksjonskall.
 
+CI skiller tre uavhengige domener: intern Quality Engine-kvalifikasjon,
+ekstern SDE-/datavalidering og workflow-/infrastrukturintegritet. Den
+opprinnelige QE-runneren beholder sin fail-closed exitkode. Workflowen fanger
+exitkoden, validerer den maskinlesbare rapporten mot commitidentitet og
+regnskap, og lar bare den separate CI-policyen avgjøre workflowresultatet.
+
+En gyldig rapport med intern `GREEN`, null kritisk `RED` og kritisk ekstern
+`BLOCKED` blir derfor synlig `QUALITY_ENGINE_SUCCESS_EXTERNAL_HOLD`. Dette er
+en teknisk grønn QE-kvalifikasjon med eksplisitt ekstern HOLD, ikke full SDE
+GREEN og ikke en bekreftet produktfeil. Intern testfeil, bekreftet kritisk
+ekstern RED, manglende/ugyldig rapport, feil commitidentitet og uenighet mellom
+rapport og exitkode feiler fortsatt workflowen.
+
+Den permanente policytestsuiten kan kjøres isolert med:
+
+```sh
+npm run test:sde:qe:policy
+```
+
+CI skriver i tillegg `reports/ci-policy.json` og `reports/ci-policy.md`, mens
+den opprinnelige JSON-/Markdown-/JUnit-/HTML-rapporten bevares uendret. Hele
+rapportkatalogen lastes opp med `if: always()` og commit-/run-bundet
+artifactnavn.
+
 ## Produksjonskontroll
 
 Produksjonskontrollen må aktiveres eksplisitt:
