@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "sde-qe-provenance-fixtures/v1",
+  "sourcePolicy": "Synthetic only; never refreshed from live Balise or production data.",
+  "scenarios": [
+    { "id": "complete-consistent", "mutation": "none", "expected": "GREEN" },
+    { "id": "missing-source-hash", "mutation": "missing-source-hash", "expected": "BLOCKED" },
+    { "id": "source-changed-during-snapshot", "mutation": "source-changed", "expected": "BLOCKED" },
+    { "id": "dataset-hash-mismatch", "mutation": "dataset-hash-mismatch", "expected": "RED" },
+    { "id": "candidate-published-byte-identical", "mutation": "published-identical", "expected": "GREEN" },
+    { "id": "pages-payload-mismatch", "mutation": "published-mismatch", "expected": "RED" },
+    { "id": "missing-deploy-attestation", "mutation": "missing-attestation", "expected": "BLOCKED" },
+    { "id": "delayed-workflow-known-intended-cycle", "mutation": "delayed-known-cycle", "expected": "GREEN" },
+    { "id": "delayed-workflow-generator-skipped", "mutation": "generator-skipped", "expected": "BLOCKED" },
+    { "id": "legacy-dataset-without-manifest", "mutation": "missing-manifest", "expected": "BLOCKED" },
+    { "id": "conflicting-generation-identities", "mutation": "conflicting-generation-id", "expected": "RED" },
+    { "id": "unknown-manifest-schema", "mutation": "unknown-schema", "expected": "RED" }
+  ]
+}

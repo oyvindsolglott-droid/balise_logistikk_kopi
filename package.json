@@ -20,6 +20,7 @@
     "test:sde:report": "node tests/sde-quality-engine/run.cjs --suite report",
     "test:sde:qe:unit": "node --test tests/sde-quality-engine/unit/*.test.cjs",
     "test:sde:qe:policy": "node --test tests/sde-quality-engine/unit/ci-policy.test.cjs",
+    "test:sde:qe:provenance": "node --test tests/sde-quality-engine/unit/provenance.test.cjs",
     "test:sde:qe:ci": "node tests/sde-quality-engine/run.cjs --suite ci"
   },
   "engines": {

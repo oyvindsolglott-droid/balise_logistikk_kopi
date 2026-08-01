@@ -79,12 +79,24 @@ function evaluateComparisonEligibility(input = {}) {
     ? null
     : String(input.sourceOccurrenceModel) === String(input.datasetOccurrenceModel);
   const maxDeltaSeconds = Number.isFinite(input.maxTimeDeltaSeconds) ? input.maxTimeDeltaSeconds : 300;
+  const generationBound = [
+    input.sourceGenerationId,
+    input.datasetGenerationId,
+    input.datasetHash,
+    input.publishedDatasetHash
+  ].some((value) => value != null);
   const missingProvenance = [];
   if (sourceMs == null) missingProvenance.push("sourceObservedAt");
   if (!sourceHash) missingProvenance.push("sourceHash");
   if (isoMillis(datasetGeneratedAt) == null) missingProvenance.push("datasetGeneratedAt");
   if (datasetSourceMs == null) missingProvenance.push("datasetSourceObservedAt");
   if (!datasetSourceHash) missingProvenance.push("datasetSourceHash");
+  if (generationBound) {
+    if (!input.sourceGenerationId) missingProvenance.push("sourceGenerationId");
+    if (!input.datasetGenerationId) missingProvenance.push("datasetGenerationId");
+    if (!input.datasetHash) missingProvenance.push("datasetHash");
+    if (!input.publishedDatasetHash) missingProvenance.push("publishedDatasetHash");
+  }
 
   let eligible = true;
   let reason = "COMPARABLE_SNAPSHOT";
@@ -93,6 +105,14 @@ function evaluateComparisonEligibility(input = {}) {
     eligible = false;
     reason = "INSUFFICIENT_SNAPSHOT_PROVENANCE";
     diagnosticLabels.push("INSUFFICIENT_SNAPSHOT_PROVENANCE", "SNAPSHOT_TIME_MISMATCH");
+  } else if (generationBound && input.sourceGenerationId !== input.datasetGenerationId) {
+    eligible = false;
+    reason = "CONFLICTING_GENERATION_IDS";
+    diagnosticLabels.push("INSUFFICIENT_SNAPSHOT_PROVENANCE");
+  } else if (generationBound && input.datasetHash !== input.publishedDatasetHash) {
+    eligible = false;
+    reason = "PUBLISHED_DATASET_HASH_MISMATCH";
+    diagnosticLabels.push("UNAUTHORIZED_DIFFERENCE");
   } else if (sourceHash !== datasetSourceHash) {
     eligible = false;
     reason = "SOURCE_CHANGED_AFTER_GENERATION";
@@ -115,6 +135,10 @@ function evaluateComparisonEligibility(input = {}) {
     datasetGeneratedAt,
     datasetSourceObservedAt,
     datasetSourceHash,
+    sourceGenerationId: input.sourceGenerationId || null,
+    datasetGenerationId: input.datasetGenerationId || null,
+    datasetHash: input.datasetHash || null,
+    publishedDatasetHash: input.publishedDatasetHash || null,
     timeDeltaSeconds,
     sameOperationalDate,
     sameOccurrenceModel,
@@ -124,7 +148,11 @@ function evaluateComparisonEligibility(input = {}) {
       sourceHash && "sourceHash",
       datasetGeneratedAt && "datasetGeneratedAt",
       datasetSourceObservedAt && "datasetSourceObservedAt",
-      datasetSourceHash && "datasetSourceHash"
+      datasetSourceHash && "datasetSourceHash",
+      input.sourceGenerationId && "sourceGenerationId",
+      input.datasetGenerationId && "datasetGenerationId",
+      input.datasetHash && "datasetHash",
+      input.publishedDatasetHash && "publishedDatasetHash"
     ].filter(Boolean),
     missingProvenance,
     diagnosticLabels: [...new Set(diagnosticLabels)]

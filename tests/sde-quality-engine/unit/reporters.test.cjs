@@ -9,6 +9,7 @@ const { result, summarize } = require("../lib/core.cjs");
 const { mapFunctionStatuses } = require("../lib/checks.cjs");
 const {
   recommendationsFor,
+  renderGithubSummary,
   renderHtml,
   renderJUnit,
   renderMarkdown,
@@ -50,19 +51,47 @@ function sampleReport() {
   };
 }
 
-test("alle fire rapportformatene rendres fra samme modell", () => {
+test("alle fem rapportformatene rendres fra samme modell", () => {
   const report = sampleReport();
   assert.match(renderMarkdown(report), /## 12\. Begrensninger/);
   assert.match(renderJUnit(report), /<testsuite/);
   assert.match(renderHtml(report), /SDE Quality Engine/);
+  assert.match(renderGithubSummary(report), /SDE Quality Engine/);
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "sde-qe-report-"));
   try {
     const written = writeReports(report, directory);
-    assert.deepEqual(Object.keys(written.files).sort(), ["html", "json", "junit", "markdown"]);
+    assert.deepEqual(Object.keys(written.files).sort(), ["githubSummary", "html", "json", "junit", "markdown"]);
     for (const bytes of Object.values(written.bytes)) assert.ok(bytes > 100);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("legacy provenance without a chain remains reportable as external HOLD evidence", () => {
+  const report = sampleReport();
+  report.results.push(result({
+    id: "PROV-001",
+    area: "data-provenance",
+    name: "Manifest structure",
+    status: "BLOCKED",
+    critical: true,
+    summary: "Legacy dataset has no generation manifest; no product defect inferred.",
+    details: {
+      provenance: {
+        generationId: null,
+        publicationIntegrity: "BLOCKED",
+        customDomainObservability: "NOT_EVALUATED",
+        comparisonEligibility: {
+          eligible: false,
+          reason: "LEGACY_DATASET_WITHOUT_MANIFEST"
+        },
+        findings: ["Legacy dataset has no generation manifest; no product defect inferred."]
+      }
+    }
+  }));
+  const markdown = renderMarkdown(report);
+  assert.match(markdown, /LEGACY_DATASET_WITHOUT_MANIFEST/);
+  assert.match(markdown, /no product defect inferred/);
 });
 
 test("anbefalinger er undersøkelsesforslag med risiko og eksplisitt fullmaktskrav", () => {

@@ -42,6 +42,12 @@ function classificationModel(report) {
   };
 }
 
+function provenanceModel(report) {
+  return report.results
+    .find((item) => item.id === "PROV-001")
+    ?.details?.provenance || null;
+}
+
 function recommendationsFor(report) {
   const catalog = JSON.parse(fs.readFileSync(
     path.join(repoRoot(), "tests/sde-quality-engine/recommendations/catalog.json"),
@@ -83,6 +89,7 @@ function renderMarkdown(report) {
     .find((item) => item.id === "BALISE-010-LIVE")
     ?.details?.threeWay?.findings || [];
   const classifications = classificationModel(report);
+  const provenance = provenanceModel(report);
   const lines = [
     "# SDE Quality Engine",
     "",
@@ -148,6 +155,20 @@ function renderMarkdown(report) {
       ? critical.map((item) => `- **${item.status} ${item.id}:** ${item.summary}`)
       : ["- Ingen kritiske RED/BLOCKED/UNKNOWN-funn i den kjørte suiten."]),
     "",
+    "### Dataproveniens",
+    "",
+    ...(provenance ? [
+      `Generation ID: \`${provenance.generationId || "NOT AVAILABLE"}\`.`,
+      `Comparison eligibility: **${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}** — ${provenance.comparisonEligibility?.reason || "NOT AVAILABLE"}.`,
+      `Publication integrity: **${provenance.publicationIntegrity}**. Custom-domain observability: **${provenance.customDomainObservability}**.`,
+      "",
+      "| Proveniensledd | Status | Identitet |",
+      "|---|---|---|",
+      ...(provenance.chain || []).map((step) => `| ${step.step} | ${step.status} | \`${step.identity || "NOT AVAILABLE"}\` |`),
+      "",
+      ...(provenance.findings || []).map((finding) => `- ${finding}`)
+    ] : ["- Provenienssuite var ikke del av denne kjøringen."]),
+    "",
     "## 8. Svakheter og manglende testbarhet",
     "",
     ...(nonGreen.length
@@ -198,7 +219,8 @@ function renderJUnit(report) {
     }
     const threeWay = item.details?.threeWay;
     const classificationEvidence = threeWay ? `\nclassification=${JSON.stringify({ uniqueUnderlyingFindings: threeWay.uniqueUnderlyingFindings, layerObservationCount: threeWay.layerObservationCount, primaryClassificationCounts: threeWay.primaryClassificationCounts, diagnosticLabelCounts: threeWay.diagnosticLabelCounts, findings: threeWay.findings.map((finding) => ({ primaryClassification: finding.primaryClassification, diagnosticLabels: finding.diagnosticLabels, comparisonEligibility: finding.comparisonEligibility, contractAuthority: finding.contractAuthority, confidence: finding.confidence })) })}` : "";
-    body.push(`<system-out>${escapeXml(`${item.status}: ${item.summary}\n${(item.evidence || []).join("\n")}${classificationEvidence}`)}</system-out>`);
+    const provenanceEvidence = item.details?.provenance ? `\nprovenance=${JSON.stringify(item.details.provenance)}` : "";
+    body.push(`<system-out>${escapeXml(`${item.status}: ${item.summary}\n${(item.evidence || []).join("\n")}${classificationEvidence}${provenanceEvidence}`)}</system-out>`);
     return `    <testcase ${attrs}>${body.join("")}</testcase>`;
   });
   return [
@@ -238,6 +260,8 @@ function renderHtml(report) {
   const accountingPanel = report.accounting ? `
   <section class="panel"><h2>Statusregnskap</h2><p>${report.accounting.testCases.total} testcases/assertions · ${report.accounting.contracts.total} kontrakter · ${report.accounting.functions.total} funksjoner · ${report.accounting.recommendations.total} anbefalinger · ${report.accounting.releaseGates.total} kritiske releaseporter.</p><p>Kritisk BLOCKED/UNKNOWN: <code>${escapeHtml(report.accounting.releaseGates.criticalBlocked.map((item) => item.id).join(", ") || "ingen")}</code></p></section>` : "";
   const classification = classificationModel(report);
+  const provenance = provenanceModel(report);
+  const provenancePanel = provenance ? `<section class="panel"><h2>Dataproveniens</h2><p>Generation ID: <code>${escapeHtml(provenance.generationId || "NOT AVAILABLE")}</code></p><p>Comparison eligibility: <strong>${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}</strong> — ${escapeHtml(provenance.comparisonEligibility?.reason || "NOT AVAILABLE")}</p><p>Publication integrity: <strong>${escapeHtml(provenance.publicationIntegrity)}</strong> · Custom-domain observability: <strong>${escapeHtml(provenance.customDomainObservability)}</strong></p><div class="table-wrap"><table><thead><tr><th>Proveniensledd</th><th>Status</th><th>Identitet</th></tr></thead><tbody>${provenance.chain.map((step) => `<tr><td>${escapeHtml(step.step)}</td><td><span class="badge ${String(step.status).toLowerCase().replace(/ /g, "-")}">${escapeHtml(step.status)}</span></td><td><code>${escapeHtml(step.identity || "NOT AVAILABLE")}</code></td></tr>`).join("")}</tbody></table></div><ul>${provenance.findings.map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul></section>` : "";
   const classificationPanel = classification ? `<section class="panel"><h2>Fail-closed klassifisering</h2><p><strong>${classification.uniqueUnderlyingFindings}</strong> unique findings · <strong>${classification.layerObservationCount}</strong> layer observations.</p><p>Primary classifications: <code>${escapeHtml(JSON.stringify(classification.primaryClassificationCounts))}</code></p><p>Diagnostic labels: <code>${escapeHtml(JSON.stringify(classification.diagnosticLabelCounts))}</code></p><div class="table-wrap"><table><thead><tr><th>Finding</th><th>Primary</th><th>Labels</th><th>Eligible</th><th>Reason</th><th>Available provenance</th><th>Missing provenance</th><th>Authority</th><th>Confidence</th></tr></thead><tbody>${classification.findings.map((finding) => `<tr><td><code>${escapeHtml(finding.uniqueFindingId)}</code></td><td>${escapeHtml(finding.primaryClassification)}</td><td>${escapeHtml(finding.diagnosticLabels.join(", "))}</td><td>${finding.comparisonEligibility.eligible ? "yes" : "no"}</td><td>${escapeHtml(finding.comparisonEligibility.reason)}</td><td>${escapeHtml((finding.comparisonEligibility.availableProvenance || []).join(", ") || "–")}</td><td>${escapeHtml((finding.comparisonEligibility.missingProvenance || []).join(", ") || "–")}</td><td>${escapeHtml(finding.contractAuthority.type)} (${finding.contractAuthority.normative ? "normative" : "non-normative"})</td><td>${escapeHtml(finding.confidence)}</td></tr>`).join("")}</tbody></table></div><p>HOLD does not mean confirmed product defect.</p></section>` : "";
   return `<!doctype html>
 <html lang="no">
@@ -266,10 +290,38 @@ function renderHtml(report) {
   <section class="panel"><h2>Kontrollresultater</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Område</th><th>Kontroll</th><th>Status</th><th>Evidenssammendrag</th></tr></thead><tbody>${resultRows}</tbody></table></div></section>
   ${accountingPanel}
   ${classificationPanel}
+  ${provenancePanel}
   <section class="panel"><h2>Funksjonsmatrise</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Modul</th><th>Funksjon</th><th>Status</th><th>Testtyper</th></tr></thead><tbody>${matrixRows}</tbody></table></div></section>
   <section class="panel"><h2>Anbefalinger</h2><ul>${recommendationItems}</ul></section>
   <section class="panel"><h2>Produksjonssikkerhet</h2><p>Kun ${escapeHtml(report.productionSafety.allowedMethods.join("/"))}. Andre metoder avvises før fetch. Ledger: <code>${escapeHtml(JSON.stringify(report.productionSafety.ledger))}</code></p></section>
 </main></body></html>`;
+}
+
+function renderGithubSummary(report) {
+  const summary = report.summary || summarize(report.results);
+  const provenance = provenanceModel(report);
+  const lines = [
+    "# SDE Quality Engine",
+    "",
+    `**${summary.classification}** · commit \`${report.git.commit || "unknown"}\` · suite \`${report.suite}\``,
+    "",
+    "## Generation provenance",
+    ""
+  ];
+  if (!provenance) {
+    lines.push("Provenance suite was not part of this run.");
+  } else {
+    lines.push(
+      `Generation ID: \`${provenance.generationId || "NOT AVAILABLE"}\``,
+      "",
+      `Comparison eligibility: **${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}** — ${provenance.comparisonEligibility?.reason || "NOT AVAILABLE"}`,
+      "",
+      "| Chain step | Status |",
+      "|---|---|",
+      ...provenance.chain.map((step) => `| ${step.step} | ${step.status} |`)
+    );
+  }
+  return lines.join("\n");
 }
 
 function writeReports(report, directory) {
@@ -280,26 +332,31 @@ function writeReports(report, directory) {
   const markdown = `${renderMarkdown(report)}\n`;
   const junit = renderJUnit(report);
   const html = renderHtml(report);
+  const githubSummary = `${renderGithubSummary(report)}\n`;
   const files = {
     json: path.join(directory, "latest.json"),
     markdown: path.join(directory, "latest.md"),
     junit: path.join(directory, "latest.junit.xml"),
-    html: path.join(directory, "latest.html")
+    html: path.join(directory, "latest.html"),
+    githubSummary: path.join(directory, "latest.github-summary.md")
   };
   fs.writeFileSync(files.json, json);
   fs.writeFileSync(files.markdown, markdown);
   fs.writeFileSync(files.junit, junit);
   fs.writeFileSync(files.html, html);
+  fs.writeFileSync(files.githubSummary, githubSummary);
   return {
     files,
     bytes: Object.fromEntries(Object.entries(files).map(([name, file]) => [name, fs.statSync(file).size])),
-    rendered: { json, markdown, junit, html }
+    rendered: { json, markdown, junit, html, githubSummary }
   };
 }
 
 module.exports = {
   classificationModel,
+  provenanceModel,
   recommendationsFor,
+  renderGithubSummary,
   renderHtml,
   renderJUnit,
   renderMarkdown,

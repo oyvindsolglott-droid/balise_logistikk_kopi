@@ -66,6 +66,16 @@ jobs:
           --expected-commit "${{ github.sha }}"
           --upstream-qualification "${{ steps.permanent_regression.outcome }}"
 
+      - name: Publish SDE Quality Engine summary
+        if: always()
+        shell: bash
+        run: |
+          if [ -f tests/sde-quality-engine/reports/latest.github-summary.md ]; then
+            cat tests/sde-quality-engine/reports/latest.github-summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' '## SDE Quality Engine' 'Report summary was not produced.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload SDE Quality Engine reports
         id: quality_engine_reports
         if: always()

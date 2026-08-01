@@ -39,6 +39,17 @@ function external({ id = "BALISE-010-LIVE", status = "GREEN", critical = true, f
   });
 }
 
+function provenance(status = "BLOCKED") {
+  return result({
+    id: "PROV-005",
+    area: "data-provenance",
+    name: "Git and deployment attestation",
+    status,
+    critical: true,
+    summary: `Provenance ${status}`
+  });
+}
+
 function report(results) {
   const summary = summarize(results);
   const ids = results.map((item) => item.id);
@@ -73,6 +84,15 @@ test("critical external BLOCKED is external HOLD without confirmed product defec
   assert.match(markdown, /QUALITY ENGINE: GREEN/);
   assert.match(markdown, /SDE VALIDATION: HOLD/);
   assert.match(markdown, /HOLD DOES NOT MEAN CONFIRMED PRODUCT DEFECT/);
+});
+
+test("missing deployment provenance is external HOLD and not an internal QE regression", () => {
+  const observed = evaluate([internal(), provenance("BLOCKED")], 1);
+  assert.equal(observed.qualityEngineQualification, "GREEN");
+  assert.equal(observed.externalValidation, "HOLD");
+  assert.equal(observed.infrastructureIntegrity, "GREEN");
+  assert.equal(observed.confirmedProductDefect, false);
+  assert.equal(observed.workflowConclusion, "SUCCESS");
 });
 
 test("internal RED is a workflow failure", () => {
@@ -173,6 +193,8 @@ test("workflow captures runner evidence, validates semantics, and always uploads
   assert.match(workflow, /--runner-exit "\$\{\{ steps\.quality_engine\.outputs\.exit_code \}\}"/);
   assert.match(workflow, /--expected-commit "\$\{\{ github\.sha \}\}"/);
   assert.match(workflow, /--upstream-qualification "\$\{\{ steps\.permanent_regression\.outcome \}\}"/);
+  assert.match(workflow, /latest\.github-summary\.md/);
+  assert.match(workflow, /GITHUB_STEP_SUMMARY/);
   assert.match(workflow, /id: quality_engine_reports\n\s+if: always\(\)/);
   assert.match(workflow, /name: sde-quality-engine-reports-\$\{\{ github\.sha \}\}-\$\{\{ github\.run_id \}\}/);
   assert.match(workflow, /if-no-files-found: error/);

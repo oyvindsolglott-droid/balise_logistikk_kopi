@@ -32,11 +32,13 @@ const {
 } = require("./lib/production-readonly.cjs");
 const {
   recommendationsFor,
+  renderGithubSummary,
   renderHtml,
   renderJUnit,
   renderMarkdown,
   writeReports
 } = require("./lib/reporters.cjs");
+const { provenanceChecks } = require("./lib/provenance.cjs");
 
 const SUITES = new Set([
   "all",
@@ -45,6 +47,7 @@ const SUITES = new Set([
   "e2e",
   "integration",
   "production-readonly",
+  "provenance",
   "regression",
   "report"
 ]);
@@ -207,6 +210,7 @@ function reporterSelfTest(baseReport) {
     const rendered = {
       json: JSON.stringify(probe),
       markdown: renderMarkdown(probe),
+      githubSummary: renderGithubSummary(probe),
       junit: renderJUnit(probe),
       html: renderHtml(probe)
     };
@@ -277,8 +281,12 @@ async function main() {
   const report = baseReport(suite, inventory, productionSafety);
   const results = [validateRegistry(), validateAccounting(), guardResult()];
 
-  if (suite !== "production-readonly") {
+  if (!["production-readonly", "provenance"].includes(suite)) {
     results.push(...staticChecks(inventory), ...baliseChecks());
+  }
+
+  if (["all", "balise", "ci", "integration", "provenance"].includes(suite)) {
+    results.push(...provenanceChecks());
   }
 
   if (["all", "balise", "ci", "integration", "regression"].includes(suite)) {
