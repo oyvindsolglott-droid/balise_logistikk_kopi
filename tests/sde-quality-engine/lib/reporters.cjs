@@ -17,6 +17,31 @@ function escapeHtml(value) {
   return escapeXml(value);
 }
 
+function classificationModel(report) {
+  const threeWay = report.results
+    .find((item) => item.id === "BALISE-010-LIVE")
+    ?.details?.threeWay || null;
+  if (!threeWay) return null;
+  return {
+    releaseStatus: threeWay.releaseStatus,
+    accounting: threeWay.accounting,
+    uniqueUnderlyingFindings: threeWay.uniqueUnderlyingFindings,
+    layerObservationCount: threeWay.layerObservationCount,
+    primaryClassificationCounts: threeWay.primaryClassificationCounts,
+    diagnosticLabelCounts: threeWay.diagnosticLabelCounts,
+    findings: threeWay.findings.map((finding) => ({
+      uniqueFindingId: finding.uniqueFindingId,
+      primaryClassification: finding.primaryClassification,
+      diagnosticLabels: finding.diagnosticLabels,
+      comparisonEligibility: finding.comparisonEligibility,
+      contractAuthority: finding.contractAuthority,
+      confidence: finding.confidence,
+      observedInLayers: finding.observedInLayers,
+      layerObservationCount: finding.layerObservationCount
+    }))
+  };
+}
+
 function recommendationsFor(report) {
   const catalog = JSON.parse(fs.readFileSync(
     path.join(repoRoot(), "tests/sde-quality-engine/recommendations/catalog.json"),
@@ -57,6 +82,7 @@ function renderMarkdown(report) {
   const liveFindings = report.results
     .find((item) => item.id === "BALISE-010-LIVE")
     ?.details?.threeWay?.findings || [];
+  const classifications = classificationModel(report);
   const lines = [
     "# SDE Quality Engine",
     "",
@@ -106,9 +132,14 @@ function renderMarkdown(report) {
     "### Treveis funnbevis",
     "",
     ...(liveFindings.length ? [
-      "| Test | Occurrence | Tog | Dato | Felt | Kandidat | Publisert | Funntype | Sikkerhet |",
-      "|---|---|---|---|---|---|---|---|---|",
-      ...liveFindings.map((finding) => `| ${finding.testId} | ${finding.occurrenceId || "–"} | ${finding.trainNumber || "–"} | ${finding.operationalDate || "–"} | ${finding.field} | ${JSON.stringify(finding.candidate)} | ${JSON.stringify(finding.published)} | ${finding.findingType} | ${finding.confidence} |`)
+      "| Test | Occurrence | Felt | Primary classification | Diagnostic labels | Comparison eligible | Reason | Available provenance | Missing provenance | Authority | Sikkerhet |",
+      "|---|---|---|---|---|---|---|---|---|---|---|",
+      ...liveFindings.map((finding) => `| ${finding.testId} | ${finding.occurrenceId || "–"} | ${finding.field} | ${finding.primaryClassification} | ${(finding.diagnosticLabels || []).join(", ") || "–"} | ${finding.comparisonEligibility?.eligible ? "yes" : "no"} | ${finding.comparisonEligibility?.reason || "–"} | ${(finding.comparisonEligibility?.availableProvenance || []).join(", ") || "–"} | ${(finding.comparisonEligibility?.missingProvenance || []).join(", ") || "–"} | ${finding.contractAuthority?.type || "UNKNOWN"} (${finding.contractAuthority?.normative ? "normative" : "non-normative"}) | ${finding.confidence} |`),
+      "",
+      `Regnskap: ${classifications?.uniqueUnderlyingFindings ?? 0} unique findings, ${classifications?.layerObservationCount ?? 0} layer observations.`,
+      `Primary classifications: ${JSON.stringify(classifications?.primaryClassificationCounts || {})}.`,
+      `Diagnostic labels: ${JSON.stringify(classifications?.diagnosticLabelCounts || {})}.`,
+      "HOLD does not mean confirmed product defect."
     ] : ["- Ingen treveis livefunn i denne kjøringen, eller publisert kilde var utilgjengelig."]),
     "",
     "## 7. Kritiske funn",
@@ -165,7 +196,9 @@ function renderJUnit(report) {
     } else if (["BLOCKED", "UNKNOWN"].includes(item.status)) {
       body.push(`<skipped message="${escapeXml(`${item.status}: ${item.summary}`)}"/>`);
     }
-    body.push(`<system-out>${escapeXml(`${item.status}: ${item.summary}\n${(item.evidence || []).join("\n")}`)}</system-out>`);
+    const threeWay = item.details?.threeWay;
+    const classificationEvidence = threeWay ? `\nclassification=${JSON.stringify({ uniqueUnderlyingFindings: threeWay.uniqueUnderlyingFindings, layerObservationCount: threeWay.layerObservationCount, primaryClassificationCounts: threeWay.primaryClassificationCounts, diagnosticLabelCounts: threeWay.diagnosticLabelCounts, findings: threeWay.findings.map((finding) => ({ primaryClassification: finding.primaryClassification, diagnosticLabels: finding.diagnosticLabels, comparisonEligibility: finding.comparisonEligibility, contractAuthority: finding.contractAuthority, confidence: finding.confidence })) })}` : "";
+    body.push(`<system-out>${escapeXml(`${item.status}: ${item.summary}\n${(item.evidence || []).join("\n")}${classificationEvidence}`)}</system-out>`);
     return `    <testcase ${attrs}>${body.join("")}</testcase>`;
   });
   return [
@@ -204,6 +237,8 @@ function renderHtml(report) {
   ).join("") || "<li>Ingen anbefalinger; alle kjørte kontroller er GREEN.</li>";
   const accountingPanel = report.accounting ? `
   <section class="panel"><h2>Statusregnskap</h2><p>${report.accounting.testCases.total} testcases/assertions · ${report.accounting.contracts.total} kontrakter · ${report.accounting.functions.total} funksjoner · ${report.accounting.recommendations.total} anbefalinger · ${report.accounting.releaseGates.total} kritiske releaseporter.</p><p>Kritisk BLOCKED/UNKNOWN: <code>${escapeHtml(report.accounting.releaseGates.criticalBlocked.map((item) => item.id).join(", ") || "ingen")}</code></p></section>` : "";
+  const classification = classificationModel(report);
+  const classificationPanel = classification ? `<section class="panel"><h2>Fail-closed klassifisering</h2><p><strong>${classification.uniqueUnderlyingFindings}</strong> unique findings · <strong>${classification.layerObservationCount}</strong> layer observations.</p><p>Primary classifications: <code>${escapeHtml(JSON.stringify(classification.primaryClassificationCounts))}</code></p><p>Diagnostic labels: <code>${escapeHtml(JSON.stringify(classification.diagnosticLabelCounts))}</code></p><div class="table-wrap"><table><thead><tr><th>Finding</th><th>Primary</th><th>Labels</th><th>Eligible</th><th>Reason</th><th>Available provenance</th><th>Missing provenance</th><th>Authority</th><th>Confidence</th></tr></thead><tbody>${classification.findings.map((finding) => `<tr><td><code>${escapeHtml(finding.uniqueFindingId)}</code></td><td>${escapeHtml(finding.primaryClassification)}</td><td>${escapeHtml(finding.diagnosticLabels.join(", "))}</td><td>${finding.comparisonEligibility.eligible ? "yes" : "no"}</td><td>${escapeHtml(finding.comparisonEligibility.reason)}</td><td>${escapeHtml((finding.comparisonEligibility.availableProvenance || []).join(", ") || "–")}</td><td>${escapeHtml((finding.comparisonEligibility.missingProvenance || []).join(", ") || "–")}</td><td>${escapeHtml(finding.contractAuthority.type)} (${finding.contractAuthority.normative ? "normative" : "non-normative"})</td><td>${escapeHtml(finding.confidence)}</td></tr>`).join("")}</tbody></table></div><p>HOLD does not mean confirmed product defect.</p></section>` : "";
   return `<!doctype html>
 <html lang="no">
 <head>
@@ -230,6 +265,7 @@ function renderHtml(report) {
   </section>
   <section class="panel"><h2>Kontrollresultater</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Område</th><th>Kontroll</th><th>Status</th><th>Evidenssammendrag</th></tr></thead><tbody>${resultRows}</tbody></table></div></section>
   ${accountingPanel}
+  ${classificationPanel}
   <section class="panel"><h2>Funksjonsmatrise</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Modul</th><th>Funksjon</th><th>Status</th><th>Testtyper</th></tr></thead><tbody>${matrixRows}</tbody></table></div></section>
   <section class="panel"><h2>Anbefalinger</h2><ul>${recommendationItems}</ul></section>
   <section class="panel"><h2>Produksjonssikkerhet</h2><p>Kun ${escapeHtml(report.productionSafety.allowedMethods.join("/"))}. Andre metoder avvises før fetch. Ledger: <code>${escapeHtml(JSON.stringify(report.productionSafety.ledger))}</code></p></section>
@@ -262,6 +298,7 @@ function writeReports(report, directory) {
 }
 
 module.exports = {
+  classificationModel,
   recommendationsFor,
   renderHtml,
   renderJUnit,

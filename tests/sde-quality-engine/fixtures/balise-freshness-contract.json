@@ -7,6 +7,13 @@
   "attemptMinutes": [7, 22, 37, 52],
   "publicationGraceMinutes": 20,
   "sourceResponseMaxAgeSeconds": 300,
+  "authority": {
+    "type": "TECHNICAL_SCHEDULE_DERIVED",
+    "normative": false,
+    "source": "workflow schedule",
+    "approvedBy": null,
+    "approvedAt": null
+  },
   "policy": "A static SDE dataset is current only when generated on or after the latest refresh-cycle boundary whose first scheduled attempt plus publication grace has elapsed. The allowed age is therefore derived from the real Europe/Oslo schedule, never a fixed six-hour or thirty-hour threshold.",
   "serverLastUpdateSource": "SDE_QE_SERVER_STATUS_URL when explicitly supplied; otherwise unavailable in the isolated static parity run"
 }

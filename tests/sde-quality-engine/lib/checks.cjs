@@ -584,10 +584,17 @@ function qualificationTimeoutMs(env = process.env) {
   return 45 * 60 * 1000;
 }
 
+function qualificationNodePath(root = repoRoot(), env = process.env) {
+  return [...new Set([
+    path.join(root, "server", "node_modules"),
+    ...String(env.NODE_PATH || "").split(path.delimiter).filter(Boolean)
+  ])].join(path.delimiter);
+}
+
 function runRegressionSuite() {
   const root = repoRoot();
   const command = runCommand("npm", ["run", "test:sde:qualification"], {
-    env: { NODE_PATH: path.join(root, "server", "node_modules") },
+    env: { NODE_PATH: qualificationNodePath(root) },
     timeoutMs: qualificationTimeoutMs()
   });
   return externalResult(
@@ -709,6 +716,7 @@ module.exports = {
   loadBaliseData,
   mapFunctionStatuses,
   parseUpdatedAt,
+  qualificationNodePath,
   qualificationTimeoutMs,
   runPythonSuite,
   runRegressionSuite,

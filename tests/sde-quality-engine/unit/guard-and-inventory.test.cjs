@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const path = require("node:path");
 const test = require("node:test");
 const {
   assertReadOnlyMethod,
@@ -8,7 +9,11 @@ const {
   runProductionReadOnly
 } = require("../lib/production-readonly.cjs");
 const { buildInventory } = require("../lib/inventory.cjs");
-const { serverScriptArgument, validateRegistry } = require("../lib/checks.cjs");
+const {
+  qualificationNodePath,
+  serverScriptArgument,
+  validateRegistry
+} = require("../lib/checks.cjs");
 
 test("production guard tillater bare GET og HEAD", () => {
   assert.equal(assertReadOnlyMethod("get"), "GET");
@@ -67,4 +72,15 @@ test("serverkommandoer er relative til server-arbeidskatalogen", () => {
     () => serverScriptArgument("/repo", "tests/sde/firewall.test.cjs"),
     /utenfor server/
   );
+});
+
+test("qualification-wrapperen bevarer eksplisitt ekstern dependency-path", () => {
+  const observed = qualificationNodePath("/isolert-worktree", {
+    NODE_PATH: ["/shared/server/node_modules", "/shared/extra"].join(path.delimiter)
+  });
+  assert.deepEqual(observed.split(path.delimiter), [
+    "/isolert-worktree/server/node_modules",
+    "/shared/server/node_modules",
+    "/shared/extra"
+  ]);
 });

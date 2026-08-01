@@ -49,7 +49,7 @@ test("treveis diagnostikk skiller occurrence-, felt- og funntype", () => {
   });
   assert.equal(observed.occurrenceLevelDiscrepancies.balise_only_candidate, 0);
   assert.equal(observed.fieldLevelDiscrepancies.vehicle_mismatch_published, 1);
-  assert.equal(observed.findingTypeCounts.POSSIBLE_FALSE_POSITIVE, 1);
+  assert.equal(observed.findingTypeCounts.BLOCKED, 1);
   assert.equal(observed.findings[0].testId, "BALISE-010-LIVE");
   assert.equal(observed.findings[0].observedAt, "2026-07-31T12:00:00.000Z");
   assert.ok(Array.isArray(observed.findings[0].additionalEvidenceRequired));
@@ -73,7 +73,8 @@ test("departure-spor som ikke finnes i payloadkontrakten er orakelavvik, ikke SD
     candidateRecords: [sde],
     publishedRecords: [sde]
   });
-  assert.equal(observed.findingTypeCounts.TEST_ORACLE_DEFECT, 2);
+  assert.equal(observed.findingTypeCounts.TEST_ORACLE_DEFECT, 1);
+  assert.equal(observed.layerPrimaryClassificationCounts.TEST_ORACLE_DEFECT, 2);
   assert.equal(observed.fieldLevelDiscrepancies.expected_difference, 2);
   assert.equal(observed.releaseStatus, "HOLD");
 });

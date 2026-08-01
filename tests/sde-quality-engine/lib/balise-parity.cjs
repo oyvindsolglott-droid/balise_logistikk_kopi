@@ -3,18 +3,16 @@
 const crypto = require("node:crypto");
 const path = require("node:path");
 const { readJson, repoRoot } = require("./core.cjs");
+const {
+  DIAGNOSTIC_LABELS,
+  PRIMARY_CLASSIFICATIONS,
+  evaluateComparisonEligibility,
+  evaluateDefectEvidence,
+  normalizeAuthority,
+  stableHash
+} = require("./classification.cjs");
 
-const FINDING_TYPES = Object.freeze([
-  "CONFIRMED_DEFECT",
-  "PROBABLE_DEFECT",
-  "POSSIBLE_FALSE_POSITIVE",
-  "EXPECTED_DIFFERENCE",
-  "AUTHORIZED_OVERRIDE",
-  "CONTRACT_AMBIGUITY",
-  "TEST_ORACLE_DEFECT",
-  "BLOCKED",
-  "UNKNOWN"
-]);
+const FINDING_TYPES = PRIMARY_CLASSIFICATIONS;
 
 const THREE_WAY_CATEGORIES = Object.freeze([
   "balise_only_candidate",
@@ -266,56 +264,98 @@ function discrepancyCategory(field, target) {
   return "unauthorized_difference";
 }
 
-function fieldClassification({ field, balise, candidate, published, target, override }) {
+function fieldClassification({ field, balise, candidate, published, target, override, eligibility, contractAuthority }) {
+  const authority = normalizeAuthority(contractAuthority);
+  const evidenceRequirements = evaluateDefectEvidence({
+    eligibility,
+    authority,
+    oracleAvailable: !(field === "track" && balise?.direction === "departure"),
+    authorizedOverride: Boolean(override),
+    evidencePointsToSut: Boolean(candidate && published && valueEquals(field, candidate[field], published[field]))
+  });
   if (override) {
     return {
-      findingType: "AUTHORIZED_OVERRIDE",
+      primaryClassification: "AUTHORIZED_OVERRIDE",
+      diagnosticLabels: [],
       confidence: "HIGH",
       aggregateCategory: "authorized_override",
       contract: "En forskjell er tillatt bare med full, forekomst- og feltbundet override-proveniens.",
       alternatives: ["Ingen; override-authority er eksplisitt og validert."],
-      additionalEvidence: []
+      additionalEvidence: [],
+      evidenceRequirements
     };
   }
   const compared = target === "candidate" ? candidate : published;
   const peer = target === "candidate" ? published : candidate;
   if (field === "track" && balise?.direction === "departure" && compared?.track == null) {
     return {
-      findingType: "TEST_ORACLE_DEFECT",
+      primaryClassification: "TEST_ORACLE_DEFECT",
+      diagnosticLabels: ["EXPECTED_DIFFERENCE"],
       confidence: "HIGH",
       aggregateCategory: "expected_difference",
       contract: "QE skal bare sammenligne actual-spor når begge kildekontraktene representerer samme felt.",
       alternatives: ["Departure-occurrence i SDE-payloaden har ingen actual platformTrack-kontrakt."],
-      additionalEvidence: ["Dokumenter eksplisitt om departure-spor senere blir del av payloadkontrakten."]
+      additionalEvidence: ["Dokumenter eksplisitt om departure-spor senere blir del av payloadkontrakten."],
+      evidenceRequirements
     };
   }
   if (field === "track" && compared?.track == null) {
     return {
-      findingType: "CONTRACT_AMBIGUITY",
+      primaryClassification: "CONTRACT_AMBIGUITY",
+      diagnosticLabels: ["SNAPSHOT_TIME_MISMATCH"],
       confidence: "MEDIUM",
       aggregateCategory: "contract_ambiguity",
       contract: "Actual-spor krever tidsriktig, occurrence-bundet proveniens.",
       alternatives: ["Balise kan ha actual-spor etter at payloaden ble generert.", "SDE kan mangle et representerbart spor uten at selve forekomsten er feil."],
-      additionalEvidence: ["Sammenlign generatorens sourceObservedAt med Balise-feltets endringstid."]
+      additionalEvidence: ["Sammenlign generatorens sourceObservedAt med Balise-feltets endringstid."],
+      evidenceRequirements
+    };
+  }
+  if (!eligibility.eligible) {
+    return {
+      primaryClassification: "BLOCKED",
+      diagnosticLabels: [...eligibility.diagnosticLabels, "UNAUTHORIZED_DIFFERENCE"],
+      confidence: "HIGH",
+      aggregateCategory: "unauthorized_difference",
+      contract: "Tidsavhengige produktavvik krever sammenlignbare kilde- og datasetsnapshots.",
+      alternatives: ["Balise kan ha endret seg etter siste generering.", "Kilde- og payloadsnapshot kan dekke ulike observasjonsvinduer."],
+      additionalEvidence: eligibility.missingProvenance.map((fieldName) => `Dokumenter ${fieldName}.`),
+      evidenceRequirements
+    };
+  }
+  if (!authority.normative) {
+    return {
+      primaryClassification: "CONTRACT_AMBIGUITY",
+      diagnosticLabels: ["UNAUTHORIZED_DIFFERENCE"],
+      confidence: "HIGH",
+      aggregateCategory: "contract_ambiguity",
+      contract: "Produktfeil krever en normativ eller eksplisitt godkjent kontrakt.",
+      alternatives: ["Den tekniske regelen kan være en måleantakelse uten operativ autoritet."],
+      additionalEvidence: ["Dokumenter uavhengig godkjenning av kontrakten."],
+      evidenceRequirements
     };
   }
   if (peer && valueEquals(field, compared?.[field], peer?.[field])) {
     return {
-      findingType: "PROBABLE_DEFECT",
+      primaryClassification: evidenceRequirements.probableEligible ? "PROBABLE_DEFECT" : "BLOCKED",
+      diagnosticLabels: evidenceRequirements.probableEligible ? ["UNAUTHORIZED_DIFFERENCE"] : ["INSUFFICIENT_SNAPSHOT_PROVENANCE", "UNAUTHORIZED_DIFFERENCE"],
       confidence: "MEDIUM",
       aggregateCategory: "unauthorized_difference",
       contract: "Kandidat og publisert payload skal samsvare med autoritativ occurrence-verdi.",
       alternatives: ["Balise kan ha endret seg etter siste legitime generering.", "Kildesnapshot og payloadsnapshot kan dekke ulike tidspunkter."],
-      additionalEvidence: ["Sammenlign eksakt generator-run og kildehash fra samme snapshotvindu."]
+      additionalEvidence: ["Sammenlign eksakt generator-run og kildehash fra samme snapshotvindu."],
+      evidenceRequirements
     };
   }
   return {
-    findingType: "POSSIBLE_FALSE_POSITIVE",
+    primaryClassification: "POSSIBLE_FALSE_POSITIVE",
+    diagnosticLabels: ["UNAUTHORIZED_DIFFERENCE"],
     confidence: "LOW",
     aggregateCategory: "possible_false_positive",
     contract: "Tre kilder må måles med sammenlignbar occurrence- og tidssemantikk.",
     alternatives: ["Publiseringsforsinkelse.", "Snapshot-skew.", "Ulik occurrence-definisjon eller normalisering."],
-    additionalEvidence: ["Etabler samme kildehash og genereringstid for kandidat og publisert payload."]
+    additionalEvidence: ["Etabler samme kildehash og genereringstid for kandidat og publisert payload."],
+    evidenceRequirements
   };
 }
 
@@ -325,13 +365,17 @@ function compareThreeWay({
   publishedRecords = [],
   overrides = [],
   observedAt = new Date().toISOString(),
-  sourceAvailability = { balise: true, candidate: true, published: true }
+  sourceAvailability = { balise: true, candidate: true, published: true },
+  comparisonContext = {},
+  contractAuthority = null
 }) {
   const byRoute = (records) => new Map(records.map((record) => [record.routeId, record]));
   const baliseByRoute = byRoute(baliseRecords);
   const candidateByRoute = byRoute(candidateRecords);
   const publishedByRoute = byRoute(publishedRecords);
-  const findings = [];
+  const layerObservations = [];
+  const normalizedAuthority = normalizeAuthority(contractAuthority);
+  const payloadsByteIdentical = stableHash(candidateRecords) === stableHash(publishedRecords);
   const occurrenceCounts = Object.fromEntries([
     "balise_only_candidate", "candidate_only", "balise_only_published", "published_only"
   ].map((category) => [category, 0]));
@@ -341,13 +385,28 @@ function compareThreeWay({
 
   function addFinding({ routeId, category, field = "occurrence", balise = null, candidate = null, published = null, target = null, classification = null }) {
     const reference = balise || candidate || published || {};
+    const recordContext = {
+      ...comparisonContext,
+      sourceObservedAt: comparisonContext.sourceObservedAt || balise?.sourceObservedAt || balise?.sourceTimestamp || null,
+      sourceHash: comparisonContext.sourceHash || balise?.sourceHash || null,
+      datasetGeneratedAt: comparisonContext.datasetGeneratedAt || actualRecordFor(target, candidate, published)?.datasetUpdatedAt || null,
+      datasetSourceObservedAt: comparisonContext.datasetSourceObservedAt || actualRecordFor(target, candidate, published)?.sourceObservedAt || null,
+      datasetSourceHash: comparisonContext.datasetSourceHash || actualRecordFor(target, candidate, published)?.sourceHash || null,
+      sourceOperationalDate: balise?.operationalDate ?? null,
+      datasetOperationalDate: actualRecordFor(target, candidate, published)?.operationalDate ?? null,
+      sourceOccurrenceModel: balise?.occurrenceId ? "route-occurrence-v1" : null,
+      datasetOccurrenceModel: actualRecordFor(target, candidate, published)?.occurrenceId ? "route-occurrence-v1" : null
+    };
+    const eligibility = evaluateComparisonEligibility(recordContext);
     const resolved = classification || {
-      findingType: "POSSIBLE_FALSE_POSITIVE",
+      primaryClassification: eligibility.eligible ? "POSSIBLE_FALSE_POSITIVE" : "BLOCKED",
+      diagnosticLabels: eligibility.eligible ? [] : [...eligibility.diagnosticLabels],
       confidence: "LOW",
       aggregateCategory: "possible_false_positive",
       contract: "Forekomstsett må være tidsmessig og semantisk sammenlignbare.",
       alternatives: ["Snapshot-skew.", "Ulikt genererings- eller publiseringsvindu."],
-      additionalEvidence: ["Etabler kilde- og payloadhash fra samme observasjonsvindu."]
+      additionalEvidence: ["Etabler kilde- og payloadhash fra samme observasjonsvindu."],
+      evidenceRequirements: evaluateDefectEvidence({ eligibility, authority: normalizedAuthority })
     };
     if (field === "occurrence") occurrenceCounts[category] += 1;
     else fieldCounts[category] = (fieldCounts[category] || 0) + 1;
@@ -355,10 +414,12 @@ function compareThreeWay({
       fieldCounts[resolved.aggregateCategory] = (fieldCounts[resolved.aggregateCategory] || 0) + 1;
     }
     const actualRecord = target === "published" ? published : target === "candidate" ? candidate : null;
-    findings.push({
+    layerObservations.push({
       testId: "BALISE-010-LIVE",
-      status: resolved.findingType === "PROBABLE_DEFECT" ? "RED" : resolved.findingType === "AUTHORIZED_OVERRIDE" || resolved.findingType === "EXPECTED_DIFFERENCE" ? "GREEN" : "AMBER",
-      findingType: resolved.findingType,
+      status: resolved.primaryClassification === "PROBABLE_DEFECT" || resolved.primaryClassification === "CONFIRMED_DEFECT" ? "RED" : resolved.primaryClassification === "AUTHORIZED_OVERRIDE" || resolved.primaryClassification === "EXPECTED_DIFFERENCE" ? "GREEN" : "AMBER",
+      findingType: resolved.primaryClassification,
+      primaryClassification: resolved.primaryClassification,
+      diagnosticLabels: [...new Set(resolved.diagnosticLabels || [])],
       confidence: resolved.confidence,
       category,
       routeId,
@@ -376,12 +437,20 @@ function compareThreeWay({
         published: published?.provenance || null
       },
       observedAt,
+      layer: target || "comparison",
+      comparisonEligibility: eligibility,
+      contractAuthority: normalizedAuthority,
+      evidenceRequirements: resolved.evidenceRequirements,
       expected: field === "occurrence" ? balise?.occurrenceId ?? null : balise?.[field] ?? null,
       actual: field === "occurrence" ? actualRecord?.occurrenceId ?? null : actualRecord?.[field] ?? null,
       brokenContract: resolved.contract,
       alternativeExplanations: resolved.alternatives,
       additionalEvidenceRequired: resolved.additionalEvidence
     });
+  }
+
+  function actualRecordFor(target, candidate, published) {
+    return target === "published" ? published : target === "candidate" ? candidate : null;
   }
 
   for (const [routeId, balise] of baliseByRoute) {
@@ -397,7 +466,20 @@ function compareThreeWay({
       for (const field of COMPARABLE_FIELDS) {
         if (valueEquals(field, balise[field], compared[field])) continue;
         const override = matchingOverride(overrides, balise, compared, field);
-        const classification = fieldClassification({ field, balise, candidate, published, target, override });
+        const comparedContext = {
+          ...comparisonContext,
+          sourceObservedAt: comparisonContext.sourceObservedAt || balise?.sourceObservedAt || balise?.sourceTimestamp || null,
+          sourceHash: comparisonContext.sourceHash || balise?.sourceHash || null,
+          datasetGeneratedAt: comparisonContext.datasetGeneratedAt || compared?.datasetUpdatedAt || null,
+          datasetSourceObservedAt: comparisonContext.datasetSourceObservedAt || compared?.sourceObservedAt || null,
+          datasetSourceHash: comparisonContext.datasetSourceHash || compared?.sourceHash || null,
+          sourceOperationalDate: balise?.operationalDate ?? null,
+          datasetOperationalDate: compared?.operationalDate ?? null,
+          sourceOccurrenceModel: balise?.occurrenceId ? "route-occurrence-v1" : null,
+          datasetOccurrenceModel: compared?.occurrenceId ? "route-occurrence-v1" : null
+        };
+        const eligibility = evaluateComparisonEligibility(comparedContext);
+        const classification = fieldClassification({ field, balise, candidate, published, target, override, eligibility, contractAuthority: normalizedAuthority });
         addFinding({
           routeId,
           category: override ? "authorized_override" : discrepancyCategory(field, target),
@@ -424,25 +506,81 @@ function compareThreeWay({
       category: "contract_ambiguity",
       field: "source",
       classification: {
-        findingType: "BLOCKED",
+        primaryClassification: "BLOCKED",
+        diagnosticLabels: ["INSUFFICIENT_SNAPSHOT_PROVENANCE"],
         confidence: "HIGH",
         aggregateCategory: "contract_ambiguity",
         contract: "Faktisk publisert payload må kunne leses med GET før treveis paritet kan konkluderes.",
         alternatives: ["Cloudflare Access eller klientpolicy kan blokkere QE uten at publisert payload er feil."],
-        additionalEvidence: ["Les begge publiserte payloadene i en autentisert, read-only kontroll og registrer råhashene."]
+        additionalEvidence: ["Les begge publiserte payloadene i en autentisert, read-only kontroll og registrer råhashene."],
+        evidenceRequirements: null
       }
     });
   }
 
+  const uniqueByKey = new Map();
+  for (const observation of layerObservations) {
+    const dedupeAcrossLayers = payloadsByteIdentical && ["candidate", "published"].includes(observation.layer);
+    const uniqueKey = stableHash({
+      routeId: observation.routeId,
+      occurrenceId: observation.occurrenceId,
+      field: observation.field,
+      expected: observation.expected,
+      actual: observation.actual,
+      layer: dedupeAcrossLayers ? null : observation.layer
+    });
+    observation.uniqueFindingId = uniqueKey;
+    const existing = uniqueByKey.get(uniqueKey);
+    if (existing) {
+      existing.observedInLayers = [...new Set([...existing.observedInLayers, observation.layer])].sort();
+      existing.layerObservationCount += 1;
+      existing.layerCategories.push(observation.category);
+      existing.diagnosticLabels = [...new Set([...existing.diagnosticLabels, ...observation.diagnosticLabels, "CANDIDATE_AND_PUBLISHED_DUPLICATE"])];
+      continue;
+    }
+    uniqueByKey.set(uniqueKey, {
+      ...observation,
+      observedInLayers: [observation.layer],
+      layerObservationCount: 1,
+      layerCategories: [observation.category]
+    });
+  }
+  const findings = [...uniqueByKey.values()];
   const findingTypeCounts = Object.fromEntries(FINDING_TYPES.map((type) => [type, 0]));
-  for (const finding of findings) findingTypeCounts[finding.findingType] += 1;
+  const layerPrimaryClassificationCounts = Object.fromEntries(FINDING_TYPES.map((type) => [type, 0]));
+  const diagnosticLabelCounts = Object.fromEntries(DIAGNOSTIC_LABELS.map((label) => [label, 0]));
+  const layerDiagnosticLabelCounts = Object.fromEntries(DIAGNOSTIC_LABELS.map((label) => [label, 0]));
+  for (const finding of findings) {
+    findingTypeCounts[finding.primaryClassification] += 1;
+    for (const label of finding.diagnosticLabels) diagnosticLabelCounts[label] = (diagnosticLabelCounts[label] || 0) + 1;
+  }
+  for (const observation of layerObservations) {
+    layerPrimaryClassificationCounts[observation.primaryClassification] += 1;
+    for (const label of observation.diagnosticLabels) layerDiagnosticLabelCounts[label] = (layerDiagnosticLabelCounts[label] || 0) + 1;
+  }
   const contractViolations = findingTypeCounts.CONFIRMED_DEFECT + findingTypeCounts.PROBABLE_DEFECT;
   return {
     categories: [...THREE_WAY_CATEGORIES],
     occurrenceLevelDiscrepancies: occurrenceCounts,
     fieldLevelDiscrepancies: fieldCounts,
     findingTypeCounts,
+    primaryClassificationCounts: findingTypeCounts,
+    layerPrimaryClassificationCounts,
+    diagnosticLabelCounts,
+    layerDiagnosticLabelCounts,
     findingCount: findings.length,
+    uniqueUnderlyingFindings: findings.length,
+    layerObservationCount: layerObservations.length,
+    layerObservations,
+    comparisonEligibility: findings.map((finding) => ({ uniqueFindingId: finding.uniqueFindingId, ...finding.comparisonEligibility })),
+    accounting: {
+      uniqueFindings: findings.length,
+      uniqueOccurrenceDiscrepancies: findings.filter((finding) => finding.field === "occurrence").length,
+      uniqueFieldDiscrepancies: findings.filter((finding) => !["occurrence", "source"].includes(finding.field)).length,
+      layerObservations: layerObservations.length,
+      primaryClassifications: findingTypeCounts,
+      diagnosticLabels: diagnosticLabelCounts
+    },
     releaseStatus: findingTypeCounts.BLOCKED ? "BLOCKED" : contractViolations ? "SDE_NO_GO" : findings.length ? "HOLD" : "SDE_GREEN",
     findings
   };
@@ -516,6 +654,7 @@ function evaluateFreshness({ now, sourceReadAt, sourceResponseDate, sourceOwnTim
     allowedSdeAgeSeconds,
     requiredRefreshBoundary: boundary.toISOString(),
     nextScheduledAttempt: nextScheduledAttempt(testTime, contract).toISOString(),
+    contractAuthority: normalizeAuthority(contract.authority),
     sourceStatus: sourceFresh ? "FRESH" : "STALE_OR_UNKNOWN",
     sdeStatus: sdeFresh ? "FRESH" : "STALE_OR_UNKNOWN",
     status: sourceFresh && sdeFresh ? "GREEN" : "RED"
@@ -717,7 +856,12 @@ async function readLiveBalise() {
     candidateRecords,
     publishedRecords,
     observedAt: authoritative.snapshot.endedAt,
-    sourceAvailability: { balise: true, candidate: true, published: publishedResult.ok }
+    sourceAvailability: { balise: true, candidate: true, published: publishedResult.ok },
+    comparisonContext: {
+      sourceObservedAt: authoritative.snapshot.endedAt,
+      sourceHash: authoritative.snapshot.station.rawSha256
+    },
+    contractAuthority: contract.authority
   });
   return {
     authoritativeSource: stationUrl,
@@ -766,7 +910,7 @@ async function readLiveBalise() {
         afterRestack: freshnessByPayload[index].sdeStatus === "FRESH" ? "GREEN" : "RED",
         changedData: `data/api_${mode.toLowerCase()}.json`,
         contract: "Payloaden skal være generert etter siste påkrevde refreshgrense.",
-        findingType: freshnessByPayload[index].sdeStatus === "FRESH" ? "EXPECTED_DIFFERENCE" : "PROBABLE_DEFECT",
+        findingType: freshnessByPayload[index].sdeStatus === "FRESH" ? "EXPECTED_DIFFERENCE" : "CONTRACT_AMBIGUITY",
         confidence: "HIGH",
         alternativeExplanations: ["Refresh kan være forsinket innen publiseringsgrace."],
         nextInvestigation: "Kontroller workflow-run read-only dersom porten blir rød."
@@ -777,7 +921,7 @@ async function readLiveBalise() {
         afterRestack: threeWay.releaseStatus,
         changedData: "Begge kandidatpayloadene og mulig publisert payload kan ha endret seg.",
         contract: "Tre kilder sammenlignes occurrence- og feltvis med eksplisitt usikkerhet.",
-        findingType: threeWay.findingTypeCounts.PROBABLE_DEFECT ? "PROBABLE_DEFECT" : threeWay.findingCount ? "POSSIBLE_FALSE_POSITIVE" : "EXPECTED_DIFFERENCE",
+        findingType: threeWay.findingTypeCounts.PROBABLE_DEFECT ? "PROBABLE_DEFECT" : threeWay.findingTypeCounts.BLOCKED ? "BLOCKED" : threeWay.findingCount ? "POSSIBLE_FALSE_POSITIVE" : "EXPECTED_DIFFERENCE",
         confidence: threeWay.findingTypeCounts.PROBABLE_DEFECT ? "MEDIUM" : "LOW",
         alternativeExplanations: ["Snapshot-skew.", "Publiseringsforsinkelse.", "Test-orakel eller occurrence-kontrakt."],
         nextInvestigation: "Undersøk funnene enkeltvis; ikke rett SDE automatisk."

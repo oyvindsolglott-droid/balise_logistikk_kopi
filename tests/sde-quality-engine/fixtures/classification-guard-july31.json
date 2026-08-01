@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Syntetisk, ikke-live regresjonsfixture for forsinket kveldssyklus og usammenlignbare snapshots.",
+  "operationalDate": "2099-07-31",
+  "dataset": {
+    "generatedAt": "2099-07-31T13:10:00.000Z",
+    "sourceObservedAt": null,
+    "sourceHash": null
+  },
+  "sourceObservation": {
+    "observedAt": "2099-07-31T20:35:00.000Z",
+    "hash": "synthetic-upstream-after-hours"
+  },
+  "workflow": {
+    "scheduledCycleHour": 21,
+    "expectedRun": true,
+    "actualStart": "2099-07-31T20:08:00.000Z",
+    "generatorExecuted": false,
+    "generatorSkipReason": "actual Europe/Oslo hour was 22, not 21",
+    "conclusion": "success",
+    "dataCommitCreated": false,
+    "deploymentCompleted": false
+  },
+  "comparison": {
+    "neutralArrivalOccurrenceCount": 12,
+    "differencesPerOccurrence": ["vehicleIds", "consist", "track"],
+    "candidateAndPublishedByteIdentical": true,
+    "includeDepartureWithoutActualTrackOracle": true
+  },
+  "expected": {
+    "confirmedDefect": 0,
+    "probableDefect": 0,
+    "uniqueBlocked": 36,
+    "blockedLayerObservations": 72,
+    "snapshotTimeMismatchLayerObservations": 72,
+    "testOracleDefect": 1,
+    "expectedRunMissing": 1,
+    "freshnessPrimaryClassification": "CONTRACT_AMBIGUITY"
+  }
+}
