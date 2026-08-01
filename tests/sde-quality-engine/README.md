@@ -121,7 +121,7 @@ En ny produktfunksjon skal:
 
 Balise-suiten verifiserer:
 
-- `api_idag` og `api_imorgen` mot Europe/Oslo og 07:00/15:00-vinduene
+- `api_idag` og `api_imorgen` mot en felles effektiv Europe/Oslo-grense: første planlagte forsøk pluss publiseringsgrace
 - `updatedAt` med korrekt sommer-/vintertid
 - unik `occurrenceId`, `operationalDate` og tognummer
 - forekomstbundet materiell og unike dobbeltsett

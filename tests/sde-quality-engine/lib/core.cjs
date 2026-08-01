@@ -20,9 +20,9 @@ function sha256(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
-function nowOsloParts(now = new Date()) {
+function zonedParts(now, timeZone = "Europe/Oslo") {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Oslo",
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -35,9 +35,15 @@ function nowOsloParts(now = new Date()) {
   return {
     isoDate: `${value.year}-${value.month}-${value.day}`,
     hour: Number(value.hour),
+    minute: Number(value.minute),
+    second: Number(value.second),
     display: `${value.day}.${value.month}.${value.year} ${value.hour}:${value.minute}:${value.second}`,
-    timeZone: "Europe/Oslo"
+    timeZone
   };
+}
+
+function nowOsloParts(now = new Date()) {
+  return zonedParts(now, "Europe/Oslo");
 }
 
 function addDays(isoDate, days) {
@@ -46,22 +52,133 @@ function addDays(isoDate, days) {
   return date.toISOString().slice(0, 10);
 }
 
-function expectedOperationalDates(now = new Date()) {
+function localDateTimeInstant(isoDate, hour, minute, second, timeZone) {
+  const [year, month, day] = String(isoDate).split("-").map(Number);
+  const desiredLocal = Date.UTC(year, month - 1, day, hour, minute, second);
+  let candidate = desiredLocal;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const observed = zonedParts(new Date(candidate), timeZone);
+    const observedLocal = Date.UTC(
+      Number(observed.isoDate.slice(0, 4)),
+      Number(observed.isoDate.slice(5, 7)) - 1,
+      Number(observed.isoDate.slice(8, 10)),
+      observed.hour,
+      observed.minute,
+      observed.second
+    );
+    const correction = desiredLocal - observedLocal;
+    candidate += correction;
+    if (correction === 0) break;
+  }
+  const verified = zonedParts(new Date(candidate), timeZone);
+  if (
+    verified.isoDate !== isoDate ||
+    verified.hour !== hour ||
+    verified.minute !== minute ||
+    verified.second !== second
+  ) {
+    throw new Error(`Ugyldig lokal tid ${isoDate} ${hour}:${minute}:${second} i ${timeZone}`);
+  }
+  return new Date(candidate);
+}
+
+function validatePublicationContract(contract) {
+  const cycleHours = [...new Set(contract?.cycleHours || [])].map(Number).sort((a, b) => a - b);
+  const attemptMinutes = [...new Set(contract?.attemptMinutes || [])].map(Number).sort((a, b) => a - b);
+  const publicationGraceMinutes = Number(contract?.publicationGraceMinutes);
+  const timeZone = String(contract?.timeZone || "");
+  if (!timeZone || !cycleHours.length || !attemptMinutes.length || !Number.isFinite(publicationGraceMinutes)) {
+    throw new Error("Ufullstendig Balise-publiseringskontrakt");
+  }
+  if (cycleHours.some((value) => value < 0 || value > 23) || attemptMinutes.some((value) => value < 0 || value > 59)) {
+    throw new Error("Ugyldige syklus- eller forsøksverdier i Balise-publiseringskontrakten");
+  }
+  return { cycleHours, attemptMinutes, publicationGraceMinutes, timeZone };
+}
+
+function effectivePublicationBoundary(now, contract, options = {}) {
+  const currentTime = new Date(now);
+  if (!Number.isFinite(currentTime.getTime())) throw new Error("Ugyldig testtid for publiseringsgrense");
+  const normalized = validatePublicationContract(contract);
+  const local = zonedParts(currentTime, normalized.timeZone);
+  const dates = [addDays(local.isoDate, -1), local.isoDate, addDays(local.isoDate, 1)];
+  const cycles = dates.flatMap((isoDate) => normalized.cycleHours.map((cycleHour) => {
+    const nominal = localDateTimeInstant(isoDate, cycleHour, 0, 0, normalized.timeZone);
+    const firstAttempt = localDateTimeInstant(
+      isoDate,
+      cycleHour,
+      normalized.attemptMinutes[0],
+      0,
+      normalized.timeZone
+    );
+    const effective = new Date(firstAttempt.getTime() + normalized.publicationGraceMinutes * 60_000);
+    return { isoDate, cycleHour, nominal, firstAttempt, effective };
+  })).sort((a, b) => a.nominal - b.nominal);
+  const attempts = dates.flatMap((isoDate) => normalized.cycleHours.flatMap((cycleHour) =>
+    normalized.attemptMinutes.map((minute) => localDateTimeInstant(
+      isoDate,
+      cycleHour,
+      minute,
+      0,
+      normalized.timeZone
+    ))
+  )).sort((a, b) => a - b);
+  const requestedHour = options.cycleHour == null ? null : Number(options.cycleHour);
+  const activeCycle = requestedHour == null
+    ? cycles.filter((cycle) => cycle.nominal <= currentTime).at(-1)
+    : cycles.find((cycle) => cycle.isoDate === local.isoDate && cycle.cycleHour === requestedHour);
+  const latestEligibleCycle = cycles.filter((cycle) => cycle.effective <= currentTime).at(-1);
+  const nextAttempt = attempts.find((attempt) => attempt > currentTime) || null;
+  if (!activeCycle || !latestEligibleCycle) throw new Error("Kunne ikke beregne Balise-publiseringsgrensen");
+  const timeRemainingSeconds = Math.max(0, (activeCycle.effective - currentTime) / 1000);
+  const withinPublicationGrace = activeCycle.nominal <= currentTime && currentTime < activeCycle.effective;
+  return {
+    currentTime: currentTime.toISOString(),
+    currentTimeLocal: local.display,
+    timeZone: normalized.timeZone,
+    cycleHour: activeCycle.cycleHour,
+    nominalCycleBoundary: activeCycle.nominal.toISOString(),
+    firstScheduledAttempt: activeCycle.firstAttempt.toISOString(),
+    publicationGraceMinutes: normalized.publicationGraceMinutes,
+    effectiveBoundary: activeCycle.effective.toISOString(),
+    effectiveBoundaryReached: currentTime >= activeCycle.effective,
+    withinPublicationGrace,
+    timeRemainingSeconds,
+    requiredRefreshBoundary: latestEligibleCycle.nominal.toISOString(),
+    latestEligibleEffectiveBoundary: latestEligibleCycle.effective.toISOString(),
+    nextScheduledAttempt: nextAttempt?.toISOString() || null
+  };
+}
+
+function defaultPublicationContract() {
+  return readJson(path.join(repoRoot(), "tests/sde-quality-engine/fixtures/balise-freshness-contract.json"));
+}
+
+function expectedOperationalDates(now = new Date(), contract = defaultPublicationContract()) {
   const oslo = nowOsloParts(now);
-  if (oslo.hour < 7) {
+  const todayBoundary = effectivePublicationBoundary(now, contract, { cycleHour: 7 });
+  const tomorrowBoundary = effectivePublicationBoundary(now, contract, { cycleHour: 15 });
+  if (!todayBoundary.effectiveBoundaryReached) {
     return {
       idag: addDays(oslo.isoDate, -1),
       imorgen: oslo.isoDate,
-      window: "night_before_07"
+      window: "night_before_07",
+      boundaries: { idag: todayBoundary, imorgen: tomorrowBoundary }
     };
   }
-  if (oslo.hour < 15) {
-    return { idag: oslo.isoDate, imorgen: oslo.isoDate, window: "day_07_to_15" };
+  if (!tomorrowBoundary.effectiveBoundaryReached) {
+    return {
+      idag: oslo.isoDate,
+      imorgen: oslo.isoDate,
+      window: "day_07_to_15",
+      boundaries: { idag: todayBoundary, imorgen: tomorrowBoundary }
+    };
   }
   return {
     idag: oslo.isoDate,
     imorgen: addDays(oslo.isoDate, 1),
-    window: "after_15"
+    window: "after_15",
+    boundaries: { idag: todayBoundary, imorgen: tomorrowBoundary }
   };
 }
 
@@ -155,6 +272,7 @@ module.exports = {
   STATUS_ORDER,
   addDays,
   compactOutput,
+  effectivePublicationBoundary,
   expectedOperationalDates,
   gitValue,
   nowOsloParts,

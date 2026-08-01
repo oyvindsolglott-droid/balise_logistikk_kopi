@@ -1,11 +1,16 @@
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "timeZone": "Europe/Oslo",
   "workflow": ".github/workflows/update-static-data.yml",
   "criticalCron": "7,22,37,52 4,7,15,21 * * *",
   "cycleHours": [4, 7, 15, 21],
   "attemptMinutes": [7, 22, 37, 52],
   "publicationGraceMinutes": 20,
+  "effectiveBoundaryRule": "first_scheduled_attempt_plus_publication_grace",
+  "operationalDateTransitions": {
+    "idagCycleHour": 7,
+    "imorgenCycleHour": 15
+  },
   "sourceResponseMaxAgeSeconds": 300,
   "authority": {
     "type": "TECHNICAL_SCHEDULE_DERIVED",

@@ -1,0 +1,15 @@
+{
+  "description": "Felles effektiv publiseringsgrense for BALISE-002 og BALISE-003.",
+  "cases": [
+    {"name":"regresjon 15:01:30","instant":"2026-08-01T13:01:30Z","cycleHour":15,"effectiveBoundary":"2026-08-01T13:27:00.000Z","withinGrace":true,"expectedTomorrow":"2026-08-01"},
+    {"name":"ett sekund før 15:27","instant":"2026-08-01T13:26:59Z","cycleHour":15,"effectiveBoundary":"2026-08-01T13:27:00.000Z","withinGrace":true,"expectedTomorrow":"2026-08-01"},
+    {"name":"eksakt 15:27","instant":"2026-08-01T13:27:00Z","cycleHour":15,"effectiveBoundary":"2026-08-01T13:27:00.000Z","withinGrace":false,"expectedTomorrow":"2026-08-02"},
+    {"name":"syklus 04 sommer","instant":"2026-08-01T02:01:30Z","cycleHour":4,"effectiveBoundary":"2026-08-01T02:27:00.000Z","withinGrace":true},
+    {"name":"syklus 07 sommer","instant":"2026-08-01T05:01:30Z","cycleHour":7,"effectiveBoundary":"2026-08-01T05:27:00.000Z","withinGrace":true},
+    {"name":"syklus 21 sommer","instant":"2026-08-01T19:01:30Z","cycleHour":21,"effectiveBoundary":"2026-08-01T19:27:00.000Z","withinGrace":true},
+    {"name":"månedsskifte","instant":"2026-08-31T13:27:00Z","cycleHour":15,"effectiveBoundary":"2026-08-31T13:27:00.000Z","withinGrace":false,"expectedTomorrow":"2026-09-01"},
+    {"name":"årsskifte","instant":"2026-12-31T14:27:00Z","cycleHour":15,"effectiveBoundary":"2026-12-31T14:27:00.000Z","withinGrace":false,"expectedTomorrow":"2027-01-01"},
+    {"name":"DST sommertid","instant":"2026-03-29T05:01:30Z","cycleHour":7,"effectiveBoundary":"2026-03-29T05:27:00.000Z","withinGrace":true},
+    {"name":"DST vintertid","instant":"2026-10-25T06:01:30Z","cycleHour":7,"effectiveBoundary":"2026-10-25T06:27:00.000Z","withinGrace":true}
+  ]
+}

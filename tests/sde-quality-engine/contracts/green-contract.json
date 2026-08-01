@@ -47,7 +47,7 @@
       "area": "tursatt-balise",
       "name": "Morgendagens payload følger tidsvinduet",
       "critical": true,
-      "expected": "api_imorgen.date følger 07:00/15:00-kontrakten i Europe/Oslo.",
+      "expected": "api_imorgen.date følger den effektive 15-grensen: første planlagte forsøk pluss publiseringsgrace i Europe/Oslo.",
       "evidence": ["data/api_imorgen.json", "workflow-boundary-fixtures"]
     },
     {
@@ -101,9 +101,9 @@
     {
       "id": "BALISE-009",
       "area": "tursatt-balise",
-      "name": "DST- og 07:00-grenser er deterministiske",
+      "name": "DST- og effektive publiseringsgrenser er deterministiske",
       "critical": true,
-      "expected": "Vintertid, sommertid og eksakte tidsgrenser gir samme forventede fil-/datovalg på gjentatte kjøringer.",
+      "expected": "Vintertid, sommertid og første planlagte forsøk pluss publiseringsgrace gir samme forventede fil-/datovalg på gjentatte kjøringer.",
       "evidence": ["boundary-fixtures", "sync-tests"]
     },
     {

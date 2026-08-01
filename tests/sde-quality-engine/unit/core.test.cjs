@@ -12,17 +12,18 @@ const {
   qualificationTimeoutMs
 } = require("../lib/checks.cjs");
 
-test("Europe/Oslo-dato bytter eksakt ved 07:00 og 15:00", () => {
+test("Europe/Oslo-dato bytter ved første forsøk pluss publiseringsgrace", () => {
+  const datesOnly = (value) => ({ idag: value.idag, imorgen: value.imorgen, window: value.window });
   assert.deepEqual(
-    expectedOperationalDates(new Date("2026-07-31T04:59:59Z")),
+    datesOnly(expectedOperationalDates(new Date("2026-07-31T05:26:59Z"))),
     { idag: "2026-07-30", imorgen: "2026-07-31", window: "night_before_07" }
   );
   assert.deepEqual(
-    expectedOperationalDates(new Date("2026-07-31T05:00:00Z")),
+    datesOnly(expectedOperationalDates(new Date("2026-07-31T05:27:00Z"))),
     { idag: "2026-07-31", imorgen: "2026-07-31", window: "day_07_to_15" }
   );
   assert.deepEqual(
-    expectedOperationalDates(new Date("2026-07-31T13:00:00Z")),
+    datesOnly(expectedOperationalDates(new Date("2026-07-31T13:27:00Z"))),
     { idag: "2026-07-31", imorgen: "2026-08-01", window: "after_15" }
   );
 });

@@ -2,7 +2,7 @@
 
 const crypto = require("node:crypto");
 const path = require("node:path");
-const { readJson, repoRoot } = require("./core.cjs");
+const { effectivePublicationBoundary, readJson, repoRoot } = require("./core.cjs");
 const {
   DIAGNOSTIC_LABELS,
   PRIMARY_CLASSIFICATIONS,
@@ -586,51 +586,14 @@ function compareThreeWay({
   };
 }
 
-function osloLocalParts(now) {
-  return Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Oslo", year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23"
-  }).formatToParts(now).map((part) => [part.type, part.value]));
-}
-
-function osloBoundary(parts, hour) {
-  const text = `${parts.day}.${parts.month}.${parts.year} ${String(hour).padStart(2, "0")}:00:00`;
-  return new Date(parseUpdatedAt(text));
-}
-
 function requiredRefreshBoundary(now, contract) {
-  const parts = osloLocalParts(now);
-  const currentMinutes = Number(parts.hour) * 60 + Number(parts.minute);
-  const thresholdOffset = Math.min(...contract.attemptMinutes) + contract.publicationGraceMinutes;
-  const eligible = contract.cycleHours.filter((hour) => currentMinutes >= hour * 60 + thresholdOffset);
-  if (eligible.length) return osloBoundary(parts, eligible.at(-1));
-  const yesterday = new Date(`${parts.year}-${parts.month}-${parts.day}T12:00:00Z`);
-  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
-  const previous = osloLocalParts(yesterday);
-  return osloBoundary(previous, contract.cycleHours.at(-1));
-}
-
-function nextScheduledAttempt(now, contract) {
-  const parts = osloLocalParts(now);
-  const currentMinutes = Number(parts.hour) * 60 + Number(parts.minute);
-  for (const hour of contract.cycleHours) {
-    for (const minute of contract.attemptMinutes) {
-      if (hour * 60 + minute > currentMinutes) {
-        const text = `${parts.day}.${parts.month}.${parts.year} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
-        return new Date(parseUpdatedAt(text));
-      }
-    }
-  }
-  const tomorrow = new Date(`${parts.year}-${parts.month}-${parts.day}T12:00:00Z`);
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-  const next = osloLocalParts(tomorrow);
-  const text = `${next.day}.${next.month}.${next.year} ${String(contract.cycleHours[0]).padStart(2, "0")}:${String(contract.attemptMinutes[0]).padStart(2, "0")}:00`;
-  return new Date(parseUpdatedAt(text));
+  return new Date(effectivePublicationBoundary(now, contract).requiredRefreshBoundary);
 }
 
 function evaluateFreshness({ now, sourceReadAt, sourceResponseDate, sourceOwnTimestamp = null, sdeGeneratedAt, serverLastUpdate = null, contract }) {
   const testTime = new Date(now);
-  const boundary = requiredRefreshBoundary(testTime, contract);
+  const publicationBoundary = effectivePublicationBoundary(testTime, contract);
+  const boundary = new Date(publicationBoundary.requiredRefreshBoundary);
   const generatedMs = parseUpdatedAt(sdeGeneratedAt);
   const sourceResponse = sourceResponseDate ? new Date(sourceResponseDate) : null;
   const sourceAgeSeconds = sourceResponse && Number.isFinite(sourceResponse.getTime())
@@ -652,8 +615,18 @@ function evaluateFreshness({ now, sourceReadAt, sourceResponseDate, sourceOwnTim
     sdeAgeSeconds,
     allowedSourceAgeSeconds: contract.sourceResponseMaxAgeSeconds,
     allowedSdeAgeSeconds,
+    timeZone: publicationBoundary.timeZone,
+    currentTimeLocal: publicationBoundary.currentTimeLocal,
+    nominalCycleBoundary: publicationBoundary.nominalCycleBoundary,
+    firstScheduledAttempt: publicationBoundary.firstScheduledAttempt,
+    publicationGraceMinutes: publicationBoundary.publicationGraceMinutes,
+    effectiveBoundary: publicationBoundary.effectiveBoundary,
+    effectiveBoundaryReached: publicationBoundary.effectiveBoundaryReached,
+    withinPublicationGrace: publicationBoundary.withinPublicationGrace,
+    timeRemainingSeconds: publicationBoundary.timeRemainingSeconds,
     requiredRefreshBoundary: boundary.toISOString(),
-    nextScheduledAttempt: nextScheduledAttempt(testTime, contract).toISOString(),
+    latestEligibleEffectiveBoundary: publicationBoundary.latestEligibleEffectiveBoundary,
+    nextScheduledAttempt: publicationBoundary.nextScheduledAttempt,
     contractAuthority: normalizeAuthority(contract.authority),
     sourceStatus: sourceFresh ? "FRESH" : "STALE_OR_UNKNOWN",
     sdeStatus: sdeFresh ? "FRESH" : "STALE_OR_UNKNOWN",
@@ -898,10 +871,10 @@ async function readLiveBalise() {
         beforeRestack: "RED",
         afterRestack: payloads[1].date === [...operationalDates].sort().at(-1) ? "GREEN_OR_CURRENT" : "REVIEW",
         changedData: "data/api_imorgen.json",
-        contract: "Morgendagens payload følger Europe/Oslo-vinduet.",
+        contract: "Morgendagens payload følger første planlagte 15-forsøk pluss publiseringsgrace i Europe/Oslo.",
         findingType: "EXPECTED_DIFFERENCE",
         confidence: "HIGH",
-        alternativeExplanations: ["Ingen når expectedOperationalDates og payloaddato samsvarer."],
+        alternativeExplanations: ["Ingen når felles effectivePublicationBoundary og payloaddato samsvarer."],
         nextInvestigation: "Ingen SDE-endring; behold porten og observer neste tidsgrense."
       },
       ...["IDAG", "IMORGEN"].map((mode, index) => ({

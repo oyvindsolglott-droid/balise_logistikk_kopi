@@ -158,10 +158,13 @@ function contexts(payload) {
     .filter(Boolean);
 }
 
-function baliseChecks(now = new Date()) {
+function baliseChecks(now = new Date(), options = {}) {
   const root = repoRoot();
-  const data = loadBaliseData();
-  const expected = expectedOperationalDates(now);
+  const data = options.data || loadBaliseData();
+  const freshnessContract = options.contract || readJson(
+    path.join(root, "tests/sde-quality-engine/fixtures/balise-freshness-contract.json")
+  );
+  const expected = expectedOperationalDates(now, freshnessContract);
   const oslo = nowOsloParts(now);
   const results = [];
 
@@ -176,20 +179,51 @@ function baliseChecks(now = new Date()) {
     details: { actual: data.idag.date, expected: expected.idag, window: expected.window },
     recommendation: data.idag.date === expected.idag ? null : "Kjør eller reparer den eksisterende datageneratoren; ikke overstyr dato i QE."
   }));
+  const tomorrowBoundary = expected.boundaries.imorgen;
+  const tomorrowMatches = data.imorgen.date === expected.imorgen;
+  const tomorrowClassification = tomorrowMatches
+    ? tomorrowBoundary.withinPublicationGrace
+      ? "EXPECTED_WITHIN_GRACE_WINDOW"
+      : "EXPECTED_DATE_MATCH"
+    : tomorrowBoundary.effectiveBoundaryReached
+      ? "STALE_DATE_AFTER_EFFECTIVE_BOUNDARY"
+      : "PREMATURE_DATE_TRANSITION";
+  const tomorrowFindingDomain = tomorrowMatches
+    ? "NONE"
+    : tomorrowBoundary.effectiveBoundaryReached
+      ? "PIPELINE_FINDING"
+      : "TESTABILITY_FINDING";
   results.push(result({
     id: "BALISE-002",
     area: "tursatt-balise",
     name: "Morgendagens payload følger tidsvinduet",
-    status: data.imorgen.date === expected.imorgen ? "GREEN" : "RED",
+    status: tomorrowMatches ? "GREEN" : "RED",
     critical: true,
-    summary: `api_imorgen=${data.imorgen.date}, forventet=${expected.imorgen}, vindu=${expected.window}`,
-    evidence: ["data/api_imorgen.json", "update_static_data.get_operational_tursatt_dates"],
-    details: { actual: data.imorgen.date, expected: expected.imorgen, window: expected.window },
-    recommendation: data.imorgen.date === expected.imorgen ? null : "Undersøk 07:00/15:00-grensen og refresh-workflowen."
+    summary: `api_imorgen=${data.imorgen.date}, forventet=${expected.imorgen}, klassifisering=${tomorrowClassification}; lokal tid=${tomorrowBoundary.currentTimeLocal}; nominell grense=${tomorrowBoundary.nominalCycleBoundary}; første forsøk=${tomorrowBoundary.firstScheduledAttempt}; grace=${tomorrowBoundary.publicationGraceMinutes} min; effektiv grense=${tomorrowBoundary.effectiveBoundary}; gjenstår=${tomorrowBoundary.timeRemainingSeconds.toFixed(0)} s.`,
+    evidence: [
+      "data/api_imorgen.json",
+      "tests/sde-quality-engine/fixtures/balise-freshness-contract.json",
+      "update_static_data.get_operational_tursatt_dates"
+    ],
+    details: {
+      actual: data.imorgen.date,
+      expected: expected.imorgen,
+      window: expected.window,
+      classification: tomorrowClassification,
+      findingDomain: tomorrowFindingDomain,
+      confirmedSdeDefect: false,
+      probableSdeDefect: false,
+      contractAuthority: freshnessContract.authority,
+      ...tomorrowBoundary
+    },
+    recommendation: tomorrowMatches
+      ? null
+      : tomorrowBoundary.effectiveBoundaryReached
+        ? "Undersøk den tekniske publiseringspipelinen read-only; den ikke-normative kontrakten beviser ikke en SDE-produktfeil."
+        : "Undersøk datovalg eller testgrunnlag; ikke klassifiser SDE som defekt."
   }));
 
   for (const [mode, payload] of Object.entries(data)) {
-    const freshnessContract = readJson(path.join(root, "tests/sde-quality-engine/fixtures/balise-freshness-contract.json"));
     const freshness = evaluateFreshness({
       now,
       sourceReadAt: now,
@@ -327,7 +361,7 @@ function baliseChecks(now = new Date()) {
     name: "DST- og tidsgrenser er deterministiske",
     status: boundaryErrors.length ? "RED" : "GREEN",
     critical: true,
-    summary: `${boundaryFixture.cases.length - boundaryErrors.length}/${boundaryFixture.cases.length} 07:00/15:00/DST-fixtures er korrekte.`,
+    summary: `${boundaryFixture.cases.length - boundaryErrors.length}/${boundaryFixture.cases.length} effektive 07:27/15:27/DST-fixtures er korrekte.`,
     evidence: ["tests/sde-quality-engine/fixtures/balise-boundaries.json", "server/scripts/test_sync_production_balise_data.py"],
     details: { failures: boundaryErrors }
   }));
