@@ -11,7 +11,13 @@ on:
 
     # Kritiske Oslo-vinduer: forste forsok syv minutter etter timeskiftet,
     # deretter kontrollerte retry-forsok gjennom samme time.
-    - cron: "7,22,37,52 4,7,15,21 * * *"
+    - cron: "7 4,7,15,21 * * *"
+      timezone: "Europe/Oslo"
+    - cron: "22 4,7,15,21 * * *"
+      timezone: "Europe/Oslo"
+    - cron: "37 4,7,15,21 * * *"
+      timezone: "Europe/Oslo"
+    - cron: "52 4,7,15,21 * * *"
       timezone: "Europe/Oslo"
 
 permissions:
@@ -27,6 +33,105 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Capture workflow observation start
+        id: observation-clock
+        run: echo "observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: Initialize fail-closed schedule observability record
+        env:
+          SDE_EVENT_NAME: ${{ github.event_name }}
+          SDE_EVENT_SCHEDULE_EXPRESSION: ${{ github.event.schedule }}
+          SDE_REPOSITORY: ${{ github.repository }}
+          SDE_WORKFLOW_NAME: ${{ github.workflow }}
+          SDE_WORKFLOW_REF: ${{ github.workflow_ref }}
+          SDE_RUN_ID: ${{ github.run_id }}
+          SDE_RUN_NUMBER: ${{ github.run_number }}
+          SDE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          SDE_HEAD_SHA: ${{ github.sha }}
+          SDE_REF: ${{ github.ref }}
+          SDE_ACTOR: ${{ github.actor }}
+          SDE_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          SDE_WORKFLOW_OBSERVED_AT: ${{ steps.observation-clock.outputs.observed_at }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          event_name = os.environ.get("SDE_EVENT_NAME") or None
+          expression = os.environ.get("SDE_EVENT_SCHEDULE_EXPRESSION") or None
+          attempt_text = os.environ.get("SDE_RUN_ATTEMPT") or ""
+          attempt = int(attempt_text) if attempt_text.isdigit() else None
+          number_text = os.environ.get("SDE_RUN_NUMBER") or ""
+          run_number = int(number_text) if number_text.isdigit() else None
+          critical = {
+              "7 4,7,15,21 * * *": 7,
+              "22 4,7,15,21 * * *": 22,
+              "37 4,7,15,21 * * *": 37,
+              "52 4,7,15,21 * * *": 52,
+          }
+          if event_name == "workflow_dispatch":
+              trigger_class = "MANUAL"
+              trigger_minute = None
+              trigger_slot_status = "NOT_APPLICABLE"
+          elif expression == "17 * * * *":
+              trigger_class = "CONTROL"
+              trigger_minute = 17
+              trigger_slot_status = "BLOCKED"
+          elif expression in critical:
+              trigger_class = "CRITICAL"
+              trigger_minute = critical[expression]
+              trigger_slot_status = "BLOCKED"
+          else:
+              trigger_class = "OTHER"
+              trigger_minute = None
+              trigger_slot_status = "BLOCKED"
+
+          record = {
+              "schemaVersion": "sde-schedule-observability/v1",
+              "generatedAt": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+              "repository": os.environ.get("SDE_REPOSITORY") or None,
+              "workflowName": os.environ.get("SDE_WORKFLOW_NAME") or None,
+              "workflowFile": ".github/workflows/update-static-data.yml",
+              "workflowRef": os.environ.get("SDE_WORKFLOW_REF") or None,
+              "eventName": event_name,
+              "eventScheduleExpression": expression,
+              "runId": os.environ.get("SDE_RUN_ID") or None,
+              "runNumber": run_number,
+              "runAttempt": attempt,
+              "headSha": os.environ.get("SDE_HEAD_SHA") or None,
+              "ref": os.environ.get("SDE_REF") or None,
+              "actor": os.environ.get("SDE_ACTOR") or None,
+              "triggeringActor": os.environ.get("SDE_TRIGGERING_ACTOR") or None,
+              "timezone": "Europe/Oslo",
+              "triggerClass": trigger_class,
+              "triggerMinute": trigger_minute,
+              "triggerSlotStatus": trigger_slot_status,
+              "expectedSlotLocal": None,
+              "expectedSlotUTC": None,
+              "runRecordCreatedAt": None,
+              "runStartedAt": None,
+              "firstJobStartedAt": None,
+              "workflowObservedAt": os.environ.get("SDE_WORKFLOW_OBSERVED_AT") or None,
+              "gateStartedAt": None,
+              "gateCompletedAt": None,
+              "intendedCycle": None,
+              "shouldRun": None,
+              "gateReason": None,
+              "generatorSelected": None,
+              "scheduleCreationDelaySeconds": None,
+              "workflowQueueSeconds": None,
+              "firstJobQueueSeconds": None,
+              "metadataStatus": "BLOCKED",
+              "metadataWarnings": ["observability_enrichment_not_completed"],
+              "naturalScheduleCandidate": event_name == "schedule" and attempt == 1,
+              "rerun": bool(attempt and attempt > 1),
+          }
+          output = Path(os.environ["RUNNER_TEMP"]) / "sde-schedule-observability.json"
+          output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          PY
+
       - name: Check local Oslo time
         id: oslo-time
         run: |
@@ -50,10 +155,11 @@ jobs:
           python - <<'PY'
           import json
           import os
-          from datetime import datetime, timedelta
+          from datetime import datetime, timedelta, timezone
           from pathlib import Path
           from zoneinfo import ZoneInfo
 
+          gate_started_at = datetime.now(timezone.utc)
           event_name = os.environ.get("GITHUB_EVENT_NAME", "")
           now = datetime.now(ZoneInfo("Europe/Oslo"))
           today = now.date()
@@ -152,6 +258,7 @@ jobs:
           if not reason_parts:
               reason_parts.append("up_to_date")
 
+          gate_completed_at = datetime.now(timezone.utc)
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"should_run={'true' if should_run else 'false'}\n")
               out.write(f"window={window}\n")
@@ -163,6 +270,8 @@ jobs:
               out.write(f"intended_cycle_date={intended_cycle.date().isoformat()}\n")
               out.write(f"intended_cycle_hour={intended_cycle.strftime('%H')}\n")
               out.write(f"actual_workflow_start={now.isoformat(timespec='seconds')}\n")
+              out.write(f"gate_started_at={gate_started_at.isoformat().replace('+00:00', 'Z')}\n")
+              out.write(f"gate_completed_at={gate_completed_at.isoformat().replace('+00:00', 'Z')}\n")
 
           print("Oslo time:", now.strftime("%Y-%m-%d %H:%M:%S"))
           print("Window:", window)
@@ -276,4 +385,41 @@ jobs:
           name: sde-data-release-attestation-${{ steps.data-push.outputs.commit }}
           path: ${{ runner.temp }}/sde-data-release-attestation.json
           if-no-files-found: error
+          retention-days: 30
+
+      - name: Enrich fail-closed schedule observability record
+        if: always()
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SDE_EVENT_NAME: ${{ github.event_name }}
+          SDE_EVENT_SCHEDULE_EXPRESSION: ${{ github.event.schedule }}
+          SDE_REPOSITORY: ${{ github.repository }}
+          SDE_WORKFLOW_NAME: ${{ github.workflow }}
+          SDE_WORKFLOW_REF: ${{ github.workflow_ref }}
+          SDE_RUN_ID: ${{ github.run_id }}
+          SDE_RUN_NUMBER: ${{ github.run_number }}
+          SDE_RUN_ATTEMPT: ${{ github.run_attempt }}
+          SDE_HEAD_SHA: ${{ github.sha }}
+          SDE_REF: ${{ github.ref }}
+          SDE_ACTOR: ${{ github.actor }}
+          SDE_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          SDE_WORKFLOW_OBSERVED_AT: ${{ steps.observation-clock.outputs.observed_at }}
+          SDE_GATE_STARTED_AT: ${{ steps.update-check.outputs.gate_started_at }}
+          SDE_GATE_COMPLETED_AT: ${{ steps.update-check.outputs.gate_completed_at }}
+          SDE_INTENDED_CYCLE_DATE: ${{ steps.update-check.outputs.intended_cycle_date }}
+          SDE_INTENDED_CYCLE_HOUR: ${{ steps.update-check.outputs.intended_cycle_hour }}
+          SDE_SHOULD_RUN: ${{ steps.update-check.outputs.should_run }}
+          SDE_GATE_REASON: ${{ steps.update-check.outputs.reason }}
+        run: >-
+          python sde_schedule_observability.py
+          --output "$RUNNER_TEMP/sde-schedule-observability.json"
+
+      - name: Upload schedule observability record
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sde-schedule-observability-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sde-schedule-observability.json
+          if-no-files-found: warn
           retention-days: 30

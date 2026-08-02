@@ -671,14 +671,80 @@ test("M2 — generator propagates actual platform provenance without vehicle har
 
 test("N — post-arrival schedule retains guarded 21:xx refresh attempts", () => {
   const contract = source => {
-    assert.match(source, /workflow_dispatch:/);
-    assert.match(source, /cron:\s*["']7,22,37,52 4,7,15,21 \* \* \*["']/);
+    const expectedSchedules = [
+      "17 * * * *",
+      "7 4,7,15,21 * * *",
+      "22 4,7,15,21 * * *",
+      "37 4,7,15,21 * * *",
+      "52 4,7,15,21 * * *",
+    ];
+    const oldSchedules = [
+      "17 * * * *",
+      "7,22,37,52 4,7,15,21 * * *",
+    ];
+    const scheduleExpressions = [...source.matchAll(/-\s+cron:\s*["']([^"']+)["']/g)]
+      .map(match => match[1]);
+
+    const expandLeapYear = expressions => {
+      const slots = [];
+      for(let day = new Date(Date.UTC(2024, 0, 1)); day.getUTCFullYear() === 2024; day.setUTCDate(day.getUTCDate() + 1)){
+        const date = day.toISOString().slice(0, 10);
+        for(const expression of expressions){
+          const [minuteField, hourField, dayOfMonth, month, dayOfWeek] = expression.split(" ");
+          assert.deepEqual([dayOfMonth, month, dayOfWeek], ["*", "*", "*"], `unsupported calendar fields in ${expression}`);
+          const minutes = minuteField.split(",").map(Number);
+          const hours = hourField === "*"
+            ? Array.from({length: 24}, (_, hour) => hour)
+            : hourField.split(",").map(Number);
+          for(const hour of hours){
+            for(const minute of minutes){
+              slots.push(`${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`);
+            }
+          }
+        }
+      }
+      return slots;
+    };
+
+    assert.deepEqual(scheduleExpressions, expectedSchedules, "workflow schedule must contain only the control expression and four split critical expressions");
+    assert.equal(new Set(scheduleExpressions).size, expectedSchedules.length, "workflow schedule expressions must be unique");
+    assert.equal(source.includes('cron: "7,22,37,52 4,7,15,21 * * *"'), false, "obsolete grouped critical expression must be absent");
+
+    const oldFullSlots = expandLeapYear(oldSchedules);
+    const newFullSlots = expandLeapYear(scheduleExpressions);
+    assert.equal(oldFullSlots.length, 14640, "historical full workflow must define 14,640 Oslo wall-clock events in leap year 2024");
+    assert.equal(newFullSlots.length, 14640, "split full workflow must define 14,640 Oslo wall-clock events in leap year 2024");
+    assert.deepEqual(new Set(newFullSlots), new Set(oldFullSlots), "control plus critical schedule must retain exact calendar coverage");
+    assert.equal(new Set(newFullSlots).size, newFullSlots.length, "full workflow schedule must contain no duplicate wall-clock events");
+
+    const oldCriticalSlots = expandLeapYear(oldSchedules.slice(1));
+    const newCriticalSlots = expandLeapYear(scheduleExpressions.slice(1));
+    assert.equal(oldCriticalSlots.length, 5856, "historical critical schedule must define 5,856 Oslo wall-clock events in leap year 2024");
+    assert.equal(newCriticalSlots.length, 5856, "split critical schedule must define 5,856 Oslo wall-clock events in leap year 2024");
+    assert.deepEqual(new Set(newCriticalSlots), new Set(oldCriticalSlots), "split critical expressions must retain exact month, leap-day and DST-boundary calendar coverage");
+    for(const transitionDate of ["2024-02-29", "2024-03-31", "2024-10-27", "2024-12-31"]){
+      assert.ok(newCriticalSlots.some(slot => slot.startsWith(transitionDate)), `critical schedule misses calendar boundary ${transitionDate}`);
+    }
+
+    assert.match(source, /on:\s*\n\s+workflow_dispatch:\s*\n\s+schedule:/);
     assert.match(source, /\{"04",\s*"07",\s*"15",\s*"21"\}/);
-    assert.ok((source.match(/timezone:\s*["']Europe\/Oslo["']/g) || []).length >= 2);
-    assert.match(source, /concurrency:/);
-    assert.match(source, /git add data\/api_idag\.json data\/api_imorgen\.json/);
+    assert.equal((source.match(/timezone:\s*["']Europe\/Oslo["']/g) || []).length, 5, "every schedule expression must retain explicit Europe/Oslo semantics");
+    assert.match(source, /concurrency:\s*\n\s+group:\s*update-static-balise-data\s*\n\s+cancel-in-progress:\s*false/);
+    assert.equal(
+      source.match(/^permissions:\n((?:  [^\n]+\n)+)/m)?.[1],
+      "  contents: write\n  actions: read\n",
+      "workflow permissions must remain limited to existing contents-write and actions-read authority",
+    );
+    assert.equal((source.match(/run:\s*python update_static_data\.py/g) || []).length, 1, "generator invocation must remain singular and unchanged");
+    assert.match(source, /git add data\/api_idag\.json data\/api_imorgen\.json data\/sde-data-provenance\.json/);
     assert.match(source, /git diff --cached --quiet/);
     assert.match(source, /git rebase ["']origin\/\$branch["']/);
+    assert.equal((source.match(/name:\s*sde-data-release-attestation-\$\{\{ steps\.data-push\.outputs\.commit \}\}/g) || []).length, 1);
+    assert.equal((source.match(/name:\s*sde-schedule-observability-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/g) || []).length, 1);
+    assert.match(source, /name:\s*Upload schedule observability record\s*\n\s+if:\s*always\(\)\s*\n\s+uses:\s*actions\/upload-artifact@v4/);
+    assert.match(source, /if event_name == "workflow_dispatch":\s*\n\s+trigger_class = "MANUAL"/);
+    assert.match(source, /"naturalScheduleCandidate": event_name == "schedule" and attempt == 1/);
+    assert.match(source, /"rerun": bool\(attempt and attempt > 1\)/);
   };
   const workflow = fs.readFileSync(path.join(root, ".github/workflows/update-static-data.yml"), "utf8");
   assertHistoricalContractFailure(

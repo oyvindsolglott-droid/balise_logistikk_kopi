@@ -600,6 +600,7 @@ function runPythonSuite() {
   const command = runCommand("python3", [
     "-m", "unittest", "-v",
     "test_update_static_data.py",
+    "test_sde_schedule_observability.py",
     "tests/sde/test_balise_actual_platform.py",
     "server/scripts/test_sync_production_balise_data.py"
   ], { timeoutMs: 12 * 60 * 1000 });
