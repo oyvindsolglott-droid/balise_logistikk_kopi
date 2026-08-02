@@ -736,11 +736,24 @@ class StaticDataProvenanceTest(unittest.TestCase):
                 "git": {"commit": None, "tree": None},
             }))
             attestation = build_attestation(
-                manifest_path, "commit-sha", "tree-sha", "owner/repo", "42"
+                manifest_path,
+                "commit-sha",
+                "tree-sha",
+                "owner/repo",
+                "42",
+                "workflow-context-sha",
             )
             self.assertEqual(attestation["generationId"], "generation-1")
-            self.assertEqual(attestation["git"]["commit"], "commit-sha")
-            self.assertEqual(attestation["publication"]["pagesConclusion"], "PENDING_EXTERNAL_VERIFICATION")
+            self.assertEqual(attestation["schemaVersion"], "sde-data-release-attestation/v2")
+            self.assertEqual(attestation["content"]["dataCommit"], "commit-sha")
+            self.assertEqual(attestation["content"]["dataTree"], "tree-sha")
+            self.assertEqual(
+                attestation["generation"]["generatorWorkflowContextSha"],
+                "workflow-context-sha",
+            )
+            self.assertIsNone(attestation["content"]["artifactSourceCommit"])
+            self.assertIsNone(attestation["deployment"]["deploymentApiSha"])
+            self.assertEqual(attestation["publication"]["state"], "DATA_COMMIT_PUSHED")
 
 
 if __name__ == "__main__":

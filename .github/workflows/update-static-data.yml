@@ -266,6 +266,7 @@ jobs:
           --tree "${{ steps.data-push.outputs.tree }}"
           --repository "${{ github.repository }}"
           --run-id "${{ github.run_id }}"
+          --workflow-context-sha "${{ github.sha }}"
           --output "$RUNNER_TEMP/sde-data-release-attestation.json"
 
       - name: Upload data release attestation
