@@ -13,6 +13,7 @@ const {
   renderHtml,
   renderJUnit,
   renderMarkdown,
+  provenanceIdentityDomains,
   writeReports
 } = require("../lib/reporters.cjs");
 
@@ -92,6 +93,43 @@ test("legacy provenance without a chain remains reportable as external HOLD evid
   const markdown = renderMarkdown(report);
   assert.match(markdown, /LEGACY_DATASET_WITHOUT_MANIFEST/);
   assert.match(markdown, /no product defect inferred/);
+});
+
+test("all report surfaces expose the four independent attestation identity domains", () => {
+  const report = sampleReport();
+  const identityDomains = {
+    generationIdentity: { name: "Generation identity", status: "GREEN", role: "Generator execution", expectedRelations: ["generationId matches"], actualRelations: { generationId: "g-1" }, findings: [] },
+    contentIdentity: { name: "Content identity", status: "GREEN", role: "Exact bytes", expectedRelations: ["artifactSourceCommit = dataCommit"], actualRelations: { dataCommit: "b".repeat(40) }, findings: [] },
+    deploymentIdentity: { name: "Deployment identity", status: "GREEN", role: "Pages execution", expectedRelations: ["artifact ID matches"], actualRelations: { deploymentId: "deploy-1" }, findings: [] },
+    publicationIntegrity: { name: "Publication integrity", status: "GREEN", role: "Published bytes", expectedRelations: ["hashes match"], actualRelations: { etag: "fixture" }, findings: [] }
+  };
+  report.results.push(result({
+    id: "PROV-001",
+    area: "data-provenance",
+    name: "Manifest structure",
+    status: "GREEN",
+    critical: true,
+    summary: "Identity domains are green.",
+    details: {
+      provenance: {
+        generationId: "g-1",
+        comparisonEligibility: { eligible: true, reason: "SAME_GENERATION_SNAPSHOT_PROVEN" },
+        publicationIntegrity: "GREEN",
+        customDomainObservability: "GREEN_AUTHENTICATED_GET",
+        identityDomains,
+        identityResults: Object.values(identityDomains),
+        chain: [],
+        findings: []
+      }
+    }
+  }));
+  assert.equal(provenanceIdentityDomains(report.results[1].details.provenance).length, 4);
+  for (const rendered of [renderMarkdown(report), renderHtml(report), renderGithubSummary(report), renderJUnit(report)]) {
+    assert.match(rendered, /Generation identity/);
+    assert.match(rendered, /Content identity/);
+    assert.match(rendered, /Deployment identity/);
+    assert.match(rendered, /Publication integrity/);
+  }
 });
 
 test("anbefalinger er undersøkelsesforslag med risiko og eksplisitt fullmaktskrav", () => {

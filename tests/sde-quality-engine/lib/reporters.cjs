@@ -48,6 +48,17 @@ function provenanceModel(report) {
     ?.details?.provenance || null;
 }
 
+function provenanceIdentityDomains(provenance) {
+  if (!provenance) return [];
+  if (Array.isArray(provenance.identityResults)) return provenance.identityResults;
+  return Object.values(provenance.identityDomains || {});
+}
+
+function relationText(value) {
+  if (Array.isArray(value)) return value.join("; ");
+  return JSON.stringify(value || {});
+}
+
 function recommendationsFor(report) {
   const catalog = JSON.parse(fs.readFileSync(
     path.join(repoRoot(), "tests/sde-quality-engine/recommendations/catalog.json"),
@@ -90,6 +101,7 @@ function renderMarkdown(report) {
     ?.details?.threeWay?.findings || [];
   const classifications = classificationModel(report);
   const provenance = provenanceModel(report);
+  const identityDomains = provenanceIdentityDomains(provenance);
   const lines = [
     "# SDE Quality Engine",
     "",
@@ -161,6 +173,10 @@ function renderMarkdown(report) {
       `Generation ID: \`${provenance.generationId || "NOT AVAILABLE"}\`.`,
       `Comparison eligibility: **${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}** — ${provenance.comparisonEligibility?.reason || "NOT AVAILABLE"}.`,
       `Publication integrity: **${provenance.publicationIntegrity}**. Custom-domain observability: **${provenance.customDomainObservability}**.`,
+      "",
+      "| Identity domain | Status | Normative role | Expected relations | Actual relations |",
+      "|---|---|---|---|---|",
+      ...identityDomains.map((domain) => `| ${domain.name} | ${domain.status} | ${String(domain.role || "").replace(/\|/g, "\\|")} | ${relationText(domain.expectedRelations).replace(/\|/g, "\\|")} | \`${relationText(domain.actualRelations).replace(/\|/g, "\\|")}\` |`),
       "",
       "| Proveniensledd | Status | Identitet |",
       "|---|---|---|",
@@ -261,7 +277,8 @@ function renderHtml(report) {
   <section class="panel"><h2>Statusregnskap</h2><p>${report.accounting.testCases.total} testcases/assertions · ${report.accounting.contracts.total} kontrakter · ${report.accounting.functions.total} funksjoner · ${report.accounting.recommendations.total} anbefalinger · ${report.accounting.releaseGates.total} kritiske releaseporter.</p><p>Kritisk BLOCKED/UNKNOWN: <code>${escapeHtml(report.accounting.releaseGates.criticalBlocked.map((item) => item.id).join(", ") || "ingen")}</code></p></section>` : "";
   const classification = classificationModel(report);
   const provenance = provenanceModel(report);
-  const provenancePanel = provenance ? `<section class="panel"><h2>Dataproveniens</h2><p>Generation ID: <code>${escapeHtml(provenance.generationId || "NOT AVAILABLE")}</code></p><p>Comparison eligibility: <strong>${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}</strong> — ${escapeHtml(provenance.comparisonEligibility?.reason || "NOT AVAILABLE")}</p><p>Publication integrity: <strong>${escapeHtml(provenance.publicationIntegrity)}</strong> · Custom-domain observability: <strong>${escapeHtml(provenance.customDomainObservability)}</strong></p><div class="table-wrap"><table><thead><tr><th>Proveniensledd</th><th>Status</th><th>Identitet</th></tr></thead><tbody>${provenance.chain.map((step) => `<tr><td>${escapeHtml(step.step)}</td><td><span class="badge ${String(step.status).toLowerCase().replace(/ /g, "-")}">${escapeHtml(step.status)}</span></td><td><code>${escapeHtml(step.identity || "NOT AVAILABLE")}</code></td></tr>`).join("")}</tbody></table></div><ul>${provenance.findings.map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul></section>` : "";
+  const identityDomains = provenanceIdentityDomains(provenance);
+  const provenancePanel = provenance ? `<section class="panel"><h2>Dataproveniens</h2><p>Generation ID: <code>${escapeHtml(provenance.generationId || "NOT AVAILABLE")}</code></p><p>Comparison eligibility: <strong>${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}</strong> — ${escapeHtml(provenance.comparisonEligibility?.reason || "NOT AVAILABLE")}</p><p>Publication integrity: <strong>${escapeHtml(provenance.publicationIntegrity)}</strong> · Custom-domain observability: <strong>${escapeHtml(provenance.customDomainObservability)}</strong></p><h3>Identity domains</h3><div class="table-wrap"><table><thead><tr><th>Domain</th><th>Status</th><th>Normative role</th><th>Expected relations</th><th>Actual relations</th></tr></thead><tbody>${identityDomains.map((domain) => `<tr><td>${escapeHtml(domain.name)}</td><td><span class="badge ${String(domain.status).toLowerCase()}">${escapeHtml(domain.status)}</span></td><td>${escapeHtml(domain.role)}</td><td>${escapeHtml(relationText(domain.expectedRelations))}</td><td><code>${escapeHtml(relationText(domain.actualRelations))}</code></td></tr>`).join("")}</tbody></table></div><h3>Evidence chain</h3><div class="table-wrap"><table><thead><tr><th>Proveniensledd</th><th>Status</th><th>Identitet</th></tr></thead><tbody>${(provenance.chain || []).map((step) => `<tr><td>${escapeHtml(step.step)}</td><td><span class="badge ${String(step.status).toLowerCase().replace(/ /g, "-")}">${escapeHtml(step.status)}</span></td><td><code>${escapeHtml(step.identity || "NOT AVAILABLE")}</code></td></tr>`).join("")}</tbody></table></div><ul>${(provenance.findings || []).map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul></section>` : "";
   const classificationPanel = classification ? `<section class="panel"><h2>Fail-closed klassifisering</h2><p><strong>${classification.uniqueUnderlyingFindings}</strong> unique findings · <strong>${classification.layerObservationCount}</strong> layer observations.</p><p>Primary classifications: <code>${escapeHtml(JSON.stringify(classification.primaryClassificationCounts))}</code></p><p>Diagnostic labels: <code>${escapeHtml(JSON.stringify(classification.diagnosticLabelCounts))}</code></p><div class="table-wrap"><table><thead><tr><th>Finding</th><th>Primary</th><th>Labels</th><th>Eligible</th><th>Reason</th><th>Available provenance</th><th>Missing provenance</th><th>Authority</th><th>Confidence</th></tr></thead><tbody>${classification.findings.map((finding) => `<tr><td><code>${escapeHtml(finding.uniqueFindingId)}</code></td><td>${escapeHtml(finding.primaryClassification)}</td><td>${escapeHtml(finding.diagnosticLabels.join(", "))}</td><td>${finding.comparisonEligibility.eligible ? "yes" : "no"}</td><td>${escapeHtml(finding.comparisonEligibility.reason)}</td><td>${escapeHtml((finding.comparisonEligibility.availableProvenance || []).join(", ") || "–")}</td><td>${escapeHtml((finding.comparisonEligibility.missingProvenance || []).join(", ") || "–")}</td><td>${escapeHtml(finding.contractAuthority.type)} (${finding.contractAuthority.normative ? "normative" : "non-normative"})</td><td>${escapeHtml(finding.confidence)}</td></tr>`).join("")}</tbody></table></div><p>HOLD does not mean confirmed product defect.</p></section>` : "";
   return `<!doctype html>
 <html lang="no">
@@ -300,6 +317,7 @@ function renderHtml(report) {
 function renderGithubSummary(report) {
   const summary = report.summary || summarize(report.results);
   const provenance = provenanceModel(report);
+  const identityDomains = provenanceIdentityDomains(provenance);
   const lines = [
     "# SDE Quality Engine",
     "",
@@ -316,9 +334,13 @@ function renderGithubSummary(report) {
       "",
       `Comparison eligibility: **${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}** — ${provenance.comparisonEligibility?.reason || "NOT AVAILABLE"}`,
       "",
+      "| Identity domain | Status | Normative role |",
+      "|---|---|---|",
+      ...identityDomains.map((domain) => `| ${domain.name} | ${domain.status} | ${String(domain.role || "").replace(/\|/g, "\\|")} |`),
+      "",
       "| Chain step | Status |",
       "|---|---|",
-      ...provenance.chain.map((step) => `| ${step.step} | ${step.status} |`)
+      ...(provenance.chain || []).map((step) => `| ${step.step} | ${step.status} |`)
     );
   }
   return lines.join("\n");
@@ -355,6 +377,7 @@ function writeReports(report, directory) {
 module.exports = {
   classificationModel,
   provenanceModel,
+  provenanceIdentityDomains,
   recommendationsFor,
   renderGithubSummary,
   renderHtml,

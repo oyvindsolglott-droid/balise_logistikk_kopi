@@ -6,7 +6,8 @@ const path = require("node:path");
 const { readJson, repoRoot, result } = require("./core.cjs");
 
 const MANIFEST_SCHEMA = "sde-data-provenance/v1";
-const ATTESTATION_SCHEMA = "sde-data-release-attestation/v1";
+const LEGACY_ATTESTATION_SCHEMA = "sde-data-release-attestation/v1";
+const ATTESTATION_SCHEMA = "sde-data-release-attestation/v2";
 
 function hashBytes(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
@@ -14,6 +15,14 @@ function hashBytes(value) {
 
 function validSha(value) {
   return /^[a-f0-9]{64}$/.test(String(value || ""));
+}
+
+function validGitSha(value) {
+  return /^[a-f0-9]{40,64}$/.test(String(value || ""));
+}
+
+function validDigest(value) {
+  return /^(sha256:)?[a-f0-9]{64}$/.test(String(value || ""));
 }
 
 function validIso(value) {
@@ -31,6 +40,306 @@ function datasetRecordCount(bytes) {
   } catch {
     return null;
   }
+}
+
+function worstStatus(statuses) {
+  if (statuses.includes("RED")) return "RED";
+  if (statuses.includes("BLOCKED")) return "BLOCKED";
+  return "GREEN";
+}
+
+function identityDomain(name, role, status, expectedRelations, actualRelations, findings = []) {
+  return { name, role, status, expectedRelations, actualRelations, findings };
+}
+
+function attestationSchema(attestation) {
+  return attestation?.schemaVersion || attestation?.schema || null;
+}
+
+function evaluateIdentityDomains({
+  manifest,
+  manifestBytes,
+  datasetBytes,
+  publishedDatasetBytes,
+  publishedManifestBytes,
+  attestation
+}) {
+  const domains = {
+    generationIdentity: identityDomain(
+      "Generation identity",
+      "Binds generator execution and source snapshot; it is not a deployment identity.",
+      "BLOCKED",
+      ["generationId/source hashes/intended cycle match the generation manifest"],
+      {},
+      []
+    ),
+    contentIdentity: identityDomain(
+      "Content identity",
+      "Binds the exact data commit/tree, manifest, datasets and Pages artifact bytes.",
+      "BLOCKED",
+      ["artifactSourceCommit = dataCommit", "manifest/dataset hashes match", "artifact ID and digest are explicit"],
+      {},
+      []
+    ),
+    deploymentIdentity: identityDomain(
+      "Deployment identity",
+      "Identifies a Pages execution and its deployed artifact; its context SHA need not equal dataCommit.",
+      "BLOCKED",
+      ["deployed artifact ID/digest = content artifact ID/digest"],
+      {},
+      []
+    ),
+    publicationIntegrity: identityDomain(
+      "Publication integrity",
+      "Binds published bytes and response evidence to the attested content.",
+      "BLOCKED",
+      ["published manifest/dataset hashes = content hashes"],
+      {},
+      []
+    )
+  };
+  const add = (domain, status, message) => {
+    if (status === "RED" || domains[domain].status !== "RED") domains[domain].status = status;
+    domains[domain].findings.push(message);
+  };
+  const schema = attestationSchema(attestation);
+
+  if (!attestation) {
+    for (const domain of Object.values(domains)) {
+      domain.findings.push("Release/deploy attestation evidence is missing.");
+    }
+    return domains;
+  }
+
+  for (const domain of Object.values(domains)) domain.status = "GREEN";
+
+  const publicationMismatch = ["idag", "imorgen"].some((mode) => {
+    const local = datasetBytes[mode];
+    const published = publishedDatasetBytes[mode];
+    return Buffer.isBuffer(local) && Buffer.isBuffer(published) && !local.equals(published);
+  });
+
+  if (schema === LEGACY_ATTESTATION_SCHEMA) {
+    const generation = domains.generationIdentity;
+    generation.actualRelations = {
+      generationId: attestation.generationId || null,
+      schema
+    };
+    if (!attestation.generationId) {
+      add("generationIdentity", "BLOCKED", "Legacy v1 attestation lacks generation identity.");
+    } else if (attestation.generationId !== manifest.generationId) {
+      add("generationIdentity", "RED", "Release attestation generation identity conflicts with the manifest.");
+    }
+
+    const content = domains.contentIdentity;
+    content.actualRelations = {
+      dataCommit: attestation.git?.commit || null,
+      dataTree: attestation.git?.tree || null,
+      artifactSourceCommit: attestation.publication?.artifactSourceCommit || null,
+      manifestSha256: attestation.generationManifest?.sha256 || null,
+      datasetHashes: {
+        idag: attestation.datasets?.idag?.sha256 || null,
+        imorgen: attestation.datasets?.imorgen?.sha256 || null
+      }
+    };
+    if (!validGitSha(attestation.git?.commit) || !validGitSha(attestation.git?.tree)) {
+      add("contentIdentity", "BLOCKED", "Legacy v1 attestation lacks valid commit or tree identity.");
+    }
+    if (!attestation.generationManifest?.sha256 || !manifestBytes) {
+      add("contentIdentity", "BLOCKED", "Legacy v1 manifest byte identity is incomplete.");
+    } else if (hashBytes(manifestBytes) !== attestation.generationManifest.sha256) {
+      add("contentIdentity", "RED", "Release attestation identifies a different generation manifest.");
+    }
+    for (const mode of ["idag", "imorgen"]) {
+      if (!attestation.datasets?.[mode]?.sha256) {
+        add("contentIdentity", "BLOCKED", `Legacy v1 ${mode} content hash is missing.`);
+      } else if (attestation.datasets[mode].sha256 !== manifest.datasets?.[mode]?.sha256) {
+        add("contentIdentity", "RED", `Legacy v1 ${mode} content hash conflicts with the manifest.`);
+      }
+    }
+
+    const deployment = domains.deploymentIdentity;
+    const deployedCommit = attestation.publication?.deployedCommit || null;
+    const deploymentId = attestation.publication?.pagesDeploymentId || null;
+    const documentedSource = attestation.publication?.artifactSourceCommit || null;
+    deployment.actualRelations = {
+      pagesDeploymentId: deploymentId,
+      legacyDeployedCommit: deployedCommit,
+      artifactSourceCommit: documentedSource
+    };
+    if (!deployedCommit || !deploymentId) {
+      add("deploymentIdentity", "BLOCKED", "Legacy v1 Pages deployment evidence is pending.");
+    } else if (documentedSource && documentedSource !== attestation.git?.commit) {
+      add("deploymentIdentity", "RED", "Legacy v1 documents an artifact source commit that differs from the data commit.");
+    } else if (!documentedSource && deployedCommit !== attestation.git?.commit) {
+      add("deploymentIdentity", "BLOCKED", "Legacy v1 deployedCommit is ambiguous: it may be deployment context rather than artifact source.");
+    }
+
+    const publication = domains.publicationIntegrity;
+    publication.actualRelations = {
+      publishedIdagObserved: Buffer.isBuffer(publishedDatasetBytes.idag),
+      publishedImorgenObserved: Buffer.isBuffer(publishedDatasetBytes.imorgen),
+      customDomainObservability: attestation.publication?.customDomainObservability || "NOT_EVALUATED"
+    };
+    if (publicationMismatch) {
+      add("publicationIntegrity", "RED", "Published Pages dataset bytes differ from the attested local bytes.");
+    } else if (!["idag", "imorgen"].every((mode) => Buffer.isBuffer(publishedDatasetBytes[mode]))) {
+      add("publicationIntegrity", "BLOCKED", "Legacy v1 published byte evidence is incomplete.");
+    }
+    return domains;
+  }
+
+  if (schema !== ATTESTATION_SCHEMA) {
+    for (const key of Object.keys(domains)) {
+      add(key, "RED", `Unsupported release attestation schema: ${schema || "missing"}.`);
+    }
+    return domains;
+  }
+
+  const generation = attestation.generation || {};
+  domains.generationIdentity.actualRelations = {
+    generationId: attestation.generationId || null,
+    generatorWorkflowRunId: generation.generatorWorkflowRunId || null,
+    generatorWorkflowContextSha: generation.generatorWorkflowContextSha || null,
+    sourceObservedAt: generation.sourceObservedAt || null,
+    sourceStationSha256: generation.sourceStationSha256 || null,
+    sourceVehicleSha256: generation.sourceVehicleSha256 || null,
+    intendedCycleId: generation.intendedCycleId || null
+  };
+  const generationRelations = [
+    ["generationId", attestation.generationId, manifest.generationId],
+    ["generatorWorkflowRunId", generation.generatorWorkflowRunId, manifest.workflow?.runId],
+    ["sourceObservedAt", generation.sourceObservedAt, manifest.source?.observedAt],
+    ["sourceStationSha256", generation.sourceStationSha256, manifest.source?.rawStationSha256],
+    ["sourceVehicleSha256", generation.sourceVehicleSha256, manifest.source?.vehicleSha256],
+    ["intendedCycleId", generation.intendedCycleId, manifest.intendedCycle?.id],
+    ["intendedCycleDate", generation.intendedCycleDate, manifest.intendedCycle?.date],
+    ["intendedCycleHour", String(generation.intendedCycleHour || ""), String(manifest.intendedCycle?.hour || "")]
+  ];
+  for (const [name, actual, expected] of generationRelations) {
+    if (!actual || !expected) add("generationIdentity", "BLOCKED", `Generation relation ${name} is incomplete.`);
+    else if (actual !== expected) add("generationIdentity", "RED", `Generation relation ${name} conflicts with the manifest.`);
+  }
+  if (!validGitSha(generation.generatorWorkflowContextSha)) {
+    add("generationIdentity", "BLOCKED", "Generator workflow context SHA is missing or invalid.");
+  }
+
+  const content = attestation.content || {};
+  const contentManifest = content.manifest || {};
+  domains.contentIdentity.actualRelations = {
+    dataCommit: content.dataCommit || null,
+    dataTree: content.dataTree || null,
+    artifactSourceCommit: content.artifactSourceCommit || null,
+    pagesArtifactId: content.pagesArtifactId || null,
+    pagesArtifactDigest: content.pagesArtifactDigest || null,
+    manifestSha256: contentManifest.sha256 || null,
+    datasetHashes: {
+      idag: content.datasets?.idag?.sha256 || null,
+      imorgen: content.datasets?.imorgen?.sha256 || null
+    }
+  };
+  if (!validGitSha(content.dataCommit) || !validGitSha(content.dataTree)) {
+    add("contentIdentity", "BLOCKED", "V2 content lacks a valid data commit or tree.");
+  }
+  if (!manifestBytes || !contentManifest.sha256) {
+    add("contentIdentity", "BLOCKED", "V2 manifest byte identity is incomplete.");
+  } else if (hashBytes(manifestBytes) !== contentManifest.sha256) {
+    add("contentIdentity", "RED", "V2 content identifies a different generation manifest.");
+  }
+  for (const mode of ["idag", "imorgen"]) {
+    const actual = content.datasets?.[mode]?.sha256;
+    const expected = manifest.datasets?.[mode]?.sha256;
+    if (!actual || !expected) add("contentIdentity", "BLOCKED", `V2 ${mode} content hash is missing.`);
+    else if (actual !== expected) add("contentIdentity", "RED", `V2 ${mode} content hash conflicts with the manifest.`);
+  }
+  if (!content.artifactSourceCommit || !content.pagesArtifactId || !content.pagesArtifactDigest) {
+    add("contentIdentity", "BLOCKED", "Pages artifact source, ID or digest is pending.");
+  } else {
+    if (content.artifactSourceCommit !== content.dataCommit) {
+      add("contentIdentity", "RED", "Pages artifact source commit differs from the attested data commit.");
+    }
+    if (!validDigest(content.pagesArtifactDigest)) {
+      add("contentIdentity", "RED", "Pages artifact digest has an invalid identity format.");
+    }
+  }
+
+  const deployment = attestation.deployment || {};
+  domains.deploymentIdentity.actualRelations = {
+    pagesWorkflowRunId: deployment.pagesWorkflowRunId || null,
+    pagesWorkflowContextSha: deployment.pagesWorkflowContextSha || null,
+    pagesBuildVersion: deployment.pagesBuildVersion || null,
+    deploymentId: deployment.deploymentId || null,
+    deploymentApiSha: deployment.deploymentApiSha || null,
+    publishedAt: deployment.publishedAt || null,
+    deployedArtifactId: deployment.deployedArtifactId || null,
+    deployedArtifactDigest: deployment.deployedArtifactDigest || null
+  };
+  const deploymentRequired = [
+    ["pagesWorkflowRunId", deployment.pagesWorkflowRunId],
+    ["pagesBuildVersion", deployment.pagesBuildVersion],
+    ["deploymentId", deployment.deploymentId],
+    ["deployedArtifactId", deployment.deployedArtifactId],
+    ["deployedArtifactDigest", deployment.deployedArtifactDigest]
+  ];
+  for (const [name, value] of deploymentRequired) {
+    if (!value) add("deploymentIdentity", "BLOCKED", `Deployment field ${name} is pending.`);
+  }
+  if (!validGitSha(deployment.pagesWorkflowContextSha)) {
+    add("deploymentIdentity", "BLOCKED", "Pages workflow context SHA is missing or invalid.");
+  }
+  if (!validGitSha(deployment.deploymentApiSha)) {
+    add("deploymentIdentity", "BLOCKED", "Deployment API SHA is missing or invalid.");
+  }
+  if (!validIso(deployment.publishedAt)) {
+    add("deploymentIdentity", "BLOCKED", "Pages publication time is missing or invalid.");
+  }
+  if (content.pagesArtifactId && deployment.deployedArtifactId && content.pagesArtifactId !== deployment.deployedArtifactId) {
+    add("deploymentIdentity", "RED", "Pages deployment is bound to a different artifact ID.");
+  }
+  if (content.pagesArtifactDigest && deployment.deployedArtifactDigest && content.pagesArtifactDigest !== deployment.deployedArtifactDigest) {
+    add("deploymentIdentity", "RED", "Pages deployment is bound to a different artifact digest.");
+  }
+
+  const publication = attestation.publication || {};
+  domains.publicationIntegrity.actualRelations = {
+    observedAt: publication.observedAt || null,
+    manifestSha256: publication.manifestSha256 || null,
+    datasetHashes: {
+      idag: publication.datasets?.idag?.sha256 || null,
+      imorgen: publication.datasets?.imorgen?.sha256 || null
+    },
+    responseHeaders: publication.responseHeaders || {},
+    customDomainObservability: publication.customDomainObservability || "NOT_EVALUATED"
+  };
+  if (!validIso(publication.observedAt)) {
+    add("publicationIntegrity", "BLOCKED", "Publication observation time is pending.");
+  }
+  if (!publication.manifestSha256) {
+    add("publicationIntegrity", "BLOCKED", "Published manifest hash is pending.");
+  } else if (publication.manifestSha256 !== contentManifest.sha256) {
+    add("publicationIntegrity", "RED", "Published manifest hash differs from the content identity.");
+  }
+  for (const mode of ["idag", "imorgen"]) {
+    const actual = publication.datasets?.[mode]?.sha256;
+    const expected = content.datasets?.[mode]?.sha256;
+    if (!actual) add("publicationIntegrity", "BLOCKED", `Published ${mode} hash is pending.`);
+    else if (actual !== expected) add("publicationIntegrity", "RED", `Published ${mode} hash differs from the content identity.`);
+  }
+  if (!publication.responseHeaders || !Object.keys(publication.responseHeaders).length) {
+    add("publicationIntegrity", "BLOCKED", "Publication response headers are pending.");
+  }
+  if (Buffer.isBuffer(publishedManifestBytes) && publication.manifestSha256 && hashBytes(publishedManifestBytes) !== publication.manifestSha256) {
+    add("publicationIntegrity", "RED", "Observed published manifest bytes differ from the publication hash.");
+  }
+  if (publicationMismatch) {
+    add("publicationIntegrity", "RED", "Observed published dataset bytes differ from the attested local bytes.");
+  }
+  for (const mode of ["idag", "imorgen"]) {
+    if (Buffer.isBuffer(publishedDatasetBytes[mode]) && publication.datasets?.[mode]?.sha256 && hashBytes(publishedDatasetBytes[mode]) !== publication.datasets[mode].sha256) {
+      add("publicationIntegrity", "RED", `Observed published ${mode} bytes differ from the publication hash.`);
+    }
+  }
+  return domains;
 }
 
 function comparisonEligibility(manifest, attestation = null) {
@@ -66,6 +375,7 @@ function validateProvenance({
   manifestBytes = null,
   datasetBytes = {},
   publishedDatasetBytes = {},
+  publishedManifestBytes = null,
   attestation = null
 } = {}) {
   if (!manifest) return {
@@ -77,7 +387,16 @@ function validateProvenance({
     gitDeploy: "BLOCKED",
     generationId: null,
     chain: [],
+    generationIdentity: "BLOCKED",
+    contentIdentity: "BLOCKED",
+    deploymentIdentity: "BLOCKED",
     publicationIntegrity: "BLOCKED",
+    identityDomains: {
+      generationIdentity: identityDomain("Generation identity", "Generation evidence", "BLOCKED", [], {}, ["Generation manifest is missing."]),
+      contentIdentity: identityDomain("Content identity", "Content evidence", "BLOCKED", [], {}, ["Generation manifest is missing."]),
+      deploymentIdentity: identityDomain("Deployment identity", "Deployment evidence", "BLOCKED", [], {}, ["Generation manifest is missing."]),
+      publicationIntegrity: identityDomain("Publication integrity", "Publication evidence", "BLOCKED", [], {}, ["Generation manifest is missing."])
+    },
     customDomainObservability: "NOT_EVALUATED",
     comparisonEligibility: { eligible: false, reason: "LEGACY_DATASET_WITHOUT_MANIFEST", missingProvenance: ["manifest"] },
     findings: ["Legacy dataset has no generation manifest; no product defect inferred."]
@@ -126,11 +445,6 @@ function validateProvenance({
         findings.push(`${mode} is not valid UTF-8 JSON.`);
       }
     }
-    const published = publishedDatasetBytes[mode];
-    if (Buffer.isBuffer(published) && Buffer.isBuffer(bytes) && !published.equals(bytes)) {
-      integrity = "RED";
-      findings.push(`${mode} Pages payload differs from the local exact bytes.`);
-    }
   }
 
   let source = "GREEN";
@@ -171,50 +485,43 @@ function validateProvenance({
     findings.push("Intended cycle or actual generator start is missing.");
   }
 
-  let gitDeploy = "GREEN";
-  if (!attestation) {
-    gitDeploy = "BLOCKED";
-    findings.push("Release/deploy attestation is missing; live publication remains pending.");
-  } else if (attestation.schema !== ATTESTATION_SCHEMA || attestation.generationId !== manifest.generationId) {
-    gitDeploy = "RED";
-    findings.push("Release attestation schema or generation identity conflicts.");
-  } else if (
-    manifestBytes &&
-    attestation.generationManifest?.sha256 &&
-    hashBytes(manifestBytes) !== attestation.generationManifest.sha256
-  ) {
-    gitDeploy = "RED";
-    findings.push("Release attestation identifies a different generation manifest.");
-  } else if (["idag", "imorgen"].some((mode) =>
-    attestation.datasets?.[mode]?.sha256 !== manifest.datasets?.[mode]?.sha256
-  )) {
-    gitDeploy = "RED";
-    findings.push("Release attestation dataset hashes conflict with the manifest.");
-  } else if (!attestation.git?.commit || !attestation.git?.tree) {
-    gitDeploy = "BLOCKED";
-    findings.push("Release attestation lacks commit or tree identity.");
-  } else if (attestation.publication?.deployedCommit && attestation.publication.deployedCommit !== attestation.git?.commit) {
-    gitDeploy = "RED";
-    findings.push("Pages deployment commit differs from the attested data commit.");
-  } else if (!attestation.publication?.deployedCommit || !attestation.publication?.pagesDeploymentId) {
-    gitDeploy = "BLOCKED";
-    findings.push("Data commit is attested but Pages deployment evidence is pending.");
-  }
+  const identityDomains = evaluateIdentityDomains({
+    manifest,
+    manifestBytes,
+    datasetBytes,
+    publishedDatasetBytes,
+    publishedManifestBytes,
+    attestation
+  });
+  const generationIdentity = identityDomains.generationIdentity.status;
+  const contentIdentity = identityDomains.contentIdentity.status;
+  const deploymentIdentity = identityDomains.deploymentIdentity.status;
+  const publicationIntegrity = identityDomains.publicationIntegrity.status;
+  const gitDeploy = worstStatus([contentIdentity, deploymentIdentity, publicationIntegrity]);
+  for (const domain of Object.values(identityDomains)) findings.push(...domain.findings);
 
-  const statuses = [structural, integrity, source, schedule, gitDeploy];
-  const classification = statuses.includes("RED") ? "RED" : statuses.includes("BLOCKED") ? "BLOCKED" : "GREEN";
+  const statuses = [structural, integrity, source, schedule, generationIdentity, contentIdentity, deploymentIdentity, publicationIntegrity];
+  const classification = worstStatus(statuses);
+  const dataCommit = attestation?.content?.dataCommit || attestation?.git?.commit || null;
+  const deploymentId = attestation?.deployment?.deploymentId || attestation?.publication?.pagesDeploymentId || null;
   const chain = [
     { step: "Balise snapshot", status: source, identity: manifest.source?.rawStationSha256 || null },
     { step: "Generator run", status: schedule, identity: manifest.generationId || null },
     { step: "Dataset hashes", status: integrity, identity: manifest.datasets?.idag?.sha256 || null },
-    { step: "Git commit", status: attestation?.git?.commit ? (gitDeploy === "RED" ? "RED" : "GREEN") : "NOT AVAILABLE", identity: attestation?.git?.commit || null },
-    { step: "Pages deployment", status: attestation?.publication?.pagesDeploymentId ? gitDeploy : "NOT AVAILABLE", identity: attestation?.publication?.pagesDeploymentId || null },
-    { step: "Published bytes", status: Object.values(publishedDatasetBytes).some(Buffer.isBuffer) ? integrity : "NOT AVAILABLE", identity: null }
+    { step: "Content commit", status: dataCommit ? contentIdentity : "NOT AVAILABLE", identity: dataCommit },
+    { step: "Pages artifact", status: attestation?.content?.pagesArtifactId ? contentIdentity : "NOT AVAILABLE", identity: attestation?.content?.pagesArtifactId || null },
+    { step: "Pages deployment", status: deploymentId ? deploymentIdentity : "NOT AVAILABLE", identity: deploymentId },
+    { step: "Published bytes", status: Object.values(publishedDatasetBytes).some(Buffer.isBuffer) || attestation?.publication?.observedAt ? publicationIntegrity : "NOT AVAILABLE", identity: attestation?.publication?.observedAt || null }
   ];
   return {
     classification, structural, integrity, source, schedule, gitDeploy,
     comparisonEligibility: comparisonEligibility(manifest, attestation),
-    publicationIntegrity: gitDeploy,
+    generationIdentity,
+    contentIdentity,
+    deploymentIdentity,
+    publicationIntegrity,
+    identityDomains,
+    identityResults: Object.values(identityDomains),
     customDomainObservability: attestation?.publication?.customDomainObservability || manifest.publication?.customDomainObservability || "NOT_EVALUATED",
     generationId: manifest.generationId,
     chain,
@@ -261,7 +568,9 @@ function provenanceChecks(options = {}) {
 
 module.exports = {
   ATTESTATION_SCHEMA,
+  LEGACY_ATTESTATION_SCHEMA,
   MANIFEST_SCHEMA,
+  attestationSchema,
   comparisonEligibility,
   datasetRecordCount,
   hashBytes,
