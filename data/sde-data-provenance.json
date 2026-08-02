@@ -1,0 +1,70 @@
+{
+  "schema": "sde-data-provenance/v1",
+  "generationId": "547574d4-9a6a-4b6b-8470-442ce5651b7f",
+  "timeZone": "Europe/Oslo",
+  "startedAt": "2026-08-02T07:04:43+02:00",
+  "completedAt": "2026-08-02T07:11:42+02:00",
+  "intendedCycle": {
+    "id": "2026-08-02T07:00@Europe/Oslo",
+    "date": "2026-08-02",
+    "hour": "07",
+    "firstAttemptMinute": 7,
+    "effectiveBoundary": "2026-08-02T07:00:00+02:00",
+    "derivation": "latest_operational_cycle_or_explicit_manual"
+  },
+  "workflow": {
+    "event": "workflow_dispatch",
+    "runId": "30733455383",
+    "runAttempt": "1",
+    "scheduledFor": "2026-08-02T07:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-08-02T07:04:16+02:00",
+    "actualGeneratorStart": "2026-08-02T07:04:43+02:00",
+    "generatorExecuted": true
+  },
+  "source": {
+    "provider": "balise.no",
+    "stationEndpointTemplate": "https://balise.no/api/train/stops?route={routeId}",
+    "vehicleEndpointTemplate": "https://balise.no/api/train/vehicles?route={routeId}",
+    "observedAt": "2026-08-02T07:10:27+02:00",
+    "rawStationSha256": "65a0a0dc05cd1af7ece316b4360ac8db9bc02094189419b15c753679fe8aac2c",
+    "rawStationBeforeSha256": "65a0a0dc05cd1af7ece316b4360ac8db9bc02094189419b15c753679fe8aac2c",
+    "rawStationAfterSha256": "65a0a0dc05cd1af7ece316b4360ac8db9bc02094189419b15c753679fe8aac2c",
+    "vehicleCount": 9170,
+    "vehicleSha256": "96f5e2aa3df6aca5b92ca8663868e1c30b60757c79029e2c7ad54eb86b3db88d",
+    "routeCaptureCount": 62,
+    "snapshotStable": true,
+    "maxCaptureAttempts": 1
+  },
+  "datasets": {
+    "idag": {
+      "path": "data/api_idag.json",
+      "operationalDate": "2026-08-02",
+      "sha256": "dbdfff95f6178a85ec6d5ecdc370613632ecf9967175c54764ea63f97d211f60",
+      "bytes": 33121,
+      "recordCount": 31
+    },
+    "imorgen": {
+      "path": "data/api_imorgen.json",
+      "operationalDate": "2026-08-02",
+      "sha256": "3c02378e761cf9c8db806d2d2997f5774ad2151a61bfbcf8ac1ef49385374413",
+      "bytes": 33124,
+      "recordCount": 31
+    }
+  },
+  "git": {
+    "commit": null,
+    "tree": null
+  },
+  "publication": {
+    "state": "UNATTESTED_GENERATION",
+    "pagesDeploymentId": null,
+    "deployedCommit": null,
+    "customDomainObservability": "NOT_EVALUATED"
+  },
+  "hashContract": {
+    "algorithm": "SHA-256",
+    "sourceStation": "exact HTTP body bytes in deterministic length-prefixed identity order",
+    "vehicles": "UTF-8 canonical JSON; sorted keys; compact separators; deterministic capture order",
+    "datasets": "exact UTF-8 bytes atomically written; ensure_ascii=false; indent=2; no trailing newline"
+  }
+}
