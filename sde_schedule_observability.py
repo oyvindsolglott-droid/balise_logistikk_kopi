@@ -12,6 +12,9 @@ import argparse
 import json
 import os
 import re
+import secrets
+import stat
+import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -99,11 +102,29 @@ def parse_timestamp(value: Any) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
-def parse_int(value: Any) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
+def parse_positive_int(value: Any) -> int | None:
+    """Parse only a positive integer or a pure base-10 ASCII string."""
+
+    if isinstance(value, bool):
         return None
+    if isinstance(value, int):
+        return value if value >= 1 else None
+    if isinstance(value, str) and re.fullmatch(r"[0-9]+", value):
+        parsed = int(value, 10)
+        return parsed if parsed >= 1 else None
+    return None
+
+
+def parse_nonnegative_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    return None
+
+
+def run_identity_warning(field: str, raw_value: Any) -> str:
+    return f"{field}_missing" if raw_value is None else f"{field}_invalid"
 
 
 def parse_bool(value: Any) -> bool | None:
@@ -271,6 +292,121 @@ def github_get_json(url: str, token: str, timeout: int = 20) -> Any:
         return json.loads(response.read().decode("utf-8"))
 
 
+def _open_secure_parent(output: Path) -> tuple[int, str]:
+    """Open an output parent without following any path-component symlink."""
+
+    required = ("O_NOFOLLOW", "O_DIRECTORY")
+    if os.name != "posix" or any(not hasattr(os, name) for name in required):
+        raise RuntimeError("secure_nofollow_output_unavailable")
+
+    absolute = Path(os.path.abspath(os.fspath(output)))
+    filename = absolute.name
+    if filename in ("", ".", ".."):
+        raise RuntimeError("output_filename_invalid")
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        directory_flags |= os.O_CLOEXEC
+    directory_fd = os.open("/", directory_flags)
+    try:
+        for component in absolute.parent.parts[1:]:
+            try:
+                next_fd = os.open(component, directory_flags, dir_fd=directory_fd)
+            except FileNotFoundError:
+                os.mkdir(component, mode=0o700, dir_fd=directory_fd)
+                next_fd = os.open(component, directory_flags, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = next_fd
+        return directory_fd, filename
+    except Exception:
+        os.close(directory_fd)
+        raise
+
+
+def _reject_non_regular_output(directory_fd: int, filename: str) -> None:
+    try:
+        existing = os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(existing.st_mode):
+        raise RuntimeError("output_symlink_rejected")
+    if not stat.S_ISREG(existing.st_mode):
+        raise RuntimeError("output_not_regular_file")
+
+
+def _canonicalize_macos_var_alias(path: Path) -> Path:
+    """Accept only macOS' fixed /var -> /private/var system alias.
+
+    Every other parent component remains subject to no-follow traversal.  The
+    output basename is deliberately not resolved, so output symlinks are still
+    rejected by ``_reject_non_regular_output``.
+    """
+
+    if sys.platform != "darwin" or len(path.parts) < 2 or path.parts[1] != "var":
+        return path
+
+    var_stat = os.lstat("/var")
+    if not stat.S_ISLNK(var_stat.st_mode):
+        return path
+    if os.readlink("/var") not in {"private/var", "/private/var"}:
+        raise RuntimeError("unexpected_macos_var_alias")
+
+    for trusted_directory in ("/private", "/private/var"):
+        trusted_stat = os.lstat(trusted_directory)
+        if stat.S_ISLNK(trusted_stat.st_mode) or not stat.S_ISDIR(trusted_stat.st_mode):
+            raise RuntimeError("invalid_macos_var_target")
+    return Path("/private/var", *path.parts[2:])
+
+
+def atomic_write_record(output: Path, record: dict[str, Any]) -> None:
+    """Write JSON atomically in a no-follow directory, or fail closed."""
+
+    absolute_output = Path(os.path.abspath(os.fspath(output)))
+    directory_fd, filename = _open_secure_parent(_canonicalize_macos_var_alias(absolute_output))
+    temporary_name = f".{filename}.tmp-{os.getpid()}-{secrets.token_hex(8)}"
+    temporary_fd: int | None = None
+    temporary_exists = False
+    try:
+        _reject_non_regular_output(directory_fd, filename)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+        if hasattr(os, "O_CLOEXEC"):
+            flags |= os.O_CLOEXEC
+        temporary_fd = os.open(temporary_name, flags, 0o600, dir_fd=directory_fd)
+        temporary_exists = True
+        payload = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode("utf-8")
+        remaining = memoryview(payload)
+        while remaining:
+            written = os.write(temporary_fd, remaining)
+            if written <= 0:
+                raise OSError("atomic_output_write_failed")
+            remaining = remaining[written:]
+        os.fsync(temporary_fd)
+        os.close(temporary_fd)
+        temporary_fd = None
+
+        # Recheck immediately before replace. A concurrent symlink swap can
+        # never reach its target because replace operates on the directory
+        # entry through the already-open no-follow parent descriptor.
+        _reject_non_regular_output(directory_fd, filename)
+        os.replace(
+            temporary_name,
+            filename,
+            src_dir_fd=directory_fd,
+            dst_dir_fd=directory_fd,
+        )
+        temporary_exists = False
+        os.fsync(directory_fd)
+    finally:
+        if temporary_fd is not None:
+            os.close(temporary_fd)
+        if temporary_exists:
+            try:
+                os.unlink(temporary_name, dir_fd=directory_fd)
+            except FileNotFoundError:
+                pass
+        os.close(directory_fd)
+
+
 def fetch_run_metadata(repository: str | None, run_id: str | None, token: str | None) -> dict[str, Any]:
     if not token:
         return {"available": False, "warning": "github_actions_read_token_unavailable"}
@@ -290,12 +426,34 @@ def fetch_run_metadata(repository: str | None, run_id: str | None, token: str | 
     except (json.JSONDecodeError, UnicodeDecodeError):
         return {"available": False, "warning": "github_actions_read_invalid_json"}
 
-    started_values = [
-        parse_timestamp(job.get("started_at"))
-        for job in (jobs.get("jobs") or [])
-        if isinstance(job, dict)
-    ]
-    first_job_started = min((value for value in started_values if value), default=None)
+    if not isinstance(run, dict) or not isinstance(jobs, dict):
+        return {"available": False, "warning": "github_actions_read_shape_invalid"}
+    total_count = parse_nonnegative_int(jobs.get("total_count"))
+    job_list = jobs.get("jobs")
+    if total_count is None:
+        return {"available": False, "warning": "jobs_total_count_invalid"}
+    if not isinstance(job_list, list):
+        return {"available": False, "warning": "jobs_list_invalid"}
+    if total_count != len(job_list):
+        return {"available": False, "warning": "jobs_response_incomplete"}
+
+    job_ids: set[int] = set()
+    started_values: list[datetime] = []
+    for job in job_list:
+        if not isinstance(job, dict):
+            return {"available": False, "warning": "jobs_list_invalid"}
+        job_id = parse_positive_int(job.get("id"))
+        if job_id is None:
+            return {"available": False, "warning": "job_id_invalid"}
+        if job_id in job_ids:
+            return {"available": False, "warning": "duplicate_job_id"}
+        job_ids.add(job_id)
+        started_at = parse_timestamp(job.get("started_at"))
+        if started_at is None:
+            return {"available": False, "warning": "job_started_at_missing_or_invalid"}
+        started_values.append(started_at)
+
+    first_job_started = min(started_values, default=None)
     return {
         "available": True,
         "createdAt": run.get("created_at"),
@@ -314,9 +472,16 @@ def build_record(
 ) -> dict[str, Any]:
     event_name = context.get("eventName") or None
     expression = context.get("eventScheduleExpression") or None
-    run_attempt = parse_int(context.get("runAttempt"))
+    run_number_raw = context.get("runNumber")
+    run_attempt_raw = context.get("runAttempt")
+    run_number = parse_positive_int(run_number_raw)
+    run_attempt = parse_positive_int(run_attempt_raw)
     trigger = classify_trigger(event_name, expression)
     warnings = list(trigger["warnings"])
+    if run_number is None:
+        warnings.append(run_identity_warning("run_number", run_number_raw))
+    if run_attempt is None:
+        warnings.append(run_identity_warning("run_attempt", run_attempt_raw))
 
     api = api_metadata or {"available": False, "warning": "github_actions_metadata_not_provided"}
     if not api.get("available"):
@@ -343,12 +508,15 @@ def build_record(
     if api.get("available"):
         api_event = api.get("eventName")
         api_sha = api.get("headSha")
-        api_attempt = parse_int(api.get("runAttempt"))
+        api_attempt_raw = api.get("runAttempt")
+        api_attempt = parse_positive_int(api_attempt_raw)
         if api_event and event_name and api_event != event_name:
             warnings.append("run_api_event_mismatch")
         if api_sha and context.get("headSha") and api_sha != context.get("headSha"):
             warnings.append("run_api_head_sha_mismatch")
-        if api_attempt is not None and run_attempt is not None and api_attempt != run_attempt:
+        if api_attempt is None:
+            warnings.append(run_identity_warning("run_api_attempt", api_attempt_raw))
+        elif run_attempt is not None and api_attempt != run_attempt:
             warnings.append("run_api_attempt_mismatch")
 
     workflow_queue = safe_duration(
@@ -403,6 +571,19 @@ def build_record(
         "negative_workflow_queue_duration",
         "negative_first_job_queue_duration",
         "negative_gate_duration",
+        "run_number_missing",
+        "run_number_invalid",
+        "run_attempt_missing",
+        "run_attempt_invalid",
+        "run_api_attempt_missing",
+        "run_api_attempt_invalid",
+        "github_actions_read_shape_invalid",
+        "jobs_total_count_invalid",
+        "jobs_list_invalid",
+        "jobs_response_incomplete",
+        "job_id_invalid",
+        "duplicate_job_id",
+        "job_started_at_missing_or_invalid",
     }
     if any(item.startswith("github_actions_read_http_") for item in warnings):
         blocking_warnings.add(next(item for item in warnings if item.startswith("github_actions_read_http_")))
@@ -424,8 +605,12 @@ def build_record(
         if metadata_status == "PARTIAL":
             warnings.append("optional_runtime_metadata_incomplete")
 
-    rerun = bool(run_attempt and run_attempt > 1)
-    natural_schedule_candidate = event_name == "schedule" and run_attempt == 1
+    rerun = None if run_attempt is None else run_attempt > 1
+    natural_schedule_candidate = (
+        event_name == "schedule"
+        and run_attempt == 1
+        and metadata_status == "GREEN"
+    )
     record = {
         "schemaVersion": SCHEMA_VERSION,
         "generatedAt": iso_utc(generated_at or utc_now()),
@@ -436,7 +621,7 @@ def build_record(
         "eventName": event_name,
         "eventScheduleExpression": expression,
         "runId": str(context.get("runId")) if context.get("runId") not in (None, "") else None,
-        "runNumber": parse_int(context.get("runNumber")),
+        "runNumber": run_number,
         "runAttempt": run_attempt,
         "headSha": context.get("headSha") or None,
         "ref": context.get("ref") or None,
@@ -507,8 +692,7 @@ def main() -> int:
     )
     record = build_record(context, api)
     output = Path(arguments.output)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    atomic_write_record(output, record)
     print(
         f"Schedule observability: {record['metadataStatus']} "
         f"{record['triggerClass']} {record['triggerSlotStatus']}"

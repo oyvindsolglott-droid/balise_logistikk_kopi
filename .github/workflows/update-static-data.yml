@@ -37,6 +37,17 @@ jobs:
         id: observation-clock
         run: echo "observed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
       - name: Initialize fail-closed schedule observability record
         env:
           SDE_EVENT_NAME: ${{ github.event_name }}
@@ -54,17 +65,27 @@ jobs:
           SDE_WORKFLOW_OBSERVED_AT: ${{ steps.observation-clock.outputs.observed_at }}
         run: |
           python - <<'PY'
-          import json
           import os
           from datetime import datetime, timezone
           from pathlib import Path
 
+          import sde_schedule_observability as observability
+
           event_name = os.environ.get("SDE_EVENT_NAME") or None
           expression = os.environ.get("SDE_EVENT_SCHEDULE_EXPRESSION") or None
-          attempt_text = os.environ.get("SDE_RUN_ATTEMPT") or ""
-          attempt = int(attempt_text) if attempt_text.isdigit() else None
-          number_text = os.environ.get("SDE_RUN_NUMBER") or ""
-          run_number = int(number_text) if number_text.isdigit() else None
+          attempt_text = os.environ.get("SDE_RUN_ATTEMPT")
+          attempt = observability.parse_positive_int(attempt_text)
+          number_text = os.environ.get("SDE_RUN_NUMBER")
+          run_number = observability.parse_positive_int(number_text)
+          metadata_warnings = ["observability_enrichment_not_completed"]
+          if run_number is None:
+              metadata_warnings.append(
+                  observability.run_identity_warning("run_number", number_text)
+              )
+          if attempt is None:
+              metadata_warnings.append(
+                  observability.run_identity_warning("run_attempt", attempt_text)
+              )
           critical = {
               "7 4,7,15,21 * * *": 7,
               "22 4,7,15,21 * * *": 22,
@@ -124,12 +145,12 @@ jobs:
               "workflowQueueSeconds": None,
               "firstJobQueueSeconds": None,
               "metadataStatus": "BLOCKED",
-              "metadataWarnings": ["observability_enrichment_not_completed"],
-              "naturalScheduleCandidate": event_name == "schedule" and attempt == 1,
-              "rerun": bool(attempt and attempt > 1),
+              "metadataWarnings": sorted(metadata_warnings),
+              "naturalScheduleCandidate": False,
+              "rerun": None if attempt is None else attempt > 1,
           }
           output = Path(os.environ["RUNNER_TEMP"]) / "sde-schedule-observability.json"
-          output.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+          observability.atomic_write_record(output, record)
           PY
 
       - name: Check local Oslo time
@@ -142,12 +163,6 @@ jobs:
           echo "hour=$HOUR" >> "$GITHUB_OUTPUT"
           echo "date=$DATE" >> "$GITHUB_OUTPUT"
           echo "time=$TIME" >> "$GITHUB_OUTPUT"
-
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 0
 
       - name: Determine whether update is needed
         id: update-check
@@ -302,12 +317,6 @@ jobs:
             echo "- Generator selected: ${{ steps.update-check.outputs.should_run }}"
             echo "- Decision reason: ${{ steps.update-check.outputs.reason }}"
           } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Set up Python
-        if: steps.update-check.outputs.should_run == 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
 
       - name: Install dependencies
         if: steps.update-check.outputs.should_run == 'true'

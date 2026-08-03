@@ -1,8 +1,14 @@
 import hashlib
 import json
+import os
+import subprocess
+import sys
+import tempfile
 import unittest
+import urllib.error
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from unittest import mock
 from zoneinfo import ZoneInfo
 
 import sde_schedule_observability as observability
@@ -221,6 +227,199 @@ class ManualRerunAndSecurityTest(unittest.TestCase):
         self.assertEqual(set(schema["required"]), set(observability.RECORD_FIELDS))
         self.assertEqual(set(schema["properties"]), set(observability.RECORD_FIELDS))
 
+    def test_run_identity_accepts_only_positive_integer_or_pure_decimal_string(self):
+        for accepted in (1, 2, "1", "2", "01"):
+            with self.subTest(accepted=accepted):
+                self.assertIsNotNone(observability.parse_positive_int(accepted))
+        for rejected in (None, 0, -1, True, False, 1.5, "", " ", " 1", "1 ", "+1", "1.0", "abc"):
+            with self.subTest(rejected=rejected):
+                self.assertIsNone(observability.parse_positive_int(rejected))
+
+    def test_invalid_or_missing_run_number_is_blocked(self):
+        for value in (None, 0, -1, True, 1.5, "", " ", "abc"):
+            with self.subTest(value=value):
+                record = observability.build_record(full_context(runNumber=value), full_api())
+                self.assertIsNone(record["runNumber"])
+                self.assertEqual(record["metadataStatus"], "BLOCKED")
+                self.assertFalse(record["naturalScheduleCandidate"])
+
+    def test_invalid_or_missing_attempt_is_blocked_and_not_classified_as_non_rerun(self):
+        for value in (None, 0, -1, True, 1.5, "", " ", "abc"):
+            with self.subTest(value=value):
+                record = observability.build_record(full_context(runAttempt=value), full_api())
+                self.assertIsNone(record["runAttempt"])
+                self.assertIsNone(record["rerun"])
+                self.assertEqual(record["metadataStatus"], "BLOCKED")
+                self.assertFalse(record["naturalScheduleCandidate"])
+
+    def test_schema_requires_positive_run_identity_and_nullable_rerun(self):
+        schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
+        self.assertEqual(schema["properties"]["runNumber"]["minimum"], 1)
+        self.assertEqual(schema["properties"]["runAttempt"]["minimum"], 1)
+        self.assertEqual(schema["properties"]["rerun"]["type"], ["boolean", "null"])
+
+
+class AtomicOutputSecurityTest(unittest.TestCase):
+    def test_new_file_and_regular_file_replacement_are_valid_json(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "record.json"
+            observability.atomic_write_record(output, {"status": "first"})
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8")), {"status": "first"})
+            observability.atomic_write_record(output, {"status": "second"})
+            self.assertEqual(json.loads(output.read_text(encoding="utf-8")), {"status": "second"})
+            self.assertEqual(list(Path(directory).glob(".record.json.tmp-*")), [])
+
+    def test_existing_and_dangling_output_symlinks_are_rejected_without_target_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "target.json"
+            target.write_bytes(b"unchanged-target")
+            existing_link = root / "existing-link.json"
+            existing_link.symlink_to(target)
+            with self.assertRaises(RuntimeError):
+                observability.atomic_write_record(existing_link, {"unsafe": True})
+            self.assertEqual(target.read_bytes(), b"unchanged-target")
+
+            dangling_target = root / "missing-target.json"
+            dangling_link = root / "dangling-link.json"
+            dangling_link.symlink_to(dangling_target)
+            with self.assertRaises(RuntimeError):
+                observability.atomic_write_record(dangling_link, {"unsafe": True})
+            self.assertFalse(dangling_target.exists())
+            self.assertEqual(list(root.glob(".*.tmp-*")), [])
+
+    def test_symlinked_parent_directory_is_rejected_without_target_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            actual_parent = root / "actual-parent"
+            actual_parent.mkdir()
+            linked_parent = root / "linked-parent"
+            linked_parent.symlink_to(actual_parent, target_is_directory=True)
+
+            with self.assertRaises(OSError):
+                observability.atomic_write_record(linked_parent / "record.json", {"unsafe": True})
+
+            self.assertFalse((actual_parent / "record.json").exists())
+            self.assertEqual(list(actual_parent.glob(".record.json.tmp-*")), [])
+
+    def test_replace_failure_preserves_target_and_removes_temporary_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            output = root / "record.json"
+            output.write_bytes(b"original")
+            with mock.patch.object(observability.os, "replace", side_effect=OSError("injected")):
+                with self.assertRaises(OSError):
+                    observability.atomic_write_record(output, {"status": "new"})
+            self.assertEqual(output.read_bytes(), b"original")
+            self.assertEqual(list(root.glob(".record.json.tmp-*")), [])
+
+    def test_cli_write_failure_returns_nonzero_and_never_follows_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "target.json"
+            target.write_bytes(b"preserved")
+            output = root / "record.json"
+            output.symlink_to(target)
+            environment = os.environ.copy()
+            environment.pop("GITHUB_TOKEN", None)
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "sde_schedule_observability.py"), "--output", str(output)],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(target.read_bytes(), b"preserved")
+            self.assertEqual(list(root.glob(".record.json.tmp-*")), [])
+
+
+class JobsCompletenessTest(unittest.TestCase):
+    @staticmethod
+    def run_payload():
+        return {
+            "created_at": "2026-08-02T19:22:10Z",
+            "run_started_at": "2026-08-02T19:22:20Z",
+            "event": "schedule",
+            "head_sha": "a" * 40,
+            "run_attempt": 1,
+        }
+
+    @staticmethod
+    def job(job_id, started_at="2026-08-02T19:22:25Z"):
+        return {"id": job_id, "started_at": started_at}
+
+    def fetch_with_jobs(self, jobs_payload):
+        with mock.patch.object(
+            observability,
+            "github_get_json",
+            side_effect=[self.run_payload(), jobs_payload],
+        ) as get_json:
+            result = observability.fetch_run_metadata("owner/repo", "123", "token")
+        self.assertTrue(get_json.call_args_list[1].args[0].endswith("/jobs?per_page=100"))
+        return result
+
+    def test_complete_zero_one_and_one_hundred_job_responses_are_accepted(self):
+        for count in (0, 1, 100):
+            with self.subTest(count=count):
+                jobs = [self.job(index + 1) for index in range(count)]
+                result = self.fetch_with_jobs({"total_count": count, "jobs": jobs})
+                self.assertTrue(result["available"])
+                if count == 0:
+                    self.assertIsNone(result["firstJobStartedAt"])
+                else:
+                    self.assertEqual(result["firstJobStartedAt"], "2026-08-02T19:22:25Z")
+
+    def test_truncation_or_total_count_contradiction_is_blocked_without_first_job(self):
+        for payload in (
+            {"total_count": 2, "jobs": [self.job(1)]},
+            {"total_count": 0, "jobs": [self.job(1)]},
+        ):
+            with self.subTest(payload=payload):
+                result = self.fetch_with_jobs(payload)
+                self.assertFalse(result["available"])
+                self.assertEqual(result["warning"], "jobs_response_incomplete")
+                record = observability.build_record(full_context(), result)
+                self.assertEqual(record["metadataStatus"], "BLOCKED")
+                self.assertIsNone(record["firstJobStartedAt"])
+
+    def test_missing_or_invalid_total_count_is_blocked(self):
+        for value in (None, -1, True, 1.5, "1"):
+            with self.subTest(value=value):
+                payload = {"jobs": []}
+                if value is not None:
+                    payload["total_count"] = value
+                result = self.fetch_with_jobs(payload)
+                self.assertEqual(result, {"available": False, "warning": "jobs_total_count_invalid"})
+
+    def test_duplicate_jobs_and_missing_started_at_are_blocked(self):
+        duplicate = self.fetch_with_jobs(
+            {"total_count": 2, "jobs": [self.job(1), self.job(1)]}
+        )
+        self.assertEqual(duplicate["warning"], "duplicate_job_id")
+        missing_started = self.fetch_with_jobs(
+            {"total_count": 1, "jobs": [{"id": 1}]}
+        )
+        self.assertEqual(missing_started["warning"], "job_started_at_missing_or_invalid")
+
+    def test_actions_api_http_errors_and_invalid_json_are_blocked(self):
+        for code in (401, 403, 404, 429, 500, 503):
+            with self.subTest(code=code), mock.patch.object(
+                observability,
+                "github_get_json",
+                side_effect=urllib.error.HTTPError("url", code, "error", {}, None),
+            ):
+                result = observability.fetch_run_metadata("owner/repo", "123", "token")
+                self.assertEqual(result["warning"], f"github_actions_read_http_{code}")
+        with mock.patch.object(
+            observability,
+            "github_get_json",
+            side_effect=json.JSONDecodeError("invalid", "x", 0),
+        ):
+            result = observability.fetch_run_metadata("owner/repo", "123", "token")
+        self.assertEqual(result["warning"], "github_actions_read_invalid_json")
+
 
 class WorkflowIntegrationTest(unittest.TestCase):
     def test_pipeline_guards_and_existing_attestation_remain_separate(self):
@@ -242,6 +441,32 @@ class WorkflowIntegrationTest(unittest.TestCase):
         self.assertNotIn("api_idag.json", source)
         self.assertNotIn("api_imorgen.json", source)
         self.assertNotIn("sde-data-provenance.json", source)
+
+    def test_python_311_setup_precedes_all_observability_and_gate_steps(self):
+        source = WORKFLOW.read_text(encoding="utf-8")
+        ordered_names = (
+            "Set up Python",
+            "Initialize fail-closed schedule observability record",
+            "Determine whether update is needed",
+            "Generate static JSON files",
+            "Enrich fail-closed schedule observability record",
+            "Upload schedule observability record",
+        )
+        positions = [source.index(f"- name: {name}") for name in ordered_names]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(source.count("uses: actions/setup-python@v5"), 1)
+        self.assertIn('python-version: "3.11"', source)
+        setup_block = source[positions[0]:positions[1]]
+        self.assertNotIn("if:", setup_block)
+        self.assertEqual(source.count("run: python update_static_data.py"), 1)
+
+    def test_initial_and_enriched_outputs_use_the_atomic_no_follow_writer(self):
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        helper = (ROOT / "sde_schedule_observability.py").read_text(encoding="utf-8")
+        self.assertIn("observability.atomic_write_record(output, record)", workflow)
+        self.assertNotIn("output.write_text", workflow)
+        self.assertIn("atomic_write_record(output, record)", helper)
+        self.assertIn("os.O_NOFOLLOW", helper)
 
 
 if __name__ == "__main__":

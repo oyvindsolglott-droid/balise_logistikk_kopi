@@ -743,8 +743,8 @@ test("N — post-arrival schedule retains guarded 21:xx refresh attempts", () =>
     assert.equal((source.match(/name:\s*sde-schedule-observability-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}/g) || []).length, 1);
     assert.match(source, /name:\s*Upload schedule observability record\s*\n\s+if:\s*always\(\)\s*\n\s+uses:\s*actions\/upload-artifact@v4/);
     assert.match(source, /if event_name == "workflow_dispatch":\s*\n\s+trigger_class = "MANUAL"/);
-    assert.match(source, /"naturalScheduleCandidate": event_name == "schedule" and attempt == 1/);
-    assert.match(source, /"rerun": bool\(attempt and attempt > 1\)/);
+    assert.match(source, /"naturalScheduleCandidate": False/);
+    assert.match(source, /"rerun": None if attempt is None else attempt > 1/);
   };
   const workflow = fs.readFileSync(path.join(root, ".github/workflows/update-static-data.yml"), "utf8");
   assertHistoricalContractFailure(

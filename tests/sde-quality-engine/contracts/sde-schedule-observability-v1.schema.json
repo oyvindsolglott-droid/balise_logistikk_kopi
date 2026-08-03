@@ -54,8 +54,8 @@
     "eventName": { "type": ["string", "null"] },
     "eventScheduleExpression": { "type": ["string", "null"] },
     "runId": { "type": ["string", "null"] },
-    "runNumber": { "type": ["integer", "null"] },
-    "runAttempt": { "type": ["integer", "null"] },
+    "runNumber": { "type": ["integer", "null"], "minimum": 1 },
+    "runAttempt": { "type": ["integer", "null"], "minimum": 1 },
     "headSha": { "type": ["string", "null"] },
     "ref": { "type": ["string", "null"] },
     "actor": { "type": ["string", "null"] },
@@ -93,6 +93,6 @@
       "uniqueItems": true
     },
     "naturalScheduleCandidate": { "type": "boolean" },
-    "rerun": { "type": "boolean" }
+    "rerun": { "type": ["boolean", "null"] }
   }
 }
