@@ -22,6 +22,7 @@
     "test:sde:qe:policy": "node --test tests/sde-quality-engine/unit/ci-policy.test.cjs",
     "test:sde:qe:provenance": "node --test tests/sde-quality-engine/unit/provenance.test.cjs",
     "test:sde:qe:attestation-identity": "node --test tests/sde-quality-engine/unit/attestation-identity.test.cjs",
+    "test:sde:qe:browserguard": "python3 -m unittest discover -s tests/sde-quality-engine/browserguard -p 'test_*.py' -v",
     "test:sde:qe:ci": "node tests/sde-quality-engine/run.cjs --suite ci"
   },
   "engines": {

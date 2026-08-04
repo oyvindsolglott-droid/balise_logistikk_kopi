@@ -88,6 +88,42 @@ same-origin-endepunkter og metodene `GET`/`HEAD` godtas. Alle observerte kall
 føres i rapportens request-ledger. Manglende URL gir `BLOCKED`, ikke falsk
 GREEN.
 
+### Beskyttet browserguard-kandidat
+
+Den permanente browserguard-komponenten ligger i `browserguard/` og bruker
+repositoryets deklarerte Python Playwright-runtime. Den installerer både HTTP-
+og WebSocket-routing på `BrowserContext` før første side opprettes, blokkerer
+service workers og nekter page-lokale route-overstyringer. For det eksakte
+beskyttede originet tillates bare `GET` og `HEAD`; alle andre HTTP-metoder
+avbrytes før nettverk. En rutet WebSocket kobles aldri til serveren.
+
+Lokal kvalifisering kjøres bare mot to dynamiske loopback-origins:
+
+```sh
+npm run test:sde:qe:browserguard
+```
+
+En enkelt maskinlesbar kvalifiseringsrapport med sanitert evidens kan opprettes
+under en unik katalog i `/private/tmp` med:
+
+```sh
+python3 tests/sde-quality-engine/browserguard/qualify.py
+```
+
+Rapporten følger
+`contracts/sde-production-readonly-browser-guard-v1.schema.json`. Auditloggen
+inneholder bare timestamp, metode, origin, path uten query, resource type,
+allow/block-resultat, barrier reason og en lokal sideidentitet. Request bodies,
+response bodies, headers, cookies, tokens, Authorization-data, storage state,
+HAR og rå trace lagres ikke.
+
+Kandidaten åpner ikke produksjonsoriginet og gjennomfører ingen autentisering.
+En senere separat produksjonsfase kan bruke headed modus og bevare den levende,
+midlertidige browserkonteksten mens brukeren logger inn selv. Profilen skal da
+ligge under `/private/tmp`, ingen storage state skal eksporteres, og profilen
+skal slettes når kontrollen avsluttes. Produksjonsnavigasjon skal fortsatt være
+fail-closed dersom én obligatorisk barriere eller sentinel-preflight mangler.
+
 ## Statusmodell
 
 | Status | Betydning |
