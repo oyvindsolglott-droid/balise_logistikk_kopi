@@ -2,7 +2,7 @@
 """Fail-closed data-only sync for production Balise static data.
 
 This worker intentionally permits only fast-forward updates where every
-remote-only commit touches data/api_idag.json and/or data/api_imorgen.json.
+remote-only commit touches only the exact three-file generated data contract.
 It runs once and exits; launchd is responsible for scheduling.
 """
 
@@ -25,8 +25,15 @@ import traceback
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from zoneinfo import ZoneInfo
 
-ALLOWED_FILES = ("data/api_idag.json", "data/api_imorgen.json")
-ALLOWED_FILE_SET = set(ALLOWED_FILES)
+ALLOWED_DATA_FILES = (
+    "data/api_idag.json",
+    "data/api_imorgen.json",
+    "data/sde-data-provenance.json",
+)
+ALLOWED_DATA_FILE_SET = set(ALLOWED_DATA_FILES)
+OPERATIONAL_DATA_FILES = ("data/api_idag.json", "data/api_imorgen.json")
+PROVENANCE_FILE = "data/sde-data-provenance.json"
+REGULAR_DATA_FILE_MODE = "100644"
 STATE_EXIT_OK = {
     "up_to_date",
     "synced",
@@ -188,6 +195,7 @@ class SyncWorker:
             "changedFiles": [],
             "api_idag": None,
             "api_imorgen": None,
+            "provenance": None,
             "freshnessWindow": None,
             "dryRun": bool(args.dry_run),
             "lastSuccessfulSyncAt": None,
@@ -374,20 +382,48 @@ class SyncWorker:
                     raise SyncBlocked("blocked_disallowed_scope", f"unsupported path change {status} in {sha}")
                 path = parts[1]
                 paths.append(path)
-                if path not in ALLOWED_FILE_SET:
+                if path not in ALLOWED_DATA_FILE_SET:
                     raise SyncBlocked("blocked_disallowed_scope", f"remote commit {sha[:12]} changed disallowed path {path}")
+                if status == "D":
+                    raise SyncBlocked("blocked_disallowed_scope", f"remote commit {sha[:12]} deleted required data path {path}")
+                raw = self._regular_blob_bytes(sha, path)
+                self._parse_json_object(raw, path)
             if not paths:
                 raise SyncBlocked("blocked_disallowed_scope", f"remote commit {sha[:12]} has no file changes")
             commits.append({"sha": sha, "subject": subject, "paths": paths})
         return commits
 
     def _blob_bytes(self, commit: str, path: str) -> bytes:
-        result = self.run_git(["show", f"{commit}:{path}"], check=False)
+        env = os.environ.copy()
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        result = subprocess.run(
+            [self.git_path, "show", f"{commit}:{path}"],
+            cwd=str(self.repo),
+            capture_output=True,
+            timeout=30,
+            env=env,
+        )
         if result.returncode != 0:
             raise SyncBlocked("blocked_invalid_json", f"required file missing at target: {path}")
-        return result.stdout.encode("utf-8")
+        return result.stdout
 
-    def _validate_json_bytes(self, raw: bytes, label: str, expected_date: str) -> Dict[str, Any]:
+    def _regular_blob_bytes(self, commit: str, path: str) -> bytes:
+        entry = self.git_out(["ls-tree", commit, "--", path], check=False)
+        if not entry:
+            raise SyncBlocked("blocked_invalid_json", f"required file missing at target: {path}")
+        metadata, _, observed_path = entry.partition("\t")
+        parts = metadata.split()
+        if len(parts) != 3 or observed_path != path:
+            raise SyncBlocked("blocked_disallowed_scope", f"invalid tree entry for {path} at {commit[:12]}")
+        mode, object_type, _object_id = parts
+        if mode != REGULAR_DATA_FILE_MODE or object_type != "blob":
+            raise SyncBlocked(
+                "blocked_disallowed_scope",
+                f"data path {path} at {commit[:12]} is not a regular non-executable file",
+            )
+        return self._blob_bytes(commit, path)
+
+    def _parse_json_object(self, raw: bytes, label: str) -> Dict[str, Any]:
         try:
             text = raw.decode("utf-8")
         except UnicodeDecodeError as exc:
@@ -398,6 +434,10 @@ class SyncWorker:
             raise SyncBlocked("blocked_invalid_json", f"{label} is not valid JSON") from exc
         if not isinstance(data, dict):
             raise SyncBlocked("blocked_invalid_json", f"{label} top-level JSON is not an object")
+        return data
+
+    def _validate_json_bytes(self, raw: bytes, label: str, expected_date: str) -> Dict[str, Any]:
+        data = self._parse_json_object(raw, label)
         date = data.get("date")
         updated = data.get("updatedAt")
         if not isinstance(date, str) or not DATE_RE.match(date):
@@ -424,21 +464,46 @@ class SyncWorker:
         expected = expected_dates_for_oslo(self.args.now)
         self.status["freshnessWindow"] = expected["window"]
         result: Dict[str, Dict[str, Any]] = {}
-        for path in ALLOWED_FILES:
+        raw_by_path: Dict[str, bytes] = {}
+        for path in ALLOWED_DATA_FILES:
+            raw = self._regular_blob_bytes(target, path)
+            self._parse_json_object(raw, path)
+            raw_by_path[path] = raw
+        for path in OPERATIONAL_DATA_FILES:
             label = "api_idag" if path.endswith("api_idag.json") else "api_imorgen"
-            raw = self._blob_bytes(target, path)
+            raw = raw_by_path[path]
             result[label] = self._validate_json_bytes(raw, label, expected[label])
             if compare_local:
                 self._check_monotonic(path, result[label])
+        result["provenance"] = {
+            "sha256": sha256_bytes(raw_by_path[PROVENANCE_FILE]),
+            "validJson": True,
+        }
         return result
 
     def _validate_worktree_data(self) -> Dict[str, Dict[str, Any]]:
         expected = expected_dates_for_oslo(self.args.now)
         result: Dict[str, Dict[str, Any]] = {}
-        for path in ALLOWED_FILES:
+        raw_by_path: Dict[str, bytes] = {}
+        for path in ALLOWED_DATA_FILES:
+            local_path = self.repo / path
+            try:
+                local_stat = local_path.lstat()
+            except FileNotFoundError as exc:
+                raise SyncBlocked("blocked_invalid_json", f"required worktree file missing: {path}") from exc
+            if local_path.is_symlink() or not local_path.is_file() or local_stat.st_mode & 0o111:
+                raise SyncBlocked("blocked_disallowed_scope", f"worktree data path is not a regular non-executable file: {path}")
+            raw = local_path.read_bytes()
+            self._parse_json_object(raw, path)
+            raw_by_path[path] = raw
+        for path in OPERATIONAL_DATA_FILES:
             label = "api_idag" if path.endswith("api_idag.json") else "api_imorgen"
-            raw = (self.repo / path).read_bytes()
+            raw = raw_by_path[path]
             result[label] = self._validate_json_bytes(raw, label, expected[label])
+        result["provenance"] = {
+            "sha256": sha256_bytes(raw_by_path[PROVENANCE_FILE]),
+            "validJson": True,
+        }
         return result
 
     def _check_monotonic(self, path: str, target_item: Dict[str, Any]) -> None:
@@ -460,6 +525,7 @@ class SyncWorker:
     def _record_data(self, data: Dict[str, Dict[str, Any]]) -> None:
         self.status["api_idag"] = data.get("api_idag")
         self.status["api_imorgen"] = data.get("api_imorgen")
+        self.status["provenance"] = data.get("provenance")
 
     def _state_for_no_remote_changes(self, data: Dict[str, Dict[str, Any]]) -> str:
         if any(item.get("fresh") is False for item in data.values()):
@@ -476,8 +542,8 @@ class SyncWorker:
             raise SyncBlocked("merge_failed", "validated target changed before merge")
 
     def _assert_worktree_matches_target(self, target: str) -> None:
-        for path in ALLOWED_FILES:
-            target_raw = self._blob_bytes(target, path)
+        for path in ALLOWED_DATA_FILES:
+            target_raw = self._regular_blob_bytes(target, path)
             worktree_raw = (self.repo / path).read_bytes()
             if target_raw != worktree_raw:
                 raise SyncBlocked("merge_failed", f"worktree file does not match target blob: {path}")

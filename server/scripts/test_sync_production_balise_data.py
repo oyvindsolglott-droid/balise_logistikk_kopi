@@ -18,6 +18,11 @@ GIT = "/usr/bin/git"
 NOW_AFTER_15 = "2026-07-10T16:00:00+02:00"
 NOW_BEFORE_07 = "2026-07-10T06:30:00+02:00"
 NOW_DAY = "2026-07-10T12:00:00+02:00"
+EXPECTED_DATA_CONTRACT = (
+    "data/api_idag.json",
+    "data/api_imorgen.json",
+    "data/sde-data-provenance.json",
+)
 
 
 def run(cmd, cwd=None, check=True, input_text=None):
@@ -33,6 +38,14 @@ def write_json(path, date="2026-07-10", updated="10.07.2026 10:00:00", extra=Non
         payload.update(extra)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def write_provenance(path, generation_id="synthetic-generation"):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({
+        "schema": "sde-data-provenance/v1",
+        "generationId": generation_id,
+    }, sort_keys=True) + "\n", encoding="utf-8")
 
 
 class GitFixture:
@@ -60,6 +73,7 @@ class GitFixture:
         run([GIT, "config", "user.email", "test@example.invalid"], cwd=self.seed)
         write_json(self.seed / "data/api_idag.json", "2026-07-10", "10.07.2026 10:00:00")
         write_json(self.seed / "data/api_imorgen.json", "2026-07-11", "10.07.2026 10:00:01")
+        write_provenance(self.seed / "data/sde-data-provenance.json", "initial")
         (self.seed / "index.html").write_text("<html></html>\n", encoding="utf-8")
         (self.seed / "server/src").mkdir(parents=True)
         (self.seed / "server/src/index.js").write_text("console.log('server');\n", encoding="utf-8")
@@ -138,6 +152,26 @@ class SyncProductionBaliseDataTests(unittest.TestCase):
         self.assertEqual(self.fx.prod_head(), target)
         self.assertEqual(self.fx.status_json()["state"], "synced")
 
+    def test_b2_three_file_data_contract_fast_forwards(self):
+        def change(path):
+            write_json(path / "data/api_idag.json", "2026-07-10", "10.07.2026 10:10:00")
+            write_json(path / "data/api_imorgen.json", "2026-07-11", "10.07.2026 10:10:01")
+            write_provenance(path / "data/sde-data-provenance.json", "three-file")
+        target = self.fx.upstream_commit("three file data", changes=change)
+        result = self.fx.run_worker(check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.fx.prod_head(), target)
+        self.assertTrue(self.fx.status_json()["provenance"]["validJson"])
+
+    def test_b3_provenance_only_subset_fast_forwards(self):
+        target = self.fx.upstream_commit(
+            "provenance only",
+            changes=lambda path: write_provenance(path / "data/sde-data-provenance.json", "provenance-only"),
+        )
+        result = self.fx.run_worker(check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.fx.prod_head(), target)
+
     def test_c_multiple_data_only_commits_fast_forward_to_exact_target(self):
         self.fx.upstream_commit("data one", idag=("2026-07-10", "10.07.2026 10:10:00"), imorgen=("2026-07-11", "10.07.2026 10:10:01"))
         target = self.fx.upstream_commit("data two", idag=("2026-07-10", "10.07.2026 10:11:00"), imorgen=("2026-07-11", "10.07.2026 10:11:01"))
@@ -154,9 +188,64 @@ class SyncProductionBaliseDataTests(unittest.TestCase):
         self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
         self.assertEqual(self.fx.prod_head(), old)
 
+    def test_d2_code_and_allowed_data_in_same_commit_blocks(self):
+        old = self.fx.prod_head()
+        def change(path):
+            write_json(path / "data/api_idag.json", "2026-07-10", "10.07.2026 10:15:00")
+            (path / "index.html").write_text("changed with data\n", encoding="utf-8")
+        self.fx.upstream_commit("code and data", changes=change)
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
+        self.assertEqual(self.fx.prod_head(), old)
+
     def test_e_remote_server_change_blocks(self):
         old = self.fx.prod_head()
         self.fx.upstream_commit("server", changes=lambda p: (p / "server/src/index.js").write_text("changed\n", encoding="utf-8"))
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_e2_unknown_fourth_data_file_blocks(self):
+        old = self.fx.prod_head()
+        self.fx.upstream_commit(
+            "unknown fourth file",
+            changes=lambda path: write_json(path / "data/extra.json"),
+        )
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_e3_documentation_change_blocks(self):
+        old = self.fx.prod_head()
+        self.fx.upstream_commit(
+            "docs",
+            changes=lambda path: (path / "README.md").write_text("docs\n", encoding="utf-8"),
+        )
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_e4_test_file_change_blocks(self):
+        old = self.fx.prod_head()
+        self.fx.upstream_commit(
+            "test file",
+            changes=lambda path: (path / "test.txt").write_text("test\n", encoding="utf-8"),
+        )
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_e5_provenance_outside_exact_path_blocks(self):
+        old = self.fx.prod_head()
+        self.fx.upstream_commit(
+            "wrong provenance path",
+            changes=lambda path: write_provenance(path / "data/provenance.json", "wrong-path"),
+        )
         result = self.fx.run_worker(check=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
@@ -192,6 +281,73 @@ class SyncProductionBaliseDataTests(unittest.TestCase):
         result = self.fx.run_worker(check=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(self.fx.status_json()["state"], "blocked_merge_commit")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_g2_rename_blocks(self):
+        old = self.fx.prod_head()
+        def change(path):
+            run([GIT, "mv", "data/sde-data-provenance.json", "data/provenance.json"], cwd=path)
+        self.fx.upstream_commit("rename", changes=change)
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_g3_executable_mode_blocks(self):
+        old = self.fx.prod_head()
+        def change(path):
+            provenance = path / "data/sde-data-provenance.json"
+            provenance.chmod(0o755)
+        self.fx.upstream_commit("mode", changes=change)
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_g4_symlink_blocks(self):
+        old = self.fx.prod_head()
+        def change(path):
+            provenance = path / "data/sde-data-provenance.json"
+            provenance.unlink()
+            provenance.symlink_to("api_idag.json")
+        self.fx.upstream_commit("symlink", changes=change)
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_g5_submodule_gitlink_blocks(self):
+        old = self.fx.prod_head()
+        def change(path):
+            provenance = path / "data/sde-data-provenance.json"
+            provenance.unlink()
+            run([GIT, "update-index", "--add", "--cacheinfo", f"160000,{self.fx.prod_head()},data/sde-data-provenance.json"], cwd=path)
+        self.fx.upstream_commit("gitlink", changes=change)
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_disallowed_scope")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_g6_binary_file_blocks(self):
+        old = self.fx.prod_head()
+        self.fx.upstream_commit(
+            "binary",
+            changes=lambda path: (path / "data/sde-data-provenance.json").write_bytes(b"\xff\x00\x81"),
+        )
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_invalid_json")
+        self.assertEqual(self.fx.prod_head(), old)
+
+    def test_g7_invalid_provenance_json_blocks(self):
+        old = self.fx.prod_head()
+        self.fx.upstream_commit(
+            "invalid provenance",
+            changes=lambda path: (path / "data/sde-data-provenance.json").write_text("[]\n", encoding="utf-8"),
+        )
+        result = self.fx.run_worker(check=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.fx.status_json()["state"], "blocked_invalid_json")
         self.assertEqual(self.fx.prod_head(), old)
 
     def test_h_dirty_worktree_blocks(self):
@@ -327,6 +483,15 @@ class SyncProductionBaliseDataTests(unittest.TestCase):
         ]
         for snippet in forbidden_snippets:
             self.assertNotIn(snippet, source)
+
+    def test_z_generator_and_sync_scopes_have_exact_parity(self):
+        self.assertEqual(worker_module.ALLOWED_DATA_FILES, EXPECTED_DATA_CONTRACT)
+        self.assertEqual(worker_module.ALLOWED_DATA_FILE_SET, set(EXPECTED_DATA_CONTRACT))
+        workflow = (WORKER.parents[2] / ".github/workflows/update-static-data.yml").read_text(encoding="utf-8")
+        expected_git_add = "git add " + " ".join(EXPECTED_DATA_CONTRACT)
+        self.assertIn(expected_git_add, workflow)
+        self.assertNotIn("data/**", "\n".join(worker_module.ALLOWED_DATA_FILES))
+        self.assertNotIn("*.json", "\n".join(worker_module.ALLOWED_DATA_FILES))
 
 
 if __name__ == "__main__":

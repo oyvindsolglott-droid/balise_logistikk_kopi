@@ -44,6 +44,21 @@ lsof -nP -iTCP:8787 -sTCP:LISTEN
 
 Ikke stopp en riktig serverprosess blindt.
 
+## Fail-closed Balise data sync contract
+
+`server/scripts/sync_production_balise_data.py` accepts remote-only commits only
+when every changed path is in this exact generated-data contract:
+
+- `data/api_idag.json`
+- `data/api_imorgen.json`
+- `data/sde-data-provenance.json`
+
+Subsets remain allowed, but unknown paths, deletions, renames, executable modes,
+symlinks, submodules, binary/non-JSON content and merge commits remain blocked.
+The worker validates all three target files as regular JSON files before an
+`--ff-only` merge. The two API files retain their existing operational-date and
+monotonicity validation; provenance receives no new semantic product authority.
+
 ## Testkommandoer
 
 ```bash
