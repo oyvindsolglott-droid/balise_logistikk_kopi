@@ -4,12 +4,13 @@
   "title": "SDE Browserguard policy-bound read-only interaction plan",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "planId", "targetOrigin", "allowedPaths", "viewports", "targets", "actions"],
+  "required": ["schemaVersion", "planId", "targetOrigin", "allowedPaths", "queryPolicy", "viewports", "targets", "actions"],
   "properties": {
     "schemaVersion": {"const": "sde-browserguard-readonly-interaction-plan/v1"},
     "planId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
     "targetOrigin": {"const": "$BROKER_SENTINEL"},
     "allowedPaths": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^/[a-z0-9./-]*$"}},
+    "queryPolicy": {"const": "FORBID"},
     "viewports": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/viewport"}},
     "targets": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/target"}},
     "actions": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/action"}}

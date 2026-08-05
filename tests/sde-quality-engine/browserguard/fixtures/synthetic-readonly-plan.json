@@ -2,7 +2,8 @@
   "schemaVersion": "sde-browserguard-readonly-interaction-plan/v1",
   "planId": "synthetic-readonly-v1",
   "targetOrigin": "$BROKER_SENTINEL",
-  "allowedPaths": ["/matrix.html", "/popup.html"],
+  "allowedPaths": ["/sentinel.html", "/matrix.html", "/popup.html"],
+  "queryPolicy": "FORBID",
   "viewports": [
     {"id": "desktop", "width": 1440, "height": 900},
     {"id": "mobile", "width": 390, "height": 844}

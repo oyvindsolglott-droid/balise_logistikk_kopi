@@ -148,9 +148,11 @@ class EvidenceWriter:
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
         descriptor: Optional[int] = None
+        temporary_owned = False
         installed = False
         try:
             descriptor = os.open(temporary_name, flags, 0o600, dir_fd=self._root_fd)
+            temporary_owned = True
             created = os.fstat(descriptor)
             if not stat.S_ISREG(created.st_mode) or created.st_nlink != 1:
                 raise EvidencePolicyError("temporary evidence entry is not a private regular file")
@@ -180,7 +182,7 @@ class EvidenceWriter:
         finally:
             if descriptor is not None:
                 os.close(descriptor)
-            if not installed:
+            if temporary_owned and not installed:
                 try:
                     os.unlink(temporary_name, dir_fd=self._root_fd)
                 except FileNotFoundError:

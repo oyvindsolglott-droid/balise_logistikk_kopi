@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from evidence import EvidencePolicyError, EvidenceWriter, _private_temp_parent
 from playwright.sync_api import (
@@ -358,11 +358,30 @@ class ProtectedBrowserHarness:
         headless: bool = True,
         evidence_directory: Optional[Path] = None,
         allowed_auxiliary_origins: Iterable[str] = (),
+        allowed_paths: Optional[Iterable[str]] = None,
+        query_policy: str = "FORBID",
     ) -> None:
         self.target_origin = normalize_http_origin(target_origin)
         self._allowed_auxiliary_origins = frozenset(
             normalize_http_origin(value) for value in allowed_auxiliary_origins
         ) - {self.target_origin}
+        if allowed_paths is None:
+            self._allowed_paths: Optional[frozenset[str]] = None
+        else:
+            normalized_paths = frozenset(allowed_paths)
+            if not normalized_paths or any(
+                not isinstance(path, str)
+                or not path.startswith("/")
+                or "?" in path
+                or "#" in path
+                or ".." in path
+                for path in normalized_paths
+            ):
+                raise GuardInitializationError("request path policy is invalid")
+            self._allowed_paths = normalized_paths
+        if query_policy != "FORBID":
+            raise GuardInitializationError("query policy must explicitly forbid every query")
+        self._query_policy = query_policy
         self.headless = bool(headless)
         self.profile_directory = secure_temp_directory("sde-qe-browser-profile-")
         self.download_directory = self.profile_directory / "downloads"
@@ -524,7 +543,7 @@ class ProtectedBrowserHarness:
                 reason="explicit_auxiliary_origin",
                 page=self._request_page(route),
             )
-            route.continue_()
+            self._fulfill_without_redirects(route)
             return
         if request_origin != self.target_origin:
             self._record_audit(
@@ -533,6 +552,18 @@ class ProtectedBrowserHarness:
                 resource_type=request.resource_type,
                 allowed=False,
                 reason="origin_not_allowlisted",
+                page=self._request_page(route),
+            )
+            route.abort("blockedbyclient")
+            return
+        policy_rejection = self._target_url_policy_rejection(request.url)
+        if policy_rejection is not None:
+            self._record_audit(
+                method=request.method.upper(),
+                url=request.url,
+                resource_type=request.resource_type,
+                allowed=False,
+                reason=policy_rejection,
                 page=self._request_page(route),
             )
             route.abort("blockedbyclient")
@@ -548,7 +579,7 @@ class ProtectedBrowserHarness:
             page=self._request_page(route),
         )
         if allowed:
-            route.continue_()
+            self._fulfill_without_redirects(route)
         else:
             self._blocked_method_labels.add(method)
             if method == "POST" and request.resource_type == "xhr":
@@ -558,6 +589,62 @@ class ProtectedBrowserHarness:
             elif method == "POST" and request.resource_type == "ping":
                 self._blocked_method_labels.add("SENDBEACON")
             route.abort("blockedbyclient")
+
+    def _target_url_policy_rejection(self, url: str) -> Optional[str]:
+        if origin_from_url(url) != self.target_origin:
+            return "origin_not_allowlisted"
+        parsed = urlsplit(url)
+        path = parsed.path or "/"
+        if self._allowed_paths is not None and path not in self._allowed_paths:
+            return "path_not_allowlisted"
+        if self._allowed_paths is not None and self._query_policy == "FORBID" and parsed.query:
+            return "query_not_allowlisted"
+        return None
+
+    def _fulfill_without_redirects(self, route: _Route) -> None:
+        if self._allowed_paths is None:
+            route.continue_()
+            return
+        request = route.request
+        page = self._request_page(route)
+        response = None
+        try:
+            response = route.fetch(max_redirects=0)
+            location = response.headers.get("location")
+            if response.status in {301, 302, 303, 307, 308} and location:
+                redirect_url = urljoin(request.url, location)
+                rejection = self._target_url_policy_rejection(redirect_url)
+                self._record_audit(
+                    method=request.method.upper(),
+                    url=redirect_url,
+                    resource_type=request.resource_type,
+                    allowed=False,
+                    reason=(
+                        f"redirect_{rejection}"
+                        if rejection is not None
+                        else "redirect_disabled"
+                    ),
+                    page=page,
+                )
+                route.abort("blockedbyclient")
+                return
+            route.fulfill(response=response)
+        except Exception:
+            self._record_audit(
+                method=request.method.upper(),
+                url=request.url,
+                resource_type=request.resource_type,
+                allowed=False,
+                reason="guarded_fetch_failed",
+                page=page,
+            )
+            try:
+                route.abort("failed")
+            except Exception:
+                pass
+        finally:
+            if response is not None:
+                response.dispose()
 
     def _websocket_route_handler(self, route: _WebSocketRoute) -> None:
         self._record_audit(
@@ -656,6 +743,12 @@ class ProtectedBrowserHarness:
             *self._allowed_auxiliary_origins,
         }:
             raise GuardPolicyError("page navigation origin is not allowlisted")
+        if requested_origin == self.target_origin:
+            rejection = self._target_url_policy_rejection(url)
+            if rejection == "path_not_allowlisted":
+                raise GuardPolicyError("page navigation path is not allowlisted")
+            if rejection == "query_not_allowlisted":
+                raise GuardPolicyError("page navigation query is not allowlisted")
 
     def new_page(self) -> GuardedPage:
         self._assert_barriers_ready()

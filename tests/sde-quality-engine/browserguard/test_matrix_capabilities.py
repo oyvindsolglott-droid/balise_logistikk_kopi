@@ -227,6 +227,19 @@ class BrowserguardMatrixCapabilityTests(unittest.TestCase):
         self.assertTrue(objects)
         self.assertTrue(all(item.get("additionalProperties") is False for item in objects))
 
+    def test_17_plan_requires_explicit_query_forbid_policy(self) -> None:
+        path = HERE / "fixtures" / "synthetic-readonly-plan.json"
+        original = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(original["queryPolicy"], "FORBID")
+        missing = deepcopy(original)
+        del missing["queryPolicy"]
+        with self.assertRaises(InteractionPlanError):
+            ReadOnlyInteractionPlan(missing, target_origin="http://127.0.0.1:9")
+        weakened = deepcopy(original)
+        weakened["queryPolicy"] = "ALLOW"
+        with self.assertRaises(InteractionPlanError):
+            ReadOnlyInteractionPlan(weakened, target_origin="http://127.0.0.1:9")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -8,6 +8,7 @@ import stat
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -15,6 +16,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import evidence as evidence_module  # noqa: E402
 from evidence import EvidencePolicyError, EvidenceWriter, _private_temp_parent  # noqa: E402
 
 
@@ -139,6 +141,27 @@ class EvidenceWriterTests(unittest.TestCase):
             writer.write_named("report.json", b"new")
         self.assertEqual(target.read_bytes(), b"new")
         self.assertNotEqual(target.stat().st_ino, old_inode)
+
+    def test_preexisting_regular_temp_collision_is_never_unlinked(self) -> None:
+        token = "11" * 16
+        collision = self.root / f".browserguard-{token}.tmp"
+        collision.write_bytes(b"foreign")
+        with mock.patch.object(evidence_module.secrets, "token_hex", return_value=token):
+            with EvidenceWriter(self.root) as writer, self.assertRaises(FileExistsError):
+                writer.write_named("report.json", b"new")
+        self.assertEqual(collision.read_bytes(), b"foreign")
+        self.assertFalse((self.root / "report.json").exists())
+
+    def test_preexisting_symlink_temp_collision_is_never_unlinked(self) -> None:
+        token = "22" * 16
+        collision = self.root / f".browserguard-{token}.tmp"
+        collision.symlink_to(self.outside)
+        with mock.patch.object(evidence_module.secrets, "token_hex", return_value=token):
+            with EvidenceWriter(self.root) as writer, self.assertRaises(FileExistsError):
+                writer.write_named("report.json", b"new")
+        self.assertTrue(collision.is_symlink())
+        self.assertEqual(self.outside.read_bytes(), b"outside")
+        self.assertFalse((self.root / "report.json").exists())
 
 
 if __name__ == "__main__":

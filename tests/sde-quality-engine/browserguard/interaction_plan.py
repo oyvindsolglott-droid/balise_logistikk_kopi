@@ -59,7 +59,16 @@ class ReadOnlyInteractionPlan:
     def __init__(self, value: Dict[str, Any], *, target_origin: str) -> None:
         _exact_fields(
             value,
-            {"schemaVersion", "planId", "targetOrigin", "allowedPaths", "viewports", "targets", "actions"},
+            {
+                "schemaVersion",
+                "planId",
+                "targetOrigin",
+                "allowedPaths",
+                "queryPolicy",
+                "viewports",
+                "targets",
+                "actions",
+            },
             "plan",
         )
         if value["schemaVersion"] != PLAN_VERSION or not _valid_id(value["planId"]):
@@ -69,6 +78,9 @@ class ReadOnlyInteractionPlan:
         self.plan_id = value["planId"]
         self.target_origin = target_origin
         self.allowed_paths = self._validate_paths(value["allowedPaths"])
+        if value["queryPolicy"] != "FORBID":
+            raise InteractionPlanError("query policy must explicitly forbid every query")
+        self.query_policy = value["queryPolicy"]
         self._viewports = self._validate_viewports(value["viewports"])
         self._targets = self._validate_targets(value["targets"])
         self._actions = self._validate_actions(value["actions"])

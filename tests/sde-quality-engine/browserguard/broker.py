@@ -75,6 +75,8 @@ class BrowserguardBroker:
             self._sentinel.origin,
             headless=True,
             evidence_directory=self.evidence.root,
+            allowed_paths=self._plan.allowed_paths,
+            query_policy=self._plan.query_policy,
         )
         self._harness.start()
         self.state = "BARRIERS_GREEN"

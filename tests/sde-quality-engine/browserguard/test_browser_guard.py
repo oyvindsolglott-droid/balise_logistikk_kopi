@@ -6,8 +6,13 @@ import json
 import shutil
 import stat
 import sys
+import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
+
+from playwright.sync_api import Error as PlaywrightError
 
 
 HERE = Path(__file__).resolve().parent
@@ -21,6 +26,7 @@ from guard import (  # noqa: E402
     GuardPolicyError,
     MANDATORY_BLOCKED_METHODS,
     ProtectedBrowserHarness,
+    _qualification_evaluate,
     _qualification_wait_for_timeout,
     is_protected_websocket_url,
     normalize_http_origin,
@@ -29,6 +35,50 @@ from guard import (  # noqa: E402
 )
 from qualify import _fetch_probe, _run_test_qualification, _websocket_probe  # noqa: E402
 from sentinel import SentinelServer  # noqa: E402
+
+
+class _RedirectServer:
+    def __init__(self) -> None:
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, format_string, *args) -> None:
+                return
+
+            def do_GET(self) -> None:
+                path = urlsplit(self.path).path or "/"
+                owner.requests.append(path)
+                location = owner.redirects.get(path)
+                if location is not None:
+                    self.send_response(302)
+                    self.send_header("Location", location)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                body = b"<!doctype html><title>redirect target</title>"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        self.redirects = {}
+        self.requests = []
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+
+    @property
+    def origin(self) -> str:
+        return f"http://127.0.0.1:{self.server.server_address[1]}"
+
+    def start(self):
+        self.thread.start()
+        return self
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
 
 
 class _MissingHttpBarrier(ProtectedBrowserHarness):
@@ -269,6 +319,118 @@ class BrowserGuardQualificationTests(unittest.TestCase):
             harness.close()
             protected.close()
             non_allowlisted.close()
+            shutil.rmtree(evidence)
+
+    def test_30_path_query_subresource_frame_page_and_popup_are_pre_network(self) -> None:
+        evidence = secure_temp_directory("sde-qe-browserguard-path-policy-test-")
+        sentinel = SentinelServer().start()
+        harness = ProtectedBrowserHarness(
+            sentinel.origin,
+            evidence_directory=evidence,
+            allowed_paths={"/allowed.html"},
+            query_policy="FORBID",
+        )
+        try:
+            harness.start()
+            page = harness.new_page()
+            page.goto(f"{sentinel.origin}/allowed.html")
+            reached_before = len(sentinel.requests())
+
+            with self.assertRaises(GuardPolicyError):
+                page.goto(f"{sentinel.origin}/unplanned-document.html")
+            with self.assertRaises(GuardPolicyError):
+                page.goto(f"{sentinel.origin}/allowed.html?forbidden=1")
+
+            _qualification_evaluate(
+                page,
+                """origin => {
+                  for (const [tag, path] of [['img','/unplanned-image.png'], ['iframe','/unplanned-frame.html']]) {
+                    const node = document.createElement(tag); node.src = origin + path; document.body.appendChild(node);
+                  }
+                  window.open(origin + '/unplanned-popup.html', '_blank');
+                  fetch(origin + '/allowed.html?forbidden=2').catch(() => {});
+                }""",
+                sentinel.origin,
+            )
+            second = harness.new_page()
+            with self.assertRaises(GuardPolicyError):
+                second.goto(f"{sentinel.origin}/unplanned-second-page.html")
+            _qualification_wait_for_timeout(page, 500)
+
+            self.assertEqual(len(sentinel.requests()), reached_before)
+            blocked_paths = {
+                entry["path"]
+                for entry in harness.report()["audit"]
+                if entry["blocked"]
+            }
+            self.assertTrue(
+                {
+                    "/unplanned-image.png",
+                    "/unplanned-frame.html",
+                    "/unplanned-popup.html",
+                    "/allowed.html",
+                }.issubset(blocked_paths)
+            )
+            self.assertTrue(any(
+                entry["path"] == "/unplanned-popup.html"
+                and entry["barrierReason"] == "path_not_allowlisted"
+                and entry["pageIdentity"] != "page-1"
+                for entry in harness.report()["audit"]
+            ))
+            self.assertTrue(any(
+                entry["path"] == "/allowed.html"
+                and entry["barrierReason"] == "query_not_allowlisted"
+                for entry in harness.report()["audit"]
+            ))
+        finally:
+            harness.close()
+            sentinel.close()
+            shutil.rmtree(evidence)
+
+    def test_31_redirect_targets_never_reach_network_and_are_audited(self) -> None:
+        evidence = secure_temp_directory("sde-qe-browserguard-redirect-policy-test-")
+        source = _RedirectServer().start()
+        cross_port = _RedirectServer().start()
+        source.redirects.update(
+            {
+                "/same-start": "/same-final",
+                "/cross-start": f"{cross_port.origin}/cross-final",
+                "/loop": "/loop",
+            }
+        )
+        harness = ProtectedBrowserHarness(
+            source.origin,
+            evidence_directory=evidence,
+            allowed_paths={"/same-start", "/cross-start", "/loop"},
+            query_policy="FORBID",
+        )
+        try:
+            harness.start()
+            page = harness.new_page()
+            for path in ("/same-start", "/cross-start", "/loop"):
+                with self.subTest(path=path), self.assertRaises(PlaywrightError):
+                    page.goto(f"{source.origin}{path}")
+            self.assertNotIn("/same-final", source.requests)
+            self.assertNotIn("/cross-final", cross_port.requests)
+            self.assertEqual(source.requests.count("/loop"), 1)
+            redirect_entries = [
+                entry for entry in harness.report()["audit"]
+                if entry["barrierReason"].startswith("redirect_")
+            ]
+            self.assertEqual(
+                {entry["path"] for entry in redirect_entries},
+                {"/same-final", "/cross-final", "/loop"},
+            )
+            self.assertTrue(all(entry["blocked"] for entry in redirect_entries))
+            self.assertTrue(any(
+                entry["path"] == "/cross-final"
+                and entry["barrierReason"] == "redirect_origin_not_allowlisted"
+                for entry in redirect_entries
+            ))
+        finally:
+            harness.close()
+            source.close()
+            cross_port.close()
             shutil.rmtree(evidence)
 
 
