@@ -31,6 +31,7 @@ from protocol import (
 PUBLIC_CLIENT_API = frozenset(
     {
         "begin_human_gate",
+        "abort_human_gate",
         "capture_screenshot",
         "close",
         "complete_human_gate",
@@ -68,8 +69,15 @@ _RESULT_FIELDS = {
     "EXECUTE_ACTION": frozenset({"actionId", "actionType", "activePageId", "pageCount"}),
     "LIST_PAGES": frozenset({"pages", "activePageId"}),
     "SELECT_PAGE": frozenset({"activePageId"}),
-    "HUMAN_GATE_BEGIN": frozenset({"state", "brokerPid", "contextEpoch", "activePageId"}),
-    "HUMAN_GATE_COMPLETE": frozenset({"state", "brokerPid", "contextEpoch", "activePageId"}),
+    "HUMAN_GATE_BEGIN": frozenset(
+        {"state", "brokerPid", "contextEpoch", "activePageId", "gateId", "timeoutSeconds", "headed"}
+    ),
+    "HUMAN_GATE_COMPLETE": frozenset(
+        {"state", "brokerPid", "contextEpoch", "activePageId", "gateId", "timeoutSeconds", "headed", "outcome"}
+    ),
+    "HUMAN_GATE_ABORT": frozenset(
+        {"state", "brokerPid", "contextEpoch", "activePageId", "gateId", "timeoutSeconds", "headed", "outcome"}
+    ),
     "SHUTDOWN": frozenset(
         {
             "state",
@@ -106,12 +114,15 @@ def _assert_json_dto(value: Any) -> None:
 class BrowserguardClient:
     """Fixed process launcher and command-specific protocol facade."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, headed: bool = False) -> None:
+        if not isinstance(headed, bool):
+            raise BrowserguardClientError("headed mode must be a boolean")
         self._process: Optional[subprocess.Popen[str]] = None
         self._connection: Optional[socket.socket] = None
         self._startup: Optional[Dict[str, Any]] = None
         self._sequence = 0
         self._response_ids: set[str] = set()
+        self._headed = headed
         self._closed = False
 
     def __enter__(self) -> "BrowserguardClient":
@@ -133,6 +144,7 @@ class BrowserguardClient:
         broker_path = Path(__file__).resolve().with_name("broker.py")
         environment = dict(os.environ)
         environment["PYTHONDONTWRITEBYTECODE"] = "1"
+        environment["SDE_QE_BROWSERGUARD_HEADLESS"] = "0" if self._headed else "1"
         process = subprocess.Popen(
             [sys.executable, "-B", str(broker_path)],
             stdin=subprocess.DEVNULL,
@@ -303,11 +315,20 @@ class BrowserguardClient:
             raise BrowserguardClientError("page ID is invalid")
         return self._request("SELECT_PAGE", {"pageId": page_id})
 
-    def begin_human_gate(self) -> Dict[str, Any]:
-        return self._request("HUMAN_GATE_BEGIN", {})
+    def begin_human_gate(self, *, timeout_seconds: int = 120) -> Dict[str, Any]:
+        if (
+            not isinstance(timeout_seconds, int)
+            or isinstance(timeout_seconds, bool)
+            or not 1 <= timeout_seconds <= 300
+        ):
+            raise BrowserguardClientError("human gate timeout must be between 1 and 300 seconds")
+        return self._request("HUMAN_GATE_BEGIN", {"timeoutSeconds": timeout_seconds})
 
-    def complete_human_gate(self) -> Dict[str, Any]:
-        return self._request("HUMAN_GATE_COMPLETE", {})
+    def complete_human_gate(self, gate_id: str) -> Dict[str, Any]:
+        return self._request("HUMAN_GATE_COMPLETE", {"gateId": gate_id})
+
+    def abort_human_gate(self, gate_id: str) -> Dict[str, Any]:
+        return self._request("HUMAN_GATE_ABORT", {"gateId": gate_id})
 
     def capture_screenshot(self, artifact_id: str) -> Dict[str, Any]:
         self._assert_artifact_id(artifact_id)

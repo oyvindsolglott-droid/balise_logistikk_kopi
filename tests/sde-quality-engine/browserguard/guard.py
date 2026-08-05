@@ -405,6 +405,7 @@ class ProtectedBrowserHarness:
         self._browser = None
         self._context: Optional[_BrowserContext] = None
         self._closed = False
+        self._cleanup_error: Optional[BaseException] = None
         self._sentinel_probe_status = "BLOCKED"
         self._service_worker_probe_status = "BLOCKED"
         self._websocket_probe_status = "BLOCKED"
@@ -866,17 +867,37 @@ class ProtectedBrowserHarness:
         if self._closed:
             return
         self._closed = True
+        cleanup_error: Optional[BaseException] = None
+
+        def attempt(operation: Any) -> None:
+            nonlocal cleanup_error
+            try:
+                operation()
+            except BaseException as error:
+                if cleanup_error is None:
+                    cleanup_error = error
+
         if self._context is not None:
-            self._context.close()
+            attempt(self._context.close)
         if self._browser is not None:
-            self._browser.close()
-            self._report["browserDisconnected"] = not self._browser.is_connected()
+            attempt(self._browser.close)
+            try:
+                self._report["browserDisconnected"] = not self._browser.is_connected()
+            except BaseException as error:
+                if cleanup_error is None:
+                    cleanup_error = error
+                self._report["browserDisconnected"] = False
         else:
             self._report["browserDisconnected"] = True
         if self._playwright is not None:
-            self._playwright.stop()
-        shutil.rmtree(self.profile_directory)
+            attempt(self._playwright.stop)
+        attempt(lambda: shutil.rmtree(self.profile_directory))
         self._report["profileDirectoryDeleted"] = not self.profile_directory.exists()
+        self._cleanup_error = cleanup_error
+        if cleanup_error is not None:
+            self._security_warnings.append(
+                f"cleanup_error_{type(cleanup_error).__name__}"
+            )
         self._refresh_report()
 
 

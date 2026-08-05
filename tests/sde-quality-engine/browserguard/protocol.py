@@ -43,8 +43,9 @@ FOUNDATION_COMMANDS: Mapping[str, frozenset[str]] = {
     "EXECUTE_ACTION": frozenset({"actionId"}),
     "LIST_PAGES": frozenset(),
     "SELECT_PAGE": frozenset({"pageId"}),
-    "HUMAN_GATE_BEGIN": frozenset(),
-    "HUMAN_GATE_COMPLETE": frozenset(),
+    "HUMAN_GATE_BEGIN": frozenset({"timeoutSeconds"}),
+    "HUMAN_GATE_COMPLETE": frozenset({"gateId"}),
+    "HUMAN_GATE_ABORT": frozenset({"gateId"}),
     "SHUTDOWN": frozenset(),
 }
 
@@ -137,6 +138,14 @@ def validate_request(value: Any, *, expected_session_id: str) -> Dict[str, Any]:
         raise ProtocolError("scroll direction is invalid")
     if "state" in required and payload["state"] not in {"domcontentloaded", "load", "networkidle"}:
         raise ProtocolError("load state is invalid")
+    if "timeoutSeconds" in required and (
+        not isinstance(payload["timeoutSeconds"], int)
+        or isinstance(payload["timeoutSeconds"], bool)
+        or not 1 <= payload["timeoutSeconds"] <= 300
+    ):
+        raise ProtocolError("human gate timeout is invalid")
+    if "gateId" in required and not _is_uuid4(payload["gateId"]):
+        raise ProtocolError("human gate ID is invalid")
     return dict(value)
 
 

@@ -12,6 +12,7 @@ import stat
 import struct
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -46,6 +47,9 @@ class BrowserguardBroker:
     """Own one synthetic protected session and serve one fixed client."""
 
     def __init__(self) -> None:
+        headless_value = os.environ.get("SDE_QE_BROWSERGUARD_HEADLESS", "1")
+        if headless_value not in {"0", "1"}:
+            raise GuardInitializationError("broker headed mode is invalid")
         self.session_id = new_uuid()
         self.context_epoch = new_uuid()
         self.state = "STARTING"
@@ -67,13 +71,19 @@ class BrowserguardBroker:
         self._profile_deleted = False
         self._browser_disconnected = False
         self._sentinel_stopped = False
+        self._headless = headless_value == "1"
+        self._gate_id: Optional[str] = None
+        self._gate_timeout_seconds = 0
+        self._gate_deadline: Optional[float] = None
+        self._gate_outcome = "NOT_STARTED"
+        self._cleanup_error: Optional[BaseException] = None
 
     def initialize(self) -> None:
         self._sentinel = SentinelServer().start()
         self._plan = ReadOnlyInteractionPlan.synthetic(target_origin=self._sentinel.origin)
         self._harness = ProtectedBrowserHarness(
             self._sentinel.origin,
-            headless=True,
+            headless=self._headless,
             evidence_directory=self.evidence.root,
             allowed_paths=self._plan.allowed_paths,
             query_policy=self._plan.query_policy,
@@ -181,11 +191,13 @@ class BrowserguardBroker:
             "SELECT_PAGE": self._select_page,
             "HUMAN_GATE_BEGIN": self._human_gate_begin,
             "HUMAN_GATE_COMPLETE": self._human_gate_complete,
+            "HUMAN_GATE_ABORT": self._human_gate_abort,
             "SHUTDOWN": self._shutdown,
         }
         if self.state == "HUMAN_GATE_PENDING" and command not in {
             "STATUS",
             "HUMAN_GATE_COMPLETE",
+            "HUMAN_GATE_ABORT",
             "SHUTDOWN",
         }:
             raise GuardPolicyError("only gate status, completion or shutdown is allowed while human gate is pending")
@@ -381,25 +393,73 @@ class BrowserguardBroker:
     def _human_gate_begin(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if self.state not in {"READY", "ACTIVE"}:
             raise GuardPolicyError("human gate cannot begin in the current state")
+        if self._harness is None or self._harness.headless:
+            raise GuardPolicyError("human gate requires the headed broker runtime")
+        self._gate_id = new_uuid()
+        self._gate_timeout_seconds = payload["timeoutSeconds"]
+        self._gate_deadline = time.monotonic() + self._gate_timeout_seconds
+        self._gate_outcome = "PENDING"
         self.state = "HUMAN_GATE_PENDING"
         return self._gate_result()
 
     def _human_gate_complete(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if self.state != "HUMAN_GATE_PENDING":
             raise GuardPolicyError("human gate is not pending")
+        if payload["gateId"] != self._gate_id:
+            raise GuardPolicyError("human gate ID does not match the pending gate")
+        if self._gate_deadline is None or time.monotonic() >= self._gate_deadline:
+            self._terminate_gate("TIMED_OUT")
+            raise GuardPolicyError("human gate timed out")
         if not all(self._barrier_status().values()):
             raise GuardInitializationError("human gate cannot complete without green barriers")
         self._active_page()
         self.state = "ACTIVE"
-        return self._gate_result()
+        self._gate_outcome = "COMPLETED"
+        result = self._gate_result(outcome="COMPLETED")
+        self._gate_deadline = None
+        return result
 
-    def _gate_result(self) -> Dict[str, Any]:
-        return {
+    def _human_gate_abort(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if self.state != "HUMAN_GATE_PENDING":
+            raise GuardPolicyError("human gate is not pending")
+        if payload["gateId"] != self._gate_id:
+            raise GuardPolicyError("human gate ID does not match the pending gate")
+        self._terminate_gate("ABORTED")
+        return self._gate_result(outcome="ABORTED")
+
+    def _gate_result(self, *, outcome: Optional[str] = None) -> Dict[str, Any]:
+        if self._gate_id is None:
+            raise GuardPolicyError("human gate identity is unavailable")
+        result = {
             "state": self.state,
             "brokerPid": os.getpid(),
             "contextEpoch": self.context_epoch,
             "activePageId": self._active_page_id,
+            "gateId": self._gate_id,
+            "timeoutSeconds": self._gate_timeout_seconds,
+            "headed": not self._headless,
         }
+        if outcome is not None:
+            result["outcome"] = outcome
+        return result
+
+    def _terminate_gate(self, outcome: str) -> None:
+        if self.state == "CLOSED":
+            return
+        self._gate_outcome = outcome
+        self._gate_deadline = None
+        self.state = "CLOSING"
+        self._close_runtime()
+        self.state = "CLOSED"
+        try:
+            self.evidence.write_artifact(
+                "browserguard-report",
+                "json",
+                self._final_report_bytes(),
+            )
+        except BaseException as error:
+            self._preserve_cleanup_error(error)
+        self._shutdown_requested = True
 
     def _write_report(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if self._harness is None:
@@ -413,6 +473,9 @@ class BrowserguardBroker:
         }
 
     def _shutdown(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if self.state == "HUMAN_GATE_PENDING":
+            self._gate_outcome = "SHUTDOWN"
+            self._gate_deadline = None
         self.state = "CLOSING"
         self._close_runtime()
         report = self._final_report_bytes()
@@ -433,6 +496,8 @@ class BrowserguardBroker:
         report["brokerSessionId"] = self.session_id
         report["brokerPid"] = os.getpid()
         report["brokerState"] = "CLOSED"
+        report["humanGateId"] = self._gate_id
+        report["humanGateOutcome"] = self._gate_outcome
         return (json.dumps(report, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
     def _close_runtime(self) -> None:
@@ -440,18 +505,34 @@ class BrowserguardBroker:
             return
         self._runtime_closed = True
         if self._harness is not None:
-            self._harness.close()
-            report = self._harness.report()
-            self._profile_deleted = bool(report["profileDirectoryDeleted"])
-            self._browser_disconnected = bool(report["browserDisconnected"])
+            try:
+                self._harness.close()
+            except BaseException as error:
+                self._preserve_cleanup_error(error)
+            try:
+                report = self._harness.report()
+                self._profile_deleted = bool(report["profileDirectoryDeleted"])
+                self._browser_disconnected = bool(report["browserDisconnected"])
+            except BaseException as error:
+                self._preserve_cleanup_error(error)
+                self._profile_deleted = not self._harness.profile_directory.exists()
+                self._browser_disconnected = False
         else:
             self._profile_deleted = True
             self._browser_disconnected = True
         if self._sentinel is not None:
-            self._sentinel.close()
-            self._sentinel_stopped = self._sentinel.metadata()["exitStatus"] == 0
+            try:
+                self._sentinel.close()
+                self._sentinel_stopped = self._sentinel.metadata()["exitStatus"] == 0
+            except BaseException as error:
+                self._preserve_cleanup_error(error)
+                self._sentinel_stopped = False
         else:
             self._sentinel_stopped = True
+
+    def _preserve_cleanup_error(self, error: BaseException) -> None:
+        if self._cleanup_error is None:
+            self._cleanup_error = error
 
     def _success_response(self, request: Dict[str, Any], result: Dict[str, Any]) -> Dict[str, Any]:
         return {
@@ -491,9 +572,37 @@ class BrowserguardBroker:
             if not self._peer_is_owner(connection):
                 raise GuardPolicyError("broker peer UID did not match")
             while not self._shutdown_requested:
+                if self.state == "HUMAN_GATE_PENDING" and self._gate_deadline is not None:
+                    remaining = self._gate_deadline - time.monotonic()
+                    if remaining <= 0:
+                        self._terminate_gate("TIMED_OUT")
+                        break
+                    connection.settimeout(remaining)
+                else:
+                    connection.settimeout(None)
                 try:
                     raw = read_frame(connection)
-                except (EOFError, ProtocolError):
+                except socket.timeout:
+                    if self.state == "HUMAN_GATE_PENDING":
+                        self._terminate_gate("TIMED_OUT")
+                    break
+                except EOFError:
+                    if self.state == "HUMAN_GATE_PENDING":
+                        self._terminate_gate("DISCONNECTED")
+                        break
+                    try:
+                        write_frame(
+                            connection,
+                            self._error_response(
+                                {},
+                                "INVALID_REQUEST",
+                                "malformed protocol frame",
+                            ),
+                        )
+                    except OSError:
+                        pass
+                    break
+                except ProtocolError:
                     try:
                         write_frame(
                             connection,
@@ -530,16 +639,29 @@ class BrowserguardBroker:
     def close(self) -> None:
         self._close_runtime()
         if self._listener is not None:
-            self._listener.close()
+            try:
+                self._listener.close()
+            except BaseException as error:
+                self._preserve_cleanup_error(error)
             self._listener = None
         if self._socket_path is not None:
             try:
                 self._socket_path.unlink()
             except FileNotFoundError:
                 pass
+            except BaseException as error:
+                self._preserve_cleanup_error(error)
         if self._ipc_directory is not None:
-            shutil.rmtree(self._ipc_directory, ignore_errors=True)
-        self.evidence.close()
+            try:
+                shutil.rmtree(self._ipc_directory)
+            except FileNotFoundError:
+                pass
+            except BaseException as error:
+                self._preserve_cleanup_error(error)
+        try:
+            self.evidence.close()
+        except BaseException as error:
+            self._preserve_cleanup_error(error)
 
 
 def main() -> int:
@@ -554,6 +676,11 @@ def main() -> int:
     except (RuntimeContractError, GuardInitializationError, GuardPolicyError, ProtocolError) as error:
         print(json.dumps({"status": "BLOCKED", "error": str(error)}, sort_keys=True), file=sys.stderr)
         return 1
+    except (KeyboardInterrupt, SystemExit) as error:
+        if broker is not None and broker.state == "HUMAN_GATE_PENDING":
+            broker._terminate_gate("SIGNAL")
+        code = getattr(error, "code", 130)
+        return code if isinstance(code, int) else 130
     finally:
         if broker is not None:
             broker.close()
@@ -564,6 +691,6 @@ def _termination_signal(signum: int, frame: object) -> None:
 
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, signal.default_int_handler)
+    signal.signal(signal.SIGINT, _termination_signal)
     signal.signal(signal.SIGTERM, _termination_signal)
     sys.exit(main())

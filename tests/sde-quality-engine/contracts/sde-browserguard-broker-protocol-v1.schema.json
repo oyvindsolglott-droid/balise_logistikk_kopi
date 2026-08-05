@@ -50,6 +50,14 @@
       "type": "object", "additionalProperties": false, "required": ["pageId"],
       "properties": {"pageId": {"type": "string", "pattern": "^page-[0-9a-f-]{36}$"}}
     },
+    "gateBeginPayload": {
+      "type": "object", "additionalProperties": false, "required": ["timeoutSeconds"],
+      "properties": {"timeoutSeconds": {"type": "integer", "minimum": 1, "maximum": 300}}
+    },
+    "gateTerminalPayload": {
+      "type": "object", "additionalProperties": false, "required": ["gateId"],
+      "properties": {"gateId": {"$ref": "#/$defs/uuid"}}
+    },
     "requestEnvelope": {
       "type": "object",
       "additionalProperties": false,
@@ -60,18 +68,19 @@
         "sessionId": {"$ref": "#/$defs/uuid"},
         "commandId": {"$ref": "#/$defs/uuid"},
         "sequence": {"type": "integer", "minimum": 1},
-        "command": {"enum": ["HELLO", "STATUS", "CAPTURE_SCREENSHOT", "WRITE_REPORT", "NAVIGATE", "READ_TEXT", "READ_ATTRIBUTE", "COUNT_ELEMENTS", "IS_VISIBLE", "SET_VIEWPORT", "SCROLL", "WAIT_LOAD_STATE", "EXECUTE_ACTION", "LIST_PAGES", "SELECT_PAGE", "HUMAN_GATE_BEGIN", "HUMAN_GATE_COMPLETE", "SHUTDOWN"]},
+        "command": {"enum": ["HELLO", "STATUS", "CAPTURE_SCREENSHOT", "WRITE_REPORT", "NAVIGATE", "READ_TEXT", "READ_ATTRIBUTE", "COUNT_ELEMENTS", "IS_VISIBLE", "SET_VIEWPORT", "SCROLL", "WAIT_LOAD_STATE", "EXECUTE_ACTION", "LIST_PAGES", "SELECT_PAGE", "HUMAN_GATE_BEGIN", "HUMAN_GATE_COMPLETE", "HUMAN_GATE_ABORT", "SHUTDOWN"]},
         "payload": {"oneOf": [
           {"$ref": "#/$defs/emptyPayload"}, {"$ref": "#/$defs/artifactPayload"},
           {"$ref": "#/$defs/actionPayload"}, {"$ref": "#/$defs/targetPayload"},
           {"$ref": "#/$defs/attributePayload"}, {"$ref": "#/$defs/viewportPayload"},
           {"$ref": "#/$defs/scrollPayload"}, {"$ref": "#/$defs/loadPayload"},
-          {"$ref": "#/$defs/pagePayload"}
+          {"$ref": "#/$defs/pagePayload"}, {"$ref": "#/$defs/gateBeginPayload"},
+          {"$ref": "#/$defs/gateTerminalPayload"}
         ]}
       },
       "allOf": [
         {
-          "if": {"properties": {"command": {"enum": ["HELLO", "STATUS", "LIST_PAGES", "HUMAN_GATE_BEGIN", "HUMAN_GATE_COMPLETE", "SHUTDOWN"]}}},
+          "if": {"properties": {"command": {"enum": ["HELLO", "STATUS", "LIST_PAGES", "SHUTDOWN"]}}},
           "then": {"properties": {"payload": {"$ref": "#/$defs/emptyPayload"}}}
         },
         {
@@ -105,6 +114,14 @@
         {
           "if": {"properties": {"command": {"const": "SELECT_PAGE"}}},
           "then": {"properties": {"payload": {"$ref": "#/$defs/pagePayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"const": "HUMAN_GATE_BEGIN"}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/gateBeginPayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"enum": ["HUMAN_GATE_COMPLETE", "HUMAN_GATE_ABORT"]}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/gateTerminalPayload"}}}
         }
       ]
     },
@@ -178,7 +195,8 @@
           {"$ref": "#/$defs/actionResult"},
           {"$ref": "#/$defs/pageListResult"},
           {"$ref": "#/$defs/selectPageResult"},
-          {"$ref": "#/$defs/gateResult"},
+          {"$ref": "#/$defs/gateBeginResult"},
+          {"$ref": "#/$defs/gateTerminalResult"},
           {"$ref": "#/$defs/shutdownResult"}
         ]},
         "error": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/error"}]}
@@ -291,9 +309,15 @@
       "type": "object", "additionalProperties": false, "required": ["activePageId"],
       "properties": {"activePageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"}}
     },
-    "gateResult": {
-      "type": "object", "additionalProperties": false, "required": ["state", "brokerPid", "contextEpoch", "activePageId"],
-      "properties": {"state":{"enum":["HUMAN_GATE_PENDING","ACTIVE"]},"brokerPid":{"type":"integer","minimum":1},"contextEpoch":{"$ref":"#/$defs/uuid"},"activePageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"}}
+    "gateBeginResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "brokerPid", "contextEpoch", "activePageId", "gateId", "timeoutSeconds", "headed"],
+      "properties": {"state":{"const":"HUMAN_GATE_PENDING"},"brokerPid":{"type":"integer","minimum":1},"contextEpoch":{"$ref":"#/$defs/uuid"},"activePageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"},"gateId":{"$ref":"#/$defs/uuid"},"timeoutSeconds":{"type":"integer","minimum":1,"maximum":300},"headed":{"const":true}}
+    },
+    "gateTerminalResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "brokerPid", "contextEpoch", "activePageId", "gateId", "timeoutSeconds", "headed", "outcome"],
+      "properties": {"state":{"enum":["ACTIVE","CLOSED"]},"brokerPid":{"type":"integer","minimum":1},"contextEpoch":{"$ref":"#/$defs/uuid"},"activePageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"},"gateId":{"$ref":"#/$defs/uuid"},"timeoutSeconds":{"type":"integer","minimum":1,"maximum":300},"headed":{"const":true},"outcome":{"enum":["COMPLETED","ABORTED"]}}
     },
     "error": {
       "type": "object",

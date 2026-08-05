@@ -11,14 +11,16 @@ from client import BrowserguardClient
 
 
 def run_synthetic_orchestration() -> Dict[str, Any]:
-    client = BrowserguardClient().start()
+    client = BrowserguardClient(headed=True).start()
     outcome: Dict[str, Any] = {}
     try:
         outcome["startup"] = client.status()
         outcome["navigation"] = client.navigate("open-matrix")
         outcome["desktop"] = client.set_viewport("desktop")
-        outcome["gateBegin"] = client.begin_human_gate()
-        outcome["gateComplete"] = client.complete_human_gate()
+        outcome["gateBegin"] = client.begin_human_gate(timeout_seconds=120)
+        outcome["gateComplete"] = client.complete_human_gate(
+            outcome["gateBegin"]["gateId"]
+        )
         outcome["screenshot"] = client.capture_screenshot("synthetic-matrix")
         outcome["report"] = client.write_report("synthetic-session")
     finally:

@@ -42,7 +42,7 @@ jobs:
         run: python -B tests/sde-quality-engine/browserguard/runtime_contract.py
 
       - name: Run Browserguard security and broker gates
-        run: python -B -m unittest discover -s tests/sde-quality-engine/browserguard -p 'test_*.py' -v
+        run: xvfb-run -a python -B -m unittest discover -s tests/sde-quality-engine/browserguard -p 'test_*.py' -v
 
   permanent-regressions:
     name: permanent-regressions

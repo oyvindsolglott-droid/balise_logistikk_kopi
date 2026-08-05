@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -17,17 +18,19 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from client import BrowserguardClient, BrowserguardClientError  # noqa: E402
+from evidence import _private_temp_parent  # noqa: E402
 from interaction_plan import (  # noqa: E402
     InteractionPlanError,
     ReadOnlyInteractionPlan,
     validate_element_policy,
 )
+from protocol import new_uuid  # noqa: E402
 
 
 class BrowserguardMatrixCapabilityTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.client = BrowserguardClient().start()
+        cls.client = BrowserguardClient(headed=True).start()
         cls.initial = cls.client.status()
         cls.navigation = cls.client.navigate("open-matrix")
         cls.initial_page_id = cls.navigation["activePageId"]
@@ -120,14 +123,17 @@ class BrowserguardMatrixCapabilityTests(unittest.TestCase):
 
     def test_10_human_gate_preserves_process_context_and_page(self) -> None:
         before = self.client.status()
-        pending = self.client.begin_human_gate()
+        pending = self.client.begin_human_gate(timeout_seconds=30)
         self.assertEqual(pending["state"], "HUMAN_GATE_PENDING")
+        self.assertTrue(pending["headed"])
         with self.assertRaises(BrowserguardClientError):
             self.client.read_text("page-title")
         status = self.client.status()
         self.assertEqual(status["state"], "HUMAN_GATE_PENDING")
-        active = self.client.complete_human_gate()
+        active = self.client.complete_human_gate(pending["gateId"])
         self.assertEqual(active["state"], "ACTIVE")
+        self.assertEqual(active["outcome"], "COMPLETED")
+        self.assertEqual(active["gateId"], pending["gateId"])
         self.assertEqual(active["brokerPid"], before["brokerPid"])
         self.assertEqual(active["contextEpoch"], before["contextEpoch"])
         self.assertEqual(active["activePageId"], self.initial_page_id)
@@ -239,6 +245,83 @@ class BrowserguardMatrixCapabilityTests(unittest.TestCase):
         weakened["queryPolicy"] = "ALLOW"
         with self.assertRaises(InteractionPlanError):
             ReadOnlyInteractionPlan(weakened, target_origin="http://127.0.0.1:9")
+
+    def test_18_gate_identity_double_begin_and_double_complete_fail_closed(self) -> None:
+        pending = self.client.begin_human_gate(timeout_seconds=30)
+        with self.assertRaises(BrowserguardClientError):
+            self.client.begin_human_gate(timeout_seconds=30)
+        with self.assertRaises(BrowserguardClientError):
+            self.client.complete_human_gate(new_uuid())
+        with self.assertRaises(BrowserguardClientError):
+            self.client.abort_human_gate(new_uuid())
+        completed = self.client.complete_human_gate(pending["gateId"])
+        self.assertEqual(completed["outcome"], "COMPLETED")
+        with self.assertRaises(BrowserguardClientError):
+            self.client.complete_human_gate(pending["gateId"])
+
+    def test_19_headless_gate_is_rejected(self) -> None:
+        client = BrowserguardClient().start()
+        try:
+            client.navigate("open-matrix")
+            with self.assertRaises(BrowserguardClientError):
+                client.begin_human_gate(timeout_seconds=10)
+        finally:
+            client.close()
+
+    def test_20_gate_abort_is_terminal_and_cleans_owned_runtime(self) -> None:
+        before = set(_private_temp_parent().glob("sde-qe-browser-profile-*"))
+        client = BrowserguardClient(headed=True).start()
+        socket_path = Path(client._startup["socketPath"])
+        created = set(_private_temp_parent().glob("sde-qe-browser-profile-*")) - before
+        try:
+            client.navigate("open-matrix")
+            pending = client.begin_human_gate(timeout_seconds=30)
+            aborted = client.abort_human_gate(pending["gateId"])
+            self.assertEqual(aborted["state"], "CLOSED")
+            self.assertEqual(aborted["outcome"], "ABORTED")
+        finally:
+            client.close()
+        self.assertFalse(socket_path.exists())
+        self.assertTrue(created)
+        self.assertTrue(all(not path.exists() for path in created))
+
+    def test_21_gate_timeout_is_terminal_and_cleans_owned_runtime(self) -> None:
+        before = set(_private_temp_parent().glob("sde-qe-browser-profile-*"))
+        client = BrowserguardClient(headed=True).start()
+        socket_path = Path(client._startup["socketPath"])
+        created = set(_private_temp_parent().glob("sde-qe-browser-profile-*")) - before
+        try:
+            client.navigate("open-matrix")
+            client.begin_human_gate(timeout_seconds=1)
+            time.sleep(1.5)
+            with self.assertRaises(BrowserguardClientError):
+                client.status()
+        finally:
+            client.close()
+        self.assertFalse(socket_path.exists())
+        self.assertTrue(created)
+        self.assertTrue(all(not path.exists() for path in created))
+
+    def test_22_gate_disconnect_and_shutdown_both_clean_owned_runtime(self) -> None:
+        disconnected = BrowserguardClient(headed=True).start()
+        disconnected_socket = Path(disconnected._startup["socketPath"])
+        disconnected.navigate("open-matrix")
+        disconnected.begin_human_gate(timeout_seconds=30)
+        disconnected._connection.close()
+        disconnected._connection = None
+        disconnected.close()
+        self.assertFalse(disconnected_socket.exists())
+
+        shutdown = BrowserguardClient(headed=True).start()
+        shutdown_socket = Path(shutdown._startup["socketPath"])
+        shutdown.navigate("open-matrix")
+        shutdown.begin_human_gate(timeout_seconds=30)
+        result = shutdown.close()
+        self.assertEqual(result["state"], "CLOSED")
+        self.assertTrue(result["profileDeleted"])
+        self.assertTrue(result["browserDisconnected"])
+        self.assertTrue(result["sentinelStopped"])
+        self.assertFalse(shutdown_socket.exists())
 
 
 if __name__ == "__main__":

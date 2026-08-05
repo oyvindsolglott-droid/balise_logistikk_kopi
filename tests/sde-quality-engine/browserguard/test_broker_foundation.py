@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import json
 import os
+import signal
 import socket
 import stat
 import struct
@@ -27,6 +28,7 @@ from client import (  # noqa: E402
     BrowserguardClient,
     BrowserguardClientError,
 )
+from evidence import _private_temp_parent  # noqa: E402
 from protocol import (  # noqa: E402
     PROTOCOL_VERSION,
     new_uuid,
@@ -381,6 +383,48 @@ class BrowserguardBrokerFoundationTests(unittest.TestCase):
         self.assertTrue((Path(status["evidenceDirectory"]) / shutdown["reportFilename"]).is_file())
         with self.assertRaises(ProcessLookupError):
             os.kill(startup["brokerPid"], 0)
+        self.assertEqual(client.close(), {})
+
+    def test_broker_only_sigint_and_sigterm_are_sanitized_and_cleanup_complete(self) -> None:
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            with self.subTest(signum=signum):
+                before = set(_private_temp_parent().glob("sde-qe-browser-profile-*"))
+                broker = _RawBroker()
+                socket_path = Path(broker.startup["socketPath"])
+                created = set(_private_temp_parent().glob("sde-qe-browser-profile-*")) - before
+                try:
+                    self.assertTrue(broker.exchange(broker.base_request("HELLO", 1, {}))["ok"])
+                    os.kill(broker.process.pid, signum)
+                    self.assertEqual(broker.process.wait(timeout=15), 128 + signum)
+                    stderr = broker.process.stderr.read() if broker.process.stderr is not None else ""
+                    self.assertNotIn("Traceback", stderr)
+                    self.assertFalse(socket_path.exists())
+                    self.assertFalse(socket_path.parent.exists())
+                    self.assertTrue(created)
+                    self.assertTrue(all(not path.exists() for path in created))
+                finally:
+                    broker.close()
+
+    def test_process_group_sigterm_leaves_no_profile_socket_or_process_group(self) -> None:
+        before = set(_private_temp_parent().glob("sde-qe-browser-profile-*"))
+        broker = _RawBroker()
+        socket_path = Path(broker.startup["socketPath"])
+        created = set(_private_temp_parent().glob("sde-qe-browser-profile-*")) - before
+        process_group = broker.process.pid
+        try:
+            self.assertTrue(broker.exchange(broker.base_request("HELLO", 1, {}))["ok"])
+            os.killpg(process_group, signal.SIGTERM)
+            self.assertEqual(broker.process.wait(timeout=15), 128 + signal.SIGTERM)
+            stderr = broker.process.stderr.read() if broker.process.stderr is not None else ""
+            self.assertNotIn("Traceback", stderr)
+            self.assertFalse(socket_path.exists())
+            self.assertFalse(socket_path.parent.exists())
+            self.assertTrue(created)
+            self.assertTrue(all(not path.exists() for path in created))
+            with self.assertRaises(ProcessLookupError):
+                os.killpg(process_group, 0)
+        finally:
+            broker.close()
 
 
 if __name__ == "__main__":
