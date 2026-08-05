@@ -27,7 +27,7 @@ from guard import (  # noqa: E402
     secure_temp_directory,
     validate_report_shape,
 )
-from qualify import _fetch_probe, _websocket_probe, run_qualification  # noqa: E402
+from qualify import _fetch_probe, _run_test_qualification, _websocket_probe  # noqa: E402
 from sentinel import SentinelServer  # noqa: E402
 
 
@@ -66,7 +66,7 @@ class _ConnectWebSocketMutant(ProtectedBrowserHarness):
 class BrowserGuardQualificationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.outcome = run_qualification()
+        cls.outcome = _run_test_qualification(harness_type=ProtectedBrowserHarness)
         cls.report = cls.outcome["report"]
         cls.protected_requests = cls.outcome["protectedRequests"]
         cls.control_requests = cls.outcome["controlRequests"]

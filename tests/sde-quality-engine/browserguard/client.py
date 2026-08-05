@@ -111,6 +111,7 @@ class BrowserguardClient:
         self._connection: Optional[socket.socket] = None
         self._startup: Optional[Dict[str, Any]] = None
         self._sequence = 0
+        self._response_ids: set[str] = set()
         self._closed = False
 
     def __enter__(self) -> "BrowserguardClient":
@@ -207,6 +208,10 @@ class BrowserguardClient:
                 expected_command_id=command_id,
                 expected_sequence=self._sequence,
             )
+            response_id = response["responseId"]
+            if response_id in self._response_ids:
+                raise ProtocolError("response ID was reused within the broker session")
+            self._response_ids.add(response_id)
         except (OSError, EOFError, ProtocolError) as error:
             raise BrowserguardClientError(f"broker protocol failed: {error}") from error
         if not response["ok"]:

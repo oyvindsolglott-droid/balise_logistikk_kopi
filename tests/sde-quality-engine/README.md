@@ -124,7 +124,7 @@ En enkelt maskinlesbar kvalifiseringsrapport med sanitert evidens kan opprettes
 under en unik katalog i `/private/tmp` med:
 
 ```sh
-python3 tests/sde-quality-engine/browserguard/qualify.py
+python3 tests/sde-quality-engine/browserguard/orchestrate.py
 ```
 
 Rapporten følger

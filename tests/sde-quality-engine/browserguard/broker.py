@@ -491,7 +491,18 @@ class BrowserguardBroker:
             while not self._shutdown_requested:
                 try:
                     raw = read_frame(connection)
-                except EOFError:
+                except (EOFError, ProtocolError):
+                    try:
+                        write_frame(
+                            connection,
+                            self._error_response(
+                                {},
+                                "INVALID_REQUEST",
+                                "malformed protocol frame",
+                            ),
+                        )
+                    except OSError:
+                        pass
                     break
                 try:
                     request = validate_request(raw, expected_session_id=self.session_id)

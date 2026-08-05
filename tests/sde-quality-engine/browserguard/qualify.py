@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the browser guard only against disposable loopback sentinels."""
+"""Test-only local probes; executable use delegates to the broker client."""
 
 from __future__ import annotations
 
@@ -9,16 +9,17 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
-from evidence import EvidenceWriter
-from guard import (
-    MANDATORY_BLOCKED_METHODS,
-    ProtectedBrowserHarness,
-    _qualification_click,
-    _qualification_evaluate,
-    _qualification_wait_for_timeout,
-    secure_temp_directory,
-)
-from sentinel import SentinelServer
+if __name__ != "__main__":
+    from evidence import EvidenceWriter
+    from guard import (
+        MANDATORY_BLOCKED_METHODS,
+        ProtectedBrowserHarness,
+        _qualification_click,
+        _qualification_evaluate,
+        _qualification_wait_for_timeout,
+        secure_temp_directory,
+    )
+    from sentinel import SentinelServer
 
 
 def _json_probe(page: Any, expression: str, argument: Any) -> Any:
@@ -146,11 +147,13 @@ def _write_manifest(evidence_directory: Path) -> None:
         writer.write_named("SHA256SUMS", ("\n".join(entries) + "\n").encode("utf-8"))
 
 
-def run_qualification(
+def _run_test_qualification(
     *,
     evidence_directory: Optional[Path] = None,
-    harness_type: Type[ProtectedBrowserHarness] = ProtectedBrowserHarness,
+    harness_type: Optional[Type[Any]] = None,
 ) -> Dict[str, Any]:
+    if harness_type is None:
+        raise RuntimeError("test qualification requires an explicit internal harness type")
     evidence = evidence_directory or secure_temp_directory("sde-qe-browserguard-qualification-")
     if any(evidence.iterdir()):
         raise RuntimeError("browserguard evidence directory must be empty")
@@ -390,19 +393,11 @@ def run_qualification(
 
 
 def main() -> int:
-    outcome = run_qualification()
-    print(json.dumps(
-        {
-            "overallStatus": outcome["report"]["overallStatus"],
-            "evidenceDirectory": outcome["evidenceDirectory"],
-            "allowedRequestCount": outcome["report"]["allowedRequestCount"],
-            "blockedRequestCount": outcome["report"]["blockedRequestCount"],
-            "blockedMethods": outcome["report"]["blockedMethods"],
-            "webSocketsBlocked": outcome["report"]["webSocketsBlocked"],
-        },
-        sort_keys=True,
-    ))
-    return 0 if outcome["report"]["overallStatus"] == "GREEN" else 1
+    from orchestrate import run_synthetic_orchestration
+
+    outcome = run_synthetic_orchestration()
+    print(json.dumps(outcome, sort_keys=True))
+    return 0 if outcome.get("shutdown", {}).get("state") == "CLOSED" else 1
 
 
 if __name__ == "__main__":

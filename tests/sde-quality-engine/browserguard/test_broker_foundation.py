@@ -7,10 +7,12 @@ import json
 import os
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 from typing import Any, Dict
 
@@ -19,6 +21,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import client as client_module  # noqa: E402
 from client import (  # noqa: E402
     PUBLIC_CLIENT_API,
     BrowserguardClient,
@@ -172,6 +175,41 @@ class BrowserguardBrokerFoundationTests(unittest.TestCase):
         )
         self.assertEqual(probe.stdout.strip(), "False")
 
+    def test_only_broker_owned_runtime_module_imports_playwright(self) -> None:
+        importers = set()
+        for path in HERE.glob("*.py"):
+            if path.name.startswith("test_"):
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=path.name)
+            modules = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    modules.extend(alias.name for alias in node.names)
+                elif isinstance(node, ast.ImportFrom) and node.module:
+                    modules.append(node.module)
+            if any(module == "playwright" or module.startswith("playwright.") for module in modules):
+                importers.add(path.name)
+        self.assertEqual(importers, {"guard.py"})
+
+    def test_documented_and_package_entrypoints_are_broker_only(self) -> None:
+        package = json.loads((HERE.parents[2] / "package.json").read_text(encoding="utf-8"))
+        scripts = "\n".join(str(value) for value in package.get("scripts", {}).values())
+        readme = (HERE.parent / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("browserguard/guard.py", scripts)
+        self.assertNotIn("browserguard/qualify.py", scripts)
+        self.assertNotIn("python3 tests/sde-quality-engine/browserguard/qualify.py", readme)
+        self.assertIn("browserguard/orchestrate.py", scripts)
+        self.assertIn("browserguard/orchestrate.py", readme)
+
+    def test_orchestrator_client_observes_a_distinct_broker_process(self) -> None:
+        client = BrowserguardClient().start()
+        try:
+            status = client.status()
+            self.assertNotEqual(status["brokerPid"], os.getpid())
+            self.assertEqual(status["brokerPid"], client._process.pid)
+        finally:
+            client.close()
+
     def test_no_eval_dynamic_import_or_arbitrary_dispatch(self) -> None:
         for name in ("broker.py", "client.py", "protocol.py"):
             tree = ast.parse((HERE / name).read_text(encoding="utf-8"), filename=name)
@@ -222,6 +260,111 @@ class BrowserguardBrokerFoundationTests(unittest.TestCase):
             self.assertTrue(broker.exchange(shutdown)["ok"])
         finally:
             broker.close()
+
+    def test_malformed_complete_frames_receive_one_sanitized_terminal_error(self) -> None:
+        marker = "payload-must-not-be-reflected"
+        payloads = {
+            "zero": struct.pack("!I", 0),
+            "oversize": struct.pack("!I", 65_537),
+            "invalid-utf8": struct.pack("!I", 2) + b"\xff\xff",
+            "invalid-json": struct.pack("!I", len(marker)) + marker.encode("ascii"),
+            "non-object": struct.pack("!I", 2) + b"[]",
+        }
+        for label, payload in payloads.items():
+            with self.subTest(label=label):
+                broker = _RawBroker()
+                try:
+                    broker.connection.sendall(payload)
+                    response = read_frame(broker.connection)
+                    self.assertFalse(response["ok"])
+                    self.assertEqual(response["error"], {
+                        "code": "INVALID_REQUEST",
+                        "message": "malformed protocol frame",
+                    })
+                    self.assertNotIn(marker, json.dumps(response))
+                    self.assertEqual(broker.process.wait(timeout=15), 0)
+                    stderr = broker.process.stderr.read() if broker.process.stderr is not None else ""
+                    self.assertNotIn("Traceback", stderr)
+                    self.assertNotIn(marker, stderr)
+                finally:
+                    broker.close()
+
+    def test_truncated_frame_has_sanitized_terminal_close_contract(self) -> None:
+        broker = _RawBroker()
+        try:
+            broker.connection.sendall(struct.pack("!I", 20) + b"{")
+            broker.connection.shutdown(socket.SHUT_WR)
+            response = read_frame(broker.connection)
+            self.assertFalse(response["ok"])
+            self.assertEqual(response["error"]["message"], "malformed protocol frame")
+            self.assertEqual(broker.process.wait(timeout=15), 0)
+            with self.assertRaises(EOFError):
+                read_frame(broker.connection)
+        finally:
+            broker.close()
+
+    def test_response_identity_correlation_and_session_uniqueness(self) -> None:
+        response_id = new_uuid()
+
+        def make_client() -> BrowserguardClient:
+            value = BrowserguardClient()
+            value._connection = object()  # type: ignore[assignment]
+            value._startup = {"sessionId": new_uuid()}
+            return value
+
+        def status_result() -> Dict[str, Any]:
+            return {
+                "state": "READY",
+                "brokerPid": 123,
+                "contextEpoch": new_uuid(),
+                "pageCount": 1,
+                "barrierStatus": {
+                    "serviceWorkersBlocked": True,
+                    "httpBarrierInstalled": True,
+                    "webSocketBarrierInstalled": True,
+                    "barriersInstalledBeforeFirstPage": True,
+                },
+                "evidenceDirectory": "/private/tmp/synthetic-evidence",
+            }
+
+        def exchange(value: BrowserguardClient, mutate=None, *, calls: int = 1) -> None:
+            requests = []
+
+            def capture(_connection, request):
+                requests.append(request)
+
+            def respond(_connection):
+                request = requests[-1]
+                response = {
+                    "protocolVersion": PROTOCOL_VERSION,
+                    "sessionId": value._startup["sessionId"],
+                    "responseId": response_id,
+                    "responseTo": request["commandId"],
+                    "sequence": request["sequence"],
+                    "ok": True,
+                    "result": status_result(),
+                    "error": None,
+                }
+                if mutate is not None:
+                    mutate(response)
+                return response
+
+            with mock.patch.object(client_module, "write_frame", side_effect=capture), mock.patch.object(
+                client_module, "read_frame", side_effect=respond
+            ):
+                for _ in range(calls):
+                    value.status()
+
+        first = make_client()
+        with self.assertRaises(BrowserguardClientError):
+            exchange(first, calls=2)
+
+        exchange(make_client())
+
+        with self.assertRaises(BrowserguardClientError):
+            exchange(make_client(), lambda response: response.update(responseTo=new_uuid()))
+        with self.assertRaises(BrowserguardClientError):
+            exchange(make_client(), lambda response: response.update(sequence=response["sequence"] + 1))
 
     def test_broker_shutdown_removes_process_socket_profile_and_sentinel(self) -> None:
         client = BrowserguardClient().start()

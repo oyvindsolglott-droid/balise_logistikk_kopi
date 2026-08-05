@@ -36,10 +36,6 @@ from playwright.sync_api import (
 __all__ = (
     "GuardInitializationError",
     "GuardPolicyError",
-    "GuardedPage",
-    "NavigationResult",
-    "ProtectedBrowserHarness",
-    "ScreenshotResult",
 )
 
 

@@ -157,10 +157,6 @@ class BrowserGuardPublicApiTests(unittest.TestCase):
             {
                 "GuardInitializationError",
                 "GuardPolicyError",
-                "GuardedPage",
-                "NavigationResult",
-                "ProtectedBrowserHarness",
-                "ScreenshotResult",
             },
         )
         for name in guard_module.__all__:
