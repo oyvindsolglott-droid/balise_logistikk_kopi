@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
+from evidence import EvidenceWriter
 from guard import (
     MANDATORY_BLOCKED_METHODS,
     ProtectedBrowserHarness,
@@ -130,7 +131,9 @@ def _confirm_blocked_label(
 
 
 def _write_json(path: Path, value: Any) -> None:
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    payload = (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    with EvidenceWriter(path.parent) as writer:
+        writer.write_named(path.name, payload)
 
 
 def _write_manifest(evidence_directory: Path) -> None:
@@ -139,7 +142,8 @@ def _write_manifest(evidence_directory: Path) -> None:
         if path.is_file() and not path.is_symlink():
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             entries.append(f"{digest}  {path.name}")
-    (evidence_directory / "SHA256SUMS").write_text("\n".join(entries) + "\n", encoding="utf-8")
+    with EvidenceWriter(evidence_directory) as writer:
+        writer.write_named("SHA256SUMS", ("\n".join(entries) + "\n").encode("utf-8"))
 
 
 def run_qualification(

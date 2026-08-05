@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sde-browserguard-broker-protocol-v1.schema.json",
+  "title": "SDE Browserguard broker protocol",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocolVersion", "maxFrameBytes", "startup", "request", "response"],
+  "properties": {
+    "protocolVersion": {"const": "sde-browserguard-broker/v1"},
+    "maxFrameBytes": {"const": 65536},
+    "startup": {"$ref": "#/$defs/startup"},
+    "request": {"oneOf": [
+      {"$ref": "#/$defs/helloRequest"},
+      {"$ref": "#/$defs/statusRequest"},
+      {"$ref": "#/$defs/captureRequest"},
+      {"$ref": "#/$defs/reportRequest"},
+      {"$ref": "#/$defs/shutdownRequest"}
+    ]},
+    "response": {"$ref": "#/$defs/response"}
+  },
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "emptyPayload": {"type": "object", "additionalProperties": false, "maxProperties": 0},
+    "artifactPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId"],
+      "properties": {"artifactId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}
+    },
+    "startup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "protocolHash", "sessionId", "socketPath", "brokerPid", "state"],
+      "properties": {
+        "protocolVersion": {"const": "sde-browserguard-broker/v1"},
+        "protocolHash": {"$ref": "#/$defs/hash"},
+        "sessionId": {"$ref": "#/$defs/uuid"},
+        "socketPath": {"type": "string", "minLength": 1},
+        "brokerPid": {"type": "integer", "minimum": 1},
+        "state": {"const": "READY"}
+      }
+    },
+    "helloRequest": {"$ref": "#/$defs/requestHello"},
+    "statusRequest": {"$ref": "#/$defs/requestStatus"},
+    "captureRequest": {"$ref": "#/$defs/requestCapture"},
+    "reportRequest": {"$ref": "#/$defs/requestReport"},
+    "shutdownRequest": {"$ref": "#/$defs/requestShutdown"},
+    "requestHello": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "protocolHash", "sessionId", "commandId", "sequence", "command", "payload"],
+      "properties": {"protocolVersion":{"const":"sde-browserguard-broker/v1"},"protocolHash":{"$ref":"#/$defs/hash"},"sessionId":{"$ref":"#/$defs/uuid"},"commandId":{"$ref":"#/$defs/uuid"},"sequence":{"type":"integer","minimum":1},"command":{"const":"HELLO"},"payload":{"$ref":"#/$defs/emptyPayload"}}
+    },
+    "requestStatus": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "protocolHash", "sessionId", "commandId", "sequence", "command", "payload"],
+      "properties": {"protocolVersion":{"const":"sde-browserguard-broker/v1"},"protocolHash":{"$ref":"#/$defs/hash"},"sessionId":{"$ref":"#/$defs/uuid"},"commandId":{"$ref":"#/$defs/uuid"},"sequence":{"type":"integer","minimum":1},"command":{"const":"STATUS"},"payload":{"$ref":"#/$defs/emptyPayload"}}
+    },
+    "requestCapture": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "protocolHash", "sessionId", "commandId", "sequence", "command", "payload"],
+      "properties": {"protocolVersion":{"const":"sde-browserguard-broker/v1"},"protocolHash":{"$ref":"#/$defs/hash"},"sessionId":{"$ref":"#/$defs/uuid"},"commandId":{"$ref":"#/$defs/uuid"},"sequence":{"type":"integer","minimum":1},"command":{"const":"CAPTURE_SCREENSHOT"},"payload":{"$ref":"#/$defs/artifactPayload"}}
+    },
+    "requestReport": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "protocolHash", "sessionId", "commandId", "sequence", "command", "payload"],
+      "properties": {"protocolVersion":{"const":"sde-browserguard-broker/v1"},"protocolHash":{"$ref":"#/$defs/hash"},"sessionId":{"$ref":"#/$defs/uuid"},"commandId":{"$ref":"#/$defs/uuid"},"sequence":{"type":"integer","minimum":1},"command":{"const":"WRITE_REPORT"},"payload":{"$ref":"#/$defs/artifactPayload"}}
+    },
+    "requestShutdown": {
+      "type": "object", "additionalProperties": false,
+      "required": ["protocolVersion", "protocolHash", "sessionId", "commandId", "sequence", "command", "payload"],
+      "properties": {"protocolVersion":{"const":"sde-browserguard-broker/v1"},"protocolHash":{"$ref":"#/$defs/hash"},"sessionId":{"$ref":"#/$defs/uuid"},"commandId":{"$ref":"#/$defs/uuid"},"sequence":{"type":"integer","minimum":1},"command":{"const":"SHUTDOWN"},"payload":{"$ref":"#/$defs/emptyPayload"}}
+    },
+    "response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "sessionId", "responseId", "responseTo", "sequence", "ok", "result", "error"],
+      "properties": {
+        "protocolVersion": {"const": "sde-browserguard-broker/v1"},
+        "sessionId": {"$ref": "#/$defs/uuid"},
+        "responseId": {"$ref": "#/$defs/uuid"},
+        "responseTo": {"$ref": "#/$defs/uuid"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "ok": {"type": "boolean"},
+        "result": {"oneOf": [
+          {"type": "null"},
+          {"$ref": "#/$defs/helloResult"},
+          {"$ref": "#/$defs/statusResult"},
+          {"$ref": "#/$defs/artifactResult"},
+          {"$ref": "#/$defs/shutdownResult"}
+        ]},
+        "error": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/error"}]}
+      }
+    },
+    "helloResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "protocolHash", "brokerPid", "state"],
+      "properties": {
+        "protocolVersion": {"const": "sde-browserguard-broker/v1"},
+        "protocolHash": {"$ref": "#/$defs/hash"},
+        "brokerPid": {"type": "integer", "minimum": 1},
+        "state": {"const": "READY"}
+      }
+    },
+    "barrierStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["serviceWorkersBlocked", "httpBarrierInstalled", "webSocketBarrierInstalled", "barriersInstalledBeforeFirstPage"],
+      "properties": {
+        "serviceWorkersBlocked": {"type": "boolean"},
+        "httpBarrierInstalled": {"type": "boolean"},
+        "webSocketBarrierInstalled": {"type": "boolean"},
+        "barriersInstalledBeforeFirstPage": {"type": "boolean"}
+      }
+    },
+    "statusResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "brokerPid", "contextEpoch", "pageCount", "barrierStatus", "evidenceDirectory"],
+      "properties": {
+        "state": {"enum": ["READY", "HUMAN_GATE_PENDING", "ACTIVE"]},
+        "brokerPid": {"type": "integer", "minimum": 1},
+        "contextEpoch": {"$ref": "#/$defs/uuid"},
+        "pageCount": {"type": "integer", "minimum": 0},
+        "barrierStatus": {"$ref": "#/$defs/barrierStatus"},
+        "evidenceDirectory": {"type": "string", "minLength": 1}
+      }
+    },
+    "artifactResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "filename", "byteCount"],
+      "properties": {
+        "artifactId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"},
+        "filename": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}\\.(png|json)$"},
+        "byteCount": {"type": "integer", "minimum": 0}
+      }
+    },
+    "shutdownResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "profileDeleted", "browserDisconnected", "sentinelStopped", "evidenceDirectory", "reportFilename"],
+      "properties": {
+        "state": {"const": "CLOSED"},
+        "profileDeleted": {"type": "boolean"},
+        "browserDisconnected": {"type": "boolean"},
+        "sentinelStopped": {"type": "boolean"},
+        "evidenceDirectory": {"type": "string", "minLength": 1},
+        "reportFilename": {"const": "browserguard-report.json"}
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {"enum": ["INVALID_REQUEST", "POLICY_REJECTED", "INTERNAL_ERROR"]},
+        "message": {"type": "string", "minLength": 1, "maxLength": 300}
+      }
+    }
+  }
+}

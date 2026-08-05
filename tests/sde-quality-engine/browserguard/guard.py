@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 from urllib.parse import urlsplit
 
+from evidence import EvidencePolicyError, EvidenceWriter, _private_temp_parent
 from playwright.sync_api import (
     BrowserContext as _BrowserContext,
     Page as _Page,
@@ -169,8 +170,9 @@ def is_protected_websocket_url(value: str, target_origin: str) -> bool:
 
 def _assert_secure_directory(path: Path, *, require_private_tmp: bool) -> None:
     resolved = path.resolve(strict=True)
-    if require_private_tmp and Path("/private/tmp") not in (resolved, *resolved.parents):
-        raise GuardInitializationError("temporary directory must remain under /private/tmp")
+    temp_root = _private_temp_parent().resolve(strict=True)
+    if require_private_tmp and temp_root not in (resolved, *resolved.parents):
+        raise GuardInitializationError("temporary directory must remain under the private temp root")
     metadata = path.lstat()
     if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
         raise GuardInitializationError("temporary directory must be a real directory, not a symlink")
@@ -179,7 +181,7 @@ def _assert_secure_directory(path: Path, *, require_private_tmp: bool) -> None:
 
 
 def secure_temp_directory(prefix: str) -> Path:
-    path = Path(tempfile.mkdtemp(prefix=prefix, dir="/private/tmp"))
+    path = Path(tempfile.mkdtemp(prefix=prefix, dir=_private_temp_parent()))
     path.chmod(0o700)
     _assert_secure_directory(path, require_private_tmp=True)
     return path
@@ -235,6 +237,16 @@ def _qualification_click(guarded_page: "GuardedPage", selector: str) -> None:
 def _qualification_wait_for_timeout(guarded_page: "GuardedPage", timeout_ms: int) -> None:
     _, page = _page_state(guarded_page)
     page.wait_for_timeout(timeout_ms)
+
+
+def _broker_screenshot_bytes(guarded_page: "GuardedPage") -> bytes:
+    """Broker-only screenshot seam that never accepts a filesystem path."""
+
+    _, page = _page_state(guarded_page)
+    value = page.screenshot()
+    if not isinstance(value, bytes):
+        raise GuardPolicyError("Playwright screenshot did not return bytes")
+    return value
 
 
 class GuardedPage:
@@ -325,8 +337,15 @@ class GuardedPage:
             raise GuardPolicyError("screenshot filename must use png or jpeg")
         harness, page = _page_state(self)
         target = harness._controlled_evidence_path(filename)
-        page.screenshot(path=str(target))
-        return ScreenshotResult(path=str(target), byte_count=target.stat().st_size)
+        value = page.screenshot()
+        if not isinstance(value, bytes):
+            raise GuardPolicyError("Playwright screenshot did not return bytes")
+        try:
+            with EvidenceWriter(harness.evidence_directory) as writer:
+                result = writer.write_named(filename, value)
+        except EvidencePolicyError as error:
+            raise GuardPolicyError(str(error)) from error
+        return ScreenshotResult(path=str(target), byte_count=result.byte_count)
 
     def close(self) -> None:
         _, page = _page_state(self)
@@ -706,7 +725,11 @@ class ProtectedBrowserHarness:
         target = self.evidence_directory / filename
         if target.parent.resolve(strict=True) != self.evidence_directory.resolve(strict=True):
             raise GuardPolicyError("evidence must be written directly inside the secured evidence directory")
-        if target.exists() and target.is_symlink():
+        try:
+            metadata = target.lstat()
+        except FileNotFoundError:
+            metadata = None
+        if metadata is not None and stat.S_ISLNK(metadata.st_mode):
             raise GuardPolicyError("evidence path must not be a symlink")
         return target
 
@@ -714,9 +737,12 @@ class ProtectedBrowserHarness:
         target = Path(path)
         if target.parent.resolve(strict=True) != self.evidence_directory.resolve(strict=True):
             raise GuardPolicyError("report must be written directly inside the secured evidence directory")
-        if target.exists() and target.is_symlink():
-            raise GuardPolicyError("report path must not be a symlink")
-        target.write_text(json.dumps(self.report(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        value = (json.dumps(self.report(), indent=2, sort_keys=True) + "\n").encode("utf-8")
+        try:
+            with EvidenceWriter(self.evidence_directory) as writer:
+                writer.write_named(target.name, value)
+        except EvidencePolicyError as error:
+            raise GuardPolicyError(str(error)) from error
 
     def close(self) -> None:
         if self._closed:

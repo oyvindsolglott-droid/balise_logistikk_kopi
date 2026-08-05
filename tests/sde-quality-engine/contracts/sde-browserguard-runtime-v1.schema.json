@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "sde-browserguard-runtime-v1.schema.json",
+  "title": "SDE Browserguard reproducible runtime contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "pythonVersion",
+    "playwrightVersion",
+    "chromiumRevision",
+    "chromiumVersion",
+    "dependencies"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "sde-browserguard-runtime/v1"},
+    "pythonVersion": {"const": "3.11.15"},
+    "playwrightVersion": {"const": "1.62.0"},
+    "chromiumRevision": {"const": "1234"},
+    "chromiumVersion": {"const": "151.0.7922.34"},
+    "dependencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["greenlet", "pyee", "typing_extensions"],
+      "properties": {
+        "greenlet": {"const": "3.5.4"},
+        "pyee": {"const": "13.0.1"},
+        "typing_extensions": {"const": "4.16.0"}
+      }
+    }
+  }
+}

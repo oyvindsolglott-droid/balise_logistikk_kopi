@@ -95,8 +95,8 @@ class _FakePage:
     def wait_for_load_state(self, state: str, **kwargs: Any) -> None:
         self.load_state = state
 
-    def screenshot(self, *, path: str) -> None:
-        Path(path).write_bytes(b"synthetic screenshot")
+    def screenshot(self) -> bytes:
+        return b"synthetic screenshot"
 
     def close(self) -> None:
         self.closed = True
