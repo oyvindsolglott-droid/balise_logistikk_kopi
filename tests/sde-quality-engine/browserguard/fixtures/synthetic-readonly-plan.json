@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "sde-browserguard-readonly-interaction-plan/v1",
+  "planId": "synthetic-readonly-v1",
+  "targetOrigin": "$BROKER_SENTINEL",
+  "allowedPaths": ["/matrix.html", "/popup.html"],
+  "viewports": [
+    {"id": "desktop", "width": 1440, "height": 900},
+    {"id": "mobile", "width": 390, "height": 844}
+  ],
+  "targets": [
+    {"id": "page-title", "selector": "#page-title", "reads": ["TEXT", "ATTRIBUTE", "COUNT", "VISIBLE"], "attributes": ["role"]},
+    {"id": "menu-button", "selector": "#menu-button", "reads": ["ATTRIBUTE", "VISIBLE"], "attributes": ["role", "aria-expanded"]},
+    {"id": "menu", "selector": "#matrix-menu", "reads": ["COUNT", "VISIBLE"], "attributes": ["role"]},
+    {"id": "tab-summary", "selector": "#tab-summary", "reads": ["ATTRIBUTE", "VISIBLE"], "attributes": ["role", "aria-selected"]},
+    {"id": "tab-details", "selector": "#tab-details", "reads": ["ATTRIBUTE", "VISIBLE"], "attributes": ["role", "aria-selected"]},
+    {"id": "panel-summary", "selector": "#panel-summary", "reads": ["TEXT", "VISIBLE"], "attributes": ["role"]},
+    {"id": "panel-details", "selector": "#panel-details", "reads": ["TEXT", "VISIBLE"], "attributes": ["role"]},
+    {"id": "detail-open", "selector": "#detail-open", "reads": ["VISIBLE"], "attributes": ["role"]},
+    {"id": "detail-dialog", "selector": "#detail-dialog", "reads": ["TEXT", "VISIBLE"], "attributes": ["role"]},
+    {"id": "detail-close", "selector": "#detail-close", "reads": ["VISIBLE"], "attributes": ["role"]},
+    {"id": "popup-open", "selector": "#popup-open", "reads": ["VISIBLE"], "attributes": ["role"]},
+    {"id": "focus-anchor", "selector": "#focus-anchor", "reads": ["ATTRIBUTE", "VISIBLE"], "attributes": ["role", "aria-current"]},
+    {"id": "scroll-target", "selector": "#scroll-target", "reads": ["TEXT", "VISIBLE"], "attributes": ["role", "title"]},
+    {"id": "submit-control", "selector": "#submit-control", "reads": ["COUNT", "VISIBLE"], "attributes": ["role"]},
+    {"id": "upload-control", "selector": "#upload-control", "reads": ["COUNT", "VISIBLE"], "attributes": ["role"]},
+    {"id": "drag-control", "selector": "#drag-control", "reads": ["COUNT", "VISIBLE"], "attributes": ["role"]},
+    {"id": "editable-control", "selector": "#editable-control", "reads": ["COUNT", "VISIBLE"], "attributes": ["role"]}
+  ],
+  "actions": [
+    {"id": "open-matrix", "type": "NAVIGATION", "path": "/matrix.html"},
+    {"id": "toggle-main-menu", "type": "MENU_TOGGLE", "targetId": "menu-button", "expectedTag": "button", "expectedRole": "button"},
+    {"id": "show-details-tab", "type": "TAB_SWITCH", "targetId": "tab-details", "expectedTag": "button", "expectedRole": "tab"},
+    {"id": "show-summary-tab", "type": "TAB_SWITCH", "targetId": "tab-summary", "expectedTag": "button", "expectedRole": "tab"},
+    {"id": "open-detail-dialog", "type": "READONLY_DETAIL", "targetId": "detail-open", "expectedTag": "button", "expectedRole": "button", "resultKind": "dialog"},
+    {"id": "open-detail-popup", "type": "READONLY_DETAIL", "targetId": "popup-open", "expectedTag": "button", "expectedRole": "button", "resultKind": "popup"},
+    {"id": "close-detail-dialog", "type": "CLOSE_OVERLAY", "targetId": "detail-close", "expectedTag": "button", "expectedRole": "button"},
+    {"id": "focus-anchor-control", "type": "FOCUS", "targetId": "focus-anchor", "expectedTag": "button", "expectedRole": "button"},
+    {"id": "move-focus-forward", "type": "SAFE_KEY", "targetId": "focus-anchor", "expectedTag": "button", "expectedRole": "button", "key": "Tab"},
+    {"id": "move-tab-right", "type": "SAFE_KEY", "targetId": "tab-summary", "expectedTag": "button", "expectedRole": "tab", "key": "ArrowRight"}
+  ]
+}

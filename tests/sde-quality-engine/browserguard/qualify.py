@@ -156,7 +156,12 @@ def run_qualification(
         raise RuntimeError("browserguard evidence directory must be empty")
     protected = SentinelServer().start()
     control = SentinelServer().start()
-    harness = harness_type(protected.origin, headless=True, evidence_directory=evidence)
+    harness = harness_type(
+        protected.origin,
+        headless=True,
+        evidence_directory=evidence,
+        allowed_auxiliary_origins=(control.origin,),
+    )
     probe_results: Dict[str, Any] = {}
     protected_log: list[Dict[str, Any]] = []
     control_log: list[Dict[str, Any]] = []

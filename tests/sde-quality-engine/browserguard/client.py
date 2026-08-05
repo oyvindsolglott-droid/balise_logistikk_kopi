@@ -29,7 +29,26 @@ from protocol import (
 
 
 PUBLIC_CLIENT_API = frozenset(
-    {"capture_screenshot", "close", "start", "status", "write_report"}
+    {
+        "begin_human_gate",
+        "capture_screenshot",
+        "close",
+        "complete_human_gate",
+        "count_elements",
+        "execute_action",
+        "is_visible",
+        "list_pages",
+        "navigate",
+        "read_attribute",
+        "read_text",
+        "scroll",
+        "select_page",
+        "set_viewport",
+        "start",
+        "status",
+        "wait_load_state",
+        "write_report",
+    }
 )
 _RESULT_FIELDS = {
     "HELLO": frozenset({"protocolVersion", "protocolHash", "brokerPid", "state"}),
@@ -38,6 +57,19 @@ _RESULT_FIELDS = {
     ),
     "CAPTURE_SCREENSHOT": frozenset({"artifactId", "filename", "byteCount"}),
     "WRITE_REPORT": frozenset({"artifactId", "filename", "byteCount"}),
+    "NAVIGATE": frozenset({"actionId", "origin", "path", "status", "ok", "activePageId"}),
+    "READ_TEXT": frozenset({"targetId", "text"}),
+    "READ_ATTRIBUTE": frozenset({"targetId", "attribute", "value"}),
+    "COUNT_ELEMENTS": frozenset({"targetId", "count"}),
+    "IS_VISIBLE": frozenset({"targetId", "visible"}),
+    "SET_VIEWPORT": frozenset({"viewportId", "width", "height"}),
+    "SCROLL": frozenset({"targetId", "direction"}),
+    "WAIT_LOAD_STATE": frozenset({"state"}),
+    "EXECUTE_ACTION": frozenset({"actionId", "actionType", "activePageId", "pageCount"}),
+    "LIST_PAGES": frozenset({"pages", "activePageId"}),
+    "SELECT_PAGE": frozenset({"activePageId"}),
+    "HUMAN_GATE_BEGIN": frozenset({"state", "brokerPid", "contextEpoch", "activePageId"}),
+    "HUMAN_GATE_COMPLETE": frozenset({"state", "brokerPid", "contextEpoch", "activePageId"}),
     "SHUTDOWN": frozenset(
         {
             "state",
@@ -184,6 +216,21 @@ class BrowserguardClient:
         result = response["result"]
         if command not in _RESULT_FIELDS or set(result) != _RESULT_FIELDS[command]:
             raise BrowserguardClientError("broker result fields are invalid")
+        if command == "STATUS":
+            expected = {
+                "serviceWorkersBlocked",
+                "httpBarrierInstalled",
+                "webSocketBarrierInstalled",
+                "barriersInstalledBeforeFirstPage",
+            }
+            if not isinstance(result["barrierStatus"], dict) or set(result["barrierStatus"]) != expected:
+                raise BrowserguardClientError("broker barrier status fields are invalid")
+        if command == "LIST_PAGES":
+            page_fields = {"pageId", "origin", "path", "title", "active"}
+            if not isinstance(result["pages"], list) or any(
+                not isinstance(item, dict) or set(item) != page_fields for item in result["pages"]
+            ):
+                raise BrowserguardClientError("broker page DTO fields are invalid")
         _assert_json_dto(result)
         return deepcopy(result)
 
@@ -196,6 +243,67 @@ class BrowserguardClient:
     def status(self) -> Dict[str, Any]:
         return self._request("STATUS", {})
 
+    def navigate(self, action_id: str) -> Dict[str, Any]:
+        self._assert_plan_id(action_id)
+        return self._request("NAVIGATE", {"actionId": action_id})
+
+    def read_text(self, target_id: str) -> Dict[str, Any]:
+        self._assert_plan_id(target_id)
+        return self._request("READ_TEXT", {"targetId": target_id})
+
+    def read_attribute(self, target_id: str, attribute: str) -> Dict[str, Any]:
+        self._assert_plan_id(target_id)
+        if not isinstance(attribute, str) or (
+            attribute not in {"alt", "class", "id", "role", "title"}
+            and re.fullmatch(r"aria-[a-z-]+", attribute) is None
+        ):
+            raise BrowserguardClientError("attribute is not allowlisted")
+        return self._request("READ_ATTRIBUTE", {"targetId": target_id, "attribute": attribute})
+
+    def count_elements(self, target_id: str) -> Dict[str, Any]:
+        self._assert_plan_id(target_id)
+        return self._request("COUNT_ELEMENTS", {"targetId": target_id})
+
+    def is_visible(self, target_id: str) -> Dict[str, Any]:
+        self._assert_plan_id(target_id)
+        return self._request("IS_VISIBLE", {"targetId": target_id})
+
+    def set_viewport(self, viewport_id: str) -> Dict[str, Any]:
+        self._assert_plan_id(viewport_id)
+        return self._request("SET_VIEWPORT", {"viewportId": viewport_id})
+
+    def scroll(self, target_id: str, direction: str) -> Dict[str, Any]:
+        self._assert_plan_id(target_id)
+        if direction not in {"UP", "DOWN"}:
+            raise BrowserguardClientError("scroll direction is not allowlisted")
+        return self._request("SCROLL", {"targetId": target_id, "direction": direction})
+
+    def wait_load_state(self, state: str) -> Dict[str, Any]:
+        if state not in {"domcontentloaded", "load", "networkidle"}:
+            raise BrowserguardClientError("load state is not allowlisted")
+        return self._request("WAIT_LOAD_STATE", {"state": state})
+
+    def execute_action(self, action_id: str) -> Dict[str, Any]:
+        self._assert_plan_id(action_id)
+        return self._request("EXECUTE_ACTION", {"actionId": action_id})
+
+    def list_pages(self) -> Dict[str, Any]:
+        return self._request("LIST_PAGES", {})
+
+    def select_page(self, page_id: str) -> Dict[str, Any]:
+        if not isinstance(page_id, str) or re.fullmatch(
+            r"page-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+            page_id,
+        ) is None:
+            raise BrowserguardClientError("page ID is invalid")
+        return self._request("SELECT_PAGE", {"pageId": page_id})
+
+    def begin_human_gate(self) -> Dict[str, Any]:
+        return self._request("HUMAN_GATE_BEGIN", {})
+
+    def complete_human_gate(self) -> Dict[str, Any]:
+        return self._request("HUMAN_GATE_COMPLETE", {})
+
     def capture_screenshot(self, artifact_id: str) -> Dict[str, Any]:
         self._assert_artifact_id(artifact_id)
         return self._request("CAPTURE_SCREENSHOT", {"artifactId": artifact_id})
@@ -207,6 +315,10 @@ class BrowserguardClient:
     def _assert_artifact_id(self, artifact_id: str) -> None:
         if not isinstance(artifact_id, str) or re.fullmatch(ARTIFACT_ID_PATTERN, artifact_id) is None:
             raise BrowserguardClientError("artifact ID is not allowlisted")
+
+    def _assert_plan_id(self, identifier: str) -> None:
+        if not isinstance(identifier, str) or re.fullmatch(ARTIFACT_ID_PATTERN, identifier) is None:
+            raise BrowserguardClientError("plan identifier is not allowlisted")
 
     def close(self) -> Dict[str, Any]:
         if self._closed:

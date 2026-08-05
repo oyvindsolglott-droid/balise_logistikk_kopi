@@ -20,7 +20,14 @@ from guard import (
     GuardInitializationError,
     GuardPolicyError,
     ProtectedBrowserHarness,
-    _broker_screenshot_bytes,
+    _page_state,
+    origin_from_url,
+    sanitized_path,
+)
+from interaction_plan import (
+    InteractionPlanError,
+    ReadOnlyInteractionPlan,
+    validate_element_policy,
 )
 from protocol import (
     PROTOCOL_VERSION,
@@ -49,6 +56,9 @@ class BrowserguardBroker:
         self._sentinel: Optional[SentinelServer] = None
         self._harness: Optional[ProtectedBrowserHarness] = None
         self._page = None
+        self._plan: Optional[ReadOnlyInteractionPlan] = None
+        self._pages: Dict[str, Any] = {}
+        self._active_page_id = ""
         self._command_ids: set[str] = set()
         self._last_sequence = 0
         self._hello_complete = False
@@ -60,6 +70,7 @@ class BrowserguardBroker:
 
     def initialize(self) -> None:
         self._sentinel = SentinelServer().start()
+        self._plan = ReadOnlyInteractionPlan.synthetic(target_origin=self._sentinel.origin)
         self._harness = ProtectedBrowserHarness(
             self._sentinel.origin,
             headless=True,
@@ -69,6 +80,11 @@ class BrowserguardBroker:
         self.state = "BARRIERS_GREEN"
         self._page = self._harness.new_page()
         self._page.goto(f"{self._sentinel.origin}/sentinel.html")
+        _, raw_page = _page_state(self._page)
+        self._active_page_id = self._register_page(raw_page)
+        if self._harness._context is None:
+            raise GuardInitializationError("broker context is unavailable")
+        self._harness._context.on("page", self._register_page)
         report = self._harness.report()
         mandatory = (
             report["serviceWorkersBlocked"],
@@ -150,8 +166,27 @@ class BrowserguardBroker:
             "STATUS": self._status,
             "CAPTURE_SCREENSHOT": self._capture_screenshot,
             "WRITE_REPORT": self._write_report,
+            "NAVIGATE": self._navigate,
+            "READ_TEXT": self._read_text,
+            "READ_ATTRIBUTE": self._read_attribute,
+            "COUNT_ELEMENTS": self._count_elements,
+            "IS_VISIBLE": self._is_visible,
+            "SET_VIEWPORT": self._set_viewport,
+            "SCROLL": self._scroll,
+            "WAIT_LOAD_STATE": self._wait_load_state,
+            "EXECUTE_ACTION": self._execute_action,
+            "LIST_PAGES": self._list_pages,
+            "SELECT_PAGE": self._select_page,
+            "HUMAN_GATE_BEGIN": self._human_gate_begin,
+            "HUMAN_GATE_COMPLETE": self._human_gate_complete,
             "SHUTDOWN": self._shutdown,
         }
+        if self.state == "HUMAN_GATE_PENDING" and command not in {
+            "STATUS",
+            "HUMAN_GATE_COMPLETE",
+            "SHUTDOWN",
+        }:
+            raise GuardPolicyError("only gate status, completion or shutdown is allowed while human gate is pending")
         return handlers[command](payload)
 
     def _hello(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -170,20 +205,198 @@ class BrowserguardBroker:
             "state": self.state,
             "brokerPid": os.getpid(),
             "contextEpoch": self.context_epoch,
-            "pageCount": 1 if self._page is not None else 0,
+            "pageCount": len(self._live_pages()),
             "barrierStatus": self._barrier_status(),
             "evidenceDirectory": str(self.evidence.root),
         }
 
     def _capture_screenshot(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        if self._page is None:
-            raise GuardPolicyError("active page is unavailable")
-        value = _broker_screenshot_bytes(self._page)
+        value = self._active_page().screenshot()
+        if not isinstance(value, bytes):
+            raise GuardPolicyError("Playwright screenshot did not return bytes")
         result = self.evidence.write_artifact(payload["artifactId"], "screenshot-png", value)
         return {
             "artifactId": result.artifact_id,
             "filename": result.filename,
             "byteCount": result.byte_count,
+        }
+
+    def _require_plan(self) -> ReadOnlyInteractionPlan:
+        if self._plan is None:
+            raise GuardPolicyError("interaction plan is unavailable")
+        return self._plan
+
+    def _register_page(self, page: Any) -> str:
+        for identifier, existing in self._pages.items():
+            if existing is page:
+                return identifier
+        identifier = f"page-{new_uuid()}"
+        self._pages[identifier] = page
+        return identifier
+
+    def _live_pages(self) -> Dict[str, Any]:
+        self._pages = {
+            identifier: page for identifier, page in self._pages.items() if not page.is_closed()
+        }
+        return dict(self._pages)
+
+    def _active_page(self) -> Any:
+        pages = self._live_pages()
+        try:
+            return pages[self._active_page_id]
+        except KeyError as error:
+            raise GuardPolicyError("active page is unavailable") from error
+
+    def _target_locator(self, target_id: str, read_type: str | None = None) -> Any:
+        target = self._require_plan().target(target_id, read_type)
+        return self._active_page().locator(target["selector"])
+
+    def _navigate(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        action = self._require_plan().action(payload["actionId"], "NAVIGATION")
+        page = self._active_page()
+        response = page.goto(f"{self._require_plan().target_origin}{action['path']}", wait_until="load")
+        return {
+            "actionId": action["id"],
+            "origin": origin_from_url(page.url) or "non-http-origin",
+            "path": sanitized_path(page.url),
+            "status": response.status if response is not None else None,
+            "ok": response.ok if response is not None else True,
+            "activePageId": self._active_page_id,
+        }
+
+    def _read_text(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        locator = self._target_locator(payload["targetId"], "TEXT")
+        return {"targetId": payload["targetId"], "text": locator.text_content()}
+
+    def _read_attribute(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        target = self._require_plan().target(payload["targetId"], "ATTRIBUTE")
+        attribute = payload["attribute"]
+        if attribute not in target["attributes"]:
+            raise InteractionPlanError("attribute is not allowed for target")
+        value = self._active_page().locator(target["selector"]).get_attribute(attribute)
+        return {"targetId": payload["targetId"], "attribute": attribute, "value": value}
+
+    def _count_elements(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        locator = self._target_locator(payload["targetId"], "COUNT")
+        return {"targetId": payload["targetId"], "count": int(locator.count())}
+
+    def _is_visible(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        locator = self._target_locator(payload["targetId"], "VISIBLE")
+        return {"targetId": payload["targetId"], "visible": bool(locator.is_visible())}
+
+    def _set_viewport(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        viewport = self._require_plan().viewport(payload["viewportId"])
+        self._active_page().set_viewport_size(viewport)
+        return {"viewportId": payload["viewportId"], **viewport}
+
+    def _scroll(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        locator = self._target_locator(payload["targetId"])
+        locator.scroll_into_view_if_needed()
+        delta = 480 if payload["direction"] == "DOWN" else -480
+        self._active_page().mouse.wheel(0, delta)
+        return {"targetId": payload["targetId"], "direction": payload["direction"]}
+
+    def _wait_load_state(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        self._active_page().wait_for_load_state(payload["state"])
+        return {"state": payload["state"]}
+
+    def _element_descriptor(self, locator: Any) -> Dict[str, Any]:
+        if locator.count() != 1:
+            raise InteractionPlanError("action target must resolve to exactly one element")
+        tag = ""
+        for candidate in ("a", "button", "div", "form", "input", "textarea", "select", "option"):
+            if locator.locator(f"xpath=self::{candidate}").count() == 1:
+                tag = candidate
+                break
+        contenteditable = locator.get_attribute("contenteditable")
+        draggable = locator.get_attribute("draggable")
+        return {
+            "tag": tag,
+            "role": locator.get_attribute("role") or "",
+            "type": locator.get_attribute("type") or "",
+            "contenteditable": contenteditable not in {None, "false"},
+            "draggable": draggable == "true",
+            "formAncestor": locator.locator("xpath=ancestor::form").count() > 0,
+            "accessibleName": locator.get_attribute("aria-label") or locator.text_content() or "",
+        }
+
+    def _execute_action(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        action = self._require_plan().action(payload["actionId"])
+        if action["type"] == "NAVIGATION":
+            raise InteractionPlanError("navigation actions require the NAVIGATE command")
+        target = self._require_plan().target(action["targetId"])
+        page = self._active_page()
+        locator = page.locator(target["selector"])
+        validate_element_policy(action, self._element_descriptor(locator))
+        if action["type"] == "READONLY_DETAIL" and action["resultKind"] == "popup":
+            with page.expect_popup() as popup_info:
+                locator.click()
+            popup = popup_info.value
+            popup.wait_for_load_state("domcontentloaded")
+            popup_id = self._register_page(popup)
+            popup_origin = origin_from_url(popup.url)
+            popup_path = sanitized_path(popup.url)
+            if popup_origin != self._require_plan().target_origin or popup_path not in self._require_plan().allowed_paths:
+                popup.close()
+                raise InteractionPlanError("popup escaped the committed origin/path policy")
+            self._active_page_id = popup_id
+        elif action["type"] == "FOCUS":
+            locator.focus()
+        elif action["type"] == "SAFE_KEY":
+            locator.focus()
+            locator.press(action["key"])
+        else:
+            locator.click()
+        return {
+            "actionId": action["id"],
+            "actionType": action["type"],
+            "activePageId": self._active_page_id,
+            "pageCount": len(self._live_pages()),
+        }
+
+    def _list_pages(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        pages = []
+        for identifier, page in self._live_pages().items():
+            pages.append(
+                {
+                    "pageId": identifier,
+                    "origin": origin_from_url(page.url) or "non-http-origin",
+                    "path": sanitized_path(page.url),
+                    "title": page.title(),
+                    "active": identifier == self._active_page_id,
+                }
+            )
+        return {"pages": pages, "activePageId": self._active_page_id}
+
+    def _select_page(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        pages = self._live_pages()
+        if payload["pageId"] not in pages:
+            raise InteractionPlanError("page ID is not owned by this session")
+        self._active_page_id = payload["pageId"]
+        pages[self._active_page_id].bring_to_front()
+        return {"activePageId": self._active_page_id}
+
+    def _human_gate_begin(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if self.state not in {"READY", "ACTIVE"}:
+            raise GuardPolicyError("human gate cannot begin in the current state")
+        self.state = "HUMAN_GATE_PENDING"
+        return self._gate_result()
+
+    def _human_gate_complete(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        if self.state != "HUMAN_GATE_PENDING":
+            raise GuardPolicyError("human gate is not pending")
+        if not all(self._barrier_status().values()):
+            raise GuardInitializationError("human gate cannot complete without green barriers")
+        self._active_page()
+        self.state = "ACTIVE"
+        return self._gate_result()
+
+    def _gate_result(self) -> Dict[str, Any]:
+        return {
+            "state": self.state,
+            "brokerPid": os.getpid(),
+            "contextEpoch": self.context_epoch,
+            "activePageId": self._active_page_id,
         }
 
     def _write_report(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -290,7 +503,12 @@ class BrowserguardBroker:
                     self._last_sequence = sequence
                     result = self._dispatch(request)
                     response = self._success_response(request, result)
-                except (ProtocolError, GuardPolicyError, EvidencePolicyError) as error:
+                except (
+                    ProtocolError,
+                    GuardPolicyError,
+                    EvidencePolicyError,
+                    InteractionPlanError,
+                ) as error:
                     response = self._error_response(raw, "INVALID_REQUEST", str(error))
                 except Exception:
                     response = self._error_response(raw, "INTERNAL_ERROR", "broker command failed closed")

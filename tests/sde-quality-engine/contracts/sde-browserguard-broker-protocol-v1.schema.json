@@ -9,13 +9,7 @@
     "protocolVersion": {"const": "sde-browserguard-broker/v1"},
     "maxFrameBytes": {"const": 65536},
     "startup": {"$ref": "#/$defs/startup"},
-    "request": {"oneOf": [
-      {"$ref": "#/$defs/helloRequest"},
-      {"$ref": "#/$defs/statusRequest"},
-      {"$ref": "#/$defs/captureRequest"},
-      {"$ref": "#/$defs/reportRequest"},
-      {"$ref": "#/$defs/shutdownRequest"}
-    ]},
+    "request": {"$ref": "#/$defs/requestEnvelope"},
     "response": {"$ref": "#/$defs/response"}
   },
   "$defs": {
@@ -27,6 +21,92 @@
       "additionalProperties": false,
       "required": ["artifactId"],
       "properties": {"artifactId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}
+    },
+    "actionPayload": {
+      "type": "object", "additionalProperties": false, "required": ["actionId"],
+      "properties": {"actionId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}
+    },
+    "targetPayload": {
+      "type": "object", "additionalProperties": false, "required": ["targetId"],
+      "properties": {"targetId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}
+    },
+    "attributePayload": {
+      "type": "object", "additionalProperties": false, "required": ["targetId", "attribute"],
+      "properties": {"targetId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}, "attribute": {"type": "string", "pattern": "^(alt|class|id|role|title|aria-[a-z-]+)$"}}
+    },
+    "viewportPayload": {
+      "type": "object", "additionalProperties": false, "required": ["viewportId"],
+      "properties": {"viewportId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}}
+    },
+    "scrollPayload": {
+      "type": "object", "additionalProperties": false, "required": ["targetId", "direction"],
+      "properties": {"targetId": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,63}$"}, "direction": {"enum": ["UP", "DOWN"]}}
+    },
+    "loadPayload": {
+      "type": "object", "additionalProperties": false, "required": ["state"],
+      "properties": {"state": {"enum": ["domcontentloaded", "load", "networkidle"]}}
+    },
+    "pagePayload": {
+      "type": "object", "additionalProperties": false, "required": ["pageId"],
+      "properties": {"pageId": {"type": "string", "pattern": "^page-[0-9a-f-]{36}$"}}
+    },
+    "requestEnvelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocolVersion", "protocolHash", "sessionId", "commandId", "sequence", "command", "payload"],
+      "properties": {
+        "protocolVersion": {"const": "sde-browserguard-broker/v1"},
+        "protocolHash": {"$ref": "#/$defs/hash"},
+        "sessionId": {"$ref": "#/$defs/uuid"},
+        "commandId": {"$ref": "#/$defs/uuid"},
+        "sequence": {"type": "integer", "minimum": 1},
+        "command": {"enum": ["HELLO", "STATUS", "CAPTURE_SCREENSHOT", "WRITE_REPORT", "NAVIGATE", "READ_TEXT", "READ_ATTRIBUTE", "COUNT_ELEMENTS", "IS_VISIBLE", "SET_VIEWPORT", "SCROLL", "WAIT_LOAD_STATE", "EXECUTE_ACTION", "LIST_PAGES", "SELECT_PAGE", "HUMAN_GATE_BEGIN", "HUMAN_GATE_COMPLETE", "SHUTDOWN"]},
+        "payload": {"oneOf": [
+          {"$ref": "#/$defs/emptyPayload"}, {"$ref": "#/$defs/artifactPayload"},
+          {"$ref": "#/$defs/actionPayload"}, {"$ref": "#/$defs/targetPayload"},
+          {"$ref": "#/$defs/attributePayload"}, {"$ref": "#/$defs/viewportPayload"},
+          {"$ref": "#/$defs/scrollPayload"}, {"$ref": "#/$defs/loadPayload"},
+          {"$ref": "#/$defs/pagePayload"}
+        ]}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"command": {"enum": ["HELLO", "STATUS", "LIST_PAGES", "HUMAN_GATE_BEGIN", "HUMAN_GATE_COMPLETE", "SHUTDOWN"]}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/emptyPayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"enum": ["CAPTURE_SCREENSHOT", "WRITE_REPORT"]}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/artifactPayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"enum": ["NAVIGATE", "EXECUTE_ACTION"]}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/actionPayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"enum": ["READ_TEXT", "COUNT_ELEMENTS", "IS_VISIBLE"]}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/targetPayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"const": "READ_ATTRIBUTE"}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/attributePayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"const": "SET_VIEWPORT"}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/viewportPayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"const": "SCROLL"}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/scrollPayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"const": "WAIT_LOAD_STATE"}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/loadPayload"}}}
+        },
+        {
+          "if": {"properties": {"command": {"const": "SELECT_PAGE"}}},
+          "then": {"properties": {"payload": {"$ref": "#/$defs/pagePayload"}}}
+        }
+      ]
     },
     "startup": {
       "type": "object",
@@ -87,6 +167,18 @@
           {"$ref": "#/$defs/helloResult"},
           {"$ref": "#/$defs/statusResult"},
           {"$ref": "#/$defs/artifactResult"},
+          {"$ref": "#/$defs/navigationResult"},
+          {"$ref": "#/$defs/readTextResult"},
+          {"$ref": "#/$defs/readAttributeResult"},
+          {"$ref": "#/$defs/countResult"},
+          {"$ref": "#/$defs/visibleResult"},
+          {"$ref": "#/$defs/viewportResult"},
+          {"$ref": "#/$defs/scrollResult"},
+          {"$ref": "#/$defs/loadResult"},
+          {"$ref": "#/$defs/actionResult"},
+          {"$ref": "#/$defs/pageListResult"},
+          {"$ref": "#/$defs/selectPageResult"},
+          {"$ref": "#/$defs/gateResult"},
           {"$ref": "#/$defs/shutdownResult"}
         ]},
         "error": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/error"}]}
@@ -149,6 +241,59 @@
         "evidenceDirectory": {"type": "string", "minLength": 1},
         "reportFilename": {"const": "browserguard-report.json"}
       }
+    },
+    "navigationResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["actionId", "origin", "path", "status", "ok", "activePageId"],
+      "properties": {"actionId":{"type":"string"},"origin":{"type":"string"},"path":{"type":"string","pattern":"^/"},"status":{"type":["integer","null"]},"ok":{"type":"boolean"},"activePageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"}}
+    },
+    "readTextResult": {
+      "type": "object", "additionalProperties": false, "required": ["targetId", "text"],
+      "properties": {"targetId":{"type":"string"},"text":{"type":["string","null"]}}
+    },
+    "readAttributeResult": {
+      "type": "object", "additionalProperties": false, "required": ["targetId", "attribute", "value"],
+      "properties": {"targetId":{"type":"string"},"attribute":{"type":"string"},"value":{"type":["string","null"]}}
+    },
+    "countResult": {
+      "type": "object", "additionalProperties": false, "required": ["targetId", "count"],
+      "properties": {"targetId":{"type":"string"},"count":{"type":"integer","minimum":0}}
+    },
+    "visibleResult": {
+      "type": "object", "additionalProperties": false, "required": ["targetId", "visible"],
+      "properties": {"targetId":{"type":"string"},"visible":{"type":"boolean"}}
+    },
+    "viewportResult": {
+      "type": "object", "additionalProperties": false, "required": ["viewportId", "width", "height"],
+      "properties": {"viewportId":{"type":"string"},"width":{"type":"integer"},"height":{"type":"integer"}}
+    },
+    "scrollResult": {
+      "type": "object", "additionalProperties": false, "required": ["targetId", "direction"],
+      "properties": {"targetId":{"type":"string"},"direction":{"enum":["UP","DOWN"]}}
+    },
+    "loadResult": {
+      "type": "object", "additionalProperties": false, "required": ["state"],
+      "properties": {"state":{"enum":["domcontentloaded","load","networkidle"]}}
+    },
+    "actionResult": {
+      "type": "object", "additionalProperties": false, "required": ["actionId", "actionType", "activePageId", "pageCount"],
+      "properties": {"actionId":{"type":"string"},"actionType":{"enum":["MENU_TOGGLE","TAB_SWITCH","READONLY_DETAIL","CLOSE_OVERLAY","FOCUS","SAFE_KEY"]},"activePageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"},"pageCount":{"type":"integer","minimum":1}}
+    },
+    "pageItem": {
+      "type": "object", "additionalProperties": false, "required": ["pageId", "origin", "path", "title", "active"],
+      "properties": {"pageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"},"origin":{"type":"string"},"path":{"type":"string","pattern":"^/"},"title":{"type":"string"},"active":{"type":"boolean"}}
+    },
+    "pageListResult": {
+      "type": "object", "additionalProperties": false, "required": ["pages", "activePageId"],
+      "properties": {"pages":{"type":"array","items":{"$ref":"#/$defs/pageItem"}},"activePageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"}}
+    },
+    "selectPageResult": {
+      "type": "object", "additionalProperties": false, "required": ["activePageId"],
+      "properties": {"activePageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"}}
+    },
+    "gateResult": {
+      "type": "object", "additionalProperties": false, "required": ["state", "brokerPid", "contextEpoch", "activePageId"],
+      "properties": {"state":{"enum":["HUMAN_GATE_PENDING","ACTIVE"]},"brokerPid":{"type":"integer","minimum":1},"contextEpoch":{"$ref":"#/$defs/uuid"},"activePageId":{"type":"string","pattern":"^page-[0-9a-f-]{36}$"}}
     },
     "error": {
       "type": "object",

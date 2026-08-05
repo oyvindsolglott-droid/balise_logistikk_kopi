@@ -88,6 +88,58 @@ class SentinelServer:
                     <script>gate.onclick=()=>{window.localHumanGate=true;status.textContent='approved';};</script>"""
                 elif path == "/popup.html":
                     text = "<!doctype html><meta charset=utf-8><title>Local popup sentinel</title><p>popup</p>"
+                elif path == "/matrix.html":
+                    text = """<!doctype html><meta charset=utf-8><title>Local read-only matrix</title>
+                    <style>body{font:16px sans-serif;margin:0;padding:24px} [hidden]{display:none!important}
+                    #scroll-spacer{height:1200px} dialog{border:1px solid #444;padding:20px}</style>
+                    <h1 id=page-title role=heading>Read-only matrix</h1>
+                    <button id=menu-button role=button type=button aria-label="Open menu" aria-controls=matrix-menu aria-expanded=false>Menu</button>
+                    <nav id=matrix-menu role=menu hidden><a href="#summary" role=menuitem>Summary link</a></nav>
+                    <section aria-label="Read-only tabs">
+                      <button id=tab-summary role=tab type=button aria-selected=true aria-controls=panel-summary>Summary</button>
+                      <button id=tab-details role=tab type=button aria-selected=false aria-controls=panel-details>Details</button>
+                      <div id=panel-summary role=tabpanel>Summary panel</div>
+                      <div id=panel-details role=tabpanel hidden>Details panel</div>
+                    </section>
+                    <button id=detail-open role=button type=button aria-label="Open read only detail">Detail dialog</button>
+                    <div id=detail-dialog role=dialog aria-label="Read only detail" hidden>
+                      Read-only detail content
+                      <button id=detail-close role=button type=button aria-label="Close detail">Close</button>
+                    </div>
+                    <button id=popup-open role=button type=button aria-label="Open read only popup">Detail popup</button>
+                    <button id=focus-anchor role=button type=button aria-current=false>Focus anchor</button>
+                    <form id=danger-form><button id=submit-control role=button type=submit>Save</button>
+                      <input id=upload-control type=file aria-label="Upload"></form>
+                    <div id=drag-control role=button draggable=true>Drag and drop</div>
+                    <div id=editable-control role=textbox contenteditable=true>Editable</div>
+                    <div id=scroll-spacer></div><div id=scroll-target role=region title="Scroll target">Scroll target reached</div>
+                    <script>
+                    const dangerForm=document.querySelector('#danger-form');
+                    const menuButton=document.querySelector('#menu-button');
+                    const matrixMenu=document.querySelector('#matrix-menu');
+                    const tabSummary=document.querySelector('#tab-summary');
+                    const tabDetails=document.querySelector('#tab-details');
+                    const panelSummary=document.querySelector('#panel-summary');
+                    const panelDetails=document.querySelector('#panel-details');
+                    const detailOpen=document.querySelector('#detail-open');
+                    const detailDialog=document.querySelector('#detail-dialog');
+                    const detailClose=document.querySelector('#detail-close');
+                    const popupOpen=document.querySelector('#popup-open');
+                    const focusAnchor=document.querySelector('#focus-anchor');
+                    dangerForm.onsubmit=event=>event.preventDefault();
+                    menuButton.onclick=()=>{const open=matrixMenu.hidden;matrixMenu.hidden=!open;menuButton.setAttribute('aria-expanded',String(open));};
+                    function selectTab(which){
+                      const details=which==='details';
+                      tabSummary.setAttribute('aria-selected',String(!details));tabDetails.setAttribute('aria-selected',String(details));
+                      panelSummary.hidden=details;panelDetails.hidden=!details;
+                    }
+                    tabSummary.onclick=()=>selectTab('summary');tabDetails.onclick=()=>selectTab('details');
+                    tabSummary.onkeydown=event=>{if(event.key==='ArrowRight'){selectTab('details');tabDetails.focus();}};
+                    detailOpen.onclick=()=>{detailDialog.hidden=false;};detailClose.onclick=()=>{detailDialog.hidden=true;};
+                    popupOpen.onclick=()=>window.open('/popup.html','_blank');
+                    focusAnchor.onfocus=()=>focusAnchor.setAttribute('aria-current','true');
+                    focusAnchor.onblur=()=>focusAnchor.setAttribute('aria-current','false');
+                    </script>"""
                 else:
                     text = "<!doctype html><meta charset=utf-8><title>Local HTTP sentinel</title><p>sentinel</p>"
                 return text.encode("utf-8")

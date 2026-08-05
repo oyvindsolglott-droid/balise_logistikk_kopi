@@ -254,6 +254,23 @@ class BrowserGuardQualificationTests(unittest.TestCase):
             harness.close()
             shutil.rmtree(evidence)
 
+    def test_29_non_allowlisted_origin_is_blocked_before_request(self) -> None:
+        evidence = secure_temp_directory("sde-qe-browserguard-origin-policy-test-")
+        protected = SentinelServer().start()
+        non_allowlisted = SentinelServer().start()
+        harness = ProtectedBrowserHarness(protected.origin, evidence_directory=evidence)
+        try:
+            harness.start()
+            page = harness.new_page()
+            with self.assertRaises(GuardPolicyError):
+                page.goto(f"{non_allowlisted.origin}/external.html")
+            self.assertEqual(non_allowlisted.requests(), [])
+        finally:
+            harness.close()
+            protected.close()
+            non_allowlisted.close()
+            shutil.rmtree(evidence)
+
 
 class BrowserGuardMutationTests(unittest.TestCase):
     def test_mutant_a_allow_post_is_killed(self) -> None:

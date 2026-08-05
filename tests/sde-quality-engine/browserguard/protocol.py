@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import socket
 import struct
 import uuid
@@ -31,6 +32,19 @@ FOUNDATION_COMMANDS: Mapping[str, frozenset[str]] = {
     "STATUS": frozenset(),
     "CAPTURE_SCREENSHOT": frozenset({"artifactId"}),
     "WRITE_REPORT": frozenset({"artifactId"}),
+    "NAVIGATE": frozenset({"actionId"}),
+    "READ_TEXT": frozenset({"targetId"}),
+    "READ_ATTRIBUTE": frozenset({"targetId", "attribute"}),
+    "COUNT_ELEMENTS": frozenset({"targetId"}),
+    "IS_VISIBLE": frozenset({"targetId"}),
+    "SET_VIEWPORT": frozenset({"viewportId"}),
+    "SCROLL": frozenset({"targetId", "direction"}),
+    "WAIT_LOAD_STATE": frozenset({"state"}),
+    "EXECUTE_ACTION": frozenset({"actionId"}),
+    "LIST_PAGES": frozenset(),
+    "SELECT_PAGE": frozenset({"pageId"}),
+    "HUMAN_GATE_BEGIN": frozenset(),
+    "HUMAN_GATE_COMPLETE": frozenset(),
     "SHUTDOWN": frozenset(),
 }
 
@@ -64,8 +78,6 @@ def _is_uuid4(value: Any) -> bool:
 
 
 def _validate_artifact_id(value: Any) -> bool:
-    import re
-
     return isinstance(value, str) and re.fullmatch(ARTIFACT_ID_PATTERN, value) is not None
 
 
@@ -105,6 +117,26 @@ def validate_request(value: Any, *, expected_session_id: str) -> Dict[str, Any]:
         raise ProtocolError("command payload fields are invalid")
     if "artifactId" in required and not _validate_artifact_id(payload["artifactId"]):
         raise ProtocolError("artifact ID is invalid")
+    for key in ("actionId", "targetId", "viewportId"):
+        if key in required and not _validate_artifact_id(payload[key]):
+            raise ProtocolError(f"{key} is invalid")
+    if "pageId" in required:
+        if not isinstance(payload["pageId"], str) or re.fullmatch(
+            r"page-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+            payload["pageId"],
+        ) is None:
+            raise ProtocolError("pageId is invalid")
+    if "attribute" in required:
+        attribute = payload["attribute"]
+        if not isinstance(attribute, str) or (
+            attribute not in {"alt", "class", "id", "role", "title"}
+            and re.fullmatch(r"aria-[a-z-]+", attribute) is None
+        ):
+            raise ProtocolError("attribute is invalid")
+    if "direction" in required and payload["direction"] not in {"UP", "DOWN"}:
+        raise ProtocolError("scroll direction is invalid")
+    if "state" in required and payload["state"] not in {"domcontentloaded", "load", "networkidle"}:
+        raise ProtocolError("load state is invalid")
     return dict(value)
 
 

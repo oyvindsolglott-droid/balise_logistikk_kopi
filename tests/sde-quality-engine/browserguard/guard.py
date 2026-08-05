@@ -361,8 +361,12 @@ class ProtectedBrowserHarness:
         *,
         headless: bool = True,
         evidence_directory: Optional[Path] = None,
+        allowed_auxiliary_origins: Iterable[str] = (),
     ) -> None:
         self.target_origin = normalize_http_origin(target_origin)
+        self._allowed_auxiliary_origins = frozenset(
+            normalize_http_origin(value) for value in allowed_auxiliary_origins
+        ) - {self.target_origin}
         self.headless = bool(headless)
         self.profile_directory = secure_temp_directory("sde-qe-browser-profile-")
         self.download_directory = self.profile_directory / "downloads"
@@ -515,8 +519,27 @@ class ProtectedBrowserHarness:
     def _http_route_handler(self, route: _Route) -> None:
         request = route.request
         request_origin = origin_from_url(request.url)
-        if request_origin != self.target_origin:
+        if request_origin in self._allowed_auxiliary_origins:
+            self._record_audit(
+                method=request.method.upper(),
+                url=request.url,
+                resource_type=request.resource_type,
+                allowed=True,
+                reason="explicit_auxiliary_origin",
+                page=self._request_page(route),
+            )
             route.continue_()
+            return
+        if request_origin != self.target_origin:
+            self._record_audit(
+                method=request.method.upper(),
+                url=request.url,
+                resource_type=request.resource_type,
+                allowed=False,
+                reason="origin_not_allowlisted",
+                page=self._request_page(route),
+            )
+            route.abort("blockedbyclient")
             return
         method = request.method.upper()
         allowed = self._is_http_allowed(method)
@@ -564,7 +587,7 @@ class ProtectedBrowserHarness:
         if self._context is None or not hasattr(self._context, "route_web_socket"):
             return False
         self._context.route_web_socket(
-            lambda url: is_protected_websocket_url(url, self.target_origin),
+            "**",
             self._websocket_route_handler,
         )
         return True
@@ -631,6 +654,12 @@ class ProtectedBrowserHarness:
         parsed = urlsplit(url)
         if parsed.scheme and parsed.scheme not in {"http", "https", "about", "data"}:
             raise GuardPolicyError("page navigation uses an unsupported scheme")
+        requested_origin = origin_from_url(url)
+        if requested_origin is not None and requested_origin not in {
+            self.target_origin,
+            *self._allowed_auxiliary_origins,
+        }:
+            raise GuardPolicyError("page navigation origin is not allowlisted")
 
     def new_page(self) -> GuardedPage:
         self._assert_barriers_ready()

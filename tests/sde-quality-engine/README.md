@@ -141,6 +141,61 @@ ligge under `/private/tmp`, ingen storage state skal eksporteres, og profilen
 skal slettes når kontrollen avsluttes. Produksjonsnavigasjon skal fortsatt være
 fail-closed dersom én obligatorisk barriere eller sentinel-preflight mangler.
 
+### Separat Browserguard-broker
+
+Den godkjente orkestratorgrensen er nå `browserguard/client.py`; denne modulen
+og den frosne inngangen `browserguard/orchestrate.py` importerer ikke
+Playwright. `guard.py` og Playwright er broker-interne implementasjonsdetaljer
+og skal ikke importeres av en senere produksjonsmatrise. Alternative
+browserscript, direkte Playwright-bruk og generell metodevideresending er
+forbudt i den fasen.
+
+Brokeren lever i en separat, langlivet prosess og eier Browser, BrowserContext,
+alle Page-objekter, nettverksbarrierer, profil, screenshots, rapporter og
+opprydding. Klienten kommuniserer over en broker-opprettet Unix-socket i en
+`0700`-katalog med socketmodus `0600`. Meldinger bruker en lengdebegrenset,
+versjonert JSON-protokoll med session-, command-, response- og sekvens-ID.
+Protokollhashen må samsvare før første kommando, og alle protokollobjekter har
+`additionalProperties: false`.
+
+Produksjonssikkerhetsløftet gjelder den godkjente, frosne Quality
+Engine-orkestratoren. Brokeren er ikke en generell OS-sandbox mot en
+ondsinnet lokal prosess med samme brukerrettigheter.
+
+Screenshots, rapporter og manifester bruker én directory-FD-basert writer.
+Klienten sender bare en sanitert artifact-ID; den kan ikke sende filsti.
+Writeren avviser eksisterende og dangling symlink, katalog, FIFO og andre
+uventede typer, skriver en eksklusiv tempfil i samme katalog, fsyncer bytes,
+revaliderer målentryet, bruker atomisk replace og fsyncer parentdirectory.
+
+Read-only-operasjoner er bundet til
+`contracts/sde-browserguard-readonly-interaction-plan-v1.schema.json`.
+Klienten sender bare committed action-, target-, viewport- og page-ID-er, aldri
+selectors eller URL-er. Meny, fane, read-only-detalj, overlay-close, fokus og
+sikre taster valideres både mot planen og elementets runtime-semantikk. Form,
+submit, upload, contenteditable, drag-and-drop og kjente muterende
+handlingskategorier avvises. HTTP-/WebSocket-barrieren er fortsatt siste
+sperre.
+
+Den reproduserbare Browserguard-runtimeen er låst separat til Python 3.11.15,
+Playwright 1.62.0 og Chromium revision 1234. Root-`requirements.txt` brukes
+ikke til Browserguard-porten. Lokal og CI-installasjon bruker:
+
+```sh
+python3.11 -m pip install --require-hashes \
+  -r tests/sde-quality-engine/browserguard/requirements.lock
+PLAYWRIGHT_BROWSERS_PATH=/absolutt/isolert/browsersti \
+  python3.11 -m playwright install chromium
+PLAYWRIGHT_BROWSERS_PATH=/absolutt/isolert/browsersti \
+  npm run test:sde:qe:browserguard:runtime
+PLAYWRIGHT_BROWSERS_PATH=/absolutt/isolert/browsersti \
+  npm run test:sde:qe:browserguard
+```
+
+Den committed planen er kun syntetisk loopback. Produksjonsorigin,
+autentiseringsorigins og produksjonsselectors må innføres i en separat,
+uavhengig auditert plan før noen produksjonskjøring er mulig.
+
 ## Statusmodell
 
 | Status | Betydning |
