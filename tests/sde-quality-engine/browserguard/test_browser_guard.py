@@ -21,6 +21,7 @@ from guard import (  # noqa: E402
     GuardPolicyError,
     MANDATORY_BLOCKED_METHODS,
     ProtectedBrowserHarness,
+    _qualification_wait_for_timeout,
     is_protected_websocket_url,
     normalize_http_origin,
     secure_temp_directory,
@@ -264,7 +265,7 @@ class BrowserGuardMutationTests(unittest.TestCase):
             page = harness.new_page()
             page.goto(f"{sentinel.origin}/sentinel.html")
             observed = _fetch_probe(page, f"{sentinel.origin}/mutant-post", "POST")
-            page.wait_for_timeout(100)
+            _qualification_wait_for_timeout(page, 100)
             harness.complete_local_probes(
                 sentinel_green=False,
                 service_worker_green=True,
@@ -314,7 +315,7 @@ class BrowserGuardMutationTests(unittest.TestCase):
             page = harness.new_page()
             page.goto(f"{sentinel.origin}/sentinel.html")
             observed = _websocket_probe(page, f"{sentinel.websocket_origin}/mutant-websocket")
-            page.wait_for_timeout(200)
+            _qualification_wait_for_timeout(page, 200)
             harness.complete_local_probes(
                 sentinel_green=True,
                 service_worker_green=True,

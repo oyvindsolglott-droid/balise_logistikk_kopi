@@ -9,12 +9,19 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Type
 
-from guard import MANDATORY_BLOCKED_METHODS, ProtectedBrowserHarness, secure_temp_directory
+from guard import (
+    MANDATORY_BLOCKED_METHODS,
+    ProtectedBrowserHarness,
+    _qualification_click,
+    _qualification_evaluate,
+    _qualification_wait_for_timeout,
+    secure_temp_directory,
+)
 from sentinel import SentinelServer
 
 
 def _json_probe(page: Any, expression: str, argument: Any) -> Any:
-    return page.evaluate(expression, argument)
+    return _qualification_evaluate(page, expression, argument)
 
 
 def _fetch_probe(page: Any, url: str, method: str) -> Dict[str, Any]:
@@ -49,7 +56,8 @@ def _xhr_post_probe(page: Any, url: str) -> Dict[str, Any]:
 
 
 def _form_post_probe(page: Any, url: str) -> None:
-    page.evaluate(
+    _qualification_evaluate(
+        page,
         """url => {
           const frame = document.createElement('iframe');
           frame.name = 'local-post-target';
@@ -68,20 +76,22 @@ def _form_post_probe(page: Any, url: str) -> None:
         }""",
         url,
     )
-    page.wait_for_timeout(250)
+    _qualification_wait_for_timeout(page, 250)
 
 
 def _send_beacon_probe(page: Any, url: str) -> bool:
-    result = page.evaluate(
+    result = _qualification_evaluate(
+        page,
         """url => navigator.sendBeacon(url, new Blob(['discarded-local-probe'], {type:'text/plain'}))""",
         url,
     )
-    page.wait_for_timeout(250)
+    _qualification_wait_for_timeout(page, 250)
     return bool(result)
 
 
 def _websocket_probe(page: Any, url: str) -> Dict[str, Any]:
-    return page.evaluate(
+    return _qualification_evaluate(
+        page,
         """url => new Promise(resolve => {
           const state = {opened: false, closed: false, error: false, messageSent: false};
           const socket = new WebSocket(url);
@@ -158,7 +168,7 @@ def run_qualification(
         probe_results["HEAD"] = _fetch_probe(
             main_page, f"{protected.origin}/allowed-head?query-value-must-not-be-logged", "HEAD"
         )
-        main_page.wait_for_timeout(100)
+        _qualification_wait_for_timeout(main_page, 100)
         protected_methods_after = protected.reached_methods()
         get_reached = protected_methods_after.count("GET") > protected_methods_before.count("GET")
         head_reached = protected_methods_after.count("HEAD") > protected_methods_before.count("HEAD")
@@ -172,7 +182,7 @@ def run_qualification(
                 f"{protected.origin}/blocked-{method.lower()}?query-value-must-not-be-logged",
                 method,
             )
-            main_page.wait_for_timeout(100)
+            _qualification_wait_for_timeout(main_page, 100)
             negative_green[method] = _confirm_blocked_label(
                 harness, protected, method, blocked_before, reached_before
             )
@@ -182,7 +192,7 @@ def run_qualification(
         probe_results["XHR POST"] = _xhr_post_probe(
             main_page, f"{protected.origin}/blocked-xhr?query-value-must-not-be-logged"
         )
-        main_page.wait_for_timeout(100)
+        _qualification_wait_for_timeout(main_page, 100)
         negative_green["XHR POST"] = _confirm_blocked_label(
             harness, protected, "XHR POST", blocked_before, reached_before
         )
@@ -208,7 +218,7 @@ def run_qualification(
         probe_results["OTHER METHOD"] = _fetch_probe(
             main_page, f"{protected.origin}/blocked-propfind?query-value-must-not-be-logged", "PROPFIND"
         )
-        main_page.wait_for_timeout(100)
+        _qualification_wait_for_timeout(main_page, 100)
         negative_green["OTHER METHOD"] = (
             _blocked_count(harness) > blocked_before and len(protected.requests()) == reached_before
         )
@@ -216,13 +226,13 @@ def run_qualification(
         popup = harness.open_popup(
             main_page, f"{protected.origin}/popup.html?query-value-must-not-be-logged"
         )
-        popup.wait_for_load_state("domcontentloaded")
+        popup.wait_until_loaded("domcontentloaded")
         popup_blocked_before = _blocked_count(harness)
         popup_reached_before = len(protected.requests())
         probe_results["POPUP POST"] = _fetch_probe(
             popup, f"{protected.origin}/blocked-popup?query-value-must-not-be-logged", "POST"
         )
-        popup.wait_for_timeout(100)
+        _qualification_wait_for_timeout(popup, 100)
         popup_green = (
             _blocked_count(harness) > popup_blocked_before
             and len(protected.requests()) == popup_reached_before
@@ -239,14 +249,15 @@ def run_qualification(
         probe_results["SECOND PAGE POST"] = _fetch_probe(
             second_page, f"{protected.origin}/blocked-second-page", "POST"
         )
-        second_page.wait_for_timeout(100)
+        _qualification_wait_for_timeout(second_page, 100)
         second_page_green = (
             _blocked_count(harness) > second_blocked_before
             and len(protected.requests()) == second_reached_before
         )
 
         sw_paths_before = [item["path"] for item in protected.requests()]
-        probe_results["SERVICE WORKER"] = main_page.evaluate(
+        probe_results["SERVICE WORKER"] = _qualification_evaluate(
+            main_page,
             """async url => {
               if (!('serviceWorker' in navigator)) return {supported:false, registrationResolved:false};
               try {
@@ -274,7 +285,7 @@ def run_qualification(
             }""",
             f"{protected.origin}/sw.js?query-value-must-not-be-logged",
         )
-        main_page.wait_for_timeout(250)
+        _qualification_wait_for_timeout(main_page, 250)
         sw_paths_after = [item["path"] for item in protected.requests()]
         service_worker_green = (
             probe_results["SERVICE WORKER"].get("supported") is True
@@ -291,7 +302,7 @@ def run_qualification(
         probe_results["WEBSOCKET"] = _websocket_probe(
             main_page, f"{protected.websocket_origin}/socket?query-value-must-not-be-logged"
         )
-        main_page.wait_for_timeout(100)
+        _qualification_wait_for_timeout(main_page, 100)
         websocket_green = (
             harness.report()["webSocketsBlocked"] > ws_before
             and protected.web_socket_handshake_count() == ws_handshakes_before
@@ -303,16 +314,16 @@ def run_qualification(
         probe_results["CONTROL ORIGIN POST"] = _fetch_probe(
             control_page, f"{control.origin}/control-write", "POST"
         )
-        control_page.wait_for_timeout(100)
+        _qualification_wait_for_timeout(control_page, 100)
         exact_origin_green = (
             len(control.requests()) > control_reached_before and "POST" in control.reached_methods()
         )
-        control_page.click("#gate")
-        gate_before = control_page.evaluate("window.localHumanGate === true")
-        control_page.wait_for_timeout(100)
-        gate_after = control_page.evaluate("window.localHumanGate === true")
+        _qualification_click(control_page, "#gate")
+        gate_before = _qualification_evaluate(control_page, "window.localHumanGate === true")
+        _qualification_wait_for_timeout(control_page, 100)
+        gate_after = _qualification_evaluate(control_page, "window.localHumanGate === true")
         gate_preserved = bool(gate_before and gate_after)
-        control_page.screenshot(path=str(evidence / "local-synthetic-gate.png"))
+        control_page.screenshot("local-synthetic-gate.png")
 
         protected_reached_methods = protected.reached_methods()
         mutating_reached = sorted(

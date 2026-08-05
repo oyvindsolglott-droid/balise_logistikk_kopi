@@ -17,12 +17,29 @@ import tempfile
 import threading
 import weakref
 from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, Optional
 from urllib.parse import urlsplit
 
-from playwright.sync_api import BrowserContext, Page, Route, WebSocketRoute, sync_playwright
+from playwright.sync_api import (
+    BrowserContext as _BrowserContext,
+    Page as _Page,
+    Route as _Route,
+    WebSocketRoute as _WebSocketRoute,
+    sync_playwright as _sync_playwright,
+)
+
+
+__all__ = (
+    "GuardInitializationError",
+    "GuardPolicyError",
+    "GuardedPage",
+    "NavigationResult",
+    "ProtectedBrowserHarness",
+    "ScreenshotResult",
+)
 
 
 SCHEMA_VERSION = "sde-production-readonly-browser-guard/v1"
@@ -43,9 +60,41 @@ AUDIT_FIELDS = frozenset(
         "pageIdentity",
     }
 )
-PROTECTED_PAGE_ROUTING_METHODS = frozenset(
-    {"route", "unroute", "unroute_all", "route_web_socket", "context"}
+PUBLIC_GUARDED_PAGE_API = frozenset(
+    {
+        "attribute",
+        "close",
+        "goto",
+        "is_visible",
+        "locator_count",
+        "screenshot",
+        "scroll_by",
+        "set_viewport",
+        "text",
+        "wait_until_loaded",
+    }
 )
+PUBLIC_HARNESS_API = frozenset(
+    {
+        "assert_ready_for_page_navigation",
+        "close",
+        "complete_local_probes",
+        "new_page",
+        "open_popup",
+        "report",
+        "service_worker_count",
+        "start",
+        "write_report",
+    }
+)
+PUBLIC_HARNESS_ATTRIBUTES = frozenset(
+    {"download_directory", "evidence_directory", "headless", "profile_directory", "target_origin"}
+)
+SAFE_VISIBLE_ATTRIBUTES = frozenset({"alt", "class", "id", "role", "title"})
+_GUARDED_PAGE_STATE: "weakref.WeakKeyDictionary[GuardedPage, tuple[ProtectedBrowserHarness, _Page]]" = (
+    weakref.WeakKeyDictionary()
+)
+_GUARDED_PAGE_TOKEN = object()
 
 
 class GuardInitializationError(RuntimeError):
@@ -136,24 +185,152 @@ def secure_temp_directory(prefix: str) -> Path:
     return path
 
 
-class GuardedPage:
-    """Narrow Page proxy that refuses page-local routing overrides."""
+@dataclass(frozen=True)
+class NavigationResult:
+    """Sanitized result from a completed navigation."""
 
-    def __init__(self, harness: "ProtectedBrowserHarness", page: Page) -> None:
-        object.__setattr__(self, "_GuardedPage__harness", harness)
-        object.__setattr__(self, "_GuardedPage__page", page)
+    __slots__ = ("origin", "path", "status", "ok")
+
+    origin: str
+    path: str
+    status: Optional[int]
+    ok: bool
+
+
+@dataclass(frozen=True)
+class ScreenshotResult:
+    """Metadata for evidence written inside the controlled evidence directory."""
+
+    __slots__ = ("path", "byte_count")
+
+    path: str
+    byte_count: int
+
+
+def _page_state(guarded_page: "GuardedPage") -> tuple["ProtectedBrowserHarness", _Page]:
+    try:
+        return _GUARDED_PAGE_STATE[guarded_page]
+    except (KeyError, TypeError) as error:
+        raise GuardPolicyError("guarded page is not owned by this browserguard") from error
+
+
+def _make_guarded_page(harness: "ProtectedBrowserHarness", page: _Page) -> "GuardedPage":
+    guarded_page = GuardedPage(_GUARDED_PAGE_TOKEN)
+    _GUARDED_PAGE_STATE[guarded_page] = (harness, page)
+    return guarded_page
+
+
+def _qualification_evaluate(guarded_page: "GuardedPage", expression: str, argument: Any = None) -> Any:
+    """Internal local-test seam; deliberately absent from the public facade."""
+
+    _, page = _page_state(guarded_page)
+    return deepcopy(page.evaluate(expression, argument))
+
+
+def _qualification_click(guarded_page: "GuardedPage", selector: str) -> None:
+    _, page = _page_state(guarded_page)
+    page.click(selector)
+
+
+def _qualification_wait_for_timeout(guarded_page: "GuardedPage", timeout_ms: int) -> None:
+    _, page = _page_state(guarded_page)
+    page.wait_for_timeout(timeout_ms)
+
+
+class GuardedPage:
+    """Explicit allowlisted facade over an internally owned Playwright Page."""
+
+    __slots__ = ("__weakref__",)
+
+    def __init__(self, token: object) -> None:
+        if token is not _GUARDED_PAGE_TOKEN:
+            raise GuardPolicyError("GuardedPage instances are created only by ProtectedBrowserHarness")
 
     def __getattr__(self, name: str) -> Any:
-        if name in PROTECTED_PAGE_ROUTING_METHODS:
-            raise GuardPolicyError(f"page-local routing method '{name}' is disabled")
-        page = object.__getattribute__(self, "_GuardedPage__page")
-        return getattr(page, name)
+        if name.startswith("__"):
+            raise AttributeError(name)
+        raise GuardPolicyError(f"page operation '{name}' is not in the browserguard public allowlist")
 
-    def goto(self, url: str, **kwargs: Any) -> Any:
-        harness = object.__getattribute__(self, "_GuardedPage__harness")
+    def goto(
+        self,
+        url: str,
+        *,
+        wait_until: str = "load",
+        timeout_ms: Optional[int] = None,
+    ) -> NavigationResult:
+        harness, page = _page_state(self)
         harness.assert_ready_for_page_navigation(url)
-        page = object.__getattribute__(self, "_GuardedPage__page")
-        return page.goto(url, **kwargs)
+        if wait_until not in {"commit", "domcontentloaded", "load", "networkidle"}:
+            raise GuardPolicyError("navigation wait condition is not allowlisted")
+        kwargs: Dict[str, Any] = {"wait_until": wait_until}
+        if timeout_ms is not None:
+            if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+                raise GuardPolicyError("navigation timeout must be a positive integer")
+            kwargs["timeout"] = timeout_ms
+        response = page.goto(url, **kwargs)
+        final_url = page.url
+        return NavigationResult(
+            origin=origin_from_url(final_url) or "non-http-origin",
+            path=sanitized_path(final_url),
+            status=response.status if response is not None else None,
+            ok=response.ok if response is not None else True,
+        )
+
+    def text(self, selector: str) -> Optional[str]:
+        _, page = _page_state(self)
+        return page.locator(selector).text_content()
+
+    def attribute(self, selector: str, name: str) -> Optional[str]:
+        normalized = name.lower()
+        if normalized not in SAFE_VISIBLE_ATTRIBUTES and not normalized.startswith("aria-"):
+            raise GuardPolicyError(f"attribute '{name}' is not allowlisted")
+        _, page = _page_state(self)
+        return page.locator(selector).get_attribute(normalized)
+
+    def locator_count(self, selector: str) -> int:
+        _, page = _page_state(self)
+        return int(page.locator(selector).count())
+
+    def is_visible(self, selector: str) -> bool:
+        _, page = _page_state(self)
+        return bool(page.locator(selector).is_visible())
+
+    def set_viewport(self, width: int, height: int) -> None:
+        if not all(isinstance(value, int) and 1 <= value <= 10_000 for value in (width, height)):
+            raise GuardPolicyError("viewport dimensions must be integers between 1 and 10000")
+        _, page = _page_state(self)
+        page.set_viewport_size({"width": width, "height": height})
+
+    def scroll_by(self, x: int, y: int) -> None:
+        if not all(isinstance(value, int) and abs(value) <= 1_000_000 for value in (x, y)):
+            raise GuardPolicyError("scroll offsets must be bounded integers")
+        _, page = _page_state(self)
+        page.mouse.wheel(x, y)
+
+    def wait_until_loaded(self, state: str = "load", *, timeout_ms: Optional[int] = None) -> None:
+        if state not in {"domcontentloaded", "load", "networkidle"}:
+            raise GuardPolicyError("load state is not allowlisted")
+        kwargs: Dict[str, Any] = {}
+        if timeout_ms is not None:
+            if not isinstance(timeout_ms, int) or timeout_ms <= 0:
+                raise GuardPolicyError("load timeout must be a positive integer")
+            kwargs["timeout"] = timeout_ms
+        _, page = _page_state(self)
+        page.wait_for_load_state(state, **kwargs)
+
+    def screenshot(self, filename: str) -> ScreenshotResult:
+        if not isinstance(filename, str) or not filename or Path(filename).name != filename:
+            raise GuardPolicyError("screenshot filename must be a plain filename")
+        if Path(filename).suffix.lower() not in {".png", ".jpg", ".jpeg"}:
+            raise GuardPolicyError("screenshot filename must use png or jpeg")
+        harness, page = _page_state(self)
+        target = harness._controlled_evidence_path(filename)
+        page.screenshot(path=str(target))
+        return ScreenshotResult(path=str(target), byte_count=target.stat().st_size)
+
+    def close(self) -> None:
+        _, page = _page_state(self)
+        page.close()
 
 
 class ProtectedBrowserHarness:
@@ -182,13 +359,13 @@ class ProtectedBrowserHarness:
 
         self._lock = threading.Lock()
         self._audit_entries: list[Dict[str, Any]] = []
-        self._page_ids: "weakref.WeakKeyDictionary[Page, str]" = weakref.WeakKeyDictionary()
+        self._page_ids: "weakref.WeakKeyDictionary[_Page, str]" = weakref.WeakKeyDictionary()
         self._page_counter = 0
         self._first_page_seen = False
         self._first_page_before_barriers = False
         self._playwright = None
         self._browser = None
-        self._context: Optional[BrowserContext] = None
+        self._context: Optional[_BrowserContext] = None
         self._closed = False
         self._sentinel_probe_status = "BLOCKED"
         self._service_worker_probe_status = "BLOCKED"
@@ -254,7 +431,7 @@ class ProtectedBrowserHarness:
     def _is_http_allowed(self, method: str) -> bool:
         return method in ALLOWED_HTTP_METHODS
 
-    def _on_context_page(self, page: Page) -> None:
+    def _on_context_page(self, page: _Page) -> None:
         with self._lock:
             self._first_page_seen = True
             if not (
@@ -265,7 +442,7 @@ class ProtectedBrowserHarness:
                 self._first_page_before_barriers = True
             self._page_identity(page)
 
-    def _page_identity(self, page: Optional[Page]) -> str:
+    def _page_identity(self, page: Optional[_Page]) -> str:
         if page is None:
             return "context"
         existing = self._page_ids.get(page)
@@ -276,7 +453,7 @@ class ProtectedBrowserHarness:
         self._page_ids[page] = identity
         return identity
 
-    def _request_page(self, route: Route) -> Optional[Page]:
+    def _request_page(self, route: _Route) -> Optional[_Page]:
         try:
             return route.request.frame.page
         except Exception:
@@ -290,7 +467,7 @@ class ProtectedBrowserHarness:
         resource_type: str,
         allowed: bool,
         reason: str,
-        page: Optional[Page],
+        page: Optional[_Page],
     ) -> None:
         parsed_origin = origin_from_url(url)
         if parsed_origin is None and method == "WEBSOCKET":
@@ -316,7 +493,7 @@ class ProtectedBrowserHarness:
         with self._lock:
             self._audit_entries.append(entry)
 
-    def _http_route_handler(self, route: Route) -> None:
+    def _http_route_handler(self, route: _Route) -> None:
         request = route.request
         request_origin = origin_from_url(request.url)
         if request_origin != self.target_origin:
@@ -344,7 +521,7 @@ class ProtectedBrowserHarness:
                 self._blocked_method_labels.add("SENDBEACON")
             route.abort("blockedbyclient")
 
-    def _websocket_route_handler(self, route: WebSocketRoute) -> None:
+    def _websocket_route_handler(self, route: _WebSocketRoute) -> None:
         self._record_audit(
             method="WEBSOCKET",
             url=route.url,
@@ -388,7 +565,7 @@ class ProtectedBrowserHarness:
             self._refresh_report()
             raise GuardInitializationError("downloads must be disabled")
         try:
-            self._playwright = sync_playwright().start()
+            self._playwright = _sync_playwright().start()
             self._browser = self._playwright.chromium.launch(
                 headless=self.headless,
                 downloads_path=str(self.download_directory),
@@ -440,14 +617,16 @@ class ProtectedBrowserHarness:
         self._assert_barriers_ready()
         if self._context is None:
             raise GuardInitializationError("browser context is unavailable")
-        return GuardedPage(self, self._context.new_page())
+        return _make_guarded_page(self, self._context.new_page())
 
     def open_popup(self, opener: GuardedPage, url: str) -> GuardedPage:
         self.assert_ready_for_page_navigation(url)
-        raw_opener = object.__getattribute__(opener, "_GuardedPage__page")
+        owner, raw_opener = _page_state(opener)
+        if owner is not self:
+            raise GuardPolicyError("popup opener belongs to a different browserguard")
         with raw_opener.expect_popup() as popup_info:
             raw_opener.evaluate("target => window.open(target, '_blank')", url)
-        return GuardedPage(self, popup_info.value)
+        return _make_guarded_page(self, popup_info.value)
 
     def service_worker_count(self) -> int:
         return len(self._context.service_workers) if self._context is not None else 0
@@ -522,6 +701,14 @@ class ProtectedBrowserHarness:
     def report(self) -> Dict[str, Any]:
         self._refresh_report()
         return deepcopy(self._report)
+
+    def _controlled_evidence_path(self, filename: str) -> Path:
+        target = self.evidence_directory / filename
+        if target.parent.resolve(strict=True) != self.evidence_directory.resolve(strict=True):
+            raise GuardPolicyError("evidence must be written directly inside the secured evidence directory")
+        if target.exists() and target.is_symlink():
+            raise GuardPolicyError("evidence path must not be a symlink")
+        return target
 
     def write_report(self, path: Path) -> None:
         target = Path(path)

@@ -97,6 +97,23 @@ service workers og nekter page-lokale route-overstyringer. For det eksakte
 beskyttede originet tillates bare `GET` og `HEAD`; alle andre HTTP-metoder
 avbrytes før nettverk. En rutet WebSocket kobles aldri til serveren.
 
+Den dokumenterte sideflaten er en eksplisitt allowlistet `GuardedPage`-fasade.
+Den tilbyr bare navigasjon med et sanitert immutable resultat, tekstlesing,
+allowlistede synlige attributter (`alt`, `class`, `id`, `role`, `title` og
+`aria-*`), locator-antall, synlighet, viewport, scrolling, kontrollert
+skjermbilde, venting på lastetilstand og lukking. Ukjente operasjoner avvises;
+det finnes ingen generell attributt- eller metodevideresending til Playwright.
+Navigasjon returnerer `NavigationResult`, skjermbilder returnerer
+`ScreenshotResult`, og popup-er returnerer en ny `GuardedPage`.
+
+Den offentlige flaten tilbyr ingen callback- eller eventregistrering. Interne
+Playwright-events og callbackargumenter behandles bare inne i implementasjonen
+og eksporteres ikke. Rå `Browser`, `BrowserContext`, `Page`, `Frame`,
+`APIRequestContext`, `WebSocketRoute`, `Request` eller `Response` er ikke
+offentlige returverdier. De permanente strukturelle testene inventariserer
+fasaden og traverserer resultater, collections og nested verdier for slike
+forbudte typer.
+
 Lokal kvalifisering kjøres bare mot to dynamiske loopback-origins:
 
 ```sh
