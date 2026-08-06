@@ -173,8 +173,12 @@ ondsinnet lokal prosess med samme brukerrettigheter.
 Screenshots, rapporter og manifester bruker én directory-FD-basert writer.
 Klienten sender bare en sanitert artifact-ID; den kan ikke sende filsti.
 Writeren avviser eksisterende og dangling symlink, katalog, FIFO og andre
-uventede typer, skriver en eksklusiv tempfil i samme katalog, fsyncer bytes,
-revaliderer målentryet, bruker atomisk replace og fsyncer parentdirectory.
+uventede typer. Den prøver maksimalt åtte nye, broker-genererte kryptografiske
+tempnavn ved `EEXIST`, skriver en eksklusiv `0600`-tempfil i samme katalog,
+fsyncer bytes, revaliderer målentryet, bruker atomisk replace og fsyncer
+parentdirectory. En kolliderende fremmed entry endres aldri, og failure-cleanup
+unlinker bare en tempentry hvis device, inode og mode fortsatt matcher entryen
+som operasjonens egen `O_EXCL`-open opprettet.
 
 Read-only-operasjoner er bundet til
 `contracts/sde-browserguard-readonly-interaction-plan-v1.schema.json`.

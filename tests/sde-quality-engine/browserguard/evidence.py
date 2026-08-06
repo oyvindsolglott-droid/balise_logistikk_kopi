@@ -19,6 +19,7 @@ _ARTIFACT_SUFFIXES = {
     "screenshot-jpeg": ".jpg",
     "screenshot-png": ".png",
 }
+_TEMP_CREATE_ATTEMPTS = 8
 
 
 class EvidencePolicyError(RuntimeError):
@@ -130,6 +131,9 @@ class EvidenceWriter:
     def _before_revalidate(self, filename: str) -> None:
         """Test seam for a deterministic destination-entry race."""
 
+    def _before_cleanup(self, filename: str) -> None:
+        """Test seam for a deterministic temporary-entry replacement race."""
+
     def _write_all(self, descriptor: int, value: bytes) -> None:
         remaining = memoryview(value)
         while remaining:
@@ -144,16 +148,33 @@ class EvidenceWriter:
         if not isinstance(value, bytes):
             raise EvidencePolicyError("evidence value must be bytes")
         baseline = self._entry_identity(filename)
-        temporary_name = f".browserguard-{secrets.token_hex(16)}.tmp"
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
+        temporary_name: Optional[str] = None
+        temporary_identity: Optional[_EntryIdentity] = None
         descriptor: Optional[int] = None
-        temporary_owned = False
         installed = False
         try:
-            descriptor = os.open(temporary_name, flags, 0o600, dir_fd=self._root_fd)
-            temporary_owned = True
+            for _ in range(_TEMP_CREATE_ATTEMPTS):
+                candidate_name = f".browserguard-{secrets.token_hex(16)}.tmp"
+                try:
+                    descriptor = os.open(candidate_name, flags, 0o600, dir_fd=self._root_fd)
+                except OSError as error:
+                    if error.errno == errno.EEXIST:
+                        continue
+                    raise
+                temporary_name = candidate_name
+                break
+            if descriptor is None or temporary_name is None:
+                raise EvidencePolicyError(
+                    "temporary evidence entry could not be created safely"
+                ) from None
             created = os.fstat(descriptor)
+            temporary_identity = _EntryIdentity(
+                created.st_dev,
+                created.st_ino,
+                created.st_mode,
+            )
             if not stat.S_ISREG(created.st_mode) or created.st_nlink != 1:
                 raise EvidencePolicyError("temporary evidence entry is not a private regular file")
             self._write_all(descriptor, value)
@@ -182,11 +203,23 @@ class EvidenceWriter:
         finally:
             if descriptor is not None:
                 os.close(descriptor)
-            if temporary_owned and not installed:
+            if temporary_name is not None and temporary_identity is not None and not installed:
+                self._before_cleanup(temporary_name)
                 try:
-                    os.unlink(temporary_name, dir_fd=self._root_fd)
+                    current = os.stat(
+                        temporary_name,
+                        dir_fd=self._root_fd,
+                        follow_symlinks=False,
+                    )
                 except FileNotFoundError:
-                    pass
+                    current = None
+                if (
+                    current is not None
+                    and stat.S_ISREG(current.st_mode)
+                    and _EntryIdentity(current.st_dev, current.st_ino, current.st_mode)
+                    == temporary_identity
+                ):
+                    os.unlink(temporary_name, dir_fd=self._root_fd)
 
     def write_artifact(self, artifact_id: str, artifact_type: str, value: bytes) -> EvidenceResult:
         return self.write_named(_artifact_filename(artifact_id, artifact_type), value)
