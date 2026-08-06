@@ -179,8 +179,6 @@ class EvidenceWriter:
                 raise EvidencePolicyError("temporary evidence entry is not a private regular file")
             self._write_all(descriptor, value)
             os.fsync(descriptor)
-            os.close(descriptor)
-            descriptor = None
 
             self._before_revalidate(filename)
             current = self._entry_identity(filename)
@@ -201,25 +199,28 @@ class EvidenceWriter:
                 byte_count=len(value),
             )
         finally:
-            if descriptor is not None:
-                os.close(descriptor)
-            if temporary_name is not None and temporary_identity is not None and not installed:
-                self._before_cleanup(temporary_name)
-                try:
-                    current = os.stat(
-                        temporary_name,
-                        dir_fd=self._root_fd,
-                        follow_symlinks=False,
-                    )
-                except FileNotFoundError:
-                    current = None
-                if (
-                    current is not None
-                    and stat.S_ISREG(current.st_mode)
-                    and _EntryIdentity(current.st_dev, current.st_ino, current.st_mode)
-                    == temporary_identity
-                ):
-                    os.unlink(temporary_name, dir_fd=self._root_fd)
+            try:
+                # Keep the owned inode alive until name identity is revalidated.
+                if temporary_name is not None and temporary_identity is not None and not installed:
+                    self._before_cleanup(temporary_name)
+                    try:
+                        current = os.stat(
+                            temporary_name,
+                            dir_fd=self._root_fd,
+                            follow_symlinks=False,
+                        )
+                    except FileNotFoundError:
+                        current = None
+                    if (
+                        current is not None
+                        and stat.S_ISREG(current.st_mode)
+                        and _EntryIdentity(current.st_dev, current.st_ino, current.st_mode)
+                        == temporary_identity
+                    ):
+                        os.unlink(temporary_name, dir_fd=self._root_fd)
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
 
     def write_artifact(self, artifact_id: str, artifact_type: str, value: bytes) -> EvidenceResult:
         return self.write_named(_artifact_filename(artifact_id, artifact_type), value)
