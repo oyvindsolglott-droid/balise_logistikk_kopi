@@ -18,8 +18,6 @@ jobs:
     name: browserguard-python311-runtime
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
 
     steps:
       - name: Check out Browserguard source
@@ -36,12 +34,18 @@ jobs:
           -r tests/sde-quality-engine/browserguard/requirements.lock
 
       - name: Install matching Browserguard Chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
         run: python -m playwright install --with-deps chromium
 
       - name: Verify Browserguard runtime contract
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
         run: python -B tests/sde-quality-engine/browserguard/runtime_contract.py
 
       - name: Run Browserguard security and broker gates
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
         run: xvfb-run -a python -B -m unittest discover -s tests/sde-quality-engine/browserguard -p 'test_*.py' -v
 
   permanent-regressions:
