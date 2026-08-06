@@ -43,17 +43,126 @@ from runtime_contract import RuntimeContractError, verify_runtime
 from sentinel import SentinelServer
 
 
+_SHUTDOWN_TIMEOUT_SECONDS = 15.0
+
+
+class _ControlledShutdown(BaseException):
+    def __init__(self, signum: int) -> None:
+        super().__init__(128 + signum)
+        self.signum = signum
+        self.exit_code = 128 + signum
+
+
+class ShutdownCoordinator:
+    """Single idempotent coordinator for every controlled shutdown source."""
+
+    def __init__(self) -> None:
+        self._broker: Optional["BrowserguardBroker"] = None
+        self._requested = False
+        self._reason = "NOT_REQUESTED"
+        self._exit_code = 0
+        self._deadline: Optional[float] = None
+        self._closing = False
+        self._finalizing = False
+        self._complete = False
+        self._defer_depth = 0
+
+    def attach(self, broker: "BrowserguardBroker") -> None:
+        if self._broker is not None and self._broker is not broker:
+            raise GuardInitializationError("shutdown coordinator already has a broker")
+        self._broker = broker
+        if self._requested:
+            broker.state = "CLOSING"
+            broker._shutdown_requested = True
+
+    def request(self, reason: str, exit_code: int = 0) -> None:
+        if not self._requested:
+            self._requested = True
+            self._reason = reason
+            self._exit_code = exit_code
+            self._deadline = time.monotonic() + _SHUTDOWN_TIMEOUT_SECONDS
+        broker = self._broker
+        if broker is not None and broker.state != "CLOSED":
+            broker.state = "CLOSING"
+            broker._shutdown_requested = True
+
+    def signal_handler(self, signum: int, frame: object) -> None:
+        self.request(f"SIGNAL_{signal.Signals(signum).name}", 128 + signum)
+        if self._closing or self._finalizing or self._defer_depth:
+            return
+        raise _ControlledShutdown(signum)
+
+    def defer_signals(self) -> None:
+        self._defer_depth += 1
+
+    def resume_signals(self) -> None:
+        if self._defer_depth <= 0:
+            raise GuardInitializationError("shutdown signal deferral is unbalanced")
+        self._defer_depth -= 1
+
+    def begin(
+        self,
+        reason: str,
+        *,
+        exit_code: int = 0,
+        write_report: bool,
+    ) -> Dict[str, Any]:
+        self.request(reason, exit_code)
+        broker = self._broker
+        if broker is None or self._closing:
+            return {}
+        self._closing = True
+        try:
+            return broker._complete_controlled_shutdown(write_report=write_report)
+        finally:
+            self._closing = False
+
+    def finalize(self) -> None:
+        if self._complete or self._finalizing:
+            return
+        self._finalizing = True
+        try:
+            broker = self._broker
+            if broker is not None:
+                if broker.state != "CLOSED":
+                    self.begin(
+                        self._reason if self._requested else "FINALIZE",
+                        exit_code=self._exit_code,
+                        write_report=False,
+                    )
+                broker._finalize_owned_resources()
+            self._complete = True
+        finally:
+            self._finalizing = False
+
+    @property
+    def deadline(self) -> Optional[float]:
+        return self._deadline
+
+    @property
+    def exit_code(self) -> int:
+        return self._exit_code
+
+    @property
+    def reason(self) -> str:
+        return self._reason
+
+
+def _before_first_resource() -> None:
+    """Test seam after signal registration and before the first resource."""
+
+
 class BrowserguardBroker:
     """Own one synthetic protected session and serve one fixed client."""
 
-    def __init__(self) -> None:
+    def __init__(self, coordinator: Optional[ShutdownCoordinator] = None) -> None:
         headless_value = os.environ.get("SDE_QE_BROWSERGUARD_HEADLESS", "1")
         if headless_value not in {"0", "1"}:
             raise GuardInitializationError("broker headed mode is invalid")
         self.session_id = new_uuid()
         self.context_epoch = new_uuid()
         self.state = "STARTING"
-        self.evidence = EvidenceWriter.create()
+        self.evidence: Optional[EvidenceWriter] = None
         self._ipc_directory: Optional[Path] = None
         self._socket_path: Optional[Path] = None
         self._listener: Optional[socket.socket] = None
@@ -77,14 +186,22 @@ class BrowserguardBroker:
         self._gate_deadline: Optional[float] = None
         self._gate_outcome = "NOT_STARTED"
         self._cleanup_error: Optional[BaseException] = None
+        self._finalized = False
+        self._shutdown_result: Dict[str, Any] = {}
+        self._shutdown_coordinator = coordinator or ShutdownCoordinator()
+        self._shutdown_coordinator.attach(self)
 
     def initialize(self) -> None:
+        if self._shutdown_requested:
+            return
+        self.evidence = EvidenceWriter.create()
+        self._create_listener()
         self._sentinel = SentinelServer().start()
         self._plan = ReadOnlyInteractionPlan.synthetic(target_origin=self._sentinel.origin)
         self._harness = ProtectedBrowserHarness(
             self._sentinel.origin,
             headless=self._headless,
-            evidence_directory=self.evidence.root,
+            evidence_directory=self._evidence_writer().root,
             allowed_paths=self._plan.allowed_paths,
             query_policy=self._plan.query_policy,
         )
@@ -106,8 +223,12 @@ class BrowserguardBroker:
         )
         if not all(mandatory):
             raise GuardInitializationError("broker did not establish every pre-page barrier")
-        self._create_listener()
         self.state = "READY"
+
+    def _evidence_writer(self) -> EvidenceWriter:
+        if self.evidence is None:
+            raise GuardInitializationError("broker evidence writer is unavailable")
+        return self.evidence
 
     def _create_listener(self) -> None:
         parent = _private_temp_parent()
@@ -171,6 +292,8 @@ class BrowserguardBroker:
     def _dispatch(self, request: Dict[str, Any]) -> Dict[str, Any]:
         command = request["command"]
         payload = request["payload"]
+        if self.state in {"CLOSING", "CLOSED"} and command != "SHUTDOWN":
+            raise GuardPolicyError("broker is closing")
         if command != "HELLO" and not self._hello_complete:
             raise GuardPolicyError("HELLO must be the first command")
         handlers = {
@@ -221,14 +344,19 @@ class BrowserguardBroker:
             "contextEpoch": self.context_epoch,
             "pageCount": len(self._live_pages()),
             "barrierStatus": self._barrier_status(),
-            "evidenceDirectory": str(self.evidence.root),
+            "evidenceDirectory": str(self._evidence_writer().root),
         }
 
     def _capture_screenshot(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         value = self._active_page().screenshot()
         if not isinstance(value, bytes):
             raise GuardPolicyError("Playwright screenshot did not return bytes")
-        result = self.evidence.write_artifact(payload["artifactId"], "screenshot-png", value)
+        self._evidence_writer()
+        result = self.evidence.write_artifact(
+            payload["artifactId"],
+            "screenshot-png",
+            value,
+        )
         return {
             "artifactId": result.artifact_id,
             "filename": result.filename,
@@ -448,23 +576,16 @@ class BrowserguardBroker:
             return
         self._gate_outcome = outcome
         self._gate_deadline = None
-        self.state = "CLOSING"
-        self._close_runtime()
-        self.state = "CLOSED"
-        try:
-            self.evidence.write_artifact(
-                "browserguard-report",
-                "json",
-                self._final_report_bytes(),
-            )
-        except BaseException as error:
-            self._preserve_cleanup_error(error)
-        self._shutdown_requested = True
+        self._shutdown_coordinator.begin(
+            f"HUMAN_GATE_{outcome}",
+            write_report=True,
+        )
 
     def _write_report(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         if self._harness is None:
             raise GuardPolicyError("browserguard report is unavailable")
         value = (json.dumps(self._harness.report(), indent=2, sort_keys=True) + "\n").encode("utf-8")
+        self._evidence_writer()
         result = self.evidence.write_artifact(payload["artifactId"], "json", value)
         return {
             "artifactId": result.artifact_id,
@@ -476,20 +597,41 @@ class BrowserguardBroker:
         if self.state == "HUMAN_GATE_PENDING":
             self._gate_outcome = "SHUTDOWN"
             self._gate_deadline = None
+        return self._shutdown_coordinator.begin(
+            "SHUTDOWN_COMMAND",
+            write_report=True,
+        )
+
+    def _complete_controlled_shutdown(self, *, write_report: bool) -> Dict[str, Any]:
+        if self.state == "CLOSED":
+            return dict(self._shutdown_result)
         self.state = "CLOSING"
         self._close_runtime()
-        report = self._final_report_bytes()
-        result = self.evidence.write_artifact("browserguard-report", "json", report)
+        report_filename = ""
+        if write_report and self.evidence is not None:
+            try:
+                result = self.evidence.write_artifact(
+                    "browserguard-report",
+                    "json",
+                    self._final_report_bytes(),
+                )
+                report_filename = result.filename
+            except BaseException as error:
+                self._preserve_cleanup_error(error)
         self.state = "CLOSED"
         self._shutdown_requested = True
-        return {
+        evidence_directory = (
+            str(self.evidence.root) if self.evidence is not None else ""
+        )
+        self._shutdown_result = {
             "state": self.state,
             "profileDeleted": self._profile_deleted,
             "browserDisconnected": self._browser_disconnected,
             "sentinelStopped": self._sentinel_stopped,
-            "evidenceDirectory": str(self.evidence.root),
-            "reportFilename": result.filename,
+            "evidenceDirectory": evidence_directory,
+            "reportFilename": report_filename,
         }
+        return dict(self._shutdown_result)
 
     def _final_report_bytes(self) -> bytes:
         report = self._harness.report() if self._harness is not None else {}
@@ -585,6 +727,8 @@ class BrowserguardBroker:
                 except socket.timeout:
                     if self.state == "HUMAN_GATE_PENDING":
                         self._terminate_gate("TIMED_OUT")
+                    else:
+                        self._shutdown_coordinator.request("SOCKET_TIMEOUT")
                     break
                 except EOFError:
                     if self.state == "HUMAN_GATE_PENDING":
@@ -601,6 +745,7 @@ class BrowserguardBroker:
                         )
                     except OSError:
                         pass
+                    self._shutdown_coordinator.request("CLIENT_DISCONNECT")
                     break
                 except ProtocolError:
                     try:
@@ -614,6 +759,7 @@ class BrowserguardBroker:
                         )
                     except OSError:
                         pass
+                    self._shutdown_coordinator.request("PROTOCOL_CLOSE")
                     break
                 try:
                     request = validate_request(raw, expected_session_id=self.session_id)
@@ -637,6 +783,12 @@ class BrowserguardBroker:
                 write_frame(connection, response)
 
     def close(self) -> None:
+        self._shutdown_coordinator.finalize()
+
+    def _finalize_owned_resources(self) -> None:
+        if self._finalized:
+            return
+        self._finalized = True
         self._close_runtime()
         if self._listener is not None:
             try:
@@ -658,39 +810,67 @@ class BrowserguardBroker:
                 pass
             except BaseException as error:
                 self._preserve_cleanup_error(error)
-        try:
-            self.evidence.close()
-        except BaseException as error:
-            self._preserve_cleanup_error(error)
+        if self.evidence is not None:
+            try:
+                self.evidence.close()
+            except BaseException as error:
+                self._preserve_cleanup_error(error)
 
 
 def main() -> int:
+    coordinator = ShutdownCoordinator()
+    _install_signal_handlers(coordinator)
     broker: Optional[BrowserguardBroker] = None
     try:
+        _before_first_resource()
         verify_runtime()
-        broker = BrowserguardBroker()
-        broker.initialize()
+        broker = BrowserguardBroker(coordinator)
+        coordinator.defer_signals()
+        try:
+            broker.initialize()
+        finally:
+            coordinator.resume_signals()
+        if coordinator.deadline is not None:
+            coordinator.begin(
+                coordinator.reason,
+                exit_code=coordinator.exit_code,
+                write_report=True,
+            )
+            return coordinator.exit_code
         print(json.dumps(broker.startup_metadata(), sort_keys=True), flush=True)
         broker.serve()
         return 0
     except (RuntimeContractError, GuardInitializationError, GuardPolicyError, ProtocolError) as error:
         print(json.dumps({"status": "BLOCKED", "error": str(error)}, sort_keys=True), file=sys.stderr)
         return 1
-    except (KeyboardInterrupt, SystemExit) as error:
-        if broker is not None and broker.state == "HUMAN_GATE_PENDING":
-            broker._terminate_gate("SIGNAL")
-        code = getattr(error, "code", 130)
-        return code if isinstance(code, int) else 130
+    except _ControlledShutdown as shutdown:
+        coordinator.begin(
+            f"SIGNAL_{signal.Signals(shutdown.signum).name}",
+            exit_code=shutdown.exit_code,
+            write_report=True,
+        )
+        return shutdown.exit_code
+    except KeyboardInterrupt:
+        coordinator.begin(
+            "SIGNAL_SIGINT",
+            exit_code=128 + signal.SIGINT,
+            write_report=True,
+        )
+        return 128 + signal.SIGINT
     finally:
-        if broker is not None:
-            broker.close()
+        coordinator.finalize()
 
 
 def _termination_signal(signum: int, frame: object) -> None:
-    raise SystemExit(128 + signum)
+    raise _ControlledShutdown(signum)
+
+
+def _install_signal_handlers(coordinator: ShutdownCoordinator) -> None:
+    signal.signal(signal.SIGINT, coordinator.signal_handler)
+    signal.signal(signal.SIGTERM, coordinator.signal_handler)
+    if hasattr(signal, "SIGHUP"):
+        signal.signal(signal.SIGHUP, coordinator.signal_handler)
 
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGINT, _termination_signal)
-    signal.signal(signal.SIGTERM, _termination_signal)
     sys.exit(main())

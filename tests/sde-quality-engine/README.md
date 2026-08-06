@@ -162,9 +162,13 @@ Human gate kan bare startes i den eksplisitt headed broker-modusen. Begin
 oppretter en ugjennomsiktig gate-ID og en obligatorisk timeout på 1–300
 sekunder. Complete og abort må sende samme gate-ID. Complete bevarer broker,
 context og aktiv page; abort, timeout, klientdisconnect, shutdown og støttede
-SIGINT/SIGTERM-baner avslutter fail-closed og rydder profil, socket, browser,
-driver og sentinel. SIGKILL omfattes uttrykkelig ikke av cleanup-løftet. CI
-kjører Browserguard-porten under `xvfb-run` slik at headed-banen testes reelt.
+SIGINT-, SIGTERM- og SIGHUP-baner bruker samme idempotente, maksimalt
+15-sekunders shutdownkoordinator og rydder profil, socket, IPC-katalog, browser,
+context, driver, downloads, tempfiler og sentinel også under delvis
+initialisering. Signalhandleren registrerer bare shutdownforespørselen; selve
+cleanupen skjer i den felles koordinatoren. SIGKILL omfattes uttrykkelig ikke av
+cleanup-løftet. CI kjører Browserguard-porten under `xvfb-run` slik at
+headed-banen testes reelt.
 
 Produksjonssikkerhetsløftet gjelder den godkjente, frosne Quality
 Engine-orkestratoren. Brokeren er ikke en generell OS-sandbox mot en

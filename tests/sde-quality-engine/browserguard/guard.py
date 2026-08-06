@@ -8,6 +8,7 @@ headers, cookies, tokens, or response data.
 
 from __future__ import annotations
 
+import asyncio
 import importlib.metadata
 import json
 import os
@@ -57,6 +58,23 @@ AUDIT_FIELDS = frozenset(
         "pageIdentity",
     }
 )
+
+
+def _start_isolated_playwright(manager: Any) -> Any:
+    """Start the driver outside the broker's controlled-signal process group."""
+
+    original_create_subprocess_exec = asyncio.create_subprocess_exec
+
+    async def create_isolated_subprocess(*args: Any, **kwargs: Any) -> Any:
+        if os.name == "posix":
+            kwargs["start_new_session"] = True
+        return await original_create_subprocess_exec(*args, **kwargs)
+
+    asyncio.create_subprocess_exec = create_isolated_subprocess
+    try:
+        return manager.start()
+    finally:
+        asyncio.create_subprocess_exec = original_create_subprocess_exec
 PUBLIC_GUARDED_PAGE_API = frozenset(
     {
         "attribute",
@@ -402,6 +420,7 @@ class ProtectedBrowserHarness:
         self._first_page_seen = False
         self._first_page_before_barriers = False
         self._playwright = None
+        self._playwright_manager = None
         self._browser = None
         self._context: Optional[_BrowserContext] = None
         self._closed = False
@@ -466,6 +485,9 @@ class ProtectedBrowserHarness:
 
     def _before_barrier_installation(self) -> None:
         """Test seam; production implementation intentionally does nothing."""
+
+    def _before_context_creation(self) -> None:
+        """Test seam after browser launch and before context creation."""
 
     def _is_http_allowed(self, method: str) -> bool:
         return method in ALLOWED_HTTP_METHODS
@@ -691,13 +713,15 @@ class ProtectedBrowserHarness:
             self._refresh_report()
             raise GuardInitializationError("downloads must be disabled")
         try:
-            self._playwright = _sync_playwright().start()
+            self._playwright_manager = _sync_playwright()
+            self._playwright = _start_isolated_playwright(self._playwright_manager)
             self._browser = self._playwright.chromium.launch(
                 headless=self.headless,
                 downloads_path=str(self.download_directory),
                 args=self._launch_arguments(),
             )
             self._report["browserVersion"] = self._browser.version
+            self._before_context_creation()
             self._context = self._browser.new_context(**options)
             self._context.on("page", self._on_context_page)
             if self._context.pages:
@@ -891,6 +915,8 @@ class ProtectedBrowserHarness:
             self._report["browserDisconnected"] = True
         if self._playwright is not None:
             attempt(self._playwright.stop)
+        elif self._playwright_manager is not None:
+            attempt(lambda: self._playwright_manager.__exit__(None, None, None))
         attempt(lambda: shutil.rmtree(self.profile_directory))
         self._report["profileDirectoryDeleted"] = not self.profile_directory.exists()
         self._cleanup_error = cleanup_error
