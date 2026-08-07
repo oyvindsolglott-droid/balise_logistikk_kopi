@@ -478,6 +478,31 @@ function staticChecks(inventory = buildInventory()) {
   );
   const writeRoutes = inventory.source.serverRoutes.filter((route) => !["GET", "HEAD"].includes(route.method));
   const readRoutes = inventory.source.serverRoutes.filter((route) => ["GET", "HEAD"].includes(route.method));
+  const nightFiles = [
+    "sde_intelligent_night_planning.js",
+    "sde_night_planning_ui.js",
+    "config/sde-night-intelligence.json",
+    "models/sde/production-model.json",
+    "models/sde/model-registry.json",
+    "tests/sde/intelligent-night-planning.test.cjs",
+    "tests/sde/test_sde_night_model.py"
+  ];
+  const missingNightFiles = nightFiles.filter((file) => !fs.existsSync(path.join(root, file)));
+  const indexSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const nightUiSource = fs.existsSync(path.join(root, "sde_night_planning_ui.js"))
+    ? fs.readFileSync(path.join(root, "sde_night_planning_ui.js"), "utf8")
+    : "";
+  const nightModuleSource = fs.existsSync(path.join(root, "sde_intelligent_night_planning.js"))
+    ? fs.readFileSync(path.join(root, "sde_intelligent_night_planning.js"), "utf8")
+    : "";
+  const nightContractProblems = [
+    ...missingNightFiles.map((file) => `mangler ${file}`),
+    !/data-tab="sdeNattplanErfaring"/.test(indexSource) ? "mangler nattplan-tab" : null,
+    !/assets\/vendor\/tesseract\/tesseract\.min\.js/.test(indexSource) ? "mangler lokal OCR-runtime" : null,
+    /https?:\/\//.test(nightUiSource) ? "UI peker på ekstern tjeneste" : null,
+    /localStorage\.setItem|fetch\(/.test(nightModuleSource) ? "beslutningsmodul har write/nettverksflate" : null,
+    !/absoluteGatePassed: true/.test(nightUiSource) ? "ML mangler gate-evidens" : null
+  ].filter(Boolean);
 
   return [
     result({
@@ -537,6 +562,18 @@ function staticChecks(inventory = buildInventory()) {
         pythonTests: inventory.tests.python.length,
         serverTests: inventory.tests.server.length
       }
+    }),
+    result({
+      id: "NIGHT-INTELLIGENCE-001",
+      area: "night-intelligence",
+      name: "Nattintelligens er registrert med lokal OCR og read-only authority",
+      status: nightContractProblems.length ? "RED" : "GREEN",
+      critical: true,
+      summary: nightContractProblems.length
+        ? nightContractProblems.join("; ")
+        : "Canonical nattplan, lokal OCR, erfaring, modellartifact og gate-evidens er eksplisitt registrert uten nettverks- eller writeflate i beslutningsmodulen.",
+      evidence: nightFiles,
+      details: {problems: nightContractProblems}
     }),
     result({
       id: "MULTIUSER-LIVE-001",

@@ -251,6 +251,14 @@
       "evidence": ["revision-tests", "idempotency-tests"]
     },
     {
+      "id": "NIGHT-INTELLIGENCE-001",
+      "area": "night-intelligence",
+      "name": "Nattplan, erfaring og ML er rådgivende og gate-beskyttet",
+      "critical": true,
+      "expected": "Bilde og manuell input bruker samme canonical DRAFT/CONFIRMED-modell; HumanExperienceScore og MachineLearningScore er separate, forklarbare og beregnes bare etter absolute gates uten operativ business-write.",
+      "evidence": ["tests/sde/intelligent-night-planning.test.cjs", "tests/sde/test_sde_night_model.py", "models/sde/model-registry.json"]
+    },
+    {
       "id": "UX-001",
       "area": "ux",
       "name": "Desktop og 390 px er uten kritisk overflow",
