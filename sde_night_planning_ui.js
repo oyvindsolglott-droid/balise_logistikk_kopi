@@ -696,8 +696,16 @@
     }
   }
 
-  function scoreText(value) {
-    return Number.isFinite(Number(value)) ? String(Math.round(Number(value) * 10) / 10) + "/100" : "Ikke tilgjengelig";
+  function scoreText(value, status) {
+    if (status === "INSUFFICIENT_DATA") return "Ikke nok data";
+    if (value == null) return "Ikke tilgjengelig";
+    if (typeof value === "string") {
+      if (!value.trim()) return "Ikke tilgjengelig";
+    } else if (typeof value !== "number") {
+      return "Ikke tilgjengelig";
+    }
+    const numericValue = Number(value);
+    return Number.isFinite(numericValue) ? String(Math.round(numericValue * 10) / 10) + "/100" : "Ikke tilgjengelig";
   }
 
   function analysisItemHtml(analysis, decision, machine, weights) {
@@ -714,7 +722,7 @@
       "<div class=\"sde-night-score-grid\">",
       "<div class=\"sde-night-score\"><strong>Operativ/heuristisk</strong><span>", html(scoreText(decision && decision.deterministicScore)), "</span></div>",
       "<div class=\"sde-night-score\"><strong>HumanExperienceScore</strong><span>", html(scoreText(decision && decision.humanExperienceScore)), "</span></div>",
-      "<div class=\"sde-night-score\"><strong>MachineLearningScore</strong><span>", html(scoreText(decision && decision.machineLearningScore)), "</span></div>",
+      "<div class=\"sde-night-score\"><strong>MachineLearningScore</strong><span>", html(scoreText(decision && decision.machineLearningScore, machine && machine.status)), "</span></div>",
       "<div class=\"sde-night-score\"><strong>Samlet, rådgivende</strong><span>", html(scoreText(decision && decision.combinedScore)), "</span></div>",
       "</div>",
       decision && decision.explanations
