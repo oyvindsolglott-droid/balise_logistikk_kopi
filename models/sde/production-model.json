@@ -1,0 +1,40 @@
+{
+  "algorithm": "deterministic-regularized-linear-model-v1",
+  "artifactHash": "336da60dfe2e9d49ad4fb9c50648248fedfc5860b02aca1fe88cd3404da82929",
+  "datasetVersion": "none",
+  "deploymentPolicy": {
+    "maySelfPromote": false,
+    "requiresExplicitChampionApproval": true,
+    "runtimeTrainingAllowed": false
+  },
+  "featureSchema": null,
+  "featureVersion": "sde-night-features-v1",
+  "metrics": null,
+  "minimumDataAssessment": {
+    "failures": [
+      "NO_AUTHORITATIVE_PRODUCTION_DATASET"
+    ],
+    "operationalDateCount": 0,
+    "passed": false,
+    "recordCount": 0
+  },
+  "minimumDataContractVersion": "sde-night-minimum-data-v1",
+  "modelId": "sde-night-tabular",
+  "modelVersion": "0.0.0-cold-start",
+  "models": null,
+  "provenance": {
+    "excludedRecords": 0,
+    "operationalDateCount": 0,
+    "operationalRevisions": [],
+    "periodEnd": null,
+    "periodStart": null,
+    "recordCount": 0,
+    "sourcePolicy": "AUTHORITATIVE_EXECUTED_RESULT_ONLY"
+  },
+  "schemaVersion": "sde-night-model-artifact-v1",
+  "split": null,
+  "status": "INSUFFICIENT_DATA",
+  "targetVersion": "sde-night-targets-v1",
+  "trainedAt": null,
+  "trainingDatasetVersion": "none"
+}

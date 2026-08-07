@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "sde-night-intelligence-config-v1",
+  "weights": {
+    "version": "sde-night-weights-v1",
+    "deterministic": 0.6,
+    "humanExperience": 0.25,
+    "machineLearning": 0.15
+  },
+  "minimumDataContract": {
+    "version": "sde-night-minimum-data-v1",
+    "minimumAuthoritativeOutcomes": 60,
+    "minimumOperationalDates": 20,
+    "minimumPerBinaryClass": 8,
+    "splitFractions": {
+      "training": 0.7,
+      "validation": 0.15,
+      "test": 0.15
+    },
+    "rationale": "Seksti autoritative utfall fordelt over minst tjue driftsdøgn gir minst fjorten eldre treningsdøgn og tre nyere døgn i hver av validerings- og testperiodene ved tidsbasert 70/15/15-splitt. Minst åtte eksempler i hver klasse hindrer at et binært mål ser validert ut uten begge utfall. Kravet er en cold-start-sperre, ikke et løfte om modellkvalitet; challenger må fortsatt vurderes eksplisitt før eventuell champion-godkjenning."
+  },
+  "training": {
+    "algorithm": "deterministic-regularized-linear-model-v1",
+    "iterations": 800,
+    "learningRate": 0.04,
+    "l2Regularization": 0.01,
+    "seedPolicy": "No randomness; chronological full-batch gradient descent"
+  },
+  "drift": {
+    "version": "sde-night-drift-v1",
+    "minimumOutcomes": 40,
+    "maximumBrierDegradation": 0.1,
+    "action": "Disable machine-learning weight and require controlled retraining"
+  }
+}

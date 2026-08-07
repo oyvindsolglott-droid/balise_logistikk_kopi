@@ -116,6 +116,7 @@ Hvis brukererfaring avdekker konkret feil, opprett en ny smal FIX med avgrenset 
 - `data/api_idag.json` – statiske data for idag
 - `data/api_imorgen.json` – statiske data for imorgen
 - `.github/workflows/update-static-data.yml` – oppdaterer de statiske datafilene
+- `docs/sde-night-intelligence.md` – authority, bildepersonvern, nattplan, erfaring, kontrollert offline-ML, fallback og rollback
 
 ## Viktig regel
 
