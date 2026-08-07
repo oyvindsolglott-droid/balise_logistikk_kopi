@@ -71,6 +71,29 @@ er adkomstressurs for spor 5 og dermed ville sperret neste bestilte steg. SDE m�
 velge en annen komplett release/main/recovery-kjede, eller forbli diagnostic-only
 dersom ingen slik kjede finnes.
 
+## Gjenopprettede historiske kontrakter
+
+Seks permanente harness-kontrakter hadde referanser til Git-objekter som ikke
+lenger finnes lokalt eller på `origin`. De opprinnelige SHA-ene er bevart som
+`UNAVAILABLE_HISTORICAL_REFERENCE`-proveniens i
+`fixtures/historical-contract-recovery.json`; de brukes ikke lenger som
+kjørbare input.
+
+Hver kontrakt er i stedet bundet til den eksakte førsteforelderen til committen
+som både reparerte produksjonsfeilen og registrerte harnesset i dagens lineære
+repositoryhistorikk. Testen validerer ved hver kjøring at:
+
+- pre-fix-baselinen er reparasjonscommittens eksakte førsteforelder,
+- reparasjonscommitten er en forfader av kandidaten,
+- commitdiffen omfatter `index.html`, kontraktregisteret og riktig harness,
+- historisk `index.html` har låst SHA-256,
+- dagens kilde består harnesset, og den historiske pre-fix-kilden blir drept.
+
+Dette gjør kontraktene reproduserbare fra en full fersk klon uten private
+objektlagre, uten syntetisk historikk og uten å gjøre manglende historikk til
+PASS. De seks opprinnelige regresjonsformålene, symbolene, feilmønstrene og
+historiske SHA-ene er dokumentert i recovery-registeret.
+
 ```sh
 npm run test:sde:contracts
 npm run test:sde:mutations

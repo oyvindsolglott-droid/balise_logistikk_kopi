@@ -13,6 +13,10 @@ const indexPath = path.join(root, "index.html");
 const serverIndexPath = path.join(root, "server", "src", "index.js");
 const harnessDirectory = path.join(__dirname, "harnesses");
 const fixtureDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "sde-regression-firewall-"));
+const historicalRecovery = JSON.parse(fs.readFileSync(
+  path.join(__dirname, "fixtures", "historical-contract-recovery.json"),
+  "utf8",
+));
 const currentHtml = fs.readFileSync(indexPath, "utf8");
 const currentServerIndex = fs.readFileSync(serverIndexPath, "utf8");
 const normativeGuide = fs.readFileSync(
@@ -59,6 +63,49 @@ function runHarness(file, sourcePath = indexPath) {
   return run(process.execPath, [path.join(harnessDirectory, file), sourcePath]);
 }
 
+function resolveRecoveredHistoricalBaseline(recoveryId, {phase, name, harness}) {
+  assert.equal(historicalRecovery?.schemaVersion, "sde-historical-contract-recovery-v1");
+  const contract = historicalRecovery?.contracts?.[recoveryId];
+  assert.ok(contract, `${phase} historical recovery ${recoveryId} is not registered`);
+  assert.equal(contract.sourceHistoricalSha, "UNAVAILABLE_HISTORICAL_REFERENCE");
+  assert.match(contract.unavailableHistoricalReference, /^[0-9a-f]{40}$/);
+  assert.match(contract.baselineCommit, /^[0-9a-f]{40}$/);
+  assert.match(contract.repairCommit, /^[0-9a-f]{40}$/);
+  assert.equal(contract.historicalInput, "index.html");
+  assert.equal(contract.harness, harness);
+  assert.equal(contract.testName, `${phase} — ${name}`);
+  assert.equal(contract.evidenceKind, "OLD_CODE");
+  assert.ok(String(contract.regressionPurpose || "").trim());
+  assert.ok(Array.isArray(contract.capturedSymbols) && contract.capturedSymbols.length > 0);
+  assert.ok(String(contract.expectedHistoricalFailure || "").trim());
+
+  const parent = run("git", ["rev-parse", `${contract.repairCommit}^`]);
+  assertPassed(parent, `${phase} repair-commit parent`);
+  assert.equal(
+    parent.stdout.trim(),
+    contract.baselineCommit,
+    `${phase} recovered baseline must be the exact first parent of its repair commit`,
+  );
+  assertPassed(
+    run("git", ["merge-base", "--is-ancestor", contract.repairCommit, "HEAD"]),
+    `${phase} repair commit ancestry`,
+  );
+  const changed = run("git", ["diff", "--name-only", contract.baselineCommit, contract.repairCommit]);
+  assertPassed(changed, `${phase} repair diff inventory`);
+  const changedFiles = new Set(changed.stdout.trim().split(/\r?\n/).filter(Boolean));
+  assert.ok(changedFiles.has("index.html"), `${phase} repair commit must change production index.html`);
+  assert.ok(changedFiles.has("tests/sde/firewall.test.cjs"), `${phase} repair commit must register its contract`);
+  assert.ok(changedFiles.has(`tests/sde/harnesses/${harness}`), `${phase} repair commit must add or update its harness`);
+
+  const historicalSource = gitFile(contract.baselineCommit, contract.historicalInput);
+  assert.equal(
+    crypto.createHash("sha256").update(historicalSource).digest("hex"),
+    contract.historicalInputSha256,
+    `${phase} recovered historical input must remain byte-bound`,
+  );
+  return contract.baselineCommit;
+}
+
 let prerequisiteCancelReport = null;
 function getPrerequisiteCancelReport() {
   if (prerequisiteCancelReport) return prerequisiteCancelReport;
@@ -71,14 +118,19 @@ function getPrerequisiteCancelReport() {
   return prerequisiteCancelReport;
 }
 
-function registerHarnessTest({phase, name, harness, baseline}) {
+function registerHarnessTest({phase, name, harness, baseline, recoveryId}) {
   test(`${phase} — ${name}`, () => {
+    assert.equal(Boolean(baseline) && Boolean(recoveryId), false, `${phase} cannot mix legacy and recovered historical inputs`);
+    const historicalBaseline = recoveryId
+      ? resolveRecoveredHistoricalBaseline(recoveryId, {phase, name, harness})
+      : baseline;
+    assert.ok(historicalBaseline, `${phase} historical baseline is required`);
     assertPassed(runHarness(harness), `${phase} current contract`);
-    const oldResult = runHarness(harness, materialize(baseline, "index.html"));
+    const oldResult = runHarness(harness, materialize(historicalBaseline, "index.html"));
     assert.notEqual(
       oldResult.status,
       0,
-      `${phase} permanent test did not detect its historical production baseline ${baseline}`,
+      `${phase} permanent test did not detect its historical production baseline ${historicalBaseline}`,
     );
   });
 }
@@ -488,28 +540,28 @@ registerHarnessTest({
   phase: "Chain route continuity",
   name: "a prerequisite holding slot cannot block the following ordered move",
   harness: "sde-chain-route-continuity-harness.js",
-  baseline: "b125418d22a4124c60e5cb8c36e76da70165669b",
+  recoveryId: "chain-route-continuity",
 });
 
 registerHarnessTest({
   phase: "Completed-chain lifecycle",
   name: "a completed historical chain cannot poison a fresh order from current actual-state",
   harness: "sde-completed-chain-new-order-harness.js",
-  baseline: "4ef126fbb280360c7ad243d0a3f6ce1668c066f1",
+  recoveryId: "completed-chain-lifecycle",
 });
 
 registerHarnessTest({
   phase: "Fresh graphical order identity",
   name: "a unique browser drag cannot bind to an older row only by vehicle and source",
   harness: "sde-fresh-graphic-order-base-row-harness.js",
-  baseline: "4aba2d32b1b99d8f01037f8330899791648036fb",
+  recoveryId: "fresh-graphical-order-identity",
 });
 
 registerHarnessTest({
   phase: "Completed-chain manual return",
   name: "a valid local return remains quittable when canonical authority uses a separate outcome id",
   harness: "sde-completed-chain-manual-return-harness.js",
-  baseline: "93e3ab9d83ddd1e7003c15e675c06ed759685cf8",
+  recoveryId: "completed-chain-manual-return",
 });
 
 registerHarnessTest({
@@ -523,7 +575,7 @@ registerHarnessTest({
   phase: "Direct wash transit",
   name: "4N to 10S uses the free wash corridor as one move instead of a trapped-egress chain",
   harness: "sde-direct-wash-transit-route-harness.js",
-  baseline: "15f430b8978c43cdcd60a8876105e079fb9e9818",
+  recoveryId: "direct-wash-transit",
 });
 
 test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
@@ -842,7 +894,7 @@ registerHarnessTest({
   phase: "X2",
   name: "completed history cannot reject a new inbound order through a newly opened north end",
   harness: "sde-inbound-trapped-target-history-harness.js",
-  baseline: "090fabb343a6a75d4ac4480cf1740d7b0a22e4e8",
+  recoveryId: "inbound-trapped-target-history",
 });
 
 registerHarnessTest({

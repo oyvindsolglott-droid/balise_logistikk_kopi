@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "sde-historical-contract-recovery-v1",
+  "contracts": {
+    "chain-route-continuity": {
+      "sourceHistoricalSha": "UNAVAILABLE_HISTORICAL_REFERENCE",
+      "unavailableHistoricalReference": "b125418d22a4124c60e5cb8c36e76da70165669b",
+      "baselineCommit": "8a75a1868175ef20eb98c878c5019f72d161e967",
+      "repairCommit": "4e3b016b4f202ed419441be57824a62f7c21af3b",
+      "historicalInput": "index.html",
+      "historicalInputSha256": "fc3a595d403fcd1fc85ac88445fe65b2dcdf8a93ec38a4e17a2c5305512fc7d2",
+      "harness": "sde-chain-route-continuity-harness.js",
+      "testName": "Chain route continuity — a prerequisite holding slot cannot block the following ordered move",
+      "evidenceKind": "OLD_CODE",
+      "regressionPurpose": "A temporary holding slot must preserve the route for the following ordered main move.",
+      "capturedSymbols": [
+        "getSdePhysicalApproachCorridorSlots",
+        "getSdePhysicalAccessPathSlots",
+        "buildSdeTemporaryAccessReliefMainRouteAssessment",
+        "buildSdeTemporaryAccessReliefChainPlan"
+      ],
+      "expectedHistoricalFailure": "The pre-fix implementation cannot prove that the temporary holding state preserves access to the main target."
+    },
+    "completed-chain-lifecycle": {
+      "sourceHistoricalSha": "UNAVAILABLE_HISTORICAL_REFERENCE",
+      "unavailableHistoricalReference": "4ef126fbb280360c7ad243d0a3f6ce1668c066f1",
+      "baselineCommit": "4e3b016b4f202ed419441be57824a62f7c21af3b",
+      "repairCommit": "d3d2922f317580a5ff294263998bd9c842a55bdb",
+      "historicalInput": "index.html",
+      "historicalInputSha256": "4a8d467f9c74f26a8682504fc8ec2f4195cd2c108edbe2e4cb3ad014a156ce60",
+      "harness": "sde-completed-chain-new-order-harness.js",
+      "testName": "Completed-chain lifecycle — a completed historical chain cannot poison a fresh order from current actual-state",
+      "evidenceKind": "OLD_CODE",
+      "regressionPurpose": "A new graphical order must receive an identity distinct from a completed historical chain.",
+      "capturedSymbols": [
+        "buildSdeCompleteTrappedEgressPlan"
+      ],
+      "expectedHistoricalFailure": "The pre-fix implementation reuses the historical chain id for the fresh order."
+    },
+    "fresh-graphical-order-identity": {
+      "sourceHistoricalSha": "UNAVAILABLE_HISTORICAL_REFERENCE",
+      "unavailableHistoricalReference": "4aba2d32b1b99d8f01037f8330899791648036fb",
+      "baselineCommit": "d3d2922f317580a5ff294263998bd9c842a55bdb",
+      "repairCommit": "20c74e2500821ff2c55d8e625c2ec4ff0c177c20",
+      "historicalInput": "index.html",
+      "historicalInputSha256": "5c4ecc9ce243a29f51f53ceac3ff2f5c1baf2e621ae4984412dd262feac39eca",
+      "harness": "sde-fresh-graphic-order-base-row-harness.js",
+      "testName": "Fresh graphical order identity — a unique browser drag cannot bind to an older row only by vehicle and source",
+      "evidenceKind": "OLD_CODE",
+      "regressionPurpose": "A uniquely identified graphical order must not bind to or inherit lifecycle state from an older row with the same vehicle and source.",
+      "capturedSymbols": [
+        "getSdePhysicalReleaseReplanKeyForBlocker",
+        "getSdeNightPlacementMatchedMoveForOverride",
+        "buildSdeShiftCardMoveCandidates",
+        "removeSdeActiveOutcomeAuthoritiesForPhysicalStep",
+        "stageSdeCanonicalGraphicDragOrder"
+      ],
+      "expectedHistoricalFailure": "The pre-fix implementation matches the fresh override to the legacy base row."
+    },
+    "completed-chain-manual-return": {
+      "sourceHistoricalSha": "UNAVAILABLE_HISTORICAL_REFERENCE",
+      "unavailableHistoricalReference": "93e3ab9d83ddd1e7003c15e675c06ed759685cf8",
+      "baselineCommit": "20c74e2500821ff2c55d8e625c2ec4ff0c177c20",
+      "repairCommit": "ebc067e3ad788e6d4cb956df7eef03d561d96f6a",
+      "historicalInput": "index.html",
+      "historicalInputSha256": "02a441bbeda26ebf812167bdb775c21d303583d5cc3265910f37f50aee6b2fa9",
+      "harness": "sde-completed-chain-manual-return-harness.js",
+      "testName": "Completed-chain manual return — a valid local return remains quittable when canonical authority uses a separate outcome id",
+      "evidenceKind": "OLD_CODE",
+      "regressionPurpose": "A valid local return action key must remain authorized through the canonical authority alias.",
+      "capturedSymbols": [
+        "handleSdeShiftMoveAction"
+      ],
+      "expectedHistoricalFailure": "The pre-fix implementation rejects the local return card as replaced."
+    },
+    "direct-wash-transit": {
+      "sourceHistoricalSha": "UNAVAILABLE_HISTORICAL_REFERENCE",
+      "unavailableHistoricalReference": "15f430b8978c43cdcd60a8876105e079fb9e9818",
+      "baselineCommit": "324ca09ea7c6dde6ff4525f3f8ba84dccce35763",
+      "repairCommit": "a8609c965967e8bc5c7bb5e43d2f0109f923c7eb",
+      "historicalInput": "index.html",
+      "historicalInputSha256": "bcd83b90ca1b954882d2ebb52d1549e8ab8dfbbd09f083efb6fbd65f7a754c4b",
+      "harness": "sde-direct-wash-transit-route-harness.js",
+      "testName": "Direct wash transit — 4N to 10S uses the free wash corridor as one move instead of a trapped-egress chain",
+      "evidenceKind": "OLD_CODE",
+      "regressionPurpose": "A free, verified VN/VS corridor from 4N to southern butt tracks must remain a direct move and fail closed when any route resource is occupied.",
+      "capturedSymbols": [
+        "getSdeDirectWashTransitRouteAssessment",
+        "getSdeCompleteTrappedEgressBlockState",
+        "buildSdeNightPlacementDropAssessment",
+        "stageSdeCanonicalGraphicDragOrder"
+      ],
+      "expectedHistoricalFailure": "The pre-fix implementation has no authoritative direct-wash-transit route assessment."
+    },
+    "inbound-trapped-target-history": {
+      "sourceHistoricalSha": "UNAVAILABLE_HISTORICAL_REFERENCE",
+      "unavailableHistoricalReference": "090fabb343a6a75d4ac4480cf1740d7b0a22e4e8",
+      "baselineCommit": "6a74a677f905b453fd395dbff157fdf9ec47e1fc",
+      "repairCommit": "b3521243b0e3fb5d680c1e41d2d34c63445f4331",
+      "historicalInput": "index.html",
+      "historicalInputSha256": "b987f1fdab3820d4735c4be7a48338c091c3a982e60f025e2824228a80d32cd4",
+      "harness": "sde-inbound-trapped-target-history-harness.js",
+      "testName": "X2 — completed history cannot reject a new inbound order through a newly opened north end",
+      "evidenceKind": "OLD_CODE",
+      "regressionPurpose": "Completed chain history must not prevent a new inbound release/main/return chain through a currently open north end.",
+      "capturedSymbols": [
+        "getSdePhysicalApproachCorridorSlots",
+        "buildSdePhysicalBlockerReturnAssessment",
+        "buildSdePhysicalBlockerGuardMoves"
+      ],
+      "expectedHistoricalFailure": "The pre-fix implementation fails to materialize the new inbound three-step chain."
+    }
+  }
+}
