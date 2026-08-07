@@ -5,6 +5,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const {test} = require("node:test");
+const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "../..");
 const modulePath = path.join(root, "sde_intelligent_night_planning.js");
@@ -26,6 +27,45 @@ function artifactHash(artifact) {
   const unsigned = {...artifact};
   delete unsigned.artifactHash;
   return crypto.createHash("sha256").update(canonical(unsigned)).digest("hex");
+}
+
+function loadUiAnalysisRenderer() {
+  const uiPath = path.join(root, "sde_night_planning_ui.js");
+  const uiSource = fs.readFileSync(uiPath, "utf8");
+  const exportMarker = "  root.renderSdeNightPlanningWorkspace = renderWorkspace;";
+  assert.equal(uiSource.includes(exportMarker), true, "UI renderer export marker must remain stable");
+  const instrumented = uiSource.replace(
+    exportMarker,
+    "  root.__testRenderNightAnalysisItem = analysisItemHtml;\n  return;\n" + exportMarker,
+  );
+  const window = {SdeNightIntelligence: {}};
+  vm.runInNewContext(instrumented, {window}, {filename: uiPath});
+  assert.equal(typeof window.__testRenderNightAnalysisItem, "function");
+  return {render: window.__testRenderNightAnalysisItem, window};
+}
+
+function renderedMachineLearningScore(render, value, status) {
+  const output = render(
+    {
+      vehicleId: "74-38",
+      desiredSlot: "12S",
+      canonicalActual: "5N",
+      classification: "GJENNOMFØRBAR",
+      reasonCodes: [],
+    },
+    {
+      status: "RANKED_DECISION_SUPPORT",
+      deterministicScore: 80,
+      humanExperienceScore: 60,
+      machineLearningScore: value,
+      combinedScore: 75,
+    },
+    {status},
+    {version: "test-weights-v1", deterministic: 0.6, humanExperience: 0.25, machineLearning: 0.15},
+  );
+  const match = output.match(/<strong>MachineLearningScore<\/strong><span>([^<]*)<\/span>/);
+  assert.ok(match, "rendered MachineLearningScore must be present");
+  return match[1];
 }
 
 test("canonical nattplan bruker samme modell for OCR og manuell registrering", () => {
@@ -182,6 +222,40 @@ test("cold start fabrikerer ikke MachineLearningScore", async () => {
   assert.equal(result.score, null);
   assert.equal(result.influencesCombinedScore, false);
   assert.match(result.explanation, /utilstrekkelig/i);
+
+  const {render, window} = loadUiAnalysisRenderer();
+  let runtimeTrainingCalls = 0;
+  let businessWriteCalls = 0;
+  window.trainSdeNightModel = () => { runtimeTrainingCalls += 1; };
+  window.fetch = () => { businessWriteCalls += 1; };
+
+  const cases = [
+    {name: "INSUFFICIENT_DATA + null", value: null, status: "INSUFFICIENT_DATA", expected: "Ikke nok data"},
+    {name: "INSUFFICIENT_DATA + undefined", value: undefined, status: "INSUFFICIENT_DATA", expected: "Ikke nok data"},
+    {name: "INSUFFICIENT_DATA + tom streng", value: "", status: "INSUFFICIENT_DATA", expected: "Ikke nok data"},
+    {name: "INSUFFICIENT_DATA prioriteres foran numerisk verdi", value: 42, status: "INSUFFICIENT_DATA", expected: "Ikke nok data"},
+    {name: "manglende status + null", value: null, status: undefined, expected: "Ikke tilgjengelig"},
+    {name: "whitespace", value: "   ", status: "AVAILABLE", expected: "Ikke tilgjengelig"},
+    {name: "NaN", value: Number.NaN, status: "AVAILABLE", expected: "Ikke tilgjengelig"},
+    {name: "Infinity", value: Number.POSITIVE_INFINITY, status: "AVAILABLE", expected: "Ikke tilgjengelig"},
+    {name: "-Infinity", value: Number.NEGATIVE_INFINITY, status: "AVAILABLE", expected: "Ikke tilgjengelig"},
+    {name: "objekt", value: {}, status: "AVAILABLE", expected: "Ikke tilgjengelig"},
+    {name: "ekte numerisk null", value: 0, status: "AVAILABLE", expected: "0/100"},
+    {name: "gyldig score 42", value: 42, status: "AVAILABLE", expected: "42/100"},
+    {name: "gyldig score 100", value: 100, status: "AVAILABLE", expected: "100/100"},
+    // Den eksisterende API-kontrakten aksepterer numeriske strengverdier.
+    {name: "strengverdien 0", value: "0", status: "AVAILABLE", expected: "0/100"},
+  ];
+
+  for (const scenario of cases) {
+    assert.equal(
+      renderedMachineLearningScore(render, scenario.value, scenario.status),
+      scenario.expected,
+      scenario.name,
+    );
+  }
+  assert.equal(runtimeTrainingCalls, 0, "presentasjon må ikke starte runtime-trening");
+  assert.equal(businessWriteCalls, 0, "presentasjon må ikke utløse API- eller business-write");
 });
 
 test("deployet cold-start artifact har gyldig integritet og er eksplisitt registrert", async () => {

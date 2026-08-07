@@ -76,6 +76,7 @@ const {
   SCHEMA_VERSION: VEHICLE_STATUS_SCHEMA_VERSION,
   buildProductionVehicleStatusReadModel
 } = require("./vehicleStatusReadModel");
+const {createApprovedStaticAssetHandler} = require("./staticAssetDelivery");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
@@ -364,6 +365,8 @@ app.use((req, res, next) => {
 
   return next();
 });
+
+app.use(createApprovedStaticAssetHandler({repositoryRoot: REPO_ROOT}));
 
 app.get("/api/health", (_req, res) => {
   const revision = getCurrentRevision(db);
