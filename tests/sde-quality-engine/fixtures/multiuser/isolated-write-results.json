@@ -1,0 +1,38 @@
+{
+  "schemaId": "sde-multiuser-isolated-write-results",
+  "schemaVersion": "1",
+  "collectionRunId": "synthetic-local-qualification",
+  "environment": {
+    "kind": "isolated-test-server",
+    "databasePath": "[TMP]/synthetic-isolated.sqlite",
+    "productionNetworkCalls": 0,
+    "productionSecretsPresent": false,
+    "codeSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "codeTree": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "commands": [
+    { "command": "node --test synthetic-multiuser.test.cjs", "exitCode": 0 }
+  ],
+  "totals": { "passed": 19, "failed": 0, "skipped": 0 },
+  "assertions": {
+    "send": "PASS",
+    "receive": "PASS",
+    "reply": "PASS",
+    "acknowledgement": "PASS",
+    "receipt": "PASS",
+    "threadId": "PASS",
+    "rootMessageId": "PASS",
+    "parentMessageId": "PASS",
+    "senderLevel": "PASS",
+    "capabilityEnforcement": "PASS",
+    "idempotency": "PASS",
+    "noDuplicates": "PASS",
+    "noReplyLoop": "PASS",
+    "noAcknowledgementLoop": "PASS",
+    "noReceiptLoop": "PASS",
+    "sessionIsolation": "PASS",
+    "identityIsolation": "PASS",
+    "sequential": "PASS",
+    "concurrent": "PASS"
+  }
+}

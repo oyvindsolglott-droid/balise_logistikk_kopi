@@ -69,6 +69,68 @@ Den permanente policytestsuiten kan kjøres isolert med:
 npm run test:sde:qe:policy
 ```
 
+## Flerbrukerevidens
+
+`MULTIUSER-LIVE-001` er én tellende, kritisk aggregatport. Live-readonly,
+isolated-write, integritet, proveniens, secret-free og code binding er
+ikke-tellende underresultater. Uten eksplisitt evidens er aggregatet
+`BLOCKED`; installasjon av Quality Engine-koden alene kan derfor aldri gjøre
+porten grønn.
+
+Evidens oppgis deterministisk på kommandolinjen sammen med den godkjente
+produktkodeidentiteten:
+
+```sh
+node tests/sde-quality-engine/run.cjs --suite multiuser \
+  --multiuser-evidence /absolutt/evidens/evidence-package.json \
+  --multiuser-approved-sha <40-heksadesimal-git-sha> \
+  --multiuser-approved-tree <40-heksadesimalt-git-tree>
+```
+
+Det finnes ingen URL-, «nyeste fil»-, narrativ- eller håndredigert
+statusfallback. Input åpnes read-only; manglende fil, symlink, flere pakker,
+ukjent schema/produsent, stale observasjoner, ugyldig manifest eller feil
+kildehash/kodebinding gir fail-closed `BLOCKED`. Beviste secrets,
+identitets-/sessionlekkasjer og produksjons-business-write gir kritisk `RED`.
+
+En repository-eid pack-builder lager et deterministisk manifest fra to
+allerede sanitiserte maskinproducerte kildeartefakter. Alle tre filer må ligge
+direkte i samme evidensmappe:
+
+```sh
+node tests/sde-quality-engine/tools/build-multiuser-evidence.cjs \
+  --live /absolutt/evidens/live-observations.json \
+  --isolated /absolutt/evidens/isolated-write-results.json \
+  --output /absolutt/evidens/evidence-package.json \
+  --approved-sha <40-heksadesimal-git-sha> \
+  --approved-tree <40-heksadesimalt-git-tree>
+```
+
+Kontraktene er dokumentert i
+`contracts/sde-multiuser-evidence-v1.schema.json`,
+`contracts/sde-multiuser-live-observations-v1.schema.json` og
+`contracts/sde-multiuser-isolated-write-results-v1.schema.json`. Quality
+Engine beregner kritiske assertions fra validerte observasjoner; felter som
+`canonicalGateStatus` eller `subjectsDifferent` godtas ikke som ferdige
+utfall. Manuell attestasjon kan dokumentere testvindu eller menneskelig login,
+men kan ikke erstatte maskinreadback.
+
+Hashkjeden beviser filintegritet, produsentversjonen binder format og
+innsamlingsmekanisme, og eksakt SHA/tree eller dokumentert data-only descendant
+bindes til godkjent kode. Den tillatte descendantlisten er begrenset til
+`data/api_idag.json`, `data/api_imorgen.json` og
+`data/sde-data-provenance.json`; kode/assets må være byteidentiske. Prosjektet
+har ingen kryptografisk signering av slike lokale pakker, så dette gir ikke
+non-repudiation. Gjenværende tillitsforutsetning er at den repository-eide
+produsenten og dens lokale kjøremiljø kontrolleres av den autoriserte
+testemaskinoperatøren.
+
+`multiuser`-suiten kjører den kanoniske gate-, regnskaps- og
+JSON/Markdown/JUnit/HTML-pipelinen uten Balise-live eller andre
+produksjonsendepunkter. De bredere `all`, `balise`, `integration` og `report`
+suitevariantene beholder sin eksisterende Balise-liveport og skal ikke brukes
+som produksjonsfri flerbrukerkvalifisering.
+
 CI skriver i tillegg `reports/ci-policy.json` og `reports/ci-policy.md`, mens
 den opprinnelige JSON-/Markdown-/JUnit-/HTML-rapporten bevares uendret. Hele
 rapportkatalogen lastes opp med `if: always()` og commit-/run-bundet
@@ -292,7 +354,8 @@ migrasjonstesten oppretter en deterministisk pre-migration-fixture under
 
 ## Kjente testbarhetsgrenser
 
-Ekte fleridentitets-race og en komplett autentisert visuell produksjonsmatrise
-krever en separat, autorisert og write-fri testflate. De rapporteres eksplisitt
-som `BLOCKED` inntil slik evidens finnes. Simulerte revisjons- og
-idempotencytester fortsetter å dekke de autoritative serverkontraktene.
+Ekte fleridentitetsbevis krever fortsatt en separat, autorisert og write-fri
+testflate som produserer kontraktsgyldig evidens. Den komplette autentiserte
+visuelle produksjonsmatrisen er en separat port. Begge forblir `BLOCKED` når
+evidensen mangler. Simulerte revisjons- og idempotencytester fortsetter å
+dekke de autoritative serverkontraktene.

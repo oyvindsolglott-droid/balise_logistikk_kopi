@@ -1,0 +1,67 @@
+{
+  "schemaId": "sde-multiuser-live-observations",
+  "schemaVersion": "1",
+  "collectionRunId": "synthetic-local-qualification",
+  "observedAt": "2026-08-08T14:00:00.000Z",
+  "identities": [
+    {
+      "maskedIdentity": "synthetic-a-****",
+      "upstreamIssuer": "access.example.invalid",
+      "upstreamPrincipalId": "subject-a",
+      "serverSubject": "subject-a",
+      "identitySource": "cloudflare-access",
+      "role": "dispatcher",
+      "capabilities": ["read:sporplan"],
+      "accessResult": "ALLOWED",
+      "authContainerId": "auth-a",
+      "sessionContainerId": "session-a",
+      "cookieStoreId": "cookie-store-a",
+      "localStorageContainerId": "local-storage-a",
+      "sessionStorageContainerId": "session-storage-a"
+    },
+    {
+      "maskedIdentity": "synthetic-b-****",
+      "upstreamIssuer": "access.example.invalid",
+      "upstreamPrincipalId": "subject-b",
+      "serverSubject": "subject-b",
+      "identitySource": "cloudflare-access",
+      "role": "viewer",
+      "capabilities": ["read:sporplan"],
+      "accessResult": "ALLOWED",
+      "authContainerId": "auth-b",
+      "sessionContainerId": "session-b",
+      "cookieStoreId": "cookie-store-b",
+      "localStorageContainerId": "local-storage-b",
+      "sessionStorageContainerId": "session-storage-b"
+    }
+  ],
+  "stateReadbacks": [
+    { "containerId": "session-a", "subject": "subject-a", "capabilities": ["read:sporplan"] },
+    { "containerId": "session-b", "subject": "subject-b", "capabilities": ["read:sporplan"] }
+  ],
+  "viewportObservations": [
+    { "containerId": "session-a", "viewport": "desktop", "result": "PASS" },
+    { "containerId": "session-a", "viewport": "mobile", "result": "PASS" },
+    { "containerId": "session-b", "viewport": "desktop", "result": "PASS" },
+    { "containerId": "session-b", "viewport": "mobile", "result": "PASS" }
+  ],
+  "polling": { "ticks": 4, "durationSeconds": 45 },
+  "writeGuard": {
+    "result": "PASS",
+    "allowedMethods": ["GET", "HEAD"],
+    "protectedMethods": ["POST", "PUT", "PATCH", "DELETE"]
+  },
+  "networkSummaryRef": "synthetic-no-network.json",
+  "consoleErrors": 0,
+  "requestErrors": 0,
+  "pageErrors": 0,
+  "businessState": {
+    "snapshots": [
+      { "reference": "synthetic-0", "businessLogicalHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "fullDatabaseLogicalHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "auditCursor": 0 },
+      { "reference": "synthetic-1", "businessLogicalHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "fullDatabaseLogicalHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "auditCursor": 1 },
+      { "reference": "synthetic-2", "businessLogicalHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "fullDatabaseLogicalHash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "auditCursor": 2 }
+    ],
+    "technicalAppendOnlyEvents": [],
+    "productionWriteLedger": []
+  }
+}

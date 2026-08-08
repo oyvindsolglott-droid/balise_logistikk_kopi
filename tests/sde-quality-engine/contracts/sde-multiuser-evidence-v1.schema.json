@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sde.oyvind-solglott.no/schemas/sde-multiuser-evidence-v1.schema.json",
+  "title": "SDE Multiuser Evidence Package v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaId", "schemaVersion", "gateContractVersion", "evidencePackageId",
+    "collectionRunId", "generatedAt", "observedAt", "timeZone", "freshnessClass",
+    "producer", "codeIdentity", "artifacts", "manifest"
+  ],
+  "properties": {
+    "schemaId": { "const": "sde-multiuser-evidence" },
+    "schemaVersion": { "const": "1" },
+    "gateContractVersion": { "const": "2.0.0" },
+    "evidencePackageId": { "type": "string", "minLength": 1 },
+    "collectionRunId": { "type": "string", "minLength": 1 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "timeZone": { "const": "Europe/Oslo" },
+    "freshnessClass": { "enum": ["FRESH_OBSERVED", "REUSED_EXACT_SHA"] },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "codeSha256", "codeGitSha", "codeTree", "invocationId", "invocationCommand", "collectionMode", "trustLevel", "manualAttestations"],
+      "properties": {
+        "id": { "const": "sde-qe-multiuser-evidence-pack-builder" },
+        "version": { "const": "1.0.0" },
+        "codeSha256": { "$ref": "#/$defs/sha256" },
+        "codeGitSha": { "$ref": "#/$defs/gitObject" },
+        "codeTree": { "$ref": "#/$defs/gitObject" },
+        "invocationId": { "type": "string", "minLength": 1 },
+        "invocationCommand": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "collectionMode": { "const": "live-readonly+isolated-write" },
+        "trustLevel": { "const": "REPOSITORY_OWNED_LOCAL" },
+        "manualAttestations": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "codeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["approvedSha", "approvedTree", "runtimeBranch", "runtimeHead", "runtimeTree", "ancestry", "codeAssetHashes"],
+      "properties": {
+        "approvedSha": { "$ref": "#/$defs/gitObject" },
+        "approvedTree": { "$ref": "#/$defs/gitObject" },
+        "runtimeBranch": { "type": "string", "minLength": 1 },
+        "runtimeHead": { "$ref": "#/$defs/gitObject" },
+        "runtimeTree": { "$ref": "#/$defs/gitObject" },
+        "ancestry": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sha", "changedFiles"],
+            "properties": {
+              "sha": { "$ref": "#/$defs/gitObject" },
+              "changedFiles": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+            }
+          }
+        },
+        "codeAssetHashes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["approved", "runtime"],
+          "properties": { "approved": { "$ref": "#/$defs/sha256" }, "runtime": { "$ref": "#/$defs/sha256" } }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "path", "sha256", "bytes"],
+        "properties": {
+          "kind": { "enum": ["live-observations", "isolated-write-results"] },
+          "path": { "type": "string", "pattern": "^[^/\\\\]+$" },
+          "sha256": { "$ref": "#/$defs/sha256" },
+          "bytes": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "payloadSha256", "sanitizationStatus", "piiStatus", "secretStatus"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "payloadSha256": { "$ref": "#/$defs/sha256" },
+        "sanitizationStatus": { "const": "SANITIZED" },
+        "piiStatus": { "const": "MASKED_IDENTIFIERS_ONLY" },
+        "secretStatus": { "const": "SECRET_FREE" }
+      }
+    },
+    "narrativeAssessment": { "type": "string" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "gitObject": { "type": "string", "pattern": "^[a-f0-9]{40}$" }
+  }
+}

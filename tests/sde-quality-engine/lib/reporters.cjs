@@ -59,6 +59,22 @@ function relationText(value) {
   return JSON.stringify(value || {});
 }
 
+function canonicalGateProjection(item) {
+  return {
+    id: item.id,
+    gateVersion: item.gateVersion,
+    status: item.status,
+    reasonCode: item.reasonCode,
+    severity: item.severity,
+    critical: item.critical,
+    evidence: item.evidence || [],
+    parentGate: item.parentGate,
+    childGates: item.childGates || [],
+    aggregate: item.aggregate,
+    counted: item.counted
+  };
+}
+
 function recommendationsFor(report) {
   const catalog = JSON.parse(fs.readFileSync(
     path.join(repoRoot(), "tests/sde-quality-engine/recommendations/catalog.json"),
@@ -236,7 +252,8 @@ function renderJUnit(report) {
     const threeWay = item.details?.threeWay;
     const classificationEvidence = threeWay ? `\nclassification=${JSON.stringify({ uniqueUnderlyingFindings: threeWay.uniqueUnderlyingFindings, layerObservationCount: threeWay.layerObservationCount, primaryClassificationCounts: threeWay.primaryClassificationCounts, diagnosticLabelCounts: threeWay.diagnosticLabelCounts, findings: threeWay.findings.map((finding) => ({ primaryClassification: finding.primaryClassification, diagnosticLabels: finding.diagnosticLabels, comparisonEligibility: finding.comparisonEligibility, contractAuthority: finding.contractAuthority, confidence: finding.confidence })) })}` : "";
     const provenanceEvidence = item.details?.provenance ? `\nprovenance=${JSON.stringify(item.details.provenance)}` : "";
-    body.push(`<system-out>${escapeXml(`${item.status}: ${item.summary}\n${(item.evidence || []).join("\n")}${classificationEvidence}${provenanceEvidence}`)}</system-out>`);
+    const canonicalEvidence = `\ncanonical-gate=${JSON.stringify(canonicalGateProjection(item))}`;
+    body.push(`<system-out>${escapeXml(`${item.status}: ${item.summary}\n${(item.evidence || []).join("\n")}${canonicalEvidence}${classificationEvidence}${provenanceEvidence}`)}</system-out>`);
     return `    <testcase ${attrs}>${body.join("")}</testcase>`;
   });
   return [
@@ -255,11 +272,16 @@ function renderHtml(report) {
     .map(([status, count]) => `<div class="metric ${status.toLowerCase()}"><strong>${count}</strong><span>${status}</span></div>`)
     .join("");
   const resultRows = report.results.map((item) => `
-    <tr>
+    <tr data-gate-id="${escapeHtml(item.id)}" data-gate-version="${escapeHtml(item.gateVersion)}" data-gate-status="${escapeHtml(item.status)}" data-reason-code="${escapeHtml(item.reasonCode)}" data-counted="${item.counted}">
       <td><code>${escapeHtml(item.id)}</code></td>
       <td>${escapeHtml(item.area)}</td>
       <td>${escapeHtml(item.name)}</td>
       <td><span class="badge ${item.status.toLowerCase()}">${item.status}</span></td>
+      <td><code>${escapeHtml(item.gateVersion)}</code></td>
+      <td><code>${escapeHtml(item.reasonCode)}</code></td>
+      <td>${escapeHtml(item.severity)} / ${item.critical ? "critical" : "noncritical"}</td>
+      <td>${item.aggregate ? "aggregate" : "leaf"}; ${item.counted ? "counted" : "non-counted"}; parent=${escapeHtml(item.parentGate || "none")}; children=${escapeHtml((item.childGates || []).join(",") || "none")}</td>
+      <td><code>${escapeHtml(JSON.stringify(item.evidence || []))}</code></td>
       <td>${escapeHtml(item.summary)}</td>
     </tr>`).join("");
   const matrixRows = report.functionMatrix.map((item) => `
@@ -280,6 +302,7 @@ function renderHtml(report) {
   const identityDomains = provenanceIdentityDomains(provenance);
   const provenancePanel = provenance ? `<section class="panel"><h2>Dataproveniens</h2><p>Generation ID: <code>${escapeHtml(provenance.generationId || "NOT AVAILABLE")}</code></p><p>Comparison eligibility: <strong>${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}</strong> — ${escapeHtml(provenance.comparisonEligibility?.reason || "NOT AVAILABLE")}</p><p>Publication integrity: <strong>${escapeHtml(provenance.publicationIntegrity)}</strong> · Custom-domain observability: <strong>${escapeHtml(provenance.customDomainObservability)}</strong></p><h3>Identity domains</h3><div class="table-wrap"><table><thead><tr><th>Domain</th><th>Status</th><th>Normative role</th><th>Expected relations</th><th>Actual relations</th></tr></thead><tbody>${identityDomains.map((domain) => `<tr><td>${escapeHtml(domain.name)}</td><td><span class="badge ${String(domain.status).toLowerCase()}">${escapeHtml(domain.status)}</span></td><td>${escapeHtml(domain.role)}</td><td>${escapeHtml(relationText(domain.expectedRelations))}</td><td><code>${escapeHtml(relationText(domain.actualRelations))}</code></td></tr>`).join("")}</tbody></table></div><h3>Evidence chain</h3><div class="table-wrap"><table><thead><tr><th>Proveniensledd</th><th>Status</th><th>Identitet</th></tr></thead><tbody>${(provenance.chain || []).map((step) => `<tr><td>${escapeHtml(step.step)}</td><td><span class="badge ${String(step.status).toLowerCase().replace(/ /g, "-")}">${escapeHtml(step.status)}</span></td><td><code>${escapeHtml(step.identity || "NOT AVAILABLE")}</code></td></tr>`).join("")}</tbody></table></div><ul>${(provenance.findings || []).map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul></section>` : "";
   const classificationPanel = classification ? `<section class="panel"><h2>Fail-closed klassifisering</h2><p><strong>${classification.uniqueUnderlyingFindings}</strong> unique findings · <strong>${classification.layerObservationCount}</strong> layer observations.</p><p>Primary classifications: <code>${escapeHtml(JSON.stringify(classification.primaryClassificationCounts))}</code></p><p>Diagnostic labels: <code>${escapeHtml(JSON.stringify(classification.diagnosticLabelCounts))}</code></p><div class="table-wrap"><table><thead><tr><th>Finding</th><th>Primary</th><th>Labels</th><th>Eligible</th><th>Reason</th><th>Available provenance</th><th>Missing provenance</th><th>Authority</th><th>Confidence</th></tr></thead><tbody>${classification.findings.map((finding) => `<tr><td><code>${escapeHtml(finding.uniqueFindingId)}</code></td><td>${escapeHtml(finding.primaryClassification)}</td><td>${escapeHtml(finding.diagnosticLabels.join(", "))}</td><td>${finding.comparisonEligibility.eligible ? "yes" : "no"}</td><td>${escapeHtml(finding.comparisonEligibility.reason)}</td><td>${escapeHtml((finding.comparisonEligibility.availableProvenance || []).join(", ") || "–")}</td><td>${escapeHtml((finding.comparisonEligibility.missingProvenance || []).join(", ") || "–")}</td><td>${escapeHtml(finding.contractAuthority.type)} (${finding.contractAuthority.normative ? "normative" : "non-normative"})</td><td>${escapeHtml(finding.confidence)}</td></tr>`).join("")}</tbody></table></div><p>HOLD does not mean confirmed product defect.</p></section>` : "";
+  const canonicalGatesJson = JSON.stringify({ total: summary.total, counts: summary.counts, gates: report.results.map(canonicalGateProjection) }).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="no">
 <head>
@@ -304,7 +327,8 @@ function renderHtml(report) {
     <p>Suite <code>${escapeHtml(report.suite)}</code> · ${summary.total} kontroller · production requests ${report.productionSafety.ledger.length}</p>
     <div class="metrics">${statusCards}</div>
   </section>
-  <section class="panel"><h2>Kontrollresultater</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Område</th><th>Kontroll</th><th>Status</th><th>Evidenssammendrag</th></tr></thead><tbody>${resultRows}</tbody></table></div></section>
+  <script id="sde-canonical-gates" type="application/json">${canonicalGatesJson}</script>
+  <section class="panel"><h2>Kontrollresultater</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Område</th><th>Kontroll</th><th>Status</th><th>Versjon</th><th>Reason</th><th>Severity</th><th>Relasjon/telling</th><th>Evidensreferanser</th><th>Evidenssammendrag</th></tr></thead><tbody>${resultRows}</tbody></table></div></section>
   ${accountingPanel}
   ${classificationPanel}
   ${provenancePanel}
@@ -375,6 +399,7 @@ function writeReports(report, directory) {
 }
 
 module.exports = {
+  canonicalGateProjection,
   classificationModel,
   provenanceModel,
   provenanceIdentityDomains,

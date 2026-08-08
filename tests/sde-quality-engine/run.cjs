@@ -46,6 +46,7 @@ const SUITES = new Set([
   "ci",
   "e2e",
   "integration",
+  "multiuser",
   "production-readonly",
   "provenance",
   "regression",
@@ -59,6 +60,15 @@ function selectedSuite(argv) {
     throw new Error(`Ukjent suite '${suite}'. Tillatt: ${[...SUITES].sort().join(", ")}`);
   }
   return suite;
+}
+
+function multiuserOptions(argv) {
+  const values = (name) => argv.flatMap((value, index) => value === name ? [argv[index + 1]] : []).filter((value) => value && !value.startsWith("--"));
+  return {
+    multiuserEvidencePaths: values("--multiuser-evidence"),
+    multiuserApprovedSha: values("--multiuser-approved-sha").at(-1) || null,
+    multiuserApprovedTree: values("--multiuser-approved-tree").at(-1) || null
+  };
 }
 
 function changedFiles() {
@@ -273,7 +283,9 @@ function baseReport(suite, inventory, productionSafety) {
 }
 
 async function main() {
-  const suite = selectedSuite(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const suite = selectedSuite(argv);
+  const multiuser = multiuserOptions(argv);
   const root = repoRoot();
   const inventory = buildInventory();
   const matrix = readJson(path.join(root, "tests/sde-quality-engine/matrix/function-matrix.json"));
@@ -282,7 +294,8 @@ async function main() {
   const results = [validateRegistry(), validateAccounting(), guardResult()];
 
   if (!["production-readonly", "provenance"].includes(suite)) {
-    results.push(...staticChecks(inventory), ...baliseChecks());
+    results.push(...staticChecks(inventory, multiuser));
+    if (suite !== "multiuser") results.push(...baliseChecks());
   }
 
   if (["all", "balise", "ci", "integration", "provenance"].includes(suite)) {
