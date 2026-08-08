@@ -1138,6 +1138,32 @@ test("DROPS-UI — Materiellstyrer graphic fills only its complete menu button",
   );
 });
 
+test("DROPS ACCESSIBILITY — graphic menu control keeps keyboard focus and an explicit screen-reader name", () => {
+  const openingTag = currentHtml.match(
+    /<button class="seg seg-drops-graphic"[^>]*data-tab="dropsMateriellstyrer"[^>]*>/,
+  )?.[0] || "";
+
+  assert.ok(openingTag, "the DROPS Materiellstyrer navigation button must exist");
+  assert.match(openingTag, /type="button"/, "native button keyboard semantics must be preserved");
+  assert.match(openingTag, /data-levels="0 1"/, "level 0 and DROPS level 1 capability must be preserved");
+  assert.match(
+    openingTag,
+    /aria-label="Åpne DROPS Materiellstyrer"/,
+    "the graphic control must expose an explicit, stable screen-reader name",
+  );
+  assert.doesNotMatch(openingTag, /\b(?:disabled|tabindex="-1")\b/, "the control must remain keyboard reachable");
+  assert.match(
+    currentHtml,
+    /\.segmented button\.seg-drops-graphic:focus-visible\{[^}]*outline:3px solid #22d3ee;[^}]*outline-offset:4px;[^}]*\}/,
+    "keyboard focus must remain visibly distinct on the graphic control",
+  );
+  assert.match(
+    currentHtml,
+    /<span class="seg-main">DROPS<br>Materiellstyrer<\/span>/,
+    "the existing visible label must remain unchanged",
+  );
+});
+
 test("DROPS 3D FRAME — dark-blue edge and recessed fill remain visible around the graphic", () => {
   const buttonRule = currentHtml.match(/\.segmented button\.seg-drops-graphic\{([^}]*)\}/)?.[1] || "";
   const imageRule = currentHtml.match(/\.seg-drops-graphic__image\{([^}]*)\}/)?.[1] || "";
