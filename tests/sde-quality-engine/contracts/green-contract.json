@@ -247,8 +247,8 @@
       "area": "multiuser",
       "name": "Samtidige klienter taper ikke autoritativ state",
       "critical": true,
-      "expected": "Stale klient avvises, retry er idempotent og to klienter kan ikke overskrive hverandre lydløst.",
-      "evidence": ["revision-tests", "idempotency-tests"]
+      "expected": "Stale klient avvises, retry er idempotent, to klienter kan ikke overskrive hverandre lydløst, og autentiserte fleridentitetskrav bevises av secret-free live-readonly og isolert write-evidens.",
+      "evidence": ["revision-tests", "idempotency-tests", "sde-multiuser-evidence/v1"]
     },
     {
       "id": "NIGHT-INTELLIGENCE-001",

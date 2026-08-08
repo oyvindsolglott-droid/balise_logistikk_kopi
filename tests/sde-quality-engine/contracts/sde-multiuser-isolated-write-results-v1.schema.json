@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sde.oyvind-solglott.no/schemas/sde-multiuser-isolated-write-results-v1.schema.json",
+  "title": "SDE Multiuser Isolated Write Results v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "collectionRunId", "environment", "commands", "totals", "assertions"],
+  "properties": {
+    "schemaId": { "const": "sde-multiuser-isolated-write-results" },
+    "schemaVersion": { "const": "1" },
+    "collectionRunId": { "type": "string", "minLength": 1 },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "databasePath", "productionNetworkCalls", "productionSecretsPresent", "codeSha", "codeTree"],
+      "properties": {
+        "kind": { "const": "isolated-test-server" },
+        "databasePath": { "type": "string", "minLength": 1 },
+        "productionNetworkCalls": { "const": 0 },
+        "productionSecretsPresent": { "const": false },
+        "codeSha": { "$ref": "#/$defs/gitObject" },
+        "codeTree": { "$ref": "#/$defs/gitObject" }
+      }
+    },
+    "commands": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["command", "exitCode"],
+        "properties": { "command": { "type": "string", "minLength": 1 }, "exitCode": { "type": "integer" } }
+      }
+    },
+    "totals": {
+      "type": "object", "additionalProperties": false,
+      "required": ["passed", "failed", "skipped"],
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "assertions": {
+      "type": "object", "additionalProperties": false,
+      "required": ["send", "receive", "reply", "acknowledgement", "receipt", "threadId", "rootMessageId", "parentMessageId", "senderLevel", "capabilityEnforcement", "idempotency", "noDuplicates", "noReplyLoop", "noAcknowledgementLoop", "noReceiptLoop", "sessionIsolation", "identityIsolation", "sequential", "concurrent"],
+      "properties": {
+        "send": { "$ref": "#/$defs/result" }, "receive": { "$ref": "#/$defs/result" }, "reply": { "$ref": "#/$defs/result" },
+        "acknowledgement": { "$ref": "#/$defs/result" }, "receipt": { "$ref": "#/$defs/result" },
+        "threadId": { "$ref": "#/$defs/result" }, "rootMessageId": { "$ref": "#/$defs/result" }, "parentMessageId": { "$ref": "#/$defs/result" },
+        "senderLevel": { "$ref": "#/$defs/result" }, "capabilityEnforcement": { "$ref": "#/$defs/result" },
+        "idempotency": { "$ref": "#/$defs/result" }, "noDuplicates": { "$ref": "#/$defs/result" },
+        "noReplyLoop": { "$ref": "#/$defs/result" }, "noAcknowledgementLoop": { "$ref": "#/$defs/result" }, "noReceiptLoop": { "$ref": "#/$defs/result" },
+        "sessionIsolation": { "$ref": "#/$defs/result" }, "identityIsolation": { "$ref": "#/$defs/result" },
+        "sequential": { "$ref": "#/$defs/result" }, "concurrent": { "$ref": "#/$defs/result" }
+      }
+    }
+  },
+  "$defs": {
+    "gitObject": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "result": { "enum": ["PASS", "FAIL"] }
+  }
+}

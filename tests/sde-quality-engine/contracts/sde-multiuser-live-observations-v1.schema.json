@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sde.oyvind-solglott.no/schemas/sde-multiuser-live-observations-v1.schema.json",
+  "title": "SDE Multiuser Live Read-only Observations v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaId", "schemaVersion", "collectionRunId", "observedAt", "identities", "stateReadbacks", "viewportObservations", "polling", "writeGuard", "networkSummaryRef", "consoleErrors", "requestErrors", "pageErrors", "businessState"],
+  "properties": {
+    "schemaId": { "const": "sde-multiuser-live-observations" },
+    "schemaVersion": { "const": "1" },
+    "collectionRunId": { "type": "string", "minLength": 1 },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "identities": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["maskedIdentity", "upstreamIssuer", "upstreamPrincipalId", "serverSubject", "identitySource", "role", "capabilities", "accessResult", "authContainerId", "sessionContainerId", "cookieStoreId", "localStorageContainerId", "sessionStorageContainerId"],
+        "properties": {
+          "maskedIdentity": { "type": "string", "minLength": 1 },
+          "upstreamIssuer": { "type": "string", "minLength": 1 },
+          "upstreamPrincipalId": { "type": "string", "minLength": 1 },
+          "serverSubject": { "type": "string", "minLength": 1 },
+          "identitySource": { "const": "cloudflare-access" },
+          "role": { "type": "string", "minLength": 1 },
+          "capabilities": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+          "accessResult": { "const": "ALLOWED" },
+          "authContainerId": { "type": "string", "minLength": 1 },
+          "sessionContainerId": { "type": "string", "minLength": 1 },
+          "cookieStoreId": { "type": "string", "minLength": 1 },
+          "localStorageContainerId": { "type": "string", "minLength": 1 },
+          "sessionStorageContainerId": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "stateReadbacks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["containerId", "subject", "capabilities"],
+        "properties": {
+          "containerId": { "type": "string", "minLength": 1 },
+          "subject": { "type": "string", "minLength": 1 },
+          "capabilities": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+        }
+      }
+    },
+    "viewportObservations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["containerId", "viewport", "result"],
+        "properties": {
+          "containerId": { "type": "string", "minLength": 1 },
+          "viewport": { "enum": ["desktop", "mobile"] },
+          "result": { "enum": ["PASS", "FAIL"] }
+        }
+      }
+    },
+    "polling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ticks", "durationSeconds"],
+      "properties": { "ticks": { "type": "integer", "minimum": 0 }, "durationSeconds": { "type": "number", "minimum": 0 } }
+    },
+    "writeGuard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result", "allowedMethods", "protectedMethods"],
+      "properties": {
+        "result": { "enum": ["PASS", "FAIL"] },
+        "allowedMethods": { "type": "array", "items": { "enum": ["GET", "HEAD"] }, "uniqueItems": true },
+        "protectedMethods": { "type": "array", "items": { "enum": ["POST", "PUT", "PATCH", "DELETE"] }, "uniqueItems": true }
+      }
+    },
+    "networkSummaryRef": { "type": "string", "minLength": 1 },
+    "consoleErrors": { "type": "integer", "minimum": 0 },
+    "requestErrors": { "type": "integer", "minimum": 0 },
+    "pageErrors": { "type": "integer", "minimum": 0 },
+    "businessState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["snapshots", "technicalAppendOnlyEvents", "productionWriteLedger"],
+      "properties": {
+        "snapshots": {
+          "type": "array", "minItems": 3, "maxItems": 3,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["reference", "businessLogicalHash", "fullDatabaseLogicalHash", "auditCursor"],
+            "properties": {
+              "reference": { "type": "string", "minLength": 1 },
+              "businessLogicalHash": { "$ref": "#/$defs/sha256" },
+              "fullDatabaseLogicalHash": { "$ref": "#/$defs/sha256" },
+              "auditCursor": { "type": ["integer", "string"] }
+            }
+          }
+        },
+        "technicalAppendOnlyEvents": {
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["kind", "attributed", "actor"],
+            "properties": { "kind": { "const": "ACCESS_AUDIT" }, "attributed": { "type": "boolean" }, "actor": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "productionWriteLedger": { "type": "array", "items": { "type": "object" } }
+      }
+    }
+  },
+  "$defs": { "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" } }
+}

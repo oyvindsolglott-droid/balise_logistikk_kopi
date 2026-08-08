@@ -182,7 +182,11 @@ function expectedOperationalDates(now = new Date(), contract = defaultPublicatio
   };
 }
 
-function result({ id, contractId, area, name, status, critical = false, summary, evidence = [], details = {}, recommendation = null, durationMs = 0 }) {
+function result({
+  id, contractId, area, name, status, critical = false, summary, evidence = [], details = {},
+  recommendation = null, durationMs = 0, gateVersion = "1.0.0", reasonCode = null,
+  severity = null, parentGate = null, childGates = [], aggregate = false, counted = true
+}) {
   if (!STATUSES.includes(status)) {
     throw new Error(`Ugyldig QE-status ${status} for ${id || contractId || name}`);
   }
@@ -193,6 +197,13 @@ function result({ id, contractId, area, name, status, critical = false, summary,
     name,
     status,
     critical: Boolean(critical),
+    gateVersion,
+    reasonCode: reasonCode || `${id || contractId}_STATUS_${status}`,
+    severity: severity || (critical ? "CRITICAL" : "NORMAL"),
+    parentGate,
+    childGates: Array.isArray(childGates) ? childGates : [],
+    aggregate: Boolean(aggregate),
+    counted: Boolean(counted),
     summary,
     evidence: Array.isArray(evidence) ? evidence : [evidence],
     details,

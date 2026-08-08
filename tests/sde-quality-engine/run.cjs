@@ -46,6 +46,7 @@ const SUITES = new Set([
   "ci",
   "e2e",
   "integration",
+  "multiuser",
   "production-readonly",
   "provenance",
   "regression",
@@ -59,6 +60,17 @@ function selectedSuite(argv) {
     throw new Error(`Ukjent suite '${suite}'. Tillatt: ${[...SUITES].sort().join(", ")}`);
   }
   return suite;
+}
+
+function multiuserOptions(argv) {
+  const values = (name) => argv.flatMap((value, index) => value === name ? [argv[index + 1]] : []).filter((value) => value && !value.startsWith("--"));
+  return {
+    multiuserEvidencePaths: values("--multiuser-evidence"),
+    multiuserApprovedSha: values("--multiuser-approved-sha").at(-1) || null,
+    multiuserApprovedTree: values("--multiuser-approved-tree").at(-1) || null,
+    multiuserSubjectRepository: values("--multiuser-subject-repository").at(-1) || null,
+    multiuserSubjectMode: values("--multiuser-subject-mode").at(-1) || "LOCAL_GIT_REPOSITORY"
+  };
 }
 
 function changedFiles() {
@@ -242,9 +254,11 @@ function reporterSelfTest(baseReport) {
   }
 }
 
-function baseReport(suite, inventory, productionSafety) {
+function baseReport(suite, inventory, productionSafety, multiuser = {}) {
   const root = repoRoot();
   const commit = gitValue(["rev-parse", "HEAD"]);
+  const tree = gitValue(["rev-parse", "HEAD^{tree}"]);
+  const parent = gitValue(["rev-parse", "HEAD^"]);
   const changed = changedFiles();
   return {
     schemaVersion: "1.0.0",
@@ -268,21 +282,46 @@ function baseReport(suite, inventory, productionSafety) {
       guardVerified: productionSafety.guardVerified,
       ledger: productionSafety.ledger
     },
+    identityBindings: {
+      evaluator: {
+        candidateSha: commit,
+        candidateTree: tree,
+        parentSha: parent,
+        repository: root,
+        worktreeStatus: changed.length === 0 ? "CLEAN" : "DIRTY"
+      },
+      evidenceProducer: null,
+      subject: {
+        mode: multiuser.multiuserSubjectMode || "LOCAL_GIT_REPOSITORY",
+        repository: multiuser.multiuserSubjectRepository || null,
+        approvedSha: multiuser.multiuserApprovedSha || null,
+        approvedTree: multiuser.multiuserApprovedTree || null,
+        runtimeSha: null,
+        runtimeTree: null,
+        ancestryVerified: false,
+        dataOnlyScopeVerified: false
+      },
+      contractQualification: "NOT_EVALUATED",
+      productionMultiuserLiveStatus: "NOT_EVALUATED"
+    },
     reportDirectory: path.relative(root, path.join(root, "tests/sde-quality-engine/reports"))
   };
 }
 
 async function main() {
-  const suite = selectedSuite(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  const suite = selectedSuite(argv);
+  const multiuser = multiuserOptions(argv);
   const root = repoRoot();
   const inventory = buildInventory();
   const matrix = readJson(path.join(root, "tests/sde-quality-engine/matrix/function-matrix.json"));
   const productionSafety = { guardVerified: true, ledger: [] };
-  const report = baseReport(suite, inventory, productionSafety);
+  const report = baseReport(suite, inventory, productionSafety, multiuser);
   const results = [validateRegistry(), validateAccounting(), guardResult()];
 
   if (!["production-readonly", "provenance"].includes(suite)) {
-    results.push(...staticChecks(inventory), ...baliseChecks());
+    results.push(...staticChecks(inventory, multiuser));
+    if (suite !== "multiuser") results.push(...baliseChecks());
   }
 
   if (["all", "balise", "ci", "integration", "provenance"].includes(suite)) {
@@ -319,6 +358,24 @@ async function main() {
   }
 
   report.results = results;
+  const multiuserGate = report.results.find((item) => item.id === "MULTIUSER-LIVE-001");
+  if (multiuserGate) {
+    report.identityBindings.evidenceProducer = multiuserGate.details?.producerIdentity || null;
+    const subject = multiuserGate.details?.subjectIdentity;
+    if (subject) {
+      report.identityBindings.subject = {
+        mode: multiuser.multiuserSubjectMode,
+        repository: subject.subjectRepository,
+        approvedSha: subject.approvedSha,
+        approvedTree: subject.approvedTree,
+        runtimeSha: subject.runtimeSha,
+        runtimeTree: subject.runtimeTree,
+        ancestryVerified: subject.ancestryVerified,
+        dataOnlyScopeVerified: subject.dataOnlyScopeVerified
+      };
+    }
+    report.identityBindings.contractQualification = multiuserGate.status;
+  }
   report.productionSafety.ledger = productionSafety.ledger;
   report.results.push(reporterSelfTest(report));
   report.summary = summarize(report.results);

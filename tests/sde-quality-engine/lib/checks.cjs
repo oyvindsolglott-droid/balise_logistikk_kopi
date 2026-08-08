@@ -13,6 +13,7 @@ const {
 } = require("./core.cjs");
 const { buildInventory } = require("./inventory.cjs");
 const { validateBaselineAccounting } = require("./accounting.cjs");
+const { evaluateMultiuserEvidence } = require("./multiuser-evidence.cjs");
 const {
   FINDING_TYPES,
   PARITY_CATEGORIES,
@@ -454,7 +455,7 @@ function baliseChecks(now = new Date(), options = {}) {
   return results;
 }
 
-function staticChecks(inventory = buildInventory()) {
+function staticChecks(inventory = buildInventory(), options = {}) {
   const root = repoRoot();
   const matrix = readJson(path.join(root, "tests/sde-quality-engine/matrix/function-matrix.json"));
   const requiredModules = [
@@ -575,16 +576,12 @@ function staticChecks(inventory = buildInventory()) {
       evidence: nightFiles,
       details: {problems: nightContractProblems}
     }),
-    result({
-      id: "MULTIUSER-LIVE-001",
-      contractId: "CONCURRENCY-001",
-      area: "multiuser",
-      name: "Autentisert ekte flerklient-race",
-      status: "BLOCKED",
-      critical: false,
-      summary: "Ekte samtidighet mellom to separate autentiserte produksjonsidentiteter mangler en write-fri testoracle.",
-      evidence: ["server revision/idempotency tests dekker simulert race"],
-      recommendation: "Etabler en isolert staging-tenant eller en eksplisitt read-only race-observatør; ikke test dette med produksjonswrite."
+    evaluateMultiuserEvidence({
+      inputPaths: options.multiuserEvidencePaths,
+      approvedSha: options.multiuserApprovedSha,
+      approvedTree: options.multiuserApprovedTree,
+      subjectRepository: options.multiuserSubjectRepository,
+      now: options.now
     }),
     result({
       id: "UX-LIVE-001",

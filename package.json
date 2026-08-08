@@ -12,6 +12,7 @@
     "test:sde:contracts": "node --test --test-concurrency=1 tests/sde/firewall.test.cjs",
     "test:sde:qualification": "npm run test:sde:determinism && npm run test:sde:contracts && npm run test:sde:mutations",
     "test:sde:all": "node tests/sde-quality-engine/run.cjs --suite all",
+    "test:sde:multiuser": "node tests/sde-quality-engine/run.cjs --suite multiuser",
     "test:sde:balise": "node tests/sde-quality-engine/run.cjs --suite balise",
     "test:sde:integration": "node tests/sde-quality-engine/run.cjs --suite integration",
     "test:sde:e2e": "node tests/sde-quality-engine/run.cjs --suite e2e",
