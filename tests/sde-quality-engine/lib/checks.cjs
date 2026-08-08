@@ -580,6 +580,7 @@ function staticChecks(inventory = buildInventory(), options = {}) {
       inputPaths: options.multiuserEvidencePaths,
       approvedSha: options.multiuserApprovedSha,
       approvedTree: options.multiuserApprovedTree,
+      subjectRepository: options.multiuserSubjectRepository,
       now: options.now
     }),
     result({

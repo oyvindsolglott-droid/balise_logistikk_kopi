@@ -18,6 +18,8 @@ function main(argv = process.argv.slice(2)) {
   const outputPath = option(argv, "--output", true);
   const approvedSha = option(argv, "--approved-sha", true);
   const approvedTree = option(argv, "--approved-tree", true);
+  const subjectRepository = option(argv, "--subject-repository", true);
+  const runtimeSha = option(argv, "--runtime-sha") || approvedSha;
   if (!livePath && !isolatedPath) throw new Error("Minst ett av --live eller --isolated må oppgis.");
   const resolvedOutput = path.resolve(outputPath);
   if (fs.existsSync(resolvedOutput) && fs.lstatSync(resolvedOutput).isSymbolicLink()) {
@@ -32,7 +34,15 @@ function main(argv = process.argv.slice(2)) {
   if (livePath && isolatedPath && path.basename(livePath) === path.basename(isolatedPath)) {
     throw new Error("Live- og isolated-write-artefakter må ha ulike filnavn.");
   }
-  const manifest = buildEvidenceManifest({ livePath, isolatedPath, outputPath: resolvedOutput, approvedSha, approvedTree });
+  const manifest = buildEvidenceManifest({
+    livePath,
+    isolatedPath,
+    outputPath: resolvedOutput,
+    approvedSha,
+    approvedTree,
+    subjectRepository,
+    runtimeSha
+  });
   fs.writeFileSync(resolvedOutput, `${JSON.stringify(manifest, null, 2)}\n`, { flag: "wx", mode: 0o600 });
   process.stdout.write(`${resolvedOutput}\n`);
 }

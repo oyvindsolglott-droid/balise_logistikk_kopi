@@ -5,6 +5,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const test = require("node:test");
 const { result, summarize } = require("../lib/core.cjs");
 const {
@@ -17,9 +18,65 @@ const {
 } = require("../lib/multiuser-evidence.cjs");
 const { canonicalGateProjection, renderHtml, renderJUnit } = require("../lib/reporters.cjs");
 
-const APPROVED_SHA = "a".repeat(40);
-const APPROVED_TREE = "b".repeat(40);
 const FIXED_NOW = new Date("2026-08-08T14:00:00.000Z");
+
+function git(repository, args) {
+  const child = spawnSync("git", ["-C", repository, ...args], {
+    encoding: "utf8",
+    timeout: 10_000,
+    env: { PATH: process.env.PATH, GIT_CONFIG_NOSYSTEM: "1", GIT_OPTIONAL_LOCKS: "0", GIT_TERMINAL_PROMPT: "0", LC_ALL: "C" }
+  });
+  assert.equal(child.status, 0, `git ${args.join(" ")} failed`);
+  return child.stdout.trim();
+}
+
+function writeFixtureFile(repository, relativePath, value) {
+  const file = path.join(repository, relativePath);
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, value);
+}
+
+function commit(repository, message) {
+  git(repository, ["add", "--all"]);
+  git(repository, ["commit", "-q", "-m", message]);
+  return { sha: git(repository, ["rev-parse", "HEAD"]), tree: git(repository, ["rev-parse", "HEAD^{tree}"]) };
+}
+
+function createSubjectFixture() {
+  const repository = fs.mkdtempSync(path.join(os.tmpdir(), "sde-qe-subject-git-"));
+  git(repository, ["init", "-q"]);
+  git(repository, ["config", "user.name", "SDE QE Synthetic Fixture"]);
+  git(repository, ["config", "user.email", "sde-qe-fixture@example.invalid"]);
+  writeFixtureFile(repository, "data/api_idag.json", '{"date":"2026-08-08"}\n');
+  writeFixtureFile(repository, "data/api_imorgen.json", '{"date":"2026-08-09"}\n');
+  writeFixtureFile(repository, "data/sde-data-provenance.json", '{"schema":"synthetic"}\n');
+  writeFixtureFile(repository, "src/app.js", 'export const synthetic = true;\n');
+  const approved = commit(repository, "synthetic approved subject");
+
+  writeFixtureFile(repository, "data/api_idag.json", '{"date":"2026-08-08","revision":1}\n');
+  const dataFirst = commit(repository, "synthetic data-only first");
+  writeFixtureFile(repository, "data/api_imorgen.json", '{"date":"2026-08-09","revision":2}\n');
+  const data = commit(repository, "synthetic data-only second");
+
+  git(repository, ["checkout", "-q", "--detach", approved.sha]);
+  writeFixtureFile(repository, "src/app.js", 'export const synthetic = false;\n');
+  const code = commit(repository, "synthetic code descendant");
+
+  git(repository, ["checkout", "-q", "--detach", approved.sha]);
+  writeFixtureFile(repository, "README.md", "synthetic independent line\n");
+  const nonAncestor = commit(repository, "synthetic non-ancestor");
+
+  git(repository, ["checkout", "-q", "--detach", data.sha]);
+  git(repository, ["merge", "-q", "--no-ff", "-m", "synthetic merge", code.sha]);
+  const merge = { sha: git(repository, ["rev-parse", "HEAD"]), tree: git(repository, ["rev-parse", "HEAD^{tree}"]) };
+  git(repository, ["checkout", "-q", "--detach", approved.sha]);
+  return { repository, approved, dataFirst, data, code, nonAncestor, merge };
+}
+
+const SUBJECT = createSubjectFixture();
+const APPROVED_SHA = SUBJECT.approved.sha;
+const APPROVED_TREE = SUBJECT.approved.tree;
+process.on("exit", () => fs.rmSync(SUBJECT.repository, { recursive: true, force: true }));
 
 function sha256(raw) {
   return crypto.createHash("sha256").update(raw).digest("hex");
@@ -133,6 +190,8 @@ function fixture(options = {}) {
     outputPath: manifestPath,
     approvedSha: APPROVED_SHA,
     approvedTree: APPROVED_TREE,
+    subjectRepository: options.subjectRepository || SUBJECT.repository,
+    runtimeSha: options.runtimeSha || APPROVED_SHA,
     now: FIXED_NOW,
     collectionRunId: runId
   });
@@ -143,6 +202,7 @@ function fixture(options = {}) {
     inputPath: manifestPath,
     approvedSha: APPROVED_SHA,
     approvedTree: APPROVED_TREE,
+    subjectRepository: options.subjectRepository || SUBJECT.repository,
     now: FIXED_NOW,
     ...overrides
   });
@@ -232,11 +292,7 @@ test("06 feil kode-SHA gir BLOCKED", () => {
 });
 
 test("07 gyldig data-only descendant tillates", () => {
-  const value = fixture({ manifest: (manifest) => {
-    manifest.codeIdentity.runtimeHead = "c".repeat(40);
-    manifest.codeIdentity.runtimeTree = "d".repeat(40);
-    manifest.codeIdentity.ancestry = [{ sha: "c".repeat(40), changedFiles: [...DATA_ONLY_PATHS] }];
-  } });
+  const value = fixture({ runtimeSha: SUBJECT.data.sha });
   const gate = value.evaluate();
   assert.equal(gate.status, "GREEN");
   assert.equal(subgate(gate, "MULTIUSER-CODE-BINDING").reasonCode, "MULTIUSER_DATA_ONLY_DESCENDANT_VALID");
@@ -245,10 +301,9 @@ test("07 gyldig data-only descendant tillates", () => {
 
 test("08 descendant med kode- eller assetfil blir BLOCKED", () => {
   const value = fixture({ manifest: (manifest) => {
-    manifest.codeIdentity.runtimeHead = "c".repeat(40);
-    manifest.codeIdentity.runtimeTree = "d".repeat(40);
-    manifest.codeIdentity.ancestry = [{ sha: "c".repeat(40), changedFiles: ["index.html"] }];
-    manifest.codeIdentity.codeAssetHashes.runtime = "e".repeat(64);
+    manifest.codeIdentity.runtimeHead = SUBJECT.code.sha;
+    manifest.codeIdentity.runtimeTree = SUBJECT.code.tree;
+    manifest.codeIdentity.ancestry = [{ sha: SUBJECT.code.sha, changedFiles: ["src/app.js"] }];
   } });
   assert.equal(value.evaluate().reasonCode, "MULTIUSER_DESCENDANT_NOT_DATA_ONLY");
   cleanup(value);
@@ -553,6 +608,7 @@ test("43 produsenten arver og kryssvaliderer collection run-ID", () => {
     outputPath: path.join(value.directory, "inherited-package.json"),
     approvedSha: APPROVED_SHA,
     approvedTree: APPROVED_TREE,
+    subjectRepository: SUBJECT.repository,
     now: FIXED_NOW
   });
   assert.equal(inherited.collectionRunId, "machine-run-43");

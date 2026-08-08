@@ -3,6 +3,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 const { gitValue, repoRoot, result } = require("./core.cjs");
 
 const SCHEMA_ID = "sde-multiuser-evidence";
@@ -110,28 +111,118 @@ function exactKeys(value, allowed, name) {
   }
 }
 
-const FORBIDDEN_SECRET_KEYS = /^(authorization|password|passcode|otp|oneTimeCode|token|accessToken|idToken|refreshToken|jwt|cookie|cookieValue|cookieHash|sessionCookie|tunnelToken)$/i;
-const SECRET_VALUE_PATTERNS = [
-  /\bBearer\s+[A-Za-z0-9._~+\/-]{12,}/i,
-  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
-  /(?:cf-access-token|cloudflared[-_ ]token|authorization)\s*[:=]\s*[^\s,;}{]{8,}/i
-];
+const SECRET_KEY_RULES = Object.freeze([
+  ["PASSWORD", /^(?:password|passwd|pwd)$/i],
+  ["ONE_TIME_CODE", /^(?:otp|passcode|onetimecode)$/i],
+  ["AUTHORIZATION", /^(?:authorization|proxyauthorization)$/i],
+  ["COOKIE", /^(?:cookie|setcookie|cookievalue)$/i],
+  ["COOKIE_HASH", /^(?:cookiehash|sessionhash)$/i],
+  ["SESSION_COOKIE", /^(?:sessioncookie|sessiontoken)$/i],
+  ["ACCESS_TOKEN", /^(?:accesstoken|cfaccesstoken|idtoken|refreshtoken)$/i],
+  ["ACCESS_TOKEN", /^(?:token|authtoken|bearertoken)$/i],
+  ["TOKEN_HASH", /^(?:tokenhash|accesstokenhash)$/i],
+  ["JWT", /^(?:jwt|jsonwebtoken)$/i],
+  ["TUNNEL_TOKEN", /^(?:tunneltoken|cloudflaredtoken)$/i],
+  ["API_SECRET", /^(?:apisecret|apikey|clientsecret)$/i],
+  ["CREDENTIAL", /^(?:credential|credentials|logincredential)$/i],
+  ["GENERIC_SECRET", /^(?:secret|secretvalue|authsecret)$/i]
+]);
 
-function assertSecretFree(raw, parsed, label) {
-  if (SECRET_VALUE_PATTERNS.some((pattern) => pattern.test(raw))) {
-    throw new EvidenceError("MULTIUSER_SECRET_FOUND", `${label} inneholder en forbudt autentiseringshemmelighet [REDACTED].`, "RED");
+const SECRET_TEXT_RULES = Object.freeze([
+  ["PASSWORD", /(?:^|[^a-z])(?:password|passwd|pwd)\s*[:=]\s*[^\s,;}{]{6,}/i],
+  ["ONE_TIME_CODE", /(?:^|[^a-z])(?:otp|one[-_ ]?time[-_ ]?code|passcode)\s*[:=]\s*[^\s,;}{]{4,}/i],
+  ["CREDENTIAL_LOGIN_URL", /https?:\/\/[^\s]+[?&](?:credential|code|otp|password|secret|token|key)=[^&#\s]{6,}/i],
+  ["COOKIE", /(?:^|[^a-z])(?:cookie|set-cookie|cookievalue)\s*[:=]\s*[^\s,;}{]{6,}/i],
+  ["COOKIE_HASH", /(?:cookie[-_ ]?hash|session[-_ ]?hash)\s*[:=]\s*[A-Za-z0-9._~+\/-]{8,}/i],
+  ["SESSION_COOKIE", /session[-_ ]?cookie\s*[:=]\s*[^\s,;}{]{6,}/i],
+  ["ACCESS_TOKEN", /(?:access[-_ ]?token|cf-access-token)\s*[:=]\s*[^\s,;}{]{8,}/i],
+  ["TOKEN_HASH", /token[-_ ]?hash\s*[:=]\s*[A-Za-z0-9._~+\/-]{8,}/i],
+  ["JWT", /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/],
+  ["AUTHORIZATION", /\bauthorization\s*[:=]\s*(?:basic|bearer|digest|token)?\s*[^\s,;}{]{8,}/i],
+  ["RAW_NETWORK_CREDENTIAL", /(?:raw[-_ ]?har|har\s*=|headers?\s*[:=]).{0,160}(?:authorization|cookie|credential|token).{0,80}(?:value\s*[:=]|[:=])\s*[^\s,;}{]{6,}/i],
+  ["TUNNEL_TOKEN", /(?:cloudflared|tunnel)[-_ ]?token\s*[:=]\s*[^\s,;}{]{8,}/i],
+  ["API_SECRET", /api[-_ ]?(?:secret|key)\s*[:=]\s*[^\s,;}{]{8,}/i],
+  ["BEARER_TOKEN", /\bBearer\s+[A-Za-z0-9._~+\/-]{12,}/i]
+]);
+
+function normalizedSecretKey(key) {
+  return String(key).replace(/[^a-z0-9]/gi, "");
+}
+
+function secretCategoryForKey(key) {
+  const normalized = normalizedSecretKey(key);
+  return SECRET_KEY_RULES.find(([, pattern]) => pattern.test(normalized))?.[0] || null;
+}
+
+function secretCategoryForText(value) {
+  const text = String(value);
+  return SECRET_TEXT_RULES.find(([, pattern]) => pattern.test(text))?.[0] || null;
+}
+
+function safeJsonPointer(parts) {
+  if (!parts.length) return "$";
+  return `$${parts.map((part) => {
+    if (typeof part === "number") return `[${part}]`;
+    if (secretCategoryForKey(part)) return ".[REDACTED_FIELD]";
+    const safe = /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/.test(part) ? part : "[REDACTED_FIELD]";
+    return `.${safe}`;
+  }).join("")}`;
+}
+
+function findSecret(value, parts = []) {
+  if (typeof value === "string") {
+    const category = secretCategoryForText(value);
+    return category ? { category, location: safeJsonPointer(parts) } : null;
   }
-  const visit = (value) => {
-    if (Array.isArray(value)) return value.forEach(visit);
-    if (!isPlainObject(value)) return;
-    for (const [key, child] of Object.entries(value)) {
-      if (FORBIDDEN_SECRET_KEYS.test(key) && child != null && child !== "") {
-        throw new EvidenceError("MULTIUSER_SECRET_FOUND", `${label} inneholder forbudt felt ${key}=[REDACTED].`, "RED");
-      }
-      visit(child);
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      const finding = findSecret(value[index], [...parts, index]);
+      if (finding) return finding;
     }
-  };
-  visit(parsed);
+    return null;
+  }
+  if (!isPlainObject(value)) return null;
+
+  const semanticNameEntry = Object.entries(value).find(([key, child]) =>
+    /^(?:name|headername|parametername)$/i.test(normalizedSecretKey(key)) && typeof child === "string"
+  );
+  const semanticValueEntry = Object.entries(value).find(([key, child]) =>
+    /^(?:value|headervalue|parametervalue)$/i.test(normalizedSecretKey(key)) && child != null && child !== ""
+  );
+  if (semanticNameEntry && semanticValueEntry) {
+    const category = secretCategoryForKey(semanticNameEntry[1]);
+    if (category) {
+      return { category, location: safeJsonPointer([...parts, semanticValueEntry[0]]) };
+    }
+  }
+
+  for (const [key, child] of Object.entries(value)) {
+    const category = secretCategoryForKey(key);
+    if (category && child != null && child !== "") {
+      return { category, location: safeJsonPointer([...parts, key]) };
+    }
+    const finding = findSecret(child, [...parts, key]);
+    if (finding) return finding;
+  }
+  return null;
+}
+
+function secretError(label, finding) {
+  return new EvidenceError(
+    "MULTIUSER_SECRET_FOUND",
+    `${label} inneholder forbudt hemmelighetskategori ${finding.category}; location=${finding.location}; value=[REDACTED].`,
+    "RED"
+  );
+}
+
+function assertSecretFree(parsed, label) {
+  try {
+    const finding = findSecret(parsed);
+    if (finding) throw secretError(label, finding);
+  } catch (error) {
+    if (error instanceof EvidenceError) throw error;
+    throw new EvidenceError("MULTIUSER_SECRET_SCAN_FAILED", `${label} kunne ikke secret-skannes kontrollert.`, "BLOCKED");
+  }
 }
 
 function readEvidenceFile(file, label) {
@@ -152,12 +243,11 @@ function readEvidenceFile(file, label) {
   try {
     parsed = JSON.parse(raw);
   } catch (error) {
-    if (SECRET_VALUE_PATTERNS.some((pattern) => pattern.test(raw))) {
-      throw new EvidenceError("MULTIUSER_SECRET_FOUND", `${label} inneholder en forbudt autentiseringshemmelighet [REDACTED].`, "RED");
-    }
+    const finding = secretCategoryForText(raw);
+    if (finding) throw secretError(label, { category: finding, location: "$" });
     throw new EvidenceError("MULTIUSER_EVIDENCE_MALFORMED", `${label} er ikke gyldig JSON.`);
   }
-  assertSecretFree(raw, parsed, label);
+  assertSecretFree(parsed, label);
   return { raw, parsed, bytes: Buffer.byteLength(raw), sha256: sha256Bytes(raw) };
 }
 
@@ -231,6 +321,7 @@ function validateManifestShape(manifest) {
 
 function validateProducer(manifest) {
   const producer = manifest.producer;
+  const evaluator = currentGitIdentity();
   if (producer.id !== PRODUCER_ID || producer.version !== PRODUCER_VERSION) {
     throw new EvidenceError("MULTIUSER_UNKNOWN_PRODUCER", "Evidenspakken kommer fra en ukjent eller ikke tillatt produsent.");
   }
@@ -240,9 +331,16 @@ function validateProducer(manifest) {
   if (producer.collectionMode !== "live-readonly+isolated-write" || producer.trustLevel !== "REPOSITORY_OWNED_LOCAL") {
     throw new EvidenceError("MULTIUSER_PRODUCER_UNTRUSTED", "Produsentens collection mode eller trust level er ikke tillatt.");
   }
-  if (producer.codeGitSha !== manifest.codeIdentity.approvedSha || producer.codeTree !== manifest.codeIdentity.approvedTree) {
-    throw new EvidenceError("MULTIUSER_PRODUCER_CODE_MISMATCH", "Produsentens Git-identitet er ikke bundet til godkjent kodeidentitet.");
+  if (producer.codeGitSha !== evaluator.sha || producer.codeTree !== evaluator.tree) {
+    throw new EvidenceError("MULTIUSER_PRODUCER_CODE_MISMATCH", "Produsentens Git-identitet matcher ikke evaluatorrepositoryets faktiske commit/tree.");
   }
+  return {
+    id: producer.id,
+    version: producer.version,
+    codeSha256: producer.codeSha256,
+    codeGitSha: producer.codeGitSha,
+    codeTree: producer.codeTree
+  };
 }
 
 function validateFreshness(manifest, now = new Date()) {
@@ -256,6 +354,127 @@ function validateFreshness(manifest, now = new Date()) {
   }
 }
 
+function gitRead(repository, args, options = {}) {
+  const allowedExitCodes = options.allowedExitCodes || [0];
+  const child = spawnSync("git", ["-C", repository, ...args], {
+    encoding: "utf8",
+    timeout: 10_000,
+    maxBuffer: 8 * 1024 * 1024,
+    env: {
+      PATH: process.env.PATH,
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_OPTIONAL_LOCKS: "0",
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_NO_LAZY_FETCH: "1",
+      GIT_NO_REPLACE_OBJECTS: "1",
+      LC_ALL: "C"
+    }
+  });
+  if (child.error || !allowedExitCodes.includes(child.status)) {
+    throw new EvidenceError("MULTIUSER_GIT_AUTHORITY_UNAVAILABLE", "Trusted Git repository kunne ikke leses kontrollert.");
+  }
+  return { status: child.status, stdout: child.stdout.trim() };
+}
+
+function trustedRepository(input) {
+  if (!input) {
+    throw new EvidenceError("MULTIUSER_SUBJECT_REPOSITORY_MISSING", "Eksplisitt trusted subject repository må oppgis.");
+  }
+  const repository = path.resolve(input);
+  let stat;
+  try {
+    stat = fs.lstatSync(repository);
+  } catch (error) {
+    throw new EvidenceError("MULTIUSER_SUBJECT_REPOSITORY_MISSING", "Trusted subject repository finnes ikke lokalt.");
+  }
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new EvidenceError("MULTIUSER_SUBJECT_REPOSITORY_UNSAFE", "Trusted subject repository må være en lokal, ordinær katalog.");
+  }
+  if (gitRead(repository, ["rev-parse", "--is-inside-work-tree"]).stdout !== "true") {
+    throw new EvidenceError("MULTIUSER_SUBJECT_REPOSITORY_INVALID", "Trusted subject repository er ikke et Git worktree.");
+  }
+  if (gitRead(repository, ["rev-parse", "--is-shallow-repository"]).stdout !== "false") {
+    throw new EvidenceError("MULTIUSER_GIT_HISTORY_INCOMPLETE", "Trusted subject repository har shallow eller ufullstendig historikk.");
+  }
+  return repository;
+}
+
+function fullGitObject(value, label) {
+  if (!/^[a-f0-9]{40}$/.test(value || "")) {
+    throw new EvidenceError("MULTIUSER_GIT_OBJECT_INVALID", `${label} må være en full, entydig 40-tegns Git-SHA.`);
+  }
+  return value;
+}
+
+function commitTree(repository, sha, label) {
+  fullGitObject(sha, label);
+  const exists = gitRead(repository, ["cat-file", "-e", `${sha}^{commit}`], { allowedExitCodes: [0, 1, 128] });
+  if (exists.status !== 0) {
+    throw new EvidenceError("MULTIUSER_GIT_OBJECT_MISSING", `${label} finnes ikke som lokalt commitobjekt.`);
+  }
+  return gitRead(repository, ["rev-parse", `${sha}^{tree}`]).stdout;
+}
+
+function codeAssetHash(repository, sha) {
+  const output = gitRead(repository, ["ls-tree", "-r", "-z", sha]).stdout;
+  const entries = output.split("\0").filter(Boolean).filter((entry) => {
+    const tab = entry.indexOf("\t");
+    const file = tab >= 0 ? entry.slice(tab + 1) : "";
+    return !DATA_ONLY_PATHS.includes(file);
+  });
+  return sha256Bytes(entries.join("\0"));
+}
+
+function actualAncestry(repository, approvedSha, runtimeSha) {
+  const ancestor = gitRead(repository, ["merge-base", "--is-ancestor", approvedSha, runtimeSha], { allowedExitCodes: [0, 1] });
+  if (ancestor.status !== 0) {
+    throw new EvidenceError("MULTIUSER_ANCESTRY_UNPROVEN", "Runtime commit er ikke en faktisk descendant av approved commit.");
+  }
+  const parentLines = gitRead(repository, ["rev-list", "--reverse", "--topo-order", "--parents", `${approvedSha}..${runtimeSha}`]).stdout
+    .split("\n").filter(Boolean);
+  if (parentLines.some((line) => line.trim().split(/\s+/).length !== 2)) {
+    throw new EvidenceError("MULTIUSER_GIT_HISTORY_AMBIGUOUS", "Descendantintervallet inneholder merge- eller tvetydig historikk.");
+  }
+  return parentLines.map((line) => {
+    const sha = line.split(/\s+/)[0];
+    const changedFiles = gitRead(repository, ["diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", `${sha}^`, sha]).stdout
+      .split("\n").filter(Boolean).sort();
+    return { sha, changedFiles };
+  });
+}
+
+function inspectSubjectIdentity({ subjectRepository, approvedSha, approvedTree, runtimeSha = approvedSha }) {
+  const repository = trustedRepository(subjectRepository);
+  fullGitObject(approvedSha, "approved SHA");
+  fullGitObject(approvedTree, "approved tree");
+  fullGitObject(runtimeSha, "runtime SHA");
+  const actualApprovedTree = commitTree(repository, approvedSha, "Approved commit");
+  const actualRuntimeTree = commitTree(repository, runtimeSha, "Runtime commit");
+  if (actualApprovedTree !== approvedTree) {
+    throw new EvidenceError("MULTIUSER_CODE_TREE_MISMATCH", "Rapportert approved tree matcher ikke commitens faktiske tree.");
+  }
+  const ancestry = runtimeSha === approvedSha ? [] : actualAncestry(repository, approvedSha, runtimeSha);
+  const changedFiles = [...new Set(ancestry.flatMap((entry) => entry.changedFiles))].sort();
+  const unauthorized = changedFiles.filter((file) => !DATA_ONLY_PATHS.includes(file));
+  const approvedCodeAssetHash = codeAssetHash(repository, approvedSha);
+  const runtimeCodeAssetHash = codeAssetHash(repository, runtimeSha);
+  if (unauthorized.length || approvedCodeAssetHash !== runtimeCodeAssetHash) {
+    throw new EvidenceError("MULTIUSER_DESCENDANT_NOT_DATA_ONLY", "Runtime descendant inneholder faktisk kode-, test-, config-, modell- eller assetendring.");
+  }
+  return {
+    repository,
+    approvedSha,
+    approvedTree: actualApprovedTree,
+    runtimeSha,
+    runtimeTree: actualRuntimeTree,
+    ancestry,
+    changedFiles,
+    approvedCodeAssetHash,
+    runtimeCodeAssetHash,
+    dataOnlyDescendant: runtimeSha !== approvedSha
+  };
+}
+
 function validateCodeIdentity(code, expected = {}) {
   const approvedSha = expected.approvedSha;
   const approvedTree = expected.approvedTree;
@@ -265,22 +484,37 @@ function validateCodeIdentity(code, expected = {}) {
   if (code.approvedSha !== approvedSha || code.approvedTree !== approvedTree) {
     throw new EvidenceError("MULTIUSER_WRONG_CODE_IDENTITY", "Evidensens approved SHA/tree matcher ikke eksplisitt godkjent kode.");
   }
-  const exact = code.runtimeHead === approvedSha;
-  if (exact) {
-    if (code.runtimeTree !== approvedTree || code.ancestry.length || code.codeAssetHashes.approved !== code.codeAssetHashes.runtime) {
-      throw new EvidenceError("MULTIUSER_CODE_TREE_MISMATCH", "Eksakt runtime SHA har avvikende tree, ancestry eller kode-/assethash.");
-    }
-    return { mode: "EXACT_APPROVED_SHA", dataOnlyDescendant: false, changedFiles: [] };
+  const actual = inspectSubjectIdentity({
+    subjectRepository: expected.subjectRepository,
+    approvedSha,
+    approvedTree,
+    runtimeSha: code.runtimeHead
+  });
+  if (code.runtimeTree !== actual.runtimeTree) {
+    throw new EvidenceError("MULTIUSER_CODE_TREE_MISMATCH", "Rapportert runtime tree matcher ikke commitens faktiske tree.");
   }
-  if (!code.ancestry.length || code.ancestry.at(-1).sha !== code.runtimeHead) {
-    throw new EvidenceError("MULTIUSER_ANCESTRY_UNPROVEN", "Runtime descendant har ikke komplett dokumentert ancestry.");
+  if (stableStringify(code.ancestry) !== stableStringify(actual.ancestry)) {
+    throw new EvidenceError("MULTIUSER_ANCESTRY_MISMATCH", "Rapportert ancestry eller changedFiles matcher ikke den faktiske Git-grafen.");
   }
-  const changedFiles = [...new Set(code.ancestry.flatMap((entry) => entry.changedFiles))].sort();
-  const unauthorized = changedFiles.filter((file) => !DATA_ONLY_PATHS.includes(file));
-  if (unauthorized.length || code.codeAssetHashes.approved !== code.codeAssetHashes.runtime) {
-    throw new EvidenceError("MULTIUSER_DESCENDANT_NOT_DATA_ONLY", "Runtime descendant inneholder kode-, test-, config-, modell- eller assetendring.");
+  if (
+    code.codeAssetHashes.approved !== actual.approvedCodeAssetHash ||
+    code.codeAssetHashes.runtime !== actual.runtimeCodeAssetHash
+  ) {
+    throw new EvidenceError("MULTIUSER_CODE_ASSET_HASH_MISMATCH", "Rapporterte kode-/assethasher matcher ikke faktiske Git-objekter.");
   }
-  return { mode: "DATA_ONLY_DESCENDANT", dataOnlyDescendant: true, changedFiles };
+  return {
+    mode: actual.dataOnlyDescendant ? "DATA_ONLY_DESCENDANT" : "EXACT_APPROVED_SHA",
+    dataOnlyDescendant: actual.dataOnlyDescendant,
+    changedFiles: actual.changedFiles,
+    subjectRepository: actual.repository,
+    approvedSha: actual.approvedSha,
+    approvedTree: actual.approvedTree,
+    runtimeSha: actual.runtimeSha,
+    runtimeTree: actual.runtimeTree,
+    ancestryVerified: true,
+    dataOnlyScopeVerified: true,
+    codeAssetHashesVerified: true
+  };
 }
 
 function resolveArtifact(baseDirectory, relativePath) {
@@ -501,7 +735,7 @@ function evaluateIsolated(artifact, manifest) {
   }
 }
 
-function aggregateResult(children, evidencePath, packageId = null) {
+function aggregateResult(children, evidencePath, packageId = null, identities = {}) {
   const red = children.find((item) => item.status === "RED");
   const blocked = children.find((item) => ["BLOCKED", "UNKNOWN"].includes(item.status));
   const status = red ? "RED" : blocked ? "BLOCKED" : "GREEN";
@@ -530,6 +764,8 @@ function aggregateResult(children, evidencePath, packageId = null) {
       assuranceLevel: "REPOSITORY_OWNED_HASH_CHAIN_NO_CRYPTOGRAPHIC_NON_REPUDIATION",
       canonicalMachineStatus: status,
       narrativeAssessment: "NON_AUTHORITATIVE",
+      producerIdentity: identities.producerIdentity || null,
+      subjectIdentity: identities.subjectIdentity || null,
       subgates: children
     },
     recommendation: status === "GREEN" ? null : "Lever en fersk, secret-free evidenspakke fra repositoryets tillatte produsent via eksplisitt CLI-input."
@@ -543,6 +779,9 @@ function errorAggregate(error, evidencePath) {
   const children = [
     child("MULTIUSER-EVIDENCE-INTEGRITY", status, reasonCode, safeMessage),
     blockedChild("MULTIUSER-EVIDENCE-PROVENANCE", "MULTIUSER_PROVENANCE_NOT_EVALUATED", "Proveniens ble ikke evaluert etter fail-closed avvisning."),
+    reasonCode === "MULTIUSER_SECRET_FOUND"
+      ? child("MULTIUSER-SECRET-FREE", "RED", reasonCode, safeMessage)
+      : blockedChild("MULTIUSER-SECRET-FREE", "MULTIUSER_SECRET_SCAN_NOT_EVALUATED", "Secret-free-kontroll ble ikke fullført etter fail-closed avvisning."),
     blockedChild("MULTIUSER-CODE-BINDING", "MULTIUSER_CODE_BINDING_NOT_EVALUATED", "Kodebinding ble ikke evaluert etter fail-closed avvisning."),
     blockedChild("MULTIUSER-LIVE-READONLY", "MULTIUSER_LIVE_NOT_EVALUATED", "Live-readonly ble ikke evaluert."),
     blockedChild("MULTIUSER-ISOLATED-WRITE", "MULTIUSER_ISOLATED_NOT_EVALUATED", "Isolated-write ble ikke evaluert.")
@@ -560,7 +799,7 @@ function evaluateMultiuserEvidence(options = {}) {
     const manifest = packageFile.parsed;
     validateManifestShape(manifest);
     if (manifestHash(manifest) !== manifest.manifest.payloadSha256) throw new EvidenceError("MULTIUSER_MANIFEST_HASH_MISMATCH", "Evidensmanifestets payloadhash matcher ikke innholdet.");
-    validateProducer(manifest);
+    const producerIdentity = validateProducer(manifest);
     validateFreshness(manifest, options.now || new Date());
     const binding = validateCodeIdentity(manifest.codeIdentity, options);
     const artifacts = readArtifacts(manifest, path.dirname(evidencePath));
@@ -572,7 +811,10 @@ function evaluateMultiuserEvidence(options = {}) {
       evaluateLive(artifacts.get("live-observations"), manifest),
       evaluateIsolated(artifacts.get("isolated-write-results"), manifest)
     ];
-    return aggregateResult(children, evidencePath, manifest.evidencePackageId);
+    return aggregateResult(children, evidencePath, manifest.evidencePackageId, {
+      producerIdentity,
+      subjectIdentity: binding
+    });
   } catch (error) {
     return errorAggregate(error, evidencePath);
   }
@@ -586,9 +828,10 @@ function currentGitIdentity() {
   };
 }
 
-function buildEvidenceManifest({ livePath, isolatedPath, outputPath, approvedSha, approvedTree, runtime = null, now = new Date(), collectionRunId = null, manualAttestations = [] }) {
+function buildEvidenceManifest({ livePath, isolatedPath, outputPath, approvedSha, approvedTree, subjectRepository, runtimeSha = approvedSha, now = new Date(), collectionRunId = null, manualAttestations = [] }) {
   if (!outputPath) throw new Error("outputPath er påkrevd");
-  const git = currentGitIdentity();
+  const evaluator = currentGitIdentity();
+  const subject = inspectSubjectIdentity({ subjectRepository, approvedSha, approvedTree, runtimeSha });
   const artifactInputs = [
     ["live-observations", livePath],
     ["isolated-write-results", isolatedPath]
@@ -607,7 +850,6 @@ function buildEvidenceManifest({ livePath, isolatedPath, outputPath, approvedSha
   const artifacts = sourceArtifacts.map((item) => item.reference);
   const liveArtifact = sourceArtifacts.find((item) => item.kind === "live-observations");
   const observedAt = liveArtifact ? liveArtifact.source.parsed.observedAt : now.toISOString();
-  const codeRuntime = runtime || { branch: git.branch, head: approvedSha, tree: approvedTree, ancestry: [], approvedCodeAssetHash: "0".repeat(64), runtimeCodeAssetHash: "0".repeat(64) };
   const manifest = {
     schemaId: SCHEMA_ID,
     schemaVersion: SCHEMA_VERSION,
@@ -622,22 +864,22 @@ function buildEvidenceManifest({ livePath, isolatedPath, outputPath, approvedSha
       id: PRODUCER_ID,
       version: PRODUCER_VERSION,
       codeSha256: producerSourceSha256(),
-      codeGitSha: approvedSha,
-      codeTree: approvedTree,
+      codeGitSha: evaluator.sha,
+      codeTree: evaluator.tree,
       invocationId: `invoke-${runId}`,
-      invocationCommand: ["node", "tests/sde-quality-engine/tools/build-multiuser-evidence.cjs", "--live", "[PATH]", "--isolated", "[PATH]", "--output", "[PATH]"],
+      invocationCommand: ["node", "tests/sde-quality-engine/tools/build-multiuser-evidence.cjs", "--live", "[PATH]", "--isolated", "[PATH]", "--output", "[PATH]", "--subject-repository", "[TRUSTED_LOCAL_REPOSITORY]", "--runtime-sha", "[GIT_SHA]"],
       collectionMode: "live-readonly+isolated-write",
       trustLevel: "REPOSITORY_OWNED_LOCAL",
       manualAttestations
     },
     codeIdentity: {
       approvedSha,
-      approvedTree,
-      runtimeBranch: codeRuntime.branch,
-      runtimeHead: codeRuntime.head,
-      runtimeTree: codeRuntime.tree,
-      ancestry: codeRuntime.ancestry || [],
-      codeAssetHashes: { approved: codeRuntime.approvedCodeAssetHash, runtime: codeRuntime.runtimeCodeAssetHash }
+      approvedTree: subject.approvedTree,
+      runtimeBranch: "trusted-local-git-subject",
+      runtimeHead: subject.runtimeSha,
+      runtimeTree: subject.runtimeTree,
+      ancestry: subject.ancestry,
+      codeAssetHashes: { approved: subject.approvedCodeAssetHash, runtime: subject.runtimeCodeAssetHash }
     },
     artifacts,
     manifest: {
@@ -671,6 +913,8 @@ module.exports = {
   buildEvidenceManifest,
   evaluateActualSyncEvidence,
   evaluateMultiuserEvidence,
+  findSecret,
+  inspectSubjectIdentity,
   manifestHash,
   producerSourceSha256,
   stableStringify

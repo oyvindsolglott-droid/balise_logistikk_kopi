@@ -107,6 +107,10 @@ function recommendationsFor(report) {
 
 function renderMarkdown(report) {
   const summary = report.summary || summarize(report.results);
+  const bindings = report.identityBindings || {};
+  const evaluator = bindings.evaluator || {};
+  const subject = bindings.subject || {};
+  const producer = bindings.evidenceProducer || {};
   const nonGreen = report.results.filter((item) => item.status !== "GREEN");
   const critical = report.results.filter((item) => item.critical && item.status !== "GREEN");
   const balise = report.results.filter((item) => item.area === "tursatt-balise");
@@ -125,6 +129,18 @@ function renderMarkdown(report) {
     `Tidspunkt: ${report.generatedAt}  `,
     `Suite: \`${report.suite}\`  `,
     `Commit: \`${report.git.commit || "ukjent"}\``,
+    "",
+    "### Kandidat- og evidensbinding",
+    "",
+    `- Evaluator SHA/tree: \`${evaluator.candidateSha || "NOT_EVALUATED"}\` / \`${evaluator.candidateTree || "NOT_EVALUATED"}\`.`,
+    `- Evaluator parent/repository/worktree: \`${evaluator.parentSha || "NOT_EVALUATED"}\` / \`${evaluator.repository || "NOT_EVALUATED"}\` / \`${evaluator.worktreeStatus || "NOT_EVALUATED"}\`.`,
+    `- Producer: \`${producer.id || "NOT_EVALUATED"}\` version \`${producer.version || "NOT_EVALUATED"}\`, source SHA-256 \`${producer.codeSha256 || "NOT_EVALUATED"}\`.`,
+    `- Subject mode/repository: \`${subject.mode || "NOT_EVALUATED"}\` / \`${subject.repository || "NOT_EVALUATED"}\`.`,
+    `- Subject approved SHA/tree: \`${subject.approvedSha || "NOT_EVALUATED"}\` / \`${subject.approvedTree || "NOT_EVALUATED"}\`.`,
+    `- Subject runtime SHA/tree: \`${subject.runtimeSha || "NOT_EVALUATED"}\` / \`${subject.runtimeTree || "NOT_EVALUATED"}\`.`,
+    `- Subject ancestry/data-only verified: ${subject.ancestryVerified === true ? "TRUE" : "FALSE"} / ${subject.dataOnlyScopeVerified === true ? "TRUE" : "FALSE"}.`,
+    `- CONTRACT QUALIFICATION: **${bindings.contractQualification || "NOT_EVALUATED"}**.`,
+    `- PRODUCTION MULTIUSER LIVE STATUS: **${bindings.productionMultiuserLiveStatus || "NOT_EVALUATED"}**.`,
     "",
     "## 1. Konklusjon",
     "",
@@ -239,6 +255,9 @@ function renderMarkdown(report) {
 
 function renderJUnit(report) {
   const summary = report.summary || summarize(report.results);
+  const bindings = report.identityBindings || {};
+  const evaluator = bindings.evaluator || {};
+  const subject = bindings.subject || {};
   const failures = report.results.filter((item) => item.status === "RED").length;
   const skipped = report.results.filter((item) => ["BLOCKED", "UNKNOWN"].includes(item.status)).length;
   const cases = report.results.map((item) => {
@@ -259,6 +278,16 @@ function renderJUnit(report) {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     `<testsuite name="SDE Quality Engine" tests="${summary.total}" failures="${failures}" skipped="${skipped}" timestamp="${escapeXml(report.generatedAt)}">`,
+    "  <properties>",
+    `    <property name="evaluatorCandidateSha" value="${escapeXml(evaluator.candidateSha || "NOT_EVALUATED")}"/>`,
+    `    <property name="evaluatorCandidateTree" value="${escapeXml(evaluator.candidateTree || "NOT_EVALUATED")}"/>`,
+    `    <property name="evaluatorParentSha" value="${escapeXml(evaluator.parentSha || "NOT_EVALUATED")}"/>`,
+    `    <property name="subjectMode" value="${escapeXml(subject.mode || "NOT_EVALUATED")}"/>`,
+    `    <property name="subjectApprovedSha" value="${escapeXml(subject.approvedSha || "NOT_EVALUATED")}"/>`,
+    `    <property name="subjectRuntimeSha" value="${escapeXml(subject.runtimeSha || "NOT_EVALUATED")}"/>`,
+    `    <property name="contractQualification" value="${escapeXml(bindings.contractQualification || "NOT_EVALUATED")}"/>`,
+    `    <property name="productionMultiuserLiveStatus" value="${escapeXml(bindings.productionMultiuserLiveStatus || "NOT_EVALUATED")}"/>`,
+    "  </properties>",
     ...cases,
     "</testsuite>",
     ""
@@ -267,6 +296,7 @@ function renderJUnit(report) {
 
 function renderHtml(report) {
   const summary = report.summary || summarize(report.results);
+  const bindings = report.identityBindings || {};
   const recommendations = report.recommendations || recommendationsFor(report);
   const statusCards = Object.entries(summary.counts)
     .map(([status, count]) => `<div class="metric ${status.toLowerCase()}"><strong>${count}</strong><span>${status}</span></div>`)
@@ -303,6 +333,7 @@ function renderHtml(report) {
   const provenancePanel = provenance ? `<section class="panel"><h2>Dataproveniens</h2><p>Generation ID: <code>${escapeHtml(provenance.generationId || "NOT AVAILABLE")}</code></p><p>Comparison eligibility: <strong>${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}</strong> — ${escapeHtml(provenance.comparisonEligibility?.reason || "NOT AVAILABLE")}</p><p>Publication integrity: <strong>${escapeHtml(provenance.publicationIntegrity)}</strong> · Custom-domain observability: <strong>${escapeHtml(provenance.customDomainObservability)}</strong></p><h3>Identity domains</h3><div class="table-wrap"><table><thead><tr><th>Domain</th><th>Status</th><th>Normative role</th><th>Expected relations</th><th>Actual relations</th></tr></thead><tbody>${identityDomains.map((domain) => `<tr><td>${escapeHtml(domain.name)}</td><td><span class="badge ${String(domain.status).toLowerCase()}">${escapeHtml(domain.status)}</span></td><td>${escapeHtml(domain.role)}</td><td>${escapeHtml(relationText(domain.expectedRelations))}</td><td><code>${escapeHtml(relationText(domain.actualRelations))}</code></td></tr>`).join("")}</tbody></table></div><h3>Evidence chain</h3><div class="table-wrap"><table><thead><tr><th>Proveniensledd</th><th>Status</th><th>Identitet</th></tr></thead><tbody>${(provenance.chain || []).map((step) => `<tr><td>${escapeHtml(step.step)}</td><td><span class="badge ${String(step.status).toLowerCase().replace(/ /g, "-")}">${escapeHtml(step.status)}</span></td><td><code>${escapeHtml(step.identity || "NOT AVAILABLE")}</code></td></tr>`).join("")}</tbody></table></div><ul>${(provenance.findings || []).map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul></section>` : "";
   const classificationPanel = classification ? `<section class="panel"><h2>Fail-closed klassifisering</h2><p><strong>${classification.uniqueUnderlyingFindings}</strong> unique findings · <strong>${classification.layerObservationCount}</strong> layer observations.</p><p>Primary classifications: <code>${escapeHtml(JSON.stringify(classification.primaryClassificationCounts))}</code></p><p>Diagnostic labels: <code>${escapeHtml(JSON.stringify(classification.diagnosticLabelCounts))}</code></p><div class="table-wrap"><table><thead><tr><th>Finding</th><th>Primary</th><th>Labels</th><th>Eligible</th><th>Reason</th><th>Available provenance</th><th>Missing provenance</th><th>Authority</th><th>Confidence</th></tr></thead><tbody>${classification.findings.map((finding) => `<tr><td><code>${escapeHtml(finding.uniqueFindingId)}</code></td><td>${escapeHtml(finding.primaryClassification)}</td><td>${escapeHtml(finding.diagnosticLabels.join(", "))}</td><td>${finding.comparisonEligibility.eligible ? "yes" : "no"}</td><td>${escapeHtml(finding.comparisonEligibility.reason)}</td><td>${escapeHtml((finding.comparisonEligibility.availableProvenance || []).join(", ") || "–")}</td><td>${escapeHtml((finding.comparisonEligibility.missingProvenance || []).join(", ") || "–")}</td><td>${escapeHtml(finding.contractAuthority.type)} (${finding.contractAuthority.normative ? "normative" : "non-normative"})</td><td>${escapeHtml(finding.confidence)}</td></tr>`).join("")}</tbody></table></div><p>HOLD does not mean confirmed product defect.</p></section>` : "";
   const canonicalGatesJson = JSON.stringify({ total: summary.total, counts: summary.counts, gates: report.results.map(canonicalGateProjection) }).replace(/</g, "\\u003c");
+  const identityBindingsJson = JSON.stringify(bindings).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html lang="no">
 <head>
@@ -328,6 +359,8 @@ function renderHtml(report) {
     <div class="metrics">${statusCards}</div>
   </section>
   <script id="sde-canonical-gates" type="application/json">${canonicalGatesJson}</script>
+  <script id="sde-identity-bindings" type="application/json">${identityBindingsJson}</script>
+  <section class="panel"><h2>Kandidat- og evidensbinding</h2><p>Evaluator: <code>${escapeHtml(bindings.evaluator?.candidateSha || "NOT_EVALUATED")}</code> / <code>${escapeHtml(bindings.evaluator?.candidateTree || "NOT_EVALUATED")}</code></p><p>Subject: <strong>${escapeHtml(bindings.subject?.mode || "NOT_EVALUATED")}</strong> · approved <code>${escapeHtml(bindings.subject?.approvedSha || "NOT_EVALUATED")}</code> · runtime <code>${escapeHtml(bindings.subject?.runtimeSha || "NOT_EVALUATED")}</code></p><p>Contract qualification: <strong>${escapeHtml(bindings.contractQualification || "NOT_EVALUATED")}</strong> · production multiuser live: <strong>${escapeHtml(bindings.productionMultiuserLiveStatus || "NOT_EVALUATED")}</strong></p></section>
   <section class="panel"><h2>Kontrollresultater</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Område</th><th>Kontroll</th><th>Status</th><th>Versjon</th><th>Reason</th><th>Severity</th><th>Relasjon/telling</th><th>Evidensreferanser</th><th>Evidenssammendrag</th></tr></thead><tbody>${resultRows}</tbody></table></div></section>
   ${accountingPanel}
   ${classificationPanel}

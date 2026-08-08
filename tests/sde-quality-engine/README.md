@@ -84,7 +84,9 @@ produktkodeidentiteten:
 node tests/sde-quality-engine/run.cjs --suite multiuser \
   --multiuser-evidence /absolutt/evidens/evidence-package.json \
   --multiuser-approved-sha <40-heksadesimal-git-sha> \
-  --multiuser-approved-tree <40-heksadesimalt-git-tree>
+  --multiuser-approved-tree <40-heksadesimalt-git-tree> \
+  --multiuser-subject-repository /absolutt/lokalt/git-repository \
+  --multiuser-subject-mode SYNTHETIC_GIT_FIXTURE
 ```
 
 Det finnes ingen URL-, «nyeste fil»-, narrativ- eller håndredigert
@@ -103,7 +105,9 @@ node tests/sde-quality-engine/tools/build-multiuser-evidence.cjs \
   --isolated /absolutt/evidens/isolated-write-results.json \
   --output /absolutt/evidens/evidence-package.json \
   --approved-sha <40-heksadesimal-git-sha> \
-  --approved-tree <40-heksadesimalt-git-tree>
+  --approved-tree <40-heksadesimalt-git-tree> \
+  --subject-repository /absolutt/lokalt/git-repository \
+  --runtime-sha <40-heksadesimal-git-sha>
 ```
 
 Kontraktene er dokumentert i
@@ -117,13 +121,24 @@ men kan ikke erstatte maskinreadback.
 
 Hashkjeden beviser filintegritet, produsentversjonen binder format og
 innsamlingsmekanisme, og eksakt SHA/tree eller dokumentert data-only descendant
-bindes til godkjent kode. Den tillatte descendantlisten er begrenset til
+bindes til godkjent kode. Subject-repositoryet er et eksplisitt trusted lokalt
+CLI-input og kan ikke velges av evidensfilen. Commitobjekter, trees, ancestry,
+alle mellomcommits, faktiske endrede filer og kode-/assethash verifiseres
+read-only mot dette repositoryet uten fetch. Shallow, manglende, ikke-relatert
+eller tvetydig mergehistorikk feiler lukket. Den tillatte descendantlisten er begrenset til
 `data/api_idag.json`, `data/api_imorgen.json` og
 `data/sde-data-provenance.json`; kode/assets må være byteidentiske. Prosjektet
 har ingen kryptografisk signering av slike lokale pakker, så dette gir ikke
 non-repudiation. Gjenværende tillitsforutsetning er at den repository-eide
 produsenten og dens lokale kjøremiljø kontrolleres av den autoriserte
 testemaskinoperatøren.
+
+Rapportene skiller tre identitetsdomener: Quality Engine-evaluatoren,
+subject-koden og evidence-produsenten. En syntetisk subject skal merkes
+`SYNTHETIC_GIT_FIXTURE`; kontraktkvalifisering rapporteres separat fra
+`PRODUCTION MULTIUSER LIVE STATUS`, som forblir `NOT_EVALUATED` uten en egen
+autorisert produksjonskjøring. JSON, HTML og JUnit eksponerer samme evaluator
+SHA/tree lest direkte fra den aktuelle Git-checkouten.
 
 `multiuser`-suiten kjører den kanoniske gate-, regnskaps- og
 JSON/Markdown/JUnit/HTML-pipelinen uten Balise-live eller andre
