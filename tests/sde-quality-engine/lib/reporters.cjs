@@ -48,6 +48,10 @@ function provenanceModel(report) {
     ?.details?.provenance || null;
 }
 
+function liveDataModel(report) {
+  return report.results.find((item) => item.id === "LIVE-DATA-FRESHNESS-P0") || null;
+}
+
 function provenanceIdentityDomains(provenance) {
   if (!provenance) return [];
   if (Array.isArray(provenance.identityResults)) return provenance.identityResults;
@@ -122,6 +126,8 @@ function renderMarkdown(report) {
   const classifications = classificationModel(report);
   const provenance = provenanceModel(report);
   const identityDomains = provenanceIdentityDomains(provenance);
+  const liveData = liveDataModel(report);
+  const liveDataDetails = liveData?.details || {};
   const lines = [
     "# SDE Quality Engine",
     "",
@@ -192,6 +198,24 @@ function renderMarkdown(report) {
       `Diagnostic labels: ${JSON.stringify(classifications?.diagnosticLabelCounts || {})}.`,
       "HOLD does not mean confirmed product defect."
     ] : ["- Ingen treveis livefunn i denne kjøringen, eller publisert kilde var utilgjengelig."]),
+    "",
+    "### P0 live-data continuity",
+    "",
+    ...(liveData ? [
+      `- P0-aggregat / samlet verdict: **${liveData.status} / ${liveDataDetails.overallVerdict}**.`,
+      `- APPROVED_CODE_SHA/TREE: \`${liveDataDetails.approvedCodeSha || "UNPROVEN"}\` / \`${liveDataDetails.approvedCodeTree || "UNPROVEN"}\`.`,
+      `- RUNTIME_BRANCH/HEAD/TREE: \`${liveDataDetails.runtimeBranch || "UNPROVEN"}\` / \`${liveDataDetails.runtimeHead || "UNPROVEN"}\` / \`${liveDataDetails.runtimeTree || "UNPROVEN"}\`.`,
+      `- Data-only descendant: **${liveDataDetails.dataOnlyDescendantStatus}**.`,
+      `- Operativt vindu: **${liveDataDetails.operativeWindow || "UNPROVEN"}**; forventet idag/imorgen: \`${liveDataDetails.expectedDates?.idag || "UNPROVEN"}\` / \`${liveDataDetails.expectedDates?.imorgen || "UNPROVEN"}\`; faktisk: \`${liveDataDetails.actualDates?.idag || "UNPROVEN"}\` / \`${liveDataDetails.actualDates?.imorgen || "UNPROVEN"}\`.`,
+      `- Scheduler / readiness / actual sync: **${liveDataDetails.schedulerHealth} / ${liveDataDetails.applyReadiness} / ${liveDataDetails.actualSyncApplied}**.`,
+      `- Private / public authenticated / actual UI: **${liveDataDetails.privateReadback} / ${liveDataDetails.publicAuthenticatedReadback} / ${liveDataDetails.actualUiFreshness}**.`,
+      `- Proveniens: **${liveDataDetails.provenance}**. Første sikre divergens: **${liveDataDetails.firstSafeDivergence || "ingen"}**.`,
+      `- Evidensprioritet: **${liveDataDetails.evidencePriority?.winner || "UNPROVEN"}**; historisk GREEN overstyrt: **${liveDataDetails.evidencePriority?.historicalGreenOverridden ? "TRUE" : "FALSE"}**.`,
+      "",
+      "| P0-underport | Status | Reason | Resultat |",
+      "|---|---|---|---|",
+      ...(liveDataDetails.subgates || []).map((item) => `| ${item.id} | ${item.status} | ${item.reasonCode} | ${String(item.summary).replace(/\|/g, "\\|")} |`)
+    ] : ["- P0-porten var ikke del av denne suiten."]),
     "",
     "## 7. Kritiske funn",
     "",
@@ -271,8 +295,11 @@ function renderJUnit(report) {
     const threeWay = item.details?.threeWay;
     const classificationEvidence = threeWay ? `\nclassification=${JSON.stringify({ uniqueUnderlyingFindings: threeWay.uniqueUnderlyingFindings, layerObservationCount: threeWay.layerObservationCount, primaryClassificationCounts: threeWay.primaryClassificationCounts, diagnosticLabelCounts: threeWay.diagnosticLabelCounts, findings: threeWay.findings.map((finding) => ({ primaryClassification: finding.primaryClassification, diagnosticLabels: finding.diagnosticLabels, comparisonEligibility: finding.comparisonEligibility, contractAuthority: finding.contractAuthority, confidence: finding.confidence })) })}` : "";
     const provenanceEvidence = item.details?.provenance ? `\nprovenance=${JSON.stringify(item.details.provenance)}` : "";
+    const liveDataEvidence = item.id === "LIVE-DATA-FRESHNESS-P0"
+      ? `\nlive-data-continuity=${JSON.stringify(item.details || {})}`
+      : "";
     const canonicalEvidence = `\ncanonical-gate=${JSON.stringify(canonicalGateProjection(item))}`;
-    body.push(`<system-out>${escapeXml(`${item.status}: ${item.summary}\n${(item.evidence || []).join("\n")}${canonicalEvidence}${classificationEvidence}${provenanceEvidence}`)}</system-out>`);
+    body.push(`<system-out>${escapeXml(`${item.status}: ${item.summary}\n${(item.evidence || []).join("\n")}${canonicalEvidence}${classificationEvidence}${provenanceEvidence}${liveDataEvidence}`)}</system-out>`);
     return `    <testcase ${attrs}>${body.join("")}</testcase>`;
   });
   return [
@@ -330,6 +357,9 @@ function renderHtml(report) {
   const classification = classificationModel(report);
   const provenance = provenanceModel(report);
   const identityDomains = provenanceIdentityDomains(provenance);
+  const liveData = liveDataModel(report);
+  const liveDataDetails = liveData?.details || {};
+  const liveDataPanel = liveData ? `<section class="panel"><h2>P0 live-data continuity</h2><p><strong>${escapeHtml(liveData.status)} / ${escapeHtml(liveDataDetails.overallVerdict)}</strong> · first safe divergence <code>${escapeHtml(liveDataDetails.firstSafeDivergence || "none")}</code></p><p>Approved <code>${escapeHtml(liveDataDetails.approvedCodeSha || "UNPROVEN")}</code> / <code>${escapeHtml(liveDataDetails.approvedCodeTree || "UNPROVEN")}</code><br>Runtime <code>${escapeHtml(liveDataDetails.runtimeBranch || "UNPROVEN")}</code> / <code>${escapeHtml(liveDataDetails.runtimeHead || "UNPROVEN")}</code> / <code>${escapeHtml(liveDataDetails.runtimeTree || "UNPROVEN")}</code></p><p>Window <strong>${escapeHtml(liveDataDetails.operativeWindow || "UNPROVEN")}</strong> · expected <code>${escapeHtml(JSON.stringify(liveDataDetails.expectedDates || {}))}</code> · actual <code>${escapeHtml(JSON.stringify(liveDataDetails.actualDates || {}))}</code></p><p>Scheduler/readiness/actual-sync: <strong>${escapeHtml(liveDataDetails.schedulerHealth)} / ${escapeHtml(liveDataDetails.applyReadiness)} / ${escapeHtml(liveDataDetails.actualSyncApplied)}</strong><br>Private/public/UI: <strong>${escapeHtml(liveDataDetails.privateReadback)} / ${escapeHtml(liveDataDetails.publicAuthenticatedReadback)} / ${escapeHtml(liveDataDetails.actualUiFreshness)}</strong> · provenance <strong>${escapeHtml(liveDataDetails.provenance)}</strong></p><div class="table-wrap"><table><thead><tr><th>Subgate</th><th>Status</th><th>Reason</th><th>Result</th></tr></thead><tbody>${(liveDataDetails.subgates || []).map((item) => `<tr><td><code>${escapeHtml(item.id)}</code></td><td><span class="badge ${String(item.status).toLowerCase()}">${escapeHtml(item.status)}</span></td><td><code>${escapeHtml(item.reasonCode)}</code></td><td>${escapeHtml(item.summary)}</td></tr>`).join("")}</tbody></table></div></section>` : "";
   const provenancePanel = provenance ? `<section class="panel"><h2>Dataproveniens</h2><p>Generation ID: <code>${escapeHtml(provenance.generationId || "NOT AVAILABLE")}</code></p><p>Comparison eligibility: <strong>${provenance.comparisonEligibility?.eligible ? "eligible" : "not eligible"}</strong> — ${escapeHtml(provenance.comparisonEligibility?.reason || "NOT AVAILABLE")}</p><p>Publication integrity: <strong>${escapeHtml(provenance.publicationIntegrity)}</strong> · Custom-domain observability: <strong>${escapeHtml(provenance.customDomainObservability)}</strong></p><h3>Identity domains</h3><div class="table-wrap"><table><thead><tr><th>Domain</th><th>Status</th><th>Normative role</th><th>Expected relations</th><th>Actual relations</th></tr></thead><tbody>${identityDomains.map((domain) => `<tr><td>${escapeHtml(domain.name)}</td><td><span class="badge ${String(domain.status).toLowerCase()}">${escapeHtml(domain.status)}</span></td><td>${escapeHtml(domain.role)}</td><td>${escapeHtml(relationText(domain.expectedRelations))}</td><td><code>${escapeHtml(relationText(domain.actualRelations))}</code></td></tr>`).join("")}</tbody></table></div><h3>Evidence chain</h3><div class="table-wrap"><table><thead><tr><th>Proveniensledd</th><th>Status</th><th>Identitet</th></tr></thead><tbody>${(provenance.chain || []).map((step) => `<tr><td>${escapeHtml(step.step)}</td><td><span class="badge ${String(step.status).toLowerCase().replace(/ /g, "-")}">${escapeHtml(step.status)}</span></td><td><code>${escapeHtml(step.identity || "NOT AVAILABLE")}</code></td></tr>`).join("")}</tbody></table></div><ul>${(provenance.findings || []).map((finding) => `<li>${escapeHtml(finding)}</li>`).join("")}</ul></section>` : "";
   const classificationPanel = classification ? `<section class="panel"><h2>Fail-closed klassifisering</h2><p><strong>${classification.uniqueUnderlyingFindings}</strong> unique findings · <strong>${classification.layerObservationCount}</strong> layer observations.</p><p>Primary classifications: <code>${escapeHtml(JSON.stringify(classification.primaryClassificationCounts))}</code></p><p>Diagnostic labels: <code>${escapeHtml(JSON.stringify(classification.diagnosticLabelCounts))}</code></p><div class="table-wrap"><table><thead><tr><th>Finding</th><th>Primary</th><th>Labels</th><th>Eligible</th><th>Reason</th><th>Available provenance</th><th>Missing provenance</th><th>Authority</th><th>Confidence</th></tr></thead><tbody>${classification.findings.map((finding) => `<tr><td><code>${escapeHtml(finding.uniqueFindingId)}</code></td><td>${escapeHtml(finding.primaryClassification)}</td><td>${escapeHtml(finding.diagnosticLabels.join(", "))}</td><td>${finding.comparisonEligibility.eligible ? "yes" : "no"}</td><td>${escapeHtml(finding.comparisonEligibility.reason)}</td><td>${escapeHtml((finding.comparisonEligibility.availableProvenance || []).join(", ") || "–")}</td><td>${escapeHtml((finding.comparisonEligibility.missingProvenance || []).join(", ") || "–")}</td><td>${escapeHtml(finding.contractAuthority.type)} (${finding.contractAuthority.normative ? "normative" : "non-normative"})</td><td>${escapeHtml(finding.confidence)}</td></tr>`).join("")}</tbody></table></div><p>HOLD does not mean confirmed product defect.</p></section>` : "";
   const canonicalGatesJson = JSON.stringify({ total: summary.total, counts: summary.counts, gates: report.results.map(canonicalGateProjection) }).replace(/</g, "\\u003c");
@@ -363,6 +393,7 @@ function renderHtml(report) {
   <section class="panel"><h2>Kandidat- og evidensbinding</h2><p>Evaluator: <code>${escapeHtml(bindings.evaluator?.candidateSha || "NOT_EVALUATED")}</code> / <code>${escapeHtml(bindings.evaluator?.candidateTree || "NOT_EVALUATED")}</code></p><p>Subject: <strong>${escapeHtml(bindings.subject?.mode || "NOT_EVALUATED")}</strong> · approved <code>${escapeHtml(bindings.subject?.approvedSha || "NOT_EVALUATED")}</code> · runtime <code>${escapeHtml(bindings.subject?.runtimeSha || "NOT_EVALUATED")}</code></p><p>Contract qualification: <strong>${escapeHtml(bindings.contractQualification || "NOT_EVALUATED")}</strong> · production multiuser live: <strong>${escapeHtml(bindings.productionMultiuserLiveStatus || "NOT_EVALUATED")}</strong></p></section>
   <section class="panel"><h2>Kontrollresultater</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Område</th><th>Kontroll</th><th>Status</th><th>Versjon</th><th>Reason</th><th>Severity</th><th>Relasjon/telling</th><th>Evidensreferanser</th><th>Evidenssammendrag</th></tr></thead><tbody>${resultRows}</tbody></table></div></section>
   ${accountingPanel}
+  ${liveDataPanel}
   ${classificationPanel}
   ${provenancePanel}
   <section class="panel"><h2>Funksjonsmatrise</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Modul</th><th>Funksjon</th><th>Status</th><th>Testtyper</th></tr></thead><tbody>${matrixRows}</tbody></table></div></section>
@@ -375,6 +406,7 @@ function renderGithubSummary(report) {
   const summary = report.summary || summarize(report.results);
   const provenance = provenanceModel(report);
   const identityDomains = provenanceIdentityDomains(provenance);
+  const liveData = liveDataModel(report);
   const lines = [
     "# SDE Quality Engine",
     "",
@@ -398,6 +430,23 @@ function renderGithubSummary(report) {
       "| Chain step | Status |",
       "|---|---|",
       ...(provenance.chain || []).map((step) => `| ${step.step} | ${step.status} |`)
+    );
+  }
+  if (liveData) {
+    const details = liveData.details || {};
+    lines.push(
+      "",
+      "## P0 live-data continuity",
+      "",
+      `**${liveData.status} / ${details.overallVerdict}** · first safe divergence \`${details.firstSafeDivergence || "none"}\``,
+      "",
+      `Approved SHA/tree: \`${details.approvedCodeSha || "UNPROVEN"}\` / \`${details.approvedCodeTree || "UNPROVEN"}\``,
+      "",
+      `Runtime branch/HEAD/tree: \`${details.runtimeBranch || "UNPROVEN"}\` / \`${details.runtimeHead || "UNPROVEN"}\` / \`${details.runtimeTree || "UNPROVEN"}\``,
+      "",
+      `Scheduler/readiness/actual-sync: **${details.schedulerHealth} / ${details.applyReadiness} / ${details.actualSyncApplied}**`,
+      "",
+      `Private/public/UI/provenance: **${details.privateReadback} / ${details.publicAuthenticatedReadback} / ${details.actualUiFreshness} / ${details.provenance}**`
     );
   }
   return lines.join("\n");
@@ -434,6 +483,7 @@ function writeReports(report, directory) {
 module.exports = {
   canonicalGateProjection,
   classificationModel,
+  liveDataModel,
   provenanceModel,
   provenanceIdentityDomains,
   recommendationsFor,

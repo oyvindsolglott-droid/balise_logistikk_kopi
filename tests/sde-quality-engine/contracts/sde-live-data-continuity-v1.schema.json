@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sde.oyvind-solglott.no/contracts/sde-live-data-continuity-v1.schema.json",
+  "title": "SDE live-data continuity evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "observedAt",
+    "deployedAt",
+    "timeZone",
+    "evidenceClass",
+    "source",
+    "scheduler",
+    "applyReadiness",
+    "actualSync",
+    "privateReadback",
+    "publicReadback",
+    "ui",
+    "publicationAttestation",
+    "historicalReport",
+    "manualAttestation",
+    "actionsAttempted",
+    "producer",
+    "binding"
+  ],
+  "properties": {
+    "schemaVersion": {"const":"sde-live-data-continuity/v1"},
+    "observedAt": {"type":"string","format":"date-time"},
+    "deployedAt": {"type":"string","format":"date-time"},
+    "timeZone": {"const":"Europe/Oslo"},
+    "evidenceClass": {"enum":["FRESH_OBSERVED","REUSED_EXACT_SHA","MANUAL_ATTESTATION","HISTORICAL_REPORT"]},
+    "source": {"$ref":"#/$defs/source"},
+    "scheduler": {"$ref":"#/$defs/scheduler"},
+    "applyReadiness": {"$ref":"#/$defs/readiness"},
+    "actualSync": {"$ref":"#/$defs/actualSync"},
+    "privateReadback": {"$ref":"#/$defs/readback"},
+    "publicReadback": {"$ref":"#/$defs/publicReadback"},
+    "ui": {"$ref":"#/$defs/ui"},
+    "publicationAttestation": {"$ref":"#/$defs/publicationAttestation"},
+    "historicalReport": {"type":["object","null"]},
+    "manualAttestation": {"type":["object","null"]},
+    "actionsAttempted": {"type":"array","items":{"type":"string"},"maxItems":0},
+    "producer": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["id","version","codeSha256","collectionMode","trustLevel"],
+      "properties": {
+        "id":{"const":"sde-qe-live-data-continuity-observer"},
+        "version":{"const":"1.0.0"},
+        "codeSha256":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+        "collectionMode":{"const":"repository-owned-read-only-observer"},
+        "trustLevel":{"const":"REPOSITORY_OWNED_LOCAL"}
+      }
+    },
+    "binding": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["algorithm","payloadSha256"],
+      "properties": {
+        "algorithm":{"const":"sha256"},
+        "payloadSha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}
+      }
+    }
+  },
+  "$defs": {
+    "datasetIdentity": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["date","bytes","sha256"],
+      "properties": {
+        "date":{"type":"string","pattern":"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+        "bytes":{"type":"integer","minimum":1},
+        "sha256":{"type":"string","pattern":"^[a-f0-9]{64}$"}
+      }
+    },
+    "datasets": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["idag","imorgen"],
+      "properties": {
+        "idag":{"$ref":"#/$defs/datasetIdentity"},
+        "imorgen":{"$ref":"#/$defs/datasetIdentity"}
+      }
+    },
+    "source": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["available","httpStatus","contentType","observedAt","rawStationSha256","vehicleSha256","snapshotStable"],
+      "properties": {
+        "available":{"type":"boolean"},
+        "httpStatus":{"type":["integer","null"]},
+        "contentType":{"type":["string","null"]},
+        "observedAt":{"type":"string","format":"date-time"},
+        "rawStationSha256":{"type":["string","null"],"pattern":"^[a-f0-9]{64}$"},
+        "vehicleSha256":{"type":["string","null"],"pattern":"^[a-f0-9]{64}$"},
+        "snapshotStable":{"type":"boolean"}
+      }
+    },
+    "scheduler": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["checkedAt","processHealthy","intervalObserved","attemptedAfterDeploy","exitCode","blocker"],
+      "properties": {
+        "checkedAt":{"type":"string","format":"date-time"},
+        "processHealthy":{"type":"boolean"},
+        "intervalObserved":{"type":"boolean"},
+        "attemptedAfterDeploy":{"type":"boolean"},
+        "exitCode":{"type":["integer","null"]},
+        "blocker":{"type":["string","null"]}
+      }
+    },
+    "readiness": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["branchGuardPassed","historyCompared","dataOnlyCandidateEvaluated"],
+      "properties": {
+        "branchGuardPassed":{"type":"boolean"},
+        "historyCompared":{"type":"boolean"},
+        "dataOnlyCandidateEvaluated":{"type":"boolean"}
+      }
+    },
+    "actualSync": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["state","previousHead","detectedHead","headMoved","commitsClassified","servedBytesMatch","codeAssetsIdentical","changedFiles"],
+      "properties": {
+        "state":{"enum":["synced","up_to_date","unknown"]},
+        "previousHead":{"type":["string","null"]},
+        "detectedHead":{"type":["string","null"]},
+        "headMoved":{"type":"boolean"},
+        "commitsClassified":{"type":"boolean"},
+        "servedBytesMatch":{"type":"boolean"},
+        "codeAssetsIdentical":{"type":"boolean"},
+        "changedFiles":{"type":"array","items":{"type":"string"},"uniqueItems":true}
+      }
+    },
+    "readback": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["available","observedAt","httpStatus","contentType","bodyKind","datasets"],
+      "properties": {
+        "available":{"type":"boolean"},
+        "observedAt":{"type":"string","format":"date-time"},
+        "httpStatus":{"type":["integer","null"]},
+        "contentType":{"type":["string","null"]},
+        "bodyKind":{"enum":["json","login_html","redirect_body","access_error","unavailable"]},
+        "datasets":{"oneOf":[{"$ref":"#/$defs/datasets"},{"type":"null"}]}
+      }
+    },
+    "publicReadback": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["available","authenticated","observedAt","httpStatus","contentType","bodyKind","datasets"],
+      "properties": {
+        "available":{"type":"boolean"},
+        "authenticated":{"type":"boolean"},
+        "observedAt":{"type":"string","format":"date-time"},
+        "httpStatus":{"type":["integer","null"]},
+        "contentType":{"type":["string","null"]},
+        "bodyKind":{"enum":["json","login_html","redirect_body","access_error","unavailable"]},
+        "datasets":{"oneOf":[{"$ref":"#/$defs/datasets"},{"type":"null"}]}
+      }
+    },
+    "ui": {
+      "type":"object",
+      "additionalProperties":false,
+      "required":["available","observedAt","displayedDates","warnings"],
+      "properties": {
+        "available":{"type":"boolean"},
+        "observedAt":{"type":"string","format":"date-time"},
+        "displayedDates": {
+          "type":"object",
+          "additionalProperties":false,
+          "required":["idag","imorgen"],
+          "properties":{"idag":{"type":"string"},"imorgen":{"type":"string"}}
+        },
+        "warnings":{"type":"array","items":{"type":"string"}}
+      }
+    },
+    "publicationAttestation": {
+      "type":"object",
+      "required":["available"],
+      "properties": {
+        "available":{"type":"boolean"},
+        "dataCommit":{"type":"string","pattern":"^[a-f0-9]{40}$"},
+        "dataTree":{"type":"string","pattern":"^[a-f0-9]{40}$"},
+        "datasets":{"$ref":"#/$defs/datasets"}
+      }
+    }
+  }
+}

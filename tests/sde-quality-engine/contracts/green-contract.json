@@ -115,6 +115,14 @@
       "evidence": ["balise.no/api/station/SKN", "balise.no/api/train/vehicles", "balise-parity-contract"]
     },
     {
+      "id": "LIVE-DATA-FRESHNESS-P0",
+      "area": "live-data-continuity",
+      "name": "Komplett live-data continuity er bevist",
+      "critical": true,
+      "expected": "Ekstern kilde, operative datoer, godkjent kode/runtime, scheduler, apply-readiness, faktisk sync, privat og autentisert offentlig readback, faktisk UI og proveniens er alle GREEN; enhver stale, motsigende eller ubevist kritisk del stopper samlet GO.",
+      "evidence": ["sde-live-data-continuity/v1", "LIVE-DATA-FRESHNESS-P0"]
+    },
+    {
       "id": "ACCESS-001",
       "area": "access",
       "name": "Alle seks tilgangsnivåer finnes",

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "sde-qe-live-data-continuity-fixtures/v1",
+  "timeZone": "Europe/Oslo",
+  "sourcePolicy": "Deterministic synthetic evidence only; never refreshed from live systems.",
+  "scenarios": [
+    {"id":"server-green-data-stale","expected":"RED"},
+    {"id":"up-to-date-without-actual-sync","expected":"BLOCKED"},
+    {"id":"actual-data-only-sync","expected":"GREEN"},
+    {"id":"runtime-detached-head","expected":"NON_GREEN"},
+    {"id":"runtime-exact-approved-sha","expected":"CODE_GREEN"},
+    {"id":"runtime-data-only-descendant","expected":"CODE_GREEN"},
+    {"id":"runtime-code-descendant","expected":"CODE_NON_GREEN"},
+    {"id":"wrong-operative-dates","expected":"RED"},
+    {"id":"public-login-html","expected":"NON_GREEN"},
+    {"id":"ui-stale-warning","expected":"NON_GREEN"},
+    {"id":"fresh-readback-overrides-historical-green","expected":"RED"},
+    {"id":"missing-critical-evidence","expected":"BLOCKED"},
+    {"id":"external-source-unavailable","expected":"TOOL_BLOCKER"},
+    {"id":"unattested-generation","expected":"BLOCKED"},
+    {"id":"oslo-boundaries-and-dst","expected":"GREEN"},
+    {"id":"stale-user-surface-incident","expected":"NON_GREEN"},
+    {"id":"p0-contract-mutation","expected":"TEST_FAILURE"},
+    {"id":"qe-attempts-product-repair","expected":"RED"}
+  ]
+}

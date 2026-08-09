@@ -69,6 +69,36 @@ Den permanente policytestsuiten kan kjøres isolert med:
 npm run test:sde:qe:policy
 ```
 
+## P0 live-data continuity
+
+`LIVE-DATA-FRESHNESS-P0` er en tellende, kritisk aggregatport. Den blir bare
+`GREEN` når ekstern kilde, eksakt Europe/Oslo-datovindu, godkjent
+kode/runtime-identitet, scheduler, apply-readiness, faktisk sync, privat
+readback, autentisert offentlig readback, faktisk UI og genererings-/
+publiseringsproveniens alle er bevist. `up_to_date` kan gjøre scheduler og
+readiness grønne, men gjør aldri `ACTUAL_SYNC_APPLIED` grønn alene.
+
+Runneren krever én eksplisitt `sde-live-data-continuity/v1`-evidensfil og
+trusted Git-input. Manglende offentlig autentisert kontroll, actual-sync eller
+kritisk evidens gir fail-closed `HOLD`; en konkret byte-, dato-, Git- eller
+UI-motsigelse gir `NO-GO`. Ingen del av porten endrer SDE, data eller runtime.
+
+```sh
+node tests/sde-quality-engine/run.cjs --suite ci \
+  --live-data-evidence /absolutt/evidence.json \
+  --live-data-runtime-repository /absolutt/runtime-worktree \
+  --live-data-approved-sha <40-heksadesimal-git-sha> \
+  --live-data-approved-tree <40-heksadesimalt-git-tree> \
+  --live-data-approved-main-ref refs/remotes/origin/main
+```
+
+Schemaet ligger i
+`contracts/sde-live-data-continuity-v1.schema.json`. Historisk rapporttekst og
+manuell attestasjon kan ikke overstyre fersk motstridende readback. Pakken er
+kanonisk SHA-256-bundet til den repository-eide observatørversjonen, og
+kildens station-/vehicle-hasher må samsvare med genereringsproveniensen;
+håndredigert eller ukjent produsentevidens feiler kontrollert til `HOLD`.
+
 ## Flerbrukerevidens
 
 `MULTIUSER-LIVE-001` er én tellende, kritisk aggregatport. Live-readonly,

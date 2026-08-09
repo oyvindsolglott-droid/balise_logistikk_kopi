@@ -13,6 +13,7 @@ const {
   renderHtml,
   renderJUnit,
   renderMarkdown,
+  liveDataModel,
   provenanceIdentityDomains,
   writeReports
 } = require("../lib/reporters.cjs");
@@ -129,6 +130,55 @@ test("all report surfaces expose the four independent attestation identity domai
     assert.match(rendered, /Content identity/);
     assert.match(rendered, /Deployment identity/);
     assert.match(rendered, /Publication integrity/);
+  }
+});
+
+test("all report surfaces expose the complete P0 live-data model", () => {
+  const report = sampleReport();
+  report.results.push(result({
+    id: "LIVE-DATA-FRESHNESS-P0",
+    area: "live-data-continuity",
+    name: "Komplett live-data continuity",
+    status: "BLOCKED",
+    critical: true,
+    aggregate: true,
+    childGates: ["ACTUAL_SYNC_APPLIED"],
+    summary: "Actual sync is unproven.",
+    details: {
+      approvedCodeSha: "a".repeat(40),
+      approvedCodeTree: "b".repeat(40),
+      runtimeBranch: "main",
+      runtimeHead: "c".repeat(40),
+      runtimeTree: "d".repeat(40),
+      dataOnlyDescendantStatus: "GREEN",
+      operativeWindow: "from_15",
+      expectedDates: { idag: "2026-08-01", imorgen: "2026-08-02" },
+      actualDates: { idag: "2026-08-01", imorgen: "2026-08-02" },
+      schedulerHealth: "GREEN",
+      applyReadiness: "GREEN",
+      actualSyncApplied: "BLOCKED",
+      privateReadback: "GREEN",
+      publicAuthenticatedReadback: "GREEN",
+      actualUiFreshness: "GREEN",
+      provenance: "GREEN",
+      firstSafeDivergence: "ACTUAL_SYNC_APPLIED",
+      p0Aggregate: "BLOCKED",
+      overallVerdict: "HOLD",
+      evidencePriority: { winner: "FRESH_OBSERVED", historicalGreenOverridden: true },
+      subgates: [{
+        id: "ACTUAL_SYNC_APPLIED",
+        status: "BLOCKED",
+        reasonCode: "ACTUAL_SYNC_NOT_OBSERVED",
+        summary: "up_to_date is not actual sync."
+      }]
+    }
+  }));
+  report.summary = summarize(report.results);
+  assert.equal(liveDataModel(report).details.overallVerdict, "HOLD");
+  for (const rendered of [renderMarkdown(report), renderHtml(report), renderGithubSummary(report), renderJUnit(report)]) {
+    assert.match(rendered, /P0 live-data continuity|live-data-continuity/i);
+    assert.match(rendered, /ACTUAL_SYNC_APPLIED/);
+    assert.match(rendered, /FRESH_OBSERVED|actual-sync/i);
   }
 });
 
