@@ -39,6 +39,7 @@ const {
   writeReports
 } = require("./lib/reporters.cjs");
 const { provenanceChecks } = require("./lib/provenance.cjs");
+const { liveDataContinuityGate } = require("./lib/live-data-continuity.cjs");
 
 const SUITES = new Set([
   "all",
@@ -70,6 +71,28 @@ function multiuserOptions(argv) {
     multiuserApprovedTree: values("--multiuser-approved-tree").at(-1) || null,
     multiuserSubjectRepository: values("--multiuser-subject-repository").at(-1) || null,
     multiuserSubjectMode: values("--multiuser-subject-mode").at(-1) || "LOCAL_GIT_REPOSITORY"
+  };
+}
+
+function liveDataOptions(argv) {
+  const values = (name) => argv.flatMap((value, index) =>
+    value === name ? [argv[index + 1]] : []
+  ).filter((value) => value && !value.startsWith("--"));
+  const explicitEvidence = values("--live-data-evidence");
+  return {
+    inputPaths: explicitEvidence.length
+      ? explicitEvidence
+      : process.env.SDE_QE_LIVE_DATA_EVIDENCE
+        ? [process.env.SDE_QE_LIVE_DATA_EVIDENCE]
+        : [],
+    subjectRepository: values("--live-data-runtime-repository").at(-1) ||
+      process.env.SDE_QE_LIVE_DATA_RUNTIME_REPOSITORY || null,
+    approvedSha: values("--live-data-approved-sha").at(-1) ||
+      process.env.SDE_QE_LIVE_DATA_APPROVED_SHA || null,
+    approvedTree: values("--live-data-approved-tree").at(-1) ||
+      process.env.SDE_QE_LIVE_DATA_APPROVED_TREE || null,
+    approvedMainRef: values("--live-data-approved-main-ref").at(-1) ||
+      process.env.SDE_QE_LIVE_DATA_APPROVED_MAIN_REF || "refs/remotes/origin/main"
   };
 }
 
@@ -312,6 +335,7 @@ async function main() {
   const argv = process.argv.slice(2);
   const suite = selectedSuite(argv);
   const multiuser = multiuserOptions(argv);
+  const liveData = liveDataOptions(argv);
   const root = repoRoot();
   const inventory = buildInventory();
   const matrix = readJson(path.join(root, "tests/sde-quality-engine/matrix/function-matrix.json"));
@@ -326,6 +350,10 @@ async function main() {
 
   if (["all", "balise", "ci", "integration", "provenance"].includes(suite)) {
     results.push(...provenanceChecks());
+  }
+
+  if (["all", "balise", "ci", "integration", "report"].includes(suite)) {
+    results.push(liveDataContinuityGate(liveData));
   }
 
   if (["all", "balise", "ci", "integration", "regression"].includes(suite)) {
