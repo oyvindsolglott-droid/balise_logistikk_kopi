@@ -218,6 +218,156 @@ test("candidate mutation check ignores only expected read-only mode bits", (t) =
   assert.equal(gate.candidateMutationStatus(item.repository, item.baseline, dependencies).mutated, true);
 });
 
+function semanticIdentity(item, candidate) {
+  return {
+    candidateSha: candidate,
+    candidateTree: git(item.repository, "rev-parse", `${candidate}^{tree}`)
+  };
+}
+
+test("semantic anchor accepts raw index byte refresh with unchanged Git meaning", (t) => {
+  const item = fixture();
+  t.after(() => fs.rmSync(item.directory, {recursive: true, force: true}));
+  const candidate = commitFile(item.repository, "candidate.txt", "semantic candidate\n", "semantic candidate");
+  const identity = semanticIdentity(item, candidate);
+  const before = gate.semanticGitSnapshot(item.repository);
+  git(item.repository, "update-index", "--index-version", "4");
+  const after = gate.semanticGitSnapshot(item.repository);
+  const result = gate.evaluateSemanticAnchorIntegrity(before, after, identity);
+  assert.notEqual(before.rawIndexSha256, after.rawIndexSha256);
+  assert.equal(result.passed, true);
+  assert.equal(result.rawIndexBytesChanged, true);
+  assert.equal(result.firstCausalLine, "RAW_INDEX_BYTES_CHANGED_WHILE_SEMANTIC_GIT_STATE_UNCHANGED");
+});
+
+test("semantic anchor rejects staged, unstaged, untracked, HEAD/tree, blob and mode divergences", () => {
+  const check = (label, mutate, expected) => {
+    const item = fixture();
+    try {
+      const candidate = commitFile(item.repository, "candidate.txt", "semantic candidate\n", "semantic candidate");
+      const identity = semanticIdentity(item, candidate);
+      const before = gate.semanticGitSnapshot(item.repository);
+      mutate(item, candidate);
+      const after = gate.semanticGitSnapshot(item.repository);
+      const result = gate.evaluateSemanticAnchorIntegrity(before, after, identity);
+      assert.equal(result.passed, false, label);
+      assert.match(result.divergences.join("\n"), expected, label);
+      return {before, after};
+    } finally {
+      fs.rmSync(item.directory, {recursive: true, force: true});
+    }
+  };
+
+  check("staged blob", (item) => {
+    fs.appendFileSync(path.join(item.repository, "candidate.txt"), "staged\n");
+    git(item.repository, "add", "candidate.txt");
+  }, /STAGED_CHANGE|STAGED_DIFF_DETECTED|TRACKED_BLOB_OR_MODE_CHANGED/);
+  check("unstaged", (item) => fs.appendFileSync(path.join(item.repository, "candidate.txt"), "unstaged\n"), /UNSTAGED_CHANGE|UNSTAGED_DIFF_DETECTED/);
+  check("untracked", (item) => write(path.join(item.repository, "untracked.txt"), "untracked\n"), /UNTRACKED_FILE:untracked\.txt/);
+  check("HEAD and tree", (item) => git(item.repository, "reset", "--hard", item.baseline), /HEAD_CHANGED|TREE_CHANGED/);
+  const mode = check("tracked mode", (item) => git(item.repository, "update-index", "--chmod=+x", "candidate.txt"), /STAGED_CHANGE|STAGED_DIFF_DETECTED|TRACKED_BLOB_OR_MODE_CHANGED/);
+  assert.notEqual(mode.before.trackedEntries.find((entry) => entry.file === "candidate.txt").mode, mode.after.trackedEntries.find((entry) => entry.file === "candidate.txt").mode);
+});
+
+test("TEST_MACHINE finding stores complete OPERATIV BETYDNING", (t) => {
+  const directory = fs.mkdtempSync("/private/tmp/sde-prepush-finding.");
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const profile = gate.finalizeProfile({
+    p0: {status: "GREEN", reasonCode: "LIVE_DATA_CONTINUITY_VERIFIED"},
+    tests: [{
+      id: "detached-candidate-anchor",
+      command: "semantic detached anchor integrity",
+      status: "PASS",
+      skipped: false,
+      exit: 0,
+      signal: null,
+      durationMs: 1,
+      output: "RAW_INDEX_BYTES_CHANGED_WHILE_SEMANTIC_GIT_STATE_UNCHANGED",
+      firstCausalLine: "RAW_INDEX_BYTES_CHANGED_WHILE_SEMANTIC_GIT_STATE_UNCHANGED",
+      findingType: "TEST_MACHINE_RAW_INDEX",
+      findingObserved: {rawIndexBytesChanged: true, semanticGitStateUnchanged: true},
+      findingExpected: {rawIndexIsAuthority: false},
+      cwd: directory,
+      repositoryRoot: directory,
+      sourceFileAndLine: "scripts/sde-prepush-gate.cjs:semanticGitSnapshot"
+    }],
+    candidateMutation: false
+  }, path.join(directory, "logs"));
+  const finding = profile.tests[0].finding;
+  const findingRequired = JSON.parse(fs.readFileSync(REPORT_SCHEMA, "utf8")).properties.tests.items.properties.finding.required;
+  assert.ok(findingRequired.every((field) => Object.hasOwn(finding, field)));
+  assert.equal(finding.findingId, "SDE-QE-PREPUSH-ANCHOR-001");
+  assert.equal(finding.blockerType, "TEST_MACHINE");
+  assert.equal(finding.sdeDomain, "QUALITY_ENGINE_PREPUSH_INTEGRITY");
+  assert.equal(finding.candidateRelation, "TEST_MACHINE_ENVIRONMENT");
+  assert.equal(finding.rootCauseStatus, "PROVEN");
+  assert.equal(finding.confidence, "HIGH");
+  assert.equal(finding.firstCausalLine, "RAW_INDEX_BYTES_CHANGED_WHILE_SEMANTIC_GIT_STATE_UNCHANGED");
+  assert.equal(finding.fullLogPath, profile.tests[0].log.path);
+  assert.equal(finding.fullLogSha256, profile.tests[0].log.sha256);
+  for (const field of ["vehicleBlockingImplicated", "slotBlockingImplicated", "actualPlacementImplicated", "targetSafetyImplicated"]) {
+    assert.equal(finding[field], false, field);
+  }
+  const operative = gate.operationalMeaning(profile.tests);
+  assert.deepEqual(operative, {
+    title: "OPERATIV BETYDNING",
+    vehicleBlockingImplicated: false,
+    slotBlockingImplicated: false,
+    actualPlacementImplicated: false,
+    targetSafetyImplicated: false,
+    sdeProductDefectDetected: false,
+    testMachineDefectDetected: true,
+    userImpactNb: "En trygg kandidat får pushen stoppet av en falsk integritetsfeil.",
+    repairBoundary: "detached-candidate-anchor-checkeren.",
+    newBroadDiagnosisRequired: false
+  });
+  const report = {
+    reportId: "focused-finding",
+    candidate: null,
+    tests: profile.tests,
+    operationalMeaning: operative,
+    ACTIONABLE_FINDINGS_REPORTING: "GREEN",
+    READY_FOR_BRANCH_PUSH_APPROVAL: false,
+    PUSHED: false,
+    reportSha256: "0".repeat(64)
+  };
+  const files = gate.writeReportFiles(report, {reports: path.join(directory, "reports")});
+  const text = fs.readFileSync(files.textFile, "utf8");
+  assert.match(text, /OPERATIV BETYDNING/);
+  assert.match(text, /Kjøretøyblokkering berørt: NEI/);
+  assert.match(text, /Testemaskinfeil påvist: JA/);
+  assert.match(text, /Ny bred diagnose nødvendig: NEI/);
+});
+
+test("report schema requires every mandatory actionable finding field", () => {
+  const schema = JSON.parse(fs.readFileSync(REPORT_SCHEMA, "utf8"));
+  const findingSchema = schema.properties.tests.items.properties.finding;
+  const mandatory = [
+    "findingId",
+    "sdeDomain",
+    "repairBoundary",
+    "blockerType",
+    "vehicleBlockingImplicated",
+    "slotBlockingImplicated",
+    "actualPlacementImplicated",
+    "targetSafetyImplicated",
+    "firstSafeDivergence",
+    "fullLogPath",
+    "fullLogSha256"
+  ];
+  const acceptsRequired = (value) => findingSchema.required.every((field) => Object.hasOwn(value, field));
+  const complete = Object.fromEntries(findingSchema.required.map((field) => [field, null]));
+  assert.equal(acceptsRequired(complete), true);
+  for (const field of mandatory) {
+    assert.ok(findingSchema.required.includes(field), field);
+    const missing = {...complete};
+    delete missing[field];
+    assert.equal(acceptsRequired(missing), false, `schema accepted missing ${field}`);
+  }
+  assert.ok(schema.required.includes("operationalMeaning"));
+  assert.ok(schema.required.includes("ACTIONABLE_FINDINGS_REPORTING"));
+});
+
 test("execution repository isolates config, refs and index from the candidate repository", (t) => {
   const item = fixture();
   const execution = path.join(item.directory, "execution");

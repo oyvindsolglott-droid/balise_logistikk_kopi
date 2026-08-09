@@ -8,8 +8,8 @@ const os = require("node:os");
 const path = require("node:path");
 
 const GATE_ID = "SDE-QE-MANDATORY-PRE-PUSH";
-const GATE_VERSION = "1.1.0";
-const PROFILE_VERSION = "sde-qe-prepush-profile-v2";
+const GATE_VERSION = "1.2.0";
+const PROFILE_VERSION = "sde-qe-prepush-profile-v3";
 const REPORT_SCHEMA = "sde-qe-prepush-report/v1";
 const MANIFEST_SCHEMA = "sde-qe-prepush-install/v1";
 const STATE_SCHEMA = "sde-qe-prepush-approval/v1";
@@ -549,6 +549,8 @@ function consumeApproval(match, identity, paths) {
     approvalRequestId: match.approval.requestId,
     approvalReportSha256: match.approval.reportSha256,
     reasonCodes: ["ONE_TIME_APPROVAL_CONSUMED"],
+    ACTIONABLE_FINDINGS_REPORTING: "GREEN",
+    operationalMeaning: operationalMeaning([]),
     READY_FOR_BRANCH_PUSH_APPROVAL: true,
     PUSHED: true,
     autoFix: false
@@ -612,25 +614,74 @@ function testReasonCode(test, p0) {
   if (test.signal) return `CONTROL_SIGNAL:${test.id}:${test.signal}`;
   if (test.exit === null) return `CONTROL_LAUNCH_FAILED:${test.id}`;
   if (test.id === "candidate-no-mutation") return "EXECUTION_FILESYSTEM_MUTATED";
-  if (test.id === "detached-candidate-anchor") return "SHARED_GIT_STATE_MUTATED";
+  if (test.id === "detached-candidate-anchor") return "SEMANTIC_ANCHOR_INTEGRITY_FAILED";
   return `CONTROL_FAILED:${test.id}`;
+}
+
+function structuredFinding(test, causal, logFile) {
+  const historicalRawIndexFinding = test.findingType === "TEST_MACHINE_RAW_INDEX";
+  const classification = historicalRawIndexFinding ? "ENVIRONMENT_OR_TOOL" : test.classification;
+  const failed = test.status !== "PASS";
+  return {
+    findingId: historicalRawIndexFinding
+      ? "SDE-QE-PREPUSH-ANCHOR-001"
+      : `SDE-QE-PREPUSH-${test.id.toUpperCase().replace(/[^A-Z0-9]+/g, "-")}`,
+    gateId: GATE_ID,
+    testId: test.id,
+    blockerType: historicalRawIndexFinding ? "TEST_MACHINE" : failed ? (classification || "UNKNOWN") : "NONE",
+    sdeDomain: historicalRawIndexFinding ? "QUALITY_ENGINE_PREPUSH_INTEGRITY" : "QUALITY_ENGINE_TEST_PROFILE",
+    summaryNb: historicalRawIndexFinding
+      ? "Pre-push-kontrollen brukte endring i rå Git-indexfil som bevis på kandidatmutasjon selv om kandidatens semantiske Git-tilstand var uendret."
+      : failed ? `Kontrollen ${test.id} feilet i ${test.phase}.` : `Kontrollen ${test.id} bestod.`,
+    affectedEntities: test.affectedEntities || [],
+    observed: test.findingObserved ?? test.output ?? "",
+    expected: test.findingExpected ?? "PASS",
+    violatedContract: failed ? (test.violatedContract || test.command) : null,
+    firstSafeDivergence: historicalRawIndexFinding
+      ? "Rå indexfilhash endret seg, mens HEAD, tree, staged state, worktree, tracked blobber, filmoduser og untracked state forble uendret."
+      : test.firstSafeDivergence || (failed ? causal : null),
+    operationalConsequence: historicalRawIndexFinding
+      ? "Pushen ble stoppet fail-closed, men det finnes ikke bevis for en SDE-produktfeil eller operativ regresjon."
+      : failed ? "Pre-push-gaten stopper kandidaten fail-closed." : "Ingen blokkering fra denne kontrollen.",
+    candidateRelation: historicalRawIndexFinding
+      ? "TEST_MACHINE_ENVIRONMENT"
+      : classification === "CANDIDATE_DEFECT" ? "CANDIDATE" : classification === "ENVIRONMENT_OR_TOOL" ? "TEST_MACHINE_ENVIRONMENT" : "NONE",
+    vehicleBlockingImplicated: false,
+    slotBlockingImplicated: false,
+    actualPlacementImplicated: false,
+    targetSafetyImplicated: false,
+    rootCauseStatus: historicalRawIndexFinding ? "PROVEN" : failed ? "UNPROVEN" : "NOT_APPLICABLE",
+    repairBoundary: historicalRawIndexFinding
+      ? "Pre-push-runnerens detached-candidate-anchor-integritetskontroll."
+      : test.repairBoundary || test.id,
+    confidence: historicalRawIndexFinding ? "HIGH" : failed ? "MEDIUM" : "HIGH",
+    command: test.command,
+    cwd: test.cwd || process.cwd(),
+    repositoryRoot: test.repositoryRoot || test.cwd || process.cwd(),
+    exitCode: test.exit,
+    phase: test.phase,
+    firstCausalLine: causal,
+    sourceFileAndLine: test.sourceFileAndLine || null,
+    fullLogPath: logFile,
+    fullLogSha256: null,
+    message: failed
+      ? scrub(`Control ${test.id} failed in ${test.phase} with exit ${test.exit ?? "null"}: ${causal}`).slice(0, 1500)
+      : "Control completed successfully.",
+    rootCauseGroup: historicalRawIndexFinding
+      ? "TEST_MACHINE:RAW_INDEX_BYTES_DIAGNOSTIC_ONLY"
+      : classification === "ENVIRONMENT_OR_TOOL" ? `ENVIRONMENT:${causal.slice(0, 200)}` : null
+  };
 }
 
 function finalizeTest(test, p0, logDirectory, index) {
   const fullOutput = scrubFull(test._fullOutput ?? test.output ?? "");
-  const causal = firstCausalLine(fullOutput);
+  const causal = scrub(test.firstCausalLine || firstCausalLine(fullOutput)).slice(0, 1000);
   test.phase = test.phase || testPhase(test.id);
   test.reasonCode = test.reasonCode || testReasonCode(test, p0);
-  test.classification = test.classification ?? failureClassification(test, causal);
-  test.finding = {
-    firstCausalLine: causal,
-    message: test.status === "PASS"
-      ? "Control completed successfully."
-      : scrub(`Control ${test.id} failed in ${test.phase} with exit ${test.exit ?? "null"}: ${causal}`).slice(0, 1500),
-    rootCauseGroup: test.classification === "ENVIRONMENT_OR_TOOL" ? `ENVIRONMENT:${causal.slice(0, 200)}` : null
-  };
+  test.classification = test.classification ?? (test.findingType === "TEST_MACHINE_RAW_INDEX" ? "ENVIRONMENT_OR_TOOL" : failureClassification(test, causal));
   const safeId = test.id.replace(/[^A-Za-z0-9_.-]/g, "-");
   const logFile = path.join(logDirectory, `${String(index + 1).padStart(2, "0")}-${safeId}.log`);
+  test.finding = structuredFinding(test, causal, logFile);
   const logText = [
     `GATE_ID: ${GATE_ID}`,
     `CONTROL_ID: ${test.id}`,
@@ -649,7 +700,19 @@ function finalizeTest(test, p0, logDirectory, index) {
   ].join("\n");
   atomicWrite(logFile, logText, 0o600);
   test.log = {path: logFile, sha256: sha256(logText), bytes: Buffer.byteLength(logText)};
+  test.finding.fullLogSha256 = test.log.sha256;
   delete test._fullOutput;
+  delete test.affectedEntities;
+  delete test.cwd;
+  delete test.findingExpected;
+  delete test.findingObserved;
+  delete test.findingType;
+  delete test.firstCausalLine;
+  delete test.firstSafeDivergence;
+  delete test.repositoryRoot;
+  delete test.repairBoundary;
+  delete test.sourceFileAndLine;
+  delete test.violatedContract;
   return test;
 }
 
@@ -658,6 +721,25 @@ function finalizeProfile(profile, logDirectory) {
   profile.tests = profile.tests.map((test, index) => finalizeTest(test, profile.p0, logDirectory, index));
   profile.logDirectory = logDirectory;
   return profile;
+}
+
+function operationalMeaning(tests = []) {
+  const testMachineFinding = tests.find((test) => test.finding?.blockerType === "TEST_MACHINE");
+  const productDefect = tests.some((test) => test.finding?.blockerType === "CANDIDATE_DEFECT");
+  return {
+    title: "OPERATIV BETYDNING",
+    vehicleBlockingImplicated: false,
+    slotBlockingImplicated: false,
+    actualPlacementImplicated: false,
+    targetSafetyImplicated: false,
+    sdeProductDefectDetected: productDefect,
+    testMachineDefectDetected: Boolean(testMachineFinding),
+    userImpactNb: testMachineFinding
+      ? "En trygg kandidat får pushen stoppet av en falsk integritetsfeil."
+      : productDefect ? "Kandidaten blokkeres av en påvist SDE-produktfeil." : "Ingen operativ blokkering er påvist av funnrapporteringen.",
+    repairBoundary: testMachineFinding ? "detached-candidate-anchor-checkeren." : "Ingen.",
+    newBroadDiagnosisRequired: false
+  };
 }
 
 function p0Ready(result) {
@@ -1025,6 +1107,92 @@ function sharedGitSnapshot(root, identity, knownRootGitDirectory = null) {
   };
 }
 
+function semanticGitSnapshot(root) {
+  const environment = isolatedGitEnvironment();
+  const head = git(["rev-parse", "HEAD"], {cwd: root, env: environment});
+  const tree = git(["rev-parse", "HEAD^{tree}"], {cwd: root, env: environment});
+  const status = git(["status", "--porcelain=v2", "--untracked-files=all"], {cwd: root, env: environment});
+  const unstaged = git(["diff", "--quiet", "--"], {cwd: root, env: environment});
+  const staged = git(["diff", "--cached", "--quiet", "HEAD", "--"], {cwd: root, env: environment});
+  const index = git(["ls-files", "--stage", "-z"], {cwd: root, env: environment, encoding: null});
+  for (const [name, result] of [["HEAD", head], ["HEAD tree", tree], ["status", status], ["index", index]]) {
+    if (!result.ok) throw new GateError("SEMANTIC_ANCHOR_SNAPSHOT_FAILED", `${name}: ${result.stderrFull || result.errorFull || "failed"}`);
+  }
+  if (![0, 1].includes(unstaged.status) || ![0, 1].includes(staged.status)) {
+    throw new GateError("SEMANTIC_ANCHOR_DIFF_FAILED", `${unstaged.stderrFull || staged.stderrFull || "git diff failed"}`);
+  }
+  const entries = index.stdout.toString("utf8").split("\0").filter(Boolean).map((line) => {
+    const match = line.match(/^(\d{6}) ([a-f0-9]{40,64}) ([0-3])\t([\s\S]+)$/);
+    if (!match) throw new GateError("SEMANTIC_ANCHOR_INDEX_MALFORMED", `Cannot parse index entry: ${line}`);
+    return {mode: match[1], blob: match[2], stage: Number(match[3]), file: match[4]};
+  }).sort((left, right) => left.file.localeCompare(right.file) || left.stage - right.stage || left.mode.localeCompare(right.mode) || left.blob.localeCompare(right.blob));
+  const indexFile = gitText(["rev-parse", "--path-format=absolute", "--git-path", "index"], root, "SEMANTIC_ANCHOR_INDEX_PATH_FAILED");
+  return {
+    repositoryRoot: gitText(["rev-parse", "--show-toplevel"], root, "SEMANTIC_ANCHOR_ROOT_FAILED"),
+    gitDirectory: gitText(["rev-parse", "--path-format=absolute", "--absolute-git-dir"], root, "SEMANTIC_ANCHOR_GIT_DIR_FAILED"),
+    head: String(head.stdoutFull).trim(),
+    tree: String(tree.stdoutFull).trim(),
+    statusPorcelainV2: String(status.stdoutFull),
+    unstagedDiffExit: unstaged.status,
+    stagedDiffExit: staged.status,
+    trackedEntries: entries,
+    trackedEntriesSha256: sha256(stableJson(entries)),
+    rawIndexPath: indexFile,
+    rawIndexSha256: fs.existsSync(indexFile) ? sha256(fs.readFileSync(indexFile)) : null
+  };
+}
+
+function statusDivergence(status) {
+  const line = String(status || "").split(/\r?\n/).find(Boolean);
+  if (!line) return null;
+  if (line.startsWith("? ")) return `UNTRACKED_FILE:${line.slice(2)}`;
+  if (line.startsWith("! ")) return `IGNORED_FILE_UNEXPECTED:${line.slice(2)}`;
+  const fields = line.split(" ");
+  const xy = fields[1] || "..";
+  if (xy[0] && xy[0] !== ".") return `STAGED_CHANGE:${line}`;
+  if (xy[1] && xy[1] !== ".") return `UNSTAGED_CHANGE:${line}`;
+  return `WORKTREE_STATUS_DIVERGENCE:${line}`;
+}
+
+function firstTrackedEntryDivergence(beforeEntries, afterEntries) {
+  const length = Math.max(beforeEntries.length, afterEntries.length);
+  for (let index = 0; index < length; index += 1) {
+    const before = beforeEntries[index] || null;
+    const after = afterEntries[index] || null;
+    if (stableJson(before) !== stableJson(after)) {
+      return `TRACKED_BLOB_OR_MODE_CHANGED:${stableJson({before, after})}`;
+    }
+  }
+  return null;
+}
+
+function evaluateSemanticAnchorIntegrity(before, after, identity) {
+  const divergences = [];
+  const inspect = (label, snapshot) => {
+    if (snapshot.head !== identity.candidateSha) divergences.push(`${label}_HEAD_CHANGED:expected=${identity.candidateSha}:actual=${snapshot.head}`);
+    if (snapshot.tree !== identity.candidateTree) divergences.push(`${label}_TREE_CHANGED:expected=${identity.candidateTree}:actual=${snapshot.tree}`);
+    const status = statusDivergence(snapshot.statusPorcelainV2);
+    if (status) divergences.push(`${label}_${status}`);
+    if (snapshot.unstagedDiffExit !== 0) divergences.push(`${label}_UNSTAGED_DIFF_DETECTED`);
+    if (snapshot.stagedDiffExit !== 0) divergences.push(`${label}_STAGED_DIFF_DETECTED`);
+  };
+  inspect("BEFORE", before);
+  inspect("AFTER", after);
+  if (before.trackedEntriesSha256 !== after.trackedEntriesSha256) {
+    divergences.push(firstTrackedEntryDivergence(before.trackedEntries, after.trackedEntries) || "TRACKED_INDEX_CHANGED");
+  }
+  const rawIndexBytesChanged = before.rawIndexSha256 !== after.rawIndexSha256;
+  const passed = divergences.length === 0;
+  return {
+    passed,
+    rawIndexBytesChanged,
+    firstCausalLine: passed
+      ? rawIndexBytesChanged ? "RAW_INDEX_BYTES_CHANGED_WHILE_SEMANTIC_GIT_STATE_UNCHANGED" : "SEMANTIC_GIT_STATE_UNCHANGED"
+      : divergences[0],
+    divergences
+  };
+}
+
 function candidateMutationStatus(candidateRoot, candidateSha, expectedServerNodePath = null) {
   // The execution mirror is deliberately chmod'd read-only. Ignore those expected
   // mode-bit differences while retaining content and untracked-file detection.
@@ -1068,7 +1236,7 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
   const tests = [];
   mkdirPrivate(logDirectory);
   const p0 = runP0(candidateRoot, env);
-  const record = (test) => tests.push(finalizeTest(test, p0.result, logDirectory, tests.length));
+  const record = (test) => tests.push(finalizeTest({cwd: candidateRoot, repositoryRoot: candidateRoot, ...test}, p0.result, logDirectory, tests.length));
   record(p0.test);
   record({id: "candidate-identity", command: "git candidate identity and exact diff", status: "PASS", skipped: false, exit: 0, signal: null, durationMs: 0, output: `${identity.commitRange}; commits=${identity.commits.length}; files=${identity.changedFiles.length}`});
   const commands = [
@@ -1121,10 +1289,12 @@ function runCandidateProfile(root, identity, options = {}) {
   try {
     chmodReadOnly(candidateRoot);
     const serverNodePath = process.env.SDE_QE_SERVER_NODE_PATH || path.join(mainWorktree(identity.commonDirectory) || root, "server", "node_modules");
+    const anchorBefore = semanticGitSnapshot(candidateRoot);
     const sharedBefore = sharedGitSnapshot(root, identity);
     materializeExecutionTree(candidateRoot, executionRoot, serverNodePath, identity);
     profile = executeFullProfile(executionRoot, identity, artifactDirectory, root, options.logDirectory);
-    const anchorStatus = git(["status", "--porcelain=v1", "--untracked-files=all"], {cwd: candidateRoot});
+    const anchorAfter = semanticGitSnapshot(candidateRoot);
+    const anchorIntegrity = evaluateSemanticAnchorIntegrity(anchorBefore, anchorAfter, identity);
     let sharedAfter;
     let sharedError = null;
     try {
@@ -1133,22 +1303,76 @@ function runCandidateProfile(root, identity, options = {}) {
       sharedError = scrubFull(error.stack || error.message);
     }
     const sharedStateChanged = sharedError !== null || stableJson(sharedBefore) !== stableJson(sharedAfter);
-    const anchorChanged = !anchorStatus.ok || String(anchorStatus.stdout).trim() !== "";
+    const sharedRawIndexChanged = sharedAfter ? sharedBefore.indexSha256 !== sharedAfter.indexSha256 : false;
+    const historicalRawIndexFinding = anchorIntegrity.passed && (anchorIntegrity.rawIndexBytesChanged || sharedRawIndexChanged);
+    const semanticSummary = (snapshot) => ({
+      repositoryRoot: snapshot.repositoryRoot,
+      gitDirectory: snapshot.gitDirectory,
+      head: snapshot.head,
+      tree: snapshot.tree,
+      statusPorcelainV2: snapshot.statusPorcelainV2,
+      unstagedDiffExit: snapshot.unstagedDiffExit,
+      stagedDiffExit: snapshot.stagedDiffExit,
+      trackedEntriesSha256: snapshot.trackedEntriesSha256,
+      trackedEntryCount: snapshot.trackedEntries.length,
+      rawIndexPath: snapshot.rawIndexPath,
+      rawIndexSha256: snapshot.rawIndexSha256
+    });
     const isolationOutput = [
-      `anchorClean=${!anchorChanged}`,
-      `sharedGitStateUnchanged=${!sharedStateChanged}`,
-      `before=${stableJson(sharedBefore)}`,
-      `after=${sharedAfter ? stableJson(sharedAfter) : "UNAVAILABLE"}`,
-      sharedError ? `error=${sharedError}` : null,
-      anchorStatus.stdoutFull,
-      anchorStatus.stderrFull
+      `semanticAnchorIntegrity=${anchorIntegrity.passed}`,
+      `firstCausalLine=${anchorIntegrity.firstCausalLine}`,
+      `identityAnchorBefore=${stableJson(semanticSummary(anchorBefore))}`,
+      `identityAnchorAfter=${stableJson(semanticSummary(anchorAfter))}`,
+      `sharedGitDiagnosticChanged=${sharedStateChanged}`,
+      `sharedRawIndexBytesChanged=${sharedRawIndexChanged}`,
+      `sharedBefore=${stableJson(sharedBefore)}`,
+      `sharedAfter=${sharedAfter ? stableJson(sharedAfter) : "UNAVAILABLE"}`,
+      sharedError ? `sharedDiagnosticError=${sharedError}` : null
     ].filter(Boolean).join("\n");
-    if (anchorChanged || sharedStateChanged) {
-      profile.candidateMutation = true;
-      profile.tests.push(finalizeTest({id: "detached-candidate-anchor", command: "detached anchor status + shared config/ref/index integrity", status: "FAIL", skipped: false, exit: 1, signal: null, durationMs: anchorStatus.durationMs, output: scrub(isolationOutput), _fullOutput: isolationOutput}, profile.p0, options.logDirectory, profile.tests.length));
-    } else {
-      profile.tests.push(finalizeTest({id: "detached-candidate-anchor", command: "detached anchor status + shared config/ref/index integrity", status: "PASS", skipped: false, exit: 0, signal: null, durationMs: anchorStatus.durationMs, output: "Detached candidate anchor and shared Git config, refs and invocation index remained unchanged.", _fullOutput: isolationOutput}, profile.p0, options.logDirectory, profile.tests.length));
+    const detachedTest = {
+      id: "detached-candidate-anchor",
+      command: "semantic detached anchor integrity: HEAD/tree/status/diff/cached/index entries/blob/mode/untracked",
+      status: anchorIntegrity.passed ? "PASS" : "FAIL",
+      skipped: false,
+      exit: anchorIntegrity.passed ? 0 : 1,
+      signal: null,
+      durationMs: 0,
+      output: scrub(isolationOutput),
+      _fullOutput: isolationOutput,
+      cwd: candidateRoot,
+      repositoryRoot: candidateRoot,
+      firstCausalLine: anchorIntegrity.firstCausalLine,
+      findingObserved: {
+        identityAnchorBefore: semanticSummary(anchorBefore),
+        identityAnchorAfter: semanticSummary(anchorAfter),
+        semanticDivergences: anchorIntegrity.divergences,
+        sharedGitDiagnosticBefore: sharedBefore,
+        sharedGitDiagnosticAfter: sharedAfter || null,
+        sharedDiagnosticError: sharedError
+      },
+      findingExpected: {
+        head: identity.candidateSha,
+        tree: identity.candidateTree,
+        statusPorcelainV2: "",
+        unstagedDiffExit: 0,
+        stagedDiffExit: 0,
+        trackedEntriesUnchanged: true,
+        untrackedFiles: []
+      },
+      firstSafeDivergence: anchorIntegrity.firstCausalLine,
+      affectedEntities: [anchorBefore.repositoryRoot, anchorBefore.rawIndexPath],
+      repairBoundary: "Pre-push-runnerens detached-candidate-anchor-integritetskontroll.",
+      sourceFileAndLine: "scripts/sde-prepush-gate.cjs:semanticGitSnapshot/evaluateSemanticAnchorIntegrity/runCandidateProfile",
+      violatedContract: anchorIntegrity.passed ? null : "Semantic detached candidate anchor integrity"
+    };
+    if (historicalRawIndexFinding) {
+      detachedTest.findingType = "TEST_MACHINE_RAW_INDEX";
+      detachedTest.reasonCode = "RAW_INDEX_BYTES_DIAGNOSTIC_ONLY";
     }
+    if (!anchorIntegrity.passed) {
+      profile.candidateMutation = true;
+    }
+    profile.tests.push(finalizeTest(detachedTest, profile.p0, options.logDirectory, profile.tests.length));
   } finally {
     restoreWritable(executionRoot);
     fs.rmSync(executionRoot, {recursive: true, force: true});
@@ -1177,6 +1401,8 @@ function writeReportFiles(report, paths) {
     `  LOG: ${test.log?.path || "NONE"}`,
     `  LOG_SHA_256: ${test.log?.sha256 || "NONE"}`
   ]);
+  const operative = report.operationalMeaning || operationalMeaning(report.tests || []);
+  const yesNo = (value) => value ? "JA" : "NEI";
   const text = [
     `${GATE_ID} ${GATE_VERSION}`,
     `REPORT_ID: ${report.reportId}`,
@@ -1189,6 +1415,7 @@ function writeReportFiles(report, paths) {
     `TEST_FAIL: ${report.testTotals?.fail ?? 0}`,
     `TEST_SKIPS: ${report.testTotals?.skips ?? 0}`,
     `LOG_DIRECTORY: ${report.logDirectory || "NONE"}`,
+    `ACTIONABLE_FINDINGS_REPORTING: ${report.ACTIONABLE_FINDINGS_REPORTING || "NOT_EVALUATED"}`,
     `REASON_CODES: ${(report.reasonCodes || []).join(",") || "NONE"}`,
     `READY_FOR_BRANCH_PUSH_APPROVAL: ${String(report.READY_FOR_BRANCH_PUSH_APPROVAL).toUpperCase()}`,
     `APPROVAL_REQUEST_ID: ${report.approvalRequestId || "NONE"}`,
@@ -1196,6 +1423,17 @@ function writeReportFiles(report, paths) {
     report.approveCommand ? `APPROVE_COMMAND: ${report.approveCommand}` : null,
     `PUSHED: ${String(report.PUSHED).toUpperCase()}`,
     "AUTO_FIX: FALSE",
+    "",
+    "OPERATIV BETYDNING",
+    `Kjøretøyblokkering berørt: ${yesNo(operative.vehicleBlockingImplicated)}`,
+    `Slotblokkering berørt: ${yesNo(operative.slotBlockingImplicated)}`,
+    `Actual placement berørt: ${yesNo(operative.actualPlacementImplicated)}`,
+    `Target safety berørt: ${yesNo(operative.targetSafetyImplicated)}`,
+    `SDE-produktfeil påvist: ${yesNo(operative.sdeProductDefectDetected)}`,
+    `Testemaskinfeil påvist: ${yesNo(operative.testMachineDefectDetected)}`,
+    `Hva brukeren merker: ${operative.userImpactNb}`,
+    `Rettingsgrense: ${operative.repairBoundary}`,
+    `Ny bred diagnose nødvendig: ${yesNo(operative.newBroadDiagnosisRequired)}`,
     ...controlLines
   ].filter(Boolean).join("\n") + "\n";
   atomicWrite(textFile, text, 0o600);
@@ -1240,6 +1478,8 @@ function reportBlockedError(error, paths) {
     p0: {status: "NOT_EVALUATED", reasonCode: "PRECONDITION_BLOCKED"},
     qeResult: "BLOCKED",
     reasonCodes: [error.code || "GATE_ERROR"],
+    ACTIONABLE_FINDINGS_REPORTING: "GREEN",
+    operationalMeaning: operationalMeaning([]),
     READY_FOR_BRANCH_PUSH_APPROVAL: false,
     approvalRequestId: null,
     approveCommand: null,
@@ -1258,6 +1498,7 @@ function printBlocked(report, files = {}) {
     report.error || null,
     report.approvalRequestId ? `APPROVAL_REQUEST_ID: ${report.approvalRequestId}` : null,
     report.candidate?.candidateSha ? `CANDIDATE_SHA: ${report.candidate.candidateSha}` : null,
+    `ACTIONABLE_FINDINGS_REPORTING: ${report.ACTIONABLE_FINDINGS_REPORTING || "NOT_EVALUATED"}`,
     `REPORT_SHA_256: ${report.reportSha256}`,
     files.jsonFile ? `REPORT_JSON: ${files.jsonFile}` : null,
     files.textFile ? `REPORT_TEXT: ${files.textFile}` : null,
@@ -1316,6 +1557,8 @@ function hookMode(remoteName, remoteLocation) {
       p0: {status: profile.p0.status, reasonCode: profile.p0.reasonCode, subgates: profile.p0.details?.subgates || []},
       qeResult: ready ? "GREEN" : "RED",
       reasonCodes: [...new Set(reasons)],
+      ACTIONABLE_FINDINGS_REPORTING: "GREEN",
+      operationalMeaning: operationalMeaning(profile.tests),
       READY_FOR_BRANCH_PUSH_APPROVAL: ready,
       approvalRequestId: requestId,
       approveCommand: requestId ? approveCommand(paths, requestId, identity.candidateSha) : null,
@@ -1417,15 +1660,19 @@ module.exports = {
   canonicalRemoteUrl,
   candidateIdentity,
   doctorStatus,
+  evaluateSemanticAnchorIntegrity,
   executionMutationStatus,
   filesystemSnapshot,
   finalizeProfile,
   materializeExecutionTree,
+  operationalMeaning,
   parsePrePushInput,
   p0Ready,
   policyScan,
   sameBinding,
+  semanticGitSnapshot,
   sha256,
   stableJson,
-  restoreWritable
+  restoreWritable,
+  writeReportFiles
 };
