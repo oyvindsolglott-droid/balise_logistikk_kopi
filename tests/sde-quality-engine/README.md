@@ -9,6 +9,44 @@ Motoren endrer aldri produksjonsstate. En produksjonskontroll kan bare bruke
 `GET` og `HEAD`; `POST`, `PUT`, `PATCH` og `DELETE` stoppes av en teknisk guard
 før `fetch`.
 
+## Obligatorisk lokal pre-push-port
+
+Repositoryets versjonsstyrte hookkilde er `.githooks/pre-push`, og den
+versjonsstyrte runneren er `scripts/sde-prepush-gate.cjs`. Installer fra en ren,
+committet checkout med `npm run sde:prepush:install`. Installeren kopierer begge
+filene til `sde-qe-prepush/` under Git common directory, lagrer kildecommit,
+tree og SHA-256 for kilde- og installasjonsfiler, setter et repository-lokalt
+absolutt `core.hooksPath` og nekter å overskrive en ukjent eksisterende hook.
+`npm run sde:prepush:doctor` verifiserer at porten faktisk er aktiv i alle
+worktrees.
+
+En støttet branch-push fryses som eksakt kandidat-SHA i et midlertidig detached,
+read-only identitetsworktree. Testene kjøres mot en byteidentisk, read-only
+execution-mirror materialisert fra dette worktreeets tracked index; bare en
+ignored `server/node_modules`-symlink kan legges til for repositoryets allerede
+installerte, låste serveravhengigheter. P0 live-data continuity kjøres først fra
+en eksplisitt repository-produsert evidensfil; porten gjør ingen egen
+produksjonsinnhenting.
+Deretter kjøres QE unit/policy, strict, permanente kontrakter, determinisme,
+mutasjonsaudit, generator-/sync-regresjoner, server- og Browserguard-kontrakter,
+JSON/schema-, Node-, Python- og workflow-syntaks, `git diff --check`, samt
+skip-, bypass-, secret- og test-svekkingskontroller. Konkrete P0-motsigelser
+blokkerer. Når P0 bare er eksternt blokkert uten motsigelse, er rapportfeltet
+`READY_FOR_BRANCH_PUSH_APPROVAL` den maskinelle autoriteten for lokal
+branch-godkjenning.
+
+Første push stoppes alltid. En godkjennbar rapport oppgir eksakt request-ID,
+kandidat-SHA, rapporthash og approve-kommando. `npm run sde:prepush:approve --
+--request-id <id> --candidate <sha>` oppretter en owner-only engangsgodkjenning
+med maksimalt 60 minutters levetid. Neste push må ha identisk SHA/tree,
+remote-URL, lokal/remote ref, remote old SHA, gateversjon, profilversjon og
+rapporthash; godkjenningen konsumeres atomisk før Git får fortsette.
+
+Git kan bevisst omgå lokale hooks med `--no-verify`; derfor er pull request og
+GitHub CI fortsatt uavhengige sikkerhetslag før `main`. Repositoryets egne
+scripts, dokumentasjon og Codex-instruksjoner skannes og kan ikke bruke dette
+flagget som pushmekanisme.
+
 ## Hovedkommando
 
 ```sh

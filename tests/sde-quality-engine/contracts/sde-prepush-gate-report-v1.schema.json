@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sde.oyvind-solglott.no/contracts/sde-prepush-gate-report-v1.schema.json",
+  "title": "SDE mandatory pre-push gate report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "gateId",
+    "gateVersion",
+    "testProfileVersion",
+    "reportId",
+    "generatedAt",
+    "reasonCodes",
+    "READY_FOR_BRANCH_PUSH_APPROVAL",
+    "PUSHED",
+    "autoFix",
+    "reportSha256"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "sde-qe-prepush-report/v1"},
+    "gateId": {"const": "SDE-QE-MANDATORY-PRE-PUSH"},
+    "gateVersion": {"type": "string", "minLength": 1},
+    "testProfileVersion": {"type": "string", "minLength": 1},
+    "reportId": {"type": "string", "minLength": 1},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "candidate": {
+      "type": ["object", "null"],
+      "properties": {
+        "candidateSha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "candidateTree": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "remoteUrl": {"type": "string"},
+        "localRef": {"type": "string", "pattern": "^refs/heads/"},
+        "remoteRef": {"type": "string", "pattern": "^refs/heads/"},
+        "remoteOldSha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "gateVersion": {"type": "string"},
+        "testProfileVersion": {"type": "string"}
+      }
+    },
+    "diff": {"type": ["object", "null"]},
+    "commands": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "command", "status", "skipped", "exit", "durationMs"],
+        "properties": {
+          "id": {"type": "string"},
+          "command": {"type": "string"},
+          "status": {"enum": ["PASS", "FAIL"]},
+          "skipped": {"const": false},
+          "exit": {"type": ["integer", "null"]},
+          "durationMs": {"type": "number", "minimum": 0}
+        }
+      }
+    },
+    "p0": {
+      "type": "object",
+      "required": ["status", "reasonCode"],
+      "properties": {
+        "status": {"type": "string"},
+        "reasonCode": {"type": "string"}
+      }
+    },
+    "qeResult": {"type": "string"},
+    "reasonCodes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "READY_FOR_BRANCH_PUSH_APPROVAL": {"type": "boolean"},
+    "approvalRequestId": {"type": ["string", "null"]},
+    "approveCommand": {"type": ["string", "null"]},
+    "PUSHED": {"type": "boolean"},
+    "autoFix": {"const": false},
+    "candidateMutation": {"type": "boolean"},
+    "activeSkips": {"type": "integer", "minimum": 0},
+    "reportSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}
