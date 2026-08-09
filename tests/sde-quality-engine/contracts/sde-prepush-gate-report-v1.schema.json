@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sde.oyvind-solglott.no/contracts/sde-prepush-gate-report-v1.schema.json",
+  "title": "SDE mandatory pre-push gate report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schemaVersion",
+    "gateId",
+    "gateVersion",
+    "testProfileVersion",
+    "reportId",
+    "generatedAt",
+    "reasonCodes",
+    "ACTIONABLE_FINDINGS_REPORTING",
+    "operationalMeaning",
+    "READY_FOR_BRANCH_PUSH_APPROVAL",
+    "PUSHED",
+    "autoFix",
+    "reportSha256"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "sde-qe-prepush-report/v1"},
+    "gateId": {"const": "SDE-QE-MANDATORY-PRE-PUSH"},
+    "gateVersion": {"type": "string", "minLength": 1},
+    "testProfileVersion": {"type": "string", "minLength": 1},
+    "reportId": {"type": "string", "minLength": 1},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "candidate": {
+      "type": ["object", "null"],
+      "properties": {
+        "candidateSha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "candidateTree": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "remoteUrl": {"type": "string"},
+        "localRef": {"type": "string", "pattern": "^refs/heads/"},
+        "remoteRef": {"type": "string", "pattern": "^refs/heads/"},
+        "remoteOldSha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "gateVersion": {"type": "string"},
+        "testProfileVersion": {"type": "string"}
+      }
+    },
+    "diff": {"type": ["object", "null"]},
+    "commands": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "command", "status", "skipped", "exit", "durationMs", "phase", "reasonCode", "classification", "finding", "log"],
+        "properties": {
+          "id": {"type": "string"},
+          "command": {"type": "string"},
+          "status": {"enum": ["PASS", "FAIL"]},
+          "skipped": {"const": false},
+          "exit": {"type": ["integer", "null"]},
+          "durationMs": {"type": "number", "minimum": 0},
+          "phase": {"enum": ["p0", "setup", "test", "teardown"]},
+          "reasonCode": {"type": "string", "minLength": 1},
+          "classification": {
+            "type": ["string", "null"],
+            "enum": ["CANDIDATE_DEFECT", "BASELINE_EXISTING", "ENVIRONMENT_OR_TOOL", "LIVE_EVIDENCE_BLOCKER", "UNKNOWN", null]
+          },
+          "finding": {
+            "type": "object",
+            "required": [
+              "findingId",
+              "gateId",
+              "testId",
+              "blockerType",
+              "sdeDomain",
+              "summaryNb",
+              "affectedEntities",
+              "observed",
+              "expected",
+              "violatedContract",
+              "firstSafeDivergence",
+              "operationalConsequence",
+              "candidateRelation",
+              "vehicleBlockingImplicated",
+              "slotBlockingImplicated",
+              "actualPlacementImplicated",
+              "targetSafetyImplicated",
+              "rootCauseStatus",
+              "repairBoundary",
+              "confidence",
+              "command",
+              "cwd",
+              "repositoryRoot",
+              "exitCode",
+              "phase",
+              "firstCausalLine",
+              "sourceFileAndLine",
+              "fullLogPath",
+              "fullLogSha256",
+              "message",
+              "rootCauseGroup"
+            ],
+            "properties": {
+              "findingId": {"type": "string", "minLength": 1},
+              "gateId": {"const": "SDE-QE-MANDATORY-PRE-PUSH"},
+              "testId": {"type": "string", "minLength": 1},
+              "blockerType": {"type": "string", "minLength": 1},
+              "sdeDomain": {"type": "string", "minLength": 1},
+              "summaryNb": {"type": "string", "minLength": 1},
+              "affectedEntities": {"type": "array", "items": {"type": "string"}},
+              "observed": {},
+              "expected": {},
+              "violatedContract": {"type": ["string", "null"]},
+              "firstSafeDivergence": {"type": ["string", "null"]},
+              "operationalConsequence": {"type": "string", "minLength": 1},
+              "candidateRelation": {"type": "string", "minLength": 1},
+              "vehicleBlockingImplicated": {"type": "boolean"},
+              "slotBlockingImplicated": {"type": "boolean"},
+              "actualPlacementImplicated": {"type": "boolean"},
+              "targetSafetyImplicated": {"type": "boolean"},
+              "rootCauseStatus": {"type": "string", "minLength": 1},
+              "repairBoundary": {"type": "string", "minLength": 1},
+              "confidence": {"enum": ["LOW", "MEDIUM", "HIGH"]},
+              "command": {"type": "string", "minLength": 1},
+              "cwd": {"type": "string", "minLength": 1},
+              "repositoryRoot": {"type": "string", "minLength": 1},
+              "exitCode": {"type": ["integer", "null"]},
+              "phase": {"enum": ["p0", "setup", "test", "teardown"]},
+              "firstCausalLine": {"type": "string", "minLength": 1},
+              "sourceFileAndLine": {"type": ["string", "null"]},
+              "fullLogPath": {"type": "string", "minLength": 1},
+              "fullLogSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "message": {"type": "string", "minLength": 1},
+              "rootCauseGroup": {"type": ["string", "null"]}
+            }
+          },
+          "log": {
+            "type": "object",
+            "required": ["path", "sha256", "bytes"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "bytes": {"type": "integer", "minimum": 1}
+            }
+          }
+        }
+      }
+    },
+    "p0": {
+      "type": "object",
+      "required": ["status", "reasonCode"],
+      "properties": {
+        "status": {"type": "string"},
+        "reasonCode": {"type": "string"}
+      }
+    },
+    "qeResult": {"type": "string"},
+    "reasonCodes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+    "ACTIONABLE_FINDINGS_REPORTING": {"const": "GREEN"},
+    "operationalMeaning": {
+      "type": "object",
+      "required": [
+        "title",
+        "vehicleBlockingImplicated",
+        "slotBlockingImplicated",
+        "actualPlacementImplicated",
+        "targetSafetyImplicated",
+        "sdeProductDefectDetected",
+        "testMachineDefectDetected",
+        "userImpactNb",
+        "repairBoundary",
+        "newBroadDiagnosisRequired"
+      ],
+      "properties": {
+        "title": {"const": "OPERATIV BETYDNING"},
+        "vehicleBlockingImplicated": {"type": "boolean"},
+        "slotBlockingImplicated": {"type": "boolean"},
+        "actualPlacementImplicated": {"type": "boolean"},
+        "targetSafetyImplicated": {"type": "boolean"},
+        "sdeProductDefectDetected": {"type": "boolean"},
+        "testMachineDefectDetected": {"type": "boolean"},
+        "userImpactNb": {"type": "string", "minLength": 1},
+        "repairBoundary": {"type": "string", "minLength": 1},
+        "newBroadDiagnosisRequired": {"type": "boolean"}
+      }
+    },
+    "READY_FOR_BRANCH_PUSH_APPROVAL": {"type": "boolean"},
+    "approvalRequestId": {"type": ["string", "null"]},
+    "approveCommand": {"type": ["string", "null"]},
+    "PUSHED": {"type": "boolean"},
+    "autoFix": {"const": false},
+    "candidateMutation": {"type": "boolean"},
+    "activeSkips": {"type": "integer", "minimum": 0},
+    "logDirectory": {"type": "string", "minLength": 1},
+    "testTotals": {
+      "type": "object",
+      "required": ["total", "pass", "fail", "skips"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "pass": {"type": "integer", "minimum": 0},
+        "fail": {"type": "integer", "minimum": 0},
+        "skips": {"type": "integer", "minimum": 0}
+      }
+    },
+    "reportSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

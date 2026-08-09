@@ -1,0 +1,20 @@
+#!/bin/sh
+# SDE_QE_MANAGED_PRE_PUSH_GATE_V1
+set -eu
+
+common_dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
+  printf '%s\n' 'SDE pre-push gate: GIT_COMMON_DIR_UNAVAILABLE' >&2
+  exit 1
+}
+runner="$common_dir/sde-qe-prepush/runner.cjs"
+
+if [ ! -f "$runner" ] || [ ! -x "$runner" ]; then
+  printf '%s\n' 'SDE pre-push gate: INSTALLED_GATE_RUNTIME_MISSING' >&2
+  exit 1
+fi
+if ! command -v node >/dev/null 2>&1; then
+  printf '%s\n' 'SDE pre-push gate: NODE_RUNTIME_MISSING' >&2
+  exit 1
+fi
+
+exec node "$runner" hook "$@"

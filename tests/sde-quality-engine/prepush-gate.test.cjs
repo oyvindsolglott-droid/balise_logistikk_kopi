@@ -1,0 +1,566 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const childProcess = require("node:child_process");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+
+const ROOT = path.resolve(__dirname, "../..");
+const RUNNER = path.join(ROOT, "scripts/sde-prepush-gate.cjs");
+const HOOK = path.join(ROOT, ".githooks/pre-push");
+const REPORT_SCHEMA = path.join(ROOT, "tests/sde-quality-engine/contracts/sde-prepush-gate-report-v1.schema.json");
+const gate = require(RUNNER);
+
+const BASE_ENV = {
+  ...process.env,
+  GIT_CONFIG_GLOBAL: "/dev/null",
+  GIT_CONFIG_NOSYSTEM: "1",
+  GIT_AUTHOR_NAME: "SDE Gate Test",
+  GIT_AUTHOR_EMAIL: "sde-gate@example.invalid",
+  GIT_COMMITTER_NAME: "SDE Gate Test",
+  GIT_COMMITTER_EMAIL: "sde-gate@example.invalid"
+};
+
+function command(commandName, args, options = {}) {
+  const result = childProcess.spawnSync(commandName, args, {
+    cwd: options.cwd,
+    env: {...BASE_ENV, ...(options.env || {})},
+    encoding: "utf8",
+    input: options.input,
+    timeout: options.timeout || 120_000,
+    maxBuffer: 32 * 1024 * 1024
+  });
+  return {
+    ...result,
+    output: `${result.stdout || ""}${result.stderr || ""}`
+  };
+}
+
+function must(commandName, args, options = {}) {
+  const result = command(commandName, args, options);
+  assert.equal(result.status, 0, `${commandName} ${args.join(" ")}\n${result.output}`);
+  return String(result.stdout || "").trim();
+}
+
+function git(cwd, ...args) {
+  return must("git", args, {cwd});
+}
+
+function write(file, value, mode = 0o600) {
+  fs.mkdirSync(path.dirname(file), {recursive: true});
+  fs.writeFileSync(file, value, {mode});
+  fs.chmodSync(file, mode);
+}
+
+function commitFile(repository, name, value, message) {
+  write(path.join(repository, name), value);
+  git(repository, "add", name);
+  git(repository, "commit", "-m", message);
+  return git(repository, "rev-parse", "HEAD");
+}
+
+function fixture(options = {}) {
+  const directory = fs.mkdtempSync("/private/tmp/sde-prepush-contract.");
+  const repository = path.join(directory, "repository");
+  const remote = path.join(directory, "remote.git");
+  fs.mkdirSync(repository);
+  must("git", ["init", "--bare", remote], {cwd: directory});
+  must("git", ["init", "-b", "main"], {cwd: repository});
+  git(repository, "config", "user.name", "SDE Gate Test");
+  git(repository, "config", "user.email", "sde-gate@example.invalid");
+  fs.mkdirSync(path.join(repository, ".githooks"));
+  fs.mkdirSync(path.join(repository, "scripts"));
+  fs.copyFileSync(HOOK, path.join(repository, ".githooks/pre-push"));
+  fs.copyFileSync(RUNNER, path.join(repository, "scripts/sde-prepush-gate.cjs"));
+  fs.chmodSync(path.join(repository, ".githooks/pre-push"), 0o755);
+  fs.chmodSync(path.join(repository, "scripts/sde-prepush-gate.cjs"), 0o755);
+  write(path.join(repository, "README.md"), "# disposable SDE pre-push fixture\n");
+  git(repository, "add", ".githooks/pre-push", "scripts/sde-prepush-gate.cjs", "README.md");
+  git(repository, "commit", "-m", "fixture baseline");
+  const baseline = git(repository, "rev-parse", "HEAD");
+  git(repository, "remote", "add", "origin", remote);
+  git(repository, "push", "origin", "refs/heads/main:refs/heads/main");
+  if (options.unknownHook) {
+    const defaultHook = path.join(repository, ".git/hooks/pre-push");
+    write(defaultHook, "#!/bin/sh\nprintf '%s\\n' unknown-hook >&2\nexit 1\n", 0o700);
+  }
+  return {directory, repository, remote, baseline};
+}
+
+function install(repository) {
+  return command(process.execPath, ["scripts/sde-prepush-gate.cjs", "install"], {cwd: repository});
+}
+
+function testEnvironment(profile) {
+  return {SDE_PREPUSH_TESTING: "1", SDE_PREPUSH_TEST_PROFILE: profile};
+}
+
+function push(repository, refspecs, profile = "GREEN") {
+  return command("git", ["push", "origin", ...refspecs], {cwd: repository, env: testEnvironment(profile), timeout: 120_000});
+}
+
+function requestId(output) {
+  return output.match(/APPROVAL_REQUEST_ID:\s*([0-9a-f-]{36})/i)?.[1] || null;
+}
+
+function commonDirectory(repository) {
+  return git(repository, "rev-parse", "--path-format=absolute", "--git-common-dir");
+}
+
+function statePaths(repository) {
+  const root = path.join(commonDirectory(repository), "sde-qe-prepush");
+  return {
+    root,
+    runner: path.join(root, "runner.cjs"),
+    hook: path.join(root, "hooks/pre-push"),
+    manifest: path.join(root, "manifest.json"),
+    pending: path.join(root, "state/pending"),
+    approvals: path.join(root, "state/approvals"),
+    consumed: path.join(root, "state/consumed"),
+    reports: path.join(root, "reports")
+  };
+}
+
+function approve(repository, id, candidate) {
+  const paths = statePaths(repository);
+  return command(process.execPath, [paths.runner, "approve", "--request-id", id, "--candidate", candidate], {cwd: repository});
+}
+
+function remoteSha(remote, ref) {
+  const result = command("git", [`--git-dir=${remote}`, "rev-parse", "--verify", ref], {cwd: path.dirname(remote)});
+  return result.status === 0 ? String(result.stdout).trim() : null;
+}
+
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+}
+
+function selfHash(value, excluded) {
+  const copy = {...value};
+  delete copy[excluded];
+  return crypto.createHash("sha256").update(JSON.stringify(stable(copy))).digest("hex");
+}
+
+test("pre-push input, canonical remote and P0 approval authority fail closed", () => {
+  const parsed = gate.parsePrePushInput(`refs/heads/topic ${"a".repeat(40)} refs/heads/topic ${"0".repeat(40)}\n`);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].localRef, "refs/heads/topic");
+  assert.equal(gate.canonicalRemoteUrl("https://user:pass@example.com/acme/repo.git?token=hidden", ROOT), "https://example.com/acme/repo.git");
+  assert.equal(gate.p0Ready({status: "GREEN"}), true);
+  assert.equal(gate.p0Ready({status: "BLOCKED", reasonCode: "LIVE_DATA_EVIDENCE_MISSING", details: {subgates: []}}), true);
+  assert.equal(gate.p0Ready({status: "RED", reasonCode: "LIVE_DATA_OPERATIVE_DATE_MISMATCH", details: {subgates: []}}), false);
+  assert.throws(() => gate.parsePrePushInput("malformed"), /Malformed/);
+});
+
+test("installer is idempotent, shared by worktrees, executable and cryptographically bound", (t) => {
+  const item = fixture();
+  t.after(() => fs.rmSync(item.directory, {recursive: true, force: true}));
+  const first = install(item.repository);
+  assert.equal(first.status, 0, first.output);
+  const second = install(item.repository);
+  assert.equal(second.status, 0, second.output);
+  assert.equal(JSON.parse(second.stdout).idempotent, true);
+  const paths = statePaths(item.repository);
+  const manifest = JSON.parse(fs.readFileSync(paths.manifest, "utf8"));
+  assert.equal(manifest.gateId, gate.GATE_ID);
+  assert.equal(manifest.gateVersion, gate.GATE_VERSION);
+  assert.equal(manifest.testProfileVersion, gate.PROFILE_VERSION);
+  assert.equal(fs.statSync(paths.hook).mode & 0o777, 0o700);
+  assert.equal(fs.statSync(paths.runner).mode & 0o777, 0o700);
+  assert.equal(git(item.repository, "config", "--local", "--get", "core.hooksPath"), path.join(paths.root, "hooks"));
+
+  const linked = path.join(item.directory, "linked-worktree");
+  git(item.repository, "worktree", "add", "-b", "linked-check", linked, "main");
+  const doctor = command(process.execPath, [paths.runner, "doctor"], {cwd: linked});
+  assert.equal(doctor.status, 0, doctor.output);
+  assert.equal(JSON.parse(doctor.stdout).status, "GREEN");
+  commitFile(linked, "linked.txt", "linked candidate\n", "linked candidate");
+  const linkedPush = push(linked, ["refs/heads/linked-check:refs/heads/linked-check"]);
+  assert.notEqual(linkedPush.status, 0);
+  assert.match(linkedPush.output, /FIRST_PUSH_ALWAYS_BLOCKED_PENDING_APPROVAL/);
+  assert.equal(remoteSha(item.remote, "refs/heads/linked-check"), null);
+});
+
+test("unknown existing pre-push hook is preserved and installation holds", (t) => {
+  const item = fixture({unknownHook: true});
+  t.after(() => fs.rmSync(item.directory, {recursive: true, force: true}));
+  const hookFile = path.join(item.repository, ".git/hooks/pre-push");
+  const before = fs.readFileSync(hookFile, "utf8");
+  const result = install(item.repository);
+  assert.notEqual(result.status, 0);
+  assert.match(result.output, /EXISTING_PRE_PUSH_HOOK_CANNOT_BE_SAFELY_PRESERVED/);
+  assert.equal(fs.readFileSync(hookFile, "utf8"), before);
+  assert.equal(command("git", ["config", "--local", "--get", "core.hooksPath"], {cwd: item.repository}).status, 1);
+});
+
+test("candidate mutation check ignores only expected read-only mode bits", (t) => {
+  const item = fixture();
+  t.after(() => fs.rmSync(item.directory, {recursive: true, force: true}));
+  const tracked = path.join(item.repository, "README.md");
+  const dependencies = path.join(item.directory, "server-node-modules");
+  fs.mkdirSync(dependencies);
+  fs.mkdirSync(path.join(item.repository, "server"));
+  fs.symlinkSync(dependencies, path.join(item.repository, "server", "node_modules"));
+  fs.chmodSync(tracked, 0o400);
+  assert.equal(gate.candidateMutationStatus(item.repository, item.baseline, dependencies).mutated, false);
+  fs.unlinkSync(path.join(item.repository, "server", "node_modules"));
+  fs.symlinkSync(path.join(item.directory, "wrong-dependencies"), path.join(item.repository, "server", "node_modules"));
+  assert.equal(gate.candidateMutationStatus(item.repository, item.baseline, dependencies).mutated, true);
+  fs.unlinkSync(path.join(item.repository, "server", "node_modules"));
+  fs.symlinkSync(dependencies, path.join(item.repository, "server", "node_modules"));
+  fs.chmodSync(tracked, 0o600);
+  fs.appendFileSync(tracked, "content mutation\n");
+  assert.equal(gate.candidateMutationStatus(item.repository, item.baseline, dependencies).mutated, true);
+});
+
+function semanticIdentity(item, candidate) {
+  return {
+    candidateSha: candidate,
+    candidateTree: git(item.repository, "rev-parse", `${candidate}^{tree}`)
+  };
+}
+
+test("semantic anchor accepts raw index byte refresh with unchanged Git meaning", (t) => {
+  const item = fixture();
+  t.after(() => fs.rmSync(item.directory, {recursive: true, force: true}));
+  const candidate = commitFile(item.repository, "candidate.txt", "semantic candidate\n", "semantic candidate");
+  const identity = semanticIdentity(item, candidate);
+  const before = gate.semanticGitSnapshot(item.repository);
+  git(item.repository, "update-index", "--index-version", "4");
+  const after = gate.semanticGitSnapshot(item.repository);
+  const result = gate.evaluateSemanticAnchorIntegrity(before, after, identity);
+  assert.notEqual(before.rawIndexSha256, after.rawIndexSha256);
+  assert.equal(result.passed, true);
+  assert.equal(result.rawIndexBytesChanged, true);
+  assert.equal(result.firstCausalLine, "RAW_INDEX_BYTES_CHANGED_WHILE_SEMANTIC_GIT_STATE_UNCHANGED");
+});
+
+test("semantic anchor rejects staged, unstaged, untracked, HEAD/tree, blob and mode divergences", () => {
+  const check = (label, mutate, expected) => {
+    const item = fixture();
+    try {
+      const candidate = commitFile(item.repository, "candidate.txt", "semantic candidate\n", "semantic candidate");
+      const identity = semanticIdentity(item, candidate);
+      const before = gate.semanticGitSnapshot(item.repository);
+      mutate(item, candidate);
+      const after = gate.semanticGitSnapshot(item.repository);
+      const result = gate.evaluateSemanticAnchorIntegrity(before, after, identity);
+      assert.equal(result.passed, false, label);
+      assert.match(result.divergences.join("\n"), expected, label);
+      return {before, after};
+    } finally {
+      fs.rmSync(item.directory, {recursive: true, force: true});
+    }
+  };
+
+  check("staged blob", (item) => {
+    fs.appendFileSync(path.join(item.repository, "candidate.txt"), "staged\n");
+    git(item.repository, "add", "candidate.txt");
+  }, /STAGED_CHANGE|STAGED_DIFF_DETECTED|TRACKED_BLOB_OR_MODE_CHANGED/);
+  check("unstaged", (item) => fs.appendFileSync(path.join(item.repository, "candidate.txt"), "unstaged\n"), /UNSTAGED_CHANGE|UNSTAGED_DIFF_DETECTED/);
+  check("untracked", (item) => write(path.join(item.repository, "untracked.txt"), "untracked\n"), /UNTRACKED_FILE:untracked\.txt/);
+  check("HEAD and tree", (item) => git(item.repository, "reset", "--hard", item.baseline), /HEAD_CHANGED|TREE_CHANGED/);
+  const mode = check("tracked mode", (item) => git(item.repository, "update-index", "--chmod=+x", "candidate.txt"), /STAGED_CHANGE|STAGED_DIFF_DETECTED|TRACKED_BLOB_OR_MODE_CHANGED/);
+  assert.notEqual(mode.before.trackedEntries.find((entry) => entry.file === "candidate.txt").mode, mode.after.trackedEntries.find((entry) => entry.file === "candidate.txt").mode);
+});
+
+test("TEST_MACHINE finding stores complete OPERATIV BETYDNING", (t) => {
+  const directory = fs.mkdtempSync("/private/tmp/sde-prepush-finding.");
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const profile = gate.finalizeProfile({
+    p0: {status: "GREEN", reasonCode: "LIVE_DATA_CONTINUITY_VERIFIED"},
+    tests: [{
+      id: "detached-candidate-anchor",
+      command: "semantic detached anchor integrity",
+      status: "PASS",
+      skipped: false,
+      exit: 0,
+      signal: null,
+      durationMs: 1,
+      output: "RAW_INDEX_BYTES_CHANGED_WHILE_SEMANTIC_GIT_STATE_UNCHANGED",
+      firstCausalLine: "RAW_INDEX_BYTES_CHANGED_WHILE_SEMANTIC_GIT_STATE_UNCHANGED",
+      findingType: "TEST_MACHINE_RAW_INDEX",
+      findingObserved: {rawIndexBytesChanged: true, semanticGitStateUnchanged: true},
+      findingExpected: {rawIndexIsAuthority: false},
+      cwd: directory,
+      repositoryRoot: directory,
+      sourceFileAndLine: "scripts/sde-prepush-gate.cjs:semanticGitSnapshot"
+    }],
+    candidateMutation: false
+  }, path.join(directory, "logs"));
+  const finding = profile.tests[0].finding;
+  const findingRequired = JSON.parse(fs.readFileSync(REPORT_SCHEMA, "utf8")).properties.tests.items.properties.finding.required;
+  assert.ok(findingRequired.every((field) => Object.hasOwn(finding, field)));
+  assert.equal(finding.findingId, "SDE-QE-PREPUSH-ANCHOR-001");
+  assert.equal(finding.blockerType, "TEST_MACHINE");
+  assert.equal(finding.sdeDomain, "QUALITY_ENGINE_PREPUSH_INTEGRITY");
+  assert.equal(finding.candidateRelation, "TEST_MACHINE_ENVIRONMENT");
+  assert.equal(finding.rootCauseStatus, "PROVEN");
+  assert.equal(finding.confidence, "HIGH");
+  assert.equal(finding.firstCausalLine, "RAW_INDEX_BYTES_CHANGED_WHILE_SEMANTIC_GIT_STATE_UNCHANGED");
+  assert.equal(finding.fullLogPath, profile.tests[0].log.path);
+  assert.equal(finding.fullLogSha256, profile.tests[0].log.sha256);
+  for (const field of ["vehicleBlockingImplicated", "slotBlockingImplicated", "actualPlacementImplicated", "targetSafetyImplicated"]) {
+    assert.equal(finding[field], false, field);
+  }
+  const operative = gate.operationalMeaning(profile.tests);
+  assert.deepEqual(operative, {
+    title: "OPERATIV BETYDNING",
+    vehicleBlockingImplicated: false,
+    slotBlockingImplicated: false,
+    actualPlacementImplicated: false,
+    targetSafetyImplicated: false,
+    sdeProductDefectDetected: false,
+    testMachineDefectDetected: true,
+    userImpactNb: "En trygg kandidat får pushen stoppet av en falsk integritetsfeil.",
+    repairBoundary: "detached-candidate-anchor-checkeren.",
+    newBroadDiagnosisRequired: false
+  });
+  const report = {
+    reportId: "focused-finding",
+    candidate: null,
+    tests: profile.tests,
+    operationalMeaning: operative,
+    ACTIONABLE_FINDINGS_REPORTING: "GREEN",
+    READY_FOR_BRANCH_PUSH_APPROVAL: false,
+    PUSHED: false,
+    reportSha256: "0".repeat(64)
+  };
+  const files = gate.writeReportFiles(report, {reports: path.join(directory, "reports")});
+  const text = fs.readFileSync(files.textFile, "utf8");
+  assert.match(text, /OPERATIV BETYDNING/);
+  assert.match(text, /Kjøretøyblokkering berørt: NEI/);
+  assert.match(text, /Testemaskinfeil påvist: JA/);
+  assert.match(text, /Ny bred diagnose nødvendig: NEI/);
+});
+
+test("report schema requires every mandatory actionable finding field", () => {
+  const schema = JSON.parse(fs.readFileSync(REPORT_SCHEMA, "utf8"));
+  const findingSchema = schema.properties.tests.items.properties.finding;
+  const mandatory = [
+    "findingId",
+    "sdeDomain",
+    "repairBoundary",
+    "blockerType",
+    "vehicleBlockingImplicated",
+    "slotBlockingImplicated",
+    "actualPlacementImplicated",
+    "targetSafetyImplicated",
+    "firstSafeDivergence",
+    "fullLogPath",
+    "fullLogSha256"
+  ];
+  const acceptsRequired = (value) => findingSchema.required.every((field) => Object.hasOwn(value, field));
+  const complete = Object.fromEntries(findingSchema.required.map((field) => [field, null]));
+  assert.equal(acceptsRequired(complete), true);
+  for (const field of mandatory) {
+    assert.ok(findingSchema.required.includes(field), field);
+    const missing = {...complete};
+    delete missing[field];
+    assert.equal(acceptsRequired(missing), false, `schema accepted missing ${field}`);
+  }
+  assert.ok(schema.required.includes("operationalMeaning"));
+  assert.ok(schema.required.includes("ACTIONABLE_FINDINGS_REPORTING"));
+});
+
+test("execution repository isolates config, refs and index from the candidate repository", (t) => {
+  const item = fixture();
+  const execution = path.join(item.directory, "execution");
+  t.after(() => {
+    gate.restoreWritable(execution);
+    fs.rmSync(item.directory, {recursive: true, force: true});
+  });
+  const candidate = commitFile(item.repository, "candidate.txt", "isolated candidate\n", "isolated candidate");
+  const common = commonDirectory(item.repository);
+  const sourceGit = git(item.repository, "rev-parse", "--path-format=absolute", "--git-dir");
+  const sourceState = () => ({
+    config: crypto.createHash("sha256").update(fs.readFileSync(path.join(common, "config"))).digest("hex"),
+    head: git(item.repository, "rev-parse", "HEAD"),
+    refs: must("git", [`--git-dir=${common}`, "for-each-ref", "--format=%(refname) %(objectname)"], {cwd: item.directory}),
+    index: crypto.createHash("sha256").update(fs.readFileSync(path.join(sourceGit, "index"))).digest("hex")
+  });
+  const before = sourceState();
+  const identity = {
+    candidateSha: candidate,
+    base: item.baseline,
+    commonDirectory: common,
+    remoteUrl: gate.canonicalRemoteUrl(item.remote, item.repository)
+  };
+  gate.materializeExecutionTree(item.repository, execution, null, identity);
+  assert.equal(fs.statSync(path.join(execution, ".git")).isDirectory(), true);
+  assert.equal(fs.readFileSync(path.join(execution, ".git/objects/info/alternates"), "utf8").trim(), fs.realpathSync(path.join(common, "objects")));
+  const contentBaseline = gate.filesystemSnapshot(execution);
+
+  git(execution, "config", "user.name", "Mutated only in isolated execution");
+  git(execution, "update-ref", "refs/heads/execution-probe", candidate);
+  git(execution, "reset", "--mixed", item.baseline);
+  git(execution, "config", "core.bare", "true");
+
+  assert.deepEqual(sourceState(), before);
+  assert.equal(git(item.repository, "rev-parse", "--is-bare-repository"), "false");
+  assert.equal(gate.executionMutationStatus(execution, contentBaseline).mutated, false);
+});
+
+test("durable control logs preserve full sanitized output and structured findings", (t) => {
+  const directory = fs.mkdtempSync("/private/tmp/sde-prepush-logs.");
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const secret = "do-not-persist-this-value";
+  const fullOutput = `${"x".repeat(40 * 1024)}\ntoken=${secret}\nError: exact causal failure\n`;
+  const profile = gate.finalizeProfile({
+    p0: {status: "GREEN", reasonCode: "LIVE_DATA_CONTINUITY_VERIFIED"},
+    tests: [{
+      id: "qe-unit",
+      command: "npm run test:sde:qe:unit",
+      status: "FAIL",
+      skipped: false,
+      exit: 1,
+      signal: null,
+      durationMs: 12,
+      output: fullOutput.slice(0, 32 * 1024),
+      _fullOutput: fullOutput
+    }],
+    candidateMutation: false
+  }, path.join(directory, "logs"));
+  const control = profile.tests[0];
+  const bytes = fs.readFileSync(control.log.path);
+  const text = bytes.toString("utf8");
+  assert.ok(bytes.length > 40 * 1024);
+  assert.doesNotMatch(text, new RegExp(secret));
+  assert.match(text, /token=\[REDACTED\]/);
+  assert.match(text, /Error: exact causal failure/);
+  assert.equal(control.finding.firstCausalLine, "Error: exact causal failure");
+  assert.equal(control.classification, "UNKNOWN");
+  assert.equal(control.log.sha256, crypto.createHash("sha256").update(bytes).digest("hex"));
+  assert.equal(fs.statSync(control.log.path).mode & 0o077, 0);
+});
+
+test("black-box push, one-time approval, invalidation and policy scenarios A-T", (t) => {
+  const item = fixture();
+  t.after(() => fs.rmSync(item.directory, {recursive: true, force: true}));
+  assert.equal(install(item.repository).status, 0);
+  git(item.repository, "switch", "-c", "feature");
+  const firstCandidate = commitFile(item.repository, "candidate.txt", "candidate one\n", "candidate one");
+  const candidateSnapshot = git(item.repository, "status", "--porcelain=v1", "--untracked-files=all");
+
+  const first = push(item.repository, ["refs/heads/feature:refs/heads/feature"]);
+  assert.notEqual(first.status, 0, first.output);
+  assert.match(first.output, /PUSHED: FALSE/);
+  const firstRequest = requestId(first.output);
+  assert.ok(firstRequest, first.output);
+  assert.equal(remoteSha(item.remote, "refs/heads/feature"), null);
+  assert.equal(git(item.repository, "status", "--porcelain=v1", "--untracked-files=all"), candidateSnapshot);
+
+  const approved = approve(item.repository, firstRequest, firstCandidate);
+  assert.equal(approved.status, 0, approved.output);
+  const second = push(item.repository, ["refs/heads/feature:refs/heads/feature"]);
+  assert.equal(second.status, 0, second.output);
+  assert.match(second.output, /ONE_TIME_APPROVAL_CONSUMED/);
+  assert.equal(remoteSha(item.remote, "refs/heads/feature"), firstCandidate);
+
+  const reuse = push(item.repository, ["refs/heads/feature:refs/heads/feature"]);
+  assert.notEqual(reuse.status, 0);
+  assert.match(reuse.output, /NO_REFS_IN_PUSH/);
+
+  const secondCandidate = commitFile(item.repository, "candidate.txt", "candidate two\n", "candidate two");
+  const beforeChange = push(item.repository, ["refs/heads/feature:refs/heads/feature"]);
+  const changedRequest = requestId(beforeChange.output);
+  assert.ok(changedRequest, beforeChange.output);
+  assert.equal(approve(item.repository, changedRequest, secondCandidate).status, 0);
+  const thirdCandidate = commitFile(item.repository, "candidate.txt", "candidate three\n", "candidate three");
+  const changedAfterApproval = push(item.repository, ["refs/heads/feature:refs/heads/feature"]);
+  assert.notEqual(changedAfterApproval.status, 0);
+  const remoteChangeRequest = requestId(changedAfterApproval.output);
+  assert.ok(remoteChangeRequest, changedAfterApproval.output);
+  assert.equal(remoteSha(item.remote, "refs/heads/feature"), firstCandidate);
+
+  assert.equal(approve(item.repository, remoteChangeRequest, thirdCandidate).status, 0);
+  git(item.repository, "branch", "remote-advance", secondCandidate);
+  must("git", [`--git-dir=${item.remote}`, "fetch", item.repository, "refs/heads/remote-advance:refs/heads/feature"], {cwd: item.directory});
+  assert.equal(remoteSha(item.remote, "refs/heads/feature"), secondCandidate);
+  const remoteOldChanged = push(item.repository, ["refs/heads/feature:refs/heads/feature"]);
+  assert.notEqual(remoteOldChanged.status, 0);
+  const expiryRequest = requestId(remoteOldChanged.output);
+  assert.ok(expiryRequest, remoteOldChanged.output);
+
+  assert.equal(approve(item.repository, expiryRequest, thirdCandidate).status, 0);
+  const paths = statePaths(item.repository);
+  const approvalFile = path.join(paths.approvals, `${expiryRequest}.json`);
+  const expired = JSON.parse(fs.readFileSync(approvalFile, "utf8"));
+  expired.expiresAt = new Date(Date.now() - 1000).toISOString();
+  expired.approvalSha256 = selfHash(expired, "approvalSha256");
+  write(approvalFile, `${JSON.stringify(expired, null, 2)}\n`, 0o600);
+  const expiredPush = push(item.repository, ["refs/heads/feature:refs/heads/feature"]);
+  assert.notEqual(expiredPush.status, 0);
+  assert.ok(requestId(expiredPush.output), expiredPush.output);
+
+  const failingCandidate = commitFile(item.repository, "candidate.txt", "known failure\n", "known failure candidate");
+  const knownFailure = push(item.repository, ["refs/heads/feature:refs/heads/feature"], "FAIL");
+  assert.notEqual(knownFailure.status, 0);
+  assert.equal(requestId(knownFailure.output), null);
+  assert.equal(remoteSha(item.remote, "refs/heads/feature"), secondCandidate);
+
+  const stale = push(item.repository, ["refs/heads/feature:refs/heads/feature"], "P0_STALE");
+  assert.notEqual(stale.status, 0);
+  assert.match(stale.output, /LIVE_DATA_OPERATIVE_DATE_MISMATCH/);
+  assert.equal(requestId(stale.output), null);
+
+  const external = push(item.repository, ["refs/heads/feature:refs/heads/feature"], "EXTERNAL_BLOCKED");
+  assert.notEqual(external.status, 0);
+  const externalRequest = requestId(external.output);
+  assert.ok(externalRequest, external.output);
+
+  const directMain = push(item.repository, ["refs/heads/feature:refs/heads/main"]);
+  assert.notEqual(directMain.status, 0);
+  assert.match(directMain.output, /DIRECT_MAIN_PUSH_BLOCKED/);
+  assert.equal(remoteSha(item.remote, "refs/heads/main"), item.baseline);
+
+  git(item.repository, "branch", "second-ref", failingCandidate);
+  const multi = push(item.repository, ["refs/heads/feature:refs/heads/feature", "refs/heads/second-ref:refs/heads/second-ref"]);
+  assert.notEqual(multi.status, 0);
+  assert.match(multi.output, /MULTIPLE_REFS_BLOCKED/);
+  assert.equal(remoteSha(item.remote, "refs/heads/second-ref"), null);
+
+  fs.unlinkSync(path.join(paths.pending, `${externalRequest}.json`));
+  const missingRuntime = push(item.repository, ["refs/heads/feature:refs/heads/feature"], "MISSING_RUNTIME");
+  assert.notEqual(missingRuntime.status, 0);
+  assert.match(missingRuntime.output, /TEST_FAILED:disposable-profile/);
+  assert.equal(requestId(missingRuntime.output), null);
+
+  const bypassText = ["#!/bin/sh", "git push " + "--no-" + "verify origin feature", ""].join("\n");
+  write(path.join(item.repository, "unsafe-push.sh"), bypassText, 0o700);
+  git(item.repository, "add", "unsafe-push.sh");
+  git(item.repository, "commit", "-m", "known bypass policy failure");
+  const bypass = push(item.repository, ["refs/heads/feature:refs/heads/feature"]);
+  assert.notEqual(bypass.status, 0);
+  assert.match(bypass.output, /TEST_FAILED:security-policy/);
+  assert.equal(requestId(bypass.output), null);
+  assert.equal(remoteSha(item.remote, "refs/heads/feature"), secondCandidate);
+
+  const reports = fs.readdirSync(paths.reports).filter((name) => name.endsWith(".json"));
+  assert.ok(reports.length >= 10);
+  const machineReports = reports.map((name) => JSON.parse(fs.readFileSync(path.join(paths.reports, name), "utf8")));
+  const firstReport = machineReports.find((report) => report.approvalRequestId === firstRequest && report.PUSHED === false);
+  assert.ok(firstReport);
+  assert.equal(firstReport.READY_FOR_BRANCH_PUSH_APPROVAL, true);
+  assert.equal(firstReport.PUSHED, false);
+  assert.equal(firstReport.autoFix, false);
+  assert.equal(firstReport.activeSkips, 0);
+  assert.equal(firstReport.testTotals.total, firstReport.tests.length);
+  assert.equal(firstReport.testTotals.skips, 0);
+  assert.ok(firstReport.tests.every((control) => control.log?.sha256 && control.finding?.firstCausalLine && control.reasonCode));
+  assert.equal(selfHash(firstReport, "reportSha256"), firstReport.reportSha256);
+  assert.ok(machineReports.some((report) => report.PUSHED === true));
+  assert.doesNotThrow(() => JSON.parse(fs.readFileSync(REPORT_SCHEMA, "utf8")));
+
+  for (const directory of [paths.pending, paths.approvals, paths.consumed, paths.reports]) {
+    assert.equal(fs.statSync(directory).mode & 0o077, 0, directory);
+    for (const name of fs.readdirSync(directory)) {
+      assert.equal(fs.statSync(path.join(directory, name)).mode & 0o077, 0, `${directory}/${name}`);
+    }
+  }
+});
