@@ -8,8 +8,8 @@ const os = require("node:os");
 const path = require("node:path");
 
 const GATE_ID = "SDE-QE-MANDATORY-PRE-PUSH";
-const GATE_VERSION = "1.0.0";
-const PROFILE_VERSION = "sde-qe-prepush-profile-v1";
+const GATE_VERSION = "1.1.0";
+const PROFILE_VERSION = "sde-qe-prepush-profile-v2";
 const REPORT_SCHEMA = "sde-qe-prepush-report/v1";
 const MANIFEST_SCHEMA = "sde-qe-prepush-install/v1";
 const STATE_SCHEMA = "sde-qe-prepush-approval/v1";
@@ -50,11 +50,16 @@ function canonicalHash(value, excludedKey) {
   return sha256(stableJson(copy));
 }
 
-function scrub(value) {
+function scrubFull(value) {
   return String(value ?? "")
+    .replace(/\b(authorization|proxy-authorization|cookie|set-cookie)(\s*:\s*)[^\r\n]+/gi, "$1$2[REDACTED]")
     .replace(/(authorization|cookie|token|secret|password)(\s*[:=]\s*)[^\s,;]+/gi, "$1$2[REDACTED]")
     .replace(/:\/\/[^/@\s]+@/g, "://[REDACTED]@")
-    .slice(0, 32 * 1024);
+    .replace(/\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{20,}|AKIA[A-Z0-9]{16})\b/g, "[REDACTED]");
+}
+
+function scrub(value) {
+  return scrubFull(value).slice(0, 32 * 1024);
 }
 
 function displayCommand(command, args) {
@@ -65,22 +70,34 @@ function displayCommand(command, args) {
 
 function run(command, args = [], options = {}) {
   const started = Date.now();
+  const environment = {...process.env};
+  for (const [key, value] of Object.entries(options.env || {})) {
+    if (value === null || value === undefined) delete environment[key];
+    else environment[key] = String(value);
+  }
   const result = childProcess.spawnSync(command, args, {
     cwd: options.cwd,
-    env: {...process.env, ...(options.env || {})},
+    env: environment,
     encoding: options.encoding === null ? null : "utf8",
     input: options.input,
     timeout: options.timeoutMs || 20 * 60 * 1000,
     maxBuffer: options.maxBuffer || 64 * 1024 * 1024,
     stdio: options.stdio
   });
+  const stdoutFull = options.encoding === null ? result.stdout : scrubFull(result.stdout);
+  const stderrFull = options.encoding === null ? result.stderr : scrubFull(result.stderr);
+  const errorFull = result.error ? scrubFull(result.error.message) : null;
   return {
     command: displayCommand(command, args),
     status: result.status,
     signal: result.signal,
-    stdout: options.encoding === null ? result.stdout : scrub(result.stdout),
-    stderr: options.encoding === null ? result.stderr : scrub(result.stderr),
-    error: result.error ? scrub(result.error.message) : null,
+    stdout: options.encoding === null ? result.stdout : scrub(stdoutFull),
+    stderr: options.encoding === null ? result.stderr : scrub(stderrFull),
+    error: errorFull ? scrub(errorFull) : null,
+    stdoutFull,
+    stderrFull,
+    errorFull,
+    stdoutRaw: options.captureRaw === true ? result.stdout : undefined,
     durationMs: Date.now() - started,
     ok: result.status === 0 && !result.error && !result.signal
   };
@@ -542,6 +559,7 @@ function consumeApproval(match, identity, paths) {
 }
 
 function commandTest(id, result, extra = {}) {
+  const fullOutput = scrubFull(`${result.stdoutFull || ""}${result.stderrFull ? `\n${result.stderrFull}` : ""}${result.errorFull ? `\n${result.errorFull}` : ""}`);
   return {
     id,
     command: result.command,
@@ -550,9 +568,96 @@ function commandTest(id, result, extra = {}) {
     exit: result.status,
     signal: result.signal,
     durationMs: result.durationMs,
-    output: scrub(`${result.stdout || ""}${result.stderr ? `\n${result.stderr}` : ""}`),
+    output: scrub(fullOutput),
+    _fullOutput: fullOutput,
     ...extra
   };
+}
+
+function testPhase(id) {
+  if (id === "p0-live-data-continuity") return "p0";
+  if (id === "candidate-identity") return "setup";
+  if (id === "candidate-no-mutation" || id === "detached-candidate-anchor") return "teardown";
+  return "test";
+}
+
+function firstCausalLine(value) {
+  const lines = scrubFull(value).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const causal = lines.find((line) => /(?:AssertionError|Error:|FAILED|FAIL:|fatal:|Traceback|ModuleNotFound|Cannot find module|not found|ENOENT|EACCES|BYPASS_USAGE|PERMANENT_TEST|ACTIVE_TEST_SKIP|QUALITY_POLICY|POTENTIAL_SECRET|MISMATCH|CONTRADICT|MUTATION)/i.test(line));
+  return scrub(causal || lines[0] || "No diagnostic output was emitted.").slice(0, 1000);
+}
+
+function failureClassification(test, causalLine) {
+  if (test.status === "PASS") {
+    return test.id === "p0-live-data-continuity" && /LIVE_DATA_EVIDENCE_MISSING/.test(test.output || "")
+      ? "LIVE_EVIDENCE_BLOCKER"
+      : null;
+  }
+  if (test.id === "p0-live-data-continuity") {
+    return /EVIDENCE_MISSING/.test(test.output || "") ? "LIVE_EVIDENCE_BLOCKER" : "UNKNOWN";
+  }
+  if (test.id === "security-policy" && /BYPASS_USAGE|PERMANENT_TEST_DELETED|ACTIVE_TEST_SKIP_OR_FOCUS_ADDED|QUALITY_POLICY_WEAKENING_PATTERN|POTENTIAL_SECRET_ADDED/.test(test.output || "")) {
+    return "CANDIDATE_DEFECT";
+  }
+  if (["candidate-identity", "candidate-no-mutation", "detached-candidate-anchor"].includes(test.id) ||
+      /ENOENT|EACCES|command not found|Cannot find module|ModuleNotFound|timed out|spawnSync/i.test(causalLine)) {
+    return "ENVIRONMENT_OR_TOOL";
+  }
+  return "UNKNOWN";
+}
+
+function testReasonCode(test, p0) {
+  if (test.id === "p0-live-data-continuity") return p0?.reasonCode || (test.status === "PASS" ? "P0_PASSED" : "P0_FAILED");
+  if (test.status === "PASS") return "CONTROL_PASSED";
+  if (test.signal) return `CONTROL_SIGNAL:${test.id}:${test.signal}`;
+  if (test.exit === null) return `CONTROL_LAUNCH_FAILED:${test.id}`;
+  if (test.id === "candidate-no-mutation") return "EXECUTION_FILESYSTEM_MUTATED";
+  if (test.id === "detached-candidate-anchor") return "SHARED_GIT_STATE_MUTATED";
+  return `CONTROL_FAILED:${test.id}`;
+}
+
+function finalizeTest(test, p0, logDirectory, index) {
+  const fullOutput = scrubFull(test._fullOutput ?? test.output ?? "");
+  const causal = firstCausalLine(fullOutput);
+  test.phase = test.phase || testPhase(test.id);
+  test.reasonCode = test.reasonCode || testReasonCode(test, p0);
+  test.classification = test.classification ?? failureClassification(test, causal);
+  test.finding = {
+    firstCausalLine: causal,
+    message: test.status === "PASS"
+      ? "Control completed successfully."
+      : scrub(`Control ${test.id} failed in ${test.phase} with exit ${test.exit ?? "null"}: ${causal}`).slice(0, 1500),
+    rootCauseGroup: test.classification === "ENVIRONMENT_OR_TOOL" ? `ENVIRONMENT:${causal.slice(0, 200)}` : null
+  };
+  const safeId = test.id.replace(/[^A-Za-z0-9_.-]/g, "-");
+  const logFile = path.join(logDirectory, `${String(index + 1).padStart(2, "0")}-${safeId}.log`);
+  const logText = [
+    `GATE_ID: ${GATE_ID}`,
+    `CONTROL_ID: ${test.id}`,
+    `COMMAND: ${test.command}`,
+    `STATUS: ${test.status}`,
+    `EXIT: ${test.exit ?? "null"}`,
+    `SIGNAL: ${test.signal || "none"}`,
+    `DURATION_MS: ${test.durationMs}`,
+    `PHASE: ${test.phase}`,
+    `REASON_CODE: ${test.reasonCode}`,
+    `CLASSIFICATION: ${test.classification || "NOT_APPLICABLE"}`,
+    "FULL_OUTPUT_BEGIN",
+    fullOutput,
+    "FULL_OUTPUT_END",
+    ""
+  ].join("\n");
+  atomicWrite(logFile, logText, 0o600);
+  test.log = {path: logFile, sha256: sha256(logText), bytes: Buffer.byteLength(logText)};
+  delete test._fullOutput;
+  return test;
+}
+
+function finalizeProfile(profile, logDirectory) {
+  mkdirPrivate(logDirectory);
+  profile.tests = profile.tests.map((test, index) => finalizeTest(test, profile.p0, logDirectory, index));
+  profile.logDirectory = logDirectory;
+  return profile;
 }
 
 function p0Ready(result) {
@@ -631,6 +736,22 @@ function profileEnvironment(identity, artifactDirectory, root) {
     : "";
   const serverNodePath = process.env.SDE_QE_SERVER_NODE_PATH || path.join(runtimeRoot, "server", "node_modules");
   return {
+    GIT_DIR: null,
+    GIT_WORK_TREE: null,
+    GIT_INDEX_FILE: null,
+    GIT_COMMON_DIR: null,
+    GIT_OBJECT_DIRECTORY: null,
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: null,
+    GIT_PREFIX: null,
+    GIT_CONFIG_COUNT: null,
+    GIT_CONFIG_KEY_0: null,
+    GIT_CONFIG_VALUE_0: null,
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_AUTHOR_NAME: "SDE QE Isolated Test",
+    GIT_AUTHOR_EMAIL: "sde-qe-isolated@example.invalid",
+    GIT_COMMITTER_NAME: "SDE QE Isolated Test",
+    GIT_COMMITTER_EMAIL: "sde-qe-isolated@example.invalid",
     SDE_PREPUSH_CANDIDATE_SHA: identity.candidateSha,
     SDE_PREPUSH_CANDIDATE_TREE: identity.candidateTree,
     SDE_QE_LIVE_DATA_RUNTIME_REPOSITORY: runtimeRoot,
@@ -656,9 +777,10 @@ function runP0(candidateRoot, env) {
     "const result=liveDataContinuityGate({inputPaths:input,subjectRepository:process.env.SDE_QE_LIVE_DATA_RUNTIME_REPOSITORY,approvedSha:process.env.SDE_QE_LIVE_DATA_APPROVED_SHA,approvedTree:process.env.SDE_QE_LIVE_DATA_APPROVED_TREE,approvedMainRef:process.env.SDE_QE_LIVE_DATA_APPROVED_MAIN_REF});",
     "process.stdout.write(JSON.stringify(result));"
   ].join("");
-  const command = run(process.execPath, ["-e", script], {cwd: candidateRoot, env, timeoutMs: 3 * 60 * 1000});
+  const command = run(process.execPath, ["-e", script], {cwd: candidateRoot, env, timeoutMs: 3 * 60 * 1000, captureRaw: true});
   let result = null;
-  try { result = JSON.parse(String(command.stdout || "")); } catch (_error) { result = null; }
+  try { result = JSON.parse(String(command.stdoutRaw || "")); } catch (_error) { result = null; }
+  delete command.stdoutRaw;
   const pass = result && (result.status === "GREEN" || (result.status === "BLOCKED" && p0Ready(result)));
   return {
     result: result || {status: "RED", reasonCode: "P0_REPORT_MALFORMED", details: {subgates: []}},
@@ -670,9 +792,11 @@ function internalNodeTest(id, commandLabel, fn) {
   const started = Date.now();
   try {
     const output = fn();
-    return {id, command: commandLabel, status: "PASS", skipped: false, exit: 0, signal: null, durationMs: Date.now() - started, output: scrub(output || "PASS")};
+    const fullOutput = scrubFull(output || "PASS");
+    return {id, command: commandLabel, status: "PASS", skipped: false, exit: 0, signal: null, durationMs: Date.now() - started, output: scrub(fullOutput), _fullOutput: fullOutput};
   } catch (error) {
-    return {id, command: commandLabel, status: "FAIL", skipped: false, exit: 1, signal: null, durationMs: Date.now() - started, output: scrub(error.stack || error.message)};
+    const fullOutput = scrubFull(error.stack || error.message);
+    return {id, command: commandLabel, status: "FAIL", skipped: false, exit: 1, signal: null, durationMs: Date.now() - started, output: scrub(fullOutput), _fullOutput: fullOutput};
   }
 }
 
@@ -766,14 +890,14 @@ function chmodReadOnly(root) {
   return files;
 }
 
-function materializeExecutionTree(candidateRoot, executionRoot, serverNodePath) {
+function materializeExecutionTree(candidateRoot, executionRoot, serverNodePath, identity) {
   mkdirPrivate(executionRoot);
   const index = git(["ls-files", "-s", "-z"], {cwd: candidateRoot, encoding: null});
   if (!index.ok) throw new GateError("CANDIDATE_INDEX_UNAVAILABLE", scrub(index.stderr || index.error));
   const entries = index.stdout.toString("utf8").split("\0").filter(Boolean).map((line) => {
-    const match = line.match(/^(\d{6}) [a-f0-9]{40} \d+\t([\s\S]+)$/);
+    const match = line.match(/^(\d{6}) ([a-f0-9]{40}) \d+\t([\s\S]+)$/);
     if (!match) throw new GateError("CANDIDATE_INDEX_MALFORMED", `Cannot parse tracked entry: ${line}`);
-    return {mode: match[1], file: match[2]};
+    return {mode: match[1], blob: match[2], file: match[3]};
   });
   for (const entry of entries) {
     if (entry.mode === "160000") throw new GateError("CANDIDATE_SUBMODULE_UNSUPPORTED", `Submodule is not supported: ${entry.file}`);
@@ -786,9 +910,10 @@ function materializeExecutionTree(candidateRoot, executionRoot, serverNodePath) 
       fs.chmodSync(target, entry.mode === "100755" ? 0o500 : 0o400);
     }
   }
-  const candidateGitFile = path.join(candidateRoot, ".git");
-  if (!fs.statSync(candidateGitFile).isFile()) throw new GateError("CANDIDATE_GIT_LINK_MISSING", "Detached worktree .git link is missing.");
-  atomicWrite(path.join(executionRoot, ".git"), fs.readFileSync(candidateGitFile), 0o400);
+  if (!identity?.candidateSha || !identity?.commonDirectory) {
+    throw new GateError("EXECUTION_IDENTITY_MISSING", "Isolated execution repository requires an exact candidate identity.");
+  }
+  initializeExecutionRepository(executionRoot, identity);
   if (serverNodePath && fs.statSync(serverNodePath, {throwIfNoEntry: false})?.isDirectory()) {
     const serverDirectory = path.join(executionRoot, "server");
     fs.chmodSync(serverDirectory, 0o700);
@@ -798,7 +923,106 @@ function materializeExecutionTree(candidateRoot, executionRoot, serverNodePath) 
     .sort((left, right) => right.length - left.length);
   for (const directory of directories) if (directory !== executionRoot) fs.chmodSync(directory, 0o500);
   fs.chmodSync(executionRoot, 0o500);
-  return entries.length;
+  return entries;
+}
+
+function isolatedGitEnvironment() {
+  return {
+    GIT_DIR: null,
+    GIT_WORK_TREE: null,
+    GIT_INDEX_FILE: null,
+    GIT_COMMON_DIR: null,
+    GIT_OBJECT_DIRECTORY: null,
+    GIT_ALTERNATE_OBJECT_DIRECTORIES: null,
+    GIT_PREFIX: null,
+    GIT_CONFIG_COUNT: null,
+    GIT_CONFIG_KEY_0: null,
+    GIT_CONFIG_VALUE_0: null,
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1"
+  };
+}
+
+function requireGit(result, code) {
+  if (!result.ok) throw new GateError(code, `${result.command}: ${result.stderrFull || result.errorFull || "failed"}`);
+  return result;
+}
+
+function initializeExecutionRepository(executionRoot, identity) {
+  const environment = isolatedGitEnvironment();
+  requireGit(git(["init", "--quiet"], {cwd: executionRoot, env: environment}), "EXECUTION_REPOSITORY_INIT_FAILED");
+  const objects = fs.realpathSync(path.join(identity.commonDirectory, "objects"));
+  if (!fs.statSync(objects).isDirectory()) throw new GateError("SOURCE_OBJECT_STORE_INVALID", `Git object store is not a directory: ${objects}`);
+  atomicWrite(path.join(executionRoot, ".git", "objects", "info", "alternates"), `${objects}\n`, 0o600);
+  const configure = (key, value) => requireGit(git(["config", "--local", key, value], {cwd: executionRoot, env: environment}), "EXECUTION_REPOSITORY_CONFIG_FAILED");
+  configure("core.bare", "false");
+  configure("core.filemode", "false");
+  configure("user.name", "SDE QE Isolated Test");
+  configure("user.email", "sde-qe-isolated@example.invalid");
+  configure("gc.auto", "0");
+  if (identity.remoteUrl) {
+    requireGit(git(["remote", "add", "origin", identity.remoteUrl], {cwd: executionRoot, env: environment}), "EXECUTION_REMOTE_CONFIG_FAILED");
+  }
+  if (identity.base && identity.base !== NULL_SHA) {
+    requireGit(git(["update-ref", "refs/remotes/origin/main", identity.base], {cwd: executionRoot, env: environment}), "EXECUTION_BASE_REF_FAILED");
+    requireGit(git(["update-ref", "refs/heads/main", identity.base], {cwd: executionRoot, env: environment}), "EXECUTION_BASE_REF_FAILED");
+  }
+  requireGit(git(["update-ref", "--no-deref", "HEAD", identity.candidateSha], {cwd: executionRoot, env: environment}), "EXECUTION_HEAD_FAILED");
+  requireGit(git(["read-tree", identity.candidateSha], {cwd: executionRoot, env: environment}), "EXECUTION_INDEX_FAILED");
+  const verification = git(["status", "--porcelain=v1", "--untracked-files=all"], {cwd: executionRoot, env: environment});
+  if (!verification.ok || String(verification.stdout).trim()) {
+    throw new GateError("EXECUTION_REPOSITORY_NOT_CLEAN", scrub(`${verification.stdoutFull}\n${verification.stderrFull}`));
+  }
+}
+
+function filesystemSnapshot(root, expectedServerNodePath = null) {
+  const records = [];
+  const visit = (directory, prefix = "") => {
+    for (const name of fs.readdirSync(directory).sort()) {
+      const relative = prefix ? `${prefix}/${name}` : name;
+      if (relative === ".git" || relative.startsWith(".git/")) continue;
+      const target = path.join(directory, name);
+      const stat = fs.lstatSync(target);
+      if (stat.isSymbolicLink()) {
+        records.push({path: relative, type: "symlink", mode: stat.mode & 0o777, target: fs.readlinkSync(target)});
+      } else if (stat.isDirectory()) {
+        visit(target, relative);
+      } else if (stat.isFile()) {
+        records.push({path: relative, type: "file", mode: stat.mode & 0o777, sha256: sha256(fs.readFileSync(target))});
+      } else {
+        records.push({path: relative, type: "unsupported", mode: stat.mode & 0o777});
+      }
+    }
+  };
+  visit(root);
+  const dependency = records.find((item) => item.path === "server/node_modules");
+  const dependencyLinkValid = expectedServerNodePath === null ||
+    (dependency?.type === "symlink" && dependency.target === expectedServerNodePath);
+  return {hash: sha256(stableJson(records)), records, dependencyLinkValid};
+}
+
+function executionMutationStatus(root, baseline, expectedServerNodePath = null) {
+  const current = filesystemSnapshot(root, expectedServerNodePath);
+  return {
+    mutated: !current.dependencyLinkValid || current.hash !== baseline.hash,
+    dependencyLinkValid: current.dependencyLinkValid,
+    baselineHash: baseline.hash,
+    currentHash: current.hash
+  };
+}
+
+function sharedGitSnapshot(root, identity, knownRootGitDirectory = null) {
+  const rootGitDirectory = knownRootGitDirectory || gitText(["rev-parse", "--path-format=absolute", "--git-dir"], root, "INVOCATION_GIT_DIR_UNAVAILABLE");
+  const configFile = path.join(identity.commonDirectory, "config");
+  const indexFile = path.join(rootGitDirectory, "index");
+  const refs = requireGit(git([`--git-dir=${identity.commonDirectory}`, "for-each-ref", "--format=%(refname) %(objectname)"], {env: isolatedGitEnvironment()}), "SHARED_REFS_UNAVAILABLE");
+  return {
+    rootGitDirectory,
+    configSha256: sha256(fs.readFileSync(configFile)),
+    headSha256: sha256(fs.readFileSync(path.join(rootGitDirectory, "HEAD"))),
+    indexSha256: fs.existsSync(indexFile) ? sha256(fs.readFileSync(indexFile)) : null,
+    refsSha256: sha256(String(refs.stdoutFull).split(/\r?\n/).filter(Boolean).sort().join("\n"))
+  };
 }
 
 function candidateMutationStatus(candidateRoot, candidateSha, expectedServerNodePath = null) {
@@ -835,12 +1059,18 @@ function restoreWritable(root) {
   visit(root);
 }
 
-function executeFullProfile(candidateRoot, identity, artifactDirectory, invocationRoot) {
+function executeFullProfile(candidateRoot, identity, artifactDirectory, invocationRoot, logDirectory) {
   const env = profileEnvironment(identity, artifactDirectory, invocationRoot);
+  const expectedServerNodePath = fs.statSync(env.SDE_QE_SERVER_NODE_PATH, {throwIfNoEntry: false})?.isDirectory()
+    ? env.SDE_QE_SERVER_NODE_PATH
+    : null;
+  const filesystemBaseline = filesystemSnapshot(candidateRoot, expectedServerNodePath);
   const tests = [];
+  mkdirPrivate(logDirectory);
   const p0 = runP0(candidateRoot, env);
-  tests.push(p0.test);
-  tests.push({id: "candidate-identity", command: "git candidate identity and exact diff", status: "PASS", skipped: false, exit: 0, signal: null, durationMs: 0, output: `${identity.commitRange}; commits=${identity.commits.length}; files=${identity.changedFiles.length}`});
+  const record = (test) => tests.push(finalizeTest(test, p0.result, logDirectory, tests.length));
+  record(p0.test);
+  record({id: "candidate-identity", command: "git candidate identity and exact diff", status: "PASS", skipped: false, exit: 0, signal: null, durationMs: 0, output: `${identity.commitRange}; commits=${identity.commits.length}; files=${identity.changedFiles.length}`});
   const commands = [
     ["qe-unit", "npm", ["run", "test:sde:qe:unit"], 5 * 60 * 1000],
     ["qe-policy", "npm", ["run", "test:sde:qe:policy"], 5 * 60 * 1000],
@@ -853,28 +1083,28 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
     ["browserguard-contracts", "npm", ["run", "test:sde:qe:browserguard"], 20 * 60 * 1000]
   ];
   for (const [id, command, args, timeoutMs] of commands) {
-    tests.push(commandTest(id, run(command, args, {cwd: candidateRoot, env, timeoutMs})));
+    record(commandTest(id, run(command, args, {cwd: candidateRoot, env, timeoutMs})));
   }
   const serverScript = "const {buildInventory}=require('./tests/sde-quality-engine/lib/inventory.cjs');const {runServerSuite}=require('./tests/sde-quality-engine/lib/checks.cjs');const r=runServerSuite(buildInventory());process.stdout.write(JSON.stringify(r));if(r.some(x=>x.status!=='GREEN'))process.exitCode=1;";
-  tests.push(commandTest("server-contracts", run(process.execPath, ["-e", serverScript], {cwd: candidateRoot, env, timeoutMs: 30 * 60 * 1000})));
-  tests.push(internalNodeTest("json-schema-validation", "parse every tracked JSON/schema", () => validateJson(candidateRoot)));
-  tests.push(internalNodeTest("node-syntax", "node --check every tracked JavaScript source", () => validateNodeSyntax(candidateRoot)));
-  tests.push(internalNodeTest("python-syntax", "python3.11 ast.parse every tracked Python source", () => validatePythonSyntax(candidateRoot, env)));
-  tests.push(internalNodeTest("workflow-yaml", "Ruby Psych parse every tracked workflow YAML", () => validateWorkflowYaml(candidateRoot, env)));
-  tests.push(commandTest("git-diff-check", git(["diff", "--check", identity.base, identity.candidateSha], {cwd: candidateRoot})));
-  tests.push(internalNodeTest("security-policy", "no-bypass, secret, permanent-test and skip policy scan", () => policyScan(candidateRoot, identity)));
-  const expectedServerNodePath = fs.statSync(env.SDE_QE_SERVER_NODE_PATH, {throwIfNoEntry: false})?.isDirectory()
-    ? env.SDE_QE_SERVER_NODE_PATH
-    : null;
-  const mutation = candidateMutationStatus(candidateRoot, identity.candidateSha, expectedServerNodePath);
+  record(commandTest("server-contracts", run(process.execPath, ["-e", serverScript], {cwd: candidateRoot, env, timeoutMs: 30 * 60 * 1000})));
+  record(internalNodeTest("json-schema-validation", "parse every tracked JSON/schema", () => validateJson(candidateRoot)));
+  record(internalNodeTest("node-syntax", "node --check every tracked JavaScript source", () => validateNodeSyntax(candidateRoot)));
+  record(internalNodeTest("python-syntax", "python3.11 ast.parse every tracked Python source", () => validatePythonSyntax(candidateRoot, env)));
+  record(internalNodeTest("workflow-yaml", "Ruby Psych parse every tracked workflow YAML", () => validateWorkflowYaml(candidateRoot, env)));
+  record(commandTest("git-diff-check", git(["diff", "--check", identity.base, identity.candidateSha], {cwd: candidateRoot})));
+  record(internalNodeTest("security-policy", "no-bypass, secret, permanent-test and skip policy scan", () => policyScan(candidateRoot, identity)));
+  const mutation = executionMutationStatus(candidateRoot, filesystemBaseline, expectedServerNodePath);
   const candidateMutation = mutation.mutated;
-  tests.push({id: "candidate-no-mutation", command: "git status + git diff --exit-code against candidate (expected read-only mode bits and validated dependency link ignored)", status: candidateMutation ? "FAIL" : "PASS", skipped: false, exit: candidateMutation ? 1 : 0, signal: null, durationMs: mutation.status.durationMs + mutation.diff.durationMs, output: candidateMutation ? scrub(`dependencyLinkValid=${mutation.dependencyLinkValid}\n${mutation.status.stdout}\n${mutation.diff.stdout}\n${mutation.diff.stderr}`) : "Candidate remained byte-identical and clean; controlled dependency link remained exact."});
-  return {p0: p0.result, tests, candidateMutation};
+  const mutationOutput = candidateMutation
+    ? `dependencyLinkValid=${mutation.dependencyLinkValid}\nbaselineSha256=${mutation.baselineHash}\ncurrentSha256=${mutation.currentHash}`
+    : `Execution filesystem remained byte-identical; snapshotSha256=${mutation.currentHash}; controlled dependency link remained exact.`;
+  record({id: "candidate-no-mutation", command: "content, type and mode manifest against the read-only execution snapshot", status: candidateMutation ? "FAIL" : "PASS", skipped: false, exit: candidateMutation ? 1 : 0, signal: null, durationMs: 0, output: scrub(mutationOutput), _fullOutput: mutationOutput});
+  return {p0: p0.result, tests, candidateMutation, logDirectory};
 }
 
-function runCandidateProfile(root, identity) {
+function runCandidateProfile(root, identity, options = {}) {
   const override = testProfileOverride(identity, root);
-  if (override) return override;
+  if (override) return finalizeProfile(override, options.logDirectory);
   const temporaryRoot = fs.mkdtempSync("/private/tmp/sde-qe-prepush-run.");
   fs.chmodSync(temporaryRoot, 0o700);
   const candidateRoot = path.join(temporaryRoot, "candidate");
@@ -891,14 +1121,33 @@ function runCandidateProfile(root, identity) {
   try {
     chmodReadOnly(candidateRoot);
     const serverNodePath = process.env.SDE_QE_SERVER_NODE_PATH || path.join(mainWorktree(identity.commonDirectory) || root, "server", "node_modules");
-    materializeExecutionTree(candidateRoot, executionRoot, serverNodePath);
-    profile = executeFullProfile(executionRoot, identity, artifactDirectory, root);
+    const sharedBefore = sharedGitSnapshot(root, identity);
+    materializeExecutionTree(candidateRoot, executionRoot, serverNodePath, identity);
+    profile = executeFullProfile(executionRoot, identity, artifactDirectory, root, options.logDirectory);
     const anchorStatus = git(["status", "--porcelain=v1", "--untracked-files=all"], {cwd: candidateRoot});
-    if (!anchorStatus.ok || String(anchorStatus.stdout).trim()) {
+    let sharedAfter;
+    let sharedError = null;
+    try {
+      sharedAfter = sharedGitSnapshot(root, identity, sharedBefore.rootGitDirectory);
+    } catch (error) {
+      sharedError = scrubFull(error.stack || error.message);
+    }
+    const sharedStateChanged = sharedError !== null || stableJson(sharedBefore) !== stableJson(sharedAfter);
+    const anchorChanged = !anchorStatus.ok || String(anchorStatus.stdout).trim() !== "";
+    const isolationOutput = [
+      `anchorClean=${!anchorChanged}`,
+      `sharedGitStateUnchanged=${!sharedStateChanged}`,
+      `before=${stableJson(sharedBefore)}`,
+      `after=${sharedAfter ? stableJson(sharedAfter) : "UNAVAILABLE"}`,
+      sharedError ? `error=${sharedError}` : null,
+      anchorStatus.stdoutFull,
+      anchorStatus.stderrFull
+    ].filter(Boolean).join("\n");
+    if (anchorChanged || sharedStateChanged) {
       profile.candidateMutation = true;
-      profile.tests.push({id: "detached-candidate-anchor", command: "git status on detached candidate identity anchor", status: "FAIL", skipped: false, exit: 1, signal: null, durationMs: anchorStatus.durationMs, output: scrub(`${anchorStatus.stdout}\n${anchorStatus.stderr}`)});
+      profile.tests.push(finalizeTest({id: "detached-candidate-anchor", command: "detached anchor status + shared config/ref/index integrity", status: "FAIL", skipped: false, exit: 1, signal: null, durationMs: anchorStatus.durationMs, output: scrub(isolationOutput), _fullOutput: isolationOutput}, profile.p0, options.logDirectory, profile.tests.length));
     } else {
-      profile.tests.push({id: "detached-candidate-anchor", command: "git status on detached candidate identity anchor", status: "PASS", skipped: false, exit: 0, signal: null, durationMs: anchorStatus.durationMs, output: "Detached candidate identity anchor remained clean and unmodified."});
+      profile.tests.push(finalizeTest({id: "detached-candidate-anchor", command: "detached anchor status + shared config/ref/index integrity", status: "PASS", skipped: false, exit: 0, signal: null, durationMs: anchorStatus.durationMs, output: "Detached candidate anchor and shared Git config, refs and invocation index remained unchanged.", _fullOutput: isolationOutput}, profile.p0, options.logDirectory, profile.tests.length));
     }
   } finally {
     restoreWritable(executionRoot);
@@ -915,6 +1164,19 @@ function writeReportFiles(report, paths) {
   const jsonFile = path.join(paths.reports, `${report.reportId}.json`);
   const textFile = path.join(paths.reports, `${report.reportId}.txt`);
   atomicWrite(jsonFile, `${JSON.stringify(report, null, 2)}\n`, 0o600);
+  const controlLines = (report.tests || []).flatMap((test, index) => [
+    "",
+    `CONTROL_${String(index + 1).padStart(2, "0")}: ${test.id}`,
+    `  COMMAND: ${test.command}`,
+    `  RESULT: ${test.status}`,
+    `  EXIT: ${test.exit ?? "null"}`,
+    `  PHASE: ${test.phase || "unknown"}`,
+    `  REASON_CODE: ${test.reasonCode || "UNKNOWN"}`,
+    `  CLASSIFICATION: ${test.classification || "NOT_APPLICABLE"}`,
+    `  FIRST_CAUSAL_LINE: ${test.finding?.firstCausalLine || "NONE"}`,
+    `  LOG: ${test.log?.path || "NONE"}`,
+    `  LOG_SHA_256: ${test.log?.sha256 || "NONE"}`
+  ]);
   const text = [
     `${GATE_ID} ${GATE_VERSION}`,
     `REPORT_ID: ${report.reportId}`,
@@ -922,13 +1184,19 @@ function writeReportFiles(report, paths) {
     `REMOTE: ${report.candidate?.remoteUrl || "UNKNOWN"} ${report.candidate?.remoteRef || "UNKNOWN"}`,
     `P0: ${report.p0?.status || "NOT_EVALUATED"} ${report.p0?.reasonCode || ""}`,
     `QE_RESULT: ${report.qeResult || "NOT_EVALUATED"}`,
+    `TEST_TOTAL: ${report.testTotals?.total ?? (report.tests || []).length}`,
+    `TEST_PASS: ${report.testTotals?.pass ?? 0}`,
+    `TEST_FAIL: ${report.testTotals?.fail ?? 0}`,
+    `TEST_SKIPS: ${report.testTotals?.skips ?? 0}`,
+    `LOG_DIRECTORY: ${report.logDirectory || "NONE"}`,
     `REASON_CODES: ${(report.reasonCodes || []).join(",") || "NONE"}`,
     `READY_FOR_BRANCH_PUSH_APPROVAL: ${String(report.READY_FOR_BRANCH_PUSH_APPROVAL).toUpperCase()}`,
     `APPROVAL_REQUEST_ID: ${report.approvalRequestId || "NONE"}`,
     `REPORT_SHA_256: ${report.reportSha256}`,
     report.approveCommand ? `APPROVE_COMMAND: ${report.approveCommand}` : null,
     `PUSHED: ${String(report.PUSHED).toUpperCase()}`,
-    "AUTO_FIX: FALSE"
+    "AUTO_FIX: FALSE",
+    ...controlLines
   ].filter(Boolean).join("\n") + "\n";
   atomicWrite(textFile, text, 0o600);
   return {jsonFile, textFile};
@@ -1022,10 +1290,11 @@ function hookMode(remoteName, remoteLocation) {
       return;
     }
 
-    const profile = runCandidateProfile(root, identity);
+    const reportId = `gate-${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.randomBytes(4).toString("hex")}`;
+    const logDirectory = path.join(paths.reports, `${reportId}.logs`);
+    const profile = runCandidateProfile(root, identity, {logDirectory});
     const failedTests = profile.tests.filter((item) => item.status !== "PASS" || item.skipped);
     const ready = p0Ready(profile.p0) && failedTests.length === 0 && profile.candidateMutation === false;
-    const reportId = `gate-${new Date().toISOString().replace(/[:.]/g, "-")}-${crypto.randomBytes(4).toString("hex")}`;
     const requestId = ready ? crypto.randomUUID() : null;
     const reasons = [];
     if (!p0Ready(profile.p0)) reasons.push(profile.p0.reasonCode || "P0_NOT_APPROVABLE");
@@ -1043,6 +1312,7 @@ function hookMode(remoteName, remoteLocation) {
       diff: {parent: identity.parent, base: identity.base, range: identity.commitRange, commits: identity.commits, changedFiles: identity.changedFiles, commonDirectory: identity.commonDirectory},
       commands: profile.tests.map((item) => item.command),
       tests: profile.tests,
+      logDirectory: profile.logDirectory,
       p0: {status: profile.p0.status, reasonCode: profile.p0.reasonCode, subgates: profile.p0.details?.subgates || []},
       qeResult: ready ? "GREEN" : "RED",
       reasonCodes: [...new Set(reasons)],
@@ -1052,7 +1322,13 @@ function hookMode(remoteName, remoteLocation) {
       PUSHED: false,
       autoFix: false,
       candidateMutation: profile.candidateMutation,
-      activeSkips: profile.tests.filter((item) => item.skipped).length
+      activeSkips: profile.tests.filter((item) => item.skipped).length,
+      testTotals: {
+        total: profile.tests.length,
+        pass: profile.tests.filter((item) => item.status === "PASS").length,
+        fail: failedTests.length,
+        skips: profile.tests.filter((item) => item.skipped).length
+      }
     };
     report.reportSha256 = canonicalHash(report, "reportSha256");
     const files = writeReportFiles(report, paths);
@@ -1141,10 +1417,15 @@ module.exports = {
   canonicalRemoteUrl,
   candidateIdentity,
   doctorStatus,
+  executionMutationStatus,
+  filesystemSnapshot,
+  finalizeProfile,
+  materializeExecutionTree,
   parsePrePushInput,
   p0Ready,
   policyScan,
   sameBinding,
   sha256,
-  stableJson
+  stableJson,
+  restoreWritable
 };

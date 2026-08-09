@@ -43,14 +43,38 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["id", "command", "status", "skipped", "exit", "durationMs"],
+        "required": ["id", "command", "status", "skipped", "exit", "durationMs", "phase", "reasonCode", "classification", "finding", "log"],
         "properties": {
           "id": {"type": "string"},
           "command": {"type": "string"},
           "status": {"enum": ["PASS", "FAIL"]},
           "skipped": {"const": false},
           "exit": {"type": ["integer", "null"]},
-          "durationMs": {"type": "number", "minimum": 0}
+          "durationMs": {"type": "number", "minimum": 0},
+          "phase": {"enum": ["p0", "setup", "test", "teardown"]},
+          "reasonCode": {"type": "string", "minLength": 1},
+          "classification": {
+            "type": ["string", "null"],
+            "enum": ["CANDIDATE_DEFECT", "BASELINE_EXISTING", "ENVIRONMENT_OR_TOOL", "LIVE_EVIDENCE_BLOCKER", "UNKNOWN", null]
+          },
+          "finding": {
+            "type": "object",
+            "required": ["firstCausalLine", "message", "rootCauseGroup"],
+            "properties": {
+              "firstCausalLine": {"type": "string", "minLength": 1},
+              "message": {"type": "string", "minLength": 1},
+              "rootCauseGroup": {"type": ["string", "null"]}
+            }
+          },
+          "log": {
+            "type": "object",
+            "required": ["path", "sha256", "bytes"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+              "bytes": {"type": "integer", "minimum": 1}
+            }
+          }
         }
       }
     },
@@ -71,6 +95,17 @@
     "autoFix": {"const": false},
     "candidateMutation": {"type": "boolean"},
     "activeSkips": {"type": "integer", "minimum": 0},
+    "logDirectory": {"type": "string", "minLength": 1},
+    "testTotals": {
+      "type": "object",
+      "required": ["total", "pass", "fail", "skips"],
+      "properties": {
+        "total": {"type": "integer", "minimum": 0},
+        "pass": {"type": "integer", "minimum": 0},
+        "fail": {"type": "integer", "minimum": 0},
+        "skips": {"type": "integer", "minimum": 0}
+      }
+    },
     "reportSha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
   }
 }

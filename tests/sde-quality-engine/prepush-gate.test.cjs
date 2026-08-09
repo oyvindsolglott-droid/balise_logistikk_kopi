@@ -218,6 +218,77 @@ test("candidate mutation check ignores only expected read-only mode bits", (t) =
   assert.equal(gate.candidateMutationStatus(item.repository, item.baseline, dependencies).mutated, true);
 });
 
+test("execution repository isolates config, refs and index from the candidate repository", (t) => {
+  const item = fixture();
+  const execution = path.join(item.directory, "execution");
+  t.after(() => {
+    gate.restoreWritable(execution);
+    fs.rmSync(item.directory, {recursive: true, force: true});
+  });
+  const candidate = commitFile(item.repository, "candidate.txt", "isolated candidate\n", "isolated candidate");
+  const common = commonDirectory(item.repository);
+  const sourceGit = git(item.repository, "rev-parse", "--path-format=absolute", "--git-dir");
+  const sourceState = () => ({
+    config: crypto.createHash("sha256").update(fs.readFileSync(path.join(common, "config"))).digest("hex"),
+    head: git(item.repository, "rev-parse", "HEAD"),
+    refs: must("git", [`--git-dir=${common}`, "for-each-ref", "--format=%(refname) %(objectname)"], {cwd: item.directory}),
+    index: crypto.createHash("sha256").update(fs.readFileSync(path.join(sourceGit, "index"))).digest("hex")
+  });
+  const before = sourceState();
+  const identity = {
+    candidateSha: candidate,
+    base: item.baseline,
+    commonDirectory: common,
+    remoteUrl: gate.canonicalRemoteUrl(item.remote, item.repository)
+  };
+  gate.materializeExecutionTree(item.repository, execution, null, identity);
+  assert.equal(fs.statSync(path.join(execution, ".git")).isDirectory(), true);
+  assert.equal(fs.readFileSync(path.join(execution, ".git/objects/info/alternates"), "utf8").trim(), fs.realpathSync(path.join(common, "objects")));
+  const contentBaseline = gate.filesystemSnapshot(execution);
+
+  git(execution, "config", "user.name", "Mutated only in isolated execution");
+  git(execution, "update-ref", "refs/heads/execution-probe", candidate);
+  git(execution, "reset", "--mixed", item.baseline);
+  git(execution, "config", "core.bare", "true");
+
+  assert.deepEqual(sourceState(), before);
+  assert.equal(git(item.repository, "rev-parse", "--is-bare-repository"), "false");
+  assert.equal(gate.executionMutationStatus(execution, contentBaseline).mutated, false);
+});
+
+test("durable control logs preserve full sanitized output and structured findings", (t) => {
+  const directory = fs.mkdtempSync("/private/tmp/sde-prepush-logs.");
+  t.after(() => fs.rmSync(directory, {recursive: true, force: true}));
+  const secret = "do-not-persist-this-value";
+  const fullOutput = `${"x".repeat(40 * 1024)}\ntoken=${secret}\nError: exact causal failure\n`;
+  const profile = gate.finalizeProfile({
+    p0: {status: "GREEN", reasonCode: "LIVE_DATA_CONTINUITY_VERIFIED"},
+    tests: [{
+      id: "qe-unit",
+      command: "npm run test:sde:qe:unit",
+      status: "FAIL",
+      skipped: false,
+      exit: 1,
+      signal: null,
+      durationMs: 12,
+      output: fullOutput.slice(0, 32 * 1024),
+      _fullOutput: fullOutput
+    }],
+    candidateMutation: false
+  }, path.join(directory, "logs"));
+  const control = profile.tests[0];
+  const bytes = fs.readFileSync(control.log.path);
+  const text = bytes.toString("utf8");
+  assert.ok(bytes.length > 40 * 1024);
+  assert.doesNotMatch(text, new RegExp(secret));
+  assert.match(text, /token=\[REDACTED\]/);
+  assert.match(text, /Error: exact causal failure/);
+  assert.equal(control.finding.firstCausalLine, "Error: exact causal failure");
+  assert.equal(control.classification, "UNKNOWN");
+  assert.equal(control.log.sha256, crypto.createHash("sha256").update(bytes).digest("hex"));
+  assert.equal(fs.statSync(control.log.path).mode & 0o077, 0);
+});
+
 test("black-box push, one-time approval, invalidation and policy scenarios A-T", (t) => {
   const item = fixture();
   t.after(() => fs.rmSync(item.directory, {recursive: true, force: true}));
@@ -329,6 +400,9 @@ test("black-box push, one-time approval, invalidation and policy scenarios A-T",
   assert.equal(firstReport.PUSHED, false);
   assert.equal(firstReport.autoFix, false);
   assert.equal(firstReport.activeSkips, 0);
+  assert.equal(firstReport.testTotals.total, firstReport.tests.length);
+  assert.equal(firstReport.testTotals.skips, 0);
+  assert.ok(firstReport.tests.every((control) => control.log?.sha256 && control.finding?.firstCausalLine && control.reasonCode));
   assert.equal(selfHash(firstReport, "reportSha256"), firstReport.reportSha256);
   assert.ok(machineReports.some((report) => report.PUSHED === true));
   assert.doesNotThrow(() => JSON.parse(fs.readFileSync(REPORT_SCHEMA, "utf8")));
