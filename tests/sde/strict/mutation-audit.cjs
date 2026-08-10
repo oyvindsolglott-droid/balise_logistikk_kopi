@@ -867,8 +867,8 @@ const mutations = [
     target:"generator",
     apply:pythonSource=>replaceOnce(
       pythonSource,
-      "if len(exact_occurrence_keys) > 1:  # SDE_BALISE_REJECT_AMBIGUOUS\n        return None",
-      "if len(exact_occurrence_keys) > 1:  # mutation: first exact candidate wins\n        return exact_candidates[0]",
+      "if len(exact_occurrence_keys) > 1:  # SDE_BALISE_REJECT_AMBIGUOUS\n            return None",
+      "if len(exact_occurrence_keys) > 1:  # mutation: first exact candidate wins\n            return exact_candidates[0]",
       "ambiguous exact occurrence rejection",
     ),
     catches:["INV-BALISE-007","INV-BALISE-012"],
