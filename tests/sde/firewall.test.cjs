@@ -659,6 +659,20 @@ test("AA — passive blocked-slot sweep is complete-or-diagnostic across six slo
   assert.equal(report?.results?.every(item=>item.status === "PASS"),true,"every passive blocked-slot invariant must pass");
 });
 
+test("AC — recursive prerequisite planning preserves every valid root request", () => {
+  const result = runHarness("sde-recursive-prerequisite-planning-harness.js");
+  assert.equal(result.error,undefined,`AC recursive prerequisite harness could not start: ${result.error?.message||"unknown error"}`);
+  assert.ok([0,1].includes(result.status),`AC recursive prerequisite harness crashed:\n${failureDetails(result)}`);
+  const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
+  assert.equal(report?.schemaVersion,"sde-recursive-prerequisite-planning-harness-v1");
+  assert.equal(report?.counts?.total,18);
+  assert.equal(report?.scenarioCounts?.total >= 18,true);
+  assert.deepEqual(report?.results?.map(item=>item.id),Array.from({length:18},(_,index)=>`INV-EGRESS-${String(index+32).padStart(3,"0")}`));
+  assert.equal(report?.deterministicReplay?.runs,3);
+  assert.equal(report?.viewportChecks?.map(item=>item.width).join(","),"1200,390");
+  assert.equal(report?.results?.every(item=>item.status === "PASS"),true,"every recursive prerequisite invariant must pass");
+});
+
 test("AB — Balise/Tursatt assignments remain bound to the exact Skien departure occurrence", () => {
   const result = run("python3.11", [
     "-B",

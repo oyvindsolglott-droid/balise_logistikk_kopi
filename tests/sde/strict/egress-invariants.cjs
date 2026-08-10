@@ -7,7 +7,8 @@ const root = path.resolve(__dirname, "../../..");
 const indexPath = path.resolve(process.argv[2]);
 const harnesses = [
   {name:"trapped-egress", path:path.join(root, "tests/sde/harnesses/sde-trapped-egress-chain-harness.js"), expected:16},
-  {name:"passive-blocked-slot", path:path.join(root, "tests/sde/harnesses/sde-passive-blocked-slot-sweep-harness.js"), expected:9}
+  {name:"passive-blocked-slot", path:path.join(root, "tests/sde/harnesses/sde-passive-blocked-slot-sweep-harness.js"), expected:9},
+  {name:"recursive-prerequisite", path:path.join(root, "tests/sde/harnesses/sde-recursive-prerequisite-planning-harness.js"), expected:18}
 ];
 const reports = harnesses.map(harness=>{
   const run = childProcess.spawnSync(process.execPath, [harness.path, indexPath], {
@@ -30,5 +31,5 @@ const reports = harnesses.map(harness=>{
 process.stdout.write(`${JSON.stringify({
   category:"egress",
   results:reports.flatMap(report=>report.results),
-  scenarios:{trappedEgress:reports[0].scenarios||{},passiveBlockedSlot:reports[1].scenarios||[]}
+  scenarios:{trappedEgress:reports[0].scenarios||{},passiveBlockedSlot:reports[1].scenarios||[],recursivePrerequisite:reports[2].scenarios||[]}
 })}\n`);

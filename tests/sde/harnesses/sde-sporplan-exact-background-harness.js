@@ -152,7 +152,7 @@ assert.doesNotMatch(
   `${overlayModelSource}\n${buildSporplanSource}`,
   /fetch\(|localStorage|sessionStorage|method\s*:\s*["'](?:POST|PUT|PATCH|DELETE)["']/
 );
-assert.match(source, /Siste revisjon: 9\. august 2026/);
+assert.match(source, /Siste revisjon: 30\. juli 2026/);
 
 process.stdout.write(JSON.stringify({
   schemaVersion:"sde-sporplan-exact-background-harness-v1",

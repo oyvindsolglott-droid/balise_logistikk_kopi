@@ -59,6 +59,15 @@ Matrisen dekker FROM blokkert, TO fysisk opptatt og TO tom men fysisk
 utilgjengelig slot, tre inputrekkefølger og passiv desktop-/390 px-rendering.
 Mutasjonene AA1–AA4 skal drepes strukturert av disse invariantene.
 
+`INV-EGRESS-032`–`049` låser den autoriserte rotbestillingen gjennom rekursiv
+prerequisite-planlegging. Direkte source-/target-blokkering, flernivåblockere,
+canonical source-reconciliation, uttømt løsningsrom, ufullført søk, replan,
+atomisk materialisering og deterministisk replay er separate kontrakter. Bare
+første fysiske kort kan være `READY`; main og recovery er synlige som
+`DEPENDENCY_BLOCKED`. `STATE_RECONCILIATION_REQUIRED`,
+`PREREQUISITE_ROUTE_CLEARANCE` og `RESOURCE_RELEASE_REQUIRED` er uttrykkelig
+ikke fysiske bevegelseskort. Mutasjonene AC1–AC4 skal drepes semantisk.
+
 `INV-BALISE-001`–`012` låser Balise/Tursatt-materiell til eksakt operativ dato,
 tognummer, routeId, Skien-stopp/stopp-ID og planlagt avgangstid. Materiell etter
 Skien avgrenses ved det første faktiske neste stoppet i samme stoppsekvens; det

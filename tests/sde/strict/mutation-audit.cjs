@@ -125,6 +125,10 @@ const ACTIVE_SOURCE_MUTANT_IDS = Object.freeze([
   "AB2-RESTORE-ORIGIN-SKIEN-PROXY",
   "AB3-ALLOW-NEAREST-SKIEN-TIME",
   "AB4-FIRST-EXACT-CANDIDATE-WINS",
+  "AC1-DIRECT-BLOCK-RETURNS-NO-CARD",
+  "AC2-RECURSION-STOPS-AFTER-FIRST-PREREQUISITE",
+  "AC3-ROOT-REQUEST-DROPPED-ON-REPLAN",
+  "AC4-MAIN-CARD-MARKED-READY-BEFORE-DEPENDENCIES",
 ]);
 const ACTIVE_MUTATION_SCENARIO_IDS = Object.freeze([
   ...ACTIVE_SOURCE_MUTANT_IDS,
@@ -132,7 +136,7 @@ const ACTIVE_MUTATION_SCENARIO_IDS = Object.freeze([
   "qualification-contract-fail-closed-negatives",
 ]);
 
-if (ACTIVE_SOURCE_MUTANT_IDS.length !== 40 || ACTIVE_MUTATION_SCENARIO_IDS.length !== 42) {
+if (ACTIVE_SOURCE_MUTANT_IDS.length !== 44 || ACTIVE_MUTATION_SCENARIO_IDS.length !== 46) {
   throw new Error("active mutation catalogs have unexpected totals");
 }
 
@@ -873,7 +877,71 @@ const mutations = [
     ),
     catches:["INV-BALISE-007","INV-BALISE-012"],
   },
+  {
+    id:"AC1-DIRECT-BLOCK-RETURNS-NO-CARD",
+    apply:html=>replaceOnce(
+      html,
+      "const directBlockRequiresPlanning = true; // SDE_RECURSIVE_DIRECT_BLOCK",
+      "const directBlockRequiresPlanning = false; /* mutation: direct block returns no card */",
+      "recursive direct-block planning",
+    ),
+    catches:["INV-EGRESS-032","INV-EGRESS-033","INV-EGRESS-034","INV-EGRESS-049"],
+    any:true,
+  },
+  {
+    id:"AC2-RECURSION-STOPS-AFTER-FIRST-PREREQUISITE",
+    apply:html=>replaceOnce(
+      html,
+      "const recursiveExpansionEnabled = true; // SDE_RECURSIVE_EXPAND_ALL_BLOCKERS",
+      "const recursiveExpansionEnabled = false; /* mutation: stop after first prerequisite */",
+      "recursive blocker expansion",
+    ),
+    catches:["INV-EGRESS-036","INV-EGRESS-046"],
+    any:true,
+  },
+  {
+    id:"AC3-ROOT-REQUEST-DROPPED-ON-REPLAN",
+    apply:html=>replaceOnce(
+      html,
+      "const preservedRootRequest = rootRequest; // SDE_RECURSIVE_PRESERVE_ROOT",
+      "const preservedRootRequest = input.previousPlan ? null : rootRequest; /* mutation: root request dropped on replan */",
+      "recursive root-request persistence",
+    ),
+    catches:["INV-EGRESS-041","INV-EGRESS-043"],
+    any:true,
+  },
+  {
+    id:"AC4-MAIN-CARD-MARKED-READY-BEFORE-DEPENDENCIES",
+    apply:html=>replaceOnce(
+      html,
+      "const dependencyReady = dependencies.length === 0; // SDE_RECURSIVE_DEPENDENCY_READY",
+      "const dependencyReady = role === \"MAIN_MOVE\" || dependencies.length === 0; /* mutation: main ready before dependencies */",
+      "recursive dependency readiness",
+    ),
+    catches:["INV-EGRESS-035","INV-EGRESS-042","INV-EGRESS-043"],
+    any:true,
+  },
 ];
+
+if (process.argv.includes("--catalog-only")) {
+  const catalog = validateExactCatalog(mutations.map(item => item.id), ACTIVE_SOURCE_MUTANT_IDS, "source mutant");
+  const errors = [...catalog.errors];
+  mutations.forEach(mutation => {
+    if (typeof mutation.apply !== "function") errors.push(`${mutation.id}: apply must be a function`);
+    if (!Array.isArray(mutation.catches) || !mutation.catches.length) errors.push(`${mutation.id}: catches must be non-empty`);
+    if (mutation.catches?.some(id => !STRICT_INVARIANT_IDS.includes(id) && !BALISE_INVARIANT_IDS.includes(id))) {
+      errors.push(`${mutation.id}: catches contains an invariant outside the active strict/Balise catalogs`);
+    }
+  });
+  process.stdout.write(`${JSON.stringify({
+    schemaVersion:"sde-mutation-catalog-v1",
+    status:errors.length ? "FAIL" : "PASS",
+    sourceMutantCount:mutations.length,
+    scenarioCount:ACTIVE_MUTATION_SCENARIO_IDS.length,
+    errors
+  })}\n`);
+  process.exit(errors.length ? 1 : 0);
+}
 
 const reports = [];
 let catalogSelfValidation;
