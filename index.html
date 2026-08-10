@@ -9731,7 +9731,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 9. august 2026</p>
+<p class="sub">Siste revisjon: 30. juli 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -21842,7 +21842,30 @@ function buildSdeTrappedEgressDiagnosticRow(row, blockState){
 }
 
 function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
-  const rawRows = applySdeCanonicalRetargetIntentsToRows(Array.isArray(rows) ? rows : []);
+  const actualOccupancy = getSdeTrappedEgressActualOccupancy();
+  const rawRows = applySdeCanonicalRetargetIntentsToRows(Array.isArray(rows) ? rows : []).map(row=>{
+    const vehicle = sanitizeVehicleValue(row?.vehicle);
+    const canonicalSource = getSdeTrappedEgressVehicleSlot(actualOccupancy,vehicle);
+    const candidateSource = normalizeSlot(row?.fromSlot || row?.arrivalSlot || row?.originalFromSlot);
+    const target = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+    if(!vehicle || !target || !canonicalSource || canonicalSource === candidateSource) return row;
+    const rootRequest = buildSdeRecursiveRootRequestForMove(row);
+    return {
+      ...row,
+      fromSlot:canonicalSource,
+      arrivalSlot:canonicalSource,
+      originalFromSlot:canonicalSource,
+      sdeRecursiveRootRequestId:rootRequest.rootRequestId,
+      sdeRecursiveRootRequest:rootRequest,
+      sdeRecursiveSourceReconciliation:{
+        status:"CANONICAL_SOURCE_RECONCILED",
+        candidateSource,
+        canonicalSource,
+        authority:"canonical_actual"
+      },
+      recommendationReason:`Canonical actual source ${canonicalSource} erstattet kandidatens source ${candidateSource || "ukjent"}. ${row?.recommendationReason || ""}`.trim()
+    };
+  });
   const sourceRows = options?.reconcileActive === false
     ? rawRows
     : getSdeAuthoritativeActiveOutcomeRows(rawRows);
@@ -21938,6 +21961,42 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
 
     if(isSdeMoveActioned(row)){
       guarded.push(row);
+      return;
+    }
+
+    const recursiveRootRequest = buildSdeRecursiveRootRequestForMove(row);
+    const recursiveMainSource = getSdeTrappedEgressVehicleSlot(actualOccupancy,recursiveRootRequest.requestedVehicleId);
+    const recursiveTargetOccupant = sanitizeVehicleValue(actualOccupancy.get(recursiveRootRequest.requestedTarget));
+    const recursiveTargetOccupiedByOther = Boolean(
+      recursiveTargetOccupant
+      && !haveSameSdeVehicleTokens(recursiveTargetOccupant,recursiveRootRequest.requestedVehicleId)
+    );
+    if(recursiveTargetOccupiedByOther){
+      const recursivePlan = buildSdeRecursivePrerequisiteShiftPlan({
+        rootRequest:recursiveRootRequest,
+        candidateSource:normalizeSlot(row.fromSlot || row.arrivalSlot || row.originalFromSlot),
+        actualPlacements:Array.from(actualOccupancy.entries()).map(([slot,vehicleId])=>({slot,vehicleId})),
+        reservations:sourceRows.filter(candidate=>candidate !== row && !isSdeMoveActioned(candidate)).flatMap(candidate=>{
+          const targetSlot = normalizeSlot(candidate?.recommendedSlot || candidate?.toSlot);
+          return targetSlot ? [{reservationId:`existing-plan|${getSdeMoveActionKey(candidate)}`,targetSlot,vehicleId:candidate?.vehicle}] : [];
+        }),
+        movableVehicleIds:getSdeRecursiveRelevantVehicleIds(
+          actualOccupancy,recursiveRootRequest.requestedVehicleId,recursiveMainSource,recursiveRootRequest.requestedTarget
+        )
+      });
+      const recursiveRows = materializeSdeRecursivePrerequisiteRows(row,recursivePlan);
+      if(recursiveRows.length){
+        recursiveRows.forEach(chainRow=>{
+          guarded.push(chainRow);
+          const key = getSdeMoveActionKey(chainRow);
+          if(chainRow.sdePhysicalDependencyRole === "prerequisite" && key) insertedFreeingKeys.add(key);
+          if(chainRow.sdePhysicalDependencyRole === "return" && key) insertedRecoveryKeys.add(key);
+          const target = normalizeSlot(chainRow.recommendedSlot || chainRow.toSlot);
+          if(target) reservedSlots.add(target);
+        });
+      }else{
+        guarded.push(buildSdeRecursiveResourceActionDiagnosticRow(row,recursivePlan) || row);
+      }
       return;
     }
 
@@ -40900,6 +40959,586 @@ function assertSdeCanonicalProductionReaderContract(reader){
     throw new TypeError("Canonical reader mangler integrity status.");
   }
   return reader;
+}
+
+const SDE_RECURSIVE_ROOT_STATUSES = Object.freeze([
+  "ACTIVE",
+  "PLANNED",
+  "IN_PROGRESS",
+  "REPLAN_REQUIRED",
+  "COMPLETED",
+  "CANCELLED_BY_AUTHORIZED_USER",
+  "STATE_RECONCILIATION_REQUIRED",
+  "RESOURCE_RELEASE_REQUIRED"
+]);
+const SDE_RECURSIVE_PHYSICAL_ROLES = new Set([
+  "PREREQUISITE_RELEASE",
+  "MAIN_MOVE",
+  "MANDATORY_RECOVERY",
+  "RECOVERY"
+]);
+
+function normalizeSdeRecursiveRootRequest(value={}){
+  const requestedVehicleId = sanitizeVehicleValue(value?.requestedVehicleId || value?.vehicleId || value?.vehicle);
+  const requestedTarget = normalizeSlot(value?.requestedTarget || value?.targetSlot || value?.target);
+  const rootRequestId = String(value?.rootRequestId || "").trim() || `root-move|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+    requestedVehicleId:normalizeSdeCanonicalToken(requestedVehicleId),
+    requestedTarget,
+    requestSource:String(value?.requestSource || "canonical-shift-order").trim(),
+    createdAt:String(value?.createdAt || "").trim(),
+    requestRevision:String(value?.requestRevision || "1").trim()
+  }))}`;
+  const requestedStatus = String(value?.status || "ACTIVE").trim().toUpperCase();
+  return {
+    rootRequestId,
+    requestedVehicleId,
+    requestedTarget,
+    requestSource:String(value?.requestSource || "canonical-shift-order").trim(),
+    actor:value?.actor && typeof value.actor === "object" ? cloneSdeCanonicalValue(value.actor) : {},
+    createdAt:String(value?.createdAt || "").trim(),
+    requestRevision:String(value?.requestRevision || "1").trim(),
+    status:SDE_RECURSIVE_ROOT_STATUSES.includes(requestedStatus) ? requestedStatus : "ACTIVE"
+  };
+}
+
+function getSdeRecursiveCanonicalPlacementState(actualPlacements=[]){
+  const byVehicle = new Map();
+  const bySlot = new Map();
+  const ambiguousVehicles = new Set();
+  const ambiguousSlots = new Set();
+  (Array.isArray(actualPlacements) ? actualPlacements : [])
+    .map(item=>({
+      slot:normalizeSlot(item?.slot || item?.sourceSlot),
+      vehicleId:sanitizeVehicleValue(item?.vehicleId || item?.vehicle || item?.mat)
+    }))
+    .filter(item=>item.slot && item.vehicleId)
+    .sort((left,right)=>left.slot.localeCompare(right.slot) || left.vehicleId.localeCompare(right.vehicleId))
+    .forEach(item=>{
+      const token = normalizeSdeCanonicalToken(item.vehicleId);
+      if(byVehicle.has(token) && byVehicle.get(token).slot !== item.slot) ambiguousVehicles.add(token);
+      if(bySlot.has(item.slot) && normalizeSdeCanonicalToken(bySlot.get(item.slot).vehicleId) !== token) ambiguousSlots.add(item.slot);
+      if(!byVehicle.has(token)) byVehicle.set(token,item);
+      if(!bySlot.has(item.slot)) bySlot.set(item.slot,item);
+    });
+  const occupancy = new Map(Array.from(bySlot.entries())
+    .filter(([slot,item])=>!ambiguousSlots.has(slot) && !ambiguousVehicles.has(normalizeSdeCanonicalToken(item.vehicleId)))
+    .map(([slot,item])=>[slot,item.vehicleId]));
+  return {byVehicle,bySlot,ambiguousVehicles,ambiguousSlots,occupancy};
+}
+
+function getSdeRecursiveCandidateTargets(input, vehicleId, fromSlot){
+  const explicit = input?.movementCandidates && typeof input.movementCandidates === "object"
+    ? input.movementCandidates[vehicleId] || input.movementCandidates[normalizeSdeCanonicalToken(vehicleId)]
+    : null;
+  const source = Array.isArray(explicit)
+    ? explicit
+    : Array.isArray(input?.temporaryTargets) && input.temporaryTargets.length
+      ? input.temporaryTargets
+      : [...getSdeResolutionCandidateSlots(fromSlot,""),"9","VN"];
+  return Array.from(new Set(source.map(normalizeSlot).filter(slot=>slot && slot !== "VS")))
+    .sort((left,right)=>scoreSdeResolutionTarget(right) - scoreSdeResolutionTarget(left) || left.localeCompare(right));
+}
+
+function getSdeRecursiveMoveAssessment(occupancy, vehicleId, sourceSlot, targetSlot, input={}){
+  const target = normalizeSlot(targetSlot);
+  const reservation = (Array.isArray(input?.reservations) ? input.reservations : []).find(item=>
+    normalizeSlot(item?.targetSlot || item?.slot) === target
+    && !haveSameSdeVehicleTokens(item?.vehicleId || item?.vehicle,vehicleId)
+  );
+  if(reservation) return {valid:false,reason:"target_reserved",reservation};
+  const assessment = assessSdeTrappedEgressVirtualMove(occupancy,vehicleId,sourceSlot,target);
+  return assessment.valid ? assessment : {...assessment,reason:"physical_route_or_occupancy_blocked"};
+}
+
+function getSdeRecursiveRecoveryTarget(step, mainSource){
+  const source = normalizeSlot(step?.fromSlot);
+  const holding = normalizeSlot(step?.toSlot);
+  const buttMatch = normalizeSlot(mainSource).match(/^(10|11|12)S$/);
+  if(buttMatch && source === `${buttMatch[1]}N` && holding === "VN") return normalizeSlot(mainSource);
+  return source;
+}
+
+function buildSdeRecursiveRecoverySteps(occupancyBeforeMain, mainStep, releases=[], carriedRecoveries=[]){
+  const mainAssessment = getSdeRecursiveMoveAssessment(
+    occupancyBeforeMain,mainStep.vehicleId,mainStep.source,mainStep.target,{}
+  );
+  if(!mainAssessment.valid) return null;
+  let occupancy = applySdeTrappedEgressVirtualMove(
+    occupancyBeforeMain,mainStep.vehicleId,mainStep.source,mainStep.target
+  );
+  const recoverySteps = [];
+  const releaseRecoveries = (Array.isArray(releases) ? releases : []).slice().reverse().flatMap(step=>{
+    if(normalizeSlot(step.fromSlot) === normalizeSlot(mainStep.target)) return [];
+    return [{
+      vehicleId:step.vehicleId,
+      source:step.toSlot,
+      target:getSdeRecursiveRecoveryTarget(step,mainStep.source),
+      role:"MANDATORY_RECOVERY"
+    }];
+  });
+  const pendingRecoveries = (Array.isArray(carriedRecoveries) ? carriedRecoveries : []).map(card=>({
+    vehicleId:sanitizeVehicleValue(card?.vehicleId),
+    source:normalizeSlot(card?.source),
+    target:normalizeSlot(card?.target),
+    role:String(card?.role || "MANDATORY_RECOVERY").trim()
+  }));
+  const unique = new Map([...releaseRecoveries,...pendingRecoveries].map(step=>[
+    [normalizeSdeCanonicalToken(step.vehicleId),step.source,step.target].join("|"),step
+  ]));
+  for(const step of unique.values()){
+    if(normalizeVehicleToken(occupancy.get(step.target)) === normalizeVehicleToken(step.vehicleId)) continue;
+    const actualSource = getSdeTrappedEgressVehicleSlot(occupancy,step.vehicleId);
+    const source = actualSource || step.source;
+    const assessment = getSdeRecursiveMoveAssessment(occupancy,step.vehicleId,source,step.target,{});
+    if(!assessment.valid) return null;
+    recoverySteps.push({...step,source,sourceOption:assessment.sourceOption,targetOption:assessment.targetOption});
+    occupancy = applySdeTrappedEgressVirtualMove(occupancy,step.vehicleId,source,step.target);
+  }
+  return {mainAssessment,recoverySteps,finalOccupancy:occupancy};
+}
+
+function buildSdeRecursiveWorkflowActionPlan({rootRequest,planId,planRevision,role,status,details={},mainSource=""}){
+  const make = (cardRole,vehicleId,source,target,dependsOn,nonMovement)=>{
+    const dependencies = [...dependsOn];
+    const role = cardRole;
+    const dependencyReady = dependencies.length === 0; // SDE_RECURSIVE_DEPENDENCY_READY
+    const identity = [planId,role,normalizeSdeCanonicalToken(vehicleId),normalizeSlot(source),normalizeSlot(target),dependencies.join("+")].join("|");
+    return {
+      stepId:`recursive-step|${getSdeShiftSnapshotHash(identity)}`,
+      cardId:`recursive-card|${getSdeShiftSnapshotHash(identity)}`,
+      role,
+      vehicleId:sanitizeVehicleValue(vehicleId),
+      source:normalizeSlot(source),
+      target:normalizeSlot(target),
+      dependsOn:dependencies,
+      reservationBinding:nonMovement ? null : `recursive-reservation|${getSdeShiftSnapshotHash(identity)}`,
+      routeResourceBinding:nonMovement ? [] : sortSdeCanonicalStrings([`slot|${normalizeSlot(source)}`,`slot|${normalizeSlot(target)}`].filter(value=>!value.endsWith("|"))),
+      executionIdentity:`recursive-execution|${getSdeShiftSnapshotHash(identity)}`,
+      planId,
+      planRevision,
+      rootRequestId:rootRequest?.rootRequestId || "",
+      state:dependencyReady ? "READY" : "DEPENDENCY_BLOCKED",
+      nonMovement:Boolean(nonMovement),
+      details:cloneSdeCanonicalValue(details) || {}
+    };
+  };
+  const action = make(role,rootRequest?.requestedVehicleId,"","",[],true);
+  const main = make("MAIN_MOVE",rootRequest?.requestedVehicleId,mainSource,rootRequest?.requestedTarget,[action.cardId],false);
+  return {
+    status,
+    rootRequest:{...rootRequest,status},
+    planId,
+    planRevision,
+    cards:[action,main],
+    dependencies:{[action.cardId]:[],[main.cardId]:[action.cardId]},
+    reservations:[],
+    overlays:[],
+    routeResources:[],
+    adapters:[],
+    diagnostics:[],
+    search:{complete:false,exhausted:status === "RESOURCE_RELEASE_REQUIRED",visitedCount:0,cycleSkips:0,stateHash:""}
+  };
+}
+
+function buildSdeRecursivePrerequisiteShiftPlan(input={}){
+  const directBlockRequiresPlanning = true; // SDE_RECURSIVE_DIRECT_BLOCK
+  const recursiveExpansionEnabled = true; // SDE_RECURSIVE_EXPAND_ALL_BLOCKERS
+  const rootRequest = normalizeSdeRecursiveRootRequest(input?.previousPlan?.rootRequest || input?.rootRequest || {});
+  const preservedRootRequest = rootRequest; // SDE_RECURSIVE_PRESERVE_ROOT
+  const placementState = getSdeRecursiveCanonicalPlacementState(input?.actualPlacements);
+  const vehicleToken = normalizeSdeCanonicalToken(rootRequest.requestedVehicleId);
+  const canonicalPlacement = placementState.ambiguousVehicles.has(vehicleToken) ? null : placementState.byVehicle.get(vehicleToken);
+  const canonicalSource = normalizeSlot(canonicalPlacement?.slot);
+  const candidateSource = normalizeSlot(input?.candidateSource);
+  const sourceReconciliation = {
+    status:canonicalSource && canonicalSource !== candidateSource ? "CANONICAL_SOURCE_RECONCILED" : canonicalSource ? "CANONICAL_SOURCE_CONFIRMED" : "STATE_RECONCILIATION_REQUIRED",
+    candidateSource,
+    canonicalSource,
+    authority:"canonical_actual"
+  };
+  const normalizedActual = Array.from(placementState.occupancy.entries()).map(([slot,vehicleId])=>({slot,vehicleId}))
+    .sort((left,right)=>left.slot.localeCompare(right.slot) || left.vehicleId.localeCompare(right.vehicleId));
+  const planId = String(input?.previousPlan?.planId || "").trim() || `recursive-plan|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+    rootRequestId:rootRequest.rootRequestId,
+    requestedVehicleId:vehicleToken,
+    requestedTarget:rootRequest.requestedTarget
+  }))}`;
+  const planRevision = `recursive-revision|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+    rootRequestId:rootRequest.rootRequestId,
+    actualPlacements:normalizedActual,
+    reservations:sortSdeCanonicalObjects(Array.isArray(input?.reservations) ? input.reservations : []),
+    routeResourceBlocks:sortSdeCanonicalObjects(Array.isArray(input?.routeResourceBlocks) ? input.routeResourceBlocks : []),
+    completedCardIds:sortSdeCanonicalStrings(input?.completedCardIds || [])
+  }))}`;
+  const makeNonMovementOnly = (role,status,details)=>{
+    const plan = buildSdeRecursiveWorkflowActionPlan({rootRequest:preservedRootRequest,planId,planRevision,role,status,details,mainSource:canonicalSource || candidateSource});
+    plan.cards = plan.cards.filter(card=>card.nonMovement === true);
+    plan.dependencies = Object.fromEntries(plan.cards.map(card=>[card.cardId,[]]));
+    plan.sourceReconciliation = sourceReconciliation;
+    return plan;
+  };
+  if(!canonicalSource || placementState.ambiguousVehicles.has(vehicleToken)){
+    return makeNonMovementOnly("STATE_RECONCILIATION_REQUIRED","STATE_RECONCILIATION_REQUIRED",{
+      vehicleId:rootRequest.requestedVehicleId,
+      candidateSource,
+      canonicalObservations:(Array.isArray(input?.actualPlacements) ? input.actualPlacements : []).filter(item=>haveSameSdeVehicleTokens(item?.vehicleId || item?.vehicle,rootRequest.requestedVehicleId)),
+      requiredClarification:"Entydig canonical actual source må fastslås før fysisk planlegging fortsetter.",
+      waitingRootRequestId:rootRequest.rootRequestId
+    });
+  }
+  if(canonicalSource === rootRequest.requestedTarget){
+    return {
+      status:"COMPLETED",
+      rootRequest:{...preservedRootRequest,status:"COMPLETED"},
+      sourceReconciliation,
+      planId,
+      planRevision,
+      cards:[],dependencies:{},reservations:[],overlays:[],routeResources:[],adapters:[],diagnostics:[],
+      search:{complete:true,exhausted:false,visitedCount:1,cycleSkips:0,stateHash:getSdeTrappedEgressOccupancySignature(placementState.occupancy)}
+    };
+  }
+  const routeResourceBlocks = Array.isArray(input?.routeResourceBlocks) ? input.routeResourceBlocks : [];
+  if(routeResourceBlocks.length){
+    const plan = buildSdeRecursiveWorkflowActionPlan({
+      rootRequest:preservedRootRequest,planId,planRevision,role:"PREREQUISITE_ROUTE_CLEARANCE",status:"PLANNED",mainSource:canonicalSource,
+      details:{routeResourceBlocks:sortSdeCanonicalObjects(routeResourceBlocks),waitingRootRequestId:rootRequest.rootRequestId}
+    });
+    plan.sourceReconciliation = sourceReconciliation;
+    return plan;
+  }
+  const requestedTargetReservation = (Array.isArray(input?.reservations) ? input.reservations : []).find(item=>
+    normalizeSlot(item?.targetSlot || item?.slot) === rootRequest.requestedTarget
+    && !haveSameSdeVehicleTokens(item?.vehicleId || item?.vehicle,rootRequest.requestedVehicleId)
+  );
+  if(requestedTargetReservation){
+    const plan = buildSdeRecursiveWorkflowActionPlan({
+      rootRequest:preservedRootRequest,planId,planRevision,role:"RESOURCE_RELEASE_REQUIRED",status:"PLANNED",mainSource:canonicalSource,
+      details:{reservations:[cloneSdeCanonicalValue(requestedTargetReservation)],waitingRootRequestId:rootRequest.rootRequestId}
+    });
+    plan.sourceReconciliation = sourceReconciliation;
+    return plan;
+  }
+  const mainStep = {vehicleId:rootRequest.requestedVehicleId,source:canonicalSource,target:rootRequest.requestedTarget};
+  const initialAssessment = getSdeRecursiveMoveAssessment(
+    placementState.occupancy,mainStep.vehicleId,mainStep.source,mainStep.target,input
+  );
+  if(!initialAssessment.valid && !directBlockRequiresPlanning){
+    return {
+      status:"DIAGNOSTIC_ONLY",rootRequest:preservedRootRequest,sourceReconciliation,planId,planRevision,cards:[],dependencies:{},reservations:[],overlays:[],routeResources:[],adapters:[],
+      diagnostics:[{code:"direct_move_blocked",disposition:"DIAGNOSTIC_ONLY"}],search:{complete:false,exhausted:false,visitedCount:1,cycleSkips:0,stateHash:getSdeTrappedEgressOccupancySignature(placementState.occupancy)}
+    };
+  }
+  const completedIds = new Set((Array.isArray(input?.completedCardIds) ? input.completedCardIds : []).map(value=>String(value || "").trim()).filter(Boolean));
+  const carriedRecoveries = (Array.isArray(input?.previousPlan?.cards) ? input.previousPlan.cards : []).filter(card=>
+    ["MANDATORY_RECOVERY","RECOVERY"].includes(card?.role)
+    && !completedIds.has(String(card?.cardId || "").trim())
+    && getSdeTrappedEgressVehicleSlot(placementState.occupancy,card?.vehicleId)
+  );
+  const queue = [{occupancy:placementState.occupancy,releases:[]}];
+  const initialStateHash = getSdeTrappedEgressOccupancySignature(placementState.occupancy);
+  const visited = new Set([initialStateHash]);
+  const finiteBudget = Number.isFinite(Number(input?.searchBudget)) ? Math.max(0,Math.floor(Number(input.searchBudget))) : null;
+  let processed = 0;
+  let cycleSkips = 0;
+  let completed = null;
+  let searchIncomplete = false;
+  const movableTokens = Array.isArray(input?.movableVehicleIds) && input.movableVehicleIds.length
+    ? new Set(input.movableVehicleIds.map(normalizeSdeCanonicalToken).filter(Boolean))
+    : null;
+  while(queue.length){
+    if(finiteBudget !== null && processed >= finiteBudget){
+      searchIncomplete = true;
+      break;
+    }
+    const current = queue.shift();
+    processed += 1;
+    const mainAssessment = getSdeRecursiveMoveAssessment(current.occupancy,mainStep.vehicleId,mainStep.source,mainStep.target,input);
+    if(mainAssessment.valid){
+      const recovery = buildSdeRecursiveRecoverySteps(current.occupancy,mainStep,current.releases,carriedRecoveries);
+      if(recovery){
+        completed = {...current,recovery};
+        break;
+      }
+    }
+    if(!recursiveExpansionEnabled && current.releases.length >= 1) continue;
+    const movable = Array.from(current.occupancy.entries())
+      .map(([slot,vehicleId])=>({slot,vehicleId}))
+      .filter(item=>!haveSameSdeVehicleTokens(item.vehicleId,mainStep.vehicleId))
+      .filter(item=>!movableTokens || movableTokens.has(normalizeSdeCanonicalToken(item.vehicleId)))
+      .sort((left,right)=>normalizeSdeCanonicalToken(left.vehicleId).localeCompare(normalizeSdeCanonicalToken(right.vehicleId)) || left.slot.localeCompare(right.slot));
+    for(const item of movable){
+      const targets = getSdeRecursiveCandidateTargets(input,item.vehicleId,item.slot);
+      for(const target of targets){
+        if(target === mainStep.source || target === mainStep.target || target === item.slot) continue;
+        const assessment = getSdeRecursiveMoveAssessment(current.occupancy,item.vehicleId,item.slot,target,input);
+        if(!assessment.valid) continue;
+        const nextOccupancy = applySdeTrappedEgressVirtualMove(current.occupancy,item.vehicleId,item.slot,target);
+        const stateHash = getSdeTrappedEgressOccupancySignature(nextOccupancy);
+        if(visited.has(stateHash)){
+          cycleSkips += 1;
+          continue;
+        }
+        visited.add(stateHash);
+        queue.push({
+          occupancy:nextOccupancy,
+          releases:[...current.releases,{
+            vehicleId:item.vehicleId,
+            fromSlot:item.slot,
+            toSlot:target,
+            sourceOption:assessment.sourceOption,
+            targetOption:assessment.targetOption
+          }]
+        });
+      }
+    }
+  }
+  if(!completed){
+    if(searchIncomplete){
+      return {
+        status:"SEARCH_INCOMPLETE",
+        rootRequest:{...preservedRootRequest,status:"ACTIVE"},
+        sourceReconciliation,planId,planRevision,cards:[],dependencies:{},reservations:[],overlays:[],routeResources:[],adapters:[],
+        diagnostics:[{code:"SEARCH_INCOMPLETE",severity:"warning",message:"Det endelige modellerte state-rommet ble ikke ferdig undersøkt; ingen no-solution-påstand er gjort."}],
+        search:{complete:false,exhausted:false,visitedCount:visited.size,processedCount:processed,cycleSkips,stateHash:initialStateHash}
+      };
+    }
+    const consideredTargets = Array.from(new Set(Array.from(placementState.occupancy.entries()).flatMap(([slot,vehicleId])=>getSdeRecursiveCandidateTargets(input,vehicleId,slot)))).sort();
+    const plan = makeNonMovementOnly("RESOURCE_RELEASE_REQUIRED","RESOURCE_RELEASE_REQUIRED",{
+      blockingSlots:Array.from(placementState.occupancy.keys()).sort(),
+      blockingVehicleIds:Array.from(placementState.occupancy.values()).map(sanitizeVehicleValue).sort(),
+      routeResources:[],
+      temporarySlotsConsidered:consideredTargets,
+      rejectedCandidateReasons:["occupied_or_reserved","route_or_egress_blocked","mandatory_recovery_not_complete"],
+      requiredExternalChange:"Frigjør minst én oppgitt fysisk ressurs før automatisk replan.",
+      waitingRootRequestId:rootRequest.rootRequestId
+    });
+    plan.search = {complete:true,exhausted:true,visitedCount:visited.size,processedCount:processed,cycleSkips,stateHash:initialStateHash};
+    return plan;
+  }
+  const releaseSpecs = completed.releases.map(step=>({
+    role:"PREREQUISITE_RELEASE",vehicleId:step.vehicleId,source:step.fromSlot,target:step.toSlot,
+    sourceOption:step.sourceOption,targetOption:step.targetOption
+  }));
+  const mainSpec = {
+    role:"MAIN_MOVE",vehicleId:mainStep.vehicleId,source:mainStep.source,target:mainStep.target,
+    sourceOption:completed.recovery.mainAssessment.sourceOption,targetOption:completed.recovery.mainAssessment.targetOption
+  };
+  const recoverySpecs = completed.recovery.recoverySteps.map(step=>({
+    role:step.role || "MANDATORY_RECOVERY",vehicleId:step.vehicleId,source:step.source,target:step.target,
+    sourceOption:step.sourceOption,targetOption:step.targetOption
+  }));
+  const specs = [...releaseSpecs,mainSpec,...recoverySpecs];
+  const cards = [];
+  specs.forEach((spec,index)=>{
+    const dependencies = index ? [cards[index-1].cardId] : [];
+    const role = spec.role;
+    const dependencyReady = dependencies.length === 0; // SDE_RECURSIVE_DEPENDENCY_READY
+    const identity = stableStringifySdeCanonicalValue({
+      planId,role,index,vehicleId:normalizeSdeCanonicalToken(spec.vehicleId),source:spec.source,target:spec.target
+    });
+    const routeResourceBinding = sortSdeCanonicalStrings([
+      `recursive-plan|${planId}`,
+      `slot|${spec.source}`,
+      `slot|${spec.target}`,
+      `track-access|${getSdeSlotTrack(spec.source) || spec.source}|${spec.sourceOption?.end || "yard"}`,
+      `track-access|${getSdeSlotTrack(spec.target) || spec.target}|${spec.targetOption?.end || "yard"}`
+    ]);
+    cards.push({
+      stepId:`recursive-step|${getSdeShiftSnapshotHash(identity)}`,
+      cardId:`recursive-card|${getSdeShiftSnapshotHash(identity)}`,
+      role,
+      vehicleId:sanitizeVehicleValue(spec.vehicleId),
+      source:normalizeSlot(spec.source),
+      target:normalizeSlot(spec.target),
+      dependsOn:dependencies,
+      reservationBinding:`recursive-reservation|${getSdeShiftSnapshotHash(identity)}`,
+      routeResourceBinding,
+      executionIdentity:`recursive-execution|${getSdeShiftSnapshotHash(identity)}`,
+      planId,
+      planRevision,
+      rootRequestId:preservedRootRequest?.rootRequestId || "",
+      state:dependencyReady ? "READY" : "DEPENDENCY_BLOCKED",
+      nonMovement:false
+    });
+  });
+  return {
+    status:"PLANNED",
+    rootRequest:{...preservedRootRequest,status:cards[0]?.state === "READY" ? "PLANNED" : "ACTIVE"},
+    sourceReconciliation,
+    planId,
+    planRevision,
+    cards,
+    dependencies:Object.fromEntries(cards.map(card=>[card.cardId,[...card.dependsOn]])),
+    reservations:cards.map(card=>({reservationId:card.reservationBinding,cardId:card.cardId,targetSlot:card.target,vehicleId:card.vehicleId})),
+    overlays:cards.map(card=>({overlayId:`recursive-overlay|${card.cardId}`,cardId:card.cardId,targetSlot:card.target,vehicleId:card.vehicleId,state:card.state})),
+    routeResources:Array.from(new Set(cards.flatMap(card=>card.routeResourceBinding))).sort(),
+    adapters:cards.map(card=>({cardId:card.cardId,executionIdentity:card.executionIdentity,ready:card.state === "READY"})),
+    diagnostics:sourceReconciliation.status === "CANONICAL_SOURCE_RECONCILED" ? [{
+      code:"CANONICAL_SOURCE_RECONCILED",severity:"info",candidateSource,canonicalSource,message:"Canonical actual source erstattet kandidatens derived source før rekursiv planlegging."
+    }] : [],
+    search:{complete:true,exhausted:false,visitedCount:visited.size,processedCount:processed,cycleSkips,stateHash:initialStateHash}
+  };
+}
+
+function buildSdeRecursivePrerequisitePlanHtml(plan={}){
+  const cards = Array.isArray(plan?.cards) ? plan.cards : [];
+  return `<section class="sde-recursive-plan" data-sde-recursive-plan-id="${escapeHtml(plan?.planId || "")}" style="max-width:100%;overflow-x:hidden">${cards.map(card=>{
+    const movement = card?.nonMovement !== true;
+    const route = movement
+      ? `<div class="sde-recursive-route">${escapeHtml(card.source || "Ukjent")} → ${escapeHtml(card.target || "Ukjent")}</div>`
+      : `<div class="sde-recursive-action">Avklaring kreves før fysisk planlegging fortsetter.</div>`;
+    return `<article class="sde-recursive-card" data-sde-recursive-card="${escapeHtml(card.cardId || "")}" data-sde-recursive-role="${escapeHtml(card.role || "")}" data-sde-recursive-state="${escapeHtml(card.state || "")}" style="max-width:100%"><strong>${escapeHtml(card.role || "")}</strong><span>${escapeHtml(card.state || "")}</span>${route}${card.dependsOn?.length ? `<span>Dependency: ${escapeHtml(card.dependsOn.join(", "))}</span>` : ""}</article>`;
+  }).join("")}</section>`;
+}
+
+function getSdeRecursiveRelevantVehicleIds(occupancy, mainVehicleId, mainSource, mainTarget){
+  const rootToken = normalizeSdeCanonicalToken(mainVehicleId);
+  const relevant = new Map();
+  const queue = [];
+  const add = vehicleId=>{
+    const vehicle = sanitizeVehicleValue(vehicleId);
+    const token = normalizeSdeCanonicalToken(vehicle);
+    if(!vehicle || !token || token === rootToken || relevant.has(token)) return;
+    relevant.set(token,vehicle);
+    queue.push(vehicle);
+  };
+  add(occupancy.get(normalizeSlot(mainTarget)));
+  [mainSource,mainTarget].forEach(slot=>{
+    getSdeTrappedEgressAccessOptions(occupancy,slot).forEach(option=>(option.blockers || []).forEach(item=>add(item.vehicle)));
+  });
+  while(queue.length){
+    const vehicle = queue.shift();
+    const slot = getSdeTrappedEgressVehicleSlot(occupancy,vehicle);
+    const access = getSdeTrappedEgressAccessOptions(occupancy,slot);
+    if(access.some(option=>option.clear)) continue;
+    access.forEach(option=>(option.blockers || []).forEach(item=>add(item.vehicle)));
+  }
+  return Array.from(relevant.values()).sort((left,right)=>normalizeSdeCanonicalToken(left).localeCompare(normalizeSdeCanonicalToken(right)));
+}
+
+function buildSdeRecursiveRootRequestForMove(row={}){
+  const vehicle = sanitizeVehicleValue(row?.vehicle);
+  const target = normalizeSlot(row?.recommendedSlot || row?.toSlot);
+  const orderIdentity = String(
+    row?.sdeRecursiveRootRequestId
+    || row?.sdeNightPlacementDragIdentity
+    || row?.manualPlanId
+    || row?.sdeNightPlacementGeneratedActionKey
+    || row?.stableActionKey
+    || getSdeMoveActionKey(row)
+    || ""
+  ).trim();
+  return normalizeSdeRecursiveRootRequest({
+    rootRequestId:String(row?.sdeRecursiveRootRequestId || "").trim() || `root-move|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({vehicle:normalizeSdeCanonicalToken(vehicle),target,orderIdentity}))}`,
+    requestedVehicleId:vehicle,
+    requestedTarget:target,
+    requestSource:String(row?.source || row?.canonicalProducer || "canonical-shift-order").trim(),
+    actor:row?.actor && typeof row.actor === "object" ? row.actor : {},
+    createdAt:String(row?.createdAt || row?.arrivalTime || "").trim(),
+    requestRevision:String(row?.requestRevision || row?.planRevision || orderIdentity || "1").trim(),
+    status:"ACTIVE"
+  });
+}
+
+function materializeSdeRecursivePrerequisiteRows(row, plan){
+  const physicalCards = (Array.isArray(plan?.cards) ? plan.cards : []).filter(card=>card?.nonMovement !== true);
+  if(plan?.status !== "PLANNED" || !physicalCards.length) return [];
+  const rootRequest = plan.rootRequest || buildSdeRecursiveRootRequestForMove(row);
+  const rows = [];
+  physicalCards.forEach((card,index)=>{
+    const isMain = card.role === "MAIN_MOVE";
+    const isRelease = card.role === "PREREQUISITE_RELEASE";
+    const isRecovery = ["MANDATORY_RECOVERY","RECOVERY"].includes(card.role);
+    const dependencyRole = isRelease ? "prerequisite" : isMain ? "dependent" : "return";
+    const priorKey = index ? getSdeMoveActionKey(rows[index-1]) : "";
+    const stableActionKey = isMain ? getSdeMoveActionKey(row) : card.cardId;
+    const materialized = {
+      ...row,
+      vehicle:card.vehicleId,
+      fromSlot:card.source,
+      arrivalSlot:card.source,
+      originalFromSlot:card.source,
+      recommendedSlot:card.target,
+      toSlot:card.target,
+      stableActionKey,
+      sdeNightPlacementGeneratedActionKey:isMain ? row.sdeNightPlacementGeneratedActionKey : "",
+      sdeNightPlacementGeneratedNeedKey:isMain ? row.sdeNightPlacementGeneratedNeedKey : "",
+      needKey:isMain ? row.needKey : `recursive-prerequisite-need|${rootRequest.rootRequestId}|${card.stepId}`,
+      sdeNightPlacementDragIdentity:isMain ? row.sdeNightPlacementDragIdentity : "",
+      manualPlanId:isMain ? row.manualPlanId : "",
+      sdeNightPlacementDragOverrideActive:isMain ? row.sdeNightPlacementDragOverrideActive : false,
+      isNightPlacementGenerated:isMain ? row.isNightPlacementGenerated : false,
+      canonicalProducer:"recursive_prerequisite_planner",
+      source:isRecovery ? "SDE obligatorisk prerequisite recovery" : isRelease ? "SDE rekursiv prerequisite-frigjøring" : row.source,
+      sdeRecursiveRootRequestId:rootRequest.rootRequestId,
+      sdeRecursiveRootRequest:cloneSdeCanonicalValue(rootRequest),
+      sdeRecursivePlanId:plan.planId,
+      sdeRecursivePlanRevision:plan.planRevision,
+      sdeRecursiveCardId:card.cardId,
+      sdeRecursiveCardRole:card.role,
+      sdeRecursiveCardState:card.state,
+      sdeRecursiveSourceReconciliation:cloneSdeCanonicalValue(plan.sourceReconciliation),
+      sdePhysicalChainId:plan.planId,
+      sdePhysicalChainStep:index + 1,
+      sdePhysicalChainStepCount:physicalCards.length,
+      sdePhysicalDependsOn:priorKey ? [priorKey] : [],
+      sdePhysicalDependencyRole:dependencyRole,
+      sdePhysicalDependencyLabel:priorKey ? `Venter på prerequisite ${priorKey}.` : "Første fysisk gjennomførbare prerequisite.",
+      canonicalChainStepActive:index === 0,
+      sdeTrappedEgressChainStep:true,
+      sdeTrappedEgressRouteResources:[...(card.routeResourceBinding || [])],
+      isSdePhysicalBlockerFreeingMove:isRelease,
+      isSdePhysicalBlockerReturnMove:isRecovery,
+      sdePhysicalHardBlocked:isMain && index > 0,
+      sdePhysicalBlockerForVehicle:isRelease || isRecovery ? rootRequest.requestedVehicleId : row.sdePhysicalBlockerForVehicle,
+      sdePhysicalBlockerForSlot:isRelease || isRecovery ? normalizeSlot(plan.sourceReconciliation?.canonicalSource || row.fromSlot || row.arrivalSlot) : row.sdePhysicalBlockerForSlot,
+      sdePhysicalBlockerOriginalTarget:rootRequest.requestedTarget,
+      parkingStrategy:isRelease ? "Rekursiv prerequisite-frigjøring" : isRecovery ? "Obligatorisk prerequisite recovery" : row.parkingStrategy,
+      parkingInstruction:isRelease
+        ? `Flytt ${card.vehicleId} ${card.source} → ${card.target} før hovedbestillingen.`
+        : isRecovery ? `Returner ${card.vehicleId} ${card.source} → ${card.target} etter hovedflyttingen.` : row.parkingInstruction,
+      recommendationReason:isRelease
+        ? `Rekursiv prerequisite for rotbestilling ${rootRequest.rootRequestId}.`
+        : isRecovery ? `Mandatory recovery for rotbestilling ${rootRequest.rootRequestId}.` : row.recommendationReason
+    };
+    rows.push(materialized);
+  });
+  return rows;
+}
+
+function buildSdeRecursiveResourceActionDiagnosticRow(row, plan){
+  const actionCard = (plan?.cards || []).find(card=>card?.nonMovement === true);
+  if(!actionCard) return null;
+  const rootRequest = plan.rootRequest || buildSdeRecursiveRootRequestForMove(row);
+  const reason = actionCard.role === "STATE_RECONCILIATION_REQUIRED"
+    ? "Canonical actual source må avklares før fysisk planlegging fortsetter."
+    : "Det modellerte lovlige løsningsrommet er uttømt; en oppgitt fysisk ressurs må frigjøres før automatisk replan.";
+  return {
+    ...row,
+    sdeRecursiveRootRequestId:rootRequest.rootRequestId,
+    sdeRecursiveRootRequest:cloneSdeCanonicalValue(rootRequest),
+    sdeRecursivePlanId:plan.planId,
+    sdeRecursivePlanRevision:plan.planRevision,
+    sdeRecursiveWorkflowActionCard:cloneSdeCanonicalValue(actionCard),
+    sdeTrappedEgressDiagnosticOnly:true,
+    sdePhysicalNoSafeReleaseMove:true,
+    sdePhysicalNoSafeReleaseReason:reason,
+    canonicalPhysicalValid:false,
+    canonicalPhysicalInvalidReason:reason,
+    sdeCanonicalRetargetDiagnostic:actionCard.role,
+    sdeTrappedEgressDiagnostic:{
+      code:actionCard.role,
+      diagnosticType:actionCard.role,
+      severity:"warning",
+      disposition:"ACTION_CARD",
+      rootRequestId:rootRequest.rootRequestId,
+      mainVehicleId:rootRequest.requestedVehicleId,
+      source:plan.sourceReconciliation?.canonicalSource || plan.sourceReconciliation?.candidateSource || "",
+      requestedTarget:rootRequest.requestedTarget,
+      actionCard:cloneSdeCanonicalValue(actionCard),
+      message:reason
+    }
+  };
 }
 
 const SDE_PASSIVE_BLOCKED_SLOT_IDS = new Set(["4M","5M","6S","10S","11S","12S"]);
