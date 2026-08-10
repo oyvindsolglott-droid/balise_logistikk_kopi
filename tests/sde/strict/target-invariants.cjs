@@ -30,34 +30,49 @@ eval(prefix + String.raw`
       ...(reader.cardProjection.handlerBlockedCards || [])
     ];
     const reservations=reader.reservationProjection.reservations || [];
-    const overlays=[...(reader.graphicProjection.activeOverlays || []),...(reader.graphicProjection.deferredOverlays || [])];
+    const activeOverlays=reader.graphicProjection.activeOverlays || [];
+    const deferredOverlays=reader.graphicProjection.deferredOverlays || [];
     const allDiagnostics=[
       ...(reader.canonicalPlan.diagnostics || []),
       ...(reader.cardProjection.diagnostics || []),
       ...(reader.graphicProjection.unresolvedDiagnostics || []),
       ...(reader.reservationProjection.conflicts || [])
     ];
+    const releaseCard=cards.find(item=>item.vehicleId==="75-10" && item.sourceSlot==="4N" && item.targetSlot==="4M");
+    const mainCard=cards.find(item=>item.vehicleId==="74-11" && item.sourceSlot==="11S" && item.targetSlot==="4N");
+    const releaseAdapter=releaseCard ? reader.handlerAdapters?.[releaseCard.canonicalCardId] : null;
+    const mainAdapter=mainCard ? reader.handlerAdapters?.[mainCard.canonicalCardId] : null;
     return {
       targetOccupied:reader.graphicProjection.actualSlots.some(item=>item.slot==="4N" && item.vehicleId==="75-10"),
-      active:(reader.canonicalPlan.activeOutcomes || []).filter(item=>item.vehicleId==="74-11" && item.targetSlot==="4N").length,
-      actionable:(reader.cardProjection.actionableCards || []).filter(item=>item.vehicleId==="74-11").length,
+      activeRelease:(reader.canonicalPlan.activeOutcomes || []).filter(item=>item.vehicleId==="75-10" && item.targetSlot==="4M").length,
+      actionableRelease:(reader.cardProjection.actionableCards || []).filter(item=>item.vehicleId==="75-10" && item.targetSlot==="4M").length,
+      actionableMain:(reader.cardProjection.actionableCards || []).filter(item=>item.vehicleId==="74-11" && item.targetSlot==="4N").length,
       blockedToTarget:cards.filter(item=>item.vehicleId==="74-11" && item.targetSlot==="4N").length,
-      reservations:reservations.filter(item=>item.vehicleId==="74-11" || item.targetSlot==="4N").length,
-      overlays:overlays.filter(item=>item.vehicleId==="74-11" || item.targetSlot==="4N").length,
-      adapters:Object.values(reader.handlerAdapters || {}).filter(item=>item?.row?.vehicle==="74-11" || item?.outcome?.vehicleId==="74-11").length,
+      releaseStatus:releaseCard?.status || "",
+      mainStatus:mainCard?.status || "",
+      mainRecursiveState:String(mainAdapter?.row?.sdeRecursiveCardState || ""),
+      mainDependencies:[...(mainCard?.dependencyIds || mainCard?.blockedBy || [])],
+      releaseActionKey:String(releaseAdapter?.actionKey || ""),
+      reservations:reservations.filter(item=>["74-11","75-10"].includes(item.vehicleId)).map(item=>({vehicleId:item.vehicleId,targetSlot:item.targetSlot,status:item.status})),
+      activeOverlays:activeOverlays.filter(item=>["74-11","75-10"].includes(item.vehicleId)).map(item=>({vehicleId:item.vehicleId,targetSlot:item.targetSlot})),
+      deferredOverlays:deferredOverlays.filter(item=>["74-11","75-10"].includes(item.vehicleId)).map(item=>({vehicleId:item.vehicleId,targetSlot:item.targetSlot})),
+      adapterStates:{releaseReady:releaseAdapter?.ready===true,mainReady:mainAdapter?.ready===true},
+      chainIds:Array.from(new Set(cards.filter(item=>["74-11","75-10"].includes(item.vehicleId)).map(item=>item.chainId).filter(Boolean))),
+      rootRequestIds:Array.from(new Set([releaseAdapter?.row?.sdeRecursiveRootRequestId,mainAdapter?.row?.sdeRecursiveRootRequestId].filter(Boolean))),
+      planRevisions:Array.from(new Set([releaseAdapter?.row?.sdeRecursivePlanRevision,mainAdapter?.row?.sdeRecursivePlanRevision].filter(Boolean))),
       diagnosticTypes:allDiagnostics.map(item=>String(item.diagnosticType || item.classification || item.code || "")).filter(Boolean).sort()
     };
   }
 
   const observed=run(false);
   put("INV-TARGET-001",observed.targetOccupied,"actual 75-10 in 4N is present in the real graphic/canonical reader");
-  put("INV-TARGET-002",observed.active===0,"occupied-target need has zero active canonical outcomes");
-  put("INV-TARGET-003",observed.actionable===0,"occupied-target need has zero actionable cards");
-  put("INV-TARGET-004",observed.blockedToTarget===0,"no blocked chain card is materialized toward occupied 4N");
-  put("INV-TARGET-005",observed.reservations===0,"no reservation is projected for occupied 4N");
-  put("INV-TARGET-006",observed.overlays===0,"no active or deferred overlay is projected for occupied 4N");
-  put("INV-TARGET-007",observed.adapters===0,"no production handler adapter is projected for the invalid need");
-  put("INV-TARGET-008",observed.diagnosticTypes.filter(type=>/target.*occupied|occupied.*target/i.test(type)).length===1,"exactly one target-occupied diagnostic is emitted");
+  put("INV-TARGET-002",observed.activeRelease===1 && observed.actionableRelease===1 && observed.releaseStatus==="actionable","the occupying vehicle has exactly one actionable prerequisite release");
+  put("INV-TARGET-003",observed.actionableMain===0 && observed.blockedToTarget===1 && observed.mainStatus==="blocked_chain_step" && observed.mainRecursiveState==="DEPENDENCY_BLOCKED","the requested main card exists only as dependency-blocked");
+  put("INV-TARGET-004",observed.mainDependencies.length===1 && observed.mainDependencies[0]===observed.releaseActionKey,"the main card depends on the exact prerequisite release");
+  put("INV-TARGET-005",observed.reservations.length===2 && observed.reservations.some(item=>item.vehicleId==="75-10" && item.targetSlot==="4M" && item.status==="actionable") && observed.reservations.some(item=>item.vehicleId==="74-11" && item.targetSlot==="4N" && item.status==="blocked_chain_step"),"release and dependency-blocked main retain ordered reservations");
+  put("INV-TARGET-006",observed.activeOverlays.length===1 && observed.activeOverlays[0]?.vehicleId==="75-10" && observed.activeOverlays[0]?.targetSlot==="4M" && observed.deferredOverlays.length===1 && observed.deferredOverlays[0]?.vehicleId==="74-11" && observed.deferredOverlays[0]?.targetSlot==="4N","release and main retain active/deferred overlays");
+  put("INV-TARGET-007",observed.adapterStates.releaseReady===true && observed.adapterStates.mainReady===false,"only the prerequisite adapter is ready");
+  put("INV-TARGET-008",observed.chainIds.length===1 && observed.rootRequestIds.length===1 && observed.planRevisions.length===1 && !observed.diagnosticTypes.includes("IMPOSSIBLE_SHIFT_TO_OR_FROM_BLOCKED_SLOT"),"the complete occupied-target chain survives the production pipeline atomically");
   const normalized=JSON.stringify(observed);
   const permutations=Array.from({length:10},(_,index)=>JSON.stringify(run(index%2===1)));
   put("INV-TARGET-009",permutations.every(value=>value===normalized),"ten actual/input-order permutations yield the same full-pipeline result");

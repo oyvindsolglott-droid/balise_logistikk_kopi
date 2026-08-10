@@ -578,9 +578,9 @@ registerHarnessTest({
   recoveryId: "direct-wash-transit",
 });
 
-test("I/L audits and executable R/X/Y/Z/AA/AB coverage cannot disappear silently", () => {
+test("I/L audits and executable R/X/Y/Z/AA/AB/AC coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
-  assert.deepEqual(Object.keys(coverage), [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "AA", "AB"]);
+  assert.deepEqual(Object.keys(coverage), [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "AA", "AB", "AC"]);
   assert.equal(coverage.I.status, "audit-only");
   assert.equal(coverage.L.status, "audit-only");
   assert.equal(coverage.R.status, "implemented");
@@ -595,6 +595,8 @@ test("I/L audits and executable R/X/Y/Z/AA/AB coverage cannot disappear silently
   assert.deepEqual(coverage.AA.invariants, Array.from({length:9},(_,index)=>`INV-EGRESS-${String(index+23).padStart(3,"0")}`));
   assert.equal(coverage.AB.status, "implemented");
   assert.deepEqual(coverage.AB.invariants, Array.from({length:12},(_,index)=>`INV-BALISE-${String(index+1).padStart(3,"0")}`));
+  assert.equal(coverage.AC.status, "implemented");
+  assert.deepEqual(coverage.AC.invariants, Array.from({length:18},(_,index)=>`INV-EGRESS-${String(index+32).padStart(3,"0")}`));
   for(const phase of Object.keys(coverage).filter(letter => !["I", "L"].includes(letter))){
     assert.equal(coverage[phase].status, "implemented", `${phase} must remain implemented`);
   }

@@ -41659,7 +41659,7 @@ function applySdePassiveBlockedSlotDiagnosticGate(canonicalPlan={}, snapshot={})
     const temporaryReleases = prerequisites.filter(item=>item?.raw?.sdeTrappedEgressChainStep === true);
     const returns = operativeChainCandidates.filter(item=>item?.raw?.sdePhysicalDependencyRole === "return");
     const declaredStepCount = Math.max(0,...operativeChainCandidates.map(item=>Number(item?.raw?.sdePhysicalChainStepCount || 0)).filter(Number.isFinite));
-    const requiresRecovery = temporaryReleases.length > 0 || returns.length > 0 || declaredStepCount > operativeChainCandidates.length;
+    const requiresRecovery = returns.length > 0 || declaredStepCount > operativeChainCandidates.length;
     const hasCompleteRecovery = returns.length > 0 && (!temporaryReleases.length || returns.length >= temporaryReleases.length);
     const incompleteMandatoryRecovery = requiresRecovery && !hasCompleteRecovery; // SDE_BLOCKED_SLOT_MANDATORY_RECOVERY
     const duplicateStepIdentity = new Set(operativeChainCandidates.map(item=>item.stepId)).size !== operativeChainCandidates.length;
