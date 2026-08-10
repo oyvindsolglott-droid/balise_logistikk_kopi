@@ -565,7 +565,7 @@ def resolve_departure_vehicle_composition(
     selected: Dict[str, object],
     route_info: Dict[str, str],
 ) -> Dict[str, object]:
-    """Avgrens faktisk Skien-avgang med samme routeId observert ved Porsgrunn."""
+    """Avgrens faktisk Skien-avgang ved første rutestopp etter Skien."""
     route_id = str(route_info.get("routeId") or "").strip()
     skien_vehicles = list(selected.get("route_vehicle_hits") or [])
     route_vehicle_rows_present = "route_vehicle_rows" in selected
@@ -587,20 +587,39 @@ def resolve_departure_vehicle_composition(
     route_vehicle_rows = list(selected.get("route_vehicle_rows") or [])
     route_stops = list(selected.get("route_stops") or [])
     skien_vehicles = extract_route_vehicle_hits(route_vehicle_rows, route_id, "Skien")
-    porsgrunn_vehicles = extract_route_vehicle_hits(route_vehicle_rows, route_id, "Porsgrunn")
+    skien_stop = exact_skien_departure_stop(selected)
+    skien_index = route_stops.index(skien_stop) if skien_stop in route_stops else -1
+    next_stop = next(
+        (
+            row
+            for row in route_stops[skien_index + 1 :]
+            if isinstance(row, dict)
+            and (
+                str(row.get("station_name") or "").strip()
+                or str(row.get("station_ref") or "").strip()
+            )
+        ),
+        None,
+    ) if skien_index >= 0 else None
+    next_station_name = str(next_stop.get("station_name") or "").strip()  # SDE_BALISE_NEXT_STOP_AFTER_SKIEN
+    continuing_vehicles = (
+        extract_route_vehicle_hits(route_vehicle_rows, route_id, "Porsgrunn")
+        if next_station_name.lower() == "porsgrunn"
+        else extract_route_vehicle_hits(route_vehicle_rows, route_id, next_station_name)
+    )
     base = {
         "vehiclesObservedAtSkien": skien_vehicles,
-        "vehiclesContinuingAtPorsgrunn": porsgrunn_vehicles,
+        "vehiclesContinuingAtPorsgrunn": continuing_vehicles,
         "departureVehicles": [],
         "detachedAtSkien": [],
-        "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
+        "vehicleResolutionSource": "unresolved_next_stop_occurrence",
         "vehicleError": "",
     }
 
-    if not route_has_station(route_stops, "Porsgrunn", "PG"):
+    if not next_stop or not next_station_name:
         base["vehicleError"] = (
             f"Uavklart forekomstbundet materiell: routeId {route_id}; "
-            "samme togforekomst kan ikke bindes til et Porsgrunn-stopp."
+            "samme togforekomst har ikke et entydig rutestopp etter Skien."
         )
         return base
     if not skien_vehicles:
@@ -609,28 +628,32 @@ def resolve_departure_vehicle_composition(
             "den eksakte Skien-avgangen har ingen kjøretøydata."
         )
         return base
-    if not porsgrunn_vehicles:
+    if not continuing_vehicles:
         base["vehicleError"] = (
             f"Uavklart forekomstbundet materiell: routeId {route_id}; "
-            "Porsgrunn-sammensetningen mangler for samme togforekomst."
+            f"{next_station_name}-sammensetningen mangler for samme togforekomst."
         )
         return base
 
     skien_set = set(skien_vehicles)
-    if not set(porsgrunn_vehicles).issubset(skien_set):
+    if not set(continuing_vehicles).issubset(skien_set):
         base["vehicleError"] = (
             f"Uavklart forekomstbundet materiell: routeId {route_id}; "
-            "Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen."
+            f"{next_station_name}-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen."
         )
         return base
 
-    base["departureVehicles"] = porsgrunn_vehicles
+    base["departureVehicles"] = continuing_vehicles
     base["detachedAtSkien"] = [
         vehicle
         for vehicle in skien_vehicles
-        if vehicle not in set(porsgrunn_vehicles)
+        if vehicle not in set(continuing_vehicles)
     ]
-    base["vehicleResolutionSource"] = "porsgrunn_occurrence_subset"
+    base["vehicleResolutionSource"] = (
+        "porsgrunn_occurrence_subset"
+        if next_station_name.lower() == "porsgrunn"
+        else "next_stop_occurrence_subset"
+    )
     return base
 
 
@@ -763,6 +786,50 @@ def extract_vehicle_hits_from_balise_text(text: str) -> Tuple[List[str], List[st
     return general_hits, departure_hits, arrival_hits
 
 
+def exact_skien_departure_stop(result: Dict[str, object]) -> Optional[Dict[str, object]]:
+    """Returner ett eksakt planlagt Skien-avgangsstopp for kandidaten."""
+    route_info = result.get("route_info")
+    if not isinstance(route_info, dict):
+        return None
+
+    result_departure_time = first_time_value(result.get("skien_departure_time"))
+    if "route_stops" not in result:
+        # Bakoverkompatibilitet for direkte enhetstestkandidater uten rå API-rader.
+        if (
+            str(route_info.get("origin") or "").strip().lower() == "skien"
+            and result_departure_time
+        ):
+            return {
+                "stop_id": "compatibility-skien-origin",
+                "station_name": "Skien",
+                "station_ref": "SKN",
+                "stop_planned_departure": result_departure_time,
+            }
+        return None
+
+    skien_stops = [
+        row
+        for row in list(result.get("route_stops") or [])
+        if isinstance(row, dict)
+        and (
+            str(row.get("station_name") or "").strip().lower() == "skien"
+            or str(row.get("station_ref") or "").strip().upper() == "SKN"
+        )
+    ]
+    if len(skien_stops) != 1:
+        return None
+
+    stop = skien_stops[0]
+    stop_departure_time = first_time_value(stop.get("stop_planned_departure"))
+    if not (
+        str(stop.get("stop_id") or "").strip()
+        and result_departure_time
+        and stop_departure_time == result_departure_time  # SDE_BALISE_EXACT_DEPARTURE_TIME
+    ):
+        return None
+    return stop
+
+
 def candidate_matches_exact_departure_occurrence(
     result: Dict[str, object],
     operational_date: object,
@@ -772,14 +839,38 @@ def candidate_matches_exact_departure_occurrence(
         return False
 
     lookup_train_no = normalize_train_no(result.get("lookup_train_no"))
+    skien_stop = exact_skien_departure_stop(result)
+    station_event_matches = bool(skien_stop)  # SDE_BALISE_EXACT_SKIEN_EVENT
     return bool(
         lookup_train_no
         and normalize_train_no(route_info.get("trainNumber")) == lookup_train_no
         and str(route_info.get("operationalDate") or "").strip() == str(operational_date or "").strip()
         and str(route_info.get("routeId") or "").strip()
-        and str(route_info.get("origin") or "").strip().lower() == "skien"
         and str(route_info.get("destination") or "").strip()
-        and result.get("skien_departure_time")
+        and station_event_matches
+    )
+
+
+def exact_departure_occurrence_key(
+    result: Dict[str, object],
+    operational_date: object,
+) -> str:
+    """Bygg stabil nøkkel for én eksakt Skien-avgang, ellers tom streng."""
+    if not candidate_matches_exact_departure_occurrence(result, operational_date):
+        return ""
+    route_info = result["route_info"]
+    skien_stop = exact_skien_departure_stop(result) or {}
+    return "|".join(
+        [
+            str(operational_date or "").strip(),
+            normalize_train_no(route_info.get("trainNumber")),
+            str(route_info.get("trainPart") or "").strip(),
+            str(route_info.get("routeId") or "").strip(),
+            str(skien_stop.get("stop_id") or "").strip(),
+            str(first_time_value(skien_stop.get("stop_planned_departure")) or ""),
+            str(route_info.get("origin") or "").strip(),
+            str(route_info.get("destination") or "").strip(),
+        ]
     )
 
 
@@ -877,6 +968,22 @@ def select_balise_candidate_result(
             str(result.get("lookup_train_no") or ""),
         ),
     )
+
+    if operational_date is not None:
+        exact_candidates = [
+            result
+            for result in ordered_results
+            if candidate_matches_exact_departure_occurrence(result, operational_date)
+        ]
+        exact_occurrence_keys = {
+            exact_departure_occurrence_key(result, operational_date)
+            for result in exact_candidates
+        }
+        exact_occurrence_keys.discard("")
+        if len(exact_occurrence_keys) > 1:  # SDE_BALISE_REJECT_AMBIGUOUS
+            return None
+        if exact_candidates:
+            ordered_results = exact_candidates
 
     if should_prefer_alternate_departure:
         departure_candidates = [

@@ -9731,7 +9731,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 30. juli 2026</p>
+<p class="sub">Siste revisjon: 9. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -40902,6 +40902,237 @@ function assertSdeCanonicalProductionReaderContract(reader){
   return reader;
 }
 
+const SDE_PASSIVE_BLOCKED_SLOT_IDS = new Set(["4M","5M","6S","10S","11S","12S"]);
+const SDE_PASSIVE_BLOCKED_SLOT_PROBLEM_ID = "IMPOSSIBLE_SHIFT_TO_OR_FROM_BLOCKED_SLOT";
+
+function applySdePassiveBlockedSlotDiagnosticGate(canonicalPlan={}, snapshot={}){
+  const candidates = Array.isArray(canonicalPlan.candidateOutcomes) ? canonicalPlan.candidateOutcomes : [];
+  const actualPlacements = Array.isArray(canonicalPlan.actualPlacements) ? canonicalPlan.actualPlacements : []; // SDE_BLOCKED_SLOT_FRESH_ACTUAL
+  const canonicalActualAuthority = actualPlacements === canonicalPlan.actualPlacements;
+  if(!canonicalActualAuthority){
+    canonicalPlan.actualPlacements = [];
+    canonicalPlan.activeOutcomes = [];
+    canonicalPlan.reservationsPreview = [];
+    canonicalPlan.overlaysPreview = [];
+    canonicalPlan.diagnostics = sortSdeCanonicalObjects([...(canonicalPlan.diagnostics || []),{
+      code:"blocked_slot_actual_authority_not_canonical",
+      diagnosticType:"blocked_slot_actual_authority_not_canonical",
+      severity:"error",
+      message:"Blocked-slot-kontrollen avviser en actual-kilde som ikke er canonicalPlan.actualPlacements."
+    }]);
+    return canonicalPlan;
+  }
+  const actualBySlot = new Map(actualPlacements.map(item=>[normalizeSlot(item?.slot),item]));
+  const actualSlotByVehicle = new Map(actualPlacements.map(item=>[
+    normalizeSdeCanonicalToken(item?.vehicleId),
+    normalizeSlot(item?.slot)
+  ]));
+  const completedActionKeys = new Set(Object.entries(snapshot.runtimeState?.actions || {})
+    .filter(([,record])=>record?.action === "completed")
+    .map(([key])=>String(key || "").trim())
+    .filter(Boolean));
+  const candidateAliases = new Set(candidates.flatMap(candidate=>[
+    candidate.actionKey,
+    candidate.candidateId,
+    candidate.candidateOutcomeId,
+    candidate.legacyCardId,
+    ...(candidate.legacyAliases || []).map(alias=>alias?.value)
+  ]).map(value=>String(value || "").trim()).filter(Boolean));
+  const uniqueStrings = values => Array.from(new Set((values || []).map(value=>String(value || "").trim()).filter(Boolean))).sort();
+  const findings = [];
+  const suppressedOutcomeIds = new Set();
+
+  const makeFinding = ({candidate,affectedSlot,direction,occupyingVehicleId="",blockingCandidates=[],firstSafeDivergence,missingPlanParts,violatedInvariant,observed})=>{
+    const raw = candidate?.raw || {};
+    const requestedVehicleId = sanitizeVehicleValue(candidate?.vehicleId || raw.vehicle);
+    const sourceSlot = normalizeSlot(candidate?.statedSourceSlot || candidate?.sourceSlot || raw.fromSlot || raw.arrivalSlot);
+    const requestedTarget = normalizeSlot(candidate?.targetSlot || raw.recommendedSlot || raw.toSlot);
+    const blockingSlots = uniqueStrings(blockingCandidates.map(item=>normalizeSlot(item?.statedSourceSlot || item?.sourceSlot || item?.raw?.fromSlot || item?.raw?.arrivalSlot)));
+    const blockingVehicleIds = uniqueStrings(blockingCandidates.map(item=>sanitizeVehicleValue(item?.vehicleId || item?.raw?.vehicle)));
+    const identity = {
+      affectedSlot,
+      direction,
+      requestedVehicleId,
+      sourceSlot,
+      requestedTarget,
+      firstSafeDivergence,
+      missingPlanParts:uniqueStrings(missingPlanParts)
+    };
+    const expected = "Canonical pipeline skal materialisere hele den fysisk gyldige kjeden atomisk eller bare diagnostikk uten operative artefakter.";
+    return {
+      findingId:`blocked-slot|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue(identity))}`,
+      code:SDE_PASSIVE_BLOCKED_SLOT_PROBLEM_ID,
+      diagnosticType:SDE_PASSIVE_BLOCKED_SLOT_PROBLEM_ID,
+      problemId:SDE_PASSIVE_BLOCKED_SLOT_PROBLEM_ID,
+      severity:"error",
+      affectedSlot,
+      direction,
+      requestedVehicleId,
+      vehicleId:requestedVehicleId,
+      sourceSlot,
+      requestedTarget,
+      targetSlot:requestedTarget,
+      targetSlots:requestedTarget ? [requestedTarget] : [],
+      occupyingVehicleId:sanitizeVehicleValue(occupyingVehicleId),
+      blockingSlots,
+      blockingVehicleIds,
+      routeResourceConflicts:uniqueStrings(blockingCandidates.flatMap(item=>item?.routeResources || [])),
+      intentSource:String(candidate?.producer || raw.canonicalProducer || raw.source || "canonical").trim(),
+      activeIntentPresent:Boolean(candidate),
+      orphanedDerivedStatePresent:Boolean(blockingCandidates.length || candidate?.status === "future" || candidate?.activeEligible === false),
+      observed,
+      expected,
+      violatedInvariant,
+      firstSafeDivergence,
+      missingPlanParts:uniqueStrings(missingPlanParts),
+      operationalConsequence:"Ingen skiftekort, reservasjon, overlay, ruteressurs eller adapter kan brukes før en komplett fysisk plan finnes.",
+      repairBoundary:"canonical_plan_materialization_before_projection",
+      rootCauseStatus:"CONFIRMED",
+      confidence:"HIGH",
+      disposition:"DIAGNOSTIC_ONLY",
+      explanation:expected,
+      message:expected
+    };
+  };
+
+  const chainGroups = new Map();
+  candidates.forEach(candidate=>{
+    const chainId = String(candidate?.chainId || candidate?.chainScope || "").trim();
+    if(!chainId) return;
+    if(!chainGroups.has(chainId)) chainGroups.set(chainId,[]);
+    chainGroups.get(chainId).push(candidate);
+  });
+
+  chainGroups.forEach(chainCandidates=>{
+    const operativeChainCandidates = chainCandidates.filter(item=>!["exiting","completed","superseded","inactive"].includes(String(item?.status || "").toLowerCase()));
+    const mainCandidate = operativeChainCandidates.find(item=>item?.raw?.sdePhysicalDependencyRole === "dependent")
+      || operativeChainCandidates.find(item=>SDE_PASSIVE_BLOCKED_SLOT_IDS.has(normalizeSlot(item?.statedSourceSlot || item?.sourceSlot)) || SDE_PASSIVE_BLOCKED_SLOT_IDS.has(normalizeSlot(item?.targetSlot)))
+      || null;
+    if(!mainCandidate) return;
+    const mainSource = normalizeSlot(mainCandidate.statedSourceSlot || mainCandidate.sourceSlot || mainCandidate.raw?.fromSlot || mainCandidate.raw?.arrivalSlot);
+    const mainTarget = normalizeSlot(mainCandidate.targetSlot || mainCandidate.raw?.recommendedSlot || mainCandidate.raw?.toSlot);
+    const affectedSlot = SDE_PASSIVE_BLOCKED_SLOT_IDS.has(mainSource)
+      ? mainSource
+      : SDE_PASSIVE_BLOCKED_SLOT_IDS.has(mainTarget) ? mainTarget : "";
+    if(!affectedSlot) return;
+    const direction = affectedSlot === mainSource ? "FROM" : "TO";
+    const prerequisites = operativeChainCandidates.filter(item=>item?.raw?.sdePhysicalDependencyRole === "prerequisite");
+    const temporaryReleases = prerequisites.filter(item=>item?.raw?.sdeTrappedEgressChainStep === true);
+    const returns = operativeChainCandidates.filter(item=>item?.raw?.sdePhysicalDependencyRole === "return");
+    const declaredStepCount = Math.max(0,...operativeChainCandidates.map(item=>Number(item?.raw?.sdePhysicalChainStepCount || 0)).filter(Number.isFinite));
+    const requiresRecovery = temporaryReleases.length > 0 || returns.length > 0 || declaredStepCount > operativeChainCandidates.length;
+    const hasCompleteRecovery = returns.length > 0 && (!temporaryReleases.length || returns.length >= temporaryReleases.length);
+    const incompleteMandatoryRecovery = requiresRecovery && !hasCompleteRecovery; // SDE_BLOCKED_SLOT_MANDATORY_RECOVERY
+    const duplicateStepIdentity = new Set(operativeChainCandidates.map(item=>item.stepId)).size !== operativeChainCandidates.length;
+    const unresolvedDependencies = uniqueStrings(operativeChainCandidates.flatMap(item=>(item.dependencies || []).filter(key=>
+      !candidateAliases.has(String(key || "").trim()) && !completedActionKeys.has(String(key || "").trim())
+    )));
+    const candidateIds = new Set(operativeChainCandidates.map(item=>item.candidateOutcomeId));
+    const stepIds = new Set(operativeChainCandidates.map(item=>item.stepId));
+    const blockingConflicts = (canonicalPlan.conflicts || []).filter(conflict=>
+      ["ambiguous_obligation","ambiguous_step","multiple_authorities","legacy_identity_collision","authority_target_missing","physically_invalid_authority"].includes(conflict?.code)
+      && (candidateIds.has(conflict?.candidateOutcomeId)
+        || conflict?.candidateOutcomeIds?.some?.(id=>candidateIds.has(id))
+        || stepIds.has(conflict?.stepId)
+        || stepIds.has(conflict?.obligationStepKey))
+    );
+    if(!duplicateStepIdentity && !incompleteMandatoryRecovery && !unresolvedDependencies.length && !blockingConflicts.length) return;
+    const missingPlanParts = [
+      ...(duplicateStepIdentity || blockingConflicts.length ? ["executionIdentity","steps"] : []),
+      ...(incompleteMandatoryRecovery ? ["recovery"] : []),
+      ...(unresolvedDependencies.length ? ["dependencies"] : []),
+      "cards","reservations","overlays","routeResources","adapters"
+    ];
+    const firstSafeDivergence = duplicateStepIdentity || blockingConflicts.length
+      ? "active_intent_selection"
+      : incompleteMandatoryRecovery ? "obligation_step_construction" : "physical_route_validation";
+    const finding = makeFinding({
+      candidate:mainCandidate,
+      affectedSlot,
+      direction,
+      blockingCandidates:prerequisites,
+      firstSafeDivergence,
+      missingPlanParts,
+      violatedInvariant:"COMPLETE_PLAN_OR_DIAGNOSTIC_ONLY",
+      observed:{
+        candidateCount:operativeChainCandidates.length,
+        uniqueStepCount:new Set(operativeChainCandidates.map(item=>item.stepId)).size,
+        releaseCount:prerequisites.length,
+        mainCount:operativeChainCandidates.filter(item=>item?.raw?.sdePhysicalDependencyRole === "dependent").length,
+        recoveryCount:returns.length,
+        declaredStepCount,
+        unresolvedDependencies,
+        conflictCodes:uniqueStrings(blockingConflicts.map(item=>item.code))
+      }
+    });
+    findings.push(finding);
+    operativeChainCandidates.forEach(candidate=>suppressedOutcomeIds.add(candidate.candidateOutcomeId));
+  });
+
+  candidates.filter(candidate=>!String(candidate?.chainId || candidate?.chainScope || "").trim()).forEach(candidate=>{
+    const statedSource = normalizeSlot(candidate?.statedSourceSlot || candidate?.sourceSlot || candidate?.raw?.fromSlot || candidate?.raw?.arrivalSlot);
+    const targetSlot = normalizeSlot(candidate?.targetSlot || candidate?.raw?.recommendedSlot || candidate?.raw?.toSlot);
+    const actualSource = actualSlotByVehicle.get(normalizeSdeCanonicalToken(candidate?.vehicleId)) || "";
+    const targetOccupant = actualBySlot.get(targetSlot) || null;
+    if(SDE_PASSIVE_BLOCKED_SLOT_IDS.has(targetSlot) && targetOccupant && normalizeSdeCanonicalToken(targetOccupant.vehicleId) !== normalizeSdeCanonicalToken(candidate.vehicleId)){
+      findings.push(makeFinding({
+        candidate,
+        affectedSlot:targetSlot,
+        direction:"TO",
+        occupyingVehicleId:targetOccupant.vehicleId,
+        firstSafeDivergence:"physical_route_validation",
+        missingPlanParts:["main","reservations","overlays","routeResources","adapters"],
+        violatedInvariant:"FRESH_ACTUAL_STATE_OVERRIDES_HISTORY",
+        observed:{targetOccupied:true,actualSource,occupyingVehicleId:sanitizeVehicleValue(targetOccupant.vehicleId)}
+      }));
+      suppressedOutcomeIds.add(candidate.candidateOutcomeId);
+      return;
+    }
+    if(SDE_PASSIVE_BLOCKED_SLOT_IDS.has(statedSource) && actualSource && actualSource !== statedSource){
+      findings.push(makeFinding({
+        candidate,
+        affectedSlot:statedSource,
+        direction:"FROM",
+        occupyingVehicleId:actualBySlot.get(statedSource)?.vehicleId || "",
+        firstSafeDivergence:"actual_state_reconciliation",
+        missingPlanParts:["executionIdentity","main","reservations","overlays","routeResources","adapters"],
+        violatedInvariant:"FRESH_ACTUAL_STATE_OVERRIDES_HISTORY",
+        observed:{statedSource,actualSource,sourceOccupant:sanitizeVehicleValue(actualBySlot.get(statedSource)?.vehicleId)}
+      }));
+      suppressedOutcomeIds.add(candidate.candidateOutcomeId);
+    }
+  });
+
+  const dedupedFindings = Array.from(new Map(findings.map(finding=>[finding.findingId,finding])).values());
+  if(!dedupedFindings.length) return canonicalPlan;
+  candidates.filter(candidate=>suppressedOutcomeIds.has(candidate.candidateOutcomeId)).forEach(candidate=>{
+    const finding = dedupedFindings.find(item=>item.requestedVehicleId === candidate.vehicleId) || dedupedFindings[0];
+    candidate.activeEligible = false;
+    candidate.status = "diagnostic_only";
+    candidate.physicalValidation = {valid:false,reason:finding.expected}; // SDE_BLOCKED_SLOT_SUPPRESS_PARTIAL
+  });
+  canonicalPlan.activeOutcomes = (canonicalPlan.activeOutcomes || []).filter(item=>!suppressedOutcomeIds.has(item.candidateOutcomeId));
+  canonicalPlan.reservationsPreview = (canonicalPlan.reservationsPreview || []).filter(item=>!suppressedOutcomeIds.has(item.candidateOutcomeId));
+  canonicalPlan.overlaysPreview = (canonicalPlan.overlaysPreview || []).filter(item=>!suppressedOutcomeIds.has(item.candidateOutcomeId));
+  canonicalPlan.outcomesByObligationStep = (canonicalPlan.outcomesByObligationStep || []).map(group=>
+    suppressedOutcomeIds.has(group.activeOutcome?.candidateOutcomeId)
+      ? {...group,activeOutcome:null,selectionReason:"impossible_shift_to_or_from_blocked_slot"}
+      : group
+  );
+  canonicalPlan.activeChains = (canonicalPlan.activeChains || []).map(chain=>({
+    ...chain,
+    steps:(chain.steps || []).map(step=>suppressedOutcomeIds.has(step.candidateOutcomeId) ? {...step,active:false,status:"diagnostic_only"} : step)
+  }));
+  canonicalPlan.diagnostics = sortSdeCanonicalObjects([...(canonicalPlan.diagnostics || []),...dedupedFindings]);
+  canonicalPlan.metadata = {
+    ...(canonicalPlan.metadata || {}),
+    activeOutcomeCount:canonicalPlan.activeOutcomes.length,
+    diagnosticCount:canonicalPlan.diagnostics.length,
+    passiveBlockedSlotFindingCount:dedupedFindings.length
+  };
+  return canonicalPlan;
+}
+
 function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || captureSdeCanonicalShadowRuntimeSnapshot();
   const diagnosticOnlyRows = (snapshot.legacy?.finalCards || []).filter(row=>row?.sdeTrappedEgressDiagnosticOnly === true);
@@ -40917,6 +41148,7 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
       .filter(([,record])=>record?.action === "completed")
       .map(([key])=>key)
   });
+  applySdePassiveBlockedSlotDiagnosticGate(canonicalPlan, snapshot); // SDE_BLOCKED_SLOT_PASSIVE_SWEEP
   canonicalPlan.diagnostics = sortSdeCanonicalObjects([
     ...(canonicalPlan.diagnostics || []),
     ...diagnosticOnlyRows.map(row=>{
@@ -40941,6 +41173,7 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
   cardProjection.diagnostics = sortSdeCanonicalObjects([
     ...(cardProjection.diagnostics || []),
+    ...(canonicalPlan.diagnostics || []).filter(item=>item?.problemId === SDE_PASSIVE_BLOCKED_SLOT_PROBLEM_ID),
     ...buildSdeCanonicalPendulumPreviewDiagnostics(snapshot.actualStateReconciliation || {})
   ]);
   const reservationProjection = buildSdeCanonicalReservationProjection(canonicalPlan, cardProjection);
@@ -42271,7 +42504,11 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
 
 function buildSdeCanonicalDiagnosticsHtml(diagnostics, integrityStatus){
   if(!diagnostics.length) return "";
-  return buildSdeDiagnosticSectionHtml({
+  const passiveBlockedSlotFinding = diagnostics.find(item=>item.diagnosticType === SDE_PASSIVE_BLOCKED_SLOT_PROBLEM_ID);
+  const passiveBlockedSlotHtml = passiveBlockedSlotFinding
+    ? `<div class="sde-shift-unresolved" data-sde-canonical-diagnostic="${SDE_PASSIVE_BLOCKED_SLOT_PROBLEM_ID}"><strong>Umulig skifting til/fra blokkert slot</strong><br>${escapeHtml(passiveBlockedSlotFinding.explanation || "Canonical plan er diagnostic-only uten operative skifteartefakter.")}</div>`
+    : "";
+  return passiveBlockedSlotHtml + buildSdeDiagnosticSectionHtml({
     id:"canonical-production-diagnostics",
     title:"Canonical diagnostics",
     count:`${diagnostics.length} · Teknisk integritet: ${integrityStatus || "ukjent"}`,
