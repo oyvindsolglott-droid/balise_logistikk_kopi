@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "sde-actual-state-action-path-incident-v1",
+  "snapshotId": "incident-20260810-1735-anonymized",
+  "capturedAt": "2026-08-10T17:35:00+02:00",
+  "operationalDate": "2026-08-10",
+  "anonymization": {
+    "vehicleIdentifiers": "stable incident aliases",
+    "routeAndStopIdentifiers": "stable fixture aliases",
+    "secretsIncluded": false
+  },
+  "revisions": {
+    "sharedDraftRevision": 289,
+    "placementRevision": "shared-sporplan:289",
+    "vehicleStatusRevision": 152,
+    "staticDataUpdatedAt": "2026-08-10T15:08:11+02:00",
+    "snapshotSequenceMinutes": 1055
+  },
+  "slotMapPlacements": [
+    {"slot": "3M", "vehicleId": "UNIT-01"},
+    {"slot": "3S", "vehicleId": "UNIT-02"},
+    {"slot": "4N", "vehicleId": "UNIT-03"},
+    {"slot": "4M", "vehicleId": "UNIT-04"},
+    {"slot": "4S", "vehicleId": "UNIT-A"},
+    {"slot": "5N", "vehicleId": "UNIT-05"},
+    {"slot": "5M", "vehicleId": "UNIT-06"},
+    {"slot": "5S", "vehicleId": "UNIT-07"},
+    {"slot": "6N", "vehicleId": "UNIT-B"},
+    {"slot": "6S", "vehicleId": "UNIT-08"},
+    {"slot": "6SS", "vehicleId": "UNIT-09"},
+    {"slot": "7N", "vehicleId": "UNIT-10"},
+    {"slot": "7S", "vehicleId": "UNIT-11"},
+    {"slot": "8N", "vehicleId": "UNIT-12"},
+    {"slot": "8S", "vehicleId": "UNIT-13"},
+    {"slot": "9", "vehicleId": "UNIT-14"},
+    {"slot": "10N", "vehicleId": "UNIT-INVALID"},
+    {"slot": "10S", "vehicleId": "UNIT-15"},
+    {"slot": "11S", "vehicleId": "UNIT-16"}
+  ],
+  "serverActualPlacements": [
+    {"vehicleId": "UNIT-A", "slot": "4S", "source": "shared_sporplan", "sourceRevision": 289, "observedAt": "2026-08-09T21:31:28.378Z"},
+    {"vehicleId": "UNIT-B", "slot": "6N", "source": "shared_sporplan", "sourceRevision": 289, "observedAt": "2026-08-09T21:31:28.378Z"}
+  ],
+  "incidents": {
+    "ambiguousMovementWithExplicitPlacement": {
+      "vehicleId": "UNIT-A",
+      "visibleActualSource": "4S",
+      "candidateSource": "",
+      "canonicalSourceBeforeFix": "",
+      "diagnosticReason": "ambiguous_current_train_movement",
+      "activeRootRequest": null,
+      "counts": {"cards": 0, "reservations": 0, "overlays": 0, "adapters": 0},
+      "movementCandidates": [
+        {"occurrenceId": "2026-08-10|arrival|2473|07:30", "operationalDate": "2026-08-10", "serviceDate": "2026-08-10", "trainNumber": "2473", "displayTrainNumber": "2473", "arrivalTime": "07:30", "departureTime": "07:31", "plannedArrival": "2026-08-10 07:30:00", "estimatedArrival": "2026-08-10 07:36:52", "actualArrival": "2026-08-10 07:36:52", "plannedDeparture": "2026-08-10 07:31:00", "estimatedDeparture": "2026-08-10 07:42:26", "actualDeparture": "2026-08-10 07:42:26", "platformTrack": "3", "routeId": "ROUTE-01", "stopId": "STOP-01", "direction": "through", "trainPart": "single_set", "origin": "Notodden", "destination": "Porsgrunn", "movementStatus": "actual_arrival", "sourceProvenance": "balise_stop_track", "vehicleIds": ["UNIT-A"], "consistContext": "single_set"},
+        {"occurrenceId": "2026-08-10|arrival|2474|07:57", "operationalDate": "2026-08-10", "serviceDate": "2026-08-10", "trainNumber": "2474", "displayTrainNumber": "2474", "arrivalTime": "07:57", "departureTime": "07:59", "plannedArrival": "2026-08-10 07:57:00", "estimatedArrival": "2026-08-10 08:03:34", "actualArrival": "2026-08-10 08:03:34", "plannedDeparture": "2026-08-10 07:59:00", "estimatedDeparture": "2026-08-10 08:04:51", "actualDeparture": "2026-08-10 08:04:51", "platformTrack": "2", "routeId": "ROUTE-02", "stopId": "STOP-02", "direction": "through", "trainPart": "single_set", "origin": "Porsgrunn", "destination": "Notodden", "movementStatus": "actual_arrival", "sourceProvenance": "balise_stop_track", "vehicleIds": ["UNIT-A"], "consistContext": "single_set"},
+        {"occurrenceId": "2026-08-10|arrival|2477|10:00", "operationalDate": "2026-08-10", "serviceDate": "2026-08-10", "trainNumber": "2477", "displayTrainNumber": "2477", "arrivalTime": "10:00", "departureTime": "10:01", "plannedArrival": "2026-08-10 10:00:00", "estimatedArrival": "2026-08-10 09:59:34", "actualArrival": "2026-08-10 09:59:34", "plannedDeparture": "2026-08-10 10:01:00", "estimatedDeparture": "2026-08-10 10:01:12", "actualDeparture": "2026-08-10 10:01:12", "platformTrack": "3", "routeId": "ROUTE-03", "stopId": "STOP-03", "direction": "through", "trainPart": "single_set", "origin": "Notodden", "destination": "Porsgrunn", "movementStatus": "actual_arrival", "sourceProvenance": "balise_stop_track", "vehicleIds": ["UNIT-A"], "consistContext": "single_set"},
+        {"occurrenceId": "2026-08-10|arrival|2478|11:59", "operationalDate": "2026-08-10", "serviceDate": "2026-08-10", "trainNumber": "2478", "displayTrainNumber": "2478", "arrivalTime": "11:59", "departureTime": "12:01", "plannedArrival": "2026-08-10 11:59:00", "estimatedArrival": "2026-08-10 11:58:47", "actualArrival": "2026-08-10 11:58:47", "plannedDeparture": "2026-08-10 12:01:00", "estimatedDeparture": "2026-08-10 12:01:24", "actualDeparture": "2026-08-10 12:01:24", "platformTrack": "3", "routeId": "ROUTE-04", "stopId": "STOP-04", "direction": "through", "trainPart": "single_set", "origin": "Porsgrunn", "destination": "Notodden", "movementStatus": "actual_arrival", "sourceProvenance": "balise_stop_track", "vehicleIds": ["UNIT-A"], "consistContext": "single_set"},
+        {"occurrenceId": "2026-08-10|arrival|2481|14:02", "operationalDate": "2026-08-10", "serviceDate": "2026-08-10", "trainNumber": "2481", "displayTrainNumber": "2481", "arrivalTime": "14:02", "departureTime": "14:04", "plannedArrival": "2026-08-10 14:02:00", "estimatedArrival": "2026-08-10 14:00:47", "actualArrival": "2026-08-10 14:00:47", "plannedDeparture": "2026-08-10 14:04:00", "estimatedDeparture": "2026-08-10 14:04:26", "actualDeparture": "2026-08-10 14:04:26", "platformTrack": "3", "routeId": "ROUTE-05", "stopId": "STOP-05", "direction": "through", "trainPart": "single_set", "origin": "Notodden", "destination": "Porsgrunn", "movementStatus": "actual_arrival", "sourceProvenance": "balise_stop_track", "vehicleIds": ["UNIT-A"], "consistContext": "single_set"},
+        {"occurrenceId": "2026-08-10|arrival|2482|14:49", "operationalDate": "2026-08-10", "serviceDate": "2026-08-10", "trainNumber": "2482", "displayTrainNumber": "2482", "arrivalTime": "14:49", "departureTime": "14:55", "plannedArrival": "2026-08-10 14:49:00", "estimatedArrival": "2026-08-10 14:49:20", "actualArrival": "2026-08-10 14:49:20", "plannedDeparture": "2026-08-10 14:55:00", "estimatedDeparture": "2026-08-10 15:06:11", "actualDeparture": "2026-08-10 14:49:20", "platformTrack": "3", "routeId": "ROUTE-06", "stopId": "STOP-06", "direction": "through", "trainPart": "single_set", "origin": "Porsgrunn", "destination": "Notodden", "movementStatus": "actual_arrival", "sourceProvenance": "balise_stop_track", "vehicleIds": ["UNIT-A"], "consistContext": "single_set"},
+        {"occurrenceId": "2026-08-10|arrival|2485|17:02", "operationalDate": "2026-08-10", "serviceDate": "2026-08-10", "trainNumber": "2485", "displayTrainNumber": "2485", "arrivalTime": "17:02", "departureTime": "17:03", "plannedArrival": "2026-08-10 17:02:00", "estimatedArrival": "2026-08-10 17:02:00", "actualArrival": "", "plannedDeparture": "2026-08-10 17:03:00", "estimatedDeparture": "2026-08-10 17:03:00", "actualDeparture": "", "platformTrack": "3", "routeId": "ROUTE-07", "stopId": "STOP-07", "direction": "through", "trainPart": "single_set", "origin": "Notodden", "destination": "Porsgrunn", "movementStatus": "estimated_arrival", "sourceProvenance": "balise_stop_track", "vehicleIds": ["UNIT-A"], "consistContext": "single_set"},
+        {"occurrenceId": "2026-08-10|arrival|2486|17:59", "operationalDate": "2026-08-10", "serviceDate": "2026-08-10", "trainNumber": "2486", "displayTrainNumber": "2486", "arrivalTime": "17:59", "departureTime": "18:01", "plannedArrival": "2026-08-10 17:59:00", "estimatedArrival": "2026-08-10 17:59:00", "actualArrival": "", "plannedDeparture": "2026-08-10 18:01:00", "estimatedDeparture": "2026-08-10 18:01:00", "actualDeparture": "", "platformTrack": "3", "routeId": "ROUTE-08", "stopId": "STOP-08", "direction": "through", "trainPart": "single_set", "origin": "Porsgrunn", "destination": "Notodden", "movementStatus": "estimated_arrival", "sourceProvenance": "balise_stop_track", "vehicleIds": ["UNIT-A"], "consistContext": "single_set"},
+        {"occurrenceId": "2026-08-10|arrival|2489|20:59", "operationalDate": "2026-08-10", "serviceDate": "2026-08-10", "trainNumber": "2489", "displayTrainNumber": "2489", "arrivalTime": "20:59", "departureTime": "", "plannedArrival": "2026-08-10 20:59:00", "estimatedArrival": "2026-08-10 20:59:00", "actualArrival": "", "plannedDeparture": "", "estimatedDeparture": "", "actualDeparture": "", "platformTrack": "3", "routeId": "ROUTE-09", "stopId": "STOP-09", "direction": "terminating", "trainPart": "single_set", "origin": "Notodden", "destination": "Skien", "movementStatus": "estimated_arrival", "sourceProvenance": "balise_stop_track", "vehicleIds": ["UNIT-A"], "consistContext": "single_set"}
+      ]
+    },
+    "knownActualWithStaleCandidate": {
+      "vehicleId": "UNIT-B",
+      "visibleActualSource": "6N",
+      "canonicalActualSource": "6N",
+      "candidateSource": "2S",
+      "staleCanonicalSourceField": "2S",
+      "requestedTarget": "12N",
+      "diagnosticReason": "candidate_source_conflict",
+      "rootRequest": {"rootRequestId": "ROOT-B", "requestedVehicleId": "UNIT-B", "requestedTarget": "12N", "requestSource": "authorized_shift_order", "requestRevision": "shared-sporplan:289", "createdAt": "2026-08-10T17:35:00+02:00", "status": "ACTIVE"},
+      "physicalRouteCandidates": ["6N->12N"],
+      "blockers": ["UNIT-08@6S", "UNIT-09@6SS"],
+      "reservations": [],
+      "overlays": [],
+      "routeResources": [],
+      "cardProjection": [],
+      "counts": {"cards": 0, "reservations": 0, "overlays": 0, "adapters": 0}
+    }
+  }
+}

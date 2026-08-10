@@ -578,9 +578,9 @@ registerHarnessTest({
   recoveryId: "direct-wash-transit",
 });
 
-test("I/L audits and executable R/X/Y/Z/AA/AB/AC coverage cannot disappear silently", () => {
+test("I/L audits and executable R/X/Y/Z/AA/AB/AC/AD coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
-  assert.deepEqual(Object.keys(coverage), [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "AA", "AB", "AC"]);
+  assert.deepEqual(Object.keys(coverage), [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "AA", "AB", "AC", "AD"]);
   assert.equal(coverage.I.status, "audit-only");
   assert.equal(coverage.L.status, "audit-only");
   assert.equal(coverage.R.status, "implemented");
@@ -597,6 +597,8 @@ test("I/L audits and executable R/X/Y/Z/AA/AB/AC coverage cannot disappear silen
   assert.deepEqual(coverage.AB.invariants, Array.from({length:12},(_,index)=>`INV-BALISE-${String(index+1).padStart(3,"0")}`));
   assert.equal(coverage.AC.status, "implemented");
   assert.deepEqual(coverage.AC.invariants, Array.from({length:18},(_,index)=>`INV-EGRESS-${String(index+32).padStart(3,"0")}`));
+  assert.equal(coverage.AD.status, "implemented");
+  assert.deepEqual(coverage.AD.invariants, Array.from({length:9},(_,index)=>`INV-EGRESS-${String(index+50).padStart(3,"0")}`));
   for(const phase of Object.keys(coverage).filter(letter => !["I", "L"].includes(letter))){
     assert.equal(coverage[phase].status, "implemented", `${phase} must remain implemented`);
   }
@@ -627,6 +629,13 @@ registerHarnessTest({
   name: "pendulum source uses the time-bound train movement and maps platform 2/3 to S",
   harness: "sde-canonical-pendel-slot-mapping-k-harness.js",
   baseline: "3495bcfffb38012a94bcfd315b211650884a278e",
+});
+
+registerHarnessTest({
+  phase: "AD",
+  name: "actual-state readers and active root requests retain one canonical action path",
+  harness: "sde-actual-state-action-path-harness.js",
+  baseline: "cc2ebb04151eaefbcdd30c54a2e2a67f193ed605",
 });
 
 test("Y — complete trapped-egress chains and unresolved-step retarget stay atomic", () => {
