@@ -21855,6 +21855,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
       fromSlot:canonicalSource,
       arrivalSlot:canonicalSource,
       originalFromSlot:canonicalSource,
+      canonicalSourceSlot:canonicalSource,
       sdeRecursiveRootRequestId:rootRequest.rootRequestId,
       sdeRecursiveRootRequest:rootRequest,
       sdeRecursiveSourceReconciliation:{
@@ -22272,7 +22273,12 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
     insertedRecoveryKeys.add(key);
   });
 
-  const reconciledRows = reconcileSdeFinalVnRecoveryRows(guarded, sourceRows);
+  const reconciledRows = reconcileSdeFinalVnRecoveryRows(guarded, sourceRows).map(row=>{
+    const sourceReconciled = ["CANONICAL_SOURCE_RECONCILED","CANONICAL_SOURCE_CONFIRMED"]
+      .includes(String(row?.sdeRecursiveSourceReconciliation?.status || "").trim());
+    const canonicalSourceSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || row?.originalFromSlot);
+    return sourceReconciled && canonicalSourceSlot ? {...row,canonicalSourceSlot} : row;
+  });
   return applySdePhysicalSequenceReservations(
     applySdeCanonicalRetargetIntentsToRows(reconciledRows)
   );
@@ -27958,11 +27964,14 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
       snapshotSequenceMinutes:input.snapshotSequenceMinutes
     })
   );
-  const pendulumVehicleTokens = new Set(pendulumResults
+  const resolvedPendulumVehicleTokens = new Set(pendulumResults
+    .filter(result=>result.status === "resolved")
+    .map(result=>result.vehicleToken));
+  const pendulumInferenceVehicleTokens = new Set(pendulumResults
     .filter(result=>result.status === "resolved" || result.status === "ambiguous")
     .map(result=>result.vehicleToken));
-  const sharedCandidates = rawSharedCandidates.filter(row=>!pendulumVehicleTokens.has(row.vehicleToken));
-  const computedCandidates = rawComputedCandidates.filter(row=>!pendulumVehicleTokens.has(row.vehicleToken));
+  const sharedCandidates = rawSharedCandidates.filter(row=>!resolvedPendulumVehicleTokens.has(row.vehicleToken));
+  const computedCandidates = rawComputedCandidates.filter(row=>!pendulumInferenceVehicleTokens.has(row.vehicleToken));
   const sharedDraftActive = input.sharedDraftActive === true || (input.sharedDraftActive !== false && (rawSharedCandidates.length > 0 || (Number.isFinite(sharedDraftRevision) && sharedDraftRevision > 0)));
   const conflicts = [];
   const diagnostics = [];
@@ -27999,18 +28008,21 @@ function buildSdeCanonicalActualStateReconciliation(input={}){
       return;
     }
     if(result.status === "ambiguous"){
+      const explicitPlacementRetained = rawSharedCandidates.some(row=>row.vehicleToken === result.vehicleToken);
       addConflict("AMBIGUOUS_CURRENT_TRAIN_MOVEMENT",{
         vehicleId:result.vehicleId,
         reason:result.reason,
         snapshotSequenceMinutes:result.snapshotSequenceMinutes,
         currentMovements:result.currentMovements || [],
         discardedMovements:result.discardedMovements || [],
-        message:"Aktuell enkeltsettpendel-bevegelse kan ikke bevises entydig med tognummer, operativ dato, tidspunkt og plattformspor; ingen canonical actual-plassering opprettes."
+        message:explicitPlacementRetained
+          ? "Aktuell enkeltsettpendel-bevegelse kan ikke bevises entydig; eksplisitt shared actual-plassering beholdes som canonical authority."
+          : "Aktuell enkeltsettpendel-bevegelse kan ikke bevises entydig med tognummer, operativ dato, tidspunkt og plattformspor; ingen canonical actual-plassering opprettes."
       },"warning");
     }
   });
   [...rawSharedCandidates,...rawComputedCandidates]
-    .filter(row=>pendulumVehicleTokens.has(row.vehicleToken) && ["2N","3N","3M"].includes(row.slot))
+    .filter(row=>pendulumInferenceVehicleTokens.has(row.vehicleToken) && ["2N","3N","3M"].includes(row.slot))
     .forEach(row=>addConflict("PENDULUM_STALE_NORTH_SOURCE_REJECTED",{
       vehicleId:row.vehicleId,
       source:row.source,
@@ -29909,6 +29921,8 @@ function buildSdeCanonicalIntegrityReport(input={}){
   const actionableCards = Array.isArray(cards.actionableCards) ? cards.actionableCards : [];
   const blockedCards = Array.isArray(cards.blockedChainCards) ? cards.blockedChainCards : [];
   const exitingCards = Array.isArray(cards.exitingCards) ? cards.exitingCards : [];
+  const workflowActionCards = Array.isArray(cards.workflowActionCards) ? cards.workflowActionCards : [];
+  const activeRootRequests = Array.isArray(input.activeRootRequests) ? cloneSdeCanonicalValue(input.activeRootRequests) || [] : [];
   const targetReservations = Array.isArray(reservations.reservations) ? reservations.reservations : [];
   const activeOverlays = Array.isArray(graphics.activeOverlays) ? graphics.activeOverlays : [];
   const deferredOverlays = Array.isArray(graphics.deferredOverlays) ? graphics.deferredOverlays : [];
@@ -30178,6 +30192,41 @@ function buildSdeCanonicalIntegrityReport(input={}){
     problems.forEach(classification=>addConflict(classification,{vehicleId,obligationIds}));
     return {vehicleId,status:problems.length ? "FAIL" : "PASS",obligationIds,activeOutcomeCount:active.length,actionableCardCount:recoveryCards.length,reservationCount:recoveryReservations.length,activeOverlayCount:recoveryOverlays.length,diagnosticCount:diagnostics.length,conflictClassifications:problems.sort()};
   });
+  const terminalRootStatuses = new Set(["COMPLETED","CANCELLED_BY_AUTHORIZED_USER"]);
+  const rootRequestResults = sortSdeCanonicalObjects(activeRootRequests.flatMap(rootRequest=>{
+    const rootRequestId = String(rootRequest?.rootRequestId || "").trim();
+    const rootStatus = String(rootRequest?.status || "ACTIVE").trim().toUpperCase();
+    if(!rootRequestId || terminalRootStatuses.has(rootStatus)) return [];
+    const rootCandidates = candidates.filter(candidate=>String(candidate?.raw?.sdeRecursiveRootRequestId || candidate?.raw?.sdeRecursiveRootRequest?.rootRequestId || "").trim() === rootRequestId);
+    const rootOutcomeIds = new Set(rootCandidates.map(candidate=>candidate.candidateOutcomeId));
+    const readyPhysicalCards = actionableCards.filter(card=>rootOutcomeIds.has(card.activeOutcomeId));
+    const dependencyBlockedCards = blockedCards.filter(card=>rootOutcomeIds.has(card.activeOutcomeId));
+    const workflowCards = workflowActionCards.filter(card=>card.rootRequestId === rootRequestId && card.nonMovement === true && card.state === "READY");
+    const workflowRole = workflowCards.map(card=>card.role).find(Boolean) || "";
+    const hasActionPath = readyPhysicalCards.length > 0 || Boolean(workflowRole);
+    const actionPath = workflowRole || (readyPhysicalCards.length > 0 ? "SHIFT_CARD_CHAIN" : "MISSING");
+    if(!hasActionPath){
+      addConflict("ACTIVE_ROOT_REQUEST_WITHOUT_ACTION_PATH",{
+        rootRequestId,
+        vehicleId:sanitizeVehicleValue(rootRequest?.requestedVehicleId),
+        requestedTarget:normalizeSlot(rootRequest?.requestedTarget),
+        rootStatus,
+        candidateCount:rootCandidates.length,
+        readyPhysicalCardCount:readyPhysicalCards.length,
+        dependencyBlockedCardCount:dependencyBlockedCards.length,
+        workflowActionCardCount:workflowCards.length
+      });
+    }
+    return [{
+      rootRequestId,
+      status:hasActionPath ? "PASS" : "FAIL",
+      actionPath,
+      rootStatus,
+      readyPhysicalCardCount:readyPhysicalCards.length,
+      dependencyBlockedCardCount:dependencyBlockedCards.length,
+      workflowActionCardCount:workflowCards.length
+    }];
+  }));
   const conflicts = sortSdeCanonicalObjects(reportConflicts);
   obligationResults.forEach(result=>{
     const related = conflicts.filter(item=>item.stepId === result.stepId || (item.obligationId && item.obligationId === result.obligationId));
@@ -30193,7 +30242,8 @@ function buildSdeCanonicalIntegrityReport(input={}){
     {invariant:"non_executable_is_diagnostic_only",status:diagnosticResults.some(item=>item.status === "FAIL") ? "FAIL" : "PASS"},
     {invariant:"actual_plan_separation",status:conflicts.some(item=>actualConflictCodes.has(item.classification)) ? "FAIL" : "PASS"},
     {invariant:"chain_dependency_gating",status:chainResults.some(item=>item.status === "FAIL") ? "FAIL" : "PASS"},
-    {invariant:"vn_recovery_continuity",status:recoveryResults.some(item=>item.status === "FAIL") ? "FAIL" : "PASS"}
+    {invariant:"vn_recovery_continuity",status:recoveryResults.some(item=>item.status === "FAIL") ? "FAIL" : "PASS"},
+    {invariant:"ACTIVE_ROOT_REQUEST_ALWAYS_HAS_ACTION_PATH",status:rootRequestResults.some(item=>item.status === "FAIL") ? "FAIL" : "PASS"}
   ];
   return {
     status,
@@ -30204,8 +30254,9 @@ function buildSdeCanonicalIntegrityReport(input={}){
     actualStateResults:sortSdeCanonicalObjects(actualStateResults),
     diagnosticResults,
     recoveryResults:sortSdeCanonicalObjects(recoveryResults),
+    rootRequestResults,
     conflicts,
-    summary:{obligationCount:obligationResults.length,passObligationCount:obligationResults.filter(item=>item.status === "PASS").length,ambiguousObligationCount:obligationResults.filter(item=>item.status === "AMBIGUOUS").length,failObligationCount:obligationResults.filter(item=>item.status === "FAIL").length,chainCount:chainResults.length,recoveryCount:recoveryResults.length,conflictCount:conflicts.length},
+    summary:{obligationCount:obligationResults.length,passObligationCount:obligationResults.filter(item=>item.status === "PASS").length,ambiguousObligationCount:obligationResults.filter(item=>item.status === "AMBIGUOUS").length,failObligationCount:obligationResults.filter(item=>item.status === "FAIL").length,chainCount:chainResults.length,recoveryCount:recoveryResults.length,activeRootRequestCount:rootRequestResults.length,rootRequestWithoutActionPathCount:rootRequestResults.filter(item=>item.status === "FAIL").length,conflictCount:conflicts.length},
     metadata:{schemaVersion:"sde-canonical-integrity-report-v1",sideEffectPolicy:"pure-shadow-readmodel",statusRule:"FAIL-on-invariant-breach; AMBIGUOUS-on-incomplete-diagnostic-coverage; otherwise-PASS"}
   };
 }
@@ -41458,6 +41509,7 @@ function materializeSdeRecursivePrerequisiteRows(row, plan){
       fromSlot:card.source,
       arrivalSlot:card.source,
       originalFromSlot:card.source,
+      canonicalSourceSlot:card.source,
       recommendedSlot:card.target,
       toSlot:card.target,
       stableActionKey,
@@ -41539,6 +41591,44 @@ function buildSdeRecursiveResourceActionDiagnosticRow(row, plan){
       message:reason
     }
   };
+}
+
+function buildSdeRecursiveWorkflowActionCardProjection(rows=[]){
+  const cards = (Array.isArray(rows) ? rows : []).flatMap(row=>{
+    const actionCard = row?.sdeRecursiveWorkflowActionCard;
+    const rootRequest = row?.sdeRecursiveRootRequest;
+    const rootRequestId = String(row?.sdeRecursiveRootRequestId || rootRequest?.rootRequestId || actionCard?.rootRequestId || "").trim();
+    const role = String(actionCard?.role || "").trim();
+    if(!rootRequestId || !actionCard?.nonMovement || !["STATE_RECONCILIATION_REQUIRED","RESOURCE_RELEASE_REQUIRED","REPLAN_REQUIRED"].includes(role)) return [];
+    const vehicleId = sanitizeVehicleValue(rootRequest?.requestedVehicleId || row?.vehicle);
+    const targetSlot = normalizeSlot(rootRequest?.requestedTarget || row?.recommendedSlot || row?.toSlot);
+    const sourceSlot = normalizeSlot(row?.sdeRecursiveSourceReconciliation?.canonicalSource || row?.sdeTrappedEgressDiagnostic?.source);
+    const canonicalCardId = String(actionCard.cardId || `recursive-workflow-card|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({rootRequestId,role,vehicleId,targetSlot}))}`).trim();
+    return [{
+      canonicalCardId,
+      activeOutcomeId:canonicalCardId,
+      obligationId:rootRequestId,
+      stepId:String(actionCard.stepId || canonicalCardId).trim(),
+      rootRequestId,
+      role,
+      status:"workflow_action",
+      state:String(actionCard.state || "READY").trim(),
+      nonMovement:true,
+      active:true,
+      canComplete:false,
+      canCancel:false,
+      canDelete:false,
+      canRetarget:false,
+      vehicleId,
+      sourceSlot,
+      targetSlot,
+      chainId:String(actionCard.planId || row?.sdeRecursivePlanId || "").trim(),
+      dependencyIds:sortSdeCanonicalStrings(actionCard.dependsOn || []),
+      producerProvenance:{producer:"recursive_prerequisite_planner",provenance:"root_request_workflow_action"},
+      explanation:String(row?.sdePhysicalNoSafeReleaseReason || actionCard?.explanation || "Rotbestillingen krever en ikke-fysisk avklaring før planlegging fortsetter.").trim()
+    }];
+  });
+  return sortSdeCanonicalObjects(Array.from(new Map(cards.map(card=>[card.canonicalCardId,card])).values()));
 }
 
 const SDE_PASSIVE_BLOCKED_SLOT_IDS = new Set(["4M","5M","6S","10S","11S","12S"]);
@@ -41774,7 +41864,15 @@ function applySdePassiveBlockedSlotDiagnosticGate(canonicalPlan={}, snapshot={})
 
 function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || captureSdeCanonicalShadowRuntimeSnapshot();
-  const diagnosticOnlyRows = (snapshot.legacy?.finalCards || []).filter(row=>row?.sdeTrappedEgressDiagnosticOnly === true);
+  const finalRows = Array.isArray(snapshot.legacy?.finalCards) ? snapshot.legacy.finalCards : [];
+  const diagnosticOnlyRows = finalRows.filter(row=>row?.sdeTrappedEgressDiagnosticOnly === true);
+  const workflowActionCards = buildSdeRecursiveWorkflowActionCardProjection(diagnosticOnlyRows);
+  const activeRootRequests = Array.from(new Map(finalRows.flatMap(row=>{
+    const rootRequest = row?.sdeRecursiveRootRequest;
+    const rootRequestId = String(row?.sdeRecursiveRootRequestId || rootRequest?.rootRequestId || "").trim();
+    if(!rootRequestId) return [];
+    return [[rootRequestId,{...cloneSdeCanonicalValue(rootRequest || {}),rootRequestId}]];
+  })).values()).sort((left,right)=>left.rootRequestId.localeCompare(right.rootRequestId));
   const activeAuthorities = Object.fromEntries(Object.entries(snapshot.runtimeState?.activeAuthorities || {}).map(([key,value])=>[
     key,
     typeof value === "string" ? value : String(value?.activeOutcomeId || "").trim()
@@ -41810,6 +41908,15 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
     diagnosticOnlyRowCount:diagnosticOnlyRows.length
   };
   const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
+  cardProjection.workflowActionCards = workflowActionCards;
+  cardProjection.cardByOutcomeId = {
+    ...(cardProjection.cardByOutcomeId || {}),
+    ...Object.fromEntries(workflowActionCards.map(card=>[card.activeOutcomeId,card]))
+  };
+  cardProjection.metadata = {
+    ...(cardProjection.metadata || {}),
+    workflowActionCardCount:workflowActionCards.length
+  };
   cardProjection.diagnostics = sortSdeCanonicalObjects([
     ...(cardProjection.diagnostics || []),
     ...(canonicalPlan.diagnostics || []).filter(item=>item?.problemId === SDE_PASSIVE_BLOCKED_SLOT_PROBLEM_ID),
@@ -41817,7 +41924,7 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   ]);
   const reservationProjection = buildSdeCanonicalReservationProjection(canonicalPlan, cardProjection);
   const graphicProjection = buildSdeCanonicalGraphicProjection(canonicalPlan, cardProjection, reservationProjection);
-  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection});
+  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection,activeRootRequests});
   const planRevision = getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue(snapshot));
   return assertSdeCanonicalProductionReaderContract({
     planRevision,
@@ -41826,7 +41933,8 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
     cardProjection,
     reservationProjection,
     graphicProjection,
-    integrityReport
+    integrityReport,
+    activeRootRequests
   });
 }
 
@@ -42278,6 +42386,7 @@ function getSdeCanonicalProductionProjectedCards(reader){
     ...(reader.cardProjection.actionableCards || []),
     ...(reader.cardProjection.handlerBlockedCards || []),
     ...(reader.cardProjection.blockedChainCards || []),
+    ...(reader.cardProjection.workflowActionCards || []),
     ...(reader.cardProjection.exitingCards || [])
   ]);
 }
@@ -42292,6 +42401,7 @@ function getSdeCanonicalProductionVisibleCards(reader){
   return orderSdeCanonicalProductionProjectedCards([
     ...actionableCards,
     ...(reader.cardProjection.blockedChainCards || []),
+    ...(reader.cardProjection.workflowActionCards || []),
     ...(reader.cardProjection.exitingCards || [])
   ]);
 }
@@ -42392,7 +42502,8 @@ function applySdeCanonicalHandlerActionableGate(reader, initialAdapters){
     canonicalPlan:reader.canonicalPlan,
     cardProjection:reader.cardProjection,
     reservationProjection:reader.reservationProjection,
-    graphicProjection:reader.graphicProjection
+    graphicProjection:reader.graphicProjection,
+    activeRootRequests:reader.activeRootRequests
   });
   return reader;
 }
@@ -42742,10 +42853,13 @@ function buildSdeCanonicalProductionDiagnostics(reader){
     explanation:String(item.explanation || item.message || item.reason || "Canonical behov er sperret og krever diagnostisk vurdering.").trim(),
     diagnosticSource:String(item.diagnosticSource || "canonical").trim()
   }));
-  return sortSdeCanonicalObjects(Array.from(new Map(normalized.map(item=>[
-    [item.diagnosticType,item.obligationId,item.stepId,item.vehicleId,item.sourceSlot,item.targetSlots.join(","),item.explanation].join("|"),
-    item
-  ])).values()));
+  return sortSdeCanonicalObjects(Array.from(new Map(normalized.map(item=>{
+    const physicalSubject = [item.vehicleId,item.sourceSlot,item.targetSlots.join(",")].join("|");
+    const diagnosticIdentity = item.vehicleId || item.sourceSlot || item.targetSlots.length
+      ? [item.diagnosticType,physicalSubject].join("|")
+      : [item.diagnosticType,item.obligationId,item.stepId,item.explanation].join("|");
+    return [diagnosticIdentity,item];
+  })).values()));
 }
 
 function buildSdeCanonicalProductionScorePresentation(reader={}, diagnostics=[], score=null){
@@ -43091,6 +43205,14 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
   const adapter = reader.handlerAdapters?.[card.canonicalCardId] || null;
   const outcome = adapter?.outcome || (reader.canonicalPlan.candidateOutcomes || []).find(item=>item.candidateOutcomeId === card.activeOutcomeId) || null;
   const row = adapter?.row || outcome?.raw || {};
+  if(card?.nonMovement === true){
+    const targetSlot = normalizeSlot(card.targetSlot) || "Ikke oppgitt";
+    return `<article class="sde-shift-card medium canonical-workflow-action" data-sde-canonical-card-id="${escapeHtml(card.canonicalCardId)}" data-sde-root-request-id="${escapeHtml(card.rootRequestId || "")}" data-sde-canonical-card-status="workflow_action" style="--delay:${index * 55}ms">
+      <div class="sde-shift-card-top"><div><div class="sde-shift-eyebrow">Kjøretøy</div><div class="sde-shift-vehicle">${escapeHtml(card.vehicleId || "Ukjent")}</div></div><span class="sde-canonical-card-state">Krever handling</span></div>
+      <div class="sde-night-card-override"><strong>${escapeHtml(card.role || "REPLAN_REQUIRED")}</strong><span>${escapeHtml(card.explanation || "Rotbestillingen er bevart og krever avklaring før fysisk planlegging fortsetter.")}</span></div>
+      <div class="sde-shift-meta"><span class="sde-shift-badge">Ikke-fysisk handlingskort</span><span class="sde-shift-badge">Bestilt mål ${escapeHtml(targetSlot)}</span><span class="sde-shift-badge">Ingen source fabrikert</span></div>
+    </article>`;
+  }
   const exiting = card.status === "exiting";
   const handlerBlocked = card.status === "handler_adapter_blocked";
   const blocked = card.status === "blocked_chain_step" || handlerBlocked;
