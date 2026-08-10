@@ -557,7 +557,7 @@ const mutations = [
         }],
       },
     ], "occupied target guard"),
-    catches: ["INV-TARGET-004", "INV-TARGET-007", "INV-TARGET-008"],
+    catches: ["INV-TARGET-008"],
   },
   {
     id: "H-rank-VN-before-local-south",
