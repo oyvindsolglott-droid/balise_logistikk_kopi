@@ -5,6 +5,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const vm = require("node:vm");
 const {STRICT_INVARIANT_IDS} = require("./qualification-contract.cjs");
 
 const root = path.resolve(__dirname, "../../..");
@@ -357,6 +358,7 @@ function applySemanticStrategy(value, strategies, name) {
     html: changed,
     metadata: {
       strategy: strategy.id,
+      strategyMatchCount: matching.length,
       functionName: strategy.functionName,
       changedOccurrences,
       beforeSnippetSha256: sha256(beforeSnippets.join("\n---\n")),
@@ -372,6 +374,18 @@ function applySemanticStrategy(value, strategies, name) {
       })),
     },
   };
+}
+
+function validateHtmlInlineScriptSyntax(html) {
+  const scripts = Array.from(String(html).matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi))
+    .filter(match => !/\bsrc\s*=/.test(match[1]) && !/type=["'](?:application\/json|application\/ld\+json|text\/plain)["']/i.test(match[1]))
+    .map(match => match[2]);
+  try {
+    scripts.forEach((script, index) => new vm.Script(script, {filename: `index-inline-${index + 1}.js`}));
+    return {ok: true, scriptCount: scripts.length, error: ""};
+  } catch (error) {
+    return {ok: false, scriptCount: scripts.length, error: String(error?.message || error)};
+  }
 }
 
 function strictReport(html, name) {
@@ -433,7 +447,7 @@ const executableOnlyVisibleCardsFunction = `function getSdeCanonicalProductionVi
     })
   );
 }`;
-const lifecycleVisibleCardsFunction = `function getSdeCanonicalProductionVisibleCards(reader){
+const workflowActionCardsVisibleCardsFunction = `function getSdeCanonicalProductionVisibleCards(reader){
   const actionableCards = (reader.cardProjection.actionableCards || []).filter(card=>{
       const adapter = reader.handlerAdapters?.[card.canonicalCardId];
       return card.status === "actionable"
@@ -443,9 +457,21 @@ const lifecycleVisibleCardsFunction = `function getSdeCanonicalProductionVisible
   return orderSdeCanonicalProductionProjectedCards([
     ...actionableCards,
     ...(reader.cardProjection.blockedChainCards || []),
+    ...(reader.cardProjection.workflowActionCards || []),
     ...(reader.cardProjection.exitingCards || [])
   ]);
 }`;
+const orderedAndExitingCardVisibilityStrategies = Object.freeze([{
+  id: "hide-ordered-workflow-and-exiting-production-cards",
+  functionName: "getSdeCanonicalProductionVisibleCards",
+  reportSnippets: true,
+  matches: sourceValue => countOccurrences(sourceValue, workflowActionCardsVisibleCardsFunction) === 1,
+  edits: [{
+    name: "hide ordered, workflow action, and exiting cards",
+    before: workflowActionCardsVisibleCardsFunction,
+    after: executableOnlyVisibleCardsFunction,
+  }],
+}]);
 
 const mutations = [
   {
@@ -505,17 +531,7 @@ const mutations = [
   },
   {
     id: "H-hide-ordered-and-exiting-cards",
-    apply: html => applySemanticStrategy(html, [{
-      id: "hide-ordered-and-exiting-production-cards",
-      functionName: "getSdeCanonicalProductionVisibleCards",
-      reportSnippets: true,
-      matches: sourceValue => countOccurrences(sourceValue, lifecycleVisibleCardsFunction) === 1,
-      edits: [{
-        name: "hide ordered and exiting cards",
-        before: lifecycleVisibleCardsFunction,
-        after: executableOnlyVisibleCardsFunction,
-      }],
-    }], "ordered and exiting card visibility"),
+    apply: html => applySemanticStrategy(html, orderedAndExitingCardVisibilityStrategies, "ordered and exiting card visibility"),
     catches: ["INV-CANCEL-010", "INV-CANCEL-011"],
   },
   {
@@ -524,7 +540,7 @@ const mutations = [
       id: "expose-all-cards-and-retain-placeholder",
       functionName: "getSdeCanonicalProductionVisibleCards + buildSdeCanonicalProductionCardHtml",
       reportSnippets: true,
-      matches: sourceValue => countOccurrences(sourceValue, lifecycleVisibleCardsFunction) === 1
+      matches: sourceValue => countOccurrences(sourceValue, workflowActionCardsVisibleCardsFunction) === 1
         && countOccurrences(sourceValue, removedCancelledCard) === 1,
       edits: [
         {name: "retain measurable cancelled-card layout placeholder", before: removedCancelledCard, after: retainedCancelledCardPlaceholder},
@@ -943,6 +959,87 @@ if (process.argv.includes("--catalog-only")) {
   process.exit(errors.length ? 1 : 0);
 }
 
+function emitTargetedReport(report, exitCode) {
+  fs.rmSync(temporary, {recursive: true, force: true});
+  process.stdout.write(`${JSON.stringify(report)}\n`);
+  process.exit(exitCode);
+}
+
+if (process.argv.includes("--strategy-only")) {
+  const matching = orderedAndExitingCardVisibilityStrategies.filter(strategy => strategy.matches(source));
+  const applied = matching.length === 1
+    ? applySemanticStrategy(source, orderedAndExitingCardVisibilityStrategies, "ordered and exiting card visibility")
+    : null;
+  const syntax = applied ? validateHtmlInlineScriptSyntax(applied.html) : {ok: false, scriptCount: 0, error: "strategy did not resolve"};
+  const zeroMatchFails = isRejected(() => applySemanticStrategy(
+    executableOnlyVisibleCardsFunction,
+    orderedAndExitingCardVisibilityStrategies,
+    "zero-match self-test",
+  ));
+  const ambiguousStrategies = [
+    ...orderedAndExitingCardVisibilityStrategies,
+    {...orderedAndExitingCardVisibilityStrategies[0], id: "ambiguous-duplicate-self-test"},
+  ];
+  const multipleMatchesFail = isRejected(() => applySemanticStrategy(source, ambiguousStrategies, "multiple-match self-test"));
+  const observableSemanticMutation = Boolean(applied)
+    && countOccurrences(source, workflowActionCardsVisibleCardsFunction) === 1
+    && countOccurrences(applied.html, workflowActionCardsVisibleCardsFunction) === 0
+    && countOccurrences(applied.html, executableOnlyVisibleCardsFunction) === 1;
+  const status = matching.length === 1
+    && zeroMatchFails
+    && multipleMatchesFail
+    && syntax.ok
+    && observableSemanticMutation
+    ? "PASS"
+    : "FAIL";
+  emitTargetedReport({
+    schemaVersion: "sde-mutation-strategy-resolution-v1",
+    status,
+    mutationId: "H-hide-ordered-and-exiting-cards",
+    strategyId: matching[0]?.id || null,
+    strategyMatchCount: matching.length,
+    zeroMatchFails,
+    multipleMatchesFail,
+    mutatedSourceSyntaxValid: syntax.ok,
+    inlineScriptCount: syntax.scriptCount,
+    syntaxError: syntax.error,
+    observableSemanticMutation,
+  }, status === "PASS" ? 0 : 1);
+}
+
+const requestedMutationArguments = process.argv.filter(argument => argument.startsWith("--mutation="));
+if (requestedMutationArguments.length > 1) throw new Error("targeted mutation mode accepts exactly one mutation ID");
+if (requestedMutationArguments.length === 1) {
+  const mutationId = requestedMutationArguments[0].slice("--mutation=".length);
+  const mutation = mutations.find(item => item.id === mutationId);
+  if (!mutation) throw new Error(`unknown targeted mutation: ${mutationId}`);
+  if (mutation.target === "generator") throw new Error("targeted source strategy mode requires an index.html mutation");
+  const baseline = strictReport(source, `${mutation.id}-original`);
+  if (baseline.strictExitCode !== 0 || baseline.failIds.length !== 0) throw new Error(`${mutation.id}: original strict baseline must pass`);
+  const applied = mutation.apply(source);
+  const mutatedSource = typeof applied === "string" ? applied : applied.html;
+  const metadata = typeof applied === "string" ? null : applied.metadata;
+  const syntax = validateHtmlInlineScriptSyntax(mutatedSource);
+  if (!syntax.ok) throw new Error(`${mutation.id}: mutated inline JavaScript syntax is invalid: ${syntax.error}`);
+  const report = strictReport(mutatedSource, mutation.id);
+  const caught = isStructuredMutationKill(mutation, report);
+  emitTargetedReport({
+    schemaVersion: "sde-targeted-mutation-audit-v1",
+    status: caught ? "PASS" : "FAIL",
+    mutationId: mutation.id,
+    originalTestResult: baseline.strictExitCode === 0 && baseline.failIds.length === 0 ? "GREEN" : "RED",
+    originalCounts: baseline.counts,
+    mutatedTestResult: caught ? "STRUCTURED_FAIL" : "SURVIVED",
+    mutationResult: caught ? "KILLED_SEMANTICALLY" : "SURVIVED",
+    expectedFailIds: mutation.catches,
+    actualFailIds: report.failIds,
+    strictExitCode: report.strictExitCode,
+    mutatedSourceSyntaxValid: syntax.ok,
+    inlineScriptCount: syntax.scriptCount,
+    ...(metadata || {}),
+  }, caught ? 0 : 1);
+}
+
 const reports = [];
 let catalogSelfValidation;
 try {
@@ -963,6 +1060,8 @@ try {
     const mutatedSource = typeof applied === "string" ? applied : applied.html;
     const metadata = typeof applied === "string" ? null : applied.metadata;
     if (mutatedSource === inputSource) throw new Error(`${mutation.id}: mutation changed no source`);
+    const syntax = mutation.target === "generator" ? null : validateHtmlInlineScriptSyntax(mutatedSource);
+    if (syntax && !syntax.ok) throw new Error(`${mutation.id}: mutated inline JavaScript syntax is invalid: ${syntax.error}`);
     const report = mutation.target === "generator"
       ? baliseReport(mutatedSource,mutation.id)
       : strictReport(mutatedSource,mutation.id);
@@ -979,6 +1078,7 @@ try {
       strictExitCode: report.strictExitCode,
       structuredKill: caught && report.strictExitCode === 1,
       executionTarget: mutation.target === "generator" ? "update_static_data.py" : "index.html",
+      ...(syntax ? {mutatedSourceSyntaxValid: syntax.ok, inlineScriptCount: syntax.scriptCount} : {}),
       ...(metadata || {}),
     });
   }
