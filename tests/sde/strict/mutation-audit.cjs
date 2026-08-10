@@ -10,7 +10,10 @@ const {STRICT_INVARIANT_IDS} = require("./qualification-contract.cjs");
 const root = path.resolve(__dirname, "../../..");
 const sourcePath = path.join(root, "index.html");
 const source = fs.readFileSync(sourcePath, "utf8");
+const generatorSourcePath = path.join(root, "update_static_data.py");
+const generatorSource = fs.readFileSync(generatorSourcePath, "utf8");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-firewall-mutations-"));
+const BALISE_INVARIANT_IDS = Object.freeze(Array.from({length:12},(_,index)=>`INV-BALISE-${String(index+1).padStart(3,"0")}`));
 
 function replaceOnce(value, search, replacement, name) {
   const index = value.indexOf(search);
@@ -114,6 +117,14 @@ const ACTIVE_SOURCE_MUTANT_IDS = Object.freeze([
   "Z3-COMMIT-PARTIAL-CANCELLED-CHAIN",
   "Z4-RETAIN-STALE-CANCELLED-RESOURCES",
   "Z5-POISON-GLOBAL-DRAG-AFTER-CHAIN-FAILURE",
+  "AA1-PASSIVE-SWEEP-DISABLED",
+  "AA2-PARTIAL-PROJECTION-ALLOWED",
+  "AA3-STALE-HISTORY-OVERRIDES-FRESH-ACTUAL",
+  "AA4-MANDATORY-RECOVERY-OR-ADAPTER-OMITTED",
+  "AB1-RESTORE-UNIVERSAL-PORSGRUNN-REQUIREMENT",
+  "AB2-RESTORE-ORIGIN-SKIEN-PROXY",
+  "AB3-ALLOW-NEAREST-SKIEN-TIME",
+  "AB4-FIRST-EXACT-CANDIDATE-WINS",
 ]);
 const ACTIVE_MUTATION_SCENARIO_IDS = Object.freeze([
   ...ACTIVE_SOURCE_MUTANT_IDS,
@@ -121,7 +132,7 @@ const ACTIVE_MUTATION_SCENARIO_IDS = Object.freeze([
   "qualification-contract-fail-closed-negatives",
 ]);
 
-if (ACTIVE_SOURCE_MUTANT_IDS.length !== 32 || ACTIVE_MUTATION_SCENARIO_IDS.length !== 34) {
+if (ACTIVE_SOURCE_MUTANT_IDS.length !== 40 || ACTIVE_MUTATION_SCENARIO_IDS.length !== 42) {
   throw new Error("active mutation catalogs have unexpected totals");
 }
 
@@ -189,6 +200,53 @@ function parseMutationStrictRun(run, name) {
   return {...report, strictExitCode: run.status};
 }
 
+function validateMutationBaliseReport(report, exitCode) {
+  const errors = [];
+  if (report?.schemaVersion !== "sde-balise-tursatt-occurrence-harness-v1") errors.push("unexpected Balise schemaVersion");
+  if (report?.counts?.total !== BALISE_INVARIANT_IDS.length) errors.push(`Balise total must be ${BALISE_INVARIANT_IDS.length}`);
+  if (!Array.isArray(report?.results)) {
+    errors.push("Balise results must be an array");
+  } else {
+    errors.push(...validateExactCatalog(report.results.map(item=>item?.id), BALISE_INVARIANT_IDS, "Balise invariant").errors);
+    if (report.results.some(item=>!["PASS","FAIL"].includes(item?.status))) errors.push("Balise statuses must be PASS or FAIL");
+  }
+  if (!Array.isArray(report?.failIds)) {
+    errors.push("Balise failIds must be an array");
+  } else {
+    if (new Set(report.failIds).size !== report.failIds.length) errors.push("Balise failIds must be unique");
+    if (report.failIds.some(id=>!BALISE_INVARIANT_IDS.includes(id))) errors.push("Balise failIds must belong to the active catalog");
+  }
+  if (Array.isArray(report?.results) && Array.isArray(report?.failIds)) {
+    const failures = report.results.filter(item=>item?.status === "FAIL").map(item=>item.id).sort();
+    if (JSON.stringify(failures) !== JSON.stringify([...report.failIds].sort())) errors.push("Balise failIds must match failed result IDs");
+    if (report?.counts?.fail !== failures.length) errors.push("Balise fail count must match failed results");
+    if (report?.counts?.pass !== report.results.length - failures.length) errors.push("Balise pass count must match passed results");
+    if (exitCode !== (failures.length ? 1 : 0)) errors.push("Balise exit code must match failure state");
+  }
+  return {ok:errors.length === 0,errors};
+}
+
+function parseMutationBaliseRun(run, name) {
+  if (run?.error) {
+    const code = String(run.error.code || "child_error");
+    throw new Error(`${name} infrastructure error (${code}): ${run.error.message || run.error}`);
+  }
+  if (run?.signal) throw new Error(`${name} infrastructure error: terminated by ${run.signal}`);
+  if (![0,1].includes(run?.status)) throw new Error(`${name} infrastructure error: unexpected exit ${String(run?.status)}${run?.stderr ? `: ${run.stderr}` : ""}`);
+  if (String(run.stderr || "").trim()) throw new Error(`${name} infrastructure error: unexpected stderr/warning: ${String(run.stderr).trim()}`);
+  const lines=String(run.stdout||"").trim().split(/\n/).filter(Boolean);
+  if (!lines.length) throw new Error(`${name} infrastructure error: missing final Balise JSON`);
+  let report;
+  try {
+    report=JSON.parse(lines.at(-1));
+  } catch(error) {
+    throw new Error(`${name} infrastructure error: malformed final Balise JSON: ${error.message}`);
+  }
+  const validation=validateMutationBaliseReport(report,run.status);
+  if (!validation.ok) throw new Error(`${name} returned an incomplete Balise report: ${validation.errors.join("; ")}`);
+  return {...report,strictExitCode:run.status};
+}
+
 function isStructuredMutationKill(mutation, report) {
   if (!report || report.strictExitCode !== 1 || !Array.isArray(report.failIds)) return false;
   return mutation.any
@@ -233,7 +291,7 @@ function runCatalogSelfValidation({baseline, x1Report, x1Application, x1Mutation
   const wrongTargetSource = source.replace(X1_BEFORE_LINE, "    const unrelatedCapability = isSdeCanonicalRetargetableOutcome(outcome);");
   const multipleHunkSource = `${x1Application?.mutatedSource || ""}\n<!-- unintended second X1 hunk -->`;
   const scenarios = [
-    {id: "exact-active-67-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
+    {id: "exact-active-76-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "missing-invariant-id-is-rejected", passed: !validateExactCatalog(STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "extra-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS, "INV-EXTRA-001"], STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "duplicate-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS[0]], STRICT_INVARIANT_IDS, "strict invariant").ok},
@@ -322,6 +380,22 @@ function strictReport(html, name) {
     maxBuffer: 64 * 1024 * 1024,
   });
   return parseMutationStrictRun(run, name);
+}
+
+function baliseReport(pythonSource, name) {
+  const target=path.join(temporary,`${name}.py`);
+  fs.writeFileSync(target,pythonSource);
+  const run=childProcess.spawnSync("python3.11",[
+    "-B",
+    path.join(root,"tests","sde","harnesses","sde_balise_tursatt_occurrence_harness.py"),
+    target,
+  ],{
+    cwd:root,
+    encoding:"utf8",
+    timeout:60_000,
+    maxBuffer:64*1024*1024,
+  });
+  return parseMutationBaliseRun(run,name);
 }
 
 const legacyOccupiedTargetGuard = "if(getSdeVehicleInSlot(mainTargetSlot)) return null;";
@@ -712,6 +786,93 @@ const mutations = [
     }], "post-cancellation drag cleanup"),
     catches: ["INV-EGRESS-021"],
   },
+  {
+    id: "AA1-PASSIVE-SWEEP-DISABLED",
+    apply: html => replaceOnce(
+      html,
+      "applySdePassiveBlockedSlotDiagnosticGate(canonicalPlan, snapshot); // SDE_BLOCKED_SLOT_PASSIVE_SWEEP",
+      "void canonicalPlan; void snapshot; /* mutation: passive sweep disabled */",
+      "passive blocked-slot sweep",
+    ),
+    catches: ["INV-EGRESS-023", "INV-EGRESS-025", "INV-EGRESS-026", "INV-EGRESS-028", "INV-EGRESS-031"],
+  },
+  {
+    id: "AA2-PARTIAL-PROJECTION-ALLOWED",
+    apply: html => replaceOnce(
+      html,
+      "candidate.physicalValidation = {valid:false,reason:finding.expected}; // SDE_BLOCKED_SLOT_SUPPRESS_PARTIAL",
+      "candidate.physicalValidation = {...candidate.physicalValidation}; /* mutation: partial projection allowed */",
+      "blocked-slot partial projection suppression",
+    ),
+    catches: ["INV-EGRESS-025", "INV-EGRESS-026", "INV-EGRESS-031"],
+  },
+  {
+    id: "AA3-STALE-HISTORY-OVERRIDES-FRESH-ACTUAL",
+    apply: html => replaceOnce(
+      html,
+      "const actualPlacements = Array.isArray(canonicalPlan.actualPlacements) ? canonicalPlan.actualPlacements : []; // SDE_BLOCKED_SLOT_FRESH_ACTUAL",
+      "const actualPlacements = (snapshot.legacy?.actualSlots || []).map(item=>({...item})); /* mutation: stale history overrides fresh actual */",
+      "blocked-slot fresh actual authority",
+    ),
+    catches: ["INV-EGRESS-027"],
+  },
+  {
+    id: "AA4-MANDATORY-RECOVERY-OR-ADAPTER-OMITTED",
+    apply: html => replaceOnce(
+      html,
+      "const incompleteMandatoryRecovery = requiresRecovery && !hasCompleteRecovery; // SDE_BLOCKED_SLOT_MANDATORY_RECOVERY",
+      "const incompleteMandatoryRecovery = false; /* mutation: mandatory recovery omitted */",
+      "blocked-slot mandatory recovery",
+    ),
+    catches: ["INV-EGRESS-025", "INV-EGRESS-029", "INV-EGRESS-030", "INV-EGRESS-031"],
+    any: true,
+  },
+  {
+    id:"AB1-RESTORE-UNIVERSAL-PORSGRUNN-REQUIREMENT",
+    target:"generator",
+    apply:pythonSource=>replaceOnce(
+      pythonSource,
+      "next_station_name = str(next_stop.get(\"station_name\") or \"\").strip()  # SDE_BALISE_NEXT_STOP_AFTER_SKIEN",
+      "next_station_name = \"Porsgrunn\"  # mutation: restore universal Porsgrunn requirement",
+      "first actual stop after Skien",
+    ),
+    catches:["INV-BALISE-001","INV-BALISE-003","INV-BALISE-004","INV-BALISE-009"],
+    any:true,
+  },
+  {
+    id:"AB2-RESTORE-ORIGIN-SKIEN-PROXY",
+    target:"generator",
+    apply:pythonSource=>replaceOnce(
+      pythonSource,
+      "station_event_matches = bool(skien_stop)  # SDE_BALISE_EXACT_SKIEN_EVENT",
+      "station_event_matches = bool(skien_stop) and str(route_info.get(\"origin\") or \"\").strip().lower() == \"skien\"  # mutation: restore origin proxy",
+      "exact Skien station event",
+    ),
+    catches:["INV-BALISE-002","INV-BALISE-003","INV-BALISE-004","INV-BALISE-009"],
+    any:true,
+  },
+  {
+    id:"AB3-ALLOW-NEAREST-SKIEN-TIME",
+    target:"generator",
+    apply:pythonSource=>replaceOnce(
+      pythonSource,
+      "and stop_departure_time == result_departure_time  # SDE_BALISE_EXACT_DEPARTURE_TIME",
+      "and bool(stop_departure_time)  # mutation: allow nearest Skien time",
+      "exact Skien departure time",
+    ),
+    catches:["INV-BALISE-008"],
+  },
+  {
+    id:"AB4-FIRST-EXACT-CANDIDATE-WINS",
+    target:"generator",
+    apply:pythonSource=>replaceOnce(
+      pythonSource,
+      "if len(exact_occurrence_keys) > 1:  # SDE_BALISE_REJECT_AMBIGUOUS\n        return None",
+      "if len(exact_occurrence_keys) > 1:  # mutation: first exact candidate wins\n        return exact_candidates[0]",
+      "ambiguous exact occurrence rejection",
+    ),
+    catches:["INV-BALISE-007","INV-BALISE-012"],
+  },
 ];
 
 const reports = [];
@@ -719,6 +880,8 @@ let catalogSelfValidation;
 try {
   const baseline = strictReport(source, "active-baseline");
   if (baseline.strictExitCode !== 0 || baseline.failIds.length !== 0) throw new Error("active strict baseline must pass before mutation execution");
+  const baliseBaseline=baliseReport(generatorSource,"active-balise-baseline");
+  if (baliseBaseline.strictExitCode !== 0 || baliseBaseline.failIds.length !== 0) throw new Error("active Balise baseline must pass before mutation execution");
   const sourceCatalog = validateExactCatalog(mutations.map(item => item.id), ACTIVE_SOURCE_MUTANT_IDS, "source mutant");
   if (!sourceCatalog.ok) throw new Error(sourceCatalog.errors.join("; "));
   const x1Mutation = mutations.find(item => item.id === X1_MUTANT_ID);
@@ -727,11 +890,14 @@ try {
   let x1Application = null;
 
   for (const mutation of mutations) {
-    const applied = mutation.apply(source);
+    const inputSource=mutation.target === "generator" ? generatorSource : source;
+    const applied = mutation.apply(inputSource);
     const mutatedSource = typeof applied === "string" ? applied : applied.html;
     const metadata = typeof applied === "string" ? null : applied.metadata;
-    if (mutatedSource === source) throw new Error(`${mutation.id}: mutation changed no source`);
-    const report = strictReport(mutatedSource, mutation.id);
+    if (mutatedSource === inputSource) throw new Error(`${mutation.id}: mutation changed no source`);
+    const report = mutation.target === "generator"
+      ? baliseReport(mutatedSource,mutation.id)
+      : strictReport(mutatedSource,mutation.id);
     const caught = isStructuredMutationKill(mutation, report);
     if (mutation.id === X1_MUTANT_ID) {
       x1Report = report;
@@ -744,6 +910,7 @@ try {
       actualFailIds: report.failIds,
       strictExitCode: report.strictExitCode,
       structuredKill: caught && report.strictExitCode === 1,
+      executionTarget: mutation.target === "generator" ? "update_static_data.py" : "index.html",
       ...(metadata || {}),
     });
   }

@@ -10,9 +10,9 @@ npm run test:sde:strict
 ```
 
 Strict returnerer non-zero for hver brutt invariant. Den aktive lukkede
-baselinen er 67/67 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
+baselinen er 76/76 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
 tre ganger og blir bare grønn når alle kjøringene har exit 0, eksakt samme
-normaliserte semantikk, unike invariant-ID-er og 67/67 PASS:
+normaliserte semantikk, unike invariant-ID-er og 76/76 PASS:
 
 ```sh
 npm run test:sde:baseline-audit
@@ -48,6 +48,27 @@ Mutasjonene Z1–Z5 skal alle drepes av disse invariantene.
 annullert frigjøringssteg for 74-12 kan ikke gjenbrukes som aktiv identitet.
 Planleggeren må velge en ny komplett release/main/recovery-kjede og bevare det
 eksakte brukerbestilte hovedmålet.
+
+`INV-EGRESS-023`–`031` låser den passive problemfamilien
+`IMPOSSIBLE_SHIFT_TO_OR_FROM_BLOCKED_SLOT` for 4M, 5M, 6S, 10S, 11S og 12S.
+Initialisering, hydrering, historikklast, polling og canonical recompute må ende
+i en komplett fysisk kjede eller actionably rapportert diagnostic-only. Ingen
+foreldreløse kort, reservasjoner, overlays, ruteressurser eller adaptere kan
+bestå når intent/identity, actual target eller mandatory recovery er ugyldig.
+Matrisen dekker FROM blokkert, TO fysisk opptatt og TO tom men fysisk
+utilgjengelig slot, tre inputrekkefølger og passiv desktop-/390 px-rendering.
+Mutasjonene AA1–AA4 skal drepes strukturert av disse invariantene.
+
+`INV-BALISE-001`–`012` låser Balise/Tursatt-materiell til eksakt operativ dato,
+tognummer, routeId, Skien-stopp/stopp-ID og planlagt avgangstid. Materiell etter
+Skien avgrenses ved det første faktiske neste stoppet i samme stoppsekvens; det
+finnes verken et universelt Porsgrunn-krav eller et krav om at ruteopphavet er
+Skien. Den permanente evidensfixturen bevarer de eksakte 8 hendelsene
+2026-08-10 og alle 40 rekonstruerte forekomster over sju datoer, med null
+feiltilordninger og null kollisjoner. Manglende kilde, nærmeste-tid-fallback og
+flere ulike eksakte forekomstnøkler forblir fail-closed. Mutasjonene AB1–AB4
+skal gjeninnføre henholdsvis Porsgrunn-proxyen, origin-proxyen,
+nærmeste-tid-fallback og first-candidate-wins, og alle skal drepes strukturert.
 
 Produksjons-UI viser alle fysisk validerte og bestilte kjedesteg: det aktive
 steget, dependency-sperrede fremtidige steg og et annullert kort mens den røde
@@ -105,7 +126,8 @@ Strict-driverne leser `index.html`, trekker ut inline-skriptene og evaluerer de
 faktiske production-funksjonene i en isolert VM. De kopierer ikke funksjonene
 som testes. I og L er dokumenterte read-only audits. R er kjørbar gjennom
 `INV-CANCEL-010`–`013`, X gjennom `INV-REROUTE-001`–`008`, og Y gjennom
-`INV-EGRESS-001`–`015`, og Z gjennom `INV-EGRESS-016`–`021`.
+`INV-EGRESS-001`–`015`, Z gjennom `INV-EGRESS-016`–`021`, AA gjennom
+`INV-EGRESS-023`–`031`, og AB gjennom `INV-BALISE-001`–`012`.
 
 CI-jobben har stabilt navn `permanent-regressions`, kjører
 `npm run test:sde:strict`, har read-only permissions og feiler når én invariant

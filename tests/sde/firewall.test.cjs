@@ -578,9 +578,9 @@ registerHarnessTest({
   recoveryId: "direct-wash-transit",
 });
 
-test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () => {
+test("I/L audits and executable R/X/Y/Z/AA/AB coverage cannot disappear silently", () => {
   const coverage = JSON.parse(fs.readFileSync(path.join(__dirname, "phase-coverage.json"), "utf8"));
-  assert.deepEqual(Object.keys(coverage), "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
+  assert.deepEqual(Object.keys(coverage), [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""), "AA", "AB"]);
   assert.equal(coverage.I.status, "audit-only");
   assert.equal(coverage.L.status, "audit-only");
   assert.equal(coverage.R.status, "implemented");
@@ -591,6 +591,10 @@ test("I/L audits and executable R/X/Y/Z coverage cannot disappear silently", () 
   assert.deepEqual(coverage.Y.invariants, ["INV-EGRESS-001", "INV-EGRESS-002", "INV-EGRESS-003", "INV-EGRESS-004", "INV-EGRESS-005", "INV-EGRESS-006", "INV-EGRESS-007", "INV-EGRESS-008", "INV-EGRESS-009", "INV-EGRESS-010", "INV-EGRESS-011", "INV-EGRESS-012", "INV-EGRESS-013", "INV-EGRESS-014", "INV-EGRESS-015"]);
   assert.equal(coverage.Z.status, "implemented");
   assert.deepEqual(coverage.Z.invariants, ["INV-EGRESS-016", "INV-EGRESS-017", "INV-EGRESS-018", "INV-EGRESS-019", "INV-EGRESS-020", "INV-EGRESS-021"]);
+  assert.equal(coverage.AA.status, "implemented");
+  assert.deepEqual(coverage.AA.invariants, Array.from({length:9},(_,index)=>`INV-EGRESS-${String(index+23).padStart(3,"0")}`));
+  assert.equal(coverage.AB.status, "implemented");
+  assert.deepEqual(coverage.AB.invariants, Array.from({length:12},(_,index)=>`INV-BALISE-${String(index+1).padStart(3,"0")}`));
   for(const phase of Object.keys(coverage).filter(letter => !["I", "L"].includes(letter))){
     assert.equal(coverage[phase].status, "implemented", `${phase} must remain implemented`);
   }
@@ -637,6 +641,38 @@ test("Y — complete trapped-egress chains and unresolved-step retarget stay ato
   assert.equal(report?.results?.slice(0,12).every(item=>item.status==="PASS"),true,"the pre-existing 12 Y invariants must remain green");
   for(const fixture of "ABCDEFGHIJKL") assert.ok(report?.scenarios?.[fixture] || ["H","I","J","K"].includes(fixture), `missing fixture ${fixture}`);
   assert.ok(report?.scenarios?.P,"missing stale-release identity fixture P");
+});
+
+test("AA — passive blocked-slot sweep is complete-or-diagnostic across six slots and both directions", () => {
+  const result = runHarness("sde-passive-blocked-slot-sweep-harness.js");
+  assert.equal(result.error,undefined,`AA passive blocked-slot harness could not start: ${result.error?.message||"unknown error"}`);
+  assert.ok([0,1].includes(result.status),`AA passive blocked-slot harness crashed:\n${failureDetails(result)}`);
+  const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
+  assert.equal(report?.schemaVersion,"sde-passive-blocked-slot-sweep-harness-v1");
+  assert.equal(report?.problemId,"IMPOSSIBLE_SHIFT_TO_OR_FROM_BLOCKED_SLOT");
+  assert.equal(report?.noUserShiftActionRequired,true);
+  assert.equal(report?.scenarioCounts?.total,18);
+  assert.deepEqual(report?.results?.map(item=>item.id),Array.from({length:9},(_,index)=>`INV-EGRESS-${String(index+23).padStart(3,"0")}`));
+  assert.deepEqual(Array.from(new Set(report?.scenarios?.map(item=>item.slot))).sort(),["10S","11S","12S","4M","5M","6S"]);
+  assert.deepEqual(Array.from(new Set(report?.scenarios?.map(item=>item.direction))).sort(),["FROM","TO"]);
+  assert.equal(report?.viewportChecks?.map(item=>item.width).join(","),"1200,390");
+  assert.equal(report?.results?.every(item=>item.status === "PASS"),true,"every passive blocked-slot invariant must pass");
+});
+
+test("AB — Balise/Tursatt assignments remain bound to the exact Skien departure occurrence", () => {
+  const result = run("python3.11", [
+    "-B",
+    path.join(harnessDirectory, "sde_balise_tursatt_occurrence_harness.py"),
+    path.join(root, "update_static_data.py"),
+  ]);
+  assert.equal(result.error,undefined,`AB Balise/Tursatt harness could not start: ${result.error?.message||"unknown error"}`);
+  assert.ok([0,1].includes(result.status),`AB Balise/Tursatt harness crashed:\n${failureDetails(result)}`);
+  const report=JSON.parse(String(result.stdout||"").trim().split(/\n/).filter(Boolean).at(-1));
+  assert.equal(report?.schemaVersion,"sde-balise-tursatt-occurrence-harness-v1");
+  assert.deepEqual(report?.problemIds,["BALISE_TURSATT_UNIVERSAL_PORSGRUNN_FALSE_NEGATIVE","BALISE_TURSATT_ORIGIN_SKIEN_FALSE_NEGATIVE"]);
+  assert.deepEqual(report?.fixtureCounts,{incident:8,historical:40,dates:7,wrongAssignments:0});
+  assert.deepEqual(report?.results?.map(item=>item.id),Array.from({length:12},(_,index)=>`INV-BALISE-${String(index+1).padStart(3,"0")}`));
+  assert.equal(report?.results?.every(item=>item.status === "PASS"),true,"every occurrence-bound Balise/Tursatt invariant must pass");
 });
 
 for(const [id,name] of [
