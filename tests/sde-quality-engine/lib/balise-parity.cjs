@@ -3,6 +3,7 @@
 const crypto = require("node:crypto");
 const path = require("node:path");
 const { effectivePublicationBoundary, readJson, repoRoot } = require("./core.cjs");
+const { readDataJson, resolveDataRoot } = require("./data-root.cjs");
 const {
   DIAGNOSTIC_LABELS,
   PRIMARY_CLASSIFICATIONS,
@@ -787,9 +788,10 @@ async function readLiveBalise() {
     ? publishedResult.value
     : { baseUrl: publishedBaseUrl, payloads: [], responses: [] };
   const root = repoRoot();
+  const resolved = resolveDataRoot({repositoryRoot: root});
   const payloads = [
-    readJson(path.join(root, "data/api_idag.json")),
-    readJson(path.join(root, "data/api_imorgen.json"))
+    readDataJson("api_idag.json", {resolved}),
+    readDataJson("api_imorgen.json", {resolved})
   ];
   const operationalDates = new Set(payloads.map((payload) => payload.date));
   const publishedDates = new Set(published.payloads.map((payload) => payload.date));

@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { readJson, repoRoot, result } = require("./core.cjs");
+const { readDataBytes, resolveDataRoot } = require("./data-root.cjs");
 
 const MANIFEST_SCHEMA = "sde-data-provenance/v1";
 const LEGACY_ATTESTATION_SCHEMA = "sde-data-release-attestation/v1";
@@ -531,15 +532,18 @@ function validateProvenance({
 
 function loadCurrentProvenance() {
   const root = repoRoot();
-  const manifestPath = path.join(root, "data/sde-data-provenance.json");
+  const resolved = resolveDataRoot({repositoryRoot: root});
+  const manifestPath = path.join(resolved.root, "sde-data-provenance.json");
   const attestationPath = process.env.SDE_QE_RELEASE_ATTESTATION || "";
-  const manifestBytes = fs.existsSync(manifestPath) ? fs.readFileSync(manifestPath) : null;
+  const manifestBytes = fs.existsSync(manifestPath)
+    ? readDataBytes("sde-data-provenance.json", {resolved})
+    : null;
   return {
     manifest: manifestBytes ? JSON.parse(manifestBytes.toString("utf8")) : null,
     manifestBytes,
     datasetBytes: {
-      idag: fs.readFileSync(path.join(root, "data/api_idag.json")),
-      imorgen: fs.readFileSync(path.join(root, "data/api_imorgen.json"))
+      idag: readDataBytes("api_idag.json", {resolved}),
+      imorgen: readDataBytes("api_imorgen.json", {resolved})
     },
     attestation: attestationPath && fs.existsSync(attestationPath) ? readJson(attestationPath) : null
   };

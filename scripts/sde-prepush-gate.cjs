@@ -8,8 +8,8 @@ const os = require("node:os");
 const path = require("node:path");
 
 const GATE_ID = "SDE-QE-MANDATORY-PRE-PUSH";
-const GATE_VERSION = "1.2.0";
-const PROFILE_VERSION = "sde-qe-prepush-profile-v3";
+const GATE_VERSION = "1.3.0";
+const PROFILE_VERSION = "sde-qe-prepush-profile-v4";
 const REPORT_SCHEMA = "sde-qe-prepush-report/v1";
 const MANIFEST_SCHEMA = "sde-qe-prepush-install/v1";
 const STATE_SCHEMA = "sde-qe-prepush-approval/v1";
@@ -796,7 +796,7 @@ function mainWorktree(common) {
   return null;
 }
 
-function profileEnvironment(identity, artifactDirectory, root) {
+function profileEnvironment(identity, artifactDirectory, root, dataRoot) {
   const common = commonDirectory(root);
   const runtimeRoot = process.env.SDE_QE_LIVE_DATA_RUNTIME_REPOSITORY || mainWorktree(common) || root;
   let approvedSha = process.env.SDE_QE_LIVE_DATA_APPROVED_SHA || null;
@@ -836,6 +836,7 @@ function profileEnvironment(identity, artifactDirectory, root) {
     GIT_COMMITTER_EMAIL: "sde-qe-isolated@example.invalid",
     SDE_PREPUSH_CANDIDATE_SHA: identity.candidateSha,
     SDE_PREPUSH_CANDIDATE_TREE: identity.candidateTree,
+    SDE_QE_DATA_ROOT: dataRoot,
     SDE_QE_LIVE_DATA_RUNTIME_REPOSITORY: runtimeRoot,
     SDE_QE_LIVE_DATA_APPROVED_SHA: approvedSha || "",
     SDE_QE_LIVE_DATA_APPROVED_TREE: approvedTree || "",
@@ -1227,8 +1228,8 @@ function restoreWritable(root) {
   visit(root);
 }
 
-function executeFullProfile(candidateRoot, identity, artifactDirectory, invocationRoot, logDirectory) {
-  const env = profileEnvironment(identity, artifactDirectory, invocationRoot);
+function executeFullProfile(candidateRoot, identity, artifactDirectory, invocationRoot, logDirectory, dataFixture) {
+  const env = profileEnvironment(identity, artifactDirectory, invocationRoot, dataFixture.root);
   const expectedServerNodePath = fs.statSync(env.SDE_QE_SERVER_NODE_PATH, {throwIfNoEntry: false})?.isDirectory()
     ? env.SDE_QE_SERVER_NODE_PATH
     : null;
@@ -1239,6 +1240,26 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
   const record = (test) => tests.push(finalizeTest({cwd: candidateRoot, repositoryRoot: candidateRoot, ...test}, p0.result, logDirectory, tests.length));
   record(p0.test);
   record({id: "candidate-identity", command: "git candidate identity and exact diff", status: "PASS", skipped: false, exit: 0, signal: null, durationMs: 0, output: `${identity.commitRange}; commits=${identity.commits.length}; files=${identity.changedFiles.length}`});
+  record({
+    id: "isolated-fresh-data-root",
+    command: "materialize exact refs/remotes/origin/main data blobs and validate the fail-closed SDE_QE_DATA_ROOT manifest",
+    status: "PASS",
+    skipped: false,
+    exit: 0,
+    signal: null,
+    durationMs: 0,
+    output: stableJson({
+      root: dataFixture.root,
+      fixtureId: dataFixture.fixtureId,
+      manifestHash: dataFixture.manifestHash,
+      sourceRef: dataFixture.manifest.sourceRef,
+      sourceCommit: dataFixture.manifest.sourceCommit,
+      sourceTree: dataFixture.manifest.sourceTree,
+      mergeBase: dataFixture.manifest.mergeBase,
+      consumerCandidateSha: dataFixture.manifest.consumerCandidateSha,
+      files: dataFixture.manifest.files
+    })
+  });
   const commands = [
     ["qe-unit", "npm", ["run", "test:sde:qe:unit"], 5 * 60 * 1000],
     ["qe-policy", "npm", ["run", "test:sde:qe:policy"], 5 * 60 * 1000],
@@ -1267,7 +1288,7 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
     ? `dependencyLinkValid=${mutation.dependencyLinkValid}\nbaselineSha256=${mutation.baselineHash}\ncurrentSha256=${mutation.currentHash}`
     : `Execution filesystem remained byte-identical; snapshotSha256=${mutation.currentHash}; controlled dependency link remained exact.`;
   record({id: "candidate-no-mutation", command: "content, type and mode manifest against the read-only execution snapshot", status: candidateMutation ? "FAIL" : "PASS", skipped: false, exit: candidateMutation ? 1 : 0, signal: null, durationMs: 0, output: scrub(mutationOutput), _fullOutput: mutationOutput});
-  return {p0: p0.result, tests, candidateMutation, logDirectory};
+  return {p0: p0.result, tests, candidateMutation, logDirectory, dataFixture};
 }
 
 function runCandidateProfile(root, identity, options = {}) {
@@ -1292,7 +1313,16 @@ function runCandidateProfile(root, identity, options = {}) {
     const anchorBefore = semanticGitSnapshot(candidateRoot);
     const sharedBefore = sharedGitSnapshot(root, identity);
     materializeExecutionTree(candidateRoot, executionRoot, serverNodePath, identity);
-    profile = executeFullProfile(executionRoot, identity, artifactDirectory, root, options.logDirectory);
+    const dataRootModule = path.join(root, "tests/sde-quality-engine/lib/data-root.cjs");
+    const {materializeDataFixture} = require(dataRootModule);
+    const dataFixture = materializeDataFixture({
+      sourceRepository: root,
+      sourceRef: "refs/remotes/origin/main",
+      consumerCandidateSha: identity.candidateSha,
+      outputRoot: path.join(artifactDirectory, "data-fixture"),
+      now: new Date()
+    });
+    profile = executeFullProfile(executionRoot, identity, artifactDirectory, root, options.logDirectory, dataFixture);
     const anchorAfter = semanticGitSnapshot(candidateRoot);
     const anchorIntegrity = evaluateSemanticAnchorIntegrity(anchorBefore, anchorAfter, identity);
     let sharedAfter;
@@ -1410,6 +1440,9 @@ function writeReportFiles(report, paths) {
     `REMOTE: ${report.candidate?.remoteUrl || "UNKNOWN"} ${report.candidate?.remoteRef || "UNKNOWN"}`,
     `P0: ${report.p0?.status || "NOT_EVALUATED"} ${report.p0?.reasonCode || ""}`,
     `QE_RESULT: ${report.qeResult || "NOT_EVALUATED"}`,
+    `DATA_FIXTURE_ID: ${report.dataFixture?.fixtureId || "NONE"}`,
+    `DATA_FIXTURE_MANIFEST_SHA_256: ${report.dataFixture?.manifestHash || "NONE"}`,
+    `DATA_FIXTURE_SOURCE: ${report.dataFixture?.manifest?.sourceRef || "NONE"} ${report.dataFixture?.manifest?.sourceCommit || "NONE"}`,
     `TEST_TOTAL: ${report.testTotals?.total ?? (report.tests || []).length}`,
     `TEST_PASS: ${report.testTotals?.pass ?? 0}`,
     `TEST_FAIL: ${report.testTotals?.fail ?? 0}`,
@@ -1554,6 +1587,7 @@ function hookMode(remoteName, remoteLocation) {
       commands: profile.tests.map((item) => item.command),
       tests: profile.tests,
       logDirectory: profile.logDirectory,
+      dataFixture: profile.dataFixture || null,
       p0: {status: profile.p0.status, reasonCode: profile.p0.reasonCode, subgates: profile.p0.details?.subgates || []},
       qeResult: ready ? "GREEN" : "RED",
       reasonCodes: [...new Set(reasons)],

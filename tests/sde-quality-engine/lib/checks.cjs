@@ -14,6 +14,7 @@ const {
 const { buildInventory } = require("./inventory.cjs");
 const { validateBaselineAccounting } = require("./accounting.cjs");
 const { evaluateMultiuserEvidence } = require("./multiuser-evidence.cjs");
+const { readDataJson, resolveDataRoot } = require("./data-root.cjs");
 const {
   FINDING_TYPES,
   PARITY_CATEGORIES,
@@ -147,9 +148,10 @@ function parseUpdatedAt(value) {
 
 function loadBaliseData() {
   const root = repoRoot();
+  const resolved = resolveDataRoot({repositoryRoot: root});
   return {
-    idag: readJson(path.join(root, "data/api_idag.json")),
-    imorgen: readJson(path.join(root, "data/api_imorgen.json"))
+    idag: readDataJson("api_idag.json", {resolved}),
+    imorgen: readDataJson("api_imorgen.json", {resolved})
   };
 }
 
