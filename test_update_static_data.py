@@ -19,6 +19,9 @@ PORSGRUNN_SPLIT_FIXTURE = json.loads(
 TURSATT_810_FIXTURE = json.loads(
     (Path(__file__).parent / "tests/fixtures/balise_tursatt_810_2026-08-12.json").read_text()
 )
+TURSATT_810_OTHER_DATE_FIXTURE = json.loads(
+    (Path(__file__).parent / "tests/fixtures/balise_tursatt_810_2026-08-13.json").read_text()
+)
 
 
 def make_payload(mode, run_date):
@@ -397,6 +400,7 @@ class Tursatt810OccurrenceRegressionTest(unittest.TestCase):
             ),
             "route_vehicle_rows": rows,
             "route_stops": list(source.get("routeStops") or []),
+            "source_revision": source.get("sourceRevision"),
             "has_train_content": True,
             "skien_arrival_time": None,
             "skien_departure_time": source["plannedDeparture"],
@@ -411,6 +415,10 @@ class Tursatt810OccurrenceRegressionTest(unittest.TestCase):
         )
 
     def test_exact_skien_departure_keeps_authoritative_vehicle_order(self):
+        self.assertEqual(
+            TURSATT_810_FIXTURE["fixtureRole"],
+            "HISTORICAL_OCCURRENCE_FIXTURE_ONLY",
+        )
         resolution = self.resolve()
         self.assertEqual(resolution["vehicleIds"], ["74-14", "74-38"])
         self.assertEqual(resolution["vehicleError"], "")
@@ -426,6 +434,16 @@ class Tursatt810OccurrenceRegressionTest(unittest.TestCase):
         resolution = self.resolve(service_date="2026-08-13")
         self.assertEqual(resolution["vehicleIds"], [])
         self.assertIn("forekomstidentiteten", resolution["vehicleError"])
+
+    def test_same_train_on_other_date_uses_that_occurrences_own_material(self):
+        other = TURSATT_810_OTHER_DATE_FIXTURE
+        resolution = self.resolve(
+            candidate=self.make_candidate(other),
+            service_date=other["serviceDate"],
+        )
+        self.assertEqual(other["fixtureRole"], "SYNTHETIC_OCCURRENCE_FIXTURE_ONLY")
+        self.assertEqual(resolution["vehicleIds"], ["74-21", "74-22"])
+        self.assertNotEqual(resolution["vehicleIds"], ["74-14", "74-38"])
 
     def test_arrival_occurrence_cannot_supply_departure_assignment(self):
         candidate = self.make_candidate()
@@ -451,6 +469,10 @@ class Tursatt810OccurrenceRegressionTest(unittest.TestCase):
         resolution = self.resolve()
         self.assertEqual(resolution["actualDeparture"], "08:20")
         self.assertNotEqual(resolution["departureTime"], resolution["actualDeparture"])
+
+    def test_source_revision_is_preserved_for_cache_invalidation(self):
+        resolution = self.resolve()
+        self.assertEqual(resolution["sourceRevision"], TURSATT_810_FIXTURE["sourceRevision"])
 
 
 class DepartureCompletenessContractTest(unittest.TestCase):

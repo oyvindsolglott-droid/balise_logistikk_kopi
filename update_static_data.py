@@ -835,6 +835,11 @@ def resolve_departure_candidate(
     skien_stop = skien_stops[0] if len(skien_stops) == 1 else {}
     planned_departure = first_time_value(skien_stop.get("stop_planned_departure")) or departure_time
     actual_departure = first_time_value(skien_stop.get("stop_actual_departure"))
+    source_revision = str(
+        selected.get("source_revision")
+        or selected.get("route_stops_source_updated_at")
+        or ""
+    ).strip()
     composition = (
         resolve_departure_vehicle_composition(selected, route_info)
         if exact_occurrence
@@ -884,6 +889,8 @@ def resolve_departure_candidate(
         "departureTime": planned_departure,
         "plannedDeparture": planned_departure,
         "actualDeparture": actual_departure or None,
+        "sourceRevision": source_revision or None,
+        "sourceUpdatedAt": source_revision or None,
         "vehicleIds": vehicle_ids,
         "error": error,
         "vehiclesObservedAtSkien": list(composition["vehiclesObservedAtSkien"]),
@@ -1148,6 +1155,7 @@ def fetch_vehicle_maps_for_trains(
                                 "route_vehicle_hits": route_vehicle_hits,
                                 "route_vehicle_rows": route_vehicle_rows,
                                 "route_stops": route_stops,
+                                "route_stops_source_updated_at": route_stops_source_updated_at,
                                 "has_train_content": has_train_content,
                                 "skien_arrival_time": skien_stop.get("arrival"),
                                 "skien_departure_time": skien_stop.get("departure"),

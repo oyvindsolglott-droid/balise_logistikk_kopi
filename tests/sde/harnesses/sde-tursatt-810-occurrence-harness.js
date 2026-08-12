@@ -7,8 +7,12 @@ const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "../../..");
 const source = fs.readFileSync(process.argv[2] || path.join(root, "index.html"), "utf8");
-const fixture = JSON.parse(fs.readFileSync(
+const historical = JSON.parse(fs.readFileSync(
   path.join(root, "tests/fixtures/balise_tursatt_810_2026-08-12.json"),
+  "utf8",
+));
+const otherDate = JSON.parse(fs.readFileSync(
+  path.join(root, "tests/fixtures/balise_tursatt_810_2026-08-13.json"),
   "utf8",
 ));
 
@@ -38,19 +42,23 @@ const normalizeTime = value=>{
   const match = String(value || "").match(/\b(\d{1,2}):(\d{2})\b/);
   return match ? `${match[1].padStart(2,"0")}:${match[2]}` : "";
 };
+const joinVehicles = (first,second)=>[first,second].map(sanitize).filter(Boolean).join(", ");
 const context = vm.createContext({
   state:{
     baliseTodayDepartureOccurrences:{}, baliseTomorrowDepartureOccurrences:{},
     baliseTodayDepartureVehicles:{}, baliseTomorrowDepartureVehicles:{},
     baliseTodayVehicleErrors:{}, baliseTomorrowVehicleErrors:{},
     baliseToday:{}, baliseTomorrow:{},
-    baliseMetaToday:{date:fixture.serviceDate}, baliseMetaTomorrow:{date:fixture.serviceDate},
+    baliseTodayDepartures:{}, baliseTomorrowDepartures:{},
+    baliseTodayArrivals:{}, baliseTomorrowArrivals:{},
+    baliseMetaToday:{date:historical.serviceDate}, baliseMetaTomorrow:{date:historical.serviceDate},
     manualTursattDepartureVehicles:{}, manualTursattArrivalVehicles:{},
     baliseTodayArrivalVehicles:{}, baliseTomorrowArrivalVehicles:{}
   },
   normalizeTognr:value=>String(value || "").trim(),
   normalizeTimeString:normalizeTime,
   sanitizeVehicleValue:sanitize,
+  joinVehicleNumbers:joinVehicles,
   splitVehicleNumbers:value=>{
     const parts=String(value || "").split(",").map(item=>sanitize(item)).filter(Boolean);
     return [parts[0] || "",parts[1] || ""];
@@ -59,6 +67,8 @@ const context = vm.createContext({
   getArrivalDisplayTrainNumberMapByMode:()=>({}),
   getVehicleErrorMapByMode:mode=>mode === "idag" ? context.state.baliseTodayVehicleErrors : context.state.baliseTomorrowVehicleErrors,
   getBaliseMapByMode:mode=>mode === "idag" ? context.state.baliseToday : context.state.baliseTomorrow,
+  getDepartureMapByMode:mode=>mode === "idag" ? context.state.baliseTodayDepartures : context.state.baliseTomorrowDepartures,
+  getArrivalMapByMode:mode=>mode === "idag" ? context.state.baliseTodayArrivals : context.state.baliseTomorrowArrivals,
   getBaseVehicleForTrain:()=>""
 });
 
@@ -68,80 +78,214 @@ vm.runInContext([
   extractFunction("getTursattDepartureServiceDateForMode"),
   extractFunction("getTursattBaseVehicleMapByMode"),
   extractFunction("getTursattDepartureOccurrenceMapByMode"),
+  extractFunction("getTursattOccurrenceSourceRevision"),
+  extractFunction("buildTursattCanonicalOccurrenceIdentity"),
+  extractFunction("getTursattCanonicalOccurrencePartKey"),
+  extractFunction("getTursattDepartureOccurrenceCandidates"),
   extractFunction("inspectTursattDepartureOccurrence"),
+  extractFunction("inspectTursattArrivalOccurrence"),
+  extractFunction("getTursattOccurrenceBinding"),
+  extractFunction("getManualTursattOccurrenceVehicles"),
+  extractFunction("setManualTursattVehicleOverride"),
   extractFunction("getTursattVehicleCellInfo"),
   extractFunction("createOppstillingVehicleCells"),
   extractFunction("getTursattVehicleError"),
-  "this.api={normalizeBaliseDepartureOccurrenceMap,inspectTursattDepartureOccurrence,createOppstillingVehicleCells,getTursattVehicleError};"
+  "this.api={normalizeBaliseDepartureOccurrenceMap,inspectTursattDepartureOccurrence,createOppstillingVehicleCells,getTursattVehicleError,setManualTursattVehicleOverride,getTursattCanonicalOccurrencePartKey};"
 ].join("\n"),context);
 
-const rawOccurrence = {
-  operationalDate:fixture.serviceDate,
-  requestedTrainNumber:fixture.logicalTrain,
-  displayTrainNumber:fixture.lookupTrainNumber,
-  occurrenceId:`${fixture.serviceDate}|departure|${fixture.lookupTrainNumber}|${fixture.plannedDeparture}`,
-  routeId:fixture.routeInfo.routeId,
-  origin:fixture.routeInfo.origin,
-  destination:fixture.routeInfo.destination,
-  station:fixture.station,
-  stationRef:fixture.stationRef,
-  stopId:fixture.routeStops[0].stop_id,
-  direction:fixture.direction,
-  eventType:fixture.eventType,
-  departureTime:fixture.plannedDeparture,
-  plannedDeparture:fixture.plannedDeparture,
-  actualDeparture:fixture.actualDeparture,
-  vehicleIds:fixture.departureHits,
-  vehicleResolutionSource:"skien_occurrence_departure_assignment",
-  vehicleError:""
+function makeOccurrence(fixture, overrides={}){
+  return {
+    operationalDate:fixture.serviceDate,
+    requestedTrainNumber:fixture.logicalTrain,
+    displayTrainNumber:fixture.lookupTrainNumber,
+    occurrenceId:`${fixture.serviceDate}|departure|${fixture.lookupTrainNumber}|${fixture.plannedDeparture}`,
+    routeId:fixture.routeInfo.routeId,
+    origin:fixture.routeInfo.origin,
+    destination:fixture.routeInfo.destination,
+    station:fixture.station,
+    stationRef:fixture.stationRef,
+    stopId:fixture.routeStops[0].stop_id,
+    direction:fixture.direction,
+    eventType:fixture.eventType,
+    departureTime:fixture.plannedDeparture,
+    plannedDeparture:fixture.plannedDeparture,
+    actualDeparture:fixture.actualDeparture,
+    sourceRevision:fixture.sourceRevision,
+    vehicleIds:fixture.departureHits,
+    vehicleResolutionSource:"skien_occurrence_departure_assignment",
+    vehicleError:"",
+    ...overrides
+  };
+}
+
+const historicalOccurrence = makeOccurrence(historical);
+const otherDateOccurrence = makeOccurrence(otherDate);
+const setOccurrences = values=>{
+  context.state.baliseTomorrowDepartureOccurrences = context.api.normalizeBaliseDepartureOccurrenceMap({810:values});
 };
-const occurrenceMap = context.api.normalizeBaliseDepartureOccurrenceMap({810:rawOccurrence});
-context.state.baliseTomorrowDepartureOccurrences = occurrenceMap;
-context.state.baliseTomorrowDepartureVehicles = {810:"74-14, 74-38"};
-const row = {train:"810",mode:"imorgen",serviceDate:fixture.serviceDate,time:fixture.plannedDeparture,displayTime:fixture.plannedDeparture};
+const historicalRow = {
+  train:"810", mode:"imorgen", serviceDate:historical.serviceDate,
+  station:"Skien", stationRef:"SKN", movement:"departure", direction:"departure",
+  time:historical.plannedDeparture, displayTime:historical.plannedDeparture
+};
+const otherDateRow = {...historicalRow,serviceDate:otherDate.serviceDate};
+setOccurrences([historicalOccurrence,otherDateOccurrence]);
+
 const results = [];
 const check = (id,fn)=>{
   try{ fn(); results.push({id,status:"PASS"}); }
   catch(error){ results.push({id,status:"FAIL",detail:error.message}); }
 };
 
-check("authoritative-material",()=>{
-  const cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",row);
+check("historical-occurrence-fixture-only",()=>{
+  assert.equal(historical.fixtureRole,"HISTORICAL_OCCURRENCE_FIXTURE_ONLY");
+  const cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",historicalRow);
   assert.deepEqual([cells.vehicle1,cells.vehicle2],["74-14","74-38"]);
+  assert.equal(context.api.getTursattVehicleError(historicalRow,"departure"),"");
 });
-check("no-uavklart",()=>assert.equal(context.api.getTursattVehicleError(row,"departure"),""));
-check("explicit-order",()=>{
-  context.state.baliseTomorrowDepartureVehicles={810:"74-38, 74-14"};
-  assert.equal(context.api.inspectTursattDepartureOccurrence(row).valid,false);
-  context.state.baliseTomorrowDepartureVehicles={810:"74-14, 74-38"};
+
+check("same-train-other-date-own-material",()=>{
+  assert.equal(otherDate.fixtureRole,"SYNTHETIC_OCCURRENCE_FIXTURE_ONLY");
+  const cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",otherDateRow);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["74-21","74-22"]);
+  assert.notDeepEqual([cells.vehicle1,cells.vehicle2],["74-14","74-38"]);
 });
-check("no-cross-date",()=>assert.equal(context.api.inspectTursattDepartureOccurrence({...row,serviceDate:"2026-08-13"}).valid,false));
-check("departure-not-arrival",()=>{
-  const saved=context.state.baliseTomorrowDepartureOccurrences;
-  context.state.baliseTomorrowDepartureOccurrences={810:{...occurrenceMap[810],direction:"arrival",eventType:"arrival"}};
-  assert.equal(context.api.inspectTursattDepartureOccurrence(row).valid,false);
-  context.state.baliseTomorrowDepartureOccurrences=saved;
+
+check("canonical-id-is-derived-when-legacy-source-id-is-absent",()=>{
+  const legacy={...historicalOccurrence};
+  delete legacy.occurrenceId;
+  delete legacy.stopId;
+  delete legacy.stationRef;
+  delete legacy.sourceRevision;
+  setOccurrences([legacy,otherDateOccurrence]);
+  const inspected=context.api.inspectTursattDepartureOccurrence(historicalRow);
+  assert.equal(inspected.valid,true);
+  assert.equal(inspected.identity.sourceOccurrenceId,"2026-08-12|departure|810|08:09");
+  const cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",historicalRow);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["74-14","74-38"]);
+  setOccurrences([historicalOccurrence,otherDateOccurrence]);
 });
-check("missing-material-uavklart",()=>{
-  context.state.baliseTomorrowDepartureVehicles={};
-  assert.match(context.api.getTursattVehicleError(row,"departure"),/Uavklart/);
-  context.state.baliseTomorrowDepartureVehicles={810:"74-14, 74-38"};
+
+check("cross-date-rejected",()=>{
+  assert.equal(context.api.inspectTursattDepartureOccurrence({...historicalRow,serviceDate:"2026-08-14"}).valid,false);
 });
-check("planned-actual-separate",()=>{
-  assert.equal(occurrenceMap[810].plannedDeparture,"08:09");
-  assert.equal(occurrenceMap[810].actualDeparture,"08:20");
-  assert.equal(row.time,"08:09");
+
+check("cross-direction-rejected",()=>{
+  setOccurrences([{...historicalOccurrence,direction:"northbound"}]);
+  assert.equal(context.api.inspectTursattDepartureOccurrence(historicalRow).valid,false);
+  setOccurrences([historicalOccurrence,otherDateOccurrence]);
+});
+
+check("cross-movement-rejected",()=>{
+  setOccurrences([{...historicalOccurrence,eventType:"arrival"}]);
+  assert.equal(context.api.inspectTursattDepartureOccurrence(historicalRow).valid,false);
+  setOccurrences([historicalOccurrence,otherDateOccurrence]);
+});
+
+check("cross-station-rejected",()=>{
+  setOccurrences([{...historicalOccurrence,station:"Porsgrunn",stationRef:"PG"}]);
+  assert.equal(context.api.inspectTursattDepartureOccurrence(historicalRow).valid,false);
+  setOccurrences([historicalOccurrence,otherDateOccurrence]);
+});
+
+check("planned-time-distinguishes-same-day-occurrences",()=>{
+  const later=makeOccurrence(historical,{
+    occurrenceId:"2026-08-12|departure|810|09:09",
+    routeId:"fixture-route-810-20260812-later",
+    stopId:"fixture-stop-skien-810-later",
+    plannedDeparture:"09:09", departureTime:"09:09", actualDeparture:"09:12",
+    sourceRevision:"fixture-later-revision", vehicleIds:["74-23","74-24"]
+  });
+  setOccurrences([historicalOccurrence,later]);
+  const laterRow={...historicalRow,time:"09:09",displayTime:"09:09"};
+  const cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",laterRow);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["74-23","74-24"]);
+  setOccurrences([historicalOccurrence,otherDateOccurrence]);
+});
+
+check("part-specific-overrides-do-not-cross",()=>{
+  context.state.manualTursattDepartureVehicles={};
+  context.api.setManualTursattVehicleOverride("810","departure","74-31","74-32","imorgen",historicalRow);
+  const binding=context.api.inspectTursattDepartureOccurrence(historicalRow);
+  const key1=context.api.getTursattCanonicalOccurrencePartKey(binding.identity,"1");
+  const key2=context.api.getTursattCanonicalOccurrencePartKey(binding.identity,"2");
+  assert.notEqual(key1,key2);
+  delete context.state.manualTursattDepartureVehicles[key2];
+  const cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",historicalRow);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["74-31","74-38"]);
+});
+
+check("ambiguous-occurrence-fails-closed",()=>{
+  context.state.manualTursattDepartureVehicles={};
+  setOccurrences([
+    historicalOccurrence,
+    {...historicalOccurrence,occurrenceId:"fixture-ambiguous-twin",routeId:"fixture-twin-route",stopId:"fixture-twin-stop"}
+  ]);
+  const inspected=context.api.inspectTursattDepartureOccurrence(historicalRow);
+  assert.equal(inspected.valid,false);
+  assert.match(inspected.error,/Uavklart/);
+  setOccurrences([historicalOccurrence,otherDateOccurrence]);
+});
+
+check("source-refresh-invalidates-stale-cache",()=>{
+  context.state.manualTursattDepartureVehicles={};
+  context.api.setManualTursattVehicleOverride("810","departure","74-31","74-32","imorgen",historicalRow);
+  const refreshed={...historicalOccurrence,sourceRevision:"fixture-balise-revision-refreshed",vehicleIds:["74-33","74-34"]};
+  setOccurrences([refreshed,otherDateOccurrence]);
+  let cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",historicalRow);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["74-33","74-34"]);
+  context.api.setManualTursattVehicleOverride("810","departure","74-35","74-36","imorgen",historicalRow);
+  cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",historicalRow);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["74-35","74-36"]);
+  setOccurrences([historicalOccurrence,otherDateOccurrence]);
+  context.state.manualTursattDepartureVehicles={};
+});
+
+check("balise-then-uavklart-fallback",()=>{
+  let cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",historicalRow);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["74-14","74-38"]);
+  setOccurrences([{...historicalOccurrence,vehicleIds:[],vehicleError:"fixture missing material"}]);
+  cells=context.api.createOppstillingVehicleCells("810","departure","imorgen",historicalRow);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["",""]);
+  assert.match(context.api.getTursattVehicleError(historicalRow,"departure"),/Uavklart|fixture missing material/);
+  setOccurrences([historicalOccurrence,otherDateOccurrence]);
+});
+
+check("planned-and-actual-times-stay-separate",()=>{
+  const normalized=context.api.normalizeBaliseDepartureOccurrenceMap({810:historicalOccurrence})[810];
+  assert.equal(normalized.plannedDeparture,"08:09");
+  assert.equal(normalized.actualDeparture,"08:20");
+  assert.equal(historicalRow.time,"08:09");
+});
+
+check("no-train-number-only-vehicle-policy",()=>{
+  const productionFiles=["index.html","update_static_data.py","config.js"]
+    .filter(file=>fs.existsSync(path.join(root,file)));
+  const forbidden=/(?:810[^\n]{0,160}(?:74-14|74-38)|(?:74-14|74-38)[^\n]{0,160}810)/;
+  productionFiles.forEach(file=>{
+    const text=fs.readFileSync(path.join(root,file),"utf8");
+    assert.doesNotMatch(text,forbidden,`${file} contains a train-number-only 810 vehicle assignment`);
+  });
+  assert.ok(source.includes("getTursattCanonicalOccurrencePartKey"));
+  assert.ok(source.includes("Manuelle Tursatt-verdier er forekomst- og delbundet"));
 });
 
 const failed=results.filter(item=>item.status!=="PASS");
 process.stdout.write(`${JSON.stringify({
-  schemaVersion:"sde-tursatt-810-occurrence-harness-v1",
+  schemaVersion:"sde-tursatt-dynamic-occurrence-harness-v2",
   counts:{total:results.length,pass:results.length-failed.length,fail:failed.length},
   results,
-  serviceDate:fixture.serviceDate,
-  trainNumber:fixture.logicalTrain,
-  plannedDeparture:fixture.plannedDeparture,
-  actualDeparture:fixture.actualDeparture,
-  vehicles:fixture.departureHits
+  historical:{
+    serviceDate:historical.serviceDate,
+    trainNumber:historical.logicalTrain,
+    plannedDeparture:historical.plannedDeparture,
+    actualDeparture:historical.actualDeparture,
+    vehicles:historical.departureHits
+  },
+  otherDate:{
+    serviceDate:otherDate.serviceDate,
+    trainNumber:otherDate.logicalTrain,
+    vehicles:otherDate.departureHits
+  }
 })}\n`);
 process.exitCode=failed.length ? 1 : 0;
