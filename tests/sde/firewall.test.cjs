@@ -717,6 +717,17 @@ test("TURSATT-80824-PORSGRUNN — same occurrence at Porsgrunn determines actual
   );
 });
 
+test("TURSATT-810 — exact Skien departure occurrence resolves ordered material without cross-binding", () => {
+  const result = runHarness("sde-tursatt-810-occurrence-harness.js");
+  assertPassed(result, "TURSATT-810 occurrence harness");
+  const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
+  assert.equal(report?.schemaVersion, "sde-tursatt-810-occurrence-harness-v1");
+  assert.deepEqual(report?.counts, {total:7,pass:7,fail:0});
+  assert.deepEqual(report?.vehicles, ["74-14","74-38"]);
+  assert.equal(report?.plannedDeparture, "08:09");
+  assert.equal(report?.actualDeparture, "08:20");
+});
+
 test("M2 — generator propagates actual platform provenance without vehicle hardcoding", () => {
   const contract = source => {
     for(const name of [

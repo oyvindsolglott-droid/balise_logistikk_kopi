@@ -10497,6 +10497,8 @@ function makeDefaultState(){
     baliseTomorrow:{},
     baliseTodayDepartures:{},
     baliseTomorrowDepartures:{},
+    baliseTodayDepartureOccurrences:{},
+    baliseTomorrowDepartureOccurrences:{},
     baliseTodayVehicleErrors:{},
     baliseTomorrowVehicleErrors:{},
     baliseTodayArrivalDisplayTrainNumbers:{},
@@ -10509,6 +10511,7 @@ function makeDefaultState(){
       ok:false,
       updatedAt:"",
       departures:{},
+      departureOccurrences:{},
       arrivals:{},
       arrivalDisplayTrainNumbers:{},
       allowedMaterialPrefixes:[],
@@ -10563,6 +10566,8 @@ if(!state.baliseToday) state.baliseToday={};
 if(!state.baliseTomorrow) state.baliseTomorrow={};
 if(!state.baliseTodayDepartures) state.baliseTodayDepartures={};
 if(!state.baliseTomorrowDepartures) state.baliseTomorrowDepartures={};
+if(!state.baliseTodayDepartureOccurrences || typeof state.baliseTodayDepartureOccurrences !== "object" || Array.isArray(state.baliseTodayDepartureOccurrences)) state.baliseTodayDepartureOccurrences={};
+if(!state.baliseTomorrowDepartureOccurrences || typeof state.baliseTomorrowDepartureOccurrences !== "object" || Array.isArray(state.baliseTomorrowDepartureOccurrences)) state.baliseTomorrowDepartureOccurrences={};
 if(!state.baliseTodayVehicleErrors || typeof state.baliseTodayVehicleErrors !== "object" || Array.isArray(state.baliseTodayVehicleErrors)) state.baliseTodayVehicleErrors={};
 if(!state.baliseTomorrowVehicleErrors || typeof state.baliseTomorrowVehicleErrors !== "object" || Array.isArray(state.baliseTomorrowVehicleErrors)) state.baliseTomorrowVehicleErrors={};
 if(!state.baliseTodayArrivalDisplayTrainNumbers || typeof state.baliseTodayArrivalDisplayTrainNumbers !== "object" || Array.isArray(state.baliseTodayArrivalDisplayTrainNumbers)) state.baliseTodayArrivalDisplayTrainNumbers={};
@@ -10596,6 +10601,7 @@ if(!state.apiBalise){
     ok:false,
     updatedAt:"",
     departures:{},
+    departureOccurrences:{},
     arrivals:{},
     arrivalDisplayTrainNumbers:{},
     allowedMaterialPrefixes:[],
@@ -10604,6 +10610,7 @@ if(!state.apiBalise){
   };
 }
 if(!state.apiBalise.arrivalDisplayTrainNumbers || typeof state.apiBalise.arrivalDisplayTrainNumbers !== "object" || Array.isArray(state.apiBalise.arrivalDisplayTrainNumbers)) state.apiBalise.arrivalDisplayTrainNumbers={};
+if(!state.apiBalise.departureOccurrences || typeof state.apiBalise.departureOccurrences !== "object" || Array.isArray(state.apiBalise.departureOccurrences)) state.apiBalise.departureOccurrences={};
 if(!state.views){
   state.views={
     yardZoom:{scale:1,compact:false},
@@ -11358,6 +11365,7 @@ function resetBaliseStaticModeState(mode){
   if(mode === "imorgen"){
     state.baliseTomorrow = {};
     state.baliseTomorrowDepartures = {};
+    state.baliseTomorrowDepartureOccurrences = {};
     state.baliseTomorrowArrivals = {};
     state.baliseTomorrowDepartureVehicles = {};
     state.baliseTomorrowArrivalVehicles = {};
@@ -11367,6 +11375,7 @@ function resetBaliseStaticModeState(mode){
   }else{
     state.baliseToday = {};
     state.baliseTodayDepartures = {};
+    state.baliseTodayDepartureOccurrences = {};
     state.baliseTodayArrivals = {};
     state.baliseTodayDepartureVehicles = {};
     state.baliseTodayArrivalVehicles = {};
@@ -11385,6 +11394,7 @@ function makeEmptyApiBaliseState(mode = "idag"){
     date:"",
     vehicles:{},
     departures:{},
+    departureOccurrences:{},
     arrivals:{},
     departureVehicles:{},
     arrivalVehicles:{},
@@ -11524,6 +11534,7 @@ async function fetchBaliseStaticJson(mode, options = {}){
 
 function normalizeBaliseStaticPayload(payload, mode){
   const normalizedDepartures = normalizeApiDepartureMap(payload.departures);
+  const normalizedDepartureOccurrences = normalizeBaliseDepartureOccurrenceMap(payload.departureOccurrences);
   const normalizedArrivals = normalizeApiArrivalMap(payload.arrivals);
   const normalizedVehicles = buildVehicleMapFromPayload({vehicles: payload.vehicles || {}});
   const normalizedDepartureVehicles = buildVehicleMapFromPayload({vehicles: payload.departureVehicles || {}});
@@ -11555,6 +11566,7 @@ function normalizeBaliseStaticPayload(payload, mode){
       date:String(payload.date || ""),
       vehicles:normalizedVehicles,
       departures:normalizedDepartures,
+      departureOccurrences:normalizedDepartureOccurrences,
       arrivals:normalizedArrivals,
       departureVehicles:normalizedDepartureVehicles,
       arrivalVehicles:normalizedArrivalVehicles,
@@ -11567,6 +11579,7 @@ function normalizeBaliseStaticPayload(payload, mode){
     normalized:{
       vehicles:normalizedVehicles,
       departures:normalizedDepartures,
+      departureOccurrences:normalizedDepartureOccurrences,
       arrivals:normalizedArrivals,
       departureVehicles:normalizedDepartureVehicles,
       arrivalVehicles:normalizedArrivalVehicles,
@@ -11605,6 +11618,7 @@ function applyBaliseStaticPayloadToState(mode, payload, options = {}){
   if(effectiveMode === "imorgen"){
     state.baliseTomorrow = data.vehicles;
     state.baliseTomorrowDepartures = data.departures;
+    state.baliseTomorrowDepartureOccurrences = data.departureOccurrences;
     state.baliseTomorrowArrivals = data.arrivals;
     state.baliseTomorrowDepartureVehicles = data.departureVehicles;
     state.baliseTomorrowArrivalVehicles = data.arrivalVehicles;
@@ -11614,6 +11628,7 @@ function applyBaliseStaticPayloadToState(mode, payload, options = {}){
   }else{
     state.baliseToday = data.vehicles;
     state.baliseTodayDepartures = data.departures;
+    state.baliseTodayDepartureOccurrences = data.departureOccurrences;
     state.baliseTodayArrivals = data.arrivals;
     state.baliseTodayDepartureVehicles = data.departureVehicles;
     state.baliseTodayArrivalVehicles = data.arrivalVehicles;
@@ -14093,7 +14108,7 @@ function buildTursattArrivalVehicleEvents(){
   const serviceDate = String(state.baliseMetaToday?.date || "");
   return buildArrivalRowsForOppstilling()
     .map(row=>{
-      const vehicles = createOppstillingVehicleCells(row.train, "arrival", row.mode);
+      const vehicles = createOppstillingVehicleCells(row.train, "arrival", row.mode, row);
       const positionedVehicles = getTursattVehiclePositionsFromCells(vehicles);
       if(!positionedVehicles.length) return null;
 
@@ -14116,7 +14131,7 @@ function buildTursattArrivalVehicleEvents(){
 function buildTursattDepartureVehicleEvents(){
   return buildDepartureRowsForOppstilling()
     .map(row=>{
-      const vehicles = createOppstillingVehicleCells(row.train, "departure", row.mode);
+      const vehicles = createOppstillingVehicleCells(row.train, "departure", row.mode, row);
       const positionedVehicles = getTursattVehiclePositionsFromCells(vehicles);
       if(!positionedVehicles.length) return null;
 
@@ -14540,15 +14555,82 @@ function getTursattBaseVehicleMapByMode(side, mode){
 }
 
 
-function getTursattVehicleCellInfo(train, side, mode){
+function getTursattDepartureOccurrenceMapByMode(mode){
+  return mode === "idag"
+    ? (state.baliseTodayDepartureOccurrences || {})
+    : (state.baliseTomorrowDepartureOccurrences || {});
+}
+
+
+function inspectTursattDepartureOccurrence(rowData={}){
+  const mode = rowData?.mode === "idag" ? "idag" : "imorgen";
+  const map = getTursattDepartureOccurrenceMapByMode(mode);
+  const enforced = Object.keys(map).length > 0;
+  const train = normalizeTognr(rowData?.train);
+  const occurrence = map[train] || null;
+  if(!enforced) return {enforced:false,valid:true,key:train,occurrence:null,error:""};
+  if(!occurrence){
+    return {enforced:true,valid:false,key:train,occurrence:null,error:`Uavklart forekomstbundet materiell: avgang ${train} mangler occurrence.`};
+  }
+  const serviceDate = String(rowData?.serviceDate || getTursattDepartureServiceDateForMode(mode) || "").trim();
+  const plannedTime = normalizeTimeString(rowData?.time || rowData?.displayTime);
+  const occurrenceTime = normalizeTimeString(occurrence.plannedDeparture || occurrence.departureTime);
+  const displayTrain = normalizeTognr(occurrence.displayTrainNumber);
+  const stationIsSkien = String(occurrence.station || "").trim().toLowerCase() === "skien"
+    || String(occurrence.stationRef || "").trim().toUpperCase() === "SKN";
+  const expectedOccurrenceId = [serviceDate,"departure",displayTrain,plannedTime].join("|");
+  const occurrenceIdMatches = occurrence.occurrenceId === expectedOccurrenceId;
+  const occurrenceVehicleMap = mode === "idag"
+    ? (state.baliseTodayDepartureVehicles || {})
+    : (state.baliseTomorrowDepartureVehicles || {});
+  const sourceVehicles = splitVehicleNumbers(occurrenceVehicleMap[train] || "").filter(Boolean);
+  const occurrenceVehicles = (occurrence.vehicleIds || []).map(sanitizeVehicleValue).filter(Boolean);
+  const vehicleOrderMatches = sourceVehicles.length === occurrenceVehicles.length
+    && sourceVehicles.every((vehicle,index)=>vehicle === occurrenceVehicles[index]);
+  const valid = Boolean(
+    train
+    && occurrence.operationalDate === serviceDate
+    && displayTrain === train
+    && occurrence.direction === "departure"
+    && occurrence.eventType === "departure"
+    && stationIsSkien
+    && occurrenceTime === plannedTime
+    && occurrence.routeId
+    && occurrenceIdMatches
+    && occurrenceVehicles.length
+    && vehicleOrderMatches
+    && !occurrence.vehicleError
+  );
+  return {
+    enforced:true,
+    valid,
+    key:train,
+    occurrence,
+    expectedOccurrenceId,
+    error:valid ? "" : `Uavklart forekomstbundet materiell: avgang ${train} kan ikke bindes til ${serviceDate}|departure|Skien|${plannedTime}.`
+  };
+}
+
+
+function getTursattVehicleCellInfo(train, side, mode, rowData={}){
   const key = normalizeTognr(train);
-  const occurrenceError = getTursattVehicleError({train:key, mode}, side);
+  const occurrenceBinding = side === "departure"
+    ? inspectTursattDepartureOccurrence({train:key,mode,...rowData})
+    : {enforced:false,valid:true,key,occurrence:null,error:""};
+  const occurrenceError = String(getVehicleErrorMapByMode(mode)?.[key] || occurrenceBinding.error || "").trim();
   const lookupKeys = getTursattBratsbergAlternativeTrainNumbers(key);
   const displayTrain = side === "arrival"
     ? normalizeTognr(getArrivalDisplayTrainNumberMapByMode(mode)?.[key])
     : "";
-  const sourceKeys = displayTrain ? [displayTrain] : lookupKeys;
-  const base = getTursattBaseVehicleMapByMode(side, mode);
+  const sourceKeys = occurrenceBinding.enforced
+    ? (occurrenceBinding.valid ? [occurrenceBinding.key] : [])
+    : displayTrain ? [displayTrain] : lookupKeys;
+  const base = occurrenceBinding.enforced && side === "departure"
+    ? {
+        map:mode === "idag" ? (state.baliseTodayDepartureVehicles || {}) : (state.baliseTomorrowDepartureVehicles || {}),
+        label:"Balise"
+      }
+    : getTursattBaseVehicleMapByMode(side, mode);
   const manualMap = side === "departure"
     ? (state.manualTursattDepartureVehicles || {})
     : (state.manualTursattArrivalVehicles || {});
@@ -14562,9 +14644,11 @@ function getTursattVehicleCellInfo(train, side, mode){
   const staleOriginalValue = displayTrain
     ? sanitizeVehicleValue(base.map?.[key] || getBaseVehicleForTrain(key, mode))
     : "";
-  const manualValue = displayTrain && rawManualValue && rawManualValue === staleOriginalValue
+  const manualValue = occurrenceBinding.enforced && !occurrenceBinding.valid
     ? ""
-    : rawManualValue;
+    : displayTrain && rawManualValue && rawManualValue === staleOriginalValue
+      ? ""
+      : rawManualValue;
   const fallbackValue = displayTrain || occurrenceError
     ? ""
     : sanitizeVehicleValue(getBaseVehicleForTrain(fallbackKey, mode));
@@ -14584,6 +14668,7 @@ function getTursattVehicleCellInfo(train, side, mode){
     side,
     mode,
     occurrenceError,
+    occurrenceBinding,
     baseValue,
     baseLabel:base.label,
     displayTrain,
@@ -14643,12 +14728,12 @@ function addTursattBaliseDiagnostic(train, side, info){
 }
 
 
-function createOppstillingVehicleCells(train, side, modeOverride=""){
+function createOppstillingVehicleCells(train, side, modeOverride="", rowData={}){
   const key = normalizeTognr(train);
   const mode = modeOverride === "idag" || modeOverride === "imorgen"
     ? modeOverride
     : (side === "departure" ? "imorgen" : "idag");
-  const overrideInfo = getTursattVehicleCellInfo(key, side, mode);
+  const overrideInfo = getTursattVehicleCellInfo(key, side, mode, rowData);
 
   const [vehicle1, vehicle2] = splitVehicleNumbers(overrideInfo.effectiveValue);
 
@@ -14669,7 +14754,7 @@ function buildSdeTursattVehicleBindings(){
     if(!train || !cleanVehicle) return;
 
     const fieldKey = partIndex === 1 ? "vehicle2" : "vehicle1";
-    const vehicles = createOppstillingVehicleCells(train, side, row?.mode);
+    const vehicles = createOppstillingVehicleCells(train, side, row?.mode, row);
     const displayTrain = getDisplayTrainNumberForOppstilling(train, side, row?.mode);
     const operationalDate = side === "arrival"
       ? String(state.baliseMetaToday?.date || state.apiBalise?.date || "").trim()
@@ -14701,13 +14786,13 @@ function buildSdeTursattVehicleBindings(){
   }
 
   buildArrivalRowsForOppstilling().forEach(row=>{
-    const vehicles = createOppstillingVehicleCells(row.train, "arrival", row.mode);
+    const vehicles = createOppstillingVehicleCells(row.train, "arrival", row.mode, row);
     addBinding(row, "arrival", vehicles.vehicle1, 0);
     addBinding(row, "arrival", vehicles.vehicle2, 1);
   });
 
   buildDepartureRowsForOppstilling().forEach(row=>{
-    const vehicles = createOppstillingVehicleCells(row.train, "departure", row.mode);
+    const vehicles = createOppstillingVehicleCells(row.train, "departure", row.mode, row);
     addBinding(row, "departure", vehicles.vehicle1, 0);
     addBinding(row, "departure", vehicles.vehicle2, 1);
   });
@@ -14813,7 +14898,11 @@ function getTursattVehicleError(rowData, side){
   if(!train) return "";
 
   const mode = rowData?.mode === "idag" ? "idag" : "imorgen";
-  return String(getVehicleErrorMapByMode(mode)?.[train] || "").trim();
+  const generatorError = String(getVehicleErrorMapByMode(mode)?.[train] || "").trim();
+  const occurrenceError = typeof inspectTursattDepartureOccurrence === "function"
+    ? inspectTursattDepartureOccurrence(rowData).error
+    : "";
+  return generatorError || occurrenceError;
 }
 
 function getArrivalDisplayTrainNumberMapByMode(mode){
@@ -14907,7 +14996,7 @@ function appendOppstillingSideCells(tr, rowData, side){
   tr.appendChild(tdTime);
 
   const vehicles = train
-    ? createOppstillingVehicleCells(train, side, mode)
+    ? createOppstillingVehicleCells(train, side, mode, rowData)
     : {vehicle1:"", vehicle2:"", missingSecond:false};
   if(train) addTursattBaliseDiagnostic(train, side, vehicles.overrideInfo);
 
@@ -14963,7 +15052,7 @@ function hasTursattVehicle(rowData, side){
   const train = normalizeTognr(rowData?.train);
   if(!train) return false;
 
-  const vehicles = createOppstillingVehicleCells(train, side, rowData?.mode);
+  const vehicles = createOppstillingVehicleCells(train, side, rowData?.mode, rowData);
   return isTursattVehicleValue(vehicles.vehicle1) || isTursattVehicleValue(vehicles.vehicle2);
 }
 
@@ -40991,23 +41080,71 @@ function findSdePassiveBlockedSlotIntent(rootRow={}, rows=[], snapshot={}){
   }) || null;
 }
 
-function inspectSdePassiveBlockedSlotStructure(rows=[]){
-  const releases = rows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "prerequisite");
-  const mains = rows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "dependent");
-  const recoveries = rows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "return");
-  const chainRows = rows.filter(row=>getSdePassiveBlockedSlotRowParts(row).chainId);
+function getSdePassiveBlockedSlotOperativeRows(rows=[], snapshot={}){
+  const actions = snapshot.runtimeState?.actions || {};
+  return rows.filter(row=>{
+    const actionKey = getSdeMoveActionKey(row);
+    const action = actions[actionKey] || {};
+    const status = String(row.actionStatus || row.status || action.status || "").trim().toLowerCase();
+    return !row.sdeCancellationDismissalCard
+      && !row.isSdeCancellationFailClosed
+      && action.action !== "cancelled"
+      && !["cancelled","dismissing","exiting","superseded","inactive"].includes(status);
+  });
+}
+
+function getSdePassiveBlockedSlotCompletedReleaseProofs(rows=[], snapshot={}){
+  const operativeRows = getSdePassiveBlockedSlotOperativeRows(rows,snapshot);
+  const main = operativeRows.find(row=>getSdePassiveBlockedSlotRowParts(row).role === "dependent") || null;
+  const recoveries = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "return");
+  if(!main || !recoveries.length) return [];
+  const mainObligationKey = String(getSdeMovePlanningObligationId(main) || getSdeMoveNeedKey(main) || "").trim();
+  const actualPlacements = getSdePassiveBlockedSlotActualPlacements(snapshot);
+  const actions = snapshot.runtimeState?.actions || {};
+  return Object.entries(actions).flatMap(([actionKey,record])=>{
+    if(record?.action !== "completed") return [];
+    const plan = record?.snapshot?.sdePhysicalAccessReliefChain || {};
+    if(plan.sdeTrappedEgressChain !== true) return [];
+    if(plan.mainObligationKey && mainObligationKey && String(plan.mainObligationKey).trim() !== mainObligationKey) return [];
+    const vehicleId = sanitizeVehicleValue(plan.blockerVehicle || record.vehicle);
+    const sourceSlot = normalizeSlot(plan.blockerFromSlot || record.fromSlot);
+    const targetSlot = normalizeSlot(plan.holdingSlot || record.toSlot);
+    if(!vehicleId || !sourceSlot || !targetSlot) return [];
+    if(!actualPlacements.some(item=>haveSameSdeVehicleTokens(item.vehicleId,vehicleId) && item.slot === targetSlot)) return [];
+    if(plan.returnActionKey && actions[plan.returnActionKey]?.action === "completed") return [];
+    const recovery = recoveries.find(row=>{
+      const parts = getSdePassiveBlockedSlotRowParts(row);
+      return haveSameSdeVehicleTokens(parts.vehicleId,vehicleId)
+        && parts.sourceSlot === targetSlot
+        && parts.targetSlot === sourceSlot;
+    });
+    return recovery ? [{actionKey,vehicleId,sourceSlot,targetSlot,recoveryActionKey:getSdeMoveActionKey(recovery)}] : [];
+  });
+}
+
+function inspectSdePassiveBlockedSlotStructure(rows=[], snapshot={}){
+  const operativeRows = getSdePassiveBlockedSlotOperativeRows(rows,snapshot);
+  const releases = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "prerequisite");
+  const mains = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "dependent");
+  const recoveries = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "return");
+  const completedReleaseProofs = getSdePassiveBlockedSlotCompletedReleaseProofs(rows,snapshot);
+  const chainRows = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).chainId);
   if(!chainRows.length){
-    return {complete:true,releases,mains:rows,recoveries:[],missingPlanParts:[]};
+    return {complete:true,releases,mains:operativeRows,recoveries:[],completedReleaseProofs,operativeRows,missingPlanParts:[]};
   }
-  const actionKeys = new Set(rows.flatMap(row=>[
+  const actionKeys = new Set(operativeRows.flatMap(row=>[
     getSdeMoveActionKey(row),row.actionKey,row.stableActionKey,row.cardId,row.sdeNightPlacementGeneratedActionKey
   ]).map(value=>String(value || "").trim()).filter(Boolean));
-  const dependenciesComplete = rows.every(row=>(Array.isArray(row.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : [])
-    .map(value=>String(value || "").trim()).filter(Boolean).every(key=>actionKeys.has(key)));
-  const expectedStepCount = Math.max(0,...rows.map(row=>Number(row.sdePhysicalChainStepCount || 0)).filter(Number.isFinite));
-  const sequenceComplete = expectedStepCount > 0 && expectedStepCount === rows.length
-    && new Set(rows.map(row=>Number(row.sdePhysicalChainStep || 0)).filter(value=>value > 0)).size === rows.length;
-  const recoveryComplete = releases.length > 0 && recoveries.length === releases.length && releases.every(release=>{
+  const completedActionKeys = new Set(Object.entries(snapshot.runtimeState?.actions || {})
+    .filter(([,record])=>record?.action === "completed").map(([key])=>String(key || "").trim()).filter(Boolean));
+  const dependenciesComplete = operativeRows.every(row=>(Array.isArray(row.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : [])
+    .map(value=>String(value || "").trim()).filter(Boolean).every(key=>actionKeys.has(key) || completedActionKeys.has(key)));
+  const expectedStepCount = Math.max(0,...operativeRows.map(row=>Number(row.sdePhysicalChainStepCount || 0)).filter(Number.isFinite));
+  const sequenceComplete = expectedStepCount > 0 && expectedStepCount === operativeRows.length
+    && new Set(operativeRows.map(row=>Number(row.sdePhysicalChainStep || 0)).filter(value=>value > 0)).size === operativeRows.length;
+  const recoveryComplete = releases.length + completedReleaseProofs.length > 0
+    && recoveries.length === releases.length + completedReleaseProofs.length
+    && releases.every(release=>{
     const releaseParts = getSdePassiveBlockedSlotRowParts(release);
     return recoveries.some(recovery=>{
       const recoveryParts = getSdePassiveBlockedSlotRowParts(recovery);
@@ -41017,7 +41154,7 @@ function inspectSdePassiveBlockedSlotStructure(rows=[]){
     });
   });
   const missingPlanParts = [];
-  if(releases.length < 1) missingPlanParts.push("release");
+  if(releases.length + completedReleaseProofs.length < 1) missingPlanParts.push("release");
   if(mains.length !== 1) missingPlanParts.push("main");
   if(!recoveryComplete) missingPlanParts.push("recovery");
   if(!dependenciesComplete) missingPlanParts.push("dependencies");
@@ -41027,6 +41164,8 @@ function inspectSdePassiveBlockedSlotStructure(rows=[]){
     releases,
     mains,
     recoveries,
+    completedReleaseProofs,
+    operativeRows,
     missingPlanParts,
     expectedStepCount,
     dependenciesComplete,
@@ -41164,7 +41303,7 @@ function reconcileSdePassiveBlockedSlotRows(snapshot={}){
       }));
       continue;
     }
-    const structural = inspectSdePassiveBlockedSlotStructure(rows);
+    const structural = inspectSdePassiveBlockedSlotStructure(rows,snapshot);
     if(!structural.complete){ // SDE_BLOCKED_SLOT_COMPLETE_PLAN_GATE
       rows.forEach(row=>excludedRows.add(row));
       findings.push(buildSdePassiveBlockedSlotFinding({
@@ -41200,7 +41339,10 @@ function applySdePassiveBlockedSlotAtomicProjectionGate(reader, adapters={}){
   const failedChainIds = new Set();
   const findings = [];
   admitted.forEach(chainId=>{
-    const outcomes = (reader.canonicalPlan?.candidateOutcomes || []).filter(item=>String(item.chainId || item.chainScope || "") === chainId);
+    const outcomes = (reader.canonicalPlan?.candidateOutcomes || []).filter(item=>
+      String(item.chainId || item.chainScope || "") === chainId
+      && !["exiting","cancelled","superseded","inactive"].includes(String(item.status || "").toLowerCase())
+    );
     const outcomeIds = new Set(outcomes.map(item=>item.candidateOutcomeId));
     const cards = allCards.filter(item=>outcomeIds.has(item.activeOutcomeId));
     const reservations = (reader.reservationProjection?.reservations || []).filter(item=>outcomeIds.has(item.activeOutcomeId));
@@ -48160,6 +48302,51 @@ function normalizeApiDepartureMap(raw){
   });
 
 
+  return map;
+}
+
+
+function normalizeBaliseDepartureOccurrence(raw, train=""){
+  if(!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const displayTrainNumber = normalizeTognr(raw.displayTrainNumber || train);
+  const plannedDeparture = normalizeTimeString(raw.plannedDeparture || raw.departureTime);
+  const actualDeparture = normalizeTimeString(raw.actualDeparture);
+  const vehicleIds = [];
+  (Array.isArray(raw.vehicleIds) ? raw.vehicleIds : []).forEach(value=>{
+    const vehicle = sanitizeVehicleValue(value);
+    if(vehicle && !vehicleIds.includes(vehicle)) vehicleIds.push(vehicle);
+  });
+  return {
+    operationalDate:String(raw.operationalDate || "").trim(),
+    requestedTrainNumber:normalizeTognr(raw.requestedTrainNumber || ""),
+    displayTrainNumber,
+    occurrenceId:String(raw.occurrenceId || "").trim(),
+    routeId:String(raw.routeId || "").trim(),
+    origin:String(raw.origin || "").trim(),
+    destination:String(raw.destination || "").trim(),
+    station:String(raw.station || raw.stationName || "").trim(),
+    stationRef:String(raw.stationRef || "").trim().toUpperCase(),
+    stopId:String(raw.stopId || "").trim(),
+    direction:String(raw.direction || "departure").trim().toLowerCase(),
+    eventType:String(raw.eventType || "departure").trim().toLowerCase(),
+    departureTime:normalizeTimeString(raw.departureTime || plannedDeparture),
+    plannedDeparture,
+    actualDeparture,
+    vehicleIds,
+    vehicleResolutionSource:String(raw.vehicleResolutionSource || "").trim(),
+    vehicleError:String(raw.vehicleError || raw.error || "").trim()
+  };
+}
+
+
+function normalizeBaliseDepartureOccurrenceMap(raw){
+  const map = {};
+  if(!raw || typeof raw !== "object" || Array.isArray(raw)) return map;
+  Object.entries(raw).forEach(([train,value])=>{
+    const key = normalizeTognr(train);
+    const occurrence = normalizeBaliseDepartureOccurrence(value,key);
+    if(key && occurrence) map[key] = occurrence;
+  });
   return map;
 }
 
