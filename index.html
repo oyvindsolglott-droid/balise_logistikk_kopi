@@ -10744,14 +10744,10 @@ function getDepartureVehicleMapByMode(mode){
     ? (state.baliseTomorrowDepartureVehicles || {})
     : (state.baliseTodayDepartureVehicles || {});
   const fallbackMap = getBaliseMapByMode(cleanMode);
-  const manualMap = cleanMode === "imorgen"
-    ? (state.manualTursattDepartureVehicles || {})
-    : {};
 
-  return {
-    ...(Object.keys(baliseMap).length ? baliseMap : fallbackMap),
-    ...manualMap
-  };
+  // Manuelle Tursatt-verdier er forekomst- og delbundet. De må derfor aldri
+  // flettes inn i et tognummerindeksert Balise-map.
+  return Object.keys(baliseMap).length ? baliseMap : fallbackMap;
 }
 
 function normalizeVehicleErrorMap(errors){
@@ -10782,14 +10778,9 @@ function getArrivalVehicleMapByMode(mode){
     ? (state.baliseTomorrowArrivalVehicles || {})
     : (state.baliseTodayArrivalVehicles || {});
   const fallbackMap = getBaliseMapByMode(cleanMode);
-  const manualMap = cleanMode === "idag"
-    ? (state.manualTursattArrivalVehicles || {})
-    : {};
-
-  return {
-    ...(Object.keys(baliseMap).length ? baliseMap : fallbackMap),
-    ...manualMap
-  };
+  // Se getDepartureVehicleMapByMode: Tursatt-cache har en sterkere nøkkel enn
+  // tognummer og skal bare leses gjennom occurrence-resolveren.
+  return Object.keys(baliseMap).length ? baliseMap : fallbackMap;
 }
 
 
@@ -14501,7 +14492,10 @@ function buildArrivalRowsForOppstilling(){
         time: cleanTime,
         displayTime: cleanTime ? `${cleanTime}${nextDay ? " +1" : ""}` : "",
         nextDay,
-        sortMinutes
+        sortMinutes,
+        mode:"idag",
+        serviceDate:String(info?.movementContext?.operationalDate || state.baliseMetaToday?.date || ""),
+        movementContext:info?.movementContext || null
       };
     })
     .filter(row=>row.train)
@@ -14509,30 +14503,143 @@ function buildArrivalRowsForOppstilling(){
 }
 
 
-function setManualTursattVehicleOverride(train, side, vehicle1, vehicle2){
+function getTursattOccurrenceSourceRevision(occurrence={}){
+  return String(
+    occurrence?.sourceRevision ??
+    occurrence?.sourceUpdatedAt ??
+    occurrence?.sourceObservedAt ??
+    ""
+  ).trim();
+}
+
+
+function buildTursattCanonicalOccurrenceIdentity(rowData={}, side="departure", occurrence=null){
+  const movement = side === "arrival" ? "arrival" : "departure";
+  const mode = rowData?.mode === "idag" ? "idag" : "imorgen";
+  const source = occurrence || rowData?.movementContext || {};
+  const operationalDate = String(
+    source?.operationalDate ||
+    rowData?.serviceDate ||
+    (side === "arrival" ? state.baliseMetaToday?.date : getTursattDepartureServiceDateForMode(mode)) ||
+    ""
+  ).trim();
+  const train = normalizeTognr(
+    source?.displayTrainNumber ||
+    source?.trainNumber ||
+    rowData?.train
+  );
+  const stationRef = String(source?.stationRef || rowData?.stationRef || "SKN").trim().toUpperCase();
+  const station = String(source?.station || source?.stationName || rowData?.station || "Skien").trim().toLowerCase();
+  const plannedTime = normalizeTimeString(
+    side === "arrival"
+      ? (source?.plannedArrival || rowData?.time || rowData?.displayTime)
+      : (source?.plannedDeparture || source?.departureTime || rowData?.time || rowData?.displayTime)
+  );
+  const eventType = String(source?.eventType || rowData?.eventType || rowData?.movement || movement).trim().toLowerCase();
+  const direction = String(source?.direction || rowData?.direction || movement).trim().toLowerCase();
+  const sourceOccurrenceId = String(
+    source?.occurrenceId ||
+    rowData?.sourceOccurrenceId ||
+    [operationalDate,eventType,train,plannedTime].join("|")
+  ).trim();
+
+  return {
+    operationalDate,
+    train,
+    stationRef,
+    station,
+    movement:eventType,
+    direction,
+    plannedTime,
+    sourceOccurrenceId,
+    sourceRevision:getTursattOccurrenceSourceRevision(source),
+    routeId:String(source?.routeId || "").trim(),
+    stopId:String(source?.stopId || "").trim()
+  };
+}
+
+
+function getTursattCanonicalOccurrencePartKey(identity={}, part="1"){
+  const cleanPart = String(part || "").replace(/^\//, "").trim();
+  if(
+    !identity?.operationalDate ||
+    !identity?.train ||
+    !identity?.stationRef ||
+    !identity?.movement ||
+    !identity?.direction ||
+    !identity?.plannedTime ||
+    !identity?.sourceOccurrenceId ||
+    !cleanPart
+  ) return "";
+
+  return `tursatt-occurrence-part:${JSON.stringify([
+    identity.operationalDate,
+    identity.train,
+    identity.stationRef,
+    identity.movement,
+    identity.direction,
+    identity.plannedTime,
+    cleanPart,
+    identity.sourceOccurrenceId,
+    identity.sourceRevision,
+    identity.routeId,
+    identity.stopId
+  ])}`;
+}
+
+
+function getTursattOccurrenceBinding(rowData={}, side="departure"){
+  return side === "arrival"
+    ? inspectTursattArrivalOccurrence(rowData)
+    : inspectTursattDepartureOccurrence(rowData);
+}
+
+
+function getManualTursattOccurrenceVehicles(binding, side){
+  if(!binding?.valid || !binding?.identity) return {vehicle1:"",vehicle2:"",value:"",hasOverride:false};
+  const manualMap = side === "departure"
+    ? (state.manualTursattDepartureVehicles || {})
+    : (state.manualTursattArrivalVehicles || {});
+  const key1 = getTursattCanonicalOccurrencePartKey(binding.identity, "1");
+  const key2 = getTursattCanonicalOccurrencePartKey(binding.identity, "2");
+  const vehicle1 = sanitizeVehicleValue(manualMap[key1] || "");
+  const vehicle2 = sanitizeVehicleValue(manualMap[key2] || "");
+  return {
+    vehicle1,
+    vehicle2,
+    value:joinVehicleNumbers(vehicle1,vehicle2),
+    hasOverride:Boolean(vehicle1 || vehicle2)
+  };
+}
+
+
+function setManualTursattVehicleOverride(train, side, vehicle1, vehicle2, modeOverride="", rowData={}){
   const key = normalizeTognr(train);
   if(!key) return;
 
   const clean1 = sanitizeVehicleValue(vehicle1);
   const clean2 = sanitizeVehicleValue(vehicle2);
-  const joined = joinVehicleNumbers(clean1, clean2);
+  const mode = modeOverride === "idag" ? "idag" : "imorgen";
+  const binding = getTursattOccurrenceBinding({train:key,mode,...rowData},side);
+  if(!binding.valid || !binding.identity) return;
+  const key1 = getTursattCanonicalOccurrencePartKey(binding.identity,"1");
+  const key2 = getTursattCanonicalOccurrencePartKey(binding.identity,"2");
+  if(!key1 || !key2) return;
 
   if(side === "departure"){
     if(!state.manualTursattDepartureVehicles) state.manualTursattDepartureVehicles = {};
-    if(joined){
-      state.manualTursattDepartureVehicles[key] = joined;
-    }else{
-      delete state.manualTursattDepartureVehicles[key];
-    }
+    if(clean1) state.manualTursattDepartureVehicles[key1] = clean1;
+    else delete state.manualTursattDepartureVehicles[key1];
+    if(clean2) state.manualTursattDepartureVehicles[key2] = clean2;
+    else delete state.manualTursattDepartureVehicles[key2];
     return;
   }
 
   if(!state.manualTursattArrivalVehicles) state.manualTursattArrivalVehicles = {};
-  if(joined){
-    state.manualTursattArrivalVehicles[key] = joined;
-  }else{
-    delete state.manualTursattArrivalVehicles[key];
-  }
+  if(clean1) state.manualTursattArrivalVehicles[key1] = clean1;
+  else delete state.manualTursattArrivalVehicles[key1];
+  if(clean2) state.manualTursattArrivalVehicles[key2] = clean2;
+  else delete state.manualTursattArrivalVehicles[key2];
 }
 
 
@@ -14562,31 +14669,71 @@ function getTursattDepartureOccurrenceMapByMode(mode){
 }
 
 
+function getTursattDepartureOccurrenceCandidates(rowData={}){
+  const mode = rowData?.mode === "idag" ? "idag" : "imorgen";
+  const map = getTursattDepartureOccurrenceMapByMode(mode);
+  const train = normalizeTognr(rowData?.train);
+  const candidates = [];
+  const append = value=>{
+    (Array.isArray(value) ? value : [value]).forEach(occurrence=>{
+      if(occurrence && typeof occurrence === "object" && !Array.isArray(occurrence)) candidates.push(occurrence);
+    });
+  };
+  append(map[train]);
+  if(!candidates.length){
+    Object.values(map).forEach(value=>append(value));
+  }
+  return candidates.filter(occurrence=>{
+    const requestedTrain = normalizeTognr(occurrence?.requestedTrainNumber);
+    const displayTrain = normalizeTognr(occurrence?.displayTrainNumber);
+    return train && (displayTrain === train || requestedTrain === train);
+  });
+}
+
+
 function inspectTursattDepartureOccurrence(rowData={}){
   const mode = rowData?.mode === "idag" ? "idag" : "imorgen";
   const map = getTursattDepartureOccurrenceMapByMode(mode);
   const enforced = Object.keys(map).length > 0;
   const train = normalizeTognr(rowData?.train);
-  const occurrence = map[train] || null;
   if(!enforced) return {enforced:false,valid:true,key:train,occurrence:null,error:""};
-  if(!occurrence){
-    return {enforced:true,valid:false,key:train,occurrence:null,error:`Uavklart forekomstbundet materiell: avgang ${train} mangler occurrence.`};
-  }
   const serviceDate = String(rowData?.serviceDate || getTursattDepartureServiceDateForMode(mode) || "").trim();
   const plannedTime = normalizeTimeString(rowData?.time || rowData?.displayTime);
+  const expectedStationRef = String(rowData?.stationRef || "SKN").trim().toUpperCase();
+  const expectedStation = String(rowData?.station || "Skien").trim().toLowerCase();
+  const expectedMovement = String(rowData?.eventType || rowData?.movement || "departure").trim().toLowerCase();
+  const expectedDirection = String(rowData?.direction || "departure").trim().toLowerCase();
+  const expectedSourceOccurrenceId = String(rowData?.sourceOccurrenceId || "").trim();
+  const expectedSourceRevision = String(rowData?.sourceRevision ?? "").trim();
+  const candidates = getTursattDepartureOccurrenceCandidates({train,mode});
+  const matches = candidates.filter(occurrence=>{
+    const occurrenceTime = normalizeTimeString(occurrence?.plannedDeparture || occurrence?.departureTime);
+    const displayTrain = normalizeTognr(occurrence?.displayTrainNumber);
+    const occurrenceStationRef = String(occurrence?.stationRef || "").trim().toUpperCase();
+    const occurrenceStation = String(occurrence?.station || "").trim().toLowerCase();
+    const stationMatches = Boolean(occurrenceStationRef || occurrenceStation)
+      && (!occurrenceStationRef || occurrenceStationRef === expectedStationRef)
+      && (!occurrenceStation || occurrenceStation === expectedStation);
+    return occurrence?.operationalDate === serviceDate
+      && displayTrain === train
+      && String(occurrence?.direction || "").trim().toLowerCase() === expectedDirection
+      && String(occurrence?.eventType || "").trim().toLowerCase() === expectedMovement
+      && stationMatches
+      && occurrenceTime === plannedTime
+      && (!expectedSourceOccurrenceId || occurrence?.occurrenceId === expectedSourceOccurrenceId)
+      && (!expectedSourceRevision || getTursattOccurrenceSourceRevision(occurrence) === expectedSourceRevision);
+  });
+  if(matches.length !== 1){
+    const reason = matches.length > 1 ? "er tvetydig" : "mangler occurrence";
+    return {enforced:true,valid:false,key:train,occurrence:null,error:`Uavklart forekomstbundet materiell: avgang ${train} ${reason}.`};
+  }
+  const occurrence = matches[0];
   const occurrenceTime = normalizeTimeString(occurrence.plannedDeparture || occurrence.departureTime);
   const displayTrain = normalizeTognr(occurrence.displayTrainNumber);
   const stationIsSkien = String(occurrence.station || "").trim().toLowerCase() === "skien"
     || String(occurrence.stationRef || "").trim().toUpperCase() === "SKN";
   const expectedOccurrenceId = [serviceDate,"departure",displayTrain,plannedTime].join("|");
-  const occurrenceIdMatches = occurrence.occurrenceId === expectedOccurrenceId;
-  const occurrenceVehicleMap = mode === "idag"
-    ? (state.baliseTodayDepartureVehicles || {})
-    : (state.baliseTomorrowDepartureVehicles || {});
-  const sourceVehicles = splitVehicleNumbers(occurrenceVehicleMap[train] || "").filter(Boolean);
   const occurrenceVehicles = (occurrence.vehicleIds || []).map(sanitizeVehicleValue).filter(Boolean);
-  const vehicleOrderMatches = sourceVehicles.length === occurrenceVehicles.length
-    && sourceVehicles.every((vehicle,index)=>vehicle === occurrenceVehicles[index]);
   const valid = Boolean(
     train
     && occurrence.operationalDate === serviceDate
@@ -14596,27 +14743,58 @@ function inspectTursattDepartureOccurrence(rowData={}){
     && stationIsSkien
     && occurrenceTime === plannedTime
     && occurrence.routeId
-    && occurrenceIdMatches
     && occurrenceVehicles.length
-    && vehicleOrderMatches
     && !occurrence.vehicleError
   );
+  const identity = valid
+    ? buildTursattCanonicalOccurrenceIdentity(rowData,"departure",occurrence)
+    : null;
   return {
     enforced:true,
     valid,
     key:train,
     occurrence,
+    identity,
     expectedOccurrenceId,
     error:valid ? "" : `Uavklart forekomstbundet materiell: avgang ${train} kan ikke bindes til ${serviceDate}|departure|Skien|${plannedTime}.`
   };
 }
 
 
+function inspectTursattArrivalOccurrence(rowData={}){
+  const mode = rowData?.mode === "imorgen" ? "imorgen" : "idag";
+  const train = normalizeTognr(rowData?.train);
+  const arrival = getArrivalMapByMode(mode)?.[train] || null;
+  const occurrence = rowData?.movementContext || arrival?.movementContext || null;
+  if(!occurrence) return {enforced:false,valid:true,key:train,occurrence:null,identity:null,error:""};
+  const identity = buildTursattCanonicalOccurrenceIdentity(rowData,"arrival",occurrence);
+  const plannedTime = normalizeTimeString(rowData?.time || rowData?.displayTime);
+  const valid = Boolean(
+    train
+    && identity.operationalDate === String(rowData?.serviceDate || getTursattDepartureServiceDateForMode(mode) || "").trim()
+    && identity.train === train
+    && (identity.stationRef === "SKN" || identity.station === "skien")
+    && identity.movement === "arrival"
+    && identity.direction === "arrival"
+    && identity.plannedTime === plannedTime
+    && identity.sourceOccurrenceId
+    && identity.routeId
+    && identity.stopId
+  );
+  return {
+    enforced:true,
+    valid,
+    key:train,
+    occurrence,
+    identity:valid ? identity : null,
+    error:valid ? "" : `Uavklart forekomstbundet materiell: ankomst ${train} kan ikke bindes entydig.`
+  };
+}
+
+
 function getTursattVehicleCellInfo(train, side, mode, rowData={}){
   const key = normalizeTognr(train);
-  const occurrenceBinding = side === "departure"
-    ? inspectTursattDepartureOccurrence({train:key,mode,...rowData})
-    : {enforced:false,valid:true,key,occurrence:null,error:""};
+  const occurrenceBinding = getTursattOccurrenceBinding({train:key,mode,...rowData},side);
   const occurrenceError = String(getVehicleErrorMapByMode(mode)?.[key] || occurrenceBinding.error || "").trim();
   const lookupKeys = getTursattBratsbergAlternativeTrainNumbers(key);
   const displayTrain = side === "arrival"
@@ -14627,20 +14805,22 @@ function getTursattVehicleCellInfo(train, side, mode, rowData={}){
     : displayTrain ? [displayTrain] : lookupKeys;
   const base = occurrenceBinding.enforced && side === "departure"
     ? {
-        map:mode === "idag" ? (state.baliseTodayDepartureVehicles || {}) : (state.baliseTomorrowDepartureVehicles || {}),
+        map:occurrenceBinding.valid
+          ? {[occurrenceBinding.key]:joinVehicleNumbers(...(occurrenceBinding.occurrence?.vehicleIds || []))}
+          : {},
         label:"Balise"
       }
     : getTursattBaseVehicleMapByMode(side, mode);
-  const manualMap = side === "departure"
-    ? (state.manualTursattDepartureVehicles || {})
-    : (state.manualTursattArrivalVehicles || {});
   const baseKey = sourceKeys.find(trainKey => sanitizeVehicleValue(base.map?.[trainKey] || ""));
-  const manualKey = lookupKeys.find(trainKey => sanitizeVehicleValue(manualMap[trainKey] || ""));
   const fallbackKey = occurrenceError
     ? ""
     : sourceKeys.find(trainKey => sanitizeVehicleValue(getBaseVehicleForTrain(trainKey, mode)));
   const baseValue = sanitizeVehicleValue(base.map?.[baseKey] || "");
-  const rawManualValue = sanitizeVehicleValue(manualMap[manualKey] || "");
+  const manualParts = getManualTursattOccurrenceVehicles(occurrenceBinding,side);
+  const [baseVehicle1,baseVehicle2] = splitVehicleNumbers(baseValue);
+  const rawManualValue = manualParts.hasOverride
+    ? joinVehicleNumbers(manualParts.vehicle1 || baseVehicle1,manualParts.vehicle2 || baseVehicle2)
+    : "";
   const staleOriginalValue = displayTrain
     ? sanitizeVehicleValue(base.map?.[key] || getBaseVehicleForTrain(key, mode))
     : "";
@@ -14755,6 +14935,8 @@ function buildSdeTursattVehicleBindings(){
 
     const fieldKey = partIndex === 1 ? "vehicle2" : "vehicle1";
     const vehicles = createOppstillingVehicleCells(train, side, row?.mode, row);
+    const occurrenceBinding = getTursattOccurrenceBinding(row,side);
+    const occurrenceIdentity = occurrenceBinding?.valid ? occurrenceBinding.identity : null;
     const displayTrain = getDisplayTrainNumberForOppstilling(train, side, row?.mode);
     const operationalDate = side === "arrival"
       ? String(state.baliseMetaToday?.date || state.apiBalise?.date || "").trim()
@@ -14773,7 +14955,14 @@ function buildSdeTursattVehicleBindings(){
       displayTime:String(row?.displayTime || row?.time || "").trim(),
       sortMinutes:row?.sortMinutes ?? 9999,
       operationalDate,
-      occurrenceId:[operationalDate,side,displayTrain,String(row?.time || "").trim()].join("|"),
+      occurrenceId:occurrenceIdentity?.sourceOccurrenceId || [operationalDate,side,displayTrain,String(row?.time || "").trim()].join("|"),
+      canonicalOccurrencePartKey:occurrenceIdentity
+        ? getTursattCanonicalOccurrencePartKey(occurrenceIdentity,String(partIndex + 1))
+        : "",
+      sourceRevision:occurrenceIdentity?.sourceRevision || "",
+      stationRef:occurrenceIdentity?.stationRef || "",
+      movement:occurrenceIdentity?.movement || side,
+      direction:occurrenceIdentity?.direction || side,
       consistContext,
       vehicle:cleanVehicle,
       part:String(partIndex + 1),
@@ -14809,12 +14998,12 @@ function buildSdeTursattVehicleBindings(){
   });
 }
 
-function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=true, modeOverride=""){
-  const current = createOppstillingVehicleCells(train, side, modeOverride);
+function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=true, modeOverride="", rowData={}){
+  const current = createOppstillingVehicleCells(train, side, modeOverride, rowData);
   const next1 = fieldKey === "vehicle1" ? value : current.vehicle1;
   const next2 = fieldKey === "vehicle2" ? value : current.vehicle2;
 
-  setManualTursattVehicleOverride(train, side, next1, next2);
+  setManualTursattVehicleOverride(train, side, next1, next2, modeOverride, rowData);
 
   if(rebuild){
     buildTurnering("turneringKveldTable","turneringKveld");
@@ -14826,13 +15015,13 @@ function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=tr
   persist(true);
 }
 
-function handleOppstillingSwap(train, side, modeOverride=""){
-  const current = createOppstillingVehicleCells(train, side, modeOverride);
+function handleOppstillingSwap(train, side, modeOverride="", rowData={}){
+  const current = createOppstillingVehicleCells(train, side, modeOverride, rowData);
   const vehicle1 = current.vehicle1;
   const vehicle2 = current.vehicle2;
   if(!vehicle1 || !vehicle2) return;
 
-  setManualTursattVehicleOverride(train, side, vehicle2, vehicle1);
+  setManualTursattVehicleOverride(train, side, vehicle2, vehicle1, modeOverride, rowData);
   buildTurnering("turneringKveldTable","turneringKveld");
   buildInndata();
   buildSporplan();
@@ -14840,7 +15029,7 @@ function handleOppstillingSwap(train, side, modeOverride=""){
   persist(true);
 }
 
-function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecondMissing, modeOverride="", diagnostic=null){
+function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecondMissing, modeOverride="", diagnostic=null, rowData={}){
   td.classList.add("opp-vehicle-cell");
   const mismatchType = String(diagnostic?.mismatchType || "");
   if(mismatchType && mismatchType !== "ok" && mismatchType !== "balise_missing"){
@@ -14861,10 +15050,10 @@ function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecon
   updateVehicleNumberInputValidation(input, input.value);
   input.addEventListener("input", e=>{
     updateVehicleNumberInputValidation(input, e.target.value);
-    handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, false, modeOverride);
+    handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, false, modeOverride, rowData);
     buildSporplan();
   });
-  input.addEventListener("change", e=>handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, true, modeOverride));
+  input.addEventListener("change", e=>handleOppstillingVehicleChange(train, side, fieldKey, e.target.value, true, modeOverride, rowData));
   td.appendChild(input);
   appendOppstillingTurneringTarget(td, train, fieldKey);
 
@@ -15002,7 +15191,7 @@ function appendOppstillingSideCells(tr, rowData, side){
 
   const tdVehicle1 = document.createElement("td");
   const diagnostic = train ? state.tursattBaliseDiagnostics?.[state.tursattBaliseDiagnostics.length - 1] : null;
-  appendOppstillingVehicleInput(tdVehicle1, train, side, "vehicle1", vehicles.vehicle1, false, mode, diagnostic);
+  appendOppstillingVehicleInput(tdVehicle1, train, side, "vehicle1", vehicles.vehicle1, false, mode, diagnostic, rowData);
   if(vehicleError){
     tdVehicle1.classList.add("opp-balise-deviation");
     tdVehicle1.title = vehicleError;
@@ -15025,14 +15214,14 @@ function appendOppstillingSideCells(tr, rowData, side){
     btn.className = "compact opp-swap-btn";
     btn.title = `Bytt rekkefølge for ${train}`;
     btn.textContent = "⇄";
-    btn.addEventListener("click", ()=>handleOppstillingSwap(train, side, mode));
+    btn.addEventListener("click", ()=>handleOppstillingSwap(train, side, mode, rowData));
     tdSwap.appendChild(btn);
   }
   tr.appendChild(tdSwap);
 
   const tdVehicle2 = document.createElement("td");
   const showSingleSet = Boolean(vehicles.vehicle1 && vehicles.missingSecond);
-  appendOppstillingVehicleInput(tdVehicle2, train, side, "vehicle2", vehicles.vehicle2, showSingleSet, mode, diagnostic);
+  appendOppstillingVehicleInput(tdVehicle2, train, side, "vehicle2", vehicles.vehicle2, showSingleSet, mode, diagnostic, rowData);
   tr.appendChild(tdVehicle2);
 
   appendOppstillingSlotCell(tr, train, side, 1, vehicles);
@@ -48340,6 +48529,9 @@ function normalizeBaliseDepartureOccurrence(raw, train=""){
     departureTime:normalizeTimeString(raw.departureTime || plannedDeparture),
     plannedDeparture,
     actualDeparture,
+    sourceRevision:String(raw.sourceRevision ?? "").trim(),
+    sourceObservedAt:String(raw.sourceObservedAt || "").trim(),
+    sourceUpdatedAt:String(raw.sourceUpdatedAt || "").trim(),
     vehicleIds,
     vehicleResolutionSource:String(raw.vehicleResolutionSource || "").trim(),
     vehicleError:String(raw.vehicleError || raw.error || "").trim()
@@ -48352,8 +48544,11 @@ function normalizeBaliseDepartureOccurrenceMap(raw){
   if(!raw || typeof raw !== "object" || Array.isArray(raw)) return map;
   Object.entries(raw).forEach(([train,value])=>{
     const key = normalizeTognr(train);
-    const occurrence = normalizeBaliseDepartureOccurrence(value,key);
-    if(key && occurrence) map[key] = occurrence;
+    const occurrences = (Array.isArray(value) ? value : [value])
+      .map(item=>normalizeBaliseDepartureOccurrence(item,key))
+      .filter(Boolean);
+    if(!key || !occurrences.length) return;
+    map[key] = Array.isArray(value) ? occurrences : occurrences[0];
   });
   return map;
 }
