@@ -3,6 +3,15 @@
 const crypto = require("node:crypto");
 
 const STRICT_INVARIANT_IDS = Object.freeze([
+  "INV-BLOCKED-SLOT-001",
+  "INV-BLOCKED-SLOT-002",
+  "INV-BLOCKED-SLOT-003",
+  "INV-BLOCKED-SLOT-004",
+  "INV-BLOCKED-SLOT-005",
+  "INV-BLOCKED-SLOT-006",
+  "INV-BLOCKED-SLOT-007",
+  "INV-BLOCKED-SLOT-008",
+  "INV-BLOCKED-SLOT-009",
   "INV-CANCEL-001",
   "INV-CANCEL-002",
   "INV-CANCEL-003",
@@ -77,8 +86,8 @@ const STRICT_REPLAY_TIMEOUT_MS = 60_000;
 const BASELINE_REPLAY_TIMEOUT_MS = 180_000;
 const CHILD_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
-if (STRICT_TOTAL !== 67 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
-  throw new Error("active strict invariant catalog must contain exactly 67 unique IDs");
+if (STRICT_TOTAL !== 76 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
+  throw new Error("active strict invariant catalog must contain exactly 76 unique IDs");
 }
 
 function canonical(value) {
