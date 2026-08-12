@@ -28339,6 +28339,13 @@ function buildSdeCanonicalPlan(input={}){
       && !targetReleaseProducer;
     const completedDependencies = dependencies.filter(key=>completedActionKeys.has(key));
     const unmetDependencies = dependencies.filter(key=>!completedActionKeys.has(key));
+    const trappedEgressRouteResources = Array.isArray(row.sdeTrappedEgressRouteResources)
+      ? sortSdeCanonicalStrings(row.sdeTrappedEgressRouteResources)
+      : [];
+    const missingTrappedEgressRouteResources = Boolean(
+      row.sdeTrappedEgressChainStep === true
+      && trappedEgressRouteResources.length === 0
+    );
     const isValidatedPhysicalChainDependent = Boolean(
       String(row.sdePhysicalChainId || "").trim()
       && String(row.sdePhysicalDependencyRole || "").trim() === "dependent"
@@ -28347,6 +28354,7 @@ function buildSdeCanonicalPlan(input={}){
     );
     const physicalInvalidReason = String(
       (targetOccupiedByOtherVehicle ? `${targetSlot} er fysisk opptatt av ${targetOccupant.vehicleId}.` : "") ||
+      (missingTrappedEgressRouteResources ? "Canonical trapped-egress-kjedesteg mangler obligatoriske route resources." : "") ||
       row.canonicalPhysicalInvalidReason || row.sdePhysicalSequenceConflictReason ||
       (row.sdePhysicalNoSafeReleaseMove ? row.sdePhysicalNoSafeReleaseReason || "Ingen trygg fysisk frigjøring." : "") ||
       (row.sdePhysicalHardBlocked && !row.isSdePhysicalBlockerFreeingMove && !isValidatedPhysicalChainDependent ? row.sdePhysicalHardBlockState?.reason || "Fysisk blokkert." : "")
@@ -28377,7 +28385,7 @@ function buildSdeCanonicalPlan(input={}){
       canonicalChainStepActive:Boolean(row.canonicalChainStepActive || row.sdePhysicalStepActive || row.sdeChainStepActive),
       physicalValidation:{valid:physicalValid, reason:physicalInvalidReason},
       routeResources:sortSdeCanonicalStrings([
-        ...(Array.isArray(row.sdeTrappedEgressRouteResources) ? row.sdeTrappedEgressRouteResources : []),
+        ...trappedEgressRouteResources,
         ...(Array.isArray(row.sdePhysicalVnReliefChain?.routeResources) ? row.sdePhysicalVnReliefChain.routeResources : []),
         ...(Array.isArray(row.sdePhysicalAccessReliefChain?.routeResources) ? row.sdePhysicalAccessReliefChain.routeResources : []),
         ...(Array.isArray(row.sdeCanonicalAlternateReliefChain?.routeResources) ? row.sdeCanonicalAlternateReliefChain.routeResources : [])
