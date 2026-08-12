@@ -114,6 +114,10 @@ const ACTIVE_SOURCE_MUTANT_IDS = Object.freeze([
   "Z3-COMMIT-PARTIAL-CANCELLED-CHAIN",
   "Z4-RETAIN-STALE-CANCELLED-RESOURCES",
   "Z5-POISON-GLOBAL-DRAG-AFTER-CHAIN-FAILURE",
+  "PASSIVE-SWEEP-DISABLED",
+  "PARTIAL-PROJECTION-ALLOWED",
+  "STALE-HISTORY-OVERRIDES-FRESH-ACTUAL",
+  "MANDATORY-RECOVERY-OR-ADAPTER-OMITTED",
 ]);
 const ACTIVE_MUTATION_SCENARIO_IDS = Object.freeze([
   ...ACTIVE_SOURCE_MUTANT_IDS,
@@ -121,7 +125,7 @@ const ACTIVE_MUTATION_SCENARIO_IDS = Object.freeze([
   "qualification-contract-fail-closed-negatives",
 ]);
 
-if (ACTIVE_SOURCE_MUTANT_IDS.length !== 32 || ACTIVE_MUTATION_SCENARIO_IDS.length !== 34) {
+if (ACTIVE_SOURCE_MUTANT_IDS.length !== 36 || ACTIVE_MUTATION_SCENARIO_IDS.length !== 38) {
   throw new Error("active mutation catalogs have unexpected totals");
 }
 
@@ -233,7 +237,7 @@ function runCatalogSelfValidation({baseline, x1Report, x1Application, x1Mutation
   const wrongTargetSource = source.replace(X1_BEFORE_LINE, "    const unrelatedCapability = isSdeCanonicalRetargetableOutcome(outcome);");
   const multipleHunkSource = `${x1Application?.mutatedSource || ""}\n<!-- unintended second X1 hunk -->`;
   const scenarios = [
-    {id: "exact-active-67-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
+    {id: "exact-active-76-id-catalog-is-accepted", passed: validateExactCatalog([...STRICT_INVARIANT_IDS], STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "missing-invariant-id-is-rejected", passed: !validateExactCatalog(STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "extra-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS, "INV-EXTRA-001"], STRICT_INVARIANT_IDS, "strict invariant").ok},
     {id: "duplicate-invariant-id-is-rejected", passed: !validateExactCatalog([...STRICT_INVARIANT_IDS.slice(0, -1), STRICT_INVARIANT_IDS[0]], STRICT_INVARIANT_IDS, "strict invariant").ok},
@@ -711,6 +715,46 @@ const mutations = [
       }],
     }], "post-cancellation drag cleanup"),
     catches: ["INV-EGRESS-021"],
+  },
+  {
+    id: "PASSIVE-SWEEP-DISABLED",
+    apply: html => replaceOnce(
+      html,
+      "const passiveBlockedSlotSweep = reconcileSdePassiveBlockedSlotRows(snapshot); // SDE_BLOCKED_SLOT_PASSIVE_SWEEP",
+      "const passiveBlockedSlotSweep = {enforced:true,operativeRows:(snapshot.legacy?.finalCards||[]).filter(row=>row?.sdeTrappedEgressDiagnosticOnly!==true),findings:[],admittedProtectedChainIds:[]}; /* mutation: passive sweep disabled */",
+      "passive blocked-slot sweep",
+    ),
+    catches: ["INV-BLOCKED-SLOT-002"],
+  },
+  {
+    id: "PARTIAL-PROJECTION-ALLOWED",
+    apply: html => replaceOnce(
+      html,
+      "if(!structural.complete){ // SDE_BLOCKED_SLOT_COMPLETE_PLAN_GATE",
+      "if(false && !structural.complete){ /* mutation: partial projection allowed */",
+      "blocked-slot complete-plan gate",
+    ),
+    catches: ["INV-BLOCKED-SLOT-003"],
+  },
+  {
+    id: "STALE-HISTORY-OVERRIDES-FRESH-ACTUAL",
+    apply: html => replaceOnce(
+      html,
+      "if(occupiedTarget){ // SDE_BLOCKED_SLOT_FRESH_ACTUAL_AUTHORITY",
+      "if(false && occupiedTarget){ /* mutation: stale history overrides fresh actual */",
+      "blocked-slot fresh actual authority",
+    ),
+    catches: ["INV-BLOCKED-SLOT-005"],
+  },
+  {
+    id: "MANDATORY-RECOVERY-OR-ADAPTER-OMITTED",
+    apply: html => replaceOnce(
+      html,
+      "const initialAdapterCards = getSdeCanonicalProductionProjectedCards(reader).filter(needsHandlerAdapter); // SDE_BLOCKED_SLOT_MANDATORY_ADAPTERS",
+      "const initialAdapterCards = getSdeCanonicalProductionProjectedCards(reader).filter(card=>needsHandlerAdapter(card) && card.recoveryRequired!==true); /* mutation: mandatory recovery adapter omitted */",
+      "blocked-slot mandatory adapters",
+    ),
+    catches: ["INV-BLOCKED-SLOT-009"],
   },
 ];
 

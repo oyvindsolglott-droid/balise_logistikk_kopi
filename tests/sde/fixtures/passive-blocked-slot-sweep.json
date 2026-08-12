@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "sde-passive-blocked-slot-sweep-fixtures-v1",
+  "slots": [
+    {"slot": "4M", "family": "local", "baseFixture": "A", "fromTarget": "5M", "accessSlots": ["4N", "4S"]},
+    {"slot": "5M", "family": "local", "baseFixture": "B", "fromTarget": "6S", "accessSlots": ["5N", "5S"]},
+    {"slot": "6S", "family": "local", "baseFixture": "C", "fromTarget": "5M", "accessSlots": ["6N", "6SS"]},
+    {"slot": "10S", "family": "buttspor", "fromTarget": "8N", "accessSlots": ["10N"]},
+    {"slot": "11S", "family": "buttspor", "fromTarget": "12N", "accessSlots": ["11N"]},
+    {"slot": "12S", "family": "buttspor", "fromTarget": "8N", "accessSlots": ["12N"]}
+  ],
+  "passiveTriggers": ["initial_load", "reload_hydration", "polling_recompute"],
+  "viewports": [1200, 390],
+  "permutations": ["canonical", "reverse", "step_rotated"]
+}

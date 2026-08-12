@@ -14,6 +14,7 @@ const drivers = [
   "reroute-invariants.cjs",
   "egress-invariants.cjs",
   "prerequisite-cancel-invariants.cjs",
+  "blocked-slot-invariants.cjs",
 ];
 
 function runDriver(driver) {

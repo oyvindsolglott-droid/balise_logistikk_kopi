@@ -565,9 +565,14 @@ def resolve_departure_vehicle_composition(
     selected: Dict[str, object],
     route_info: Dict[str, str],
 ) -> Dict[str, object]:
-    """Avgrens faktisk Skien-avgang med samme routeId observert ved Porsgrunn."""
+    """Bind eksakt Skien-assignment; bruk Porsgrunn bare når den faktisk avgrenser."""
     route_id = str(route_info.get("routeId") or "").strip()
     skien_vehicles = list(selected.get("route_vehicle_hits") or [])
+    source_departure_vehicles = [
+        str(vehicle or "").strip()
+        for vehicle in selected.get("departure_hits") or []
+        if MATERIAL_RE.fullmatch(str(vehicle or "").strip())
+    ]
     route_vehicle_rows_present = "route_vehicle_rows" in selected
     route_stops_present = "route_stops" in selected
 
@@ -588,6 +593,11 @@ def resolve_departure_vehicle_composition(
     route_stops = list(selected.get("route_stops") or [])
     skien_vehicles = extract_route_vehicle_hits(route_vehicle_rows, route_id, "Skien")
     porsgrunn_vehicles = extract_route_vehicle_hits(route_vehicle_rows, route_id, "Porsgrunn")
+    any_porsgrunn_vehicle_rows = any(
+        isinstance(row, dict)
+        and str(row.get("station_name") or "").strip().lower() == "porsgrunn"
+        for row in route_vehicle_rows
+    )
     base = {
         "vehiclesObservedAtSkien": skien_vehicles,
         "vehiclesContinuingAtPorsgrunn": porsgrunn_vehicles,
@@ -597,6 +607,39 @@ def resolve_departure_vehicle_composition(
         "vehicleError": "",
     }
 
+    if any_porsgrunn_vehicle_rows and not porsgrunn_vehicles:
+        base["vehicleError"] = (
+            f"Uavklart forekomstbundet materiell: routeId {route_id}; "
+            "Porsgrunn-materiell finnes bare på en annen ruteidentitet."
+        )
+        return base
+    if porsgrunn_vehicles:
+        skien_set = set(skien_vehicles)
+        if not set(porsgrunn_vehicles).issubset(skien_set):
+            base["vehicleError"] = (
+                f"Uavklart forekomstbundet materiell: routeId {route_id}; "
+                "Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen."
+            )
+            return base
+
+        base["departureVehicles"] = porsgrunn_vehicles
+        base["detachedAtSkien"] = [
+            vehicle
+            for vehicle in skien_vehicles
+            if vehicle not in set(porsgrunn_vehicles)
+        ]
+        base["vehicleResolutionSource"] = "porsgrunn_occurrence_subset"
+        return base
+    if source_departure_vehicles:
+        if skien_vehicles != source_departure_vehicles:
+            base["vehicleError"] = (
+                f"Uavklart forekomstbundet materiell: routeId {route_id}; "
+                "eksplisitt Skien-assignment og route-API har ulik kjøretøyrekkefølge."
+            )
+            return base
+        base["departureVehicles"] = source_departure_vehicles
+        base["vehicleResolutionSource"] = "skien_occurrence_departure_assignment"
+        return base
     if not route_has_station(route_stops, "Porsgrunn", "PG"):
         base["vehicleError"] = (
             f"Uavklart forekomstbundet materiell: routeId {route_id}; "
@@ -609,28 +652,10 @@ def resolve_departure_vehicle_composition(
             "den eksakte Skien-avgangen har ingen kjøretøydata."
         )
         return base
-    if not porsgrunn_vehicles:
-        base["vehicleError"] = (
-            f"Uavklart forekomstbundet materiell: routeId {route_id}; "
-            "Porsgrunn-sammensetningen mangler for samme togforekomst."
-        )
-        return base
-
-    skien_set = set(skien_vehicles)
-    if not set(porsgrunn_vehicles).issubset(skien_set):
-        base["vehicleError"] = (
-            f"Uavklart forekomstbundet materiell: routeId {route_id}; "
-            "Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen."
-        )
-        return base
-
-    base["departureVehicles"] = porsgrunn_vehicles
-    base["detachedAtSkien"] = [
-        vehicle
-        for vehicle in skien_vehicles
-        if vehicle not in set(porsgrunn_vehicles)
-    ]
-    base["vehicleResolutionSource"] = "porsgrunn_occurrence_subset"
+    base["vehicleError"] = (
+        f"Uavklart forekomstbundet materiell: routeId {route_id}; "
+        "verken eksplisitt Skien-assignment eller Porsgrunn-sammensetning finnes."
+    )
     return base
 
 
@@ -798,6 +823,18 @@ def resolve_departure_candidate(
     exact_occurrence = candidate_matches_exact_departure_occurrence(selected, operational_date)
     departure_time = str(selected.get("skien_departure_time") or "").strip()
     route_id = str(route_info.get("routeId") or "").strip()
+    skien_stops = [
+        row
+        for row in selected.get("route_stops") or []
+        if isinstance(row, dict)
+        and (
+            str(row.get("station_ref") or "").strip().upper() == "SKN"
+            or str(row.get("station_name") or "").strip().lower() == "skien"
+        )
+    ]
+    skien_stop = skien_stops[0] if len(skien_stops) == 1 else {}
+    planned_departure = first_time_value(skien_stop.get("stop_planned_departure")) or departure_time
+    actual_departure = first_time_value(skien_stop.get("stop_actual_departure"))
     composition = (
         resolve_departure_vehicle_composition(selected, route_info)
         if exact_occurrence
@@ -835,8 +872,18 @@ def resolve_departure_candidate(
         "routeId": route_id,
         "origin": str(route_info.get("origin") or "").strip(),
         "destination": str(route_info.get("destination") or "").strip(),
-        "station": "Skien",
-        "departureTime": departure_time,
+        "station": str(skien_stop.get("station_name") or "Skien").strip(),
+        "stationRef": str(skien_stop.get("station_ref") or "SKN").strip().upper(),
+        "stopId": str(skien_stop.get("stop_id") or "").strip(),
+        "direction": "departure",
+        "eventType": "departure",
+        "occurrenceId": (
+            f"{str(operational_date or '').strip()}|departure|"
+            f"{display_train_no}|{planned_departure}"
+        ),
+        "departureTime": planned_departure,
+        "plannedDeparture": planned_departure,
+        "actualDeparture": actual_departure or None,
         "vehicleIds": vehicle_ids,
         "error": error,
         "vehiclesObservedAtSkien": list(composition["vehiclesObservedAtSkien"]),

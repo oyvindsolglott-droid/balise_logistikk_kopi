@@ -16,6 +16,9 @@ OCCURRENCE_FIXTURE = json.loads(
 PORSGRUNN_SPLIT_FIXTURE = json.loads(
     (Path(__file__).parent / "tests/fixtures/balise_tursatt_porsgrunn_split_2026-07-26.json").read_text()
 )
+TURSATT_810_FIXTURE = json.loads(
+    (Path(__file__).parent / "tests/fixtures/balise_tursatt_810_2026-08-12.json").read_text()
+)
 
 
 def make_payload(mode, run_date):
@@ -340,7 +343,10 @@ class BalisePorsgrunnDepartureCompositionTest(unittest.TestCase):
             for row in fixture["vehicleRows"]
             if row["station_name"] == "Skien"
         ]
-        resolution = self.resolve(self.make_candidate(rows))
+        candidate = self.make_candidate(rows)
+        candidate["departure_hits"] = []
+        candidate["general_hits"] = []
+        resolution = self.resolve(candidate)
         self.assertEqual(resolution["departureVehicles"], [])
         self.assertIn("Porsgrunn", resolution["vehicleError"])
 
@@ -374,6 +380,77 @@ class BalisePorsgrunnDepartureCompositionTest(unittest.TestCase):
         resolution = self.resolve(self.make_candidate(rows))
         self.assertEqual(resolution["departureVehicles"], ["74-46"])
         self.assertEqual(resolution["detachedAtSkien"], ["74-03"])
+
+
+class Tursatt810OccurrenceRegressionTest(unittest.TestCase):
+    def make_candidate(self, fixture=None):
+        source = fixture or TURSATT_810_FIXTURE
+        route_info = dict(source["routeInfo"])
+        rows = list(source.get("vehicleRows") or [])
+        return {
+            "lookup_train_no": source["lookupTrainNumber"],
+            "general_hits": list(source.get("departureHits") or []),
+            "departure_hits": list(source.get("departureHits") or []),
+            "arrival_hits": [],
+            "route_vehicle_hits": static_data.extract_route_vehicle_hits(
+                rows, route_info["routeId"], "Skien"
+            ),
+            "route_vehicle_rows": rows,
+            "route_stops": list(source.get("routeStops") or []),
+            "has_train_content": True,
+            "skien_arrival_time": None,
+            "skien_departure_time": source["plannedDeparture"],
+            "route_info": route_info,
+        }
+
+    def resolve(self, candidate=None, service_date=None):
+        return static_data.resolve_departure_candidate(
+            TURSATT_810_FIXTURE["logicalTrain"],
+            service_date or TURSATT_810_FIXTURE["serviceDate"],
+            candidate or self.make_candidate(),
+        )
+
+    def test_exact_skien_departure_keeps_authoritative_vehicle_order(self):
+        resolution = self.resolve()
+        self.assertEqual(resolution["vehicleIds"], ["74-14", "74-38"])
+        self.assertEqual(resolution["vehicleError"], "")
+
+    def test_explicit_source_order_mismatch_is_rejected(self):
+        candidate = self.make_candidate()
+        candidate["departure_hits"] = ["74-38", "74-14"]
+        resolution = self.resolve(candidate)
+        self.assertEqual(resolution["vehicleIds"], [])
+        self.assertIn("rekkefølge", resolution["vehicleError"])
+
+    def test_same_train_on_other_service_date_cannot_bind(self):
+        resolution = self.resolve(service_date="2026-08-13")
+        self.assertEqual(resolution["vehicleIds"], [])
+        self.assertIn("forekomstidentiteten", resolution["vehicleError"])
+
+    def test_arrival_occurrence_cannot_supply_departure_assignment(self):
+        candidate = self.make_candidate()
+        candidate["skien_departure_time"] = None
+        candidate["skien_arrival_time"] = TURSATT_810_FIXTURE["actualDeparture"]
+        self.assertIsNone(self.resolve(candidate))
+
+    def test_missing_authoritative_material_remains_unresolved(self):
+        candidate = self.make_candidate()
+        candidate["departure_hits"] = []
+        candidate["route_vehicle_hits"] = []
+        candidate["route_vehicle_rows"] = []
+        resolution = self.resolve(candidate)
+        self.assertEqual(resolution["vehicleIds"], [])
+        self.assertTrue(resolution["vehicleError"])
+
+    def test_planned_departure_is_the_display_time_contract(self):
+        resolution = self.resolve()
+        self.assertEqual(resolution["departureTime"], "08:09")
+        self.assertEqual(resolution["plannedDeparture"], "08:09")
+
+    def test_actual_departure_is_preserved_as_separate_occurrence_fact(self):
+        resolution = self.resolve()
+        self.assertEqual(resolution["actualDeparture"], "08:20")
+        self.assertNotEqual(resolution["departureTime"], resolution["actualDeparture"])
 
 
 class DepartureCompletenessContractTest(unittest.TestCase):

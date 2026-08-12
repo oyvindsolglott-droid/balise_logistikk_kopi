@@ -1,0 +1,48 @@
+{
+  "serviceDate": "2026-08-12",
+  "logicalTrain": "810",
+  "lookupTrainNumber": "810",
+  "routeInfo": {
+    "routeId": "fixture-route-810-20260812",
+    "trainNumber": "810",
+    "operationalDate": "2026-08-12",
+    "origin": "Skien",
+    "destination": "Eidsvoll"
+  },
+  "station": "Skien",
+  "stationRef": "SKN",
+  "direction": "departure",
+  "eventType": "departure",
+  "plannedDeparture": "08:09",
+  "actualDeparture": "08:20",
+  "departureHits": ["74-14", "74-38"],
+  "routeStops": [
+    {
+      "stop_id": "fixture-stop-skien-810",
+      "station_ref": "SKN",
+      "station_name": "Skien",
+      "stop_planned_departure": "2026-08-12 08:09:00",
+      "stop_actual_departure": "2026-08-12 08:20:00"
+    },
+    {
+      "stop_id": "fixture-stop-porsgrunn-810",
+      "station_ref": "PG",
+      "station_name": "Porsgrunn",
+      "stop_planned_arrival": "2026-08-12 08:17:00"
+    }
+  ],
+  "vehicleRows": [
+    {
+      "sv_route": "fixture-route-810-20260812",
+      "station_name": "Skien",
+      "position": 0,
+      "vehicle": "74-14"
+    },
+    {
+      "sv_route": "fixture-route-810-20260812",
+      "station_name": "Skien",
+      "position": 5,
+      "vehicle": "74-38"
+    }
+  ]
+}

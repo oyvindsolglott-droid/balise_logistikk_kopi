@@ -639,6 +639,29 @@ test("Y — complete trapped-egress chains and unresolved-step retarget stay ato
   assert.ok(report?.scenarios?.P,"missing stale-release identity fixture P");
 });
 
+test("BLOCKED-SLOT — passive six-slot TO/FROM sweep is complete-plan-or-diagnostic-only", () => {
+  const result = runHarness("sde-passive-blocked-slot-sweep-harness.js");
+  assertPassed(result, "blocked-slot passive sweep harness");
+  const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
+  assert.equal(report?.schemaVersion, "sde-passive-blocked-slot-sweep-harness-v1");
+  assert.equal(report?.reproduction, "PROTECTED");
+  assert.deepEqual(report?.counts, {total: 9, pass: 9, fail: 0});
+  assert.equal(report?.matrix?.total, 18);
+  assert.equal(report?.matrix?.pass, 18);
+  assert.equal(report?.matrix?.fail, 0);
+  assert.equal(report?.browser?.total, 36);
+  assert.equal(report?.browser?.pass, 36);
+  assert.equal(report?.browser?.fail, 0);
+  assert.deepEqual(
+    [...new Set(report.matrix.scenarios.map(item => item.slot))].sort(),
+    ["10S", "11S", "12S", "4M", "5M", "6S"],
+  );
+  assert.deepEqual(
+    [...new Set(report.matrix.scenarios.map(item => item.direction))].sort(),
+    ["FROM", "TO"],
+  );
+});
+
 for(const [id,name] of [
   ["INV-EGRESS-013","recursive graphical drag selects the complete physical-chain staging path"],
   ["INV-EGRESS-014","completed prerequisite preserves a fully projected actionable mid-chain suffix"],
@@ -692,6 +715,17 @@ test("TURSATT-80824-PORSGRUNN — same occurrence at Porsgrunn determines actual
     0,
     `TURSATT-80824-PORSGRUNN permanent test did not detect its historical production baseline ${baseline}`,
   );
+});
+
+test("TURSATT-810 — exact Skien departure occurrence resolves ordered material without cross-binding", () => {
+  const result = runHarness("sde-tursatt-810-occurrence-harness.js");
+  assertPassed(result, "TURSATT-810 occurrence harness");
+  const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
+  assert.equal(report?.schemaVersion, "sde-tursatt-810-occurrence-harness-v1");
+  assert.deepEqual(report?.counts, {total:7,pass:7,fail:0});
+  assert.deepEqual(report?.vehicles, ["74-14","74-38"]);
+  assert.equal(report?.plannedDeparture, "08:09");
+  assert.equal(report?.actualDeparture, "08:20");
 });
 
 test("M2 — generator propagates actual platform provenance without vehicle hardcoding", () => {
