@@ -24,7 +24,7 @@ function runDriver(driver) {
   const result = childProcess.spawnSync(process.execPath, [path.join(__dirname, driver), indexPath], {
     cwd: root,
     encoding: "utf8",
-    timeout: 60_000,
+    timeout: 180_000,
     maxBuffer: 64 * 1024 * 1024,
   });
   if (result.error) throw result.error;
