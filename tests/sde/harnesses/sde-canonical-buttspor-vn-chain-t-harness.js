@@ -129,7 +129,7 @@ function assertInitialChain(track,target){
   assert.equal(dependent.toSlot,target);
   assert.equal(recovery.vehicle,blocker);
   assert.equal(recovery.fromSlot,"VN");
-  assert.equal(recovery.toSlot,source);
+  assert.equal(recovery.toSlot,north);
   assert.equal(new Set(rows.map(row=>row.sdePhysicalChainId)).size,1);
   assert.equal(dependent.sdePhysicalDependsOn.join(","),ctx.getSdeMoveActionKey(release));
   assert.equal(recovery.sdePhysicalDependsOn.join(","),ctx.getSdeMoveActionKey(dependent));
@@ -229,7 +229,7 @@ const afterStep1 = ctx.buildSdeCanonicalProductionReader(snapshot(
   [chain10.dependent,chain10.recovery],afterStep1Placements,appState.sdeMoveActions
 ));
 assert.equal(afterStep1.cardProjection.actionableCards.map(card=>card.targetSlot).join(","),"8N");
-assert.equal(afterStep1.cardProjection.blockedChainCards.map(card=>card.targetSlot).join(","),"10S");
+assert.equal(afterStep1.cardProjection.blockedChainCards.map(card=>card.targetSlot).join(","),"10N");
 assert.equal(afterStep1.handlerAdapters[afterStep1.cardProjection.actionableCards[0].canonicalCardId].ready,true);
 
 const step2Actions = {
@@ -239,7 +239,7 @@ const step2Actions = {
 const afterStep2Placements = [["VN",chain10.blocker],["8N",chain10.mainVehicle]];
 resetState(afterStep2Placements,{sdeMoveActions:step2Actions});
 const afterStep2 = ctx.buildSdeCanonicalProductionReader(snapshot([chain10.recovery],afterStep2Placements,step2Actions));
-assert.equal(afterStep2.cardProjection.actionableCards.map(card=>card.targetSlot).join(","),"10S");
+assert.equal(afterStep2.cardProjection.actionableCards.map(card=>card.targetSlot).join(","),"10N");
 assert.equal(afterStep2.cardProjection.actionableCards[0].recoveryRequired,true);
 assert.equal(afterStep2.cardProjection.actionableCards[0].canDelete,false);
 assert.equal(afterStep2.cardProjection.actionableCards[0].canCancel,false);
@@ -256,7 +256,7 @@ resetState([["VN",chain10.blocker],["10S",chain10.mainVehicle]],{sdeVnRecoveryOb
 const hydratedRecoveryRows = ctx.buildSdePersistentVnRecoveryRows([persistedMain]);
 assert.equal(hydratedRecoveryRows.length,1);
 assert.equal(hydratedRecoveryRows[0].fromSlot,"VN");
-assert.equal(hydratedRecoveryRows[0].toSlot,"10S");
+assert.equal(hydratedRecoveryRows[0].toSlot,"10N");
 assert.equal(hydratedRecoveryRows[0].sdeVnRecoveryRequired,true);
 ctx.updateSdeVnRecoveryObligationForMove(persistedMain,"completed","2026-07-14T14:05:00.000Z");
 assert.equal(Object.values(appState.sdeVnRecoveryObligations)[0].vnRecoveryStatus,"return_ready");
@@ -277,7 +277,7 @@ console.log(JSON.stringify({
   initial:{tracks:["10","11","12"],chains:3,stepsPerChain:3,actionablePerChain:1,blockedPerChain:2},
   direct:{tracks:["10","11","12"],cardsPerMove:1,chains:0},
   conflicts:{vn:"fail_closed",vs:"fail_closed",simultaneousVnReservations:1,deterministicWinner:true},
-  sequence:{start:"N→VN",afterStep1:"S→requested target",afterStep2:"VN→freed S"},
+  sequence:{start:"N→VN",afterStep1:"S→requested target",afterStep2:"VN→original N"},
   recovery:{hydrated:true,required:true,canDelete:false,canCancel:false},
   adapters:{step1:"ready",step2:"dependency-blocked",step3:"dependency-blocked"},
   existingReleasePlan:{reused:true,duplicates:0}

@@ -662,6 +662,31 @@ test("BLOCKED-SLOT — passive six-slot TO/FROM sweep is complete-plan-or-diagno
   );
 });
 
+test("BLOCKED-TARGET — all six blocked-access targets materialize one atomic release/main/recovery chain", () => {
+  const harness = "sde-blocked-target-three-card-harness.js";
+  const result = runHarness(harness);
+  assertPassed(result, "blocked-target three-card harness");
+  const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
+  assert.equal(report?.schemaVersion, "sde-blocked-target-three-card-harness-v1");
+  assert.deepEqual(report?.counts, {total:6,pass:6,fail:0});
+  assert.deepEqual(report?.reports?.map(item=>item.target), ["4M","5M","6S","10S","11S","12S"]);
+  assert.equal(report?.reports?.every(item=>
+    item.pass === true
+    && item.rows?.length === 3
+    && item.cardStatuses?.join(",") === "actionable,blocked_chain_step,blocked_chain_step"
+    && item.lifecycle?.authoritativeRecoveryReplan === true
+    && item.lifecycle?.staleHistoryRejected === true
+    && item.coverage?.desktop === true
+    && item.coverage?.mobile390 === true
+  ), true);
+  const oldResult = runHarness(harness, materialize("5f70e928037bd5e4533a3f6d582e16f4410e8467", "index.html"));
+  assert.notEqual(
+    oldResult.status,
+    0,
+    "blocked-target permanent regression did not detect the pre-repair production baseline",
+  );
+});
+
 for(const [id,name] of [
   ["INV-EGRESS-013","recursive graphical drag selects the complete physical-chain staging path"],
   ["INV-EGRESS-014","completed prerequisite preserves a fully projected actionable mid-chain suffix"],
@@ -722,7 +747,7 @@ test("TURSATT-810 — exact Skien departure occurrence resolves ordered material
   assertPassed(result, "TURSATT-810 occurrence harness");
   const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
   assert.equal(report?.schemaVersion, "sde-tursatt-dynamic-occurrence-harness-v2");
-  assert.deepEqual(report?.counts, {total:14,pass:14,fail:0});
+  assert.deepEqual(report?.counts, {total:18,pass:18,fail:0});
   assert.deepEqual(report?.historical?.vehicles, ["74-14","74-38"]);
   assert.equal(report?.historical?.plannedDeparture, "08:09");
   assert.equal(report?.historical?.actualDeparture, "08:20");
@@ -913,7 +938,7 @@ registerHarnessTest({
 
 registerHarnessTest({
   phase: "W",
-  name: "execution remains stable across rerenders and valid 4M relief prefers VN",
+  name: "execution remains stable across rerenders and valid 4M relief prefers safe local holding",
   harness: "sde-canonical-stable-execution-vn-preference-w-harness.js",
   baseline: "6711cb06cea777234fc6e5179550b0525ddb0599",
 });

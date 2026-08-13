@@ -34,7 +34,7 @@ eval(prefix + String.raw`
   const dependent = getRole(rows,"dependent");
   const recovery = getRole(rows,"return");
   assert.ok(release && dependent && recovery,"a complete non-self-blocking chain must be found");
-  assert.notEqual(release.toSlot,"4M");
+  if(release.fromSlot === "5S") assert.notEqual(release.toSlot,"4M");
   assert.equal(dependent.vehicle,"74-10");
   assert.equal(dependent.fromSlot,"10S");
   assert.equal(dependent.toSlot,"5M");

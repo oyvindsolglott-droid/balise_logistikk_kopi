@@ -9731,7 +9731,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 12. august 2026</p>
+<p class="sub">Siste revisjon: 13. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -18252,7 +18252,7 @@ function getSdeButtTrackTemporaryVnPair(blockedFromSlot, blockerSlot){
     track,
     blockedFromSlot:blockedFrom,
     blockerSlot:blockerFrom,
-    returnSlot:blockedFrom,
+    returnSlot:blockerFrom,
     recoverySlot:blockerFrom
   };
 }
@@ -18439,9 +18439,12 @@ function buildSdeTemporaryAccessReliefMainRouteAssessment(blockedRow, blockState
 
   const isPathClear = pathSlots => Array.isArray(pathSlots)
     && pathSlots.every(slot=>!virtualOccupancy.get(normalizeSlot(slot)));
-  const sourceClearEnds = getSdeSameTrackOpenEnds(getSdeSlotTrack(blockedFromSlot)).filter(end=>
-    isPathClear(getSdePhysicalAccessPathSlots(blockedFromSlot,end))
-  );
+  const modeledSourceEnds = getSdeSameTrackOpenEnds(getSdeSlotTrack(blockedFromSlot));
+  const sourceClearEnds = modeledSourceEnds.length
+    ? modeledSourceEnds.filter(end=>
+        isPathClear(getSdePhysicalAccessPathSlots(blockedFromSlot,end))
+      )
+    : ["direct"];
   const targetPathSlots = getSdePhysicalAccessPathSlots(mainTargetSlot,accessEnd) || [];
   const blockingSlots = targetPathSlots.filter(slot=>Boolean(virtualOccupancy.get(slot)));
   const targetVehicle = sanitizeVehicleValue(virtualOccupancy.get(mainTargetSlot));
@@ -18593,6 +18596,10 @@ function getSdePhysicalBlockerAccessReliefCandidateOrder(vehicle, fromSlot, bloc
   return Array.from(new Set([...ordinaryCandidates,...(preferDedicatedVn ? ["VN"] : [])]));
 }
 
+function shouldSdePreferDedicatedVnForTargetAccess(targetSlot){
+  return /^(10|11|12)S$/.test(normalizeSlot(targetSlot));
+}
+
 function buildSdePhysicalBlockerReturnAssessment(blockerVehicle, originSlot, freeingTarget, blockedVehicle, blockedFromSlot){
   const origin = normalizeSlot(originSlot);
   const target = normalizeSlot(freeingTarget);
@@ -18608,10 +18615,10 @@ function buildSdePhysicalBlockerReturnAssessment(blockerVehicle, originSlot, fre
     blockedFromSlot:blockedFrom,
     shouldConsiderReturn:true,
     returnPossible:temporaryVnReturn ? true : "unknown",
-    returnSlot:temporaryVnReturn ? blockedFrom : "",
+    returnSlot:temporaryVnReturn ? origin : "",
     temporaryHoldingSlot:temporaryVnReturn ? "VN" : "",
     reason:temporaryVnReturn
-      ? `Midlertidig frigjøring til VN. Retur til ${blockedFrom} er planlagt etter at kjøretøyet i ${blockedFrom} har forlatt sporet.`
+      ? `Midlertidig frigjøring til VN. Retur til opprinnelig slot ${origin} er planlagt etter hovedflyttingen.`
       : "Retur må vurderes etter at frigjørende skift er utført. SDE planlegger ikke automatisk retur før opprinnelig slot, fysisk adkomst og videre behov er kontrollert."
   };
 }
@@ -18709,6 +18716,8 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
         reservedSlots:Array.isArray(context?.sequenceReservedSlots) ? context.sequenceReservedSlots : []
       })
     : null;
+  const preferDedicatedAccessVn = accessVnAssessment?.eligible === true
+    && shouldSdePreferDedicatedVnForTargetAccess(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot);
   const ordinaryCandidateOrder = accessReliefEnd
     ? getSdePhysicalBlockerAccessReliefCandidateOrder(
         blockerVehicle,
@@ -18730,9 +18739,9 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
     ? (vnReliefAssessment.eligible
         ? Array.from(new Set(["VN",...ordinaryCandidateOrder]))
         : existingRejectedTargets.has("VN") ? ordinaryCandidateOrder : [])
-    : Array.from(new Set(accessReliefEnd === "south"
-      ? [...ordinaryCandidateOrder,...(accessVnAssessment?.eligible ? ["VN"] : [])]
-      : [...(accessVnAssessment?.eligible ? ["VN"] : []),...ordinaryCandidateOrder]));
+    : Array.from(new Set(preferDedicatedAccessVn
+      ? ["VN",...ordinaryCandidateOrder]
+      : [...ordinaryCandidateOrder,...(accessVnAssessment?.eligible ? ["VN"] : [])]));
   const planningStateSignature = getSdePhysicalPlanningStateSignature(sourceRows, {
     blockedVehicle:blockState?.vehicle || blockedRow?.vehicle,
     blockedFromSlot:blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot,
@@ -18798,7 +18807,7 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
   const preferredTarget = normalizeSlot(
     explicitTarget || (lockedButtTrackVnRelief
       ? (vnPreferred ? "VN" : "")
-      : (accessVnPreferred && accessReliefEnd !== "south" ? "VN" : (roundRecord.activeTarget || context.preferredTarget)))
+      : (accessVnPreferred && preferDedicatedAccessVn ? "VN" : (roundRecord.activeTarget || context.preferredTarget)))
   );
   const safePreferredTarget = preferredTarget &&
     !avoidSlots.has(preferredTarget) &&
@@ -18944,8 +18953,10 @@ function buildSdePhysicalBlockerFreeingMove(blockedRow, blockState, rows=[], con
             blockState
           })
         : [];
+      const preferDedicatedAccessVn = accessVnAssessment?.eligible === true
+        && shouldSdePreferDedicatedVnForTargetAccess(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot);
       const target = accessReliefEnd
-        ? (accessVnAssessment?.eligible && accessReliefEnd !== "south" ? "VN" : accessCandidateOrder[0] || "")
+        ? (preferDedicatedAccessVn ? "VN" : accessCandidateOrder[0] || "")
         : getSdeBestPhysicalBlockerReleaseTarget(blocker?.vehicle, blocker?.slot, blockState?.fromSlot, {
             avoidSlots:[blockState?.fromSlot, blockState?.toSlot, ...contextAvoidSlots, ...rejectedTargets]
           });
@@ -18956,7 +18967,7 @@ function buildSdePhysicalBlockerFreeingMove(blockedRow, blockState, rows=[], con
         accessReliefEnd,
         returnTargetReserved,
         score:target && !returnTargetReserved
-          ? (target === "VN" && accessVnAssessment?.eligible ? 100 : scoreSdeResolutionTarget(target))
+          ? (target === "VN" && preferDedicatedAccessVn ? 100 : scoreSdeResolutionTarget(target))
           : -1
       };
     })
@@ -19081,7 +19092,7 @@ function buildSdeTemporaryVnReliefChainPlan(blockedRow, blockState, freeingMove,
     "physical-vn-return",
     normalizeVehicleToken(blockerVehicle),
     "VN",
-    blockedFromSlot,
+    blockerFromSlot,
     normalizeVehicleToken(blockedVehicle),
     mainTargetSlot
   ].join("|");
@@ -19108,7 +19119,7 @@ function buildSdeTemporaryVnReliefChainPlan(blockedRow, blockState, freeingMove,
     blockedVehicle,
     blockedFromSlot,
     mainTargetSlot,
-    returnTargetSlot:blockedFromSlot,
+    returnTargetSlot:blockerFromSlot,
     recoveryTargetSlot:blockerFromSlot,
     routeResources:sortSdeCanonicalStrings(["VN","VS",`physical-chain|${String(chainId || "").trim()}`]),
     sequenceStepCount:3
@@ -22150,6 +22161,17 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
       return assessment.eligible ? {rowKey,blockState,claimKind:"butt_track_vn"} : null;
     }
     if(blockState?.accessAssessment?.targetAccessBlocked === true){
+      const targetSlot = normalizeSlot(blockState?.toSlot || row?.recommendedSlot || row?.toSlot);
+      const hasSafeOrdinaryRelief = blockers.some(blocker=>
+        getSdePhysicalBlockerAccessReliefCandidateOrder(
+          blocker?.vehicle,
+          blocker?.slot,
+          blockState?.fromSlot,
+          blocker?.accessEnd,
+          {avoidSlots:[blockState?.fromSlot,targetSlot,...reservedSlots],blockedRow:row,blockState}
+        ).length > 0
+      );
+      if(!shouldSdePreferDedicatedVnForTargetAccess(targetSlot) && hasSafeOrdinaryRelief) return null;
       const accessClaim = [...blockers]
         .sort((left,right)=>String(left?.slot || "").localeCompare(String(right?.slot || "")))
         .map(blocker=>buildSdeTargetAccessTemporaryVnAssessment(row, blockState, blocker, sourceRows, {
@@ -30146,6 +30168,10 @@ function buildSdeCanonicalIntegrityReport(input={}){
   const activeOverlays = Array.isArray(graphics.activeOverlays) ? graphics.activeOverlays : [];
   const deferredOverlays = Array.isArray(graphics.deferredOverlays) ? graphics.deferredOverlays : [];
   const actualSlots = Array.isArray(graphics.actualSlots) ? graphics.actualSlots : [];
+  const completedActionKeys = new Set(Object.entries(input.actionRecords || {})
+    .filter(([,record])=>record?.action === "completed")
+    .map(([key])=>String(key || "").trim())
+    .filter(Boolean));
   const reportConflicts = [];
   const conflictKeys = new Set();
   const addConflict = (classification,details={},severity="error") => {
@@ -30173,6 +30199,9 @@ function buildSdeCanonicalIntegrityReport(input={}){
     [outcome.actionKey,outcome.candidateOutcomeId], [outcome.legacyCardId,outcome.candidateOutcomeId]
   ]).filter(([key])=>key));
   const resolveDependency = value => outcomeAliases.get(String(value || "").trim()) || "";
+  const dependencyIsSatisfied = value => Boolean(
+    resolveDependency(value) || completedActionKeys.has(String(value || "").trim())
+  );
   const dependenciesByOutcome = new Map(candidates.map(outcome=>[
     outcome.candidateOutcomeId,
     sortSdeCanonicalStrings((outcome.dependencies || []).map(resolveDependency).filter(Boolean))
@@ -30285,7 +30314,7 @@ function buildSdeCanonicalIntegrityReport(input={}){
   const overlayIds = new Set(activeOverlays.map(item=>item.activeOutcomeId));
   const nonExecutableCodes = new Set(["competing_targets","overlapping_target_reservation","actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","pendulum_stale_north_source","stale_graphic_override_source"]);
   const diagnosticResults = sortSdeCanonicalObjects(candidates.flatMap(candidate=>{
-    const unresolvedDependencies = (candidate.dependencies || []).filter(item=>!resolveDependency(item));
+    const unresolvedDependencies = (candidate.dependencies || []).filter(item=>!dependencyIsSatisfied(item));
     const reasons = sortSdeCanonicalStrings([
       !candidate.targetSlot ? "targetless" : "",
       candidate.raw?.isSdeCancellationFailClosed ? "fail_closed_after_cancellation" : "",
@@ -30362,7 +30391,7 @@ function buildSdeCanonicalIntegrityReport(input={}){
     const sequenceNumbers = sequenceSteps
       .map(value=>Number(String(value || "").match(/\d+/)?.[0]))
       .filter(value=>Number.isInteger(value) && value > 0);
-    const missingDependencies = sortSdeCanonicalStrings(chainCandidates.flatMap(candidate=>(candidate.dependencies || []).filter(item=>!resolveDependency(item))));
+    const missingDependencies = sortSdeCanonicalStrings(chainCandidates.flatMap(candidate=>(candidate.dependencies || []).filter(item=>!dependencyIsSatisfied(item))));
     const cyclic = chainCandidates.filter(candidate=>cyclicOutcomeIds.has(candidate.candidateOutcomeId)).map(candidate=>candidate.candidateOutcomeId);
     const active = actionableCards.filter(card=>card.chainId === chainId);
     const completedActive = chainCandidates.filter(candidate=>candidate.status === "completed" && active.some(card=>card.activeOutcomeId === candidate.candidateOutcomeId));
@@ -30376,10 +30405,12 @@ function buildSdeCanonicalIntegrityReport(input={}){
         && sequenceNumbers.length === 1
         && sequenceNumbers[0] === declaredStepCount
         && chainCandidates.every(candidate=>
-          candidate.raw?.sdeVnRecoveryAuthoritative === true
-          && candidate.raw?.sdeVnRecoveryRequired === true
-          && candidate.raw?.isSdePhysicalBlockerReturnMove === true
-          && normalizeSlot(candidate.actualSourceSlot) === "VN"
+          candidate.raw?.isSdePhysicalBlockerReturnMove === true
+          && candidate.sourceValidation?.valid === true
+          && (
+            candidate.raw?.sdeVnRecoveryAuthoritative === true
+            || Boolean(String(candidate.raw?.sdeCanonicalRetargetIntentId || "").trim())
+          )
         );
       if(!authoritativeRecoveryOnly && (chainStepIds.length !== declaredStepCount || stableStringifySdeCanonicalValue(sequenceNumbers) !== stableStringifySdeCanonicalValue(expectedSequenceNumbers))){
         localProblems.push("CHAIN_INCOMPLETE_DECLARED_SEQUENCE");
@@ -30672,7 +30703,7 @@ function buildSdeCanonicalShadowReport(runtimeSnapshot, options={}){
   const graphicProjectionComparison = compareSdeCanonicalGraphicProjectionWithLegacy(graphicProjection, snapshot.legacy);
   const graphicProjectionComparisonMs = getSdeCanonicalShadowNow() - graphicProjectionComparisonStarted;
   const integrityReportStarted = getSdeCanonicalShadowNow();
-  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection});
+  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection,actionRecords:snapshot.runtimeState?.actions});
   const integrityReportMs = getSdeCanonicalShadowNow() - integrityReportStarted;
   const migrationReadinessStarted = getSdeCanonicalShadowNow();
   const legacyMigrationReadiness = buildSdeCanonicalLegacyMigrationReadiness(integrityReport,snapshot.legacy);
@@ -30905,7 +30936,7 @@ function buildSdeCanonicalCardPreviewSource(runtimeSnapshot){
   const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
   const reservationProjection = buildSdeCanonicalReservationProjection(canonicalPlan, cardProjection);
   const graphicProjection = buildSdeCanonicalGraphicProjection(canonicalPlan, cardProjection, reservationProjection);
-  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection});
+  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection,actionRecords:snapshot.runtimeState?.actions});
   const legacyMigrationReadiness = buildSdeCanonicalLegacyMigrationReadiness(integrityReport,snapshot.legacy);
   const previewCardProjection = cloneSdeCanonicalValue(cardProjection) || {};
   previewCardProjection.diagnostics = sortSdeCanonicalObjects([
@@ -38995,6 +39026,7 @@ function inspectSdeCanonicalGraphicDragVnReliefChain(reader, expected={}){
     && (!actionKey || String(outcome?.actionKey || "").trim() === actionKey)
   );
   const mainOutcome = mainCandidates.length === 1 ? mainCandidates[0] : null;
+  const plan = mainOutcome?.raw?.sdePhysicalVnReliefChain || null;
   const chainId = String(mainOutcome?.chainId || mainOutcome?.chainScope || "").trim();
   const chainOutcomes = chainId
     ? candidateOutcomes.filter(outcome=>String(outcome?.chainId || outcome?.chainScope || "").trim() === chainId)
@@ -39006,7 +39038,7 @@ function inspectSdeCanonicalGraphicDragVnReliefChain(reader, expected={}){
   const returnOutcomes = chainOutcomes.filter(outcome=>
     String(outcome?.sequenceStep || "").trim() === "physical-3"
     && normalizeSlot(outcome?.canonicalSourceSlot) === "VN"
-    && normalizeSlot(outcome?.targetSlot) === sourceSlot
+    && normalizeSlot(outcome?.targetSlot) === normalizeSlot(plan?.returnTargetSlot)
   );
   const releaseOutcome = releaseOutcomes.length === 1 ? releaseOutcomes[0] : null;
   const returnOutcome = returnOutcomes.length === 1 ? returnOutcomes[0] : null;
@@ -41604,7 +41636,8 @@ function applySdePassiveBlockedSlotAtomicProjectionGate(reader, adapters={}){
     canonicalPlan:reader.canonicalPlan,
     cardProjection:reader.cardProjection,
     reservationProjection:reader.reservationProjection,
-    graphicProjection:reader.graphicProjection
+    graphicProjection:reader.graphicProjection,
+    actionRecords:reader.runtimeSnapshot.runtimeState?.actions
   });
   return reader;
 }
@@ -41656,7 +41689,7 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   ]);
   const reservationProjection = buildSdeCanonicalReservationProjection(canonicalPlan, cardProjection);
   const graphicProjection = buildSdeCanonicalGraphicProjection(canonicalPlan, cardProjection, reservationProjection);
-  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection});
+  const integrityReport = buildSdeCanonicalIntegrityReport({canonicalPlan,cardProjection,reservationProjection,graphicProjection,actionRecords:snapshot.runtimeState?.actions});
   const planRevision = getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue(snapshot));
   return assertSdeCanonicalProductionReaderContract({
     planRevision,
@@ -42232,7 +42265,8 @@ function applySdeCanonicalHandlerActionableGate(reader, initialAdapters){
     canonicalPlan:reader.canonicalPlan,
     cardProjection:reader.cardProjection,
     reservationProjection:reader.reservationProjection,
-    graphicProjection:reader.graphicProjection
+    graphicProjection:reader.graphicProjection,
+    actionRecords:reader.runtimeSnapshot.runtimeState?.actions
   });
   return reader;
 }

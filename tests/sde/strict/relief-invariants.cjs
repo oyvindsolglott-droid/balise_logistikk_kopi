@@ -51,9 +51,20 @@ eval(prefix + String.raw`
   put("INV-RELIEF-007",noReturnPlan===null,"a candidate without a validated return path is rejected by the real chain-plan builder");
 
   // Full real guard pipeline: with locals unavailable VN remains a complete fallback chain.
-  resetState(placements);
+  const fallbackMain=direct("FALLBACK-MAIN","9","4M","relief-vn-fallback");
+  const fallbackPlacements=vm.runInContext("inputSlots",ctx)
+    .filter(slot=>!["4M","VN","VS"].includes(slot))
+    .map((slot,index)=>[slot,"FALLBACK-CLOSED-"+index]);
+  const replaceFallback=(slot,vehicle)=>{
+    const index=fallbackPlacements.findIndex(([candidate])=>candidate===slot);
+    if(index>=0) fallbackPlacements[index]=[slot,vehicle];
+  };
+  replaceFallback("9","FALLBACK-MAIN");
+  replaceFallback("4N","FALLBACK-BLOCKER-N");
+  replaceFallback("4S","FALLBACK-BLOCKER-S");
+  resetState(fallbackPlacements);
   appState.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
-  const fallbackRows=ctx.buildSdePhysicalBlockerGuardMoves([main]);
+  const fallbackRows=ctx.buildSdePhysicalBlockerGuardMoves([fallbackMain]);
   const release=fallbackRows.find(row=>row.sdePhysicalDependencyRole==="prerequisite");
   const recovery=fallbackRows.find(row=>row.sdePhysicalDependencyRole==="return");
   put("INV-RELIEF-008",release?.toSlot==="VN","VN is used when the full guard pipeline rejects/prioritizes all ordinary alternatives");
