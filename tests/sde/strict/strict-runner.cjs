@@ -11,6 +11,7 @@ const drivers = [
   "cancel-invariants.cjs",
   "target-invariants.cjs",
   "relief-invariants.cjs",
+  "vn-relief-invariants.cjs",
   "reroute-invariants.cjs",
   "egress-invariants.cjs",
   "prerequisite-cancel-invariants.cjs",
@@ -23,16 +24,20 @@ function runDriver(driver) {
   const result = childProcess.spawnSync(process.execPath, [path.join(__dirname, driver), indexPath], {
     cwd: root,
     encoding: "utf8",
-    timeout: 60_000,
+    timeout: 180_000,
     maxBuffer: 64 * 1024 * 1024,
   });
   if (result.error) throw result.error;
-  if (result.status !== 0) {
+  if (result.signal || ![0, 1].includes(result.status)) {
     throw new Error(`${driver} crashed with exit ${result.status}:\n${result.stderr || result.stdout}`);
   }
   const line = String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1);
   const parsed = JSON.parse(line || "{}");
   if (!Array.isArray(parsed.results)) throw new Error(`${driver} did not emit invariant results`);
+  const failed = parsed.results.filter(item => item?.status === "FAIL").length;
+  if (result.status === 1 && failed === 0) {
+    throw new Error(`${driver} exited 1 without reporting an invariant failure`);
+  }
   return parsed.results;
 }
 

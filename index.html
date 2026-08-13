@@ -21533,9 +21533,21 @@ function getSdeTrappedEgressMainSourceEnds(sourceSlot, targetSlot=""){
   const order = getSdeSameTrackSlotOrder(sourceTrack);
   const sourceIndex = order.indexOf(source);
   if(!source || !target || !sourceTrack || sourceTrack === targetTrack || order.length < 3 || sourceIndex < 0) return null;
+  // Innkjøring til buttsporenes S-slot skjer fra nord. En kryssporbevegelse
+  // dit må derfor også ha reell nordlig egress fra kildesporet; en lokalt fri
+  // sørende er ikke en alternativ ende-til-ende-rute. Dette er særlig viktig
+  // for midtslotene 4M/5M/6S, hvor en N-blocker ellers ble oversett.
+  if(/^(10|11|12)S$/.test(target) && sourceIndex > 0 && sourceIndex < order.length - 1) return ["north"];
   if(sourceIndex === 0) return ["north"];
   if(sourceIndex === order.length - 1) return ["south"];
   return null;
+}
+
+function shouldSdePreferDedicatedVnForGlobalRelief(sourceSlot, targetSlot){
+  const source = normalizeSlot(sourceSlot);
+  const target = normalizeSlot(targetSlot);
+  return /^(10|11|12)S$/.test(target)
+    && getSdeTrappedEgressMainSourceEnds(source,target)?.includes("north");
 }
 
 const SDE_DIRECT_WASH_TRANSIT_TARGETS_BY_SOURCE = Object.freeze({
@@ -21650,7 +21662,8 @@ function getSdeTrappedEgressRouteResources(step, chainId){
     `slot|${step.fromSlot}`,
     `slot|${step.toSlot}`,
     `track-access|${sourceTrack}|${step.sourceOption?.end || "yard"}`,
-    `track-access|${targetTrack}|${step.targetOption?.end || "yard"}`
+    `track-access|${targetTrack}|${step.targetOption?.end || "yard"}`,
+    ...([step.fromSlot,step.toSlot].includes("VN") ? ["VN","VS"] : [])
   ]);
 }
 
@@ -21773,13 +21786,15 @@ function getSdeTrappedEgressTrappedEmptySlots(occupancy, tracks=[]){
   );
 }
 
-function getSdeTrappedEgressRecoveryCandidateOrder(occupancy, release, authoritativeTarget=""){
+function getSdeTrappedEgressRecoveryCandidateOrder(occupancy, release, authoritativeTarget="", postMainVacatedSlot=""){
   const explicit = normalizeSlot(authoritativeTarget);
   if(explicit) return [explicit];
   const originalSlot = normalizeSlot(release?.fromSlot);
   const originalTrack = getSdeSlotTrack(originalSlot);
+  const vacatedSlot = normalizeSlot(postMainVacatedSlot);
   const trackOrder = getSdeSameTrackSlotOrder(originalTrack);
   return Array.from(new Set([
+    ...(getSdeSlotTrack(vacatedSlot) === originalTrack ? [vacatedSlot] : []),
     ...trackOrder.filter(slot=>!sanitizeVehicleValue(occupancy?.get?.(slot))),
     originalSlot
   ].map(normalizeSlot).filter(Boolean)));
@@ -21799,7 +21814,9 @@ function validateSdeTrappedEgressRecovery(occupancy, mainStep, releaseSteps, rec
   for(const release of recoverySteps){
     const originalTrack = getSdeSlotTrack(release.fromSlot);
     const authoritativeTarget = recoveryTargetsByVehicle.get(normalizeVehicleToken(release.vehicle));
-    const candidates = getSdeTrappedEgressRecoveryCandidateOrder(simulated,release,authoritativeTarget)
+    const candidates = getSdeTrappedEgressRecoveryCandidateOrder(
+      simulated,release,authoritativeTarget,mainStep.fromSlot
+    )
       .map((target,index)=>{
         const assessment = assessSdeTrappedEgressVirtualMove(simulated,release.vehicle,release.toSlot,target);
         if(!assessment.valid) return null;
@@ -38022,6 +38039,8 @@ function buildSdeNightPlacementGeneratedMove(override){
     sdeNightPlacementNoSafeReleaseMove:directWashTransitEligible ? false : Boolean(override.noSafeReleaseMove),
     sdeNightPlacementPhysicalBlockReason:directWashTransitEligible ? "" : String(override.physicalBlockReason || ""),
     sdeDirectWashTransit:directWashTransitEligible || override.sdeDirectWashTransit === true,
+    sdePreferDedicatedVnRelief:override?.sdePreferDedicatedVnRelief === true
+      || shouldSdePreferDedicatedVnForGlobalRelief(fromSlot,toSlot),
     sdeTrappedEgressRouteResources:sortSdeCanonicalStrings(
       directWashTransitEligible
         ? directWashTransit.routeResources
@@ -38040,6 +38059,79 @@ function buildSdeNightPlacementGeneratedMove(override){
     parkingStrategy:"Opprettet fra grafisk planverktøy",
     parkingInstruction:"Manuell simulering fra grafisk planverktøy. Kontroller tidsstatus og eventuelle konflikter før lokal kvittering."
   };
+}
+
+function reconcileSdeCanonicalGraphicDragOrderFromActualState(override, generatedMove){
+  if(!override || !generatedMove || override?.sdeCanonicalGraphicDragOrder !== true) return false;
+  const currentActualStateRevision = getSdeNightPlacementActualStateRevision();
+  const plannedActualStateRevision = String(override.actualStateRevision || "").trim();
+  if(!currentActualStateRevision || !plannedActualStateRevision || currentActualStateRevision === plannedActualStateRevision) return false;
+
+  const previousAuthorities = cloneSdeCanonicalValue(getSdeActiveMoveOutcomes()) || {};
+  const previousRevision = plannedActualStateRevision;
+  try{
+    const replannedRows = buildSdePhysicalBlockerGuardMoves([generatedMove], {reconcileActive:false});
+    const mainActionKey = getSdeMoveActionKey(generatedMove);
+    const replannedMain = replannedRows.find(row=>getSdeMoveActionKey(row) === mainActionKey) || null;
+    const chainId = String(replannedMain?.sdePhysicalChainId || "").trim();
+    const planRows = chainId
+      ? replannedRows.filter(row=>String(row?.sdePhysicalChainId || "").trim() === chainId)
+      : replannedMain ? [replannedMain] : [];
+    const releases = planRows.filter(row=>row?.sdePhysicalDependencyRole === "prerequisite");
+    const mains = planRows.filter(row=>row?.sdePhysicalDependencyRole === "dependent");
+    const recoveries = planRows.filter(row=>row?.sdePhysicalDependencyRole === "return");
+    const complete = chainId
+      ? releases.length >= 1 && mains.length === 1 && recoveries.length === releases.length
+      : planRows.length === 1;
+    if(!complete) return false;
+
+    Object.keys(getSdeActiveMoveOutcomes()).forEach(key=>{
+      const authority = getSdeActiveMoveOutcomes()[key];
+      if(String(authority?.dragRequestId || "").trim() === String(override.dragRequestId || "").trim()){
+        delete getSdeActiveMoveOutcomes()[key];
+      }
+    });
+    planRows.forEach(row=>removeSdeActiveOutcomeAuthoritiesForPhysicalStep(
+      sanitizeVehicleValue(row?.vehicle),getSdeMoveOutcomePhysicalFromSlot(row)
+    ));
+    const first = [...planRows].sort((left,right)=>(
+      Number(left?.sdePhysicalChainStep || 1) - Number(right?.sdePhysicalChainStep || 1)
+    ))[0];
+    const firstOutcomeKey = getSdeMoveObligationStepKey(first);
+    const firstActionKey = getSdeMoveActionKey(first);
+    const authority = setSdeActiveOutcomeAuthority(firstOutcomeKey,first,{
+      activeOutcomeId:firstActionKey,
+      legacyActionKey:firstActionKey,
+      vehicle:first.vehicle,
+      physicalFromSlot:getSdeMoveOutcomePhysicalFromSlot(first),
+      requestedTarget:first?.recommendedSlot || first?.toSlot,
+      producer:String(first?.canonicalProducer || "physical_blocker_guard").trim(),
+      dragRequestId:override.dragRequestId,
+      createdAt:override.createdAt,
+      updatedAt:new Date().toISOString(),
+      source:"graphic_drag_automatic_actual_state_replan"
+    });
+    if(!authority) throw new Error("Automatisk replan fikk ikke canonical authority.");
+    override.actualStateRevision = currentActualStateRevision;
+    override.automaticReplannedFromActualStateRevision = previousRevision;
+    override.automaticReplannedAt = new Date().toISOString();
+    override.planRevision = "";
+    sdeNightPlacementBlockedMoveRequest = null;
+    sdeNightPlacementSelectedSlot = "";
+    sdeNightPlacementDropMessage = {
+      type:"info",
+      slot:normalizeSlot(generatedMove.toSlot),
+      text:`Sporstatusen er endret. SDE har automatisk validert ${generatedMove.vehicle} ${generatedMove.fromSlot} → ${generatedMove.toSlot} på nytt og bygget en komplett canonical plan.`,
+      timeStatus:"AUTOMATIC_REPLAN_COMPLETE",
+      targetAvailabilityState:"AVAILABLE_WITH_RELIEF_PLANNING",
+      physicalTargetUnavailable:false
+    };
+    return true;
+  }catch(_error){
+    state.sdeActiveMoveOutcomes = previousAuthorities;
+    override.actualStateRevision = previousRevision;
+    return false;
+  }
 }
 
 function getSdeNightPlacementCancelledReplanSourceOverrides(){
@@ -38073,6 +38165,8 @@ function buildSdeNightPlacementGeneratedMoves(baseRows=[]){
 
     const generatedMove = buildSdeNightPlacementGeneratedMove(override);
     if(!generatedMove) return;
+
+    reconcileSdeCanonicalGraphicDragOrderFromActualState(override,generatedMove);
 
     const actionKey = getSdeMoveActionKey(generatedMove);
     if(!actionKey || usedActionKeys.has(actionKey)) return;
@@ -39991,6 +40085,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     noSafeReleaseMove:Boolean(assessment.noSafeReleaseMove),
     physicalBlockReason:String(assessment.physicalBlockState?.reason || ""),
     sdeDirectWashTransit:assessment.directWashTransit?.eligible === true,
+    sdePreferDedicatedVnRelief:shouldSdePreferDedicatedVnForGlobalRelief(originalFromSlot,assessment.toSlot),
     sdeTrappedEgressRouteResources:sortSdeCanonicalStrings(assessment.routeResources || []),
     note:"simulert ønsket sluttplassering",
     ...(canonicalReaderMode ? {

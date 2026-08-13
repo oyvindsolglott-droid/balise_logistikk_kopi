@@ -96,17 +96,20 @@ def actual_pointer_drag(page: Page, source_slot: str, target_slot: str) -> dict[
     source = page.locator(f'[data-sde-night-placement-slot="{source_slot}"][data-sde-night-placement-draggable="1"]')
     target = page.locator(f'[data-sde-night-placement-slot="{target_slot}"]')
     source.scroll_into_view_if_needed()
-    target.scroll_into_view_if_needed()
     source_box = source.bounding_box()
-    target_box = target.bounding_box()
-    if source_box is None or target_box is None:
+    if source_box is None:
         raise AssertionError("drag source or target has no browser bounding box")
     source_point = (source_box["x"] + source_box["width"] / 2, source_box["y"] + source_box["height"] / 2)
-    target_point = (target_box["x"] + target_box["width"] / 2, target_box["y"] + target_box["height"] / 2)
     page.mouse.move(*source_point)
     page.mouse.down()
     page.mouse.move(source_point[0] + 8, source_point[1] + 8)
-    page.mouse.move(*target_point)
+    target.scroll_into_view_if_needed()
+    target_box = target.bounding_box()
+    if target_box is None:
+        page.mouse.up()
+        raise AssertionError("drag source or target has no browser bounding box")
+    target_point = (target_box["x"] + target_box["width"] / 2, target_box["y"] + target_box["height"] / 2)
+    page.mouse.move(*target_point, steps=12)
     hover = target.evaluate(
         """element => ({
           state:element.dataset.sdeDropTargetState||'',
@@ -246,6 +249,112 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                         )
                         self.assertEqual(page_errors, [])
                         context.close()
+            browser.close()
+
+    def test_vn_priority_and_automatic_actual_state_replan_on_desktop_and_390(self) -> None:
+        historical = [["6S", "VN-BROWSER-MAIN"], ["6N", "VN-BROWSER-BLOCKER"], ["1N", "OCCUPIED-ORDINARY"]]
+        with static_server() as base_url, sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            for width, height in ((1280, 900), (390, 844)):
+                with self.subTest(width=width):
+                    context = browser.new_context(viewport={"width": width, "height": height})
+                    page = context.new_page()
+                    page_errors: list[str] = []
+                    page.on("pageerror", lambda error: page_errors.append(str(error)))
+                    page.goto(base_url, wait_until="domcontentloaded")
+
+                    reset_graphic_fixture(page, historical)
+                    actual_before = page.evaluate("JSON.stringify(state.grunnoppstilling)")
+                    hover = actual_pointer_drag(page, "6S", "11S")
+                    self.assertEqual(hover["state"], "AVAILABLE_WITH_RELIEF_PLANNING")
+                    self.assertFalse(hover["red"])
+                    historical_result = page.evaluate(
+                        """() => {
+                          const rows=buildSdeShiftCardMoveCandidates({moves:[]},{reconcileActive:false})
+                            .filter(row=>row?.sdePhysicalChainId);
+                          const reader=buildSdeCanonicalProductionReader();
+                          const cards=[...(reader.cardProjection.actionableCards||[]),...(reader.cardProjection.blockedChainCards||[])];
+                          return {
+                            path:rows.map(row=>[row.fromSlot,row.toSlot,row.sdePhysicalDependencyRole]),
+                            statuses:cards.map(card=>card.status),
+                            complete:rows.length===3&&cards.length===3&&reader.integrityReport.status==='PASS',
+                            messageType:sdeNightPlacementDropMessage?.type||'',
+                            selected:sdeNightPlacementSelectedSlot,
+                            ghost:document.querySelectorAll('.dragging,.drop-rejected').length,
+                            overrides:Object.keys(state.sdeNightPlacementManualOverrides||{}).length
+                          };
+                        }"""
+                    )
+                    self.assertEqual(
+                        historical_result["path"],
+                        [["6N", "VN", "prerequisite"], ["6S", "11S", "dependent"], ["VN", "6S", "return"]],
+                    )
+                    self.assertEqual(historical_result["statuses"], ["actionable", "blocked_chain_step", "blocked_chain_step"])
+                    self.assertTrue(historical_result["complete"], historical_result)
+                    self.assertEqual(historical_result["messageType"], "info")
+                    self.assertEqual(historical_result["selected"], "")
+                    self.assertEqual(historical_result["ghost"], 0)
+                    self.assertEqual(historical_result["overrides"], 1)
+                    self.assertEqual(page.evaluate("JSON.stringify(state.grunnoppstilling)"), actual_before)
+
+                    replan_fixture = [*historical, ["VS", "INITIAL-VS-BLOCKER"]]
+                    reset_graphic_fixture(page, replan_fixture)
+                    actual_pointer_drag(page, "6S", "11S")
+                    pre_change = page.evaluate(
+                        """() => {
+                          const rows=buildSdeShiftCardMoveCandidates({moves:[]},{reconcileActive:false});
+                          return rows.find(row=>row.sdePhysicalDependencyRole==='prerequisite')?.toSlot||'';
+                        }"""
+                    )
+                    self.assertNotEqual(pre_change, "VN")
+                    self.assertNotEqual(pre_change, "1N")
+                    replanned = page.evaluate(
+                        """oldTarget => {
+                          delete state.grunnoppstilling.VS;
+                          state.grunnoppstilling[oldTarget]='LATE-TEMP-OCCUPANT';
+                          state.sharedSporplanDraftAppliedRevision=Number(state.sharedSporplanDraftAppliedRevision||0)+1;
+                          renderSdeSkiftebevegelser();
+                          const rows=buildSdeShiftCardMoveCandidates({moves:[]},{reconcileActive:false})
+                            .filter(row=>row?.sdePhysicalChainId);
+                          const reader=buildSdeCanonicalProductionReader();
+                          const cards=[...(reader.cardProjection.actionableCards||[]),...(reader.cardProjection.blockedChainCards||[])];
+                          return {
+                            path:rows.map(row=>[row.fromSlot,row.toSlot,row.sdePhysicalDependencyRole]),
+                            statuses:cards.map(card=>card.status),
+                            complete:rows.length===3&&cards.length===3
+                              && reader.canonicalPlan.candidateOutcomes.length===3
+                              && reader.reservationProjection.reservations.length===3
+                              && (reader.graphicProjection.activeOverlays.length+reader.graphicProjection.deferredOverlays.length)===3
+                              && Object.keys(reader.handlerAdapters||{}).length===3
+                              && reader.integrityReport.status==='PASS',
+                            overrideCount:Object.keys(state.sdeNightPlacementManualOverrides||{}).length,
+                            overrideTarget:Object.values(state.sdeNightPlacementManualOverrides||{})[0]?.toSlot||'',
+                            messageType:sdeNightPlacementDropMessage?.type||'',
+                            messageText:sdeNightPlacementDropMessage?.text||'',
+                            selected:sdeNightPlacementSelectedSlot,
+                            ghost:document.querySelectorAll('.dragging,.drop-rejected').length,
+                            actualOldTarget:getSdeVehicleInSlot(oldTarget),
+                            actualMain:getSdeVehicleInSlot('6S')
+                          };
+                        }""",
+                        pre_change,
+                    )
+                    self.assertEqual(
+                        replanned["path"],
+                        [["6N", "VN", "prerequisite"], ["6S", "11S", "dependent"], ["VN", "6S", "return"]],
+                    )
+                    self.assertEqual(replanned["statuses"], ["actionable", "blocked_chain_step", "blocked_chain_step"])
+                    self.assertTrue(replanned["complete"], replanned)
+                    self.assertEqual(replanned["overrideCount"], 1)
+                    self.assertEqual(replanned["overrideTarget"], "11S")
+                    self.assertNotIn("REPLAN_REQUIRED", replanned["messageText"])
+                    self.assertNotEqual(replanned["messageType"], "error")
+                    self.assertEqual(replanned["selected"], "")
+                    self.assertEqual(replanned["ghost"], 0)
+                    self.assertEqual(replanned["actualOldTarget"], "LATE-TEMP-OCCUPANT")
+                    self.assertEqual(replanned["actualMain"], "VN-BROWSER-MAIN")
+                    self.assertEqual(page_errors, [])
+                    context.close()
             browser.close()
 
 

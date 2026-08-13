@@ -11,6 +11,7 @@ const generatorSource = fs.readFileSync(path.join(root, "update_static_data.py")
 const targetHarness = path.join(root, "tests/sde/harnesses/sde-blocked-target-three-card-harness.js");
 const emptyDropHarness = path.join(root, "tests/sde/harnesses/sde-empty-target-drag-intent-harness.js");
 const egressHarness = path.join(root, "tests/sde/harnesses/sde-trapped-egress-chain-harness.js");
+const vnReliefHarness = path.join(root, "tests/sde/strict/vn-relief-invariants.cjs");
 const menuHarness = path.join(root, "tests/sde/harnesses/sde-menu-access-layout-harness.js");
 const baliseHarness = path.join(root, "tests/sde/harnesses/sde-24xx-focused-mutation-harness.py");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-final-focused-mutations-"));
@@ -79,6 +80,10 @@ function runIndexHarness(source, label, harness, schemaVersion) {
 
 function runEgress(source, label) {
   return runIndexHarness(source,label,egressHarness,"sde-trapped-egress-harness-v1");
+}
+
+function runVnRelief(source, label) {
+  return runIndexHarness(source,label,vnReliefHarness,"sde-vn-relief-invariants-v1");
 }
 
 function runMenu(source, label) {
@@ -188,6 +193,78 @@ const mutations = [
     ),
   },
   {
+    id: "VN_REMOVED_FROM_RELIEF_CANDIDATES",
+    kind: "vnRelief",
+    expectedInvariant: "AVAILABLE-VN-IS-NOT-IGNORED",
+    apply: source => mutateFunction(
+      source,
+      "getSdeTrappedEgressTemporaryCandidateOrder",
+      'const dedicatedVn = options?.preferDedicatedVn === true ? ["VN"] : [];',
+      "const dedicatedVn = []; // focused mutation: remove VN",
+      "VN removed from relief candidates",
+    ),
+  },
+  {
+    id: "ORDINARY_TRACK_RANKED_BEFORE_AVAILABLE_VN",
+    kind: "vnRelief",
+    expectedInvariant: "VN-PREFERRED-OVER-ORDINARY-TRACK-FOR-GLOBAL-RELIEF",
+    apply: source => mutateFunction(
+      source,
+      "getSdeTrappedEgressTemporaryCandidateOrder",
+      'if(options?.preferDedicatedVn === true && (left === "VN" || right === "VN")){',
+      'if(false && options?.preferDedicatedVn === true && (left === "VN" || right === "VN")){ // focused mutation',
+      "ordinary tracks before VN",
+    ),
+  },
+  {
+    id: "SEARCH_STOPS_AFTER_FIRST_REJECTED_CANDIDATE",
+    kind: "vnRelief",
+    expectedInvariant: "ONE-FAILED-CANDIDATE-DOES-NOT-END-SEARCH",
+    apply: source => mutateFunction(
+      source,
+      "buildSdeCompleteTrappedEgressPlan",
+      "for(const targetSlot of selectionOrder){",
+      "for(const targetSlot of selectionOrder.slice(0,1)){ // focused mutation: stop after first rejected candidate",
+      "relief search stops after first candidate",
+    ),
+  },
+  {
+    id: "REPLAN_REQUIRES_NEW_USER_DRAG",
+    kind: "vnRelief",
+    expectedInvariant: "ACTUAL-STATE-CHANGE-TRIGGERS-AUTOMATIC-REPLAN",
+    apply: source => mutateFunction(
+      source,
+      "reconcileSdeCanonicalGraphicDragOrderFromActualState",
+      "if(!override || !generatedMove || override?.sdeCanonicalGraphicDragOrder !== true) return false;",
+      "return false; // focused mutation: require a new drag\n  if(!override || !generatedMove || override?.sdeCanonicalGraphicDragOrder !== true) return false;",
+      "automatic replan disabled",
+    ),
+  },
+  {
+    id: "REPLAN_RETURNS_ERROR_WITHOUT_NEW_PLAN",
+    kind: "vnRelief",
+    expectedInvariant: "ACTUAL-STATE-CHANGE-TRIGGERS-AUTOMATIC-REPLAN",
+    apply: source => mutateFunction(
+      source,
+      "reconcileSdeCanonicalGraphicDragOrderFromActualState",
+      "const replannedRows = buildSdePhysicalBlockerGuardMoves([generatedMove], {reconcileActive:false});",
+      "const replannedRows = []; // focused mutation: error-only without a new plan",
+      "replan returns no plan",
+    ),
+  },
+  {
+    id: "OCCUPIED_TEMP_TARGET_ACCEPTED",
+    kind: "vnRelief",
+    expectedInvariant: "OCCUPIED-ORDINARY-TEMP-TARGET-IS-REJECTED",
+    apply: source => mutateFunction(
+      source,
+      "assessSdeTrappedEgressVirtualMove",
+      "if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle,vehicleId)) return {valid:false};",
+      "if(false && targetVehicle && !haveSameSdeVehicleTokens(targetVehicle,vehicleId)) return {valid:false}; // focused mutation",
+      "occupied temporary target accepted",
+    ),
+  },
+  {
     id: "RELEASE_CARD_OMITTED",
     expectedInvariant: "BLOCKER_CARD_PRESENT",
     apply: source => mutateFunction(
@@ -275,7 +352,7 @@ const mutations = [
     },
   },
   {
-    id: "ACTUAL_PLACEMENT_CHANGED_BEFORE_COMPLETION",
+    id: "ACTUAL_PLACEMENT_CHANGED_DURING_REPLAN",
     expectedInvariant: "ACTUAL_PLACEMENT_UNCHANGED_BEFORE_COMPLETION",
     apply: source => mutateFunction(
       source,
@@ -296,8 +373,10 @@ try {
         ? runMenu(indexSource, `${mutation.id}-baseline`)
         : mutation.kind === "emptyDrop"
           ? runEmptyDrop(indexSource, `${mutation.id}-baseline`)
-        : mutation.kind === "egress"
+      : mutation.kind === "egress"
           ? runEgress(indexSource, `${mutation.id}-baseline`)
+          : mutation.kind === "vnRelief"
+            ? runVnRelief(indexSource, `${mutation.id}-baseline`)
           : runTarget(indexSource, `${mutation.id}-baseline`);
     if (baseline.execution.status !== 0) throw new Error(`${mutation.id}: green baseline failed`);
 
@@ -308,13 +387,15 @@ try {
         ? runMenu(mutatedSource, mutation.id)
         : mutation.kind === "emptyDrop"
           ? runEmptyDrop(mutatedSource, mutation.id)
-        : mutation.kind === "egress"
+      : mutation.kind === "egress"
           ? runEgress(mutatedSource, mutation.id)
+          : mutation.kind === "vnRelief"
+            ? runVnRelief(mutatedSource, mutation.id)
           : runTarget(mutatedSource, mutation.id);
     const structuredFailure = mutant.execution.status === 1;
     const invariantObserved = mutation.kind === "balise"
       ? mutant.report.status === "FAIL" && mutant.report.invariantId === mutation.id && mutant.report.structured === true
-      : ["menu","egress"].includes(mutation.kind)
+      : ["menu","egress","vnRelief"].includes(mutation.kind)
         ? mutant.report.counts?.fail > 0
           && mutant.report.results?.some(report=>report.id===mutation.expectedInvariant&&report.status==="FAIL")
         : mutation.kind === "emptyDrop"
