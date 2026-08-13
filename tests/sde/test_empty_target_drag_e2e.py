@@ -67,12 +67,25 @@ def reset_graphic_fixture(page: Page, placements: list[list[str]]) -> None:
           state.sdeCanonicalRetargetIntents={};
           state.planSkifteRows=[];
           state.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
+          state.txpUnavailableSlots=[];
+          state.sharedSporplanDraftAppliedRevision=1;
+          state.sharedSporplanDraftAppliedAt='2026-08-13T00:00:00.000Z';
+          computeInndataCachedRows=null;
+          computeInndataCacheDepth=0;
+          getSdeShiftShowcaseData=()=>({
+            score:100,baseScore:100,needs:[],moves:[],scoreMoves:[],unresolved:[],
+            flexibleUnknownParking:[],filteredPastDepartureNeeds:[],totalArrivals:0,
+            solvedArrivals:0,totalDepartures:0,securedDepartures:0,unresolvedCount:0,
+            flexibleUnknownCount:0,baseMoveCount:0,adaptiveMoveCount:0
+          });
+          getSdeTomorrowJsonReadinessForScore=()=>({ready:true,reason:'TEST_FIXTURE_READY'});
           sdeNightPlacementDropMessage=null;
           sdeNightPlacementBlockedMoveRequest=null;
           sdeNightPlacementSelectedSlot='';
           sdeShiftLastRenderedData={moves:[],limitedPlanningMode:false,score:0};
           sdeShiftViewMode=SDE_SHIFT_VIEW_MODE_GRAPHIC_PLAN;
-          renderSdeSkiftebevegelser();
+          activateTab('sdeSkiftebevegelser');
+          sdeShiftLastRenderedData={moves:[],limitedPlanningMode:false,score:100};
         }""",
         placements,
     )
@@ -152,6 +165,7 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                               const override=Object.values(state.sdeNightPlacementManualOverrides||{})[0]||null;
                               return {
                                 messageType:sdeNightPlacementDropMessage?.type||'',
+                                messageText:sdeNightPlacementDropMessage?.text||'',
                                 messageState:sdeNightPlacementDropMessage?.targetAvailabilityState||'',
                                 rejected:document.querySelectorAll('.sde-night-placement-slot.drop-rejected').length,
                                 ghost:document.querySelectorAll('.sde-night-placement-slot.dragging,.sde-night-placement-proposal.dragging').length,
@@ -166,6 +180,14 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                                   && (reader.graphicProjection.activeOverlays.length+reader.graphicProjection.deferredOverlays.length)===3
                                   && Object.keys(reader.handlerAdapters||{}).length===3
                                   && reader.integrityReport.status==='PASS',
+                                counts:{
+                                  outcomes:reader.canonicalPlan.candidateOutcomes.length,
+                                  cards:cards.length,
+                                  reservations:reader.reservationProjection.reservations.length,
+                                  overlays:reader.graphicProjection.activeOverlays.length+reader.graphicProjection.deferredOverlays.length,
+                                  adapters:Object.keys(reader.handlerAdapters||{}).length,
+                                  integrity:reader.integrityReport.status
+                                },
                                 metadata:Boolean(override?.vehicle&&override?.fromSlot&&override?.toSlot&&override?.direction
                                   && override?.actualStateRevision&&override?.intentIdentity&&override?.planRevision),
                                 expectedRecovery
@@ -173,7 +195,7 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                             }""",
                             scenario["recovery"],
                         )
-                        self.assertEqual(result["messageType"], "info")
+                        self.assertEqual(result["messageType"], "info", result)
                         self.assertEqual(result["messageState"], "AVAILABLE_WITH_RELIEF_PLANNING")
                         self.assertEqual(result["rejected"], 0)
                         self.assertEqual(result["ghost"], 0)
@@ -182,7 +204,7 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                         self.assertEqual(result["roles"], ["prerequisite", "dependent", "return"])
                         self.assertEqual(result["recovery"], scenario["recovery"])
                         self.assertTrue(result["postMain"])
-                        self.assertTrue(result["complete"])
+                        self.assertTrue(result["complete"], result)
                         self.assertTrue(result["metadata"])
                         self.assertEqual(page.evaluate("JSON.stringify(state.grunnoppstilling)"), actual_before)
                         self.assertEqual(page_errors, [])
@@ -190,8 +212,16 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                         page.reload(wait_until="domcontentloaded")
                         hydrated = page.evaluate(
                             """() => {
+                              getSdeShiftShowcaseData=()=>({
+                                score:100,baseScore:100,needs:[],moves:[],scoreMoves:[],unresolved:[],
+                                flexibleUnknownParking:[],filteredPastDepartureNeeds:[],totalArrivals:0,
+                                solvedArrivals:0,totalDepartures:0,securedDepartures:0,unresolvedCount:0,
+                                flexibleUnknownCount:0,baseMoveCount:0,adaptiveMoveCount:0
+                              });
+                              getSdeTomorrowJsonReadinessForScore=()=>({ready:true,reason:'TEST_FIXTURE_READY'});
+                              state.sharedSporplanDraftAppliedRevision=1;
                               sdeShiftViewMode=SDE_SHIFT_VIEW_MODE_GRAPHIC_PLAN;
-                              renderSdeSkiftebevegelser();
+                              activateTab('sdeSkiftebevegelser');
                               const reader=buildSdeCanonicalProductionReader();
                               const cards=[...(reader.cardProjection.actionableCards||[]),...(reader.cardProjection.blockedChainCards||[])];
                               return {cards:cards.map(card=>card.status),integrity:reader.integrityReport.status,
