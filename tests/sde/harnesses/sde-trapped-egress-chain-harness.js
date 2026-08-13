@@ -47,8 +47,21 @@ eval(prefix + String.raw`
   const hasPairing=report=>report.releases.every(release=>report.recoveries.some(recovery=>
     recovery.vehicle===release.vehicle
     && recovery.fromSlot===release.toSlot
-    && recovery.toSlot===release.fromSlot
+    && Boolean(recovery.toSlot)
+    && (recovery.sdeRecoveryUsesPostMainTopology===true||recovery.toSlot===release.fromSlot)
   ));
+  const noTrappedEmptySlots=report=>{
+    let occupancy=new Map(report.fixture.placements);
+    report.rows.forEach(row=>{
+      const from=ctx.normalizeSlot(row.fromSlot||row.arrivalSlot);
+      const to=ctx.normalizeSlot(row.toSlot||row.recommendedSlot);
+      if(!from||!to) return;
+      occupancy.delete(from);
+      occupancy.set(to,row.vehicle);
+    });
+    const tracks=report.releases.map(release=>ctx.getSdeSlotTrack(release.fromSlot));
+    return ctx.getSdeTrappedEgressTrappedEmptySlots(occupancy,tracks).length===0;
+  };
   const projectionComplete=report=>{
     const outcomes=report.reader.canonicalPlan.candidateOutcomes||[];
     const reservations=report.reader.reservationProjection.reservations||[];
@@ -71,6 +84,7 @@ eval(prefix + String.raw`
     && report.mains.length===1
     && report.recoveries.length===report.releases.length
     && hasPairing(report)
+    && noTrappedEmptySlots(report)
     && projectionComplete(report)
     && report.reader.integrityReport.status==="PASS"
     && report.reader.reservationProjection.conflicts.length===0
@@ -444,6 +458,41 @@ eval(prefix + String.raw`
     };
   }catch(error){ reports.P={name:"stale cancelled release identity is replanned",error:String(error?.stack||error)}; }
   put("INV-EGRESS-022",staleReleaseIdentityReplanned,"74-10 5M→6S rejects a stale cancelled 74-12 release identity and materializes one complete replacement chain");
+
+  const buttReports=["10","11","12"].map(track=>build({
+    name:"butt-"+track+"-source",
+    placements:[[track+"S","BUTT-MAIN-"+track],[track+"N","BUTT-BLOCKER-"+track]],
+    main:{vehicle:"BUTT-MAIN-"+track,sourceSlot:track+"S",requestedTarget:"9",requestId:"butt-"+track+"-source"}
+  }));
+  put(
+    "INV-EGRESS-023",
+    buttReports.every(report=>complete(report)
+      && report.releases[0]?.toSlot==="VN"
+      && report.recoveries[0]?.toSlot===report.fixture.main.sourceSlot
+      && report.recoveries[0]?.toSlot!==report.releases[0]?.fromSlot),
+    "10S, 11S and 12S source chains recover the temporary N blocker into the vacated S slot rather than trapping an empty S slot"
+  );
+  put(
+    "INV-EGRESS-024",
+    [A,built.B,built.C].every(report=>complete(report)
+      && report.recoveries.at(-1)?.toSlot===report.fixture.main.sourceSlot),
+    "4M, 5M and 6S source chains choose the main-vacated slot from post-main topology"
+  );
+  put(
+    "INV-EGRESS-025",
+    complete(built.F)
+      && built.F.recoveries.map(row=>row.toSlot).join(",")==="4S,4M"
+      && noTrappedEmptySlots(built.F),
+    "recursive 4S egress recovers inner then outer blockers into 4S and 4M, leaving 4N physically accessible"
+  );
+  put(
+    "INV-EGRESS-026",
+    [...buttReports,A,built.B,built.C,built.F].every(report=>
+      report.recoveries.every(row=>row.sdeRecoveryUsesPostMainTopology===true)
+      && noTrappedEmptySlots(report)
+    ),
+    "every source-egress recovery is explicitly post-main-topology validated with zero trapped empty slots"
+  );
 
   const failed=globalThis.__egressResults.filter(item=>item.status==="FAIL");
   process.stdout.write(JSON.stringify({

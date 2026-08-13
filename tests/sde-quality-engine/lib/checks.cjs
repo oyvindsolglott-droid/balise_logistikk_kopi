@@ -455,6 +455,14 @@ function baliseChecks(now = new Date(), options = {}) {
   return results;
 }
 
+function isNightPlanTabRegistered(indexSource) {
+  return /data-tab="sdeNattplanErfaring"/.test(indexSource) || (
+    /const SDE_NIGHT_PLAN_TAB_ID = "sdeNattplanErfaring";/.test(indexSource)
+    && /button\.dataset\.tab = SDE_NIGHT_PLAN_TAB_ID;/.test(indexSource)
+    && /function syncSdeNightPlanMenuButton\(/.test(indexSource)
+  );
+}
+
 function staticChecks(inventory = buildInventory(), options = {}) {
   const root = repoRoot();
   const matrix = readJson(path.join(root, "tests/sde-quality-engine/matrix/function-matrix.json"));
@@ -496,9 +504,10 @@ function staticChecks(inventory = buildInventory(), options = {}) {
   const nightModuleSource = fs.existsSync(path.join(root, "sde_intelligent_night_planning.js"))
     ? fs.readFileSync(path.join(root, "sde_intelligent_night_planning.js"), "utf8")
     : "";
+  const nightPlanTabRegistered = isNightPlanTabRegistered(indexSource);
   const nightContractProblems = [
     ...missingNightFiles.map((file) => `mangler ${file}`),
-    !/data-tab="sdeNattplanErfaring"/.test(indexSource) ? "mangler nattplan-tab" : null,
+    !nightPlanTabRegistered ? "mangler nattplan-tab" : null,
     !/assets\/vendor\/tesseract\/tesseract\.min\.js/.test(indexSource) ? "mangler lokal OCR-runtime" : null,
     /https?:\/\//.test(nightUiSource) ? "UI peker på ekstern tjeneste" : null,
     /localStorage\.setItem|fetch\(/.test(nightModuleSource) ? "beslutningsmodul har write/nettverksflate" : null,
@@ -782,6 +791,7 @@ function mapFunctionStatuses(matrix, results) {
 module.exports = {
   baliseChecks,
   externalResult,
+  isNightPlanTabRegistered,
   loadBaliseData,
   mapFunctionStatuses,
   parseUpdatedAt,

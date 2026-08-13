@@ -10,10 +10,26 @@ const {
 } = require("../lib/production-readonly.cjs");
 const { buildInventory } = require("../lib/inventory.cjs");
 const {
+  isNightPlanTabRegistered,
   qualificationNodePath,
   serverScriptArgument,
   validateRegistry
 } = require("../lib/checks.cjs");
+
+test("nattplan-tab må være statisk eller komplett dynamisk registrert", () => {
+  assert.equal(isNightPlanTabRegistered('<button data-tab="sdeNattplanErfaring">'), true);
+  const dynamic = [
+    'const SDE_NIGHT_PLAN_TAB_ID = "sdeNattplanErfaring";',
+    'button.dataset.tab = SDE_NIGHT_PLAN_TAB_ID;',
+    'function syncSdeNightPlanMenuButton(){ return true; }'
+  ].join("\n");
+  assert.equal(isNightPlanTabRegistered(dynamic), true);
+  assert.equal(
+    isNightPlanTabRegistered('const SDE_NIGHT_PLAN_TAB_ID = "sdeNattplanErfaring";'),
+    false,
+    "en konstant uten mount-path må feile lukket"
+  );
+});
 
 test("production guard tillater bare GET og HEAD", () => {
   assert.equal(assertReadOnlyMethod("get"), "GET");

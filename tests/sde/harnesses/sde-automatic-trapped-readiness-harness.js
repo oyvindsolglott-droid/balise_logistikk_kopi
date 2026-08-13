@@ -32,7 +32,7 @@ eval(prefix + String.raw`
   assert.ok(release && main && recovery,"automatic readiness must be a complete release/main/recovery chain");
   assert.deepEqual(
     JSON.parse(JSON.stringify(chainRows.map(row=>[row.sdePhysicalChainStep,row.vehicle,row.fromSlot,row.toSlot,row.sdePhysicalDependencyRole]))),
-    [[1,"74-12","5N","VN","prerequisite"],[2,"74-41","5M","4M","dependent"],[3,"74-12","VN","5N","return"]]
+    [[1,"74-12","5N","VN","prerequisite"],[2,"74-41","5M","4M","dependent"],[3,"74-12","VN","5M","return"]]
   );
   assert.equal(chainRows.every(row=>ctx.isSdeAutomaticTrappedReadinessMove(row)),true,"all generated chain cards must remain visibly automatic");
 
@@ -45,7 +45,7 @@ eval(prefix + String.raw`
   assert.equal(reader.cardProjection.blockedChainCards.length,2);
   assert.deepEqual(
     JSON.parse(JSON.stringify(reader.cardProjection.blockedChainCards.map(card=>[card.vehicleId,card.sourceSlot,card.targetSlot]))),
-    [["74-41","5M","4M"],["74-12","VN","5N"]]
+    [["74-41","5M","4M"],["74-12","VN","5M"]]
   );
 
   const limited = ctx.buildSdeLimitedPlanningData("FRESH_NO_TURSATT_ASSIGNMENTS","test");
@@ -73,10 +73,11 @@ eval(prefix + String.raw`
   const fallbackAutomatic = ctx.buildSdeAutomaticTrappedReadinessMoves([]);
   const fallbackRows = ctx.buildSdePhysicalBlockerGuardMoves(fallbackAutomatic);
   const fallbackRelease = fallbackRows.find(row=>row.sdePhysicalDependencyRole==="prerequisite");
+  const fallbackMain = fallbackRows.find(row=>row.sdePhysicalDependencyRole==="dependent");
   const fallbackRecovery = fallbackRows.find(row=>row.sdePhysicalDependencyRole==="return");
-  assert.ok(fallbackRelease && fallbackRecovery);
+  assert.ok(fallbackRelease && fallbackMain && fallbackRecovery);
   assert.notEqual(fallbackRelease.toSlot,"VN","occupied VN must use a safe ordinary fallback");
-  assert.equal(fallbackRecovery.toSlot,fallbackRelease.fromSlot);
+  assert.equal(fallbackRecovery.toSlot,fallbackMain.fromSlot,"fallback recovery must also use post-main topology");
 
   reset(placements.filter(([slot])=>slot!=="5N"));
   assert.equal(ctx.buildSdeAutomaticTrappedReadinessMoves([]).length,0,"a middle vehicle with one clear end is not trapped");

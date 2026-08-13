@@ -9,6 +9,8 @@ const root = path.resolve(__dirname, "../../..");
 const indexSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const generatorSource = fs.readFileSync(path.join(root, "update_static_data.py"), "utf8");
 const targetHarness = path.join(root, "tests/sde/harnesses/sde-blocked-target-three-card-harness.js");
+const egressHarness = path.join(root, "tests/sde/harnesses/sde-trapped-egress-chain-harness.js");
+const menuHarness = path.join(root, "tests/sde/harnesses/sde-menu-access-layout-harness.js");
 const baliseHarness = path.join(root, "tests/sde/harnesses/sde-24xx-focused-mutation-harness.py");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-final-focused-mutations-"));
 
@@ -63,6 +65,21 @@ function runTarget(source, label) {
   return {execution, report:parseReport(execution, "sde-blocked-target-three-card-harness-v1", label)};
 }
 
+function runIndexHarness(source, label, harness, schemaVersion) {
+  const file = path.join(temporary, `${label}.html`);
+  fs.writeFileSync(file, source);
+  const execution = run(process.execPath, [harness, file]);
+  return {execution, report:parseReport(execution, schemaVersion, label)};
+}
+
+function runEgress(source, label) {
+  return runIndexHarness(source,label,egressHarness,"sde-trapped-egress-harness-v1");
+}
+
+function runMenu(source, label) {
+  return runIndexHarness(source,label,menuHarness,"sde-menu-access-layout-harness-v1");
+}
+
 const mutations = [
   {
     id: "TRAIN_NUMBER_ONLY_VEHICLE_LOOKUP",
@@ -85,6 +102,39 @@ const mutations = [
     ),
   },
   {
+    id: "STADLER_BUTTON_SHRUNK",
+    kind: "menu",
+    expectedInvariant: "INV-MENU-001",
+    apply: source => replaceOnce(
+      source,
+      ".segmented button.seg-stadler-graphic{\nposition:relative;",
+      ".segmented button.seg-stadler-graphic{\ngrid-column:span 1; /* focused mutation: shrink STADLER */\nposition:relative;",
+      "stadler shrink",
+    ),
+  },
+  {
+    id: "NIGHTPLAN_VISIBLE_TO_ALL_LEVELS",
+    kind: "menu",
+    expectedInvariant: "INV-MENU-002",
+    apply: source => replaceOnce(
+      source,
+      'const SDE_NIGHT_PLAN_ALLOWED_LEVELS = Object.freeze(["0","2"]);',
+      'const SDE_NIGHT_PLAN_ALLOWED_LEVELS = Object.freeze(["0","1","2","3","4","5"]); // focused mutation',
+      "nightplan all levels",
+    ),
+  },
+  {
+    id: "NIGHTPLAN_OLD_LABEL_RESTORED",
+    kind: "menu",
+    expectedInvariant: "INV-MENU-003",
+    apply: source => replaceOnce(
+      source,
+      'const SDE_NIGHT_PLAN_BUTTON_LABEL = "Registrer Nattplan";',
+      'const SDE_NIGHT_PLAN_BUTTON_LABEL = "Nattplan og erfaring"; // focused mutation',
+      "nightplan old label",
+    ),
+  },
+  {
     id: "BLOCKER_CARD_OMITTED",
     expectedInvariant: "BLOCKER_CARD_PRESENT",
     apply: source => mutateFunction(
@@ -96,7 +146,7 @@ const mutations = [
     ),
   },
   {
-    id: "MAIN_CARD_ACTIVATED_BEFORE_RELEASE",
+    id: "MAIN_CARD_READY_BEFORE_RELEASE",
     expectedInvariant: "MAIN_BLOCKED_UNTIL_RELEASE",
     apply: source => mutateFunction(
       source,
@@ -115,6 +165,30 @@ const mutations = [
       "const returnRow = buildSdeTemporaryAccessReturnRow(accessChainPlan);",
       "const returnRow = null; // focused mutation: recovery omitted",
       "recovery card omitted",
+    ),
+  },
+  {
+    id: "RECOVERY_ALWAYS_RETURNS_TO_ORIGINAL_SLOT",
+    kind: "egress",
+    expectedInvariant: "INV-EGRESS-024",
+    apply: source => mutateFunction(
+      source,
+      "getSdeTrappedEgressRecoveryCandidateOrder",
+      "if(explicit) return [explicit];",
+      "if(explicit) return [explicit];\n  return [normalizeSlot(release?.fromSlot)]; // focused mutation: ignore post-main topology",
+      "recovery always original",
+    ),
+  },
+  {
+    id: "BUTT_RECOVERY_CREATES_TRAPPED_EMPTY_S_SLOT",
+    kind: "egress",
+    expectedInvariant: "INV-EGRESS-023",
+    apply: source => mutateFunction(
+      source,
+      "getSdeButtTrackTemporaryVnPair",
+      "returnSlot:blockedFrom,\n    recoverySlot:blockedFrom",
+      "returnSlot:blockerFrom, // focused mutation: trap empty S slot\n    recoverySlot:blockerFrom",
+      "butt recovery traps S",
     ),
   },
   {
@@ -165,17 +239,28 @@ try {
   for (const mutation of mutations) {
     const baseline = mutation.kind === "balise"
       ? runBalise(generatorSource, mutation.id, `${mutation.id}-baseline`)
-      : runTarget(indexSource, `${mutation.id}-baseline`);
+      : mutation.kind === "menu"
+        ? runMenu(indexSource, `${mutation.id}-baseline`)
+        : mutation.kind === "egress"
+          ? runEgress(indexSource, `${mutation.id}-baseline`)
+          : runTarget(indexSource, `${mutation.id}-baseline`);
     if (baseline.execution.status !== 0) throw new Error(`${mutation.id}: green baseline failed`);
 
     const mutatedSource = mutation.apply(mutation.kind === "balise" ? generatorSource : indexSource);
     const mutant = mutation.kind === "balise"
       ? runBalise(mutatedSource, mutation.id, mutation.id)
-      : runTarget(mutatedSource, mutation.id);
+      : mutation.kind === "menu"
+        ? runMenu(mutatedSource, mutation.id)
+        : mutation.kind === "egress"
+          ? runEgress(mutatedSource, mutation.id)
+          : runTarget(mutatedSource, mutation.id);
     const structuredFailure = mutant.execution.status === 1;
     const invariantObserved = mutation.kind === "balise"
       ? mutant.report.status === "FAIL" && mutant.report.invariantId === mutation.id && mutant.report.structured === true
-      : mutant.report.counts?.fail > 0
+      : ["menu","egress"].includes(mutation.kind)
+        ? mutant.report.counts?.fail > 0
+          && mutant.report.results?.some(report=>report.id===mutation.expectedInvariant&&report.status==="FAIL")
+        : mutant.report.counts?.fail > 0
         && mutant.report.reports?.some(report=>report.invariantFailures?.includes(mutation.expectedInvariant));
     reports.push({
       id: mutation.id,

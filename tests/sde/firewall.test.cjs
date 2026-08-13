@@ -629,10 +629,11 @@ test("Y — complete trapped-egress chains and unresolved-step retarget stay ato
   assert.ok([0,1].includes(result.status),`Y trapped-egress harness crashed:\n${failureDetails(result)}`);
   const report = JSON.parse(String(result.stdout || "").trim().split(/\n/).filter(Boolean).at(-1));
   assert.equal(report?.schemaVersion, "sde-trapped-egress-harness-v1");
-  assert.equal(report?.counts?.total,16);
+  assert.equal(report?.counts?.total,20);
   assert.deepEqual(report?.results?.map(item=>item.id), [
     ...Array.from({length:15},(_,index)=>`INV-EGRESS-${String(index+1).padStart(3,"0")}`),
-    "INV-EGRESS-022"
+    "INV-EGRESS-022",
+    ...Array.from({length:4},(_,index)=>`INV-EGRESS-${String(index+23).padStart(3,"0")}`)
   ]);
   assert.equal(report?.results?.slice(0,12).every(item=>item.status==="PASS"),true,"the pre-existing 12 Y invariants must remain green");
   for(const fixture of "ABCDEFGHIJKL") assert.ok(report?.scenarios?.[fixture] || ["H","I","J","K"].includes(fixture), `missing fixture ${fixture}`);
@@ -1111,9 +1112,9 @@ test("GRAPHIC MENU DIMENSIONS — six TXP controls stay ordered on one equal-hei
   const menuMarkup = currentHtml.match(/<div class="segmented" aria-label="Hovedmeny">([\s\S]*?)<\/div>\n\n\n<section class="panel" id="grunnoppstilling">/)?.[1] || "";
   const menuOrder = [...menuMarkup.matchAll(/data-tab="([^"]+)"/g)].map((match) => match[1]);
 
-  assert.match(uniformDesktopRule, /\.segmented\{[\s\S]*?grid-template-columns:[\s\S]*?repeat\(4,minmax\(211\.698114px,3\.41509434fr\)\)[\s\S]*?repeat\(2,minmax\(62px,1fr\)\);/, "the first four wide controls and the two square controls must form one height-matched row");
-  assert.match(uniformDesktopRule, /\.segmented button\.seg\{[\s\S]*?grid-column:auto;[\s\S]*?width:100%;[\s\S]*?min-height:0;[\s\S]*?aspect-ratio:1810 \/ 530;/, "wide desktop controls must inherit Tursatt's exact box dimensions before explicit square-control overrides");
-  assert.match(uniformDesktopRule, /\.segmented button\.seg\.seg-turnering-graphic\{[\s\S]*?width:100%;[\s\S]*?min-width:0;[\s\S]*?aspect-ratio:1 \/ 1;/, "the square controls must use the same computed row height as the wide controls");
+  assert.match(uniformDesktopRule, /\.segmented\{[\s\S]*?grid-template-columns:repeat\(10,minmax\(0,1fr\)\);/, "the menu must use ten equal grid units without a narrow final column");
+  assert.match(uniformDesktopRule, /\.segmented button\.seg\{[\s\S]*?grid-column:span 2;[\s\S]*?width:100%;[\s\S]*?min-height:0;[\s\S]*?aspect-ratio:1810 \/ 530;/, "every ordinary desktop module control must inherit the same two-unit box dimensions");
+  assert.match(uniformDesktopRule, /\.segmented button\.seg\.seg-turnering-graphic\{[\s\S]*?grid-column:span 1;[\s\S]*?width:100%;[\s\S]*?min-width:0;[\s\S]*?aspect-ratio:1 \/ 1;/, "the two square controls must each occupy one equal grid unit");
   assert.match(mobileRule, /\.segmented button\.seg\{[\s\S]*?flex:0 0 160px;[\s\S]*?width:160px;[\s\S]*?min-width:160px;[\s\S]*?height:76px;[\s\S]*?min-height:76px;[\s\S]*?max-height:76px;[\s\S]*?aspect-ratio:auto;/, "wide mobile controls must use the same 160 by 76 pixel slot before explicit square-control overrides");
   assert.deepEqual(
     menuOrder.slice(0, 6),
