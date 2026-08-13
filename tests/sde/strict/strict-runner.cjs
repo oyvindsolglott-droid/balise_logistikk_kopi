@@ -15,6 +15,7 @@ const drivers = [
   "egress-invariants.cjs",
   "prerequisite-cancel-invariants.cjs",
   "blocked-slot-invariants.cjs",
+  "empty-drop-invariants.cjs",
   "menu-invariants.cjs",
 ];
 

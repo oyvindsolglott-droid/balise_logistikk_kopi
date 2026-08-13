@@ -57,6 +57,13 @@ global.document = {
 global.sdeNightPlacementDragPayload = null;
 const applied = [];
 global.applySdeNightPlacementDragOverride = (payload,toSlot)=>{applied.push({payload:{...payload},toSlot});return true;};
+global.getSdeNightPlacementDragTargetEligibility = (_payload,toSlot)=>({
+  droppable:true,
+  targetAvailabilityState:String(toSlot)==="10N" ? "AVAILABLE_WITH_RELIEF_PLANNING" : "DIRECTLY_AVAILABLE",
+  renderRedUnavailable:false
+});
+global.sdeShiftLastRenderedData = {moves:[]};
+global.getSdeShiftShowcaseData = ()=>sdeShiftLastRenderedData;
 global.clearSdeNightPlacementDragOverrides = ()=>{};
 global.normalizeSlot = value=>String(value || "").trim().toUpperCase();
 global.renderSdeSkiftebevegelser = ()=>{};

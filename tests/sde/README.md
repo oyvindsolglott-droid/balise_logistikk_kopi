@@ -44,6 +44,13 @@ belagte `VS`/`12N`-tilstanden er bevart som en negativ safety-case som skal
 avvises med null operative outcomes, kort, reservasjoner, overlays og adaptere.
 Mutasjonene Z1–Z5 skal alle drepes av disse invariantene.
 
+`INV-EMPTY-DROP-001`–`009` låser at en fysisk tom, operativ target er
+droppable som plan-intent selv når direkte adkomst er sperret. Target får
+`AVAILABLE_WITH_RELIEF_PLANNING`, ikke rød fysisk-utilgjengelig status; draget
+når canonical planner, begge adkomstretninger vurderes, og en gyldig løsning
+projiseres atomisk som release/main/recovery med post-main recovery og uendret
+actual-state før autorisert fullføring.
+
 `INV-EGRESS-022` låser skjermbilderegresjonen 74-10 `5M → 6S`: et gammelt
 annullert frigjøringssteg for 74-12 kan ikke gjenbrukes som aktiv identitet.
 Planleggeren må velge en ny komplett release/main/recovery-kjede og bevare det
@@ -105,7 +112,8 @@ Strict-driverne leser `index.html`, trekker ut inline-skriptene og evaluerer de
 faktiske production-funksjonene i en isolert VM. De kopierer ikke funksjonene
 som testes. I og L er dokumenterte read-only audits. R er kjørbar gjennom
 `INV-CANCEL-010`–`013`, X gjennom `INV-REROUTE-001`–`008`, og Y gjennom
-`INV-EGRESS-001`–`015`, og Z gjennom `INV-EGRESS-016`–`021`.
+`INV-EGRESS-001`–`015`, Z gjennom `INV-EGRESS-016`–`021`, og empty-drop-
+kontrakten gjennom `INV-EMPTY-DROP-001`–`009`.
 
 CI-jobben har stabilt navn `permanent-regressions`, kjører
 `npm run test:sde:strict`, har read-only permissions og feiler når én invariant

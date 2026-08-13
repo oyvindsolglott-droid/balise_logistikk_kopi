@@ -9,6 +9,7 @@ const root = path.resolve(__dirname, "../../..");
 const indexSource = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const generatorSource = fs.readFileSync(path.join(root, "update_static_data.py"), "utf8");
 const targetHarness = path.join(root, "tests/sde/harnesses/sde-blocked-target-three-card-harness.js");
+const emptyDropHarness = path.join(root, "tests/sde/harnesses/sde-empty-target-drag-intent-harness.js");
 const egressHarness = path.join(root, "tests/sde/harnesses/sde-trapped-egress-chain-harness.js");
 const menuHarness = path.join(root, "tests/sde/harnesses/sde-menu-access-layout-harness.js");
 const baliseHarness = path.join(root, "tests/sde/harnesses/sde-24xx-focused-mutation-harness.py");
@@ -63,6 +64,10 @@ function runTarget(source, label) {
   fs.writeFileSync(file, source);
   const execution = run(process.execPath, [targetHarness, file]);
   return {execution, report:parseReport(execution, "sde-blocked-target-three-card-harness-v1", label)};
+}
+
+function runEmptyDrop(source, label) {
+  return runIndexHarness(source,label,emptyDropHarness,"sde-empty-target-drag-intent-harness-v1");
 }
 
 function runIndexHarness(source, label, harness, schemaVersion) {
@@ -135,7 +140,55 @@ const mutations = [
     ),
   },
   {
-    id: "BLOCKER_CARD_OMITTED",
+    id: "EMPTY_SLOT_REJECTED_BEFORE_PLANNER",
+    kind: "emptyDrop",
+    expectedInvariant: "INV-EMPTY-DROP-001",
+    apply: source => mutateFunction(
+      source,
+      "getSdeNightPlacementDragTargetEligibility",
+      "return {\n    droppable:true,\n    dragIntentAccepted:true,",
+      "return {\n    droppable:false, // focused mutation: reject empty target\n    dragIntentAccepted:false,",
+      "empty target rejected before planner",
+    ),
+  },
+  {
+    id: "DIRECT_ROUTE_BLOCKAGE_PAINTS_EMPTY_TARGET_RED",
+    kind: "emptyDrop",
+    expectedInvariant: "INV-EMPTY-DROP-003",
+    apply: source => mutateFunction(
+      source,
+      "getSdeNightPlacementDragTargetEligibility",
+      "renderRedUnavailable:false,\n    physicalTargetUnavailable:false,\n    targetAvailabilityState:reliefRequired",
+      "renderRedUnavailable:true, // focused mutation: relief paints target red\n    physicalTargetUnavailable:true,\n    targetAvailabilityState:reliefRequired",
+      "empty target painted red",
+    ),
+  },
+  {
+    id: "DROP_INTENT_NEVER_REACHES_CANONICAL_PLANNER",
+    kind: "emptyDrop",
+    expectedInvariant: "INV-EMPTY-DROP-004",
+    apply: source => mutateFunction(
+      source,
+      "applySdeNightPlacementDragOverride",
+      "const order = stageSdeCanonicalGraphicDragOrder(override);",
+      "const order = null; throw new Error('focused mutation: planner bypassed');",
+      "drop intent planner bypass",
+    ),
+  },
+  {
+    id: "RELIEF_SEARCH_ONLY_CHECKS_ONE_DIRECTION",
+    kind: "emptyDrop",
+    expectedInvariant: "INV-EMPTY-DROP-005",
+    apply: source => mutateFunction(
+      source,
+      "getSdeMovePhysicalAccessAssessment",
+      "const targetAccessOptions = getSdeAccessOptionsForSlot(toSlot, \"target\");",
+      "const targetAccessOptions = getSdeAccessOptionsForSlot(toSlot, \"target\").slice(0,1); // focused mutation",
+      "one-direction relief search",
+    ),
+  },
+  {
+    id: "RELEASE_CARD_OMITTED",
     expectedInvariant: "BLOCKER_CARD_PRESENT",
     apply: source => mutateFunction(
       source,
@@ -180,7 +233,7 @@ const mutations = [
     ),
   },
   {
-    id: "BUTT_RECOVERY_CREATES_TRAPPED_EMPTY_S_SLOT",
+    id: "RECOVERY_CREATES_TRAPPED_EMPTY_SLOT",
     kind: "egress",
     expectedInvariant: "INV-EGRESS-023",
     apply: source => mutateFunction(
@@ -241,6 +294,8 @@ try {
       ? runBalise(generatorSource, mutation.id, `${mutation.id}-baseline`)
       : mutation.kind === "menu"
         ? runMenu(indexSource, `${mutation.id}-baseline`)
+        : mutation.kind === "emptyDrop"
+          ? runEmptyDrop(indexSource, `${mutation.id}-baseline`)
         : mutation.kind === "egress"
           ? runEgress(indexSource, `${mutation.id}-baseline`)
           : runTarget(indexSource, `${mutation.id}-baseline`);
@@ -251,6 +306,8 @@ try {
       ? runBalise(mutatedSource, mutation.id, mutation.id)
       : mutation.kind === "menu"
         ? runMenu(mutatedSource, mutation.id)
+        : mutation.kind === "emptyDrop"
+          ? runEmptyDrop(mutatedSource, mutation.id)
         : mutation.kind === "egress"
           ? runEgress(mutatedSource, mutation.id)
           : runTarget(mutatedSource, mutation.id);
@@ -260,6 +317,8 @@ try {
       : ["menu","egress"].includes(mutation.kind)
         ? mutant.report.counts?.fail > 0
           && mutant.report.results?.some(report=>report.id===mutation.expectedInvariant&&report.status==="FAIL")
+        : mutation.kind === "emptyDrop"
+          ? mutant.report.results?.some(report=>report.id===mutation.expectedInvariant&&report.status==="FAIL")
         : mutant.report.counts?.fail > 0
         && mutant.report.reports?.some(report=>report.invariantFailures?.includes(mutation.expectedInvariant));
     reports.push({
