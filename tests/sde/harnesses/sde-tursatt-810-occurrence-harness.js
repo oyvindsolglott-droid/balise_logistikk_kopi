@@ -15,6 +15,10 @@ const otherDate = JSON.parse(fs.readFileSync(
   path.join(root, "tests/fixtures/balise_tursatt_810_2026-08-13.json"),
   "utf8",
 ));
+const train24xx = JSON.parse(fs.readFileSync(
+  path.join(root, "tests/fixtures/balise_24xx_occurrence_binding.json"),
+  "utf8",
+));
 
 function extractFunction(name){
   const marker = `function ${name}(`;
@@ -122,6 +126,38 @@ const historicalOccurrence = makeOccurrence(historical);
 const otherDateOccurrence = makeOccurrence(otherDate);
 const setOccurrences = values=>{
   context.state.baliseTomorrowDepartureOccurrences = context.api.normalizeBaliseDepartureOccurrenceMap({810:values});
+};
+const make24xxOccurrence = fixture=>{
+  const skienStop=(fixture.routeStops||[]).find(stop=>stop.station_ref==="SKN"||stop.station_name==="Skien")||{};
+  const vehicles=(fixture.vehicleRows||[])
+    .filter(row=>row.sv_route===fixture.routeInfo.routeId&&row.station_name==="Skien")
+    .sort((left,right)=>Number(left.position)-Number(right.position))
+    .map(row=>row.vehicle);
+  return {
+    operationalDate:fixture.operationalDate,
+    requestedTrainNumber:fixture.lookupTrainNumber,
+    displayTrainNumber:fixture.lookupTrainNumber,
+    occurrenceId:`${fixture.operationalDate}|departure|${fixture.lookupTrainNumber}|${fixture.plannedDeparture}`,
+    routeId:fixture.routeInfo.routeId,
+    origin:fixture.routeInfo.origin,
+    destination:fixture.routeInfo.destination,
+    station:"Skien",
+    stationRef:"SKN",
+    stopId:skienStop.stop_id,
+    direction:"departure",
+    eventType:"departure",
+    departureTime:fixture.plannedDeparture,
+    plannedDeparture:fixture.plannedDeparture,
+    actualDeparture:"",
+    sourceRevision:fixture.sourceRevision,
+    vehicleIds:vehicles,
+    vehicleResolutionSource:"skien_occurrence_route_vehicles",
+    vehicleError:""
+  };
+};
+const occurrences24xx=train24xx.occurrences.map(make24xxOccurrence);
+const set24xxOccurrences = values=>{
+  context.state.baliseTomorrowDepartureOccurrences = context.api.normalizeBaliseDepartureOccurrenceMap({2473:values});
 };
 const historicalRow = {
   train:"810", mode:"imorgen", serviceDate:historical.serviceDate,
@@ -268,6 +304,43 @@ check("no-train-number-only-vehicle-policy",()=>{
   });
   assert.ok(source.includes("getTursattCanonicalOccurrencePartKey"));
   assert.ok(source.includes("Manuelle Tursatt-verdier er forekomst- og delbundet"));
+});
+
+check("24xx-exact-occurrence-renders-authoritative-material",()=>{
+  set24xxOccurrences(occurrences24xx);
+  const row={train:"2473",mode:"imorgen",serviceDate:"2026-08-13",station:"Skien",stationRef:"SKN",movement:"departure",direction:"departure",time:"07:31",displayTime:"07:31"};
+  const cells=context.api.createOppstillingVehicleCells("2473","departure","imorgen",row);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["69-63","69-70"]);
+  assert.equal(context.api.getTursattVehicleError(row,"departure"),"");
+});
+
+check("24xx-source-order-and-parts-remain-distinct",()=>{
+  set24xxOccurrences(occurrences24xx);
+  const row={train:"2473",mode:"imorgen",serviceDate:"2026-08-13",station:"Skien",stationRef:"SKN",movement:"departure",direction:"departure",time:"07:31",displayTime:"07:31"};
+  const binding=context.api.inspectTursattDepartureOccurrence(row);
+  const cells=context.api.createOppstillingVehicleCells("2473","departure","imorgen",row);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["69-63","69-70"]);
+  assert.notEqual(
+    context.api.getTursattCanonicalOccurrencePartKey(binding.identity,"1"),
+    context.api.getTursattCanonicalOccurrencePartKey(binding.identity,"2"),
+  );
+});
+
+check("24xx-cross-date-and-same-day-time-do-not-leak",()=>{
+  set24xxOccurrences(occurrences24xx);
+  const base={train:"2473",mode:"imorgen",station:"Skien",stationRef:"SKN",movement:"departure",direction:"departure"};
+  const otherDay={...base,serviceDate:"2026-08-14",time:"07:31",displayTime:"07:31"};
+  const later={...base,serviceDate:"2026-08-13",time:"17:31",displayTime:"17:31"};
+  assert.deepEqual(Object.values(context.api.createOppstillingVehicleCells("2473","departure","imorgen",otherDay)).slice(0,2),["69-71",""]);
+  assert.deepEqual(Object.values(context.api.createOppstillingVehicleCells("2473","departure","imorgen",later)).slice(0,2),["69-72",""]);
+});
+
+check("24xx-missing-authoritative-material-remains-uavklart",()=>{
+  set24xxOccurrences([{...occurrences24xx[0],vehicleIds:[],vehicleError:"fixture missing 24xx material"}]);
+  const row={train:"2473",mode:"imorgen",serviceDate:"2026-08-13",station:"Skien",stationRef:"SKN",movement:"departure",direction:"departure",time:"07:31",displayTime:"07:31"};
+  const cells=context.api.createOppstillingVehicleCells("2473","departure","imorgen",row);
+  assert.deepEqual([cells.vehicle1,cells.vehicle2],["",""]);
+  assert.match(context.api.getTursattVehicleError(row,"departure"),/Uavklart|fixture missing 24xx material/);
 });
 
 const failed=results.filter(item=>item.status!=="PASS");

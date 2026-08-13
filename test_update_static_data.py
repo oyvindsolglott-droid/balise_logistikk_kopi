@@ -22,6 +22,9 @@ TURSATT_810_FIXTURE = json.loads(
 TURSATT_810_OTHER_DATE_FIXTURE = json.loads(
     (Path(__file__).parent / "tests/fixtures/balise_tursatt_810_2026-08-13.json").read_text()
 )
+TRAIN_24XX_FIXTURE = json.loads(
+    (Path(__file__).parent / "tests/fixtures/balise_24xx_occurrence_binding.json").read_text()
+)
 
 
 def make_payload(mode, run_date):
@@ -220,6 +223,146 @@ class BaliseOccurrenceBoundDepartureTest(unittest.TestCase):
         self.assertEqual(resolution["departureTime"], "14:45")
         self.assertEqual(resolution["vehicleIds"], ["74-19", "74-49"])
         self.assertNotIn("74-41", resolution["vehicleIds"])
+
+
+class Balise24xxOccurrenceBindingTest(unittest.TestCase):
+    def make_candidate(self, occurrence):
+        route_info = dict(occurrence["routeInfo"])
+        rows = list(occurrence.get("vehicleRows") or [])
+        return {
+            "lookup_train_no": occurrence["lookupTrainNumber"],
+            "general_hits": [],
+            "departure_hits": [],
+            "arrival_hits": [],
+            "route_vehicle_hits": static_data.extract_route_vehicle_hits(
+                rows,
+                route_info["routeId"],
+                "Skien",
+            ),
+            "route_vehicle_rows": rows,
+            "route_stops": list(occurrence.get("routeStops") or []),
+            "route_stops_source_updated_at": occurrence["sourceRevision"],
+            "source_revision": occurrence["sourceRevision"],
+            "has_train_content": True,
+            "skien_arrival_time": None,
+            "skien_departure_time": occurrence["plannedDeparture"],
+            "route_info": route_info,
+        }
+
+    def resolve(self, occurrence):
+        candidate = self.make_candidate(occurrence)
+        selected = static_data.select_balise_candidate_result(
+            TRAIN_24XX_FIXTURE["logicalTrain"],
+            [candidate],
+            operational_date=occurrence["operationalDate"],
+        )
+        return static_data.resolve_departure_candidate(
+            TRAIN_24XX_FIXTURE["logicalTrain"],
+            occurrence["operationalDate"],
+            selected,
+        )
+
+    def test_24xx_non_skien_origin_uses_exact_skien_stop_material(self):
+        resolution = self.resolve(TRAIN_24XX_FIXTURE["occurrences"][0])
+        self.assertEqual(resolution["vehicleIds"], ["69-63", "69-70"])
+        self.assertEqual(resolution["vehicleResolutionSource"], "skien_occurrence_route_vehicles")
+        self.assertEqual(resolution["error"], "")
+
+    def test_24xx_vehicle_order_is_source_order(self):
+        resolution = self.resolve(TRAIN_24XX_FIXTURE["occurrences"][0])
+        self.assertEqual(resolution["vehicleIds"], ["69-63", "69-70"])
+
+    def test_same_24xx_train_on_other_date_has_own_material(self):
+        resolution = self.resolve(TRAIN_24XX_FIXTURE["occurrences"][1])
+        self.assertEqual(resolution["operationalDate"], "2026-08-14")
+        self.assertEqual(resolution["vehicleIds"], ["69-71"])
+
+    def test_24xx_material_never_leaks_across_dates(self):
+        occurrence = TRAIN_24XX_FIXTURE["occurrences"][0]
+        candidate = self.make_candidate(occurrence)
+        resolution = static_data.resolve_departure_candidate("2473", "2026-08-14", candidate)
+        self.assertEqual(resolution["vehicleIds"], [])
+        self.assertIn("forekomstidentiteten", resolution["error"])
+
+    def test_same_day_24xx_occurrences_are_separated_by_planned_time(self):
+        morning = self.resolve(TRAIN_24XX_FIXTURE["occurrences"][0])
+        evening = self.resolve(TRAIN_24XX_FIXTURE["occurrences"][2])
+        self.assertEqual(morning["occurrenceId"], "2026-08-13|departure|2473|07:31")
+        self.assertEqual(evening["occurrenceId"], "2026-08-13|departure|2473|17:31")
+        self.assertNotEqual(morning["vehicleIds"], evening["vehicleIds"])
+
+    def test_24xx_station_mismatch_fails_closed(self):
+        occurrence = dict(TRAIN_24XX_FIXTURE["occurrences"][0])
+        occurrence["routeStops"] = [{
+            "stop_id": "fixture-other-station",
+            "station_name": "Nordagutu",
+            "station_ref": "NGU",
+            "stop_planned_departure": "2026-08-13 07:31:00",
+        }]
+        resolution = static_data.resolve_departure_candidate(
+            "2473", "2026-08-13", self.make_candidate(occurrence)
+        )
+        self.assertEqual(resolution["vehicleIds"], [])
+        self.assertIn("forekomstidentiteten", resolution["error"])
+
+    def test_24xx_planned_time_mismatch_fails_closed(self):
+        occurrence = dict(TRAIN_24XX_FIXTURE["occurrences"][0])
+        occurrence["plannedDeparture"] = "07:32"
+        resolution = static_data.resolve_departure_candidate(
+            "2473", "2026-08-13", self.make_candidate(occurrence)
+        )
+        self.assertEqual(resolution["vehicleIds"], [])
+        self.assertIn("forekomstidentiteten", resolution["error"])
+
+    def test_24xx_source_revision_is_preserved(self):
+        resolution = self.resolve(TRAIN_24XX_FIXTURE["occurrences"][0])
+        self.assertEqual(resolution["sourceRevision"], "fixture-revision-a")
+
+    def test_new_24xx_source_revision_replaces_same_exact_occurrence(self):
+        occurrence = TRAIN_24XX_FIXTURE["occurrences"][0]
+        refreshed = json.loads(json.dumps(occurrence))
+        refreshed["sourceRevision"] = "fixture-revision-a2"
+        refreshed["vehicleRows"] = [
+            {"sv_route": "fixture-24xx-route-a", "station_name": "Skien", "position": 0, "vehicle": "69-73"}
+        ]
+        before = self.resolve(occurrence)
+        after = self.resolve(refreshed)
+        self.assertEqual(before["occurrenceId"], after["occurrenceId"])
+        self.assertEqual(after["vehicleIds"], ["69-73"])
+        self.assertEqual(after["sourceRevision"], "fixture-revision-a2")
+
+    def test_ambiguous_24xx_route_identity_fails_closed(self):
+        occurrence = TRAIN_24XX_FIXTURE["occurrences"][0]
+        first = self.make_candidate(occurrence)
+        competing_occurrence = json.loads(json.dumps(occurrence))
+        competing_occurrence["routeInfo"]["routeId"] = "fixture-24xx-route-ambiguous"
+        competing_occurrence["routeStops"][0]["stop_id"] = "fixture-24xx-stop-ambiguous"
+        competing_occurrence["vehicleRows"] = [{
+            "sv_route": "fixture-24xx-route-ambiguous",
+            "station_name": "Skien",
+            "position": 0,
+            "vehicle": "69-74",
+        }]
+        selected = static_data.select_balise_candidate_result(
+            "2473",
+            [first, self.make_candidate(competing_occurrence)],
+            operational_date="2026-08-13",
+        )
+        resolution = static_data.resolve_departure_candidate("2473", "2026-08-13", selected)
+        self.assertEqual(resolution["vehicleIds"], [])
+        self.assertIn("flere Balise-ruter", resolution["error"])
+
+    def test_missing_24xx_source_material_remains_unresolved(self):
+        occurrence = json.loads(json.dumps(TRAIN_24XX_FIXTURE["occurrences"][0]))
+        occurrence["vehicleRows"] = []
+        resolution = self.resolve(occurrence)
+        self.assertEqual(resolution["vehicleIds"], [])
+        self.assertIn("ingen kjøretøydata", resolution["error"])
+
+    def test_24xx_resolution_never_uses_train_number_only_vehicle_lookup(self):
+        source = Path(static_data.__file__).read_text()
+        self.assertNotRegex(source, r"[\"']24\d{2}[\"']\s*:\s*[\"'](?:69|70|74|75)-\d{2}")
+        self.assertNotIn("TRAIN_NUMBER_ONLY_VEHICLE_LOOKUP", source)
 
 
 class BalisePorsgrunnDepartureCompositionTest(unittest.TestCase):

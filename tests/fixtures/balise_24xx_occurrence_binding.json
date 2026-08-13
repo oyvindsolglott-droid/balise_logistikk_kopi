@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "sde-balise-24xx-occurrence-binding-v1",
+  "logicalTrain": "2473",
+  "occurrences": [
+    {
+      "operationalDate": "2026-08-13",
+      "lookupTrainNumber": "2473",
+      "plannedDeparture": "07:31",
+      "sourceRevision": "fixture-revision-a",
+      "routeInfo": {
+        "routeId": "fixture-24xx-route-a",
+        "trainNumber": "2473",
+        "operationalDate": "2026-08-13",
+        "origin": "Notodden",
+        "destination": "Porsgrunn"
+      },
+      "routeStops": [
+        {
+          "stop_id": "fixture-24xx-stop-a",
+          "station_name": "Skien",
+          "station_ref": "SKN",
+          "stop_planned_arrival": "2026-08-13 07:30:00",
+          "stop_planned_departure": "2026-08-13 07:31:00"
+        },
+        {
+          "stop_id": "fixture-24xx-porsgrunn-a",
+          "station_name": "Porsgrunn",
+          "station_ref": "PG",
+          "stop_planned_arrival": "2026-08-13 07:39:00",
+          "stop_planned_departure": null
+        }
+      ],
+      "vehicleRows": [
+        {"sv_route": "fixture-24xx-route-a", "station_name": "Skien", "position": 0, "vehicle": "69-63"},
+        {"sv_route": "fixture-24xx-route-a", "station_name": "Skien", "position": 4, "vehicle": "69-70"},
+        {"sv_route": "fixture-24xx-route-a", "station_name": "Porsgrunn", "position": 0, "vehicle": "69-63"},
+        {"sv_route": "fixture-24xx-route-a", "station_name": "Porsgrunn", "position": 4, "vehicle": "69-70"}
+      ]
+    },
+    {
+      "operationalDate": "2026-08-14",
+      "lookupTrainNumber": "2473",
+      "plannedDeparture": "07:31",
+      "sourceRevision": "fixture-revision-b",
+      "routeInfo": {
+        "routeId": "fixture-24xx-route-b",
+        "trainNumber": "2473",
+        "operationalDate": "2026-08-14",
+        "origin": "Notodden",
+        "destination": "Porsgrunn"
+      },
+      "routeStops": [
+        {
+          "stop_id": "fixture-24xx-stop-b",
+          "station_name": "Skien",
+          "station_ref": "SKN",
+          "stop_planned_arrival": "2026-08-14 07:30:00",
+          "stop_planned_departure": "2026-08-14 07:31:00"
+        }
+      ],
+      "vehicleRows": [
+        {"sv_route": "fixture-24xx-route-b", "station_name": "Skien", "position": 0, "vehicle": "69-71"}
+      ]
+    },
+    {
+      "operationalDate": "2026-08-13",
+      "lookupTrainNumber": "2473",
+      "plannedDeparture": "17:31",
+      "sourceRevision": "fixture-revision-c",
+      "routeInfo": {
+        "routeId": "fixture-24xx-route-c",
+        "trainNumber": "2473",
+        "operationalDate": "2026-08-13",
+        "origin": "Notodden",
+        "destination": "Porsgrunn"
+      },
+      "routeStops": [
+        {
+          "stop_id": "fixture-24xx-stop-c",
+          "station_name": "Skien",
+          "station_ref": "SKN",
+          "stop_planned_arrival": "2026-08-13 17:30:00",
+          "stop_planned_departure": "2026-08-13 17:31:00"
+        }
+      ],
+      "vehicleRows": [
+        {"sv_route": "fixture-24xx-route-c", "station_name": "Skien", "position": 0, "vehicle": "69-72"}
+      ]
+    }
+  ]
+}

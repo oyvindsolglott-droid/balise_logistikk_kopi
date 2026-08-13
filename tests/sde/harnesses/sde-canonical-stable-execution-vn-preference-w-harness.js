@@ -46,7 +46,7 @@ eval(prefix + String.raw`
   const placements = [["5M","75-01"],["4N","75-10"],["4S","75-09"]];
   const mainMove = direct("75-01","5M","4M","w-main");
 
-  // Preferred 4M access chain uses VN/VS while leaving ordinary holding slots unused.
+  // Preferred 4M access chain uses the highest-ranked safe local holding slot.
   resetState(placements);
   appState.txpUnavailableInfrastructure = {slots:[],tracks:[],washRouteUnavailable:false};
   const preferredRows = ctx.buildSdePhysicalBlockerGuardMoves([mainMove]);
@@ -54,16 +54,16 @@ eval(prefix + String.raw`
   const preferred = getPrimary(preferredRows);
   assert.equal(preferred.release.vehicle,"75-10");
   assert.equal(preferred.release.fromSlot,"4N");
-  assert.equal(preferred.release.toSlot,"VN");
+  assert.equal(preferred.release.toSlot,"5N");
   assert.equal(preferred.main.vehicle,"75-01");
   assert.equal(preferred.main.fromSlot,"5M");
   assert.equal(preferred.main.toSlot,"4M");
   assert.equal(preferred.recovery.vehicle,"75-10");
-  assert.equal(preferred.recovery.fromSlot,"VN");
+  assert.equal(preferred.recovery.fromSlot,"5N");
   assert.equal(preferred.recovery.toSlot,"4N");
-  assert.equal(preferred.release.sdePhysicalAccessReliefChain.holdingSlot,"VN");
-  assert.equal(preferred.release.sdePhysicalAccessReliefChain.transitResource,"VS");
-  assert.deepEqual(Array.from(preferred.release.sdePhysicalAccessReliefChain.routeResources),["VN","VS","track-access|4|north"]);
+  assert.equal(preferred.release.sdePhysicalAccessReliefChain.holdingSlot,"5N");
+  assert.equal(preferred.release.sdePhysicalAccessReliefChain.transitResource,"");
+  assert.deepEqual(Array.from(preferred.release.sdePhysicalAccessReliefChain.routeResources),["track-access|4|north"]);
 
   const preferredReader = ctx.buildSdeCanonicalProductionReader(readerSnapshot(preferredRows,placements,0));
   assert.equal(preferredReader.integrityReport.status,"PASS");
@@ -73,9 +73,9 @@ eval(prefix + String.raw`
   assert.equal(preferredReader.graphicProjection.activeOverlays.length,1);
   assert.equal(preferredReader.graphicProjection.deferredOverlays.length,2);
   assert.equal(preferredReader.reservationProjection.conflicts.length,0);
-  assert.equal(preferredReader.reservationProjection.reservations.some(item=>item.targetSlot==="5N"),false);
-  assert.equal(preferredReader.graphicProjection.activeOverlays.concat(preferredReader.graphicProjection.deferredOverlays).some(item=>item.targetSlot==="5N"),false);
-  assert.equal(preferredReader.reservationProjection.reservations.every(item=>item.routeResources.includes("VN") && item.routeResources.includes("VS")),true);
+  assert.equal(preferredReader.reservationProjection.reservations.some(item=>item.targetSlot==="5N"),true);
+  assert.equal(preferredReader.graphicProjection.activeOverlays.concat(preferredReader.graphicProjection.deferredOverlays).some(item=>item.targetSlot==="5N"),true);
+  assert.equal(preferredReader.reservationProjection.reservations.every(item=>!item.routeResources.includes("VN") && !item.routeResources.includes("VS")),true);
   assert.equal(preferredReader.graphicProjection.actualSlots.some(item=>item.vehicleId==="75-10" && item.slot==="4N"),true);
   assert.equal(preferredReader.graphicProjection.actualSlots.some(item=>item.vehicleId==="75-01" && item.slot==="5M"),true);
   const preferredCards = [
@@ -86,7 +86,7 @@ eval(prefix + String.raw`
   assert.equal(preferredAdapters.filter(adapter=>adapter.executionResolution.status==="ready").length,1);
   assert.equal(preferredAdapters.filter(adapter=>adapter.executionResolution.status==="dependency_blocked").length,2);
   assert.equal(preferredAdapters.every(adapter=>adapter.executionKey && adapter.relevantRevision),true);
-  report.preferred={chain:"4N→VN;5M→4M;VN→4N",cards:"1+2",reservations:3,overlays:"1+2",integrity:"PASS",routeResources:["VN","VS","track-access|4|north"]};
+  report.preferred={chain:"4N→5N;5M→4M;5N→4N",cards:"1+2",reservations:3,overlays:"1+2",integrity:"PASS",routeResources:["track-access|4|north"]};
 
   // Stable execution contract across 50 presentation/global-snapshot perturbations.
   const renderedCard = preferredReader.cardProjection.actionableCards[0];
@@ -150,7 +150,7 @@ eval(prefix + String.raw`
     assert.equal(context.relevantRevision,renderedAdapter.relevantRevision);
     assert.equal(context.vehicleId,"75-10");
     assert.equal(context.sourceSlot,"4N");
-    assert.equal(context.targetSlot,"VN");
+    assert.equal(context.targetSlot,"5N");
   };
   ctx.renderSdeSkiftebevegelser = ()=>{rerenders+=1;};
   ctx.alert = message=>{alerts.push(String(message));};
@@ -166,8 +166,8 @@ eval(prefix + String.raw`
   // A real target replacement is rejected by the same resolver and never reaches the handler.
   const replacedDescriptor = {
     ...renderedAdapter.executionDescriptor,
-    targetSlot:"5N",
-    executionIdentity:{...renderedAdapter.executionDescriptor.executionIdentity,targetSlot:"5N"}
+    targetSlot:"VN",
+    executionIdentity:{...renderedAdapter.executionDescriptor.executionIdentity,targetSlot:"VN"}
   };
   await ctx.handleSdeCanonicalCardAction(
     encodeURIComponent(renderedCard.canonicalCardId),
