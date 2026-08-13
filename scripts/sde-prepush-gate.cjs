@@ -9,7 +9,7 @@ const path = require("node:path");
 
 const GATE_ID = "SDE-QE-MANDATORY-PRE-PUSH";
 const GATE_VERSION = "1.2.0";
-const PROFILE_VERSION = "sde-qe-prepush-profile-v3";
+const PROFILE_VERSION = "sde-qe-prepush-profile-v4";
 const REPORT_SCHEMA = "sde-qe-prepush-report/v1";
 const MANIFEST_SCHEMA = "sde-qe-prepush-install/v1";
 const STATE_SCHEMA = "sde-qe-prepush-approval/v1";
@@ -1248,7 +1248,13 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
     ["mutation-audit", "npm", ["run", "test:sde:mutations"], 50 * 60 * 1000],
     ["python-regressions", "python3.11", ["-B", "-m", "unittest", "-v", "test_update_static_data.py", "test_sde_schedule_observability.py", "tests/sde/test_balise_actual_platform.py", "server/scripts/test_sync_production_balise_data.py"], 15 * 60 * 1000],
     ["browserguard-runtime", "npm", ["run", "test:sde:qe:browserguard:runtime"], 5 * 60 * 1000],
-    ["browserguard-contracts", "npm", ["run", "test:sde:qe:browserguard"], 20 * 60 * 1000]
+    ["browserguard-contracts", "npm", ["run", "test:sde:qe:browserguard"], 20 * 60 * 1000],
+    [
+      "menu-browser-layout",
+      "npm",
+      ["run", "test:sde:menu-browser"],
+      5 * 60 * 1000
+    ]
   ];
   for (const [id, command, args, timeoutMs] of commands) {
     record(commandTest(id, run(command, args, {cwd: candidateRoot, env, timeoutMs})));

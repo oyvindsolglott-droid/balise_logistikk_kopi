@@ -112,7 +112,8 @@ eval(prefix + String.raw`
     const mains=rows.filter(row=>row.sdePhysicalDependencyRole==="dependent");
     const recoveries=rows.filter(row=>row.sdePhysicalDependencyRole==="return");
     return Boolean(rows.length===3&&releases.length===1&&mains.length===1&&recoveries.length===1
-      && mains[0].toSlot===destination&&recoveries[0].toSlot===releases[0].fromSlot
+      && mains[0].toSlot===destination&&recoveries[0].toSlot===definition.target
+      && recoveries[0].sdeRecoveryUsesPostMainTopology===true
       && reader.cardProjection.actionableCards.length===1&&reader.cardProjection.blockedChainCards.length===2
       && reader.integrityReport.status==="PASS");
   };

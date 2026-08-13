@@ -48,6 +48,11 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
         run: xvfb-run -a python -B -m unittest discover -s tests/sde-quality-engine/browserguard -p 'test_*.py' -v
 
+      - name: Run SDE menu layout and access browser regression
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
+        run: xvfb-run -a npm run test:sde:menu-browser
+
   permanent-regressions:
     name: permanent-regressions
     runs-on: ubuntu-latest

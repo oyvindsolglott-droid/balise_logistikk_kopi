@@ -171,7 +171,12 @@ eval(prefix + String.raw`
       && overlays.length===rows.length
       && Object.keys(adapters).length===rows.length+(projection.reader?.cardProjection?.exitingCards||[]).length
       && outcomes.every(outcome=>Array.isArray(outcome.routeResources)&&outcome.routeResources.length)
-      && recoveries.every(recovery=>releases.some(release=>release.vehicle===recovery.vehicle&&release.fromSlot===recovery.toSlot&&release.toSlot===recovery.fromSlot))
+      && recoveries.every(recovery=>releases.some(release=>
+        release.vehicle===recovery.vehicle
+        && release.toSlot===recovery.fromSlot
+        && Boolean(recovery.toSlot)
+        && (recovery.sdeRecoveryUsesPostMainTopology===true||release.fromSlot===recovery.toSlot)
+      ))
     );
   }
 

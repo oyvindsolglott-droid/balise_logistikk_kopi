@@ -1,0 +1,90 @@
+"use strict";
+
+const fs = require("node:fs");
+const path = require("node:path");
+const vm = require("node:vm");
+
+const indexPath = path.resolve(process.argv[2]);
+const source = fs.readFileSync(indexPath,"utf8");
+const results = [];
+const put = (id,pass,detail)=>results.push({id,status:pass?"PASS":"FAIL",detail});
+
+function functionSource(name){
+  const start = source.indexOf(`function ${name}(`);
+  if(start < 0) throw new Error(`missing function ${name}`);
+  const brace = source.indexOf("{",start);
+  let depth = 0;
+  for(let index=brace; index<source.length; index+=1){
+    if(source[index] === "{") depth += 1;
+    else if(source[index] === "}"){
+      depth -= 1;
+      if(depth === 0) return source.slice(start,index+1);
+    }
+  }
+  throw new Error(`unterminated function ${name}`);
+}
+
+const menuMarkup = source.match(/<div class="segmented" aria-label="Hovedmeny">([\s\S]*?)<\/div>\s*<section class="panel" id="grunnoppstilling">/)?.[1] || "";
+const stadlerMarkup = menuMarkup.match(/<button[^>]*data-tab="verkstedBestillinger"[^>]*>/)?.[0] || "";
+const stadlerRule = source.match(/\.segmented button\.seg-stadler-graphic\{([^}]*)\}/)?.[1] || "";
+const desktopMenuRule = source.match(/@media \(min-width:701px\)\{([\s\S]*?)\n\}\n@media \(max-width:700px\)/)?.[1] || "";
+
+put(
+  "INV-MENU-001",
+  /class="seg seg-red seg-stadler-graphic"/.test(stadlerMarkup)
+    && /grid-template-columns:repeat\(10,minmax\(0,1fr\)\);/.test(desktopMenuRule)
+    && /\.segmented button\.seg\{[\s\S]*?grid-column:span 2;[\s\S]*?width:100%;[\s\S]*?aspect-ratio:1810 \/ 530;/.test(desktopMenuRule)
+    && /\.segmented button\.seg\.seg-turnering-graphic\{[\s\S]*?grid-column:span 1;/.test(desktopMenuRule)
+    && !/(?:max-width|max-height|zoom|transform\s*:\s*scale|grid-column)/.test(stadlerRule),
+  "STADLER uses the common wide seg sizing model with no shrinking or dedicated grid-span override"
+);
+
+let authorityPass = false;
+try{
+  const context = {dropsRuntimeCapabilities:null};
+  const allowedLevelsDeclaration = source.match(/const SDE_NIGHT_PLAN_ALLOWED_LEVELS = Object\.freeze\(\[[^;]+;/)?.[0] || "";
+  vm.createContext(context);
+  vm.runInContext(`
+    ${allowedLevelsDeclaration}
+    ${functionSource("isSdeNightPlanMenuAuthorized")}
+    globalThis.authorize=isSdeNightPlanMenuAuthorized;
+  `,context);
+  const allRoles={ok:true,roleResolved:true,roles:["drops","txp","sde_skiftere","verksted","agila"]};
+  const txp={ok:true,roleResolved:true,roles:["txp"]};
+  authorityPass = context.authorize("0",allRoles) === true
+    && context.authorize("2",txp) === true
+    && ["1","3","4","5"].every(level=>context.authorize(level,allRoles) === false)
+    && context.authorize("0",txp) === false
+    && context.authorize("2",{...txp,roleResolved:false}) === false
+    && context.authorize("2",{...txp,ok:false}) === false
+    && context.authorize("2",{ok:true,roleResolved:true,roles:[]}) === false;
+}catch(_error){}
+put("INV-MENU-002",authorityPass,"only server-authorized active levels 0 and 2 can receive Registrer Nattplan");
+
+const syncSource = functionSource("syncSdeNightPlanMenuButton");
+const createSource = functionSource("createSdeNightPlanMenuButton");
+put(
+  "INV-MENU-003",
+  !/data-tab="sdeNattplanErfaring"/.test(menuMarkup)
+    && /SDE_NIGHT_PLAN_BUTTON_LABEL = "Registrer Nattplan";/.test(source)
+    && /button\.textContent = SDE_NIGHT_PLAN_BUTTON_LABEL;/.test(createSource)
+    && /menu\.insertBefore\(button,menu\.querySelector\("\.seg-vaktplan-graphic"\)\);/.test(syncSource)
+    && /button\.remove\(\);/.test(syncSource)
+    && !/>\s*Nattplan\s*<br>\s*og erfaring\s*</i.test(menuMarkup),
+  "the renamed Nightplan button is dynamically mounted when authorized and removed rather than hidden when unauthorized"
+);
+
+const tabGuardSource = functionSource("isTabAllowedAtCurrentLevel");
+put(
+  "INV-MENU-004",
+  /String\(tabName \|\| ""\) === SDE_NIGHT_PLAN_TAB_ID/.test(tabGuardSource)
+    && /isSdeNightPlanMenuAuthorized\(getActiveAccessLevel\(\)\)/.test(tabGuardSource)
+    && /@media \(max-width:700px\)\{[\s\S]*?\.segmented button\.seg\{[\s\S]*?width:160px;[\s\S]*?height:76px;/.test(source)
+    && /\.segmented button\.seg-stadler-graphic:focus-visible\{[\s\S]*?outline:3px solid #ef4444;/.test(source)
+    && /data-tab="verkstedBestillinger" data-levels="0 4"/.test(stadlerMarkup),
+  "direct Nightplan activation is authority-gated while STADLER keeps its route, focus surface and common mobile dimensions"
+);
+
+const failed = results.filter(item=>item.status === "FAIL");
+process.stdout.write(`${JSON.stringify({schemaVersion:"sde-menu-access-layout-harness-v1",counts:{total:results.length,pass:results.length-failed.length,fail:failed.length},results})}\n`);
+process.exitCode = failed.length ? 1 : 0;

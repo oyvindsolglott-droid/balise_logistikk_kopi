@@ -49,7 +49,7 @@ eval(prefix + String.raw`
   assert.equal(main.fromSlot,"5M");
   assert.equal(main.toSlot,"6S");
   assert.equal(recovery.fromSlot,"4M");
-  assert.equal(recovery.toSlot,"5N");
+  assert.equal(recovery.toSlot,"5M");
 
   const completedActions={
     [ctx.getSdeMoveActionKey(release)]:{
@@ -72,9 +72,9 @@ eval(prefix + String.raw`
   appState.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
 
   const requestId="manual-return-after-completed-main";
-  const actionKey=["night-placement-drag","74-12","4M","5N",requestId].join("|");
+  const actionKey=["night-placement-drag","74-12","4M","5M",requestId].join("|");
   const override={
-    id:requestId,vehicle:"74-12",originalFromSlot:"4M",fromSlot:"4M",currentFromSlot:"4M",toSlot:"5N",
+    id:requestId,vehicle:"74-12",originalFromSlot:"4M",fromSlot:"4M",currentFromSlot:"4M",toSlot:"5M",
     createdAt:"2026-07-17T18:32:00.000Z",updatedAt:"2026-07-17T18:32:00.000Z",
     source:"night-placement-drag",stableActionKey:actionKey,moveKey:actionKey,
     needKey:"night-placement-drag-need|"+actionKey,hasMatchedSdeMove:false,isManualOnly:true,
@@ -108,7 +108,7 @@ eval(prefix + String.raw`
 
   assert.deepEqual(alerts,[],"a valid local return card must not be rejected as replaced");
   assert.equal(ctx.getSdeMoveActionRecord(actionKey)?.action,"completed","the return card must be quittable");
-  assert.equal(appState.grunnoppstilling["5N"],"74-12","74-12 must physically return to 5N");
+  assert.equal(appState.grunnoppstilling["5M"],"74-12","74-12 must physically recover to the source slot vacated by the main move");
   assert.equal(appState.grunnoppstilling["4M"],undefined,"the temporary 4M placement must be released");
 
   const historicalReplanKey="sde-physical-release-replan|74-10|10S|5M|74-12|5N";
@@ -137,34 +137,33 @@ eval(prefix + String.raw`
     ctx
   );
   ctx.renderSdeSkiftebevegelser=()=>{};
-  assert.equal(ctx.getSdeCurrentSlotForVehicle("74-12"),"5N","actual state must show the manually completed return");
+  assert.equal(ctx.getSdeCurrentSlotForVehicle("74-12"),"5M","actual state must show the manually completed post-main recovery");
   assert.equal(ctx.getSdeMoveActionRecord(mainActionKey)?.action,"completed");
   const nextPayload={vehicle:"74-10",slot:"6S",fromSlot:"6S",sourceKind:"actual"};
-  const nextAssessment=ctx.buildSdeNightPlacementDropAssessment(nextPayload,"5M",{moves:[]});
+  const nextAssessment=ctx.buildSdeNightPlacementDropAssessment(nextPayload,"5N",{moves:[]});
   assert.equal(nextAssessment.ok,true,nextAssessment.message||"the next order must be assessable");
-  assert.equal(nextAssessment.hardPhysicalBlocked,true,"the next order must use a complete temporary access-relief chain");
-  const nextApplied=ctx.applySdeNightPlacementDragOverride(nextPayload,"5M");
+  assert.notEqual(nextAssessment.hardPhysicalBlocked,true,"the next free-slot order must remain directly executable");
+  const nextApplied=ctx.applySdeNightPlacementDragOverride(nextPayload,"5N");
   const nextDropMessage=vm.runInContext("sdeNightPlacementDropMessage",ctx);
   assert.equal(nextApplied,true,nextDropMessage?.text||"the next order was rejected");
   assert.notEqual(nextDropMessage?.type,"error","a completed chain must not poison the next physical order");
   const nextOverview=ctx.buildSdeNightPlacementOverviewData({moves:[]});
-  assert.equal(nextOverview.rejectedSlot,"","the free 5M target must not retain a red rejection frame");
+  assert.equal(nextOverview.rejectedSlot,"","the free 5N target must not retain a red rejection frame");
   const nextReader=ctx.buildSdeCanonicalProductionReader();
   assert.equal(nextReader.integrityReport.status,"PASS","the next order must remain canonically complete");
-  assert.equal(nextReader.cardProjection.actionableCards.length,1,"the next order must expose exactly one actionable prerequisite");
+  assert.equal(nextReader.cardProjection.actionableCards.length,1,"the next direct order must expose exactly one actionable card");
   assert.equal(nextReader.graphicProjection.activeOverlays.length,1,"the next order must expose exactly one active overlay");
-  const nextReplanKey=Object.keys(appState.sdePhysicalReleaseReplans).find(key=>key.includes("|74-10|6S|5M|"));
-  const nextReplan=nextReplanKey ? appState.sdePhysicalReleaseReplans[nextReplanKey] : null;
-  assert.ok(
-    !nextReplan || nextReplan.roundNumber === 1,
-    "preflight must not advance a release round merely because unrelated runtime rows exist"
+  assert.equal(
+    Object.keys(appState.sdePhysicalReleaseReplans).some(key=>key.includes("|74-10|6S|5N|")),
+    false,
+    "a direct free-slot order must not create a release replan merely because unrelated runtime rows exist"
   );
 
   process.stdout.write(JSON.stringify({
     schemaVersion:"sde-completed-chain-manual-return-harness-v2",ok:true,
     completedBefore:[ctx.getSdeMoveActionKey(release),ctx.getSdeMoveActionKey(main)],
-    returnActionKey:actionKey,authorityOutcomeId:authority.activeOutcomeId,finalSlot:"5N",alerts,
-    nextOrder:{vehicle:"74-10",fromSlot:"6S",toSlot:"5M",actionableCards:nextReader.cardProjection.actionableCards.length}
+    returnActionKey:actionKey,authorityOutcomeId:authority.activeOutcomeId,finalSlot:"5M",alerts,
+    nextOrder:{vehicle:"74-10",fromSlot:"6S",toSlot:"5N",actionableCards:nextReader.cardProjection.actionableCards.length}
   })+"\n");
 })().catch(error=>{
   process.stderr.write(String(error?.stack||error)+"\n");

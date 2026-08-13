@@ -83,7 +83,7 @@ eval(prefix + String.raw`
   assert.equal(nextMain.toSlot,"6S");
   assert.equal(nextRecovery.vehicle,nextRelease.vehicle);
   assert.equal(nextRecovery.fromSlot,nextRelease.toSlot);
-  assert.equal(nextRecovery.toSlot,nextRelease.fromSlot);
+  assert.equal(nextRecovery.toSlot,nextMain.fromSlot,"recovery must use the source slot vacated by the completed main move");
   assert.equal(nextKeys.some(key=>historicalKeys.has(key)),false,"no completed historical action key may be reused");
   assert.equal(nextReader.integrityReport.status,"PASS");
   assert.equal(nextReader.cardProjection.actionableCards.length,1);
