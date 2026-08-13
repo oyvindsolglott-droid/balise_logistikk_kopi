@@ -53,6 +53,11 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
         run: xvfb-run -a npm run test:sde:menu-browser
 
+      - name: Run actual empty-target relief drag browser regression
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
+        run: xvfb-run -a npm run test:sde:empty-target-browser
+
   permanent-regressions:
     name: permanent-regressions
     runs-on: ubuntu-latest

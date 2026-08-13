@@ -1254,6 +1254,12 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
       "npm",
       ["run", "test:sde:menu-browser"],
       5 * 60 * 1000
+    ],
+    [
+      "empty-target-browser-drag",
+      "npm",
+      ["run", "test:sde:empty-target-browser"],
+      8 * 60 * 1000
     ]
   ];
   for (const [id, command, args, timeoutMs] of commands) {

@@ -250,7 +250,8 @@ eval(prefix + String.raw`
   assert.equal(noSafeReader.cardProjection.actionableCards.some(card=>card.vehicleId==="75-01"),false);
   vm.runInContext('sdeShiftLastRenderedData={moves:[],score:0}',ctx);
   const noSafeDrag = ctx.applySdeNightPlacementDragOverride({vehicle:"75-01",slot:"5M",fromSlot:"5M",sourceKind:"actual"},"4M");
-  assert.equal(noSafeDrag,false);
+  assert.equal(noSafeDrag,true);
+  assert.equal(vm.runInContext("sdeNightPlacementBlockedMoveRequest?.diagnosticOnly===true&&sdeNightPlacementBlockedMoveRequest?.dragIntentAccepted===true",ctx),true);
   assert.equal(Object.keys(appState.sdeNightPlacementManualOverrides).length,0);
   resetState([...accessPlacements,["4M","X-TARGET"]]);
   const occupiedBlock = ctx.getSdeHardPhysicalBlockStateForMove(accessMain);

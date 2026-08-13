@@ -4668,6 +4668,15 @@ button{padding:12px 12px}
   outline:3px solid rgba(34,197,94,.72);
   outline-offset:2px;
 }
+.sde-night-placement-slot.drag-over.drop-plan-relief{
+  outline-color:rgba(59,130,246,.82);
+  background:rgba(59,130,246,.1);
+}
+.sde-night-placement-slot.drop-reservation-conflict{
+  outline:3px solid rgba(234,179,8,.82);
+  outline-offset:2px;
+}
+.sde-night-placement-slot.drop-unavailable,
 .sde-night-placement-slot.drop-rejected{
   outline:3px solid rgba(248,113,113,.88);
   outline-offset:2px;
@@ -19211,6 +19220,7 @@ function buildSdeTemporaryAccessReliefChainPlan(blockedRow, blockState, freeingM
     ]),
     dedicatedHoldingResource:holdingSlot === "VN" ? "VN" : "",
     transitResource:holdingSlot === "VN" ? "VS" : "",
+    recoveryUsesPostMainTopology:true,
     sequenceStepCount:3
   };
 }
@@ -19349,6 +19359,7 @@ function buildSdeCanonicalAlternateReliefReturnRow(plan){
     recommendationReason:`Brukerens midlertidige mål ${holdingSlot} er ikke endelig parkering. Mandatory recovery til ${targetSlot} består.`,
     isManualOnly:true,
     isSdePhysicalBlockerReturnMove:true,
+    sdeRecoveryUsesPostMainTopology:true,
     sdePhysicalChainId:plan.chainId,
     sdePhysicalChainStep:3,
     sdePhysicalChainStepCount:3,
@@ -19425,6 +19436,7 @@ function buildSdeTemporaryAccessReturnRow(plan){
     recommendationReason:`Midlertidig frigjøringsslot er ikke endelig parkering. ${plan.blockerVehicle} returneres til opprinnelig endeslot ${targetSlot} via validert ${plan.accessEnd}-adkomst.`,
     isManualOnly:true,
     isSdePhysicalBlockerReturnMove:true,
+    sdeRecoveryUsesPostMainTopology:!recoveryAfterCancelledMain && plan.recoveryUsesPostMainTopology === true,
     sdePhysicalChainId:plan.chainId,
     sdePhysicalChainStep:3,
     sdePhysicalChainStepCount:3,
@@ -38661,6 +38673,106 @@ function getSdeNightPlacementWashTargetAssessment(targetSlot, row, fromSlot){
   return {ok:true, reason:vnAvailability.reason};
 }
 
+function getSdeNightPlacementActualStateRevision(){
+  return getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+    physicalOccupants:getSdeNightPlacementPhysicalOccupants(),
+    unavailableInfrastructure:state.txpUnavailableInfrastructure || {},
+    sharedDraftAppliedRevision:state.sharedSporplanDraftAppliedRevision || null
+  }));
+}
+
+function getSdeNightPlacementDragTargetEligibility(payload, toSlot, data=sdeShiftLastRenderedData || getSdeShiftShowcaseData()){
+  const vehicle = sanitizeVehicleValue(payload?.vehicle);
+  const targetSlot = normalizeSlot(toSlot);
+  const fromSlot = normalizeSlot(payload?.slot || payload?.fromSlot || getSdePhysicalSlotForVehicle(vehicle));
+  const actualStateRevision = getSdeNightPlacementActualStateRevision();
+  const unavailable = (targetAvailabilityState, message, extra={}) => ({
+    droppable:false,
+    dragIntentAccepted:false,
+    plannerRequired:false,
+    plannerInvoked:false,
+    renderRedUnavailable:Boolean(extra.renderRedUnavailable),
+    physicalTargetUnavailable:Boolean(extra.renderRedUnavailable),
+    targetAvailabilityState,
+    vehicle,
+    fromSlot,
+    toSlot:targetSlot,
+    actualStateRevision,
+    message,
+    ...extra
+  });
+
+  if(!vehicle || !targetSlot){
+    return unavailable("INVALID_TARGET", "Flyttingen mangler kjøretøy eller målspor.");
+  }
+  if(!isSdeNightPlacementOrdinarySlot(targetSlot) && !isSdeWashTrackSlot(targetSlot)){
+    return unavailable("INVALID_TARGET", "Målsporet er ikke en gyldig fysisk nattplassering.");
+  }
+  const row = findSdeNightPlacementMoveForPayload(payload,data);
+  const washTargetAssessment = getSdeNightPlacementWashTargetAssessment(targetSlot,row,fromSlot);
+  if(!washTargetAssessment.ok){
+    return unavailable("INVALID_TARGET", washTargetAssessment.message);
+  }
+
+  const physicalOccupant = getSdeNightPlacementPhysicalOccupants()[targetSlot] || null;
+  if(physicalOccupant?.vehicle && normalizeVehicleToken(physicalOccupant.vehicle) !== normalizeVehicleToken(vehicle)){
+    return unavailable(
+      "PHYSICALLY_OCCUPIED",
+      `${targetSlot} er fysisk belagt av ${physicalOccupant.vehicle}.`,
+      {renderRedUnavailable:true,physicalOccupant:physicalOccupant.vehicle}
+    );
+  }
+  if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(targetSlot)){
+    return unavailable(
+      "INFRASTRUCTURE_OUT_OF_SERVICE",
+      `${targetSlot} er markert uvirksomt i TXP Input Sporplan.`,
+      {renderRedUnavailable:true}
+    );
+  }
+
+  const canonicalReaderMode = getSdeProductionReaderMode(window.location, {
+    technicalFailure:Boolean(sdeProductionReaderFallbackError) || isSdeCanonicalReaderTechnicalFailureTestRequested()
+  }) === "canonical";
+  const reservationState = canonicalReaderMode
+    ? getSdeCanonicalDropTargetReservationState(targetSlot,vehicle)
+    : {available:false,active:false,reservation:null,ownerVehicle:"",ownerCardId:"",sameVehicle:false,staleReservations:[],planRevision:""};
+  if(reservationState.active && !reservationState.sameVehicle){
+    return unavailable(
+      "RESERVATION_CONFLICT",
+      `${targetSlot} er reservert av aktivt canonical kort for ${reservationState.ownerVehicle || "annet kjøretøy"}.`,
+      {reservationState,planRevision:reservationState.planRevision || ""}
+    );
+  }
+
+  const blockedRequest = buildSdeNightPlacementBlockedMoveRequest(vehicle,fromSlot,targetSlot,row);
+  const directWashTransit = getSdeDirectWashTransitRouteAssessment(
+    blockedRequest,getSdeTrappedEgressActualOccupancy()
+  );
+  const hardBlockState = directWashTransit.eligible
+    ? {hardBlocked:false}
+    : getSdeCompleteTrappedEgressBlockState(
+        blockedRequest,getSdeHardPhysicalBlockStateForMove(blockedRequest)
+      );
+  const reliefRequired = hardBlockState.hardBlocked === true;
+  return {
+    droppable:true,
+    dragIntentAccepted:true,
+    plannerRequired:true,
+    plannerInvoked:false,
+    renderRedUnavailable:false,
+    physicalTargetUnavailable:false,
+    targetAvailabilityState:reliefRequired ? "AVAILABLE_WITH_RELIEF_PLANNING" : "DIRECTLY_AVAILABLE",
+    vehicle,
+    fromSlot,
+    toSlot:targetSlot,
+    actualStateRevision,
+    planRevision:reservationState.planRevision || "",
+    reservationState,
+    reliefRequired,
+    hardBlockState
+  };
+}
+
 function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLastRenderedData || getSdeShiftShowcaseData()){
   const vehicle = sanitizeVehicleValue(payload?.vehicle);
   const targetSlot = normalizeSlot(toSlot);
@@ -38732,29 +38844,33 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
     };
   }
 
-  const physicalOccupants = getSdeNightPlacementPhysicalOccupants();
-  const physicalOccupant = physicalOccupants[targetSlot] || null;
-  if(physicalOccupant?.vehicle && normalizeVehicleToken(physicalOccupant.vehicle) !== normalizeVehicleToken(vehicle)){
+  const targetEligibility = getSdeNightPlacementDragTargetEligibility(payload,targetSlot,data);
+  if(!targetEligibility.droppable){
+    const occupied = targetEligibility.targetAvailabilityState === "PHYSICALLY_OCCUPIED";
+    const unavailableInfrastructure = targetEligibility.targetAvailabilityState === "INFRASTRUCTURE_OUT_OF_SERVICE";
     return {
       ok:false,
-      timeStatus:"CONFLICT_TARGET_OCCUPIED",
-      targetSlotOccupant:physicalOccupant.vehicle,
-      message:`Plassen er allerede belagt av ${physicalOccupant.vehicle}. Velg en ledig plass eller flytt eksisterende kjøretøy først.`,
-      conflicts:[`Målspor ${targetSlot} er fysisk belagt av ${physicalOccupant.vehicle}.`],
-      affectedVehicles:[{slot:targetSlot, vehicle:physicalOccupant.vehicle, reason:"fysisk occupant"}]
+      ...targetEligibility,
+      timeStatus:occupied
+        ? "CONFLICT_TARGET_OCCUPIED"
+        : unavailableInfrastructure
+          ? "CONFLICT_INFRASTRUCTURE_OUT_OF_SERVICE"
+          : "CONFLICT_TARGET_RESERVED",
+      targetSlotOccupant:targetEligibility.physicalOccupant || targetEligibility.reservationState?.ownerVehicle || "",
+      message:targetEligibility.message,
+      conflicts:[targetEligibility.message],
+      affectedVehicles:targetEligibility.physicalOccupant
+        ? [{slot:targetSlot,vehicle:targetEligibility.physicalOccupant,reason:"fysisk occupant"}]
+        : []
     };
   }
 
   const currentOverview = buildSdeNightPlacementOverviewData(data);
   const projectedEntry = currentOverview.slots?.[targetSlot] || null;
-  const canonicalDropReservationState = getSdeProductionReaderMode(window.location, {
-    technicalFailure:Boolean(sdeProductionReaderFallbackError) || isSdeCanonicalReaderTechnicalFailureTestRequested()
-  }) === "canonical"
-    ? getSdeCanonicalDropTargetReservationState(targetSlot,vehicle)
-    : {available:false,active:false,reservation:null,ownerVehicle:"",ownerCardId:"",sameVehicle:false,staleReservations:[]};
+  const canonicalDropReservationState = targetEligibility.reservationState ||
+    {available:false,active:false,reservation:null,ownerVehicle:"",ownerCardId:"",sameVehicle:false,staleReservations:[],planRevision:""};
   const projectedPlanHasCanonicalOwner = canonicalDropReservationState.available === true
-    ? canonicalDropReservationState.active === true
-    : true;
+    && canonicalDropReservationState.active === true; // SDE_EMPTY_TARGET_REQUIRES_CANONICAL_RESERVATION_CONFLICT
   const projectedCollisionVehicles = getSdeNightPlacementCollisionVehicles(projectedEntry);
   if(projectedCollisionVehicles.length > 1 && projectedPlanHasCanonicalOwner){
     const vehicleList = projectedCollisionVehicles.join(", ");
@@ -38871,6 +38987,8 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
 
     return {
       ok:true,
+      ...targetEligibility,
+      plannerInvoked:true,
       hardPhysicalBlocked:true,
       vehicle,
       fromSlot:assessmentFromSlot,
@@ -38908,6 +39026,8 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
 
   return {
     ok:true,
+    ...targetEligibility,
+    plannerInvoked:true,
     vehicle,
     fromSlot:assessmentFromSlot,
     currentFromSlot:payloadSlot || assessmentFromSlot,
@@ -39736,7 +39856,9 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
       type:"error",
       slot:targetSlot,
       text:assessment.message,
-      timeStatus:assessment.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW"
+      timeStatus:assessment.timeStatus || "UNKNOWN_TIME_MANUAL_REVIEW",
+      targetAvailabilityState:assessment.targetAvailabilityState || "INVALID_TARGET",
+      physicalTargetUnavailable:assessment.physicalTargetUnavailable === true
     };
     renderSdeSkiftebevegelser();
     return false;
@@ -39855,6 +39977,13 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     sourceEvent:assessment.sourceEvent,
     nextRequiredUse:assessment.nextRequiredUse,
     targetSlotOccupant:assessment.targetSlotOccupant || "",
+    direction:`${originalFromSlot}->${assessment.toSlot}`,
+    actualStateRevision:String(assessment.actualStateRevision || ""),
+    planRevision:String(assessment.planRevision || ""),
+    intentIdentity:generatedId,
+    dragIntentAccepted:assessment.dragIntentAccepted === true,
+    canonicalPlannerInvoked:assessment.plannerInvoked === true,
+    targetAvailabilityState:assessment.targetAvailabilityState || "DIRECTLY_AVAILABLE",
     timeStatus:assessment.timeStatus,
     conflicts:assessment.conflicts,
     affectedVehicles:assessment.affectedVehicles,
@@ -39880,7 +40009,6 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   if(canonicalReaderMode){
     const previousOverrides = cloneSdeCanonicalValue(getSdeNightPlacementManualOverrides()) || {};
     const previousAuthorities = cloneSdeCanonicalValue(getSdeActiveMoveOutcomes()) || {};
-    const previousBlockedRequest = sdeNightPlacementBlockedMoveRequest;
     try{
       supersedeSdeNightPlacementPlanningStateForVehicle(assessment.vehicle);
       const physicalSourceSlot = getSdePhysicalSlotForVehicle(assessment.vehicle);
@@ -39895,6 +40023,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
       removeSdeNightPlacementOverridesForVehicleStep(assessment.vehicle, originalFromSlot);
       getSdeNightPlacementManualOverrides()[key] = override;
       const order = stageSdeCanonicalGraphicDragOrder(override);
+      override.planRevision = String(order?.reader?.planRevision || override.planRevision || "").trim();
       sdeNightPlacementBlockedMoveRequest = null;
       sdeNightPlacementSelectedSlot = "";
       sdeNightPlacementDropMessage = {
@@ -39903,7 +40032,9 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
         text:assessment.hardPhysicalBlocked
           ? `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Fysisk frigjøringskjede med obligatorisk retur er validert; bare første steg er handlingsklart.`
           : `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Canonical kort, reservasjon, planoverlay og handleradapter er entydige.`,
-        timeStatus:assessment.timeStatus
+        timeStatus:assessment.timeStatus,
+        targetAvailabilityState:assessment.targetAvailabilityState,
+        physicalTargetUnavailable:false
       };
       persist(true);
       renderSdeSkiftebevegelser();
@@ -39911,16 +40042,30 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     }catch(error){
       state.sdeNightPlacementManualOverrides = previousOverrides;
       state.sdeActiveMoveOutcomes = previousAuthorities;
-      sdeNightPlacementBlockedMoveRequest = previousBlockedRequest;
+      sdeNightPlacementBlockedMoveRequest = {
+        ...(assessment.blockedMoveRequest || buildSdeNightPlacementBlockedMoveRequest(
+          assessment.vehicle,originalFromSlot,assessment.toSlot,assessment.row
+        )),
+        diagnosticOnly:true,
+        dragIntentAccepted:true,
+        canonicalPlannerInvoked:true,
+        intentIdentity:generatedId,
+        actualStateRevision:String(assessment.actualStateRevision || ""),
+        planRevision:String(assessment.planRevision || ""),
+        direction:`${originalFromSlot}->${assessment.toSlot}`
+      };
       sdeNightPlacementSelectedSlot = "";
       sdeNightPlacementDropMessage = {
-        type:"error",
+        type:"warning",
         slot:assessment.toSlot,
-        text:`Bestilling avvist: ${error instanceof Error ? error.message : String(error || "canonical bestillingskjede kunne ikke opprettes")}`,
-        timeStatus:"UNKNOWN_TIME_MANUAL_REVIEW"
+        text:`Bestilling avvist som operativ kjede, men plan-intent er beholdt diagnostic-only: ${error instanceof Error ? error.message : String(error || "canonical bestillingskjede kunne ikke opprettes")}`,
+        timeStatus:"DIAGNOSTIC_ONLY_NO_SAFE_PLAN",
+        targetAvailabilityState:assessment.targetAvailabilityState || "AVAILABLE_WITH_RELIEF_PLANNING",
+        physicalTargetUnavailable:false
       };
+      persist(true);
       renderSdeSkiftebevegelser();
-      return false;
+      return true;
     }
   }
 
@@ -40638,7 +40783,9 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     })),
     reservePlacements,
     warnings,
-    rejectedSlot:sdeNightPlacementDropMessage?.type === "error" ? normalizeSlot(sdeNightPlacementDropMessage.slot) : "",
+    rejectedSlot:sdeNightPlacementDropMessage?.type === "error" && sdeNightPlacementDropMessage?.physicalTargetUnavailable === true
+      ? normalizeSlot(sdeNightPlacementDropMessage.slot)
+      : "", // SDE_EMPTY_TARGET_NEVER_RED_FOR_RELIEF
     counts:{
       ordinarySlots:ordinarySlots.size,
       occupied:occupiedCount,
@@ -41016,8 +41163,9 @@ function setupSdeNightPlacementDragAndDrop(){
   let coordinateDrag = null;
 
   const clearDragClasses = () => {
-    panel.querySelectorAll(".sde-night-placement-slot.drag-over,.sde-night-placement-slot.dragging,.sde-night-placement-proposal.dragging").forEach(el=>{
-      el.classList.remove("drag-over", "dragging");
+    panel.querySelectorAll(".sde-night-placement-slot.drag-over,.sde-night-placement-slot.dragging,.sde-night-placement-proposal.dragging,.sde-night-placement-slot.drop-plan-relief,.sde-night-placement-slot.drop-reservation-conflict,.sde-night-placement-slot.drop-unavailable").forEach(el=>{
+      el.classList.remove("drag-over", "dragging", "drop-plan-relief", "drop-reservation-conflict", "drop-unavailable");
+      delete el.dataset.sdeDropTargetState;
     });
   };
 
@@ -41041,11 +41189,29 @@ function setupSdeNightPlacementDragAndDrop(){
     sourceKind:slotEl.dataset.sdeNightPlacementSourceKind || ""
   });
 
-  const markDragTarget = target => {
-    panel.querySelectorAll(".sde-night-placement-slot.drag-over").forEach(el=>{
-      if(el !== target) el.classList.remove("drag-over");
+  const markDragTarget = (target,payload=sdeNightPlacementDragPayload) => {
+    panel.querySelectorAll(".sde-night-placement-slot.drag-over,.sde-night-placement-slot.drop-plan-relief,.sde-night-placement-slot.drop-reservation-conflict,.sde-night-placement-slot.drop-unavailable").forEach(el=>{
+      if(el !== target){
+        el.classList.remove("drag-over", "drop-plan-relief", "drop-reservation-conflict", "drop-unavailable");
+        delete el.dataset.sdeDropTargetState;
+      }
     });
-    if(target) target.classList.add("drag-over");
+    if(!target) return null;
+    const eligibility = getSdeNightPlacementDragTargetEligibility(
+      payload,target.dataset.sdeNightPlacementSlot,sdeShiftLastRenderedData || getSdeShiftShowcaseData()
+    );
+    target.dataset.sdeDropTargetState = eligibility.targetAvailabilityState;
+    if(eligibility.droppable){
+      target.classList.add("drag-over");
+      if(eligibility.targetAvailabilityState === "AVAILABLE_WITH_RELIEF_PLANNING"){
+        target.classList.add("drop-plan-relief");
+      }
+    }else if(eligibility.targetAvailabilityState === "RESERVATION_CONFLICT"){
+      target.classList.add("drop-reservation-conflict");
+    }else if(eligibility.renderRedUnavailable){
+      target.classList.add("drop-unavailable");
+    }
+    return eligibility;
   };
 
   const startCoordinateDrag = (event, source) => {
@@ -41084,7 +41250,7 @@ function setupSdeNightPlacementDragAndDrop(){
       coordinateDrag.slotEl.classList.add("dragging");
     }
     event.preventDefault();
-    markDragTarget(getSlotFromPoint(event.clientX, event.clientY));
+    markDragTarget(getSlotFromPoint(event.clientX, event.clientY),coordinateDrag.payload);
   };
 
   const endCoordinateDrag = (event, source) => {
@@ -41133,17 +41299,26 @@ function setupSdeNightPlacementDragAndDrop(){
   panel.addEventListener("dragover", event=>{
     const target = getSlotFromEvent(event);
     if(!target || !panel.contains(target) || !sdeNightPlacementDragPayload) return;
+    const eligibility = markDragTarget(target,sdeNightPlacementDragPayload);
+    if(!eligibility?.droppable) return;
     event.preventDefault();
     if(event.dataTransfer){
       event.dataTransfer.dropEffect = "move";
     }
-    markDragTarget(target);
+  });
+
+  panel.addEventListener("dragenter", event=>{
+    const target = getSlotFromEvent(event);
+    if(!target || !panel.contains(target) || !sdeNightPlacementDragPayload) return;
+    const eligibility = markDragTarget(target,sdeNightPlacementDragPayload);
+    if(eligibility?.droppable) event.preventDefault();
   });
 
   panel.addEventListener("dragleave", event=>{
     const target = getSlotFromEvent(event);
     if(target && !target.contains(event.relatedTarget)){
-      target.classList.remove("drag-over");
+      target.classList.remove("drag-over", "drop-plan-relief", "drop-reservation-conflict", "drop-unavailable");
+      delete target.dataset.sdeDropTargetState;
     }
   });
 
@@ -42618,6 +42793,7 @@ function getSdeCanonicalDropTargetReservationState(targetSlot, vehicle, reader=n
     const staleReservations = pipeline.orphanReservations.filter(item=>normalizeSlot(item?.targetSlot) === target);
     return {
       available:true,
+      planRevision:String(sourceReader?.planRevision || "").trim(),
       active:Boolean(reservation),
       reservation,
       ownerCardId:String(reservation?.ownerCardId || "").trim(),
@@ -42628,6 +42804,7 @@ function getSdeCanonicalDropTargetReservationState(targetSlot, vehicle, reader=n
   }catch(error){
     return {
       available:false,
+      planRevision:"",
       active:false,
       reservation:null,
       ownerCardId:"",

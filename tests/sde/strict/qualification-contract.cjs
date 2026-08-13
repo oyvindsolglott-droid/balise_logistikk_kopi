@@ -55,6 +55,15 @@ const STRICT_INVARIANT_IDS = Object.freeze([
   "INV-EGRESS-024",
   "INV-EGRESS-025",
   "INV-EGRESS-026",
+  "INV-EMPTY-DROP-001",
+  "INV-EMPTY-DROP-002",
+  "INV-EMPTY-DROP-003",
+  "INV-EMPTY-DROP-004",
+  "INV-EMPTY-DROP-005",
+  "INV-EMPTY-DROP-006",
+  "INV-EMPTY-DROP-007",
+  "INV-EMPTY-DROP-008",
+  "INV-EMPTY-DROP-009",
   "INV-MENU-001",
   "INV-MENU-002",
   "INV-MENU-003",
@@ -94,8 +103,8 @@ const STRICT_REPLAY_TIMEOUT_MS = 60_000;
 const BASELINE_REPLAY_TIMEOUT_MS = 180_000;
 const CHILD_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
-if (STRICT_TOTAL !== 84 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
-  throw new Error("active strict invariant catalog must contain exactly 84 unique IDs");
+if (STRICT_TOTAL !== 93 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
+  throw new Error("active strict invariant catalog must contain exactly 93 unique IDs");
 }
 
 function canonical(value) {
