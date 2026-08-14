@@ -24,6 +24,7 @@ const LOG_PATH = path.join(TEMP_ROOT, "server.log");
 const ASSETS = Object.freeze([
   asset("/sde_intelligent_night_planning.js", "sde_intelligent_night_planning.js", "application/javascript; charset=utf-8", "private, max-age=600, must-revalidate"),
   asset("/sde_night_planning_ui.js", "sde_night_planning_ui.js", "application/javascript; charset=utf-8", "private, max-age=600, must-revalidate"),
+  asset("/assets/registrer-plan-i-sde-button.png", "assets/registrer-plan-i-sde-button.png", "image/png", "private, max-age=600, must-revalidate"),
   asset("/assets/vendor/tesseract/tesseract.min.js", "assets/vendor/tesseract/tesseract.min.js", "application/javascript; charset=utf-8", "private, max-age=31536000, immutable"),
   asset("/assets/vendor/tesseract/worker.min.js", "assets/vendor/tesseract/worker.min.js", "application/javascript; charset=utf-8", "private, max-age=31536000, immutable"),
   asset("/assets/vendor/tesseract-core/tesseract-core-lstm.wasm.js", "assets/vendor/tesseract-core/tesseract-core-lstm.wasm.js", "application/javascript; charset=utf-8", "private, max-age=31536000, immutable"),

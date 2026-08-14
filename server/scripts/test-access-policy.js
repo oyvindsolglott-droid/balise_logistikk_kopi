@@ -228,10 +228,23 @@ expectPolicy("Tursatt button graphic is an allowlisted static asset", "GET", "/a
   requiresRuntimeAllowlist: true
 });
 
+expectPolicy("Registrer Plan i SDE graphic is an allowlisted static asset", "GET", "/assets/registrer-plan-i-sde-button.png", {
+  endpointCategory: ENDPOINT_CATEGORIES.STATIC_ASSET,
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  staticKind: STATIC_RESOURCE_KINDS.ASSET,
+  requiresRuntimeAllowlist: true
+});
+
 assert.match(
   fs.readFileSync(INDEX_FILE, "utf8"),
   /\["tursatt-button\.png", path\.join\(REPO_ROOT, "assets", "tursatt-button\.png"\)\]/,
   "production server must serve the Tursatt button graphic from the static asset allowlist"
+);
+
+assert.match(
+  fs.readFileSync(INDEX_FILE, "utf8"),
+  /\["registrer-plan-i-sde-button\.png", path\.join\(REPO_ROOT, "assets", "registrer-plan-i-sde-button\.png"\)\]/,
+  "production server must serve the exact Registrer Plan i SDE graphic from the static asset allowlist"
 );
 
 expectNoPolicy("unknown data file is not classified", "GET", "/data/private.json");
