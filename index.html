@@ -9739,7 +9739,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 13. august 2026</p>
+<p class="sub">Siste revisjon: 14. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -19567,6 +19567,50 @@ function buildSdeVnRecoveryObligation(plan, actionTime=""){
   }, plan.chainId);
 }
 
+function buildSdeTrappedEgressVnRecoveryObligation(plan, actionTime=""){
+  if(
+    !plan
+    || plan.context !== SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT
+    || plan.sdeTrappedEgressChain !== true
+    || normalizeSlot(plan.holdingSlot) !== "VN"
+  ) return null;
+  const chainId = String(plan.chainId || "").trim();
+  const blockerVehicle = sanitizeVehicleValue(plan.blockerVehicle);
+  const returnActionKey = String(plan.returnActionKey || "").trim();
+  const mainActionKey = String(plan.mainActionKey || "").trim();
+  if(!chainId || !blockerVehicle || !returnActionKey || !mainActionKey) return null;
+  const recoveryActionKey = String(
+    plan.recoveryActionKey
+    || `${chainId}|recovery-fallback|${normalizeVehicleToken(blockerVehicle)}|VN|${normalizeSlot(plan.blockerFromSlot)}`
+  ).trim();
+  const normalizedPlan = {
+    ...plan,
+    recoveryActionKey,
+    recoveryTargetSlot:normalizeSlot(plan.recoveryTargetSlot || plan.blockerFromSlot),
+    sequenceStepCount:Number(plan.sequenceStepCount || 3)
+  };
+  return normalizeSdeVnRecoveryObligation({
+    obligationId:chainId,
+    vnRecoveryRequired:true,
+    vnVehicleId:blockerVehicle,
+    vnEntryToken:buildSdeVnEntryToken(blockerVehicle,actionTime,plan),
+    vnRecoveryChainId:chainId,
+    vnRecoveryCardId:returnActionKey,
+    vnRecoveryFallbackCardId:recoveryActionKey,
+    activeRecoveryCardId:returnActionKey,
+    vnActiveRecoveryMode:"return",
+    vnRecoveryAuthoritative:true,
+    vnOriginSlot:normalizeSlot(plan.blockerFromSlot),
+    vnPlannedReturnTarget:normalizeSlot(plan.returnTargetSlot),
+    vnRecoveryStatus:"waiting_for_main",
+    vnEnteredAtStep:1,
+    recoveryDependsOnCardId:mainActionKey,
+    createdAt:actionTime,
+    updatedAt:actionTime,
+    plan:normalizedPlan
+  }, chainId);
+}
+
 function migrateSdeVnRecoveryObligationsFromMoveActions(){
   const obligations = ensureSdeVnRecoveryObligations();
   const actions = state.sdeMoveActions || {};
@@ -19575,13 +19619,16 @@ function migrateSdeVnRecoveryObligationsFromMoveActions(){
 
   Object.entries(actions).forEach(([releaseActionKey, action])=>{
     if(action?.action !== "completed") return;
-    const plan = action?.snapshot?.sdePhysicalVnReliefChain;
-    if(!plan || plan.context !== SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT) return;
+    const plan = action?.snapshot?.sdePhysicalVnReliefChain
+      || action?.snapshot?.sdePhysicalAccessReliefChain;
+    if(!plan) return;
     if(String(plan.releaseActionKey || "") !== releaseActionKey) return;
     if(!haveSameSdeVehicleTokens(plan.blockerVehicle, vnVehicle)) return;
     if(actions[plan.returnActionKey]?.action === "completed" || actions[plan.recoveryActionKey]?.action === "completed") return;
     if(obligations[plan.chainId]) return;
-    const obligation = buildSdeVnRecoveryObligation(plan, action.time || "");
+    const obligation = plan.context === SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT
+      ? buildSdeVnRecoveryObligation(plan, action.time || "")
+      : buildSdeTrappedEgressVnRecoveryObligation(plan, action.time || "");
     if(obligation) obligations[plan.chainId] = obligation;
   });
   return obligations;
@@ -19620,7 +19667,7 @@ function getSdeVnRecoveryObligationForMainRow(row){
 function updateSdeVnRecoveryObligationForMove(row, actionType, actionTime=""){
   const type = String(actionType || "").trim();
   const key = getSdeMoveActionKey(row);
-  const plan = row?.sdePhysicalVnReliefChain;
+  const plan = row?.sdePhysicalVnReliefChain || row?.sdePhysicalAccessReliefChain;
   const obligations = ensureSdeVnRecoveryObligations();
 
   if(
@@ -19630,6 +19677,16 @@ function updateSdeVnRecoveryObligationForMove(row, actionType, actionTime=""){
     normalizeSlot(row?.recommendedSlot || row?.toSlot) === "VN"
   ){
     const obligation = buildSdeVnRecoveryObligation(plan, actionTime);
+    if(obligation) obligations[obligation.vnRecoveryChainId] = obligation;
+  }
+  if(
+    type === "completed"
+    && plan?.context === SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT
+    && plan?.sdeTrappedEgressChain === true
+    && Number(row?.sdePhysicalChainStep) === 1
+    && normalizeSlot(row?.recommendedSlot || row?.toSlot) === "VN"
+  ){
+    const obligation = buildSdeTrappedEgressVnRecoveryObligation(plan,actionTime);
     if(obligation) obligations[obligation.vnRecoveryChainId] = obligation;
   }
 
@@ -20074,9 +20131,11 @@ function buildSdePersistentVnRecoveryRows(sourceRows=[]){
       .map(getSdeMoveActionKey)
       .filter(Boolean)
   );
-  const rows = obligations.map(obligation=>buildSdeVnRecoveryRowFromObligation(obligation, {
-    mainRowPresent:sourceActionKeys.has(String(obligation.plan?.mainActionKey || ""))
-  })).filter(Boolean);
+  const rows = obligations.map(obligation=>{
+    const mainRowPresent = sourceActionKeys.has(String(obligation.plan?.mainActionKey || ""));
+    if(obligation.plan?.sdeTrappedEgressChain === true && mainRowPresent) return null;
+    return buildSdeVnRecoveryRowFromObligation(obligation, {mainRowPresent});
+  }).filter(Boolean);
   const seen = new Set();
   return rows.filter(row=>{
     const key = getSdeMoveActionKey(row);
@@ -20090,7 +20149,13 @@ function getSdeCompletedTemporaryVnReliefPlanForMainRow(row){
   const mainActionKey = getSdeMoveActionKey(row);
   if(!mainActionKey) return null;
   const obligation = getSdeVnRecoveryObligationForMainRow(row);
-  if(obligation?.plan) return {...obligation.plan};
+  if(obligation?.plan?.context === SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT){
+    const plan = obligation.plan;
+    const actualSlot = getSdeTrappedEgressVehicleSlot(
+      getSdeTrappedEgressActualOccupancy(),plan.blockerVehicle
+    );
+    if(actualSlot === normalizeSlot(plan.holdingSlot)) return {...plan};
+  }
   const actions = state.sdeMoveActions || {};
   for(const [releaseActionKey, action] of Object.entries(actions)){
     if(action?.action !== "completed") continue;
@@ -20098,6 +20163,10 @@ function getSdeCompletedTemporaryVnReliefPlanForMainRow(row){
     if(!plan || plan.context !== SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT) continue;
     if(String(plan.mainActionKey || "") !== mainActionKey) continue;
     if(String(plan.releaseActionKey || "") !== releaseActionKey) continue;
+    const actualSlot = getSdeTrappedEgressVehicleSlot(
+      getSdeTrappedEgressActualOccupancy(),plan.blockerVehicle
+    );
+    if(actualSlot !== normalizeSlot(plan.holdingSlot)) continue;
     return {...plan};
   }
   return null;
@@ -21749,26 +21818,39 @@ function getSdeTrappedEgressCarriedReleases(row, occupancy){
   );
   return Object.entries(state.sdeMoveActions || {}).flatMap(([actionKey,record])=>{
     if(record?.action !== "completed") return [];
-    const storedPlan = record?.snapshot?.sdePhysicalAccessReliefChain || {};
+    const accessPlan = record?.snapshot?.sdePhysicalAccessReliefChain || {};
+    const vnPlan = record?.snapshot?.sdePhysicalVnReliefChain || {};
+    const storedPlan = accessPlan?.sdeTrappedEgressChain === true ? accessPlan : vnPlan;
     const match = String(actionKey || "").match(/^sde-trapped-egress\|(.+)\|release-\d+\|([^|]+)\|([^|]+)\|([^|]+)$/);
-    if(storedPlan?.sdeTrappedEgressChain !== true && !match) return [];
+    const recognizedVnPlan = storedPlan?.context === SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT;
+    if(storedPlan?.sdeTrappedEgressChain !== true && !recognizedVnPlan && !match) return [];
     const vehicle = sanitizeVehicleValue(storedPlan.blockerVehicle || record?.vehicle || match?.[2]);
     const fromSlot = normalizeSlot(storedPlan.blockerFromSlot || record?.fromSlot || match?.[3]);
     const toSlot = normalizeSlot(storedPlan.holdingSlot || record?.toSlot || match?.[4]);
     const actualSlot = getSdeTrappedEgressVehicleSlot(occupancy,vehicle);
+    const expectedTargetOccupant = sanitizeVehicleValue(occupancy.get(toSlot));
     const planNeedKey = String(storedPlan.mainObligationKey || "").trim();
-    if(!vehicle || !fromSlot || !toSlot || actualSlot !== toSlot) return [];
+    const planMainActionKey = String(storedPlan.mainActionKey || "").trim();
+    if(!vehicle || !fromSlot || !toSlot || !actualSlot) return [];
     if(planNeedKey && mainNeedKey && planNeedKey !== mainNeedKey) return [];
+    if(planMainActionKey && planMainActionKey !== getSdeMoveActionKey(row)) return [];
     if(!sourcePathSlots.has(fromSlot)) return [];
     if(storedPlan.returnActionKey && getSdeMoveActionRecord(storedPlan.returnActionKey)?.action === "completed") return [];
     return [{
       vehicle,
       fromSlot,
-      toSlot,
+      toSlot:actualSlot,
+      plannedTemporaryTarget:toSlot,
       originalBlockerSlot:fromSlot,
       candidateOrder:Array.isArray(storedPlan.candidateOrder) ? [...storedPlan.candidateOrder] : [],
       carriedCompletedRelease:true,
-      completedActionKey:actionKey
+      completedActionKey:actionKey,
+      chainId:String(storedPlan.chainId || match?.[1] || record?.snapshot?.sdePhysicalChainId || "").trim(),
+      expectedTemporaryOccupancy:actualSlot === toSlot,
+      unexpectedTemporaryOccupancy:Boolean(
+        actualSlot !== toSlot
+        || (expectedTargetOccupant && !haveSameSdeVehicleTokens(expectedTargetOccupant,vehicle))
+      )
     }];
   }).sort((left,right)=>left.fromSlot.localeCompare(right.fromSlot) || left.vehicle.localeCompare(right.vehicle));
 }
@@ -21889,20 +21971,26 @@ function buildSdeCompleteTrappedEgressPlan(row, blockState, sourceRows=[], optio
     releases:[...carriedReleases],
     movedTokens:new Set(carriedReleases.map(step=>normalizeVehicleToken(step.vehicle)).filter(Boolean))
   };
-  const chainId = `sde-trapped-egress-v1|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+  const intentId = String(
+    row?.sdeCanonicalIntentId
+    || row?.sdeNightPlacementDragIdentity
+    || row?.manualPlanId
+    || row?.sdeNightPlacementGeneratedActionKey
+    || row?.stableActionKey
+    || getSdeMoveActionKey(row)
+    || ""
+  ).trim();
+  const inheritedChainIds = Array.from(new Set(
+    carriedReleases.map(step=>String(step?.chainId || "").trim()).filter(Boolean)
+  ));
+  const chainId = inheritedChainIds.length === 1
+    ? inheritedChainIds[0]
+    : `sde-trapped-egress-v1|${getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
     mainVehicle:normalizeVehicleToken(mainVehicle),
     mainSource,
     requestedTarget,
-    initialOccupancy:getSdeTrappedEgressOccupancySignature(occupancy),
     needKey:getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row),
-    orderIdentity:String(
-      row?.sdeNightPlacementDragIdentity
-      || row?.manualPlanId
-      || row?.sdeNightPlacementGeneratedActionKey
-      || row?.stableActionKey
-      || getSdeMoveActionKey(row)
-      || ""
-    ).trim() // SDE_EGRESS_FRESH_ORDER_IDENTITY
+    orderIdentity:intentId // SDE_EGRESS_FRESH_ORDER_IDENTITY
   }))}`;
   const queue = [initial];
   const visited = new Set([`${getSdeTrappedEgressOccupancySignature(occupancy)}|${Array.from(initial.movedTokens).sort().join(",")}`]);
@@ -21964,13 +22052,25 @@ function buildSdeCompleteTrappedEgressPlan(row, blockState, sourceRows=[], optio
   };
   mainWithRoute.routeResources = getSdeTrappedEgressRouteResources(mainWithRoute,chainId);
   const recoverySteps = completed.recovery.recoverySteps.map(step=>({...step,routeResources:getSdeTrappedEgressRouteResources(step,chainId)}));
+  const sourceStateSignature = getSdeTrappedEgressOccupancySignature(occupancy);
+  const planRevision = getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+    chainId,
+    sourceStateSignature,
+    releases:releaseSteps.map(step=>({vehicle:step.vehicle,fromSlot:step.fromSlot,toSlot:step.toSlot,completed:step.carriedCompletedRelease === true})),
+    main:{vehicle:mainWithRoute.vehicle,fromSlot:mainWithRoute.fromSlot,toSlot:mainWithRoute.toSlot},
+    recoveries:recoverySteps.map(step=>({vehicle:step.vehicle,fromSlot:step.fromSlot,toSlot:step.toSlot}))
+  }));
   return {
     chainId,
+    intentId,
+    obligationId:String(getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row) || chainId).trim(),
+    planRevision,
     releaseSteps,
     mainStep:mainWithRoute,
     recoverySteps,
     temporaryTargets:releaseSteps.map(step=>step.toSlot),
-    sourceStateSignature:getSdeTrappedEgressOccupancySignature(occupancy),
+    sourceStateSignature,
+    completedPrefixActionKeys:releaseSteps.filter(step=>step.carriedCompletedRelease === true).map(step=>step.completedActionKey).filter(Boolean),
     sourceRowsCount:Array.isArray(sourceRows) ? sourceRows.length : 0
   };
 }
@@ -21989,10 +22089,16 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
     };
   }
   const pendingReleaseSteps = plan.releaseSteps.filter(step=>step.carriedCompletedRelease !== true);
-  const totalSteps = pendingReleaseSteps.length + 1 + plan.recoverySteps.length;
+  const totalSteps = plan.releaseSteps.length + 1 + plan.recoverySteps.length;
+  const releaseActionKeys = plan.releaseSteps.map((step,index)=>
+    step.carriedCompletedRelease === true
+      ? String(step.completedActionKey || "").trim()
+      : getSdeTrappedEgressReleaseActionKey(plan.chainId,index,step)
+  );
   const releaseRows = [];
-  pendingReleaseSteps.forEach((step,index)=>{
-    const stableActionKey = getSdeTrappedEgressReleaseActionKey(plan.chainId,index,step);
+  pendingReleaseSteps.forEach(step=>{
+    const absoluteIndex = plan.releaseSteps.indexOf(step);
+    const stableActionKey = getSdeTrappedEgressReleaseActionKey(plan.chainId,absoluteIndex,step);
     const recoveryIndex = plan.recoverySteps.findIndex(recovery=>
       haveSameSdeVehicleTokens(recovery.vehicle,step.vehicle)
       && normalizeSlot(recovery.fromSlot) === normalizeSlot(step.toSlot)
@@ -22001,6 +22107,9 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
     const releasePlan = {
       context:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
       chainId:plan.chainId,
+      intentId:plan.intentId,
+      obligationId:plan.obligationId,
+      planRevision:plan.planRevision,
       sdeTrappedEgressChain:true,
       mainObligationKey:String(getSdeMovePlanningObligationId(row) || getSdeMoveNeedKey(row) || "").trim(),
       releaseActionKey:stableActionKey,
@@ -22037,9 +22146,13 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
       sdeNightPlacementDragOverrideActive:false,
       isNightPlacementGenerated:false,
       sdePhysicalChainId:plan.chainId,
-      sdePhysicalChainStep:index + 1,
+      sdePhysicalIntentId:plan.intentId,
+      sdePhysicalObligationId:plan.obligationId,
+      sdePhysicalPlanRevision:plan.planRevision,
+      sdePhysicalStepId:`${plan.chainId}|release-${absoluteIndex + 1}`,
+      sdePhysicalChainStep:absoluteIndex + 1,
       sdePhysicalChainStepCount:totalSteps,
-      sdePhysicalDependsOn:index ? [getSdeMoveActionKey(releaseRows[index - 1])] : [],
+      sdePhysicalDependsOn:absoluteIndex ? [releaseActionKeys[absoluteIndex - 1]] : [],
       sdePhysicalDependencyRole:"prerequisite",
       canonicalChainStepActive:true,
       canonicalProducer:"physical_blocker_guard",
@@ -22062,7 +22175,7 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
       releaseReason:`Komplett frigjøringskjede: flytt ${step.vehicle} ${step.fromSlot} → ${step.toSlot}; retur er obligatorisk etter hovedflyttingen.`
     }));
   });
-  const mainDependencies = releaseRows.length ? [getSdeMoveActionKey(releaseRows.at(-1))] : []; // SDE_EGRESS_MAIN_DEPENDENCIES
+  const mainDependencies = releaseActionKeys.length ? [releaseActionKeys.at(-1)] : []; // SDE_EGRESS_MAIN_DEPENDENCIES
   const mainRow = {
     ...row,
     fromSlot:plan.mainStep.fromSlot,
@@ -22070,7 +22183,11 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
     recommendedSlot:plan.mainStep.toSlot,
     toSlot:plan.mainStep.toSlot,
     sdePhysicalChainId:plan.chainId,
-    sdePhysicalChainStep:releaseRows.length + 1,
+    sdePhysicalIntentId:plan.intentId,
+    sdePhysicalObligationId:plan.obligationId,
+    sdePhysicalPlanRevision:plan.planRevision,
+    sdePhysicalStepId:`${plan.chainId}|main`,
+    sdePhysicalChainStep:plan.releaseSteps.length + 1,
     sdePhysicalChainStepCount:totalSteps,
     sdePhysicalDependsOn:mainDependencies,
     sdePhysicalDependencyRole:"dependent",
@@ -22081,8 +22198,23 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
     sdePhysicalAccessReliefChain:{
       context:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
       chainId:plan.chainId,
-      holdingSlot:plan.mainStep.toSlot,
-      returnTargetSlot:plan.mainStep.toSlot,
+      intentId:plan.intentId,
+      obligationId:plan.obligationId,
+      planRevision:plan.planRevision,
+      sdeTrappedEgressChain:true,
+      mainActionKey:getSdeMoveActionKey(row),
+      returnActionKey:plan.recoverySteps[0] ? getSdeTrappedEgressRecoveryActionKey(plan.chainId,0,plan.recoverySteps[0]) : "",
+      completedPrefixActionKeys:[...(plan.completedPrefixActionKeys || [])],
+      blockerVehicle:plan.recoverySteps[0]?.vehicle || "",
+      blockerFromSlot:plan.releaseSteps[0]?.fromSlot || "",
+      holdingSlot:plan.recoverySteps[0]?.fromSlot || "",
+      returnTargetSlot:plan.recoverySteps[0]?.toSlot || "",
+      blockedVehicle:plan.mainStep.vehicle,
+      blockedFromSlot:plan.mainStep.fromSlot,
+      mainTargetSlot:plan.mainStep.toSlot,
+      sequenceStepCount:totalSteps,
+      recoveryRouteResources:[...(plan.recoverySteps[0]?.routeResources || [])],
+      recoveryUsesPostMainTopology:plan.recoverySteps[0]?.recoveryUsesPostMainTopology === true,
       targetTrack:getSdeSlotTrack(plan.mainStep.toSlot),
       accessEnd:plan.mainStep.targetOption?.end || "yard",
       accessResource:`track-access|${getSdeSlotTrack(plan.mainStep.toSlot) || plan.mainStep.toSlot}|${plan.mainStep.targetOption?.end || "yard"}`,
@@ -22094,7 +22226,7 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
   const rows = [...releaseRows,mainRow];
   plan.recoverySteps.forEach((step,index)=>{
     const previousKey = getSdeMoveActionKey(rows.at(-1));
-    const chainStep = releaseRows.length + 2 + index;
+    const chainStep = plan.releaseSteps.length + 2 + index;
     const releaseIndex = plan.releaseSteps.findIndex(release=>
       haveSameSdeVehicleTokens(release.vehicle,step.vehicle)
       && release.toSlot === step.fromSlot
@@ -22119,6 +22251,10 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
       source:"SDE obligatorisk frigjøringsretur",
       canonicalProducer:"physical_blocker_guard",
       sdePhysicalChainId:plan.chainId,
+      sdePhysicalIntentId:plan.intentId,
+      sdePhysicalObligationId:plan.obligationId,
+      sdePhysicalPlanRevision:plan.planRevision,
+      sdePhysicalStepId:`${plan.chainId}|recovery-${index + 1}`,
       sdePhysicalChainStep:chainStep,
       sdePhysicalChainStepCount:totalSteps,
       sdePhysicalDependsOn:[previousKey],
@@ -22136,8 +22272,23 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
       sdePhysicalAccessReliefChain:{
         context:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
         chainId:plan.chainId,
+        intentId:plan.intentId,
+        obligationId:plan.obligationId,
+        planRevision:plan.planRevision,
+        sdeTrappedEgressChain:true,
+        mainActionKey:getSdeMoveActionKey(row),
+        returnActionKey:getSdeTrappedEgressRecoveryActionKey(plan.chainId,index,step),
+        completedPrefixActionKeys:[...(plan.completedPrefixActionKeys || [])],
+        blockerVehicle:step.vehicle,
+        blockerFromSlot:release?.fromSlot || "",
+        blockedVehicle:plan.mainStep.vehicle,
+        blockedFromSlot:plan.mainStep.fromSlot,
+        mainTargetSlot:plan.mainStep.toSlot,
         holdingSlot:step.fromSlot,
         returnTargetSlot:step.toSlot,
+        sequenceStepCount:totalSteps,
+        recoveryRouteResources:[...step.routeResources],
+        recoveryUsesPostMainTopology:step.recoveryUsesPostMainTopology === true,
         targetTrack:getSdeSlotTrack(step.toSlot),
         accessEnd:step.targetOption?.end || "yard",
         accessResource:`track-access|${getSdeSlotTrack(step.toSlot) || step.toSlot}|${step.targetOption?.end || "yard"}`,
@@ -22152,6 +22303,66 @@ function buildSdeCompleteTrappedEgressRows(row, blockState, sourceRows=[], optio
     });
   });
   return {plan,rows};
+}
+
+function buildSdePersistentTrappedEgressRecoveryRows(){
+  const rows = [];
+  const seen = new Set();
+  Object.entries(state.sdeMoveActions || {}).forEach(([mainActionKey,record])=>{
+    if(record?.action !== "completed") return;
+    const snapshot = record?.snapshot || {};
+    const plan = snapshot.sdePhysicalAccessReliefChain || {};
+    if(
+      plan.sdeTrappedEgressChain !== true
+      || String(snapshot.sdePhysicalDependencyRole || "").trim() !== "dependent"
+    ) return;
+    const returnActionKey = String(plan.returnActionKey || "").trim();
+    const vehicle = sanitizeVehicleValue(plan.blockerVehicle);
+    const fromSlot = normalizeSlot(plan.holdingSlot);
+    const toSlot = normalizeSlot(plan.returnTargetSlot);
+    if(!returnActionKey || !vehicle || !fromSlot || !toSlot) return;
+    if(getSdeMoveActionRecord(returnActionKey)?.action === "completed" || seen.has(returnActionKey)) return;
+    const actualSlot = getSdeTrappedEgressVehicleSlot(getSdeTrappedEgressActualOccupancy(),vehicle);
+    if(actualSlot && actualSlot !== fromSlot) return;
+    const routeResources = sortSdeCanonicalStrings(
+      plan.recoveryRouteResources || getSdeTrappedEgressRouteResources({vehicle,fromSlot,toSlot},plan.chainId)
+    );
+    seen.add(returnActionKey);
+    rows.push({
+      vehicle,
+      fromSlot,
+      arrivalSlot:fromSlot,
+      originalFromSlot:fromSlot,
+      recommendedSlot:toSlot,
+      toSlot,
+      stableActionKey:returnActionKey,
+      needKey:`sde-trapped-egress-recovery-need|${plan.chainId}|${normalizeVehicleToken(vehicle)}|${fromSlot}`,
+      source:"SDE persistent trapped-egress recovery",
+      canonicalProducer:"physical_blocker_guard",
+      canonicalPurpose:"physical-chain",
+      isManualOnly:true,
+      isSdePhysicalBlockerReturnMove:true,
+      sdeRecoveryUsesPostMainTopology:plan.recoveryUsesPostMainTopology === true,
+      sdePhysicalChainId:String(plan.chainId || snapshot.sdePhysicalChainId || "").trim(),
+      sdePhysicalIntentId:String(plan.intentId || snapshot.sdePhysicalIntentId || "").trim(),
+      sdePhysicalObligationId:String(plan.obligationId || snapshot.sdePhysicalObligationId || "").trim(),
+      sdePhysicalPlanRevision:String(plan.planRevision || snapshot.sdePhysicalPlanRevision || "").trim(),
+      sdePhysicalStepId:`${String(plan.chainId || snapshot.sdePhysicalChainId || "").trim()}|recovery-1`,
+      sdePhysicalChainStep:Number(plan.sequenceStepCount || snapshot.sdePhysicalChainStepCount || 3),
+      sdePhysicalChainStepCount:Number(plan.sequenceStepCount || snapshot.sdePhysicalChainStepCount || 3),
+      sdePhysicalDependsOn:[mainActionKey],
+      sdePhysicalDependencyRole:"return",
+      sdePhysicalDependencyLabel:"Obligatorisk recovery etter fullført hovedflytting.",
+      canonicalChainStepActive:true,
+      sdeTrappedEgressChainStep:true,
+      sdeTrappedEgressRouteResources:routeResources,
+      sdePhysicalAccessReliefChain:{...plan,mainActionKey,returnActionKey,holdingSlot:fromSlot,returnTargetSlot:toSlot,recoveryRouteResources:routeResources},
+      parkingStrategy:"Obligatorisk frigjøringsretur",
+      parkingInstruction:`Returner ${vehicle} fra ${fromSlot} til ${toSlot}.`,
+      recommendationReason:`Persistent remaining suffix for canonical kjede ${plan.chainId}; recovery er validert mot post-main-topologien.`
+    });
+  });
+  return rows;
 }
 
 function buildSdeTrappedEgressDiagnosticRow(row, blockState){
@@ -22215,9 +22426,22 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
   const insertedFreeingKeys = new Set();
   const insertedRecoveryKeys = new Set();
   const reservedSlots = getSdePhysicalGuardReservedTargetSlots(sourceRows);
-  const persistentRecoveryRows = buildSdePersistentVnRecoveryRows(sourceRows);
+  const persistentTrappedEgressRecoveryRows = buildSdePersistentTrappedEgressRecoveryRows().filter(recovery=>
+    !sourceRows.some(candidate=>
+      (candidate?.sdeCanonicalGraphicDragOrder === true || candidate?.isNightPlacementGenerated === true)
+      && haveSameSdeVehicleTokens(candidate?.vehicle,recovery?.vehicle)
+      && normalizeSlot(candidate?.fromSlot || candidate?.arrivalSlot) === normalizeSlot(recovery?.fromSlot || recovery?.arrivalSlot)
+      && normalizeSlot(candidate?.recommendedSlot || candidate?.toSlot) === normalizeSlot(recovery?.recommendedSlot || recovery?.toSlot)
+      && !isSdeMoveActioned(candidate)
+    )
+  );
+  const persistentTrappedChainIds = new Set(persistentTrappedEgressRecoveryRows
+    .map(row=>String(row?.sdePhysicalChainId || "").trim()).filter(Boolean));
+  const persistentRecoveryRows = buildSdePersistentVnRecoveryRows(sourceRows).filter(row=>
+    !persistentTrappedChainIds.has(String(row?.sdePhysicalChainId || "").trim())
+  );
   const persistentAccessReliefRows = buildSdePersistentTemporaryAccessReliefRows();
-  persistentRecoveryRows.forEach(row=>{
+  [...persistentRecoveryRows,...persistentTrappedEgressRecoveryRows].forEach(row=>{
     reservedSlots.add("VN");
     const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
     if(targetSlot) reservedSlots.add(targetSlot);
@@ -22573,6 +22797,13 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
       : row);
     const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
     if(targetSlot) reservedSlots.add(targetSlot);
+  });
+
+  persistentTrappedEgressRecoveryRows.forEach(row=>{
+    const key = getSdeMoveActionKey(row);
+    if(!key || insertedRecoveryKeys.has(key)) return;
+    guarded.push(row);
+    insertedRecoveryKeys.add(key);
   });
 
   persistentRecoveryRows.forEach(row=>{
@@ -27115,6 +27346,8 @@ function getSdeMoveActionSnapshot(row){
     sdeCanonicalGraphicDragOrder:Boolean(row.sdeCanonicalGraphicDragOrder),
     sdeNightPlacementDragIdentity:String(row.sdeNightPlacementDragIdentity || "").trim(),
     manualPlanId:String(row.manualPlanId || "").trim(),
+    sdeCanonicalIntentId:String(row.sdeCanonicalIntentId || row.sdePhysicalIntentId || row.sdeNightPlacementDragIdentity || "").trim(),
+    sdeCanonicalPlanRevision:String(row.sdeCanonicalPlanRevision || row.sdePhysicalPlanRevision || "").trim(),
     vehicle:sanitizeVehicleValue(row.vehicle),
     arrivalTrain:normalizeTognr(row.arrivalTrain),
     arrivalPart:String(row.arrivalPart || "").trim(),
@@ -27137,10 +27370,17 @@ function getSdeMoveActionSnapshot(row){
     reason:String(row.recommendationReason || row.parkingInstruction || "").trim(),
     alternatives,
     sdePhysicalChainId:String(row.sdePhysicalChainId || "").trim(),
+    sdePhysicalIntentId:String(row.sdePhysicalIntentId || row.sdeCanonicalIntentId || "").trim(),
+    sdePhysicalObligationId:String(row.sdePhysicalObligationId || "").trim(),
+    sdePhysicalPlanRevision:String(row.sdePhysicalPlanRevision || row.sdeCanonicalPlanRevision || "").trim(),
+    sdePhysicalStepId:String(row.sdePhysicalStepId || "").trim(),
     sdePhysicalChainStep:Number(row.sdePhysicalChainStep || 0),
     sdePhysicalChainStepCount:Number(row.sdePhysicalChainStepCount || 0),
     sdePhysicalDependencyRole:String(row.sdePhysicalDependencyRole || "").trim(),
     sdePhysicalDependsOn:Array.isArray(row.sdePhysicalDependsOn) ? [...row.sdePhysicalDependsOn] : [],
+    canonicalChainStepActive:Boolean(row.canonicalChainStepActive),
+    sdeTrappedEgressChainStep:Boolean(row.sdeTrappedEgressChainStep),
+    sdeTrappedEgressRouteResources:Array.isArray(row.sdeTrappedEgressRouteResources) ? [...row.sdeTrappedEgressRouteResources] : [],
     sdeNightPlacementStepIndex:Number.isFinite(Number(row.sdeNightPlacementStepIndex)) ? Number(row.sdeNightPlacementStepIndex) : null,
     originalFromSlot:normalizeSlot(row.originalFromSlot || row.fromSlot || row.arrivalSlot),
     sdeVnRecoveryObligationId:String(row.sdeVnRecoveryObligationId || "").trim(),
@@ -27828,6 +28068,7 @@ function getSdeCanonicalProducer(row){
 }
 
 function getSdeCanonicalObligationKind(row){
+  if(row?.sdeTrappedEgressChainStep === true) return "physical-chain";
   if(row?.sdeVnRecoveryRequired || row?.isSdePhysicalVnRecoveryMove || normalizeSlot(row?.fromSlot || row?.arrivalSlot) === "VN") return "vn-recovery";
   if(row?.sdePhysicalChainId || row?.sdePhysicalDependencyRole) return "physical-chain";
   if(row?.isWorkshopMoveNeed) return "workshop-relocation";
@@ -28589,7 +28830,9 @@ function buildSdeCanonicalPlan(input={}){
     const aliases = getSdeCanonicalLegacyAliases(row);
     const targetOccupant = actualPlacementBySlot.get(targetSlot) || null;
     const targetOccupiedByOtherVehicleBeforeSequence = Boolean(
-      targetOccupant
+      status !== "completed"
+      && status !== "cancelled"
+      && targetOccupant
       && normalizeSdeCanonicalToken(targetOccupant.vehicleId)
       && normalizeSdeCanonicalToken(targetOccupant.vehicleId) !== signature.vehicleToken
     );
@@ -28799,11 +29042,14 @@ function buildSdeCanonicalPlan(input={}){
       && producer.sourceValidation?.valid === true
       && closure.has(producer.candidateOutcomeId)
     ) : null;
-    const sourceValid = !pendulumStaleNorthSource && (directSourceValid || Boolean(simulatedProducer));
-    candidate.canonicalSourceSlot = pendulumStaleNorthSource ? "" : directSourceValid ? actualSourceSlot : simulatedProducer ? statedSourceSlot : "";
+    const completedHistory = candidate.status === "completed";
+    const sourceValid = completedHistory || (!pendulumStaleNorthSource && (directSourceValid || Boolean(simulatedProducer)));
+    candidate.canonicalSourceSlot = completedHistory
+      ? statedSourceSlot || actualSourceSlot
+      : pendulumStaleNorthSource ? "" : directSourceValid ? actualSourceSlot : simulatedProducer ? statedSourceSlot : "";
     candidate.sourceValidation = {
       valid:sourceValid,
-      mode:pendulumStaleNorthSource ? "pendulum_stale_source" : directSourceValid ? "canonical_actual" : simulatedProducer ? "simulated_chain" : "unresolved",
+      mode:completedHistory ? "completed_prefix_history" : pendulumStaleNorthSource ? "pendulum_stale_source" : directSourceValid ? "canonical_actual" : simulatedProducer ? "simulated_chain" : "unresolved",
       canonicalSourceSlot:candidate.canonicalSourceSlot,
       actualSourceSlot,
       statedSourceSlot,
@@ -29450,22 +29696,35 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
       overlay:null
     };
   });
-  const allCards = sortSdeCanonicalObjects([...actionableCards, ...blockedChainCards, ...exitingCards]);
+  const compareCardOrder = (left,right)=>{
+    const leftChain = String(left?.chainId || left?.chainScope || "").trim();
+    const rightChain = String(right?.chainId || right?.chainScope || "").trim();
+    if(leftChain && leftChain === rightChain){
+      const leftStep = Number(String(left?.sequenceStep || "").match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+      const rightStep = Number(String(right?.sequenceStep || "").match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+      if(leftStep !== rightStep) return leftStep - rightStep;
+    }
+    return stableStringifySdeCanonicalValue(left).localeCompare(stableStringifySdeCanonicalValue(right));
+  };
+  const orderedActionableCards = [...actionableCards].sort(compareCardOrder);
+  const orderedBlockedChainCards = [...blockedChainCards].sort(compareCardOrder);
+  const orderedExitingCards = [...exitingCards].sort(compareCardOrder);
+  const allCards = [...orderedActionableCards,...orderedBlockedChainCards,...orderedExitingCards].sort(compareCardOrder);
   const cardByOutcomeId = Object.fromEntries(allCards.map(card=>[card.activeOutcomeId, card]).sort(([left],[right])=>left.localeCompare(right)));
   const chains = sortSdeCanonicalObjects((Array.isArray(plan.activeChains) ? plan.activeChains : []).map(chain=>({
     chainId:chain.chainId,
     activeProposalUnitId:`chain|${chain.chainId}`,
     stepCount:chain.steps.length,
-    activeStepOutcomeIds:sortSdeCanonicalStrings(actionableCards.filter(card=>card.chainId === chain.chainId).map(card=>card.activeOutcomeId)),
-    blockedStepOutcomeIds:sortSdeCanonicalStrings(blockedChainCards.filter(card=>card.chainId === chain.chainId).map(card=>card.activeOutcomeId)),
+    activeStepOutcomeIds:sortSdeCanonicalStrings(orderedActionableCards.filter(card=>card.chainId === chain.chainId).map(card=>card.activeOutcomeId)),
+    blockedStepOutcomeIds:sortSdeCanonicalStrings(orderedBlockedChainCards.filter(card=>card.chainId === chain.chainId).map(card=>card.activeOutcomeId)),
     steps:sortSdeCanonicalObjects(chain.steps)
   })));
   const activeProposalUnits = new Set(actionableCards.map(card=>card.chainId ? `chain|${card.chainId}` : `card|${card.canonicalCardId}`));
   const enabledButtonCount = allCards.reduce((count,card)=>count + Number(card.canComplete) + Number(card.canCancel) + Number(card.canDelete) + Number(card.canRetarget), 0);
   return {
-    actionableCards:sortSdeCanonicalObjects(actionableCards),
-    blockedChainCards:sortSdeCanonicalObjects(blockedChainCards),
-    exitingCards:sortSdeCanonicalObjects(exitingCards),
+    actionableCards:orderedActionableCards,
+    blockedChainCards:orderedBlockedChainCards,
+    exitingCards:orderedExitingCards,
     diagnostics:sortSdeCanonicalObjects(diagnostics),
     activeProposalCount:activeProposalUnits.size,
     chains,
@@ -29624,7 +29883,12 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
     if(!outcome || outcome.physicalValidation?.valid === false || outcome.status === "exiting" || outcome.sourceValidation?.valid !== true || !outcome.canonicalSourceSlot) return [];
     const actualSourceMismatch = (plan.conflicts || []).some(conflict=>
       ["actual_source_mismatch","stale_actual_source","candidate_source_not_canonical","candidate_source_conflict","pendulum_stale_north_source","stale_graphic_override_source"].includes(conflict.code)
-      && (conflict.candidateOutcomeId === card.activeOutcomeId || conflict.vehicleId === card.vehicleId)
+      && (
+        conflict.candidateOutcomeId === card.activeOutcomeId
+        || conflict.candidateOutcomeIds?.includes?.(card.activeOutcomeId)
+        || conflict.stepId === card.stepId
+        || conflict.obligationStepKey === card.stepId
+      )
     );
     if(actualSourceMismatch){
       recordConflict("ACTUAL_OCCUPANCY_CONFLICT", [], {activeOutcomeId:card.activeOutcomeId, stepId:card.stepId, reason:"actual_source_mismatch"});
@@ -29981,8 +30245,7 @@ function buildSdeCanonicalGraphicProjection(canonicalPlan={}, cardProjection={},
       || conflict.candidateOutcomeIds?.includes?.(card.activeOutcomeId)
       || conflict.stepId === card.stepId
       || conflict.obligationStepKey === card.stepId
-      || conflict.obligationId === card.obligationId
-      || (conflict.vehicleId && conflict.vehicleId === card.vehicleId))
+      || conflict.obligationId === card.obligationId)
   );
   const buildOverlay = (card,kind) => {
     const reservation = reservationByOutcomeId.get(card.activeOutcomeId);
@@ -30337,10 +30600,13 @@ function buildSdeCanonicalIntegrityReport(input={}){
     if(overlays.length > 1) addConflict("DUPLICATE_OVERLAY",{obligationId,stepId,count:overlays.length});
     if(completeRights > 1 || cancelRights > 1) addConflict("DUPLICATE_ACTIVE_BUTTON_SET",{obligationId,stepId,completeRights,cancelRights});
     let model = "DIAGNOSTIC_ONLY";
+    const completedHistoryOnly = groupCandidates.length > 0
+      && groupCandidates.every(candidate=>String(candidate?.status || "").trim() === "completed");
     if(active.length || actionable.length || overlays.length) model = "ACTIONABLE";
     else if(blocked.length || deferred.length) model = "DEFERRED";
     else if(reserved.length) model = "ACTIONABLE";
     else if(exiting.length) model = "EXITING";
+    else if(completedHistoryOnly) model = "COMPLETED";
     if(model === "ACTIONABLE"){
       if(active.length !== 1 || actionable.length !== 1 || reserved.length !== 1 || overlays.length !== 1){
         addConflict("CARD_RESERVATION_OVERLAY_CARDINALITY",{obligationId,stepId,activeOutcomes:active.length,actionableCards:actionable.length,reservations:reserved.length,activeOverlays:overlays.length});
@@ -30362,6 +30628,10 @@ function buildSdeCanonicalIntegrityReport(input={}){
         addConflict("DEFERRED_CARD_RESERVATION_OVERLAY_CARDINALITY",{obligationId,stepId,blockedCards:blocked.length,reservations:reserved.length,deferredOverlays:deferred.length});
       }else if(reserved.length === 1 && (!valuesMatch([blocked[0],reserved[0],deferred[0]],"vehicleId") || !valuesMatch([blocked[0],reserved[0],deferred[0]],"targetSlot"))){
         addConflict("DEFERRED_PROJECTION_IDENTITY_MISMATCH",{obligationId,stepId});
+      }
+    }else if(model === "COMPLETED"){
+      if(active.length || actionable.length || blocked.length || reserved.length || overlays.length || deferred.length){
+        addConflict("COMPLETED_PREFIX_REMAINS_OPERATIVE",{obligationId,stepId});
       }
     }else{
       if(active.length || actionable.length || reserved.length || overlays.length) addConflict("DIAGNOSTIC_RESULT_BECAME_OPERATIVE",{obligationId,stepId});
@@ -30397,7 +30667,13 @@ function buildSdeCanonicalIntegrityReport(input={}){
       unresolvedDependencies.length ? "missing_dependency" : "",
       cyclicOutcomeIds.has(candidate.candidateOutcomeId) ? "cyclic_dependency" : "",
       candidate.obligationKind === "vn-recovery" && !candidate.targetSlot ? "targetless_vn_fallback" : "",
-      ...(plan.conflicts || []).filter(conflict=>nonExecutableCodes.has(conflict.code) && (conflict.candidateOutcomeId === candidate.candidateOutcomeId || conflict.candidateOutcomeIds?.includes?.(candidate.candidateOutcomeId) || conflict.stepId === candidate.stepId || conflict.vehicleId === candidate.vehicleId)).map(conflict=>conflict.code)
+      ...(plan.conflicts || []).filter(conflict=>nonExecutableCodes.has(conflict.code) && (
+        conflict.candidateOutcomeId === candidate.candidateOutcomeId
+        || conflict.candidateOutcomeIds?.includes?.(candidate.candidateOutcomeId)
+        || conflict.stepId === candidate.stepId
+        || conflict.obligationStepKey === candidate.stepId
+        || conflict.obligationId === candidate.obligationId
+      )).map(conflict=>conflict.code)
     ]);
     if(!reasons.length) return [];
     const operativeSurfaces = [activeIds.has(candidate.candidateOutcomeId),actionableIds.has(candidate.candidateOutcomeId),reservationIds.has(candidate.candidateOutcomeId),overlayIds.has(candidate.candidateOutcomeId)];
@@ -30505,17 +30781,32 @@ function buildSdeCanonicalIntegrityReport(input={}){
     const outcomeIds = new Set(rows.map(item=>item.candidateOutcomeId));
     const active = activeOutcomes.filter(item=>outcomeIds.has(item.candidateOutcomeId));
     const recoveryCards = actionableCards.filter(item=>outcomeIds.has(item.activeOutcomeId));
+    const blockedRecoveryCards = blockedCards.filter(item=>outcomeIds.has(item.activeOutcomeId));
     const recoveryReservations = targetReservations.filter(item=>outcomeIds.has(item.activeOutcomeId));
     const recoveryOverlays = activeOverlays.filter(item=>outcomeIds.has(item.activeOutcomeId));
+    const recoveryDeferredOverlays = deferredOverlays.filter(item=>outcomeIds.has(item.activeOutcomeId));
     const diagnostics = sortSdeCanonicalObjects(obligationIds.flatMap(id=>diagnosticsFor(id,rows[0]?.stepId)));
     const problems = [];
     if(obligationIds.length !== 1) problems.push("VN_RECOVERY_OBLIGATION_CARDINALITY");
     if(active.length > 1) problems.push("VN_RECOVERY_ACTIVE_OUTCOME_CARDINALITY");
     if(active.length === 1 && (recoveryCards.length !== 1 || recoveryReservations.length !== 1 || recoveryOverlays.length !== 1)) problems.push("VN_RECOVERY_PROJECTION_CARDINALITY");
     if(active.length === 1 && recoveryCards.some(card=>card.canDelete)) problems.push("VN_RECOVERY_DELETABLE");
-    if(active.length === 0 && (!diagnostics.length || recoveryCards.length || recoveryReservations.length || recoveryOverlays.length)) problems.push("VN_RECOVERY_DIAGNOSTIC_CONTINUITY");
+    if(active.length === 0){
+      const dependencyBlockedContinuity = blockedRecoveryCards.length === 1
+        && recoveryReservations.length === 1
+        && recoveryDeferredOverlays.length === 1
+        && recoveryCards.length === 0
+        && recoveryOverlays.length === 0;
+      const diagnosticContinuity = diagnostics.length > 0
+        && blockedRecoveryCards.length === 0
+        && recoveryCards.length === 0
+        && recoveryReservations.length === 0
+        && recoveryOverlays.length === 0
+        && recoveryDeferredOverlays.length === 0;
+      if(!dependencyBlockedContinuity && !diagnosticContinuity) problems.push("VN_RECOVERY_DIAGNOSTIC_CONTINUITY");
+    }
     problems.forEach(classification=>addConflict(classification,{vehicleId,obligationIds}));
-    return {vehicleId,status:problems.length ? "FAIL" : "PASS",obligationIds,activeOutcomeCount:active.length,actionableCardCount:recoveryCards.length,reservationCount:recoveryReservations.length,activeOverlayCount:recoveryOverlays.length,diagnosticCount:diagnostics.length,conflictClassifications:problems.sort()};
+    return {vehicleId,status:problems.length ? "FAIL" : "PASS",obligationIds,activeOutcomeCount:active.length,actionableCardCount:recoveryCards.length,blockedCardCount:blockedRecoveryCards.length,reservationCount:recoveryReservations.length,activeOverlayCount:recoveryOverlays.length,deferredOverlayCount:recoveryDeferredOverlays.length,diagnosticCount:diagnostics.length,conflictClassifications:problems.sort()};
   });
   const conflicts = sortSdeCanonicalObjects(reportConflicts);
   obligationResults.forEach(result=>{
@@ -38010,6 +38301,8 @@ function buildSdeNightPlacementGeneratedMove(override){
     canonicalProducer:String(override?.canonicalProducer || "").trim(),
     canonicalPurpose:String(override?.canonicalPurpose || "").trim(),
     sdeCanonicalGraphicDragOrder:Boolean(override?.sdeCanonicalGraphicDragOrder),
+    sdeCanonicalIntentId:String(override?.intentIdentity || override?.dragRequestId || override?.id || "").trim(),
+    sdeCanonicalPlanRevision:String(override?.planRevision || "").trim(),
     sdeNightPlacementDragIdentity:String(override?.dragRequestId || override?.sdeNightPlacementDragIdentity || "").trim(),
     manualPlanId:String(override?.manualPlanId || override?.dragRequestId || "").trim(),
     isNightPlacementGenerated:true,
@@ -38080,8 +38373,18 @@ function reconcileSdeCanonicalGraphicDragOrderFromActualState(override, generate
     const releases = planRows.filter(row=>row?.sdePhysicalDependencyRole === "prerequisite");
     const mains = planRows.filter(row=>row?.sdePhysicalDependencyRole === "dependent");
     const recoveries = planRows.filter(row=>row?.sdePhysicalDependencyRole === "return");
+    const completedPrefixKeys = Object.entries(state.sdeMoveActions || {}).flatMap(([actionKey,record])=>{
+      const snapshot = record?.snapshot || {};
+      return record?.action === "completed"
+        && String(snapshot.sdePhysicalChainId || "").trim() === chainId
+        && String(snapshot.sdePhysicalDependencyRole || "").trim() === "prerequisite"
+        ? [String(actionKey || "").trim()]
+        : [];
+    }).filter(Boolean);
     const complete = chainId
-      ? releases.length >= 1 && mains.length === 1 && recoveries.length === releases.length
+      ? releases.length + completedPrefixKeys.length >= 1
+        && mains.length === 1
+        && recoveries.length === releases.length + completedPrefixKeys.length
       : planRows.length === 1;
     if(!complete) return false;
 
@@ -38115,7 +38418,13 @@ function reconcileSdeCanonicalGraphicDragOrderFromActualState(override, generate
     override.actualStateRevision = currentActualStateRevision;
     override.automaticReplannedFromActualStateRevision = previousRevision;
     override.automaticReplannedAt = new Date().toISOString();
-    override.planRevision = "";
+    override.planRevision = String(
+      replannedMain?.sdePhysicalPlanRevision
+      || replannedMain?.sdeCanonicalPlanRevision
+      || getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({chainId,completedPrefixKeys,planRows}))
+    ).trim();
+    generatedMove.sdeCanonicalPlanRevision = override.planRevision;
+    generatedMove.sdePhysicalPlanRevision = override.planRevision;
     sdeNightPlacementBlockedMoveRequest = null;
     sdeNightPlacementSelectedSlot = "";
     sdeNightPlacementDropMessage = {
@@ -39579,6 +39888,7 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     && (!actionKey || String(outcome?.actionKey || "").trim() === actionKey)
   );
   const mainOutcome = mainCandidates.length === 1 ? mainCandidates[0] : null;
+  const mainCompleted = String(mainOutcome?.status || "").trim() === "completed";
   const chainId = String(mainOutcome?.chainId || mainOutcome?.chainScope || "").trim();
   const chainOutcomes = chainId
     ? candidates.filter(outcome=>
@@ -39588,13 +39898,20 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     : [];
   const releaseOutcomes = chainOutcomes.filter(outcome=>String(outcome?.raw?.sdePhysicalDependencyRole || "").trim() === "prerequisite");
   const returnOutcomes = chainOutcomes.filter(outcome=>String(outcome?.raw?.sdePhysicalDependencyRole || "").trim() === "return");
+  const completedReleaseOutcomes = releaseOutcomes.filter(outcome=>String(outcome?.status || "").trim() === "completed");
+  const pendingReleaseOutcomes = releaseOutcomes.filter(outcome=>String(outcome?.status || "").trim() !== "completed");
+  const operativeOutcomes = chainOutcomes.filter(outcome=>String(outcome?.status || "").trim() !== "completed");
+  const completedPrefixProven = completedReleaseOutcomes.every(outcome=>
+    getSdeMoveActionRecord(outcome?.actionKey)?.action === "completed"
+  );
   const carriedReleases = mainOutcome
     ? getSdeTrappedEgressCarriedReleases(mainOutcome.raw,getSdeTrappedEgressActualOccupancy())
     : [];
-  const expectedStepCount = releaseOutcomes.length + 1 + returnOutcomes.length;
+  const effectiveReleaseCount = releaseOutcomes.length || carriedReleases.length;
+  const expectedStepCount = effectiveReleaseCount + 1 + returnOutcomes.length;
   const exactSequence = Boolean(
-    releaseOutcomes.length + carriedReleases.length >= 1
-    && returnOutcomes.length === releaseOutcomes.length + carriedReleases.length
+    effectiveReleaseCount >= 1
+    && returnOutcomes.length === effectiveReleaseCount
     && chainOutcomes.length === expectedStepCount
     && chainOutcomes.every((outcome,index)=>
       Number(outcome?.raw?.sdePhysicalChainStep || 0) === index + 1
@@ -39607,7 +39924,7 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     return dependencies.length === 1 && dependencies[0] === String(chainOutcomes[index - 1]?.actionKey || "").trim();
   }));
   const recoveryPairing = Boolean(
-    returnOutcomes.length === releaseOutcomes.length + carriedReleases.length
+    returnOutcomes.length === effectiveReleaseCount
     && returnOutcomes.every(recovery=>
       releaseOutcomes.some(release=>
         sanitizeVehicleValue(recovery?.vehicleId) === sanitizeVehicleValue(release?.vehicleId)
@@ -39640,13 +39957,14 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
   const deferredOverlays = (reader?.graphicProjection?.deferredOverlays || []).filter(item=>item?.chainId === chainId);
   const cardByOutcomeId = new Map(chainCards.map(card=>[card.activeOutcomeId,card]));
   const adapterByOutcomeId = new Map(chainCards.map(card=>reader?.handlerAdapters?.[card.canonicalCardId] || null).filter(Boolean).map(adapter=>[adapter.activeOutcomeId,adapter]));
-  const allProjectionIds = new Set(chainOutcomes.map(outcome=>outcome.candidateOutcomeId));
+  const allProjectionIds = new Set(operativeOutcomes.map(outcome=>outcome.candidateOutcomeId));
+  const operativeStepCount = operativeOutcomes.length;
   const exactProjection = Boolean(
-    chainCards.length === expectedStepCount
-    && reservations.length === expectedStepCount
+    chainCards.length === operativeStepCount
+    && reservations.length === operativeStepCount
     && activeOverlays.length === 1
-    && deferredOverlays.length === expectedStepCount - 1
-    && chainOutcomes.every(outcome=>{
+    && deferredOverlays.length === operativeStepCount - 1
+    && operativeOutcomes.every(outcome=>{
       const outcomeId = outcome.candidateOutcomeId;
       return cardByOutcomeId.has(outcomeId)
         && reservations.some(item=>item.activeOutcomeId === outcomeId)
@@ -39657,13 +39975,13 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     })
     && reservations.every(item=>allProjectionIds.has(item.activeOutcomeId) && Array.isArray(item.routeResources) && item.routeResources.length > 0)
   );
-  const firstOutcome = chainOutcomes[0] || null;
+  const firstOutcome = operativeOutcomes[0] || null;
   const firstCard = cardByOutcomeId.get(firstOutcome?.candidateOutcomeId) || null;
   const firstAdapter = adapterByOutcomeId.get(firstOutcome?.candidateOutcomeId) || null;
   const readinessMatch = Boolean(
     actionableCards.length === 1
     && actionableCards[0]?.activeOutcomeId === firstOutcome?.candidateOutcomeId
-    && blockedCards.length === expectedStepCount - 1
+    && blockedCards.length === operativeStepCount - 1
     && blockedCards.every(card=>card.canComplete === false)
     && chainCards.every(card=>card.canRetarget === true)
     && returnOutcomes.every(outcome=>{
@@ -39671,7 +39989,7 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
       return card?.canCancel === false && card?.canDelete === false;
     })
     && firstAdapter?.ready === true
-    && chainOutcomes.slice(1).every(outcome=>adapterByOutcomeId.get(outcome.candidateOutcomeId)?.ready === false)
+    && operativeOutcomes.slice(1).every(outcome=>adapterByOutcomeId.get(outcome.candidateOutcomeId)?.ready === false)
   );
   const chainReservationIds = new Set(reservations.map(item=>item.reservationId));
   const reservationConflicts = (reader?.reservationProjection?.conflicts || []).filter(conflict=>
@@ -39681,9 +39999,13 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
   const actualSlots = reader?.graphicProjection?.actualSlots || [];
   const actualUnchanged = Boolean(
     mainOutcome
-    && [mainOutcome,...releaseOutcomes].every(outcome=>actualSlots.some(item=>
+    && [mainOutcome,...pendingReleaseOutcomes].every(outcome=>actualSlots.some(item=>
       sanitizeVehicleValue(item.vehicleId) === sanitizeVehicleValue(outcome.vehicleId)
-      && normalizeSlot(item.slot) === normalizeSlot(outcome.canonicalSourceSlot)
+      && normalizeSlot(item.slot) === normalizeSlot(outcome === mainOutcome && mainCompleted ? outcome.targetSlot : outcome.canonicalSourceSlot)
+    ))
+    && completedReleaseOutcomes.every(outcome=>actualSlots.some(item=>
+      sanitizeVehicleValue(item.vehicleId) === sanitizeVehicleValue(outcome.vehicleId)
+      && normalizeSlot(item.slot) === normalizeSlot(outcome.targetSlot)
     ))
     && carriedReleases.every(release=>actualSlots.some(item=>
       sanitizeVehicleValue(item.vehicleId) === sanitizeVehicleValue(release.vehicle)
@@ -39704,6 +40026,7 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     mainOutcome
     && chainRecords.length === 1
     && exactSequence
+    && completedPrefixProven
     && exactIdentities
     && dependenciesMatch
     && recoveryPairing
@@ -39719,6 +40042,8 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     `main=${mainCandidates.length}`,
     `steps=${chainOutcomes.length}/${expectedStepCount}`,
     `release=${releaseOutcomes.length}`,
+    `completedPrefix=${completedReleaseOutcomes.length}`,
+    `completedPrefixProof=${completedPrefixProven ? "verified" : "missing"}`,
     `return=${returnOutcomes.length}`,
     `carried=${carriedReleases.length}`,
     `sequence=${exactSequence ? "ok" : "mismatch"}`,
@@ -39731,7 +40056,8 @@ function inspectSdeCanonicalGraphicDragTrappedEgressChain(reader, expected={}){
     `activeOutcomes=${activeOutcomeIds.size}`,
     `reservationConflicts=${reservationConflicts.length}`,
     `actual=${actualUnchanged ? "unchanged" : "mismatch"}`,
-    `integrity=${reader?.integrityReport?.status || "missing"}`
+    `integrity=${reader?.integrityReport?.status || "missing"}`,
+    `integrityConflicts=${(reader?.integrityReport?.conflicts || []).map(item=>item.classification).join(",") || "none"}`
   ].join("; ");
   return {
     ok,
@@ -41612,7 +41938,8 @@ function getSdePassiveBlockedSlotIdentityTokens(value={}){
     value.stableActionKey,value.actionKey,value.moveKey,value.cardId,
     value.needKey,value.sdeNightPlacementGeneratedNeedKey,value.sdeNightPlacementGeneratedActionKey,
     value.dragRequestId,value.sdeNightPlacementDragIdentity,value.manualPlanId,
-    value.sdeOutcomeKey,value.sdeCanonicalOutcomeKey,value.sdePhysicalChainId
+    value.sdeOutcomeKey,value.sdeCanonicalOutcomeKey,value.sdePhysicalChainId,
+    value.sdePhysicalIntentId,value.sdeCanonicalIntentId
   ].map(item=>normalizeSdeCanonicalToken(item)).filter(Boolean));
 }
 
@@ -41650,12 +41977,13 @@ function getSdePassiveBlockedSlotCompletedReleaseProofs(rows=[], snapshot={}){
   const operativeRows = getSdePassiveBlockedSlotOperativeRows(rows,snapshot);
   const main = operativeRows.find(row=>getSdePassiveBlockedSlotRowParts(row).role === "dependent") || null;
   const recoveries = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "return");
-  if(!main || !recoveries.length) return [];
+  if(!recoveries.length) return [];
   const mainObligationKey = String(getSdeMovePlanningObligationId(main) || getSdeMoveNeedKey(main) || "").trim();
   const actualPlacements = getSdePassiveBlockedSlotActualPlacements(snapshot);
   const actions = snapshot.runtimeState?.actions || {};
   return Object.entries(actions).flatMap(([actionKey,record])=>{
     if(record?.action !== "completed") return [];
+    if(String(record?.snapshot?.sdePhysicalDependencyRole || "").trim() !== "prerequisite") return [];
     const plan = record?.snapshot?.sdePhysicalAccessReliefChain || {};
     if(plan.sdeTrappedEgressChain !== true) return [];
     if(plan.mainObligationKey && mainObligationKey && String(plan.mainObligationKey).trim() !== mainObligationKey) return [];
@@ -41664,15 +41992,64 @@ function getSdePassiveBlockedSlotCompletedReleaseProofs(rows=[], snapshot={}){
     const targetSlot = normalizeSlot(plan.holdingSlot || record.toSlot);
     const recoveryTargetSlot = normalizeSlot(plan.returnTargetSlot || sourceSlot);
     if(!vehicleId || !sourceSlot || !targetSlot) return [];
-    if(!actualPlacements.some(item=>haveSameSdeVehicleTokens(item.vehicleId,vehicleId) && item.slot === targetSlot)) return [];
     if(plan.returnActionKey && actions[plan.returnActionKey]?.action === "completed") return [];
     const recovery = recoveries.find(row=>{
       const parts = getSdePassiveBlockedSlotRowParts(row);
       return haveSameSdeVehicleTokens(parts.vehicleId,vehicleId)
-        && parts.sourceSlot === targetSlot
         && parts.targetSlot === recoveryTargetSlot;
     });
-    return recovery ? [{actionKey,vehicleId,sourceSlot,targetSlot,recoveryActionKey:getSdeMoveActionKey(recovery)}] : [];
+    const currentPlacement = actualPlacements.find(item=>haveSameSdeVehicleTokens(item.vehicleId,vehicleId)) || null;
+    const recoverySourceSlot = getSdePassiveBlockedSlotRowParts(recovery || {}).sourceSlot;
+    const expectedTemporaryOccupancy = currentPlacement?.slot === targetSlot;
+    const successorRevisionOccupancy = Boolean(
+      recovery
+      && currentPlacement?.slot
+      && recoverySourceSlot === currentPlacement.slot
+      && String(recovery?.sdePhysicalChainId || "").trim() === String(record?.snapshot?.sdePhysicalChainId || plan.chainId || "").trim()
+    );
+    if(!expectedTemporaryOccupancy && !successorRevisionOccupancy) return [];
+    return recovery ? [{
+      actionKey,
+      vehicleId,
+      sourceSlot,
+      targetSlot:currentPlacement.slot,
+      plannedTemporaryTarget:targetSlot,
+      expectedTemporaryOccupancy,
+      successorRevisionOccupancy,
+      recoveryActionKey:getSdeMoveActionKey(recovery),
+      sequenceStep:Number(record?.snapshot?.sdePhysicalChainStep || 0)
+    }] : [];
+  });
+}
+
+function getSdePassiveBlockedSlotCompletedMainProofs(rows=[], snapshot={}){
+  const operativeRows = getSdePassiveBlockedSlotOperativeRows(rows,snapshot);
+  const recoveries = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "return");
+  if(!recoveries.length) return [];
+  const actions = snapshot.runtimeState?.actions || {};
+  const actualPlacements = getSdePassiveBlockedSlotActualPlacements(snapshot);
+  return Object.entries(actions).flatMap(([actionKey,record])=>{
+    const completed = record?.action === "completed" && String(record?.snapshot?.sdePhysicalDependencyRole || "").trim() === "dependent";
+    if(!completed) return [];
+    const completedChainId = String(record?.snapshot?.sdePhysicalChainId || "").trim();
+    const recovery = recoveries.find(row=>{
+      const parts = getSdePassiveBlockedSlotRowParts(row);
+      const dependencies = Array.isArray(row?.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : [];
+      return parts.chainId === completedChainId && dependencies.includes(actionKey);
+    });
+    if(!recovery) return [];
+    const vehicleId = sanitizeVehicleValue(record?.snapshot?.vehicle || record?.vehicle);
+    const targetSlot = normalizeSlot(record?.snapshot?.toSlot || record?.toSlot);
+    if(!vehicleId || !targetSlot) return [];
+    if(!actualPlacements.some(item=>haveSameSdeVehicleTokens(item.vehicleId,vehicleId) && item.slot === targetSlot)) return [];
+    return [{
+      actionKey,
+      vehicleId,
+      targetSlot,
+      chainId:completedChainId,
+      recoveryActionKey:getSdeMoveActionKey(recovery),
+      sequenceStep:Number(record?.snapshot?.sdePhysicalChainStep || 0)
+    }];
   });
 }
 
@@ -41682,9 +42059,10 @@ function inspectSdePassiveBlockedSlotStructure(rows=[], snapshot={}){
   const mains = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "dependent");
   const recoveries = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).role === "return");
   const completedReleaseProofs = getSdePassiveBlockedSlotCompletedReleaseProofs(rows,snapshot);
+  const completedMainProofs = getSdePassiveBlockedSlotCompletedMainProofs(rows,snapshot);
   const chainRows = operativeRows.filter(row=>getSdePassiveBlockedSlotRowParts(row).chainId);
   if(!chainRows.length){
-    return {complete:true,releases,mains:operativeRows,recoveries:[],completedReleaseProofs,operativeRows,missingPlanParts:[]};
+    return {complete:true,releases,mains:operativeRows,recoveries:[],completedReleaseProofs,completedMainProofs,operativeRows,missingPlanParts:[]};
   }
   const actionKeys = new Set(operativeRows.flatMap(row=>[
     getSdeMoveActionKey(row),row.actionKey,row.stableActionKey,row.cardId,row.sdeNightPlacementGeneratedActionKey
@@ -41694,8 +42072,14 @@ function inspectSdePassiveBlockedSlotStructure(rows=[], snapshot={}){
   const dependenciesComplete = operativeRows.every(row=>(Array.isArray(row.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : [])
     .map(value=>String(value || "").trim()).filter(Boolean).every(key=>actionKeys.has(key) || completedActionKeys.has(key)));
   const expectedStepCount = Math.max(0,...operativeRows.map(row=>Number(row.sdePhysicalChainStepCount || 0)).filter(Number.isFinite));
-  const sequenceComplete = expectedStepCount > 0 && expectedStepCount === operativeRows.length
-    && new Set(operativeRows.map(row=>Number(row.sdePhysicalChainStep || 0)).filter(value=>value > 0)).size === operativeRows.length;
+  const sequenceSteps = [
+    ...operativeRows.map(row=>Number(row.sdePhysicalChainStep || 0)),
+    ...completedReleaseProofs.map(proof=>Number(proof.sequenceStep || 0)),
+    ...completedMainProofs.map(proof=>Number(proof.sequenceStep || 0))
+  ].filter(value=>value > 0);
+  const sequenceComplete = expectedStepCount > 0
+    && expectedStepCount === operativeRows.length + completedReleaseProofs.length + completedMainProofs.length
+    && new Set(sequenceSteps).size === operativeRows.length + completedReleaseProofs.length + completedMainProofs.length;
   const recoveryComplete = releases.length + completedReleaseProofs.length > 0
     && recoveries.length === releases.length + completedReleaseProofs.length
     && releases.every(release=>{
@@ -41709,7 +42093,7 @@ function inspectSdePassiveBlockedSlotStructure(rows=[], snapshot={}){
   });
   const missingPlanParts = [];
   if(releases.length + completedReleaseProofs.length < 1) missingPlanParts.push("release");
-  if(mains.length !== 1) missingPlanParts.push("main");
+  if(mains.length + completedMainProofs.length !== 1) missingPlanParts.push("main");
   if(!recoveryComplete) missingPlanParts.push("recovery");
   if(!dependenciesComplete) missingPlanParts.push("dependencies");
   if(!sequenceComplete) missingPlanParts.push("steps");
@@ -41719,6 +42103,7 @@ function inspectSdePassiveBlockedSlotStructure(rows=[], snapshot={}){
     mains,
     recoveries,
     completedReleaseProofs,
+    completedMainProofs,
     operativeRows,
     missingPlanParts,
     expectedStepCount,
@@ -41895,7 +42280,7 @@ function applySdePassiveBlockedSlotAtomicProjectionGate(reader, adapters={}){
   admitted.forEach(chainId=>{
     const outcomes = (reader.canonicalPlan?.candidateOutcomes || []).filter(item=>
       String(item.chainId || item.chainScope || "") === chainId
-      && !["exiting","cancelled","superseded","inactive"].includes(String(item.status || "").toLowerCase())
+      && !["completed","exiting","cancelled","superseded","inactive"].includes(String(item.status || "").toLowerCase())
     );
     const outcomeIds = new Set(outcomes.map(item=>item.candidateOutcomeId));
     const cards = allCards.filter(item=>outcomeIds.has(item.activeOutcomeId));
@@ -41967,6 +42352,98 @@ function applySdePassiveBlockedSlotAtomicProjectionGate(reader, adapters={}){
   return reader;
 }
 
+function getSdeCompletedPrefixCandidateRows(actionRecords={}, operativeRows=[]){
+  const activeChainIds = new Set((Array.isArray(operativeRows) ? operativeRows : [])
+    .map(row=>String(row?.sdePhysicalChainId || "").trim())
+    .filter(Boolean));
+  const activeActionKeys = new Set((Array.isArray(operativeRows) ? operativeRows : [])
+    .map(getSdeMoveActionKey)
+    .filter(Boolean));
+  return Object.entries(actionRecords && typeof actionRecords === "object" ? actionRecords : {}).flatMap(([actionKey,record])=>{
+    if(record?.action !== "completed" || activeActionKeys.has(String(actionKey || "").trim())) return [];
+    const snapshot = cloneSdeCanonicalValue(record?.snapshot || {}) || {};
+    const chainId = String(snapshot.sdePhysicalChainId || "").trim();
+    if(!chainId || !activeChainIds.has(chainId)) return [];
+    return [{
+      ...snapshot,
+      vehicle:sanitizeVehicleValue(snapshot.vehicle || record.vehicle),
+      fromSlot:normalizeSlot(snapshot.fromSlot || record.fromSlot),
+      arrivalSlot:normalizeSlot(snapshot.arrivalSlot || snapshot.fromSlot || record.fromSlot),
+      recommendedSlot:normalizeSlot(snapshot.recommendedSlot || snapshot.toSlot || record.toSlot),
+      toSlot:normalizeSlot(snapshot.toSlot || snapshot.recommendedSlot || record.toSlot),
+      stableActionKey:String(actionKey || "").trim(),
+      actionKey:String(actionKey || "").trim(),
+      actionStatus:"completed",
+      status:"completed",
+      sdeOutcomeActive:false,
+      canonicalChainStepActive:false,
+      source:String(snapshot.source || "SDE completed canonical prefix").trim()
+    }];
+  });
+}
+
+function applySdeCompletedPrefixToCanonicalPlan(canonicalPlan={}, actionRecords={}){
+  const plan = canonicalPlan && typeof canonicalPlan === "object" ? canonicalPlan : {};
+  const completedByChain = new Map();
+  Object.entries(actionRecords && typeof actionRecords === "object" ? actionRecords : {}).forEach(([actionKey,record])=>{
+    if(record?.action !== "completed") return;
+    const snapshot = record?.snapshot || {};
+    const chainId = String(snapshot.sdePhysicalChainId || "").trim();
+    const sequenceStep = Number(snapshot.sdePhysicalChainStep || 0);
+    if(!chainId || !Number.isFinite(sequenceStep) || sequenceStep < 1) return;
+    const step = {
+      obligationId:String(snapshot.sdePhysicalObligationId || `physical-chain|${chainId}`).trim(),
+      stepId:String(snapshot.sdePhysicalStepId || `${chainId}|completed-${sequenceStep}`).trim(),
+      candidateId:String(actionKey || "").trim(),
+      candidateOutcomeId:`sde-completed-prefix-v1|${String(actionKey || "").trim()}`,
+      actionKey:String(actionKey || "").trim(),
+      sequenceStep:`physical-${sequenceStep}`,
+      sequenceStepNumber:sequenceStep,
+      dependencies:sortSdeCanonicalStrings(snapshot.sdePhysicalDependsOn || []),
+      status:"completed",
+      active:false,
+      vehicleId:sanitizeVehicleValue(snapshot.vehicle || record.vehicle),
+      sourceSlot:normalizeSlot(snapshot.fromSlot || record.fromSlot),
+      targetSlot:normalizeSlot(snapshot.toSlot || record.toSlot),
+      intentId:String(snapshot.sdePhysicalIntentId || snapshot.sdeCanonicalIntentId || snapshot.sdeNightPlacementDragIdentity || "").trim(),
+      planRevision:String(snapshot.sdePhysicalPlanRevision || snapshot.sdeCanonicalPlanRevision || "").trim(),
+      completedAt:String(record.time || "").trim()
+    };
+    const rows = completedByChain.get(chainId) || [];
+    rows.push(step);
+    completedByChain.set(chainId,rows);
+  });
+  const activeChains = Array.isArray(plan.activeChains) ? [...plan.activeChains] : [];
+  completedByChain.forEach((completedSteps,chainId)=>{
+    completedSteps.sort((left,right)=>left.sequenceStepNumber - right.sequenceStepNumber || left.actionKey.localeCompare(right.actionKey));
+    let chain = activeChains.find(item=>String(item?.chainId || "").trim() === chainId);
+    if(!chain){
+      chain = {chainId,steps:[]};
+      activeChains.push(chain);
+    }
+    const completedActionKeys = new Set(completedSteps.map(step=>step.actionKey));
+    const remainingSteps = (Array.isArray(chain.steps) ? chain.steps : []).filter(step=>
+      !completedActionKeys.has(String(step?.actionKey || step?.candidateId || "").trim())
+    );
+    chain.steps = [...completedSteps,...remainingSteps].sort((left,right)=>{
+      const leftStep = Number(left?.sequenceStepNumber || String(left?.sequenceStep || "").match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+      const rightStep = Number(right?.sequenceStepNumber || String(right?.sequenceStep || "").match(/\d+/)?.[0] || Number.MAX_SAFE_INTEGER);
+      return leftStep - rightStep || String(left?.stepId || "").localeCompare(String(right?.stepId || ""));
+    });
+    const expectedStepCount = Math.max(...completedSteps.map(step=>Number(actionRecords[step.actionKey]?.snapshot?.sdePhysicalChainStepCount || 0)),chain.steps.length);
+    chain.expectedStepCount = expectedStepCount;
+    chain.completedPrefixStepCount = completedSteps.length;
+    chain.closed = expectedStepCount > 0 && completedSteps.length >= expectedStepCount && remainingSteps.length === 0;
+  });
+  plan.activeChains = sortSdeCanonicalObjects(activeChains);
+  plan.metadata = {
+    ...(plan.metadata || {}),
+    completedPrefixStepCount:Array.from(completedByChain.values()).reduce((count,steps)=>count + steps.length,0),
+    completedPrefixPreserved:true
+  };
+  return plan;
+}
+
 function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || captureSdeCanonicalShadowRuntimeSnapshot();
   const diagnosticOnlyRows = (snapshot.legacy?.finalCards || []).filter(row=>row?.sdeTrappedEgressDiagnosticOnly === true);
@@ -41975,14 +42452,18 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
     key,
     typeof value === "string" ? value : String(value?.activeOutcomeId || "").trim()
   ]));
-  const canonicalPlan = buildSdeCanonicalPlan({
+  const completedPrefixRows = getSdeCompletedPrefixCandidateRows(
+    snapshot.runtimeState?.actions || {},
+    passiveBlockedSlotSweep.operativeRows
+  );
+  const canonicalPlan = applySdeCompletedPrefixToCanonicalPlan(buildSdeCanonicalPlan({
     actualSources:snapshot.actualSources,
-    candidateRows:passiveBlockedSlotSweep.operativeRows,
+    candidateRows:[...passiveBlockedSlotSweep.operativeRows,...completedPrefixRows],
     activeAuthorities,
     completedActionKeys:Object.entries(snapshot.runtimeState?.actions || {})
       .filter(([,record])=>record?.action === "completed")
       .map(([key])=>key)
-  });
+  }),snapshot.runtimeState?.actions || {});
   canonicalPlan.diagnostics = sortSdeCanonicalObjects([
     ...(canonicalPlan.diagnostics || []),
     ...(passiveBlockedSlotSweep.findings || []),
@@ -42005,7 +42486,8 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
     diagnosticCount:canonicalPlan.diagnostics.length,
     diagnosticOnlyRowCount:diagnosticOnlyRows.length + passiveBlockedSlotSweep.findings.length,
     passiveBlockedSlotSweepEnforced:passiveBlockedSlotSweep.enforced,
-    passiveBlockedSlotFindingCount:passiveBlockedSlotSweep.findings.length
+    passiveBlockedSlotFindingCount:passiveBlockedSlotSweep.findings.length,
+    completedPrefixCandidateCount:completedPrefixRows.length
   };
   const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
   cardProjection.diagnostics = sortSdeCanonicalObjects([

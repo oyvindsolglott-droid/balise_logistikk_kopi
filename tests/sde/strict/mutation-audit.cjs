@@ -586,7 +586,7 @@ const mutations = [
     id: "Y3-WRONG-DEPENDENCY-ORDER",
     apply: html => replaceOnce(
       html,
-      "const mainDependencies = releaseRows.length ? [getSdeMoveActionKey(releaseRows.at(-1))] : []; // SDE_EGRESS_MAIN_DEPENDENCIES",
+      "const mainDependencies = releaseActionKeys.length ? [releaseActionKeys.at(-1)] : []; // SDE_EGRESS_MAIN_DEPENDENCIES",
       "const mainDependencies = []; // mutation: main becomes actionable before prerequisites",
       "trapped dependency order",
     ),
@@ -647,7 +647,7 @@ const mutations = [
     apply: html => replaceOnce(
       html,
       "&& (row.sdeTrappedEgressChainStep === true || row.sdePhysicalDependsOn.map(value=>String(value || \"\").trim()).filter(Boolean).length) // SDE_EGRESS_ACTIONABLE_SUFFIX",
-      "&& row.sdePhysicalDependsOn.map(value=>String(value || \"\").trim()).filter(Boolean).length /* mutation: require stale prerequisite */",
+      "&& row.sdeTrappedEgressChainStep !== true && row.sdePhysicalDependsOn.map(value=>String(value || \"\").trim()).filter(Boolean).length /* mutation: drop trapped-egress actionable suffix */",
       "actionable mid-chain suffix",
     ),
     catches: ["INV-EGRESS-014"],
@@ -811,7 +811,10 @@ try {
   reports.push({id: "qualification-contract-positive", status: metaRun.status === 0 && positive?.status === "PASS" ? "PASS" : "FAIL", expectedExitCode: 0, actualExitCode: metaRun.status});
   reports.push({id: "qualification-contract-fail-closed-negatives", status: metaRun.status === 0 && negatives.every(item => item?.status === "PASS") ? "PASS" : "FAIL", expectedExitCode: 0, actualExitCode: metaRun.status, scenarios: negativeIds});
   const scenarioCatalog = validateScenarioReports(reports);
-  if (!scenarioCatalog.ok) throw new Error(scenarioCatalog.errors.join("; "));
+  if (!scenarioCatalog.ok) {
+    const failingReports = reports.filter(item => item.status === "FAIL");
+    throw new Error(`${scenarioCatalog.errors.join("; ")}; failingReports=${JSON.stringify(failingReports)}`);
+  }
 } finally {
   fs.rmSync(temporary, {recursive: true, force: true});
 }

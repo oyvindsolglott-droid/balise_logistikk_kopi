@@ -357,6 +357,303 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                     context.close()
             browser.close()
 
+    def test_completed_release_preserves_main_and_recovery_on_desktop_and_390(self) -> None:
+        placements = [["6S", "SUFFIX-MAIN"], ["6N", "SUFFIX-BLOCKER"], ["1N", "OCCUPIED-ORDINARY"]]
+        with static_server() as base_url, sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            for width, height in ((1280, 900), (390, 844)):
+                with self.subTest(width=width):
+                    context = browser.new_context(viewport={"width": width, "height": height})
+                    page = context.new_page()
+                    page_errors: list[str] = []
+                    page.on("pageerror", lambda error: page_errors.append(str(error)))
+                    page.goto(base_url, wait_until="domcontentloaded")
+                    reset_graphic_fixture(page, placements)
+                    actual_pointer_drag(page, "6S", "11S")
+
+                    transition = page.evaluate(
+                        """async () => {
+                          getSdeMoveLearningReason=async()=>getSdeNoMoveLearningReason('');
+                          saveSharedSporplanDraftFromSdeCompletedMove=async()=>{};
+                          persist=()=>{};
+                          window.__suffixAlerts=[];
+                          alert=message=>window.__suffixAlerts.push(String(message));
+                          const beforeRows=buildSdeShiftCardMoveCandidates({moves:[]},{reconcileActive:false})
+                            .filter(row=>row?.sdePhysicalChainId);
+                          const release=beforeRows.find(row=>row.sdePhysicalDependencyRole==='prerequisite');
+                          const main=beforeRows.find(row=>row.sdePhysicalDependencyRole==='dependent');
+                          const recovery=beforeRows.find(row=>row.sdePhysicalDependencyRole==='return');
+                          const beforeReader=buildSdeCanonicalProductionReader();
+                          const releaseKey=getSdeMoveActionKey(release);
+                          const initialChainId=release?.sdePhysicalChainId||'';
+                          const initialIntentId=main?.sdeNightPlacementDragIdentity||'';
+                          await handleSdeShiftMoveAction(encodeURIComponent(releaseKey),'completed');
+                          localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+                          const afterRows=buildSdeShiftCardMoveCandidates({moves:[]},{reconcileActive:false})
+                            .filter(row=>row?.sdePhysicalChainId);
+                          const afterReader=buildSdeCanonicalProductionReader();
+                          const cards=[...(afterReader.cardProjection.actionableCards||[]),
+                            ...(afterReader.cardProjection.blockedChainCards||[]),
+                            ...(afterReader.cardProjection.handlerBlockedCards||[])];
+                          const chain=afterReader.cardProjection.chains?.find(item=>item.chainId===initialChainId)||null;
+                          return {
+                            initial:{
+                              chainId:initialChainId,
+                              intentId:initialIntentId,
+                              releaseKey,
+                              roles:beforeRows.map(row=>row.sdePhysicalDependencyRole),
+                              statuses:[...(beforeReader.cardProjection.actionableCards||[]),
+                                ...(beforeReader.cardProjection.blockedChainCards||[])].map(card=>card.status),
+                              path:[[release?.fromSlot,release?.toSlot],[main?.fromSlot,main?.toSlot],[recovery?.fromSlot,recovery?.toSlot]]
+                            },
+                            after:{
+                              chainIds:[...new Set(afterRows.map(row=>row.sdePhysicalChainId))],
+                              roles:afterRows.map(row=>row.sdePhysicalDependencyRole),
+                              statuses:cards.map(card=>card.status),
+                              targets:cards.map(card=>card.targetSlot),
+                              mainIntentIds:afterRows.filter(row=>row.sdePhysicalDependencyRole==='dependent')
+                                .map(row=>row.sdeNightPlacementDragIdentity||''),
+                              action:state.sdeMoveActions?.[releaseKey]?.action||'',
+                              releaseActual:getSdeVehicleInSlot('VN'),
+                              mainActual:getSdeVehicleInSlot('6S'),
+                              actionCount:Object.keys(state.sdeMoveActions||{}).length,
+                              chainStepCount:chain?.stepCount||0,
+                              completedSteps:(chain?.steps||[]).filter(step=>step.status==='completed').length,
+                              integrity:afterReader.integrityReport.status,
+                              integrityConflicts:(afterReader.integrityReport.conflicts||[]).map(item=>({
+                                code:item.code||item.diagnosticType||'',message:item.message||'',
+                                chainId:item.chainId||'',candidateOutcomeId:item.candidateOutcomeId||''
+                              })),
+                              failedInvariants:(afterReader.integrityReport.invariantResults||[])
+                                .filter(item=>item.status!=='PASS'),
+                              runtimeRoles:(afterReader.runtimeSnapshot?.legacy?.finalCards||[]).map(row=>row.sdePhysicalDependencyRole||''),
+                              outcomes:(afterReader.canonicalPlan?.candidateOutcomes||[]).map(outcome=>({
+                                role:outcome.raw?.sdePhysicalDependencyRole||'',status:outcome.status,
+                                activeEligible:outcome.activeEligible,sourceValid:outcome.sourceValidation?.valid,
+                                physicalValid:outcome.physicalValidation?.valid,unmet:outcome.unmetDependencies,
+                                chainId:outcome.chainId,target:outcome.targetSlot,
+                                vnRecoveryRequired:outcome.raw?.sdeVnRecoveryRequired,
+                                physicalVnRecovery:outcome.raw?.isSdePhysicalVnRecoveryMove,
+                                obligationKind:outcome.obligationKind,
+                                actualSource:outcome.actualSourceSlot
+                              })),
+                              recoveryResults:afterReader.integrityReport.recoveryResults,
+                              planConflicts:(afterReader.canonicalPlan?.conflicts||[]).map(item=>item.code),
+                              planDiagnostics:(afterReader.canonicalPlan?.diagnostics||[]).map(item=>item.code||item.diagnosticType),
+                              cardDiagnostics:(afterReader.cardProjection?.diagnostics||[]).map(item=>item.diagnosticType),
+                              alerts:window.__suffixAlerts,
+                              selection:sdeNightPlacementSelectedSlot,
+                              ghosts:document.querySelectorAll('.dragging,.drop-rejected').length
+                            }
+                          };
+                        }"""
+                    )
+                    self.assertEqual(transition["initial"]["roles"], ["prerequisite", "dependent", "return"])
+                    self.assertEqual(transition["initial"]["statuses"], ["actionable", "blocked_chain_step", "blocked_chain_step"])
+                    self.assertEqual(transition["initial"]["path"], [["6N", "VN"], ["6S", "11S"], ["VN", "6S"]])
+                    self.assertEqual(transition["after"]["roles"], ["dependent", "return"])
+                    self.assertEqual(transition["after"]["statuses"], ["actionable", "blocked_chain_step"], transition)
+                    self.assertEqual(transition["after"]["targets"], ["11S", "6S"])
+                    self.assertEqual(transition["after"]["chainIds"], [transition["initial"]["chainId"]])
+                    self.assertEqual(transition["after"]["mainIntentIds"], [transition["initial"]["intentId"]])
+                    self.assertEqual(transition["after"]["action"], "completed")
+                    self.assertEqual(transition["after"]["releaseActual"], "SUFFIX-BLOCKER")
+                    self.assertEqual(transition["after"]["mainActual"], "SUFFIX-MAIN")
+                    self.assertEqual(transition["after"]["actionCount"], 1)
+                    self.assertEqual(transition["after"]["chainStepCount"], 3)
+                    self.assertEqual(transition["after"]["completedSteps"], 1)
+                    self.assertEqual(transition["after"]["integrity"], "PASS", transition)
+                    self.assertEqual(transition["after"]["alerts"], [])
+                    self.assertEqual(transition["after"]["selection"], "")
+                    self.assertEqual(transition["after"]["ghosts"], 0)
+
+                    page.reload(wait_until="domcontentloaded")
+                    hydrated = page.evaluate(
+                        """() => {
+                          getSdeShiftShowcaseData=()=>({
+                            score:100,baseScore:100,needs:[],moves:[],scoreMoves:[],unresolved:[],
+                            flexibleUnknownParking:[],filteredPastDepartureNeeds:[],totalArrivals:0,
+                            solvedArrivals:0,totalDepartures:0,securedDepartures:0,unresolvedCount:0,
+                            flexibleUnknownCount:0,baseMoveCount:0,adaptiveMoveCount:0
+                          });
+                          getSdeTomorrowJsonReadinessForScore=()=>({ready:true,reason:'TEST_FIXTURE_READY'});
+                          state.sharedSporplanDraftAppliedRevision=1;
+                          activateTab('sdeSkiftebevegelser');
+                          const reader=buildSdeCanonicalProductionReader();
+                          const cards=[...(reader.cardProjection.actionableCards||[]),
+                            ...(reader.cardProjection.blockedChainCards||[]),
+                            ...(reader.cardProjection.handlerBlockedCards||[])];
+                          return {statuses:cards.map(card=>card.status),targets:cards.map(card=>card.targetSlot),
+                            cards:cards.map(card=>({status:card.status,target:card.targetSlot,chainId:card.chainId,
+                              vehicle:card.vehicleId,step:card.sequenceStep,producer:card.producerProvenance?.producer||''})),
+                            roles:(reader.runtimeSnapshot?.legacy?.finalCards||[]).map(row=>({
+                              role:row.sdePhysicalDependencyRole||'',target:row.toSlot||row.recommendedSlot||'',
+                              chainId:row.sdePhysicalChainId||'',vnRecoveryRequired:row.sdeVnRecoveryRequired||false,
+                              trapped:row.sdeTrappedEgressChainStep||false
+                            })),
+                            integrity:reader.integrityReport.status};
+                        }"""
+                    )
+                    self.assertEqual(hydrated["statuses"], ["actionable", "blocked_chain_step"], hydrated)
+                    self.assertEqual(hydrated["targets"], ["11S", "6S"])
+                    self.assertEqual(hydrated["integrity"], "PASS")
+
+                    unexpected = page.evaluate(
+                        """async () => {
+                          getSdeMoveLearningReason=async()=>getSdeNoMoveLearningReason('');
+                          saveSharedSporplanDraftFromSdeCompletedMove=async()=>{};
+                          persist=()=>{};
+                          window.__suffixAlerts=[];
+                          alert=message=>window.__suffixAlerts.push(String(message));
+                          const beforeReader=buildSdeCanonicalProductionReader();
+                          const beforeCards=[...(beforeReader.cardProjection.actionableCards||[]),
+                            ...(beforeReader.cardProjection.blockedChainCards||[])];
+                          const originalChainId=beforeCards.find(card=>card.vehicleId==='SUFFIX-MAIN')?.chainId||'';
+                          const beforeRows=(beforeReader.runtimeSnapshot?.legacy?.finalCards||[])
+                            .filter(row=>row?.sdePhysicalChainId===originalChainId);
+                          const beforeRevision=beforeRows.find(row=>row.sdePhysicalDependencyRole==='dependent')
+                            ?.sdePhysicalPlanRevision||'';
+
+                          state.grunnoppstilling={...state.grunnoppstilling,VN:'UNEXPECTED-THIRD-PARTY','4M':'SUFFIX-BLOCKER'};
+                          const actualBeforePlanning=JSON.stringify(state.grunnoppstilling);
+                          const generated=buildSdeNightPlacementGeneratedMoves([]);
+                          const replannedRows=buildSdePhysicalBlockerGuardMoves(generated,{reconcileActive:false});
+                          const debugSnapshot=captureSdeCanonicalShadowRuntimeSnapshot();
+                          const debugChainRows=(debugSnapshot.legacy?.finalCards||[])
+                            .filter(row=>row?.sdePhysicalChainId===originalChainId);
+                          const debugStructure=inspectSdePassiveBlockedSlotStructure(debugChainRows,debugSnapshot);
+                          const sourceReader=buildSdeCanonicalProductionReaderSource(debugSnapshot);
+                          const sourceCards=[...(sourceReader.cardProjection.actionableCards||[]),
+                            ...(sourceReader.cardProjection.blockedChainCards||[]),
+                            ...(sourceReader.cardProjection.handlerBlockedCards||[])]
+                            .filter(card=>card.chainId===originalChainId);
+                          const sourceAdapters=Object.fromEntries(sourceCards.map(card=>[
+                            card.canonicalCardId,buildSdeCanonicalHandlerAdapter(card,sourceReader)
+                          ]));
+                          const replannedReader=buildSdeCanonicalProductionReader();
+                          const replannedCards=[...(replannedReader.cardProjection.actionableCards||[]),
+                            ...(replannedReader.cardProjection.blockedChainCards||[])]
+                            .filter(card=>card.chainId===originalChainId);
+                          const chainRows=replannedRows.filter(row=>row?.sdePhysicalChainId===originalChainId);
+                          const main=chainRows.find(row=>row.sdePhysicalDependencyRole==='dependent');
+                          const recovery=chainRows.find(row=>row.sdePhysicalDependencyRole==='return');
+                          const replanSnapshot={
+                            chainId:originalChainId,
+                            roles:chainRows.map(row=>row.sdePhysicalDependencyRole),
+                            statuses:replannedCards.map(card=>card.status),
+                            path:chainRows.map(row=>[row.fromSlot,row.toSlot]),
+                            mainIntent:main?.sdeNightPlacementDragIdentity||'',
+                            planRevision:main?.sdePhysicalPlanRevision||'',
+                            beforeRevision,
+                            completedPrefix:(replannedReader.canonicalPlan.candidateOutcomes||[])
+                              .filter(outcome=>outcome.chainId===originalChainId&&outcome.status==='completed').length,
+                            integrity:replannedReader.integrityReport.status,
+                            actualUnchanged:actualBeforePlanning===JSON.stringify(state.grunnoppstilling),
+                            actionTypes:Object.values(state.sdeMoveActions||{}).map(record=>record?.action),
+                            diagnostics:(replannedReader.canonicalPlan.diagnostics||[]).map(item=>item.code||item.diagnosticType)
+                            ,structure:{complete:debugStructure.complete,missing:debugStructure.missingPlanParts,
+                              completedProofs:debugStructure.completedReleaseProofs,
+                              actual:getSdePassiveBlockedSlotActualPlacements(debugSnapshot),
+                              roles:debugChainRows.map(row=>[row.sdePhysicalDependencyRole,row.fromSlot,row.toSlot,row.sdePhysicalChainId]),
+                              sourceOutcomes:(sourceReader.canonicalPlan.candidateOutcomes||[])
+                                .filter(outcome=>outcome.chainId===originalChainId)
+                                .map(outcome=>[outcome.raw?.sdePhysicalDependencyRole,outcome.status,outcome.targetSlot]),
+                              sourceCards:sourceCards.map(card=>[card.status,card.targetSlot]),
+                              sourceReservations:(sourceReader.reservationProjection.reservations||[])
+                                .filter(item=>item.chainId===originalChainId).map(item=>item.targetSlot),
+                              sourceOverlays:[...(sourceReader.graphicProjection.activeOverlays||[]),
+                                ...(sourceReader.graphicProjection.deferredOverlays||[])]
+                                .filter(item=>item.chainId===originalChainId).map(item=>item.targetSlot),
+                              sourceAdapters:Object.values(sourceAdapters).map(adapter=>({ready:adapter.ready,reasons:adapter.reasons}))}
+                          };
+
+                          await handleSdeShiftMoveAction(encodeURIComponent(getSdeMoveActionKey(main)),'completed');
+                          localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+                          const postMainReader=buildSdeCanonicalProductionReader();
+                          const postSnapshot=captureSdeCanonicalShadowRuntimeSnapshot();
+                          const postChainRows=(postSnapshot.legacy?.finalCards||[])
+                            .filter(row=>row?.sdePhysicalChainId===originalChainId);
+                          const postStructure=inspectSdePassiveBlockedSlotStructure(postChainRows,postSnapshot);
+                          const postMainCards=[...(postMainReader.cardProjection.actionableCards||[]),
+                            ...(postMainReader.cardProjection.blockedChainCards||[])]
+                            .filter(card=>card.chainId===originalChainId);
+                          const postMainChain=postMainReader.cardProjection.chains?.find(item=>item.chainId===originalChainId)||null;
+                          return {
+                            replan:replanSnapshot,
+                            postMain:{
+                              statuses:postMainCards.map(card=>card.status),
+                              targets:postMainCards.map(card=>card.targetSlot),
+                              completedSteps:(postMainChain?.steps||[]).filter(step=>step.status==='completed').length,
+                              integrity:postMainReader.integrityReport.status,
+                              mainActual:sanitizeVehicleValue(state.grunnoppstilling?.['11S']),
+                              blockerActual:sanitizeVehicleValue(state.grunnoppstilling?.['4M']),
+                              rawPlacement:{...state.grunnoppstilling},
+                              roles:(postMainReader.runtimeSnapshot?.legacy?.finalCards||[]).map(row=>[
+                                row.sdePhysicalDependencyRole||'',row.fromSlot||'',row.toSlot||row.recommendedSlot||'',
+                                row.sdePhysicalChainId||'',row.sdeTrappedEgressDiagnosticOnly||false
+                              ]),
+                              diagnostics:(postMainReader.canonicalPlan.diagnostics||[]).map(item=>item.code||item.diagnosticType),
+                              actionTypes:Object.values(state.sdeMoveActions||{}).map(record=>[record.action,record.vehicle,record.fromSlot,record.toSlot])
+                              ,structure:{complete:postStructure.complete,missing:postStructure.missingPlanParts,
+                                releases:postStructure.completedReleaseProofs,mains:postStructure.completedMainProofs,
+                                roles:postChainRows.map(row=>[row.sdePhysicalDependencyRole,row.fromSlot,row.toSlot,row.sdePhysicalDependsOn])}
+                            },
+                            alerts:window.__suffixAlerts,
+                            selection:sdeNightPlacementSelectedSlot,
+                            ghosts:document.querySelectorAll('.dragging,.drop-rejected').length
+                          };
+                        }"""
+                    )
+                    self.assertEqual(unexpected["replan"]["roles"], ["dependent", "return"], unexpected)
+                    self.assertEqual(unexpected["replan"]["statuses"], ["actionable", "blocked_chain_step"], unexpected)
+                    self.assertEqual(unexpected["replan"]["path"], [["6S", "11S"], ["4M", "6S"]], unexpected)
+                    self.assertEqual(unexpected["replan"]["mainIntent"], transition["initial"]["intentId"])
+                    self.assertNotEqual(unexpected["replan"]["planRevision"], unexpected["replan"]["beforeRevision"])
+                    self.assertEqual(unexpected["replan"]["completedPrefix"], 1)
+                    self.assertEqual(unexpected["replan"]["integrity"], "PASS")
+                    self.assertTrue(unexpected["replan"]["actualUnchanged"])
+                    self.assertNotIn("cancelled", unexpected["replan"]["actionTypes"])
+                    self.assertEqual(unexpected["postMain"]["statuses"], ["actionable"], unexpected)
+                    self.assertEqual(unexpected["postMain"]["targets"], ["6S"])
+                    self.assertEqual(unexpected["postMain"]["completedSteps"], 2)
+                    self.assertEqual(unexpected["postMain"]["integrity"], "PASS")
+                    self.assertEqual(unexpected["postMain"]["mainActual"], "SUFFIX-MAIN")
+                    self.assertEqual(unexpected["postMain"]["blockerActual"], "SUFFIX-BLOCKER")
+                    self.assertEqual(unexpected["alerts"], [])
+                    self.assertEqual(unexpected["selection"], "")
+                    self.assertEqual(unexpected["ghosts"], 0)
+
+                    page.reload(wait_until="domcontentloaded")
+                    post_main_hydrated = page.evaluate(
+                        """() => {
+                          getSdeShiftShowcaseData=()=>({
+                            score:100,baseScore:100,needs:[],moves:[],scoreMoves:[],unresolved:[],
+                            flexibleUnknownParking:[],filteredPastDepartureNeeds:[],totalArrivals:0,
+                            solvedArrivals:0,totalDepartures:0,securedDepartures:0,unresolvedCount:0,
+                            flexibleUnknownCount:0,baseMoveCount:0,adaptiveMoveCount:0
+                          });
+                          getSdeTomorrowJsonReadinessForScore=()=>({ready:true,reason:'TEST_FIXTURE_READY'});
+                          state.sharedSporplanDraftAppliedRevision=1;
+                          activateTab('sdeSkiftebevegelser');
+                          const reader=buildSdeCanonicalProductionReader();
+                          const mainChain=(reader.cardProjection.chains||[]).find(chain=>(chain.steps||[])
+                            .some(step=>step.vehicleId==='SUFFIX-MAIN'))||null;
+                          const cards=[...(reader.cardProjection.actionableCards||[]),
+                            ...(reader.cardProjection.blockedChainCards||[])]
+                            .filter(card=>card.chainId===mainChain?.chainId);
+                          return {statuses:cards.map(card=>card.status),targets:cards.map(card=>card.targetSlot),
+                            completedSteps:(mainChain?.steps||[]).filter(step=>step.status==='completed').length,
+                            integrity:reader.integrityReport.status};
+                        }"""
+                    )
+                    self.assertEqual(post_main_hydrated["statuses"], ["actionable"], post_main_hydrated)
+                    self.assertEqual(post_main_hydrated["targets"], ["6S"])
+                    self.assertEqual(post_main_hydrated["completedSteps"], 2)
+                    self.assertEqual(post_main_hydrated["integrity"], "PASS")
+                    self.assertEqual(page_errors, [])
+                    context.close()
+            browser.close()
+
 
 if __name__ == "__main__":
     unittest.main()
