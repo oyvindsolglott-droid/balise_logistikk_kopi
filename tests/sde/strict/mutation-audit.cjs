@@ -322,7 +322,7 @@ function strictReport(html, name) {
   const run = childProcess.spawnSync(process.execPath, [path.join(__dirname, "strict-runner.cjs"), target], {
     cwd: root,
     encoding: "utf8",
-    timeout: 60_000,
+    timeout: 90_000,
     maxBuffer: 64 * 1024 * 1024,
   });
   return parseMutationStrictRun(run, name);

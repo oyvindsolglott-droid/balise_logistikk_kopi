@@ -55,8 +55,21 @@ for(const token of [
 ]){
   assert.ok(absoluteSafety.includes(token),`absolute safety misses ${token}`);
 }
+const canonicalResolutionEntry = extractFunction("getSdeBestResolutionTarget");
+assert.ok(
+  canonicalResolutionEntry.includes("getSdeCanonicalResolutionRecommendation"),
+  "getSdeBestResolutionTarget must delegate to the canonical full-inventory recommendation",
+);
+const canonicalResolutionDiagnostics = extractFunction("buildSdeCanonicalCandidateDiagnostics");
+assert.ok(
+  canonicalResolutionDiagnostics.includes("isSdeAbsoluteTargetSlotEligible"),
+  "canonical full-inventory diagnostics must apply the absolute target invariant",
+);
+assert.ok(
+  canonicalResolutionDiagnostics.indexOf("isSdeAbsoluteTargetSlotEligible") < canonicalResolutionDiagnostics.indexOf("scoreSdeCanonicalResolutionCandidate"),
+  "canonical full-inventory diagnostics must establish hard eligibility before scoring",
+);
 for(const name of [
-  "getSdeBestResolutionTarget",
   "buildSdeManualOverrideCandidateSlots",
   "buildSdeShiftCardMoveCandidates",
 ]){

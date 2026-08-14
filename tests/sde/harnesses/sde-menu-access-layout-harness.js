@@ -1,11 +1,17 @@
 "use strict";
 
 const fs = require("node:fs");
+const crypto = require("node:crypto");
 const path = require("node:path");
 const vm = require("node:vm");
 
 const indexPath = path.resolve(process.argv[2]);
 const source = fs.readFileSync(indexPath,"utf8");
+const repositoryRoot = path.resolve(__dirname,"../../..");
+const planButtonAssetPath = path.join(repositoryRoot,"assets","registrer-plan-i-sde-button.png");
+const planButtonAssetSha256 = fs.existsSync(planButtonAssetPath)
+  ? crypto.createHash("sha256").update(fs.readFileSync(planButtonAssetPath)).digest("hex")
+  : "missing";
 const results = [];
 const put = (id,pass,detail)=>results.push({id,status:pass?"PASS":"FAIL",detail});
 
@@ -59,19 +65,24 @@ try{
     && context.authorize("2",{...txp,ok:false}) === false
     && context.authorize("2",{ok:true,roleResolved:true,roles:[]}) === false;
 }catch(_error){}
-put("INV-MENU-002",authorityPass,"only server-authorized active levels 0 and 2 can receive Registrer Nattplan");
+put("INV-MENU-002",authorityPass,"only server-authorized active levels 0 and 2 can receive Registrer Plan i SDE");
 
 const syncSource = functionSource("syncSdeNightPlanMenuButton");
 const createSource = functionSource("createSdeNightPlanMenuButton");
 put(
   "INV-MENU-003",
   !/data-tab="sdeNattplanErfaring"/.test(menuMarkup)
-    && /SDE_NIGHT_PLAN_BUTTON_LABEL = "Registrer Nattplan";/.test(source)
-    && /button\.textContent = SDE_NIGHT_PLAN_BUTTON_LABEL;/.test(createSource)
+    && /SDE_NIGHT_PLAN_BUTTON_LABEL = "Registrer Plan i SDE";/.test(source)
+    && /SDE_NIGHT_PLAN_BUTTON_ASSET = "assets\/registrer-plan-i-sde-button\.png";/.test(source)
+    && /button\.className = "seg seg-sde-plan-graphic";/.test(createSource)
+    && /image\.className = "seg-sde-plan-graphic__image";/.test(createSource)
+    && /image\.src = SDE_NIGHT_PLAN_BUTTON_ASSET;/.test(createSource)
+    && /label\.textContent = SDE_NIGHT_PLAN_BUTTON_LABEL;/.test(createSource)
+    && planButtonAssetSha256 === "f74058d3cc40f47c4049f962f3a299f7fed725babf685f7e6b9daa16a2761fad"
     && /menu\.insertBefore\(button,menu\.querySelector\("\.seg-vaktplan-graphic"\)\);/.test(syncSource)
     && /button\.remove\(\);/.test(syncSource)
     && !/>\s*Nattplan\s*<br>\s*og erfaring\s*</i.test(menuMarkup),
-  "the renamed Nightplan button is dynamically mounted when authorized and removed rather than hidden when unauthorized"
+  "the exact versioned graphic and semantic Registrer Plan i SDE label are dynamically mounted when authorized and removed rather than hidden when unauthorized"
 );
 
 const tabGuardSource = functionSource("isTabAllowedAtCurrentLevel");

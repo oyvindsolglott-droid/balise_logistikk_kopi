@@ -13,9 +13,15 @@ const emptyDropHarness = path.join(root, "tests/sde/harnesses/sde-empty-target-d
 const egressHarness = path.join(root, "tests/sde/harnesses/sde-trapped-egress-chain-harness.js");
 const vnReliefHarness = path.join(root, "tests/sde/strict/vn-relief-invariants.cjs");
 const suffixPersistenceHarness = path.join(root, "tests/sde/strict/suffix-persistence-invariants.cjs");
+const candidateEngineHarness = path.join(root, "tests/sde/strict/candidate-engine-invariants.cjs");
 const menuHarness = path.join(root, "tests/sde/harnesses/sde-menu-access-layout-harness.js");
 const baliseHarness = path.join(root, "tests/sde/harnesses/sde-24xx-focused-mutation-harness.py");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-final-focused-mutations-"));
+fs.mkdirSync(path.join(temporary,"assets"),{recursive:true});
+fs.copyFileSync(
+  path.join(root,"assets","registrer-plan-i-sde-button.png"),
+  path.join(temporary,"assets","registrer-plan-i-sde-button.png")
+);
 
 function replaceOnce(source, before, after, label) {
   const index = source.indexOf(before);
@@ -89,6 +95,10 @@ function runVnRelief(source, label) {
 
 function runSuffixPersistence(source, label) {
   return runIndexHarness(source,label,suffixPersistenceHarness,"sde-suffix-persistence-invariants-v1");
+}
+
+function runCandidateEngine(source, label) {
+  return runIndexHarness(source,label,candidateEngineHarness,"sde-candidate-engine-invariants-v1");
 }
 
 function runMenu(source, label) {
@@ -201,9 +211,127 @@ const mutations = [
     expectedInvariant: "INV-MENU-003",
     apply: source => replaceOnce(
       source,
-      'const SDE_NIGHT_PLAN_BUTTON_LABEL = "Registrer Nattplan";',
+      'const SDE_NIGHT_PLAN_BUTTON_LABEL = "Registrer Plan i SDE";',
       'const SDE_NIGHT_PLAN_BUTTON_LABEL = "Nattplan og erfaring"; // focused mutation',
       "nightplan old label",
+    ),
+  },
+  {
+    id: "NIGHTPLAN_GRAPHIC_REMOVED",
+    kind: "menu",
+    expectedInvariant: "INV-MENU-003",
+    apply: source => replaceOnce(
+      source,
+      "image.src = SDE_NIGHT_PLAN_BUTTON_ASSET;",
+      'image.src = ""; // focused mutation: remove binding graphic',
+      "nightplan graphic removed",
+    ),
+  },
+  {
+    id: "STATIC_CANDIDATE_LIST_OMITS_SAFE_SLOT",
+    kind: "candidateEngine",
+    expectedInvariant: "INV-CANDIDATE-001",
+    apply: source => mutateFunction(
+      source,
+      "getSdeCanonicalSlotInventory",
+      ".filter(Boolean)));",
+      '.filter(Boolean).filter(slot=>slot !== "9"))); // focused mutation: omit safe inventory slot',
+      "static candidate list omits safe slot",
+    ),
+  },
+  {
+    id: "WRONG_SLOT_ROLE_ADMITTED_AS_GENERIC_RELIEF",
+    kind: "candidateEngine",
+    expectedInvariant: "INV-CANDIDATE-002",
+    apply: source => mutateFunction(
+      source,
+      "isSdeCanonicalSlotRoleAllowedForContext",
+      'if(role === "ordinary" || role === "service") return true;',
+      'if(role === "ordinary" || role === "service" || role === "workshop") return true; // focused mutation',
+      "workshop role admitted as generic relief",
+    ),
+  },
+  {
+    id: "VN_OBSERVE_ONLY_PREVENTS_ACTIVE_RELIEF",
+    kind: "candidateEngine",
+    expectedInvariant: "INV-CANDIDATE-003",
+    apply: source => mutateFunction(
+      source,
+      "shouldSdeIncludeVnInCanonicalSearch",
+      "return isSdeCanonicalVnAvailable(context);",
+      "return false; // focused mutation: VN observe-only",
+      "VN observe-only",
+    ),
+  },
+  {
+    id: "ONE_N_ALWAYS_WINS_RESOLUTION",
+    kind: "candidateEngine",
+    expectedInvariant: "INV-CANDIDATE-004",
+    apply: source => mutateFunction(
+      source,
+      "scoreSdeCanonicalResolutionCandidate",
+      "const base = scoreSdeResolutionTarget(normalized);",
+      'const base = normalized === "1N" ? 99999 : scoreSdeResolutionTarget(normalized); // focused mutation',
+      "1N global winner",
+    ),
+  },
+  {
+    id: "STALE_RESERVATION_EXCLUDES_SAFE_TARGET",
+    kind: "candidateEngine",
+    expectedInvariant: "INV-CANDIDATE-005",
+    apply: source => replaceOnce(
+      source,
+      '  "STALE","SUPERSEDED","CANCELLED","COMPLETED","ORPHANED","INACTIVE","EXPIRED"',
+      '  "SUPERSEDED","CANCELLED","COMPLETED","ORPHANED","INACTIVE","EXPIRED" // focused mutation: STALE treated active',
+      "stale reservation treated active",
+    ),
+  },
+  {
+    id: "CANONICAL_SEARCH_STOPS_AFTER_FIRST_REJECTION",
+    kind: "candidateEngine",
+    expectedInvariant: "INV-CANDIDATE-006",
+    apply: source => mutateFunction(
+      source,
+      "getSdeArrivalParkingRecommendation",
+      "const scored = candidateDiagnostics\n    .filter(candidate => candidate.finalStatus === \"candidate\")",
+      "const scored = candidateDiagnostics.slice(0,1)\n    .filter(candidate => candidate.finalStatus === \"candidate\") // focused mutation",
+      "canonical search stops after first rejection",
+    ),
+  },
+  {
+    id: "SAFE_LOW_SCORE_CANDIDATE_DROPPED",
+    kind: "candidateEngine",
+    expectedInvariant: "INV-CANDIDATE-007",
+    apply: source => mutateFunction(
+      source,
+      "getSdeArrivalParkingRecommendation",
+      "const scored = candidateDiagnostics\n    .filter(candidate => candidate.finalStatus === \"candidate\")",
+      "const scored = candidateDiagnostics\n    .filter(candidate => candidate.finalStatus === \"candidate\" && candidate.score >= 45) // focused mutation",
+      "safe low-score candidate dropped",
+    ),
+  },
+  {
+    id: "WORKSHOP_VISIT_MISMATCH_ALWAYS_UNRESOLVED",
+    kind: "candidateEngine",
+    expectedInvariant: "INV-CANDIDATE-008",
+    apply: source => mutateFunction(
+      source,
+      "reconcileSdeWorkshopExitPlacement",
+      "const reconciled = !exactVisit;",
+      'if(!exactVisit) return {ok:false,ambiguous:true,placement:null,reasonCode:"workshop_identity_ambiguous",reason:"focused mutation"};\n  const reconciled = !exactVisit;',
+      "workshop visit mismatch always unresolved",
+    ),
+  },
+  {
+    id: "UNRESOLVED_CARD_NEVER_REPLANS",
+    kind: "candidateEngine",
+    expectedInvariant: "INV-CANDIDATE-009",
+    apply: source => mutateFunction(
+      source,
+      "buildSdeCanonicalAutomaticReplanRows",
+      "const replans = [];",
+      "const replans = []; return {rows:Array.isArray(rows)?rows:[],replans}; // focused mutation: automatic replan disabled",
+      "unresolved card never replans",
     ),
   },
   {
@@ -438,6 +566,8 @@ try {
           ? runEmptyDrop(indexSource, `${mutation.id}-baseline`)
       : mutation.kind === "suffixPersistence"
           ? runSuffixPersistence(indexSource, `${mutation.id}-baseline`)
+      : mutation.kind === "candidateEngine"
+          ? runCandidateEngine(indexSource, `${mutation.id}-baseline`)
       : mutation.kind === "egress"
           ? runEgress(indexSource, `${mutation.id}-baseline`)
           : mutation.kind === "vnRelief"
@@ -454,6 +584,8 @@ try {
           ? runEmptyDrop(mutatedSource, mutation.id)
       : mutation.kind === "suffixPersistence"
           ? runSuffixPersistence(mutatedSource, mutation.id)
+      : mutation.kind === "candidateEngine"
+          ? runCandidateEngine(mutatedSource, mutation.id)
       : mutation.kind === "egress"
           ? runEgress(mutatedSource, mutation.id)
           : mutation.kind === "vnRelief"
@@ -462,7 +594,7 @@ try {
     const structuredFailure = mutant.execution.status === 1;
     const invariantObserved = mutation.kind === "balise"
       ? mutant.report.status === "FAIL" && mutant.report.invariantId === mutation.id && mutant.report.structured === true
-      : ["menu","egress","vnRelief","suffixPersistence"].includes(mutation.kind)
+      : ["menu","egress","vnRelief","suffixPersistence","candidateEngine"].includes(mutation.kind)
         ? mutant.report.counts?.fail > 0
           && mutant.report.results?.some(report=>report.id===mutation.expectedInvariant&&report.status==="FAIL")
         : mutation.kind === "emptyDrop"

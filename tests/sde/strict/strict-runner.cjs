@@ -18,6 +18,7 @@ const drivers = [
   "prerequisite-cancel-invariants.cjs",
   "blocked-slot-invariants.cjs",
   "empty-drop-invariants.cjs",
+  "candidate-engine-invariants.cjs",
   "menu-invariants.cjs",
 ];
 

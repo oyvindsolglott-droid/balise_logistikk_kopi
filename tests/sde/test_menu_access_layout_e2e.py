@@ -67,8 +67,13 @@ class SdeMenuAccessLayoutBrowserTests(unittest.TestCase):
 
             night_button = page.locator('[data-tab="sdeNattplanErfaring"]')
             self.assertEqual(night_button.count(), 1)
-            self.assertEqual(night_button.inner_text(), "Registrer Nattplan")
+            self.assertEqual(night_button.inner_text(), "Registrer Plan i SDE")
             self.assertEqual(night_button.get_attribute("data-levels"), "0 2")
+            self.assertEqual(night_button.get_attribute("aria-label"), "Åpne Registrer Plan i SDE")
+            self.assertEqual(
+                night_button.locator("img").get_attribute("src"),
+                "assets/registrer-plan-i-sde-button.png",
+            )
 
             stadler = page.locator('[data-tab="verkstedBestillinger"]')
             reference = page.locator('[data-tab="sdeVaktplan"]')
@@ -103,7 +108,7 @@ class SdeMenuAccessLayoutBrowserTests(unittest.TestCase):
                 page.wait_for_timeout(30)
                 self.assertEqual(page.locator('[data-tab="sdeNattplanErfaring"]').count(), expected_count)
                 if expected_count:
-                    self.assertEqual(page.locator('[data-tab="sdeNattplanErfaring"]').inner_text(), "Registrer Nattplan")
+                    self.assertEqual(page.locator('[data-tab="sdeNattplanErfaring"]').inner_text(), "Registrer Plan i SDE")
 
             selector.select_option("3")
             direct_result = page.evaluate(

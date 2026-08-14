@@ -9616,13 +9616,62 @@ button{padding:12px 12px}
   .vehicle-status-notification-host{ right:10px; bottom:10px; width:calc(100vw - 20px); }
 }
 
-.seg-sde-night-intelligence{
-  min-width:150px;
-  padding:7px 12px;
-  font-weight:900;
-  line-height:1.15;
-  background:linear-gradient(145deg,#e0f2fe,#ede9fe);
-  color:#172554;
+.segmented button.seg-sde-plan-graphic{
+  position:relative;
+  display:block;
+  width:160px;
+  min-width:160px;
+  min-height:0;
+  padding:0;
+  border:2px solid #d9a72e;
+  border-radius:18px;
+  background:#050505;
+  overflow:hidden;
+  cursor:pointer;
+  line-height:0;
+  isolation:isolate;
+  aspect-ratio:3 / 1;
+  box-shadow:
+    inset 0 2px 0 rgba(255,255,255,.78),
+    inset 0 -4px 0 rgba(20,12,0,.72),
+    0 8px 0 rgba(104,68,8,.48),
+    0 14px 22px rgba(15,23,42,.26);
+}
+.seg-sde-plan-graphic__image{
+  display:block;
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  object-fit:contain;
+  object-position:center;
+}
+.seg-sde-plan-graphic__label{
+  position:absolute;
+  width:1px;
+  height:1px;
+  padding:0;
+  margin:-1px;
+  overflow:hidden;
+  clip:rect(0,0,0,0);
+  white-space:nowrap;
+  border:0;
+}
+.segmented button.seg-sde-plan-graphic:hover{
+  filter:brightness(1.04);
+  transform:translateY(-1px);
+}
+.segmented button.seg-sde-plan-graphic.active{
+  transform:translateY(5px);
+  box-shadow:
+    inset 0 5px 12px rgba(20,12,0,.62),
+    inset 0 1px 0 rgba(255,255,255,.52),
+    0 2px 0 rgba(104,68,8,.34),
+    0 5px 12px rgba(15,23,42,.20);
+}
+.segmented button.seg-sde-plan-graphic:focus-visible{
+  outline:3px solid #fbbf24;
+  outline-offset:4px;
 }
 .sde-night-workspace{display:grid;gap:14px}
 .sde-night-hero,
@@ -17775,61 +17824,168 @@ function getSdeWashTrackTemporaryReliefCandidateAssessment(context = {}){
 }
 
 
+const SDE_CANONICAL_INACTIVE_RESERVATION_STATUSES = Object.freeze([
+  "STALE","SUPERSEDED","CANCELLED","COMPLETED","ORPHANED","INACTIVE","EXPIRED"
+]);
+const SDE_TEMPORARY_RELIEF_LAST_RESORT_TRACKS = Object.freeze(["1","2","3","6","7","8"]);
+
+function getSdeCanonicalSlotInventory(){
+  return Array.from(new Set((Array.isArray(inputSlots) ? inputSlots : [])
+    .map(normalizeSlot)
+    .filter(Boolean)));
+}
+
+function getSdeCanonicalSlotRole(slot){
+  const normalized = normalizeSlot(slot);
+  if(normalized === "VS") return "route_resource";
+  if(normalized === "VN") return "temporary_relief";
+  if(["7N","7S","8N","8S"].includes(normalized)) return "workshop";
+  if(["6N","6S"].includes(normalized)) return "service";
+  if(["2N","2S","3N","3M","3S"].includes(normalized)) return "platform";
+  if(["6SS","7SS","8SS"].includes(normalized)) return "service_access";
+  return "ordinary";
+}
+
+function isSdeCanonicalSlotRoleAllowedForContext(slot, context={}){
+  const role = getSdeCanonicalSlotRole(slot);
+  if(role === "ordinary" || role === "service") return true;
+  if(role === "temporary_relief") return true;
+  if(role === "platform") return context?.allowPlatformTargets === true;
+  if(role === "workshop") return context?.allowWorkshopTargets === true;
+  if(role === "service_access") return context?.allowServiceAccessTargets === true;
+  return false;
+}
+
+function isSdeCanonicalReservationActive(entry){
+  if(!entry || typeof entry !== "object") return true;
+  const status = String(entry.status || entry.state || entry.reservationStatus || "ACTIVE").trim().toUpperCase();
+  if(SDE_CANONICAL_INACTIVE_RESERVATION_STATUSES.includes(status)) return false;
+  if(entry.active === false || entry.superseded === true || entry.orphaned === true || entry.cancelled === true) return false;
+  return true;
+}
+
+function getSdeCanonicalActiveReservationMap(reservations){
+  const active = new Map();
+  const add = (slot, entry)=>{
+    const normalized = normalizeSlot(slot || entry?.targetSlot || entry?.slot);
+    if(!normalized || !isSdeCanonicalReservationActive(entry)) return;
+    active.set(normalized,entry || {slot:normalized,status:"ACTIVE"});
+  };
+  if(reservations instanceof Map){
+    reservations.forEach((entry,slot)=>add(slot,entry));
+  }else if(reservations instanceof Set){
+    reservations.forEach(slot=>add(slot,{slot,status:"ACTIVE"}));
+  }else if(Array.isArray(reservations)){
+    reservations.forEach(entry=>add(entry?.targetSlot || entry?.slot,entry));
+  }
+  return active;
+}
+
+function isSdeCanonicalTemporaryReliefContext(context={}){
+  return context?.temporaryRelief === true ||
+    context?.reliefPlanning === true ||
+    context?.washTrackResolutionMode === "temporary_relief" ||
+    context?.resolutionUseCase === "temporary_relief" ||
+    context?.sourceType === "BLOCKED_TARGET_ACCESS" ||
+    context?.sourceType === "BLOCKED_SOURCE";
+}
+
+function isSdeCanonicalVnAvailable(context={}){
+  const physical = context?.physicalState && typeof context.physicalState === "object"
+    ? context.physicalState
+    : (typeof getSdeWashTrackPhysicalState === "function" ? getSdeWashTrackPhysicalState() : null);
+  const vnOccupied = physical ? physical.vnOccupied === true : Boolean(getSdeVehicleInSlot("VN"));
+  const accessFree = physical ? physical.accessSlotFree === true : !getSdeVehicleInSlot("VS");
+  const vnUnavailable = typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot("VN");
+  const vsUnavailable = typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot("VS");
+  return !vnOccupied && accessFree && !vnUnavailable && !vsUnavailable;
+}
+
+function shouldSdeIncludeVnInCanonicalSearch(fromSlot, avoidSlot, context={}){
+  const from = normalizeSlot(fromSlot);
+  const avoid = normalizeSlot(avoidSlot);
+  if(from === "VN" || from === "VS" || avoid === "VN") return false;
+  if(!isSdeCanonicalTemporaryReliefContext(context)) return false;
+  if(context?.conflictKnown !== true && context?.concreteBlockageKnown !== true && context?.reliefPlanning !== true) return false;
+  return isSdeCanonicalVnAvailable(context);
+}
+
+function scoreSdeCanonicalResolutionCandidate(slot, context={}){
+  const normalized = normalizeSlot(slot);
+  const base = scoreSdeResolutionTarget(normalized);
+  if(!isSdeCanonicalTemporaryReliefContext(context)) return base;
+  const localReliefSlots = new Set((Array.isArray(context?.localReliefSlots) ? context.localReliefSlots : []).map(normalizeSlot));
+  const dedicatedReliefSlots = new Set((Array.isArray(context?.dedicatedReliefSlots) ? context.dedicatedReliefSlots : []).map(normalizeSlot));
+  if(localReliefSlots.has(normalized)) return 1000 + base;
+  if(normalized === "VN") return 900 + base;
+  if(dedicatedReliefSlots.has(normalized)) return 800 + base;
+  const track = getSdeSlotTrack(normalized);
+  if(SDE_TEMPORARY_RELIEF_LAST_RESORT_TRACKS.includes(track)) return 100 + base;
+  return 500 + base;
+}
+
 function getSdeResolutionCandidateSlots(fromSlot, avoidSlot="", context={}){
   const from = normalizeSlot(fromSlot);
   const avoid = normalizeSlot(avoidSlot);
+  const washAssessment = getSdeWashTrackTemporaryReliefCandidateAssessment({fromSlot:from,avoidSlot:avoid,...context});
+  const includeVn = shouldSdeIncludeVnInCanonicalSearch(from,avoid,context) ||
+    (Array.isArray(washAssessment?.candidateSlots) && washAssessment.candidateSlots.includes("VN"));
+  return getSdeCanonicalSlotInventory()
+    .filter(slot=>slot !== from && slot !== avoid)
+    .filter(slot=>slot !== "VS")
+    .filter(slot=>slot !== "VN" || includeVn)
+    .filter(slot=>isSdeCanonicalSlotRoleAllowedForContext(slot,context))
+    .sort((left,right)=>scoreSdeCanonicalResolutionCandidate(right,context) - scoreSdeCanonicalResolutionCandidate(left,context) || left.localeCompare(right));
+}
 
-  const preferred = [
-    "4N","4M",
-    "5N","5M","5S",
-    "6N","6S",
-    "1N","1S",
-    "10S","11S","12S",
-    "10N","11N","12N"
-  ];
-  const washAssessment = getSdeWashTrackTemporaryReliefCandidateAssessment({
-    fromSlot:from,
-    avoidSlot:avoid,
-    ...context
+function buildSdeCanonicalCandidateDiagnostics(vehicle, fromSlot, avoidSlot="", context={}){
+  const vehicleId = sanitizeVehicleValue(vehicle);
+  const from = normalizeSlot(fromSlot);
+  const avoid = normalizeSlot(avoidSlot);
+  const activeReservations = getSdeCanonicalActiveReservationMap(context?.activeReservations || context?.reservedSlots);
+  const candidateSet = new Set(getSdeResolutionCandidateSlots(from,avoid,context));
+  return getSdeCanonicalSlotInventory().map(slot=>{
+    const reasons = [];
+    const occupancy = sanitizeVehicleValue(getSdeVehicleInSlot(slot));
+    const reservation = activeReservations.get(slot) || null;
+    let hardEligibility = true;
+    if(slot === from){ hardEligibility = false; reasons.push("source_slot"); }
+    if(slot === avoid){ hardEligibility = false; reasons.push("explicitly_avoided"); }
+    if(slot === "VS"){ hardEligibility = false; reasons.push("route_resource_not_target"); }
+    if(slot === "VN" && !candidateSet.has("VN")){ hardEligibility = false; reasons.push("vn_not_relief_context"); }
+    if(![from,avoid,"VS","VN"].includes(slot) && !candidateSet.has(slot)){
+      hardEligibility = false; reasons.push("wrong_slot_role_for_context");
+    }
+    if(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(slot)){
+      hardEligibility = false; reasons.push("infrastructure_unavailable");
+    }
+    if(occupancy && !haveSameSdeVehicleTokens(occupancy,vehicleId)){
+      hardEligibility = false; reasons.push(`occupied_by_${occupancy}`);
+    }
+    if(reservation){ hardEligibility = false; reasons.push("active_reservation"); }
+    if(hardEligibility && vehicleId && !isSdeAbsoluteTargetSlotEligible(vehicleId,slot,context)){
+      hardEligibility = false; reasons.push("absolute_target_ineligible");
+    }
+    if(hardEligibility && vehicleId && from && !isSdeSafeResolutionMove(vehicleId,from,slot)){
+      hardEligibility = false; reasons.push("route_or_physical_move_ineligible");
+    }
+    const score = scoreSdeCanonicalResolutionCandidate(slot,context);
+    return {
+      vehicleId,
+      source:from,
+      requestedTarget:normalizeSlot(context?.requestedTarget || avoid),
+      slot,
+      slotRole:getSdeCanonicalSlotRole(slot),
+      occupancy:occupancy || "empty",
+      reservation:reservation ? "active" : "none",
+      hardEligibility,
+      score,
+      confidence:score >= 85 ? "high" : score >= 45 ? "medium" : "low",
+      routeResult:hardEligibility ? "safe" : "rejected",
+      rejectionReason:hardEligibility ? "" : reasons.join(","),
+      reasons
+    };
   });
-  const activeWashContext = context && typeof context === "object" ? context : {};
-  const washPhysicalState = activeWashContext.physicalState && typeof activeWashContext.physicalState === "object"
-    ? activeWashContext.physicalState
-    : (typeof getSdeWashTrackPhysicalState === "function" ? getSdeWashTrackPhysicalState() : null);
-  const activeWashEvidenceLevels = ["partial_relevant_observation"];
-  const ordinaryCandidateGateOpen = activeWashContext.allowVnAlongsideOrdinaryCandidates === true ||
-    activeWashContext.hasOrdinaryResolutionCandidate === false ||
-    Number(activeWashContext.ordinaryResolutionCandidateCount) === 0;
-  // VN er aktivert kun som midlertidig resolution-kandidat ved konkret konflikt/floke.
-  // VN er ikke ordinært parkeringsspor, og VS er ikke målspor.
-  const activeWashCandidateSlots = activeWashContext.enableActiveWashTrackResolution === true &&
-    activeWashContext.washTrackResolutionMode === "temporary_relief" &&
-    activeWashContext.conflictKnown === true &&
-    activeWashEvidenceLevels.includes(activeWashContext.vnTemporaryReliefEvidenceLevel) &&
-    washPhysicalState &&
-    washPhysicalState.vnOccupied !== true &&
-    washPhysicalState.accessSlotFree === true &&
-    from !== "VN" && from !== "VS" &&
-    avoid !== "VN" &&
-    ordinaryCandidateGateOpen
-      ? ["VN"]
-      : [];
-  const candidates = preferred
-    .concat(Array.isArray(washAssessment?.candidateSlots) ? washAssessment.candidateSlots : [])
-    .concat(activeWashCandidateSlots);
-
-  const seen = new Set();
-  return candidates
-    .map(normalizeSlot)
-    .filter(slot=>{
-      if(!slot || seen.has(slot)) return false;
-      seen.add(slot);
-      if(slot === from || slot === avoid) return false;
-      if(!inputSlots.includes(slot)) return false;
-      if(["2N","2S","3N","3M","3S"].includes(slot)) return false;
-      if(["6SS","7SS","8SS"].includes(slot)) return false;
-      return true;
-    });
 }
 
 
@@ -23222,26 +23378,28 @@ function scoreSdeResolutionTarget(slot){
 }
 
 
+function getSdeCanonicalResolutionRecommendation(vehicle, fromSlot, avoidSlot="", context={}){
+  const diagnostics = buildSdeCanonicalCandidateDiagnostics(vehicle,fromSlot,avoidSlot,context);
+  const candidateSlots = new Set(getSdeResolutionCandidateSlots(fromSlot,avoidSlot,context));
+  const safe = diagnostics
+    .filter(item=>candidateSlots.has(item.slot) && item.hardEligibility === true)
+    .sort((left,right)=>right.score - left.score || left.slot.localeCompare(right.slot));
+  const selected = safe[0] || null;
+  return {
+    slot:selected?.slot || "",
+    score:selected?.score ?? 0,
+    confidence:selected?.confidence || "low",
+    diagnostics,
+    alternatives:safe.slice(1),
+    searchedSlots:diagnostics.map(item=>item.slot),
+    safeCandidateCount:safe.length,
+    vnCompared:diagnostics.some(item=>item.slot === "VN" && !item.reasons.includes("vn_not_relief_context"))
+  };
+}
+
+
 function getSdeBestResolutionTarget(vehicle, fromSlot, avoidSlot="", context={}){
-  const ordinaryTargets = getSdeResolutionCandidateSlots(fromSlot, avoidSlot)
-    .filter(slot=>isSdeAbsoluteTargetSlotEligible(vehicle,slot,context))
-    .filter(slot=>isSdeSafeResolutionMove(vehicle, fromSlot, slot))
-    .map(slot=>({slot, score:scoreSdeResolutionTarget(slot)}))
-    .sort((a,b)=>b.score - a.score);
-
-  if(ordinaryTargets.length && context?.allowVnAlongsideOrdinaryCandidates !== true){
-    return ordinaryTargets[0]?.slot || "";
-  }
-
-  const resolutionContext = context && typeof context === "object"
-    ? {...context, hasOrdinaryResolutionCandidate:ordinaryTargets.length > 0, ordinaryResolutionCandidateCount:ordinaryTargets.length}
-    : context;
-
-  return getSdeResolutionCandidateSlots(fromSlot, avoidSlot, resolutionContext)
-    .filter(slot=>isSdeAbsoluteTargetSlotEligible(vehicle,slot,resolutionContext))
-    .filter(slot=>isSdeSafeResolutionMove(vehicle, fromSlot, slot))
-    .map(slot=>({slot, score:scoreSdeResolutionTarget(slot)}))
-    .sort((a,b)=>b.score - a.score)[0]?.slot || "";
+  return getSdeCanonicalResolutionRecommendation(vehicle,fromSlot,avoidSlot,context).slot;
 }
 
 
@@ -23484,7 +23642,11 @@ function getSdeBlockedTargetResolution(planRow, vehicle, fromSlot, toSlot){
         blockedTarget:to,
         planVehicle,
         blockingVehicle,
-        allowVnAlongsideOrdinaryCandidates:false
+        allowVnAlongsideOrdinaryCandidates:true,
+        temporaryRelief:true,
+        reliefPlanning:true,
+        sourceType:"BLOCKED_TARGET_ACCESS",
+        requestedTarget:to
       }
     : {};
 
@@ -23648,25 +23810,13 @@ function isBeforeSpor3ParkingWindow(row){
 function getSdeIntermediateStorageCandidates(row){
   const toTrain = normalizeTognr(row?.toTrain);
   const part = String(row?.part || "").trim();
-
-  if(toTrain === "802" && part === "1"){
-    return [
-      "4N","1N",
-      "5N",
-      "4M","4S",
-      "9",
-      "11S","12S",
-      "1S"
-    ];
-  }
-
-  return [
-    "4N","4M","4S",
-    "5N",
-    "9",
-    "11S","12S",
-    "1N","1S"
-  ];
+  const preferred = toTrain === "802" && part === "1"
+    ? ["4N","1N","5N","4M","4S","9","11S","12S","1S"]
+    : ["4N","4M","4S","5N","9","11S","12S","1N","1S"];
+  const canonical = getSdeResolutionCandidateSlots(normalizeSlot(row?.currentSlot),"",{
+    resolutionUseCase:"intermediate_storage"
+  }).filter(slot=>getSdeCanonicalSlotRole(slot) === "ordinary");
+  return Array.from(new Set([...preferred,...canonical]));
 }
 
 function isSdeSlotOccupiedOrReserved(slot, reservedSlots){
@@ -25342,20 +25492,8 @@ function getSdeDoubleSetButtTrackOrderStates(){
 
 
 function getSdeArrivalParkingCandidateSlots(need){
-  const baseSlots = [
-    "4N","4M","4S",
-    "5N","5M","5S",
-    "1N","1S",
-    "3S","3M","3N",
-    "10S","11S","12S",
-    "10N","11N","12N",
-    "9",
-    "6N","6S"
-  ];
-
-  return baseSlots
-    .map(normalizeSlot)
-    .filter(slot => slot && inputSlots.includes(slot));
+  return getSdeCanonicalSlotInventory()
+    .filter(slot=>slot !== "VN" && slot !== "VS");
 }
 
 
@@ -25787,7 +25925,8 @@ function scoreSdeArrivalParkingCandidate(need, slot){
   return {
     slot:candidate,
     score,
-    status:score >= 45 ? "candidate" : "weak",
+    status:"candidate",
+    belowDesirabilityThreshold:score < 45,
     reasons
   };
 }
@@ -26159,11 +26298,12 @@ function evaluateSdeParkingDecision(need, candidate, reservedSlots){
 
 
 function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
-  const reserved = reservedSlots instanceof Map
+  const rawReserved = reservedSlots instanceof Map
     ? reservedSlots
     : reservedSlots instanceof Set
       ? new Map(Array.from(reservedSlots).map(slot=>[slot, {need:null, recommendation:null}]))
       : new Map();
+  const reserved = getSdeCanonicalActiveReservationMap(rawReserved);
 
   const candidateDiagnostics = getSdeArrivalParkingCandidateSlots(need)
     .map(slot => {
@@ -26204,7 +26344,8 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
         baseScore:candidate.score,
         evaluation,
         score:finalScore,
-        finalStatus:finalScore >= 45 ? "candidate" : "weak",
+        finalStatus:"candidate",
+        belowDesirabilityThreshold:finalScore < 45,
         finalReason:reasons.slice(0, 2).join(" "),
         reasons
       };
@@ -26216,15 +26357,10 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
 
   const best = scored[0] || null;
   if(!best){
-    const weak = candidateDiagnostics
-      .filter(candidate => candidate.finalStatus === "weak")
-      .sort((a,b)=>b.score - a.score)[0] || null;
     const reservedCandidates = candidateDiagnostics.filter(candidate => candidate.finalStatus === "reserved");
     const rejectedCandidates = candidateDiagnostics.filter(candidate => candidate.finalStatus === "rejected");
-    const weakCandidates = candidateDiagnostics.filter(candidate => candidate.finalStatus === "weak");
     const reservedCount = reservedCandidates.length;
     const rejectedCount = rejectedCandidates.length;
-    const weakCount = weakCandidates.length;
     const reservedExamples = reservedCandidates
       .slice(0, 2)
       .map(candidate => candidate.finalReason)
@@ -26237,25 +26373,20 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
       .join(" ");
 
     const details = [];
-    details.push(`SDE fant ingen kandidat over akseptgrensen i første kandidatsett.`);
-    if(weak){
-      details.push(`Beste svake alternativ var ${weak.slot} med score ${weak.score}: ${weak.finalReason}`);
-    }
+    details.push(`SDE undersøkte hele det autoriserte slotsettet, men fant ingen fysisk sikker og ledig kandidat.`);
     if(reservedCount){
       details.push(`${reservedCount} kandidat(er) var allerede reservert av tidligere SDE-behov.${reservedExamples ? ` Eksempel: ${reservedExamples}` : ""}`);
     }
     if(rejectedCount){
       details.push(`${rejectedCount} kandidat(er) ble avvist av faste regler.${rejectedExamples ? ` Eksempel: ${rejectedExamples}` : ""}`);
     }
-    if(weakCount){
-      details.push(`${weakCount} kandidat(er) ble vurdert som for svake etter evaluering.`);
-    }
-
     return {
       slot:"",
       score:0,
       confidence:"low",
-      reason:details.join(" ")
+      reason:details.join(" "),
+      candidateDiagnostics,
+      searchedSlots:candidateDiagnostics.map(candidate=>candidate.slot)
     };
   }
 
@@ -26282,6 +26413,8 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
     reason,
     departurePartnerAssessment,
     washTrackFlexAssessment,
+    candidateDiagnostics,
+    searchedSlots:candidateDiagnostics.map(candidate=>candidate.slot),
     alternatives:scored.slice(1, 4).map(candidate => ({
       slot:candidate.slot,
       score:candidate.score,
@@ -27086,7 +27219,7 @@ function getSdeArrivalParkingNeedsText(needs){
     const targetText = row.turneringTarget ? ` Turnering: ${row.turneringTarget}.` : "";
     const recommendationText = row.recommendedSlot
       ? ` Anbefalt nattplassering: ${row.recommendedSlot} (${row.recommendationConfidence}, score ${row.recommendationScore}). ${row.recommendationReason}`
-      : " Anbefalt nattplassering: ikke funnet i første kandidatsett.";
+      : " Anbefalt nattplassering: ingen fysisk sikker kandidat i det fullstendige autoriserte slotsettet.";
 
     lines.push(`- ${arrivalText}: ${row.vehicle}${slotText}.${departureText}${targetText} ${row.parkingStrategy}: ${row.parkingInstruction}${recommendationText}`);
   });
@@ -27536,7 +27669,7 @@ function buildSdeExpandedMoveActionHtml(action){
   const reason = snapshot.reason || "Opprinnelig kortinformasjon mangler for denne eldre kvitteringen.";
   const alternatives = Array.isArray(snapshot.alternatives) && snapshot.alternatives.length
     ? `Alternativer: ${snapshot.alternatives.map(alt => `${alt.slot} (${alt.score})`).join(", ")}`
-    : "Ingen alternative spor i første kandidatsett.";
+    : "Ingen andre fysisk sikre spor i det fullstendige autoriserte slotsettet.";
 
   return `
     <div class="sde-action-expanded-route">
@@ -34721,23 +34854,57 @@ function getSdeWorkshopExitRecommendation(need, reservedSlots){
     if(candidate?.status !== "rejected"){
       const evaluation = evaluateSdeParkingDecision(need,candidate,reservedSlots);
       const score = candidate.score + evaluation.reward - evaluation.penalty;
-      if(score >= 45){
-        return {
-          slot:explicitTarget,
-          score:Math.max(0,Math.min(100,score)),
-          confidence:score >= 85 ? "high" : score >= 60 ? "medium" : "low",
-          reason:[
-            `Eksisterende autoritativ plan prioriterer ${explicitTarget}.`,
-            ...(candidate.reasons || []),
-            ...(evaluation.benefits || []),
-            ...(evaluation.violations || [])
-          ].slice(0,5).join(" "),
-          alternatives:[]
-        };
-      }
+      return {
+        slot:explicitTarget,
+        score:Math.max(0,Math.min(100,score)),
+        confidence:score >= 85 ? "high" : score >= 60 ? "medium" : "low",
+        reason:[
+          `Eksisterende autoritativ plan prioriterer ${explicitTarget}.`,
+          ...(candidate.reasons || []),
+          ...(evaluation.benefits || []),
+          ...(evaluation.violations || []),
+          score < 45 ? `Lav ønskelighetsscore ${score}, men kandidaten er fysisk sikker og beholdes.` : ""
+        ].filter(Boolean).slice(0,5).join(" "),
+        alternatives:[]
+      };
     }
   }
   return getSdeArrivalParkingRecommendation(need,reservedSlots);
+}
+
+function reconcileSdeWorkshopExitPlacement(request, placements=[], activeRequests=[]){
+  const vehicle = sanitizeVehicleValue(request?.vehicleId);
+  const token = normalizeVehicleToken(vehicle);
+  const matchingPlacements = (Array.isArray(placements) ? placements : [])
+    .filter(item=>normalizeVehicleToken(item?.vehicleId) === token)
+    .filter(item=>isSdeWorkshopSlot(item?.slot));
+  const matchingRequests = (Array.isArray(activeRequests) ? activeRequests : [])
+    .filter(item=>normalizeVehicleToken(item?.vehicleId) === token);
+  if(!vehicle || matchingPlacements.length !== 1 || matchingRequests.length !== 1){
+    return {
+      ok:false,
+      ambiguous:true,
+      placement:null,
+      reasonCode:"workshop_identity_ambiguous",
+      reason:"Kjøretøy, aktiv request eller fersk workshop-slot er ikke entydig."
+    };
+  }
+  const placement = matchingPlacements[0];
+  const requestVisitId = String(request?.visitId || "").trim();
+  const placementVisitId = String(placement?.workshopVisitId || "").trim();
+  const exactVisit = Boolean(placement?.inWorkshop === true && requestVisitId && placementVisitId === requestVisitId);
+  const reconciled = !exactVisit;
+  return {
+    ok:true,
+    ambiguous:false,
+    placement,
+    exactVisit,
+    reconciled,
+    reasonCode:exactVisit ? "workshop_visit_exact" : "workshop_visit_reconciled_from_unique_actual",
+    reason:exactVisit
+      ? "Request og canonical placement viser samme aktive verkstedopphold."
+      : `Stale workshopVisitId/inWorkshop-flagg er reconciliert fordi fersk actual entydig viser ${vehicle} i ${normalizeSlot(placement.slot)} og bare én aktiv utkjøringsrequest finnes.`
+  };
 }
 
 function buildSdeWorkshopExitMoveNeeds(existingNeeds=[]){
@@ -34754,16 +34921,14 @@ function buildSdeWorkshopExitMoveNeeds(existingNeeds=[]){
 
   return requests.map(request=>{
     const vehicle = sanitizeVehicleValue(request.vehicleId);
-    const placement = placements.find(item=>
-      normalizeVehicleToken(item?.vehicleId) === normalizeVehicleToken(vehicle)
-    ) || null;
+    const placementReconciliation = reconcileSdeWorkshopExitPlacement(request,placements,requests);
+    const placement = placementReconciliation.placement;
     const sourceSlot = normalizeSlot(placement?.slot || request.sourceSlot);
     if(
       !vehicle ||
       !sourceSlot ||
-      placement?.inWorkshop !== true ||
       !isSdeWorkshopSlot(sourceSlot) ||
-      String(placement?.workshopVisitId || "") !== String(request?.visitId || "")
+      placementReconciliation.ok !== true
     ){
       return {
         vehicle,
@@ -34783,7 +34948,8 @@ function buildSdeWorkshopExitMoveNeeds(existingNeeds=[]){
         workshopExitRequestId:String(request?.exitRequestId || ""),
         workshopExitVisitId:String(request?.visitId || ""),
         workshopExitClassification:"UNKNOWN",
-        workshopExitReasonCodes:["workshop_visit_or_placement_mismatch"]
+        workshopExitReasonCodes:[placementReconciliation.reasonCode || "workshop_visit_or_placement_mismatch"],
+        workshopExitPlacementReconciliation:placementReconciliation
       };
     }
 
@@ -34840,9 +35006,10 @@ function buildSdeWorkshopExitMoveNeeds(existingNeeds=[]){
       workshopExitVisitId:String(request.visitId),
       workshopExitPlacementRevision:String(request.placementRevision || ""),
       workshopExitClassification:context.classification,
-      workshopExitReasonCodes:context.reasonCodes,
       workshopExitSnapshotClassification:context.snapshotClassification,
-      workshopExitSnapshotReasonCodes:context.snapshotReasonCodes
+      workshopExitSnapshotReasonCodes:context.snapshotReasonCodes,
+      workshopExitPlacementReconciliation:placementReconciliation,
+      workshopExitReasonCodes:[...context.reasonCodes,placementReconciliation.reasonCode]
     };
     const recommendation = getSdeWorkshopExitRecommendation(need,reservedSlots);
     const unknownClassification = context.classification === "UNKNOWN";
@@ -35166,7 +35333,7 @@ function buildSdeFixedSlotPriorityShadowDiagnostics(data){
             slot:normalizeSlot(alt?.slot),
             score:Number(alt?.score)
           }))
-          .filter(alt => alt.slot && alt.slot !== fixedSlot && Number.isFinite(alt.score) && alt.score >= 45)
+          .filter(alt => alt.slot && alt.slot !== fixedSlot && Number.isFinite(alt.score))
           .slice(0, 3)
       : [];
     if(!alternatives.length) return null;
@@ -35275,7 +35442,7 @@ function buildSdeSpor3PlatformClearanceDiagnostics(){
 
     const candidateText = recommendation.slot
       ? `Testkandidat ${arrivalSlot} → ${recommendation.slot} (${recommendation.confidence}, score ${recommendation.score}).`
-      : "Ingen trygg testkandidat funnet i første kandidatsett.";
+      : "Ingen fysisk trygg testkandidat funnet i det fullstendige autoriserte slotsettet.";
 
     return {
       vehicle,
@@ -35899,13 +36066,13 @@ function getSdeRescueAlternativesForBlocker(blockerRow, moves=[]){
         slot,
         score:finalScore,
         baseScore:candidate.score,
-        status:finalScore >= 45 ? "candidate" : "weak",
+        status:"candidate",
+        belowDesirabilityThreshold:finalScore < 45,
         reasons,
         packageConflicts
       };
     })
     .filter(Boolean)
-    .filter(candidate => candidate.status === "candidate")
     .filter(candidate => !candidate.packageConflicts.length)
     .sort((a,b)=>b.score - a.score)
     .slice(0, 3);
@@ -35930,7 +36097,7 @@ function buildSdePackageRescueDiagnostics(moves=[], unresolved=[]){
       const blockerText = `${blockerSlot} ${getSdePackageRowText(blockerRow)}`;
       const alternativeText = alternatives.length
         ? `Mulige rene alternativer for blokkeren: ${alternatives.map(item => `${item.slot} score ${item.score}`).join(", ")}. Må kontrolleres manuelt før eventuell motorstyring.`
-        : "Ingen rent alternativ over scoregrensen ble funnet i første kandidatsett.";
+        : "Ingen fysisk sikker ren alternativslot ble funnet i det fullstendige autoriserte slotsettet.";
 
       return {
         train:conflict.train,
@@ -36065,7 +36232,7 @@ function evaluateSdeSimulatedPackageAssignment(assignments, reserved){
     ];
 
     return {
-      ok:finalScore >= 45,
+      ok:true,
       slot,
       row,
       part,
@@ -36137,7 +36304,7 @@ function buildSdePackagePrioritySimulationDiagnostics(moves=[], unresolved=[]){
       train:priority.train,
       packageLabel:priority.packageLabel,
       success:false,
-      text:`${priority.train}: Simulert tidlig beskyttelse av ${priority.packageLabel} fant ikke komplett pakke i første kandidatsett. ${failureText}`
+      text:`${priority.train}: Simulert tidlig beskyttelse av ${priority.packageLabel} fant ikke komplett fysisk sikker pakke i det fullstendige autoriserte slotsettet. ${failureText}`
     };
   });
 }
@@ -36294,7 +36461,7 @@ function buildSdePackagePrioritySafeActiveMotorDiagnostics(moves=[], unresolved=
             const blockerText = `${displaced.slot} ${getSdePackageRowText(displaced.row)}`;
             const alternativesText = displaced.alternatives.length
               ? `kan flyttes til ${displaced.alternatives.map(alt => `${alt.slot} score ${alt.score}`).join(", ")}`
-              : "har ingen trygg ny plass i første kandidatsett";
+              : "har ingen fysisk trygg ny plass i det fullstendige autoriserte slotsettet";
             return `${blockerText}: ${alternativesText}`;
           })
           .join(" | ")
@@ -37574,7 +37741,7 @@ function buildSdeUnresolvedItemHtml(row, index){
     row?.reason ||
     row?.message ||
     row?.parkingInstruction ||
-    "SDE har ikke funnet trygg løsning i første kandidatsett.";
+    "SDE har undersøkt det fullstendige autoriserte slotsettet uten å finne en fysisk trygg løsning.";
   const title = vehicle !== "Ukjent kjøretøy"
     ? `${vehicle} må avklares`
     : `Uløst sak ${index + 1}`;
@@ -42444,8 +42611,77 @@ function applySdeCompletedPrefixToCanonicalPlan(canonicalPlan={}, actionRecords=
   return plan;
 }
 
+function isSdeCanonicalAutomaticReplanSource(row={}){
+  const sourceType = getSdeCanonicalUnifiedCardSourceType(row);
+  const sourceText = `${sourceType} ${row?.source || ""} ${row?.status || ""} ${row?.parkingStrategy || ""}`.toUpperCase();
+  return sourceType === "MANUAL_DRAG" || sourceType === "WORKSHOP_EXIT" ||
+    /BLOCKED_SOURCE|BLOCKED_TARGET|REPLAN_REQUIRED|BLOCKED_UNRESOLVED/.test(sourceText);
+}
+
+function buildSdeCanonicalAutomaticReplanRows(rows=[], snapshot={}){
+  const replans = [];
+  const mapped = (Array.isArray(rows) ? rows : []).map(row=>{
+    if(!row || !isSdeCanonicalAutomaticReplanSource(row)) return row;
+    if(String(row?.sdePhysicalChainId || "").trim()) return row;
+    if((row?.workshopExitReasonCodes || []).includes("workshop_identity_ambiguous")) return row;
+    const vehicle = sanitizeVehicleValue(row?.vehicle);
+    const sourceSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || row?.originalFromSlot || getSdeCurrentSlotForVehicle(vehicle));
+    const requestedTarget = normalizeSlot(row?.originalRequestedTarget || row?.requestedTarget || row?.recommendedSlot || row?.toSlot);
+    const explicitReplanStatus = /REPLAN_REQUIRED|BLOCKED_UNRESOLVED/.test(String(row?.status || row?.canonicalStatus || "").toUpperCase());
+    if(requestedTarget && !explicitReplanStatus) return row;
+    if(!vehicle || !sourceSlot) return row;
+    const existingTargetSafe = requestedTarget &&
+      isSdeAbsoluteTargetSlotEligible(vehicle,requestedTarget,row) &&
+      isSdeSafeResolutionMove(vehicle,sourceSlot,requestedTarget);
+    if(existingTargetSafe) return row;
+    const sourceText = `${getSdeCanonicalUnifiedCardSourceType(row)} ${row?.source || ""}`.toUpperCase();
+    const temporaryRelief = /BLOCKED_SOURCE|BLOCKED_TARGET/.test(sourceText);
+    const recommendation = getSdeCanonicalResolutionRecommendation(vehicle,sourceSlot,requestedTarget,{
+      ...row,
+      requestedTarget,
+      temporaryRelief,
+      reliefPlanning:temporaryRelief,
+      conflictKnown:temporaryRelief,
+      concreteBlockageKnown:temporaryRelief,
+      sourceType:temporaryRelief ? "BLOCKED_TARGET_ACCESS" : getSdeCanonicalUnifiedCardSourceType(row),
+      activeReservations:snapshot?.legacy?.reservations || []
+    });
+    if(!recommendation.slot) return row;
+    const replacement = {
+      ...row,
+      fromSlot:sourceSlot,
+      arrivalSlot:sourceSlot,
+      originalRequestedTarget:requestedTarget,
+      requestedTarget,
+      recommendedSlot:recommendation.slot,
+      toSlot:recommendation.slot,
+      sdeAutomaticReplan:true,
+      sdeAutomaticReplanPreservedIntent:true,
+      sdeAutomaticReplanSourceStatus:String(row?.status || "BLOCKED_UNRESOLVED"),
+      sdeCanonicalCandidateDiagnostics:recommendation.diagnostics,
+      recommendationScore:recommendation.score,
+      recommendationConfidence:recommendation.confidence,
+      recommendationReason:`Automatisk canonical replan undersøkte hele slotinventaret og erstattet bare stale derived target-state. Opprinnelig intent ${requestedTarget || "uten eksplisitt target"} er bevart i planmetadata. Valgt fysisk trygg kandidat: ${recommendation.slot}.`,
+      status:"READY"
+    };
+    replans.push({
+      vehicleId:vehicle,
+      sourceSlot,
+      requestedTarget,
+      selectedTarget:recommendation.slot,
+      searchedSlots:recommendation.searchedSlots,
+      safeCandidateCount:recommendation.safeCandidateCount,
+      vnCompared:recommendation.vnCompared
+    });
+    return replacement;
+  });
+  return {rows:mapped,replans:sortSdeCanonicalObjects(replans)};
+}
+
 function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || captureSdeCanonicalShadowRuntimeSnapshot();
+  const automaticReplan = buildSdeCanonicalAutomaticReplanRows(snapshot.legacy?.finalCards || [],snapshot);
+  if(snapshot.legacy) snapshot.legacy.finalCards = automaticReplan.rows;
   const diagnosticOnlyRows = (snapshot.legacy?.finalCards || []).filter(row=>row?.sdeTrappedEgressDiagnosticOnly === true);
   const passiveBlockedSlotSweep = reconcileSdePassiveBlockedSlotRows(snapshot); // SDE_BLOCKED_SLOT_PASSIVE_SWEEP
   const activeAuthorities = Object.fromEntries(Object.entries(snapshot.runtimeState?.activeAuthorities || {}).map(([key,value])=>[
@@ -42487,7 +42723,10 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
     diagnosticOnlyRowCount:diagnosticOnlyRows.length + passiveBlockedSlotSweep.findings.length,
     passiveBlockedSlotSweepEnforced:passiveBlockedSlotSweep.enforced,
     passiveBlockedSlotFindingCount:passiveBlockedSlotSweep.findings.length,
-    completedPrefixCandidateCount:completedPrefixRows.length
+    completedPrefixCandidateCount:completedPrefixRows.length,
+    automaticReplanCount:automaticReplan.replans.length,
+    automaticReplans:automaticReplan.replans,
+    originalIntentPreserved:automaticReplan.replans.every(item=>Object.prototype.hasOwnProperty.call(item,"requestedTarget"))
   };
   const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
   cardProjection.diagnostics = sortSdeCanonicalObjects([
@@ -43500,12 +43739,14 @@ function getSdeCanonicalRetargetTargetAssessment(row={}, targetSlot="", reader=n
 
 function getSdeCanonicalRetargetSelectableTargets(row={}, reader=null){
   const role = getSdeCanonicalRetargetRole(row);
+  const source = normalizeSlot(row?.fromSlot || row?.arrivalSlot || row?.originalFromSlot);
+  const currentTarget = normalizeSlot(row?.recommendedSlot || row?.toSlot);
   const ordered = role === "release"
     ? Array.from(new Set((row?.sdePhysicalReleaseCandidateOrder || []).map(normalizeSlot).filter(Boolean)))
-    : [...inputSlots]
-      .map(normalizeSlot)
-      .filter(Boolean)
-      .sort((left,right)=>scoreSdeResolutionTarget(right) - scoreSdeResolutionTarget(left) || left.localeCompare(right));
+    : getSdeResolutionCandidateSlots(source,currentTarget,{
+        resolutionUseCase:"manual_reroute",
+        requestedTarget:currentTarget
+      });
   return ordered.filter(slot=>getSdeCanonicalRetargetTargetAssessment(row,slot,reader).selectable);
 }
 
@@ -44555,7 +44796,7 @@ function renderSdeSkiftebevegelserInner(){
           ? "Ingen SDE-kandidatsett: kortet er opprettet lokalt fra SDE Grafisk planverktøy."
           : Array.isArray(row.recommendationAlternatives) && row.recommendationAlternatives.length
             ? `Alternativer: ${row.recommendationAlternatives.map(alt=>`${alt.slot} (${alt.score})`).join(", ")}`
-            : "Ingen alternative spor i første kandidatsett.";
+            : "Ingen andre fysisk sikre spor i det fullstendige autoriserte slotsettet.";
         const rawActionKey = row.sdeNightPlacementOriginalActionKey || getSdeMoveActionKey(row);
         const actionKey = encodeURIComponent(rawActionKey);
         const trackClearanceWindowHtml = buildSdeTrackClearanceWindowHtml(row);
@@ -45428,7 +45669,8 @@ function updateSporplanResetVisibility(){
 }
 
 const SDE_NIGHT_PLAN_TAB_ID = "sdeNattplanErfaring";
-const SDE_NIGHT_PLAN_BUTTON_LABEL = "Registrer Nattplan";
+const SDE_NIGHT_PLAN_BUTTON_LABEL = "Registrer Plan i SDE";
+const SDE_NIGHT_PLAN_BUTTON_ASSET = "assets/registrer-plan-i-sde-button.png";
 const SDE_NIGHT_PLAN_ALLOWED_LEVELS = Object.freeze(["0","2"]);
 
 function isSdeNightPlanMenuAuthorized(level, capabilityReadback=dropsRuntimeCapabilities){
@@ -45447,13 +45689,21 @@ function isSdeNightPlanMenuAuthorized(level, capabilityReadback=dropsRuntimeCapa
 
 function createSdeNightPlanMenuButton(){
   const button = document.createElement("button");
-  button.className = "seg seg-sde-night-intelligence";
+  button.className = "seg seg-sde-plan-graphic";
   button.type = "button";
   button.dataset.tab = SDE_NIGHT_PLAN_TAB_ID;
   button.dataset.levels = SDE_NIGHT_PLAN_ALLOWED_LEVELS.join(" ");
   button.dataset.menuTooltip = "Importer eller registrer en menneskelig nattplan, korriger tolkningen og sammenlign read-only mot canonical SDE. Erfaring og ML er rådgivende og kan aldri overstyre absolutte porter.";
   button.setAttribute("aria-label",`Åpne ${SDE_NIGHT_PLAN_BUTTON_LABEL}`);
-  button.textContent = SDE_NIGHT_PLAN_BUTTON_LABEL;
+  const image = document.createElement("img");
+  image.className = "seg-sde-plan-graphic__image";
+  image.src = SDE_NIGHT_PLAN_BUTTON_ASSET;
+  image.alt = "";
+  image.setAttribute("aria-hidden","true");
+  const label = document.createElement("span");
+  label.className = "seg-sde-plan-graphic__label";
+  label.textContent = SDE_NIGHT_PLAN_BUTTON_LABEL;
+  button.append(image,label);
   button.addEventListener("click",()=>{
     if(!isSdeNightPlanMenuAuthorized(getActiveAccessLevel())) return;
     rememberActiveTab(SDE_NIGHT_PLAN_TAB_ID);

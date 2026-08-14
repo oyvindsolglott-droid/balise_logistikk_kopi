@@ -13,6 +13,7 @@ const CACHE_POLICIES = Object.freeze({
 const ASSET_DEFINITIONS = Object.freeze([
   definition("/sde_intelligent_night_planning.js", ".", "sde_intelligent_night_planning.js", "application/javascript; charset=utf-8", CACHE_POLICIES.APPLICATION),
   definition("/sde_night_planning_ui.js", ".", "sde_night_planning_ui.js", "application/javascript; charset=utf-8", CACHE_POLICIES.APPLICATION),
+  definition("/assets/registrer-plan-i-sde-button.png", "assets", "registrer-plan-i-sde-button.png", "image/png", CACHE_POLICIES.APPLICATION),
   definition("/assets/vendor/tesseract/tesseract.min.js", "assets/vendor/tesseract", "tesseract.min.js", "application/javascript; charset=utf-8", CACHE_POLICIES.IMMUTABLE_VENDOR),
   definition("/assets/vendor/tesseract/worker.min.js", "assets/vendor/tesseract", "worker.min.js", "application/javascript; charset=utf-8", CACHE_POLICIES.IMMUTABLE_VENDOR),
   definition("/assets/vendor/tesseract-core/tesseract-core-lstm.wasm.js", "assets/vendor/tesseract-core", "tesseract-core-lstm.wasm.js", "application/javascript; charset=utf-8", CACHE_POLICIES.IMMUTABLE_VENDOR),
