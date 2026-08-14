@@ -12,6 +12,7 @@ const drivers = [
   "target-invariants.cjs",
   "relief-invariants.cjs",
   "vn-relief-invariants.cjs",
+  "suffix-persistence-invariants.cjs",
   "reroute-invariants.cjs",
   "egress-invariants.cjs",
   "prerequisite-cancel-invariants.cjs",

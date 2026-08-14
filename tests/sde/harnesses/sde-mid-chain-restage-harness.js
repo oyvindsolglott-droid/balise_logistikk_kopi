@@ -57,7 +57,8 @@ eval(prefix + String.raw`
   assert.equal(suffixInspection.ok,true,suffixInspection.reason||"the valid mid-chain suffix was rejected");
   const restaged=ctx.stageSdeCanonicalGraphicDragOrder(storedOverride);
   assert.equal(restaged?.chain?.ok,true,"the valid main/return suffix must restage without a new prerequisite");
-  assert.equal(restaged.chain.outcomes.all.length,2);
+  assert.equal(restaged.chain.outcomes.all.length,3);
+  assert.equal(restaged.chain.outcomes.releases[0]?.status,"completed");
   assert.equal(restaged.chain.outcomes.main?.vehicleId,"74-41");
   assert.equal(restaged.chain.outcomes.return?.vehicleId,"74-12");
   assert.equal(restaged.chain.cards.release?.status,"actionable");

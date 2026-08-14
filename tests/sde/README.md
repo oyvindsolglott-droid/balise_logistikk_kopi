@@ -10,9 +10,9 @@ npm run test:sde:strict
 ```
 
 Strict returnerer non-zero for hver brutt invariant. Den aktive lukkede
-baselinen er 67/67 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
+baselinen er 119/119 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
 tre ganger og blir bare grønn når alle kjøringene har exit 0, eksakt samme
-normaliserte semantikk, unike invariant-ID-er og 67/67 PASS:
+normaliserte semantikk, unike invariant-ID-er og 119/119 PASS:
 
 ```sh
 npm run test:sde:baseline-audit
@@ -55,6 +55,12 @@ actual-state før autorisert fullføring.
 annullert frigjøringssteg for 74-12 kan ikke gjenbrukes som aktiv identitet.
 Planleggeren må velge en ny komplett release/main/recovery-kjede og bevare det
 eksakte brukerbestilte hovedmålet.
+
+De 14 `suffix-persistence`-invariantene låser fullført prefix og den gjenværende
+MAIN/RECOVERY-suffixen etter autorisert fullføring av RELEASE. De dekker alle
+seks slottene `4M`, `5M`, `6S`, `10S`, `11S` og `12S`, automatisk atomisk
+replan fra fersk actual-state, trygg VN-prioritering via VS og uendret actual
+placement før autorisert fullføring.
 
 Produksjons-UI viser alle fysisk validerte og bestilte kjedesteg: det aktive
 steget, dependency-sperrede fremtidige steg og et annullert kort mens den røde

@@ -12,6 +12,7 @@ const targetHarness = path.join(root, "tests/sde/harnesses/sde-blocked-target-th
 const emptyDropHarness = path.join(root, "tests/sde/harnesses/sde-empty-target-drag-intent-harness.js");
 const egressHarness = path.join(root, "tests/sde/harnesses/sde-trapped-egress-chain-harness.js");
 const vnReliefHarness = path.join(root, "tests/sde/strict/vn-relief-invariants.cjs");
+const suffixPersistenceHarness = path.join(root, "tests/sde/strict/suffix-persistence-invariants.cjs");
 const menuHarness = path.join(root, "tests/sde/harnesses/sde-menu-access-layout-harness.js");
 const baliseHarness = path.join(root, "tests/sde/harnesses/sde-24xx-focused-mutation-harness.py");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-final-focused-mutations-"));
@@ -86,11 +87,72 @@ function runVnRelief(source, label) {
   return runIndexHarness(source,label,vnReliefHarness,"sde-vn-relief-invariants-v1");
 }
 
+function runSuffixPersistence(source, label) {
+  return runIndexHarness(source,label,suffixPersistenceHarness,"sde-suffix-persistence-invariants-v1");
+}
+
 function runMenu(source, label) {
   return runIndexHarness(source,label,menuHarness,"sde-menu-access-layout-harness-v1");
 }
 
 const mutations = [
+  {
+    id: "MAIN_AND_RECOVERY_DELETED_AFTER_RELEASE_COMPLETION",
+    kind: "suffixPersistence",
+    expectedInvariant: "COMPLETING_RELEASE_MUST_NOT_DELETE_MAIN_OR_RECOVERY",
+    apply: source => mutateFunction(
+      source,
+      "getSdeTrappedEgressCarriedReleases",
+      'if(record?.action !== "completed") return [];',
+      'if(record?.action === "completed") return []; // focused mutation: delete suffix after completed release',
+      "completed release deletes suffix",
+    ),
+  },
+  {
+    id: "EXPECTED_TEMP_OCCUPANT_TREATED_AS_CONFLICT",
+    kind: "suffixPersistence",
+    expectedInvariant: "EXPECTED_TEMP_OCCUPANT_IS_NOT_A_CONFLICT",
+    apply: source => mutateFunction(
+      source,
+      "getSdeTrappedEgressCarriedReleases",
+      "if(!vehicle || !fromSlot || !toSlot || !actualSlot) return [];",
+      "if(!vehicle || !fromSlot || !toSlot || !actualSlot) return [];\n    if(actualSlot === toSlot) return []; // focused mutation: expected temporary occupant is a conflict",
+      "expected temporary occupant rejected",
+    ),
+  },
+  {
+    id: "ORIGINAL_MAIN_INTENT_DROPPED_DURING_REPLAN",
+    kind: "suffixPersistence",
+    expectedInvariant: "REPLAN_PRESERVES_ORIGINAL_MAIN_INTENT",
+    apply: source => {
+      const mutableTarget = mutateFunction(
+        source,
+        "buildSdeCompleteTrappedEgressPlan",
+        "const requestedTarget = normalizeSlot(row?.recommendedSlot || row?.toSlot); // SDE_EGRESS_REQUESTED_TARGET",
+        "let requestedTarget = normalizeSlot(row?.recommendedSlot || row?.toSlot); // focused mutation: mutable intent",
+        "mutable main intent",
+      );
+      return mutateFunction(
+        mutableTarget,
+        "buildSdeCompleteTrappedEgressPlan",
+        "const carriedReleases = getSdeTrappedEgressCarriedReleases(row,occupancy);",
+        'const carriedReleases = getSdeTrappedEgressCarriedReleases(row,occupancy);\n  if(carriedReleases.some(step=>step.unexpectedTemporaryOccupancy)) requestedTarget = "10"; // focused mutation: drop original target during replan',
+        "drop main target during replan",
+      );
+    },
+  },
+  {
+    id: "STALE_SUFFIX_AND_NEW_SUFFIX_COEXIST",
+    kind: "suffixPersistence",
+    expectedInvariant: "REPLAN_ATOMICALLY_REPLACES_STALE_SUFFIX",
+    apply: source => mutateFunction(
+      source,
+      "buildSdeCompleteTrappedEgressPlan",
+      "const carriedReleases = getSdeTrappedEgressCarriedReleases(row,occupancy);",
+      'const carriedReleases = getSdeTrappedEgressCarriedReleases(row,occupancy);\n  if(carriedReleases.some(step=>step.unexpectedTemporaryOccupancy)) carriedReleases.push({...carriedReleases[0],vehicle:"STALE-SUFFIX",fromSlot:"6N",toSlot:"VN",carriedCompletedRelease:false,completedActionKey:""}); // focused mutation: stale and fresh suffix coexist',
+      "stale suffix retained during replan",
+    ),
+  },
   {
     id: "TRAIN_NUMBER_ONLY_VEHICLE_LOOKUP",
     kind: "balise",
@@ -205,7 +267,7 @@ const mutations = [
     ),
   },
   {
-    id: "ORDINARY_TRACK_RANKED_BEFORE_AVAILABLE_VN",
+    id: "ORDINARY_TRACK_RANKED_BEFORE_SAFE_VN",
     kind: "vnRelief",
     expectedInvariant: "VN-PREFERRED-OVER-ORDINARY-TRACK-FOR-GLOBAL-RELIEF",
     apply: source => mutateFunction(
@@ -229,7 +291,7 @@ const mutations = [
     ),
   },
   {
-    id: "REPLAN_REQUIRES_NEW_USER_DRAG",
+    id: "USER_MUST_REPEAT_DRAG_AFTER_STATE_CHANGE",
     kind: "vnRelief",
     expectedInvariant: "ACTUAL-STATE-CHANGE-TRIGGERS-AUTOMATIC-REPLAN",
     apply: source => mutateFunction(
@@ -241,7 +303,7 @@ const mutations = [
     ),
   },
   {
-    id: "REPLAN_RETURNS_ERROR_WITHOUT_NEW_PLAN",
+    id: "REPLAN_REQUIRED_STOPS_WITHOUT_NEW_SUFFIX",
     kind: "vnRelief",
     expectedInvariant: "ACTUAL-STATE-CHANGE-TRIGGERS-AUTOMATIC-REPLAN",
     apply: source => mutateFunction(
@@ -333,7 +395,7 @@ const mutations = [
     ),
   },
   {
-    id: "PARTIAL_THREE_CARD_PROJECTION_ALLOWED",
+    id: "PARTIAL_CHAIN_ALLOWED",
     expectedInvariant: "NO_PARTIAL_THREE_CARD_PROJECTION",
     apply: source => {
       const withoutRecovery = mutateFunction(
@@ -352,8 +414,9 @@ const mutations = [
     },
   },
   {
-    id: "ACTUAL_PLACEMENT_CHANGED_DURING_REPLAN",
-    expectedInvariant: "ACTUAL_PLACEMENT_UNCHANGED_BEFORE_COMPLETION",
+    id: "ACTUAL_PLACEMENT_CHANGED_BEFORE_AUTHORIZED_COMPLETION",
+    kind: "suffixPersistence",
+    expectedInvariant: "ACTUAL_PLACEMENT_CHANGES_ONLY_AFTER_AUTHORIZED_COMPLETION",
     apply: source => mutateFunction(
       source,
       "buildSdePhysicalBlockerGuardMoves",
@@ -371,8 +434,10 @@ try {
       ? runBalise(generatorSource, mutation.id, `${mutation.id}-baseline`)
       : mutation.kind === "menu"
         ? runMenu(indexSource, `${mutation.id}-baseline`)
-        : mutation.kind === "emptyDrop"
+      : mutation.kind === "emptyDrop"
           ? runEmptyDrop(indexSource, `${mutation.id}-baseline`)
+      : mutation.kind === "suffixPersistence"
+          ? runSuffixPersistence(indexSource, `${mutation.id}-baseline`)
       : mutation.kind === "egress"
           ? runEgress(indexSource, `${mutation.id}-baseline`)
           : mutation.kind === "vnRelief"
@@ -385,8 +450,10 @@ try {
       ? runBalise(mutatedSource, mutation.id, mutation.id)
       : mutation.kind === "menu"
         ? runMenu(mutatedSource, mutation.id)
-        : mutation.kind === "emptyDrop"
+      : mutation.kind === "emptyDrop"
           ? runEmptyDrop(mutatedSource, mutation.id)
+      : mutation.kind === "suffixPersistence"
+          ? runSuffixPersistence(mutatedSource, mutation.id)
       : mutation.kind === "egress"
           ? runEgress(mutatedSource, mutation.id)
           : mutation.kind === "vnRelief"
@@ -395,7 +462,7 @@ try {
     const structuredFailure = mutant.execution.status === 1;
     const invariantObserved = mutation.kind === "balise"
       ? mutant.report.status === "FAIL" && mutant.report.invariantId === mutation.id && mutant.report.structured === true
-      : ["menu","egress","vnRelief"].includes(mutation.kind)
+      : ["menu","egress","vnRelief","suffixPersistence"].includes(mutation.kind)
         ? mutant.report.counts?.fail > 0
           && mutant.report.results?.some(report=>report.id===mutation.expectedInvariant&&report.status==="FAIL")
         : mutation.kind === "emptyDrop"

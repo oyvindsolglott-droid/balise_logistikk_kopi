@@ -114,7 +114,7 @@ assert.doesNotMatch(
   /sporplan-status-turn,\s*\n?\.sporplan-slot-overlay \.slot\.drei-slot/
 );
 
-assert.match(source,/Siste revisjon: 13\. august 2026/);
+assert.match(source,/Siste revisjon: 14\. august 2026/);
 assert.doesNotMatch(source,/Siste revisjon: 29\. juli 2026/);
 
 console.log(JSON.stringify({
@@ -122,5 +122,5 @@ console.log(JSON.stringify({
   defaultOperational:true,
   explicitRedOnly:true,
   visualBadges:["Dreies"],
-  revision:"13. august 2026",
+  revision:"14. august 2026",
 }));
