@@ -72,7 +72,7 @@ class SdeMenuAccessLayoutBrowserTests(unittest.TestCase):
             self.assertEqual(night_button.get_attribute("aria-label"), "Åpne Registrer Plan i SDE")
             self.assertEqual(
                 night_button.locator("img").get_attribute("src"),
-                "assets/registrer-plan-i-sde-button.png",
+                "assets/registrer-plan-i-sde-button.png?v=f74058d3cc40f47c4049f962f3a299f7fed725babf685f7e6b9daa16a2761fad",
             )
 
             stadler = page.locator('[data-tab="verkstedBestillinger"]')

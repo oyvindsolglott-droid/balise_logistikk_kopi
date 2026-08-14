@@ -73,7 +73,7 @@ put(
   "INV-MENU-003",
   !/data-tab="sdeNattplanErfaring"/.test(menuMarkup)
     && /SDE_NIGHT_PLAN_BUTTON_LABEL = "Registrer Plan i SDE";/.test(source)
-    && /SDE_NIGHT_PLAN_BUTTON_ASSET = "assets\/registrer-plan-i-sde-button\.png";/.test(source)
+    && /SDE_NIGHT_PLAN_BUTTON_ASSET = "assets\/registrer-plan-i-sde-button\.png\?v=f74058d3cc40f47c4049f962f3a299f7fed725babf685f7e6b9daa16a2761fad";/.test(source)
     && /button\.className = "seg seg-sde-plan-graphic";/.test(createSource)
     && /image\.className = "seg-sde-plan-graphic__image";/.test(createSource)
     && /image\.src = SDE_NIGHT_PLAN_BUTTON_ASSET;/.test(createSource)
