@@ -15,6 +15,7 @@ const vnReliefHarness = path.join(root, "tests/sde/strict/vn-relief-invariants.c
 const suffixPersistenceHarness = path.join(root, "tests/sde/strict/suffix-persistence-invariants.cjs");
 const candidateEngineHarness = path.join(root, "tests/sde/strict/candidate-engine-invariants.cjs");
 const menuHarness = path.join(root, "tests/sde/harnesses/sde-menu-access-layout-harness.js");
+const lifecycleHarness = path.join(root, "tests/sde/strict/lifecycle-closure-invariants.cjs");
 const baliseHarness = path.join(root, "tests/sde/harnesses/sde-24xx-focused-mutation-harness.py");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-final-focused-mutations-"));
 fs.mkdirSync(path.join(temporary,"assets"),{recursive:true});
@@ -105,7 +106,175 @@ function runMenu(source, label) {
   return runIndexHarness(source,label,menuHarness,"sde-menu-access-layout-harness-v1");
 }
 
+function runLifecycle(source, label) {
+  return runIndexHarness(source,label,lifecycleHarness,"sde-canonical-plan-lifecycle-closure-invariants-v1");
+}
+
 const mutations = [
+  {
+    id:"MENU_BUTTON_FIXED_TO_160PX",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-001",
+    apply:source=>replaceOnce(
+      source,
+      ".segmented button.seg-sde-plan-graphic{\n  position:relative;\n  display:block;\n  width:100%;",
+      ".segmented button.seg-sde-plan-graphic{\n  position:relative;\n  display:block;\n  width:160px; // focused mutation",
+      "menu fixed to 160px",
+    ),
+  },
+  {
+    id:"CARD_CONTROLS_ONLY_RENDER_FOR_ACTIONABLE",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-019",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalCardActionControlsHtml",
+      'if(!actionable && !dependencyBlocked && !handlerBlocked) return "";',
+      'if(!actionable) return ""; // focused mutation',
+      "controls actionable only",
+    ),
+  },
+  {
+    id:"DEPENDENCY_CARD_HAS_NO_CONTROLS",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-015",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalCardActionControlsHtml",
+      'if(!actionable && !dependencyBlocked && !handlerBlocked) return "";',
+      'if(!actionable && !handlerBlocked) return ""; // focused mutation',
+      "dependency has no controls",
+    ),
+  },
+  {
+    id:"UNRESOLVED_CARD_RENDERED_AS_NORMAL_CARD",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-025",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalUnresolvedFollowupCardHtml",
+      'class="sde-shift-unresolved-item',
+      'class="sde-shift-card sde-shift-unresolved-item',
+      "unresolved rendered as card",
+    ),
+  },
+  {
+    id:"MANUAL_PLAN_LINKS_ONLY_ACTIONABLE_CARD",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-023",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalUnifiedCardPipeline",
+      "const liveManualActionKeys = new Set(liveCanonicalCards",
+      "const liveManualActionKeys = new Set(actionableCards // focused mutation",
+      "manual plan links actionable only",
+    ),
+  },
+  {
+    id:"WORKSHOP_REQUEST_LINKS_ONLY_ACTIONABLE_CARD",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-022",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalUnifiedCardPipeline",
+      "const linkedCard = liveCanonicalCards.find",
+      "const linkedCard = actionableCards.find // focused mutation",
+      "workshop links actionable only",
+    ),
+  },
+  {
+    id:"LIVE_AUTHORITY_MUTATED_BEFORE_SHADOW_VALIDATION",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-009",
+    apply:source=>mutateFunction(
+      source,
+      "runSdeCanonicalGraphicDragShadowTransaction",
+      "const shadowAuthorities = cloneSdeCanonicalValue(liveAuthorities) || {};",
+      "const shadowAuthorities = liveAuthorities; // focused mutation: live authority alias",
+      "live authority alias",
+    ),
+  },
+  {
+    id:"CHAIN_IDENTITY_REGENERATED_PER_PROJECTION",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-012",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalReservationProjection",
+      "reservationId:identity.reservationId",
+      'reservationId:`regenerated|${outcome.candidateOutcomeId}` // focused mutation',
+      "reservation identity regenerated",
+    ),
+  },
+  {
+    id:"ADAPTER_MISSING_DEMOTES_SAFE_CHAIN",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-030",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalProductionReader",
+      "const initialAdapterCards = getSdeCanonicalProductionProjectedCards(reader).filter(needsHandlerAdapter);",
+      'const initialAdapterCards = getSdeCanonicalProductionProjectedCards(reader).filter(card=>card.status === "actionable").filter(needsHandlerAdapter); // focused mutation',
+      "deferred adapters omitted",
+    ),
+  },
+  {
+    id:"DEFERRED_STEP_MISSING_PROJECTION",
+    kind:"emptyDrop",
+    expectedInvariant:"INV-EMPTY-DROP-006",
+    apply:source=>{
+      const omitted = mutateFunction(
+        source,
+        "buildSdeCanonicalGraphicProjection",
+        'const deferredCandidates = (cards.blockedChainCards || []).map(card=>buildOverlay(card,"deferred")).filter(Boolean);',
+        'const deferredCandidates = []; // focused mutation: deferred step missing projection',
+        "deferred overlay omitted",
+      );
+      return mutateFunction(
+        omitted,
+        "applySdePassiveBlockedSlotAtomicProjectionGate",
+        'if(overlays.length !== outcomes.length) missingPlanParts.push("overlays");',
+        'if(false && overlays.length !== outcomes.length) missingPlanParts.push("overlays"); // focused mutation: bypass projection gate',
+        "deferred overlay gate bypassed",
+      );
+    },
+  },
+  {
+    id:"WORKSHOP_EXIT_BYPASSES_RELIEF_PLANNER",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-026",
+    apply:source=>mutateFunction(
+      source,
+      "getSdeWorkshopExitRecommendation",
+      "return canonicalCandidates;",
+      "return getSdeArrivalParkingRecommendation(need,reservedSlots); // focused mutation",
+      "workshop bypasses canonical relief",
+    ),
+  },
+  {
+    id:"UNRESOLVED_NOT_REMOVED_AFTER_SUCCESSFUL_REPLAN",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-022",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalUnifiedCardPipeline",
+      "if(linkedCard){",
+      "if(false && linkedCard){ // focused mutation: retain unresolved after success",
+      "successful replan remains unresolved",
+    ),
+  },
+  {
+    id:"RECOVERY_CAN_BE_DELETED",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-014",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalCardActionControlsHtml",
+      "actionable && adapter?.canDelete && card?.recoveryRequired !== true",
+      "actionable && (adapter?.canDelete || card?.recoveryRequired) /* focused mutation */",
+      "recovery can be deleted",
+    ),
+  },
   {
     id: "MAIN_AND_RECOVERY_DELETED_AFTER_RELEASE_COMPLETION",
     kind: "suffixPersistence",
@@ -560,6 +729,8 @@ try {
   for (const mutation of mutations) {
     const baseline = mutation.kind === "balise"
       ? runBalise(generatorSource, mutation.id, `${mutation.id}-baseline`)
+      : mutation.kind === "lifecycle"
+        ? runLifecycle(indexSource, `${mutation.id}-baseline`)
       : mutation.kind === "menu"
         ? runMenu(indexSource, `${mutation.id}-baseline`)
       : mutation.kind === "emptyDrop"
@@ -578,6 +749,8 @@ try {
     const mutatedSource = mutation.apply(mutation.kind === "balise" ? generatorSource : indexSource);
     const mutant = mutation.kind === "balise"
       ? runBalise(mutatedSource, mutation.id, mutation.id)
+      : mutation.kind === "lifecycle"
+        ? runLifecycle(mutatedSource, mutation.id)
       : mutation.kind === "menu"
         ? runMenu(mutatedSource, mutation.id)
       : mutation.kind === "emptyDrop"
@@ -594,7 +767,7 @@ try {
     const structuredFailure = mutant.execution.status === 1;
     const invariantObserved = mutation.kind === "balise"
       ? mutant.report.status === "FAIL" && mutant.report.invariantId === mutation.id && mutant.report.structured === true
-      : ["menu","egress","vnRelief","suffixPersistence","candidateEngine"].includes(mutation.kind)
+      : ["menu","lifecycle","egress","vnRelief","suffixPersistence","candidateEngine"].includes(mutation.kind)
         ? mutant.report.counts?.fail > 0
           && mutant.report.results?.some(report=>report.id===mutation.expectedInvariant&&report.status==="FAIL")
         : mutation.kind === "emptyDrop"

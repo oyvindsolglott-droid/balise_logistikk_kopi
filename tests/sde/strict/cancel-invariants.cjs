@@ -334,8 +334,10 @@ eval(prefix + String.raw`
       && positions.blocked>=0
       && firstHtml.includes('data-sde-release-cancelled-card="1"')
       && firstHtml.includes("sde-release-cancelled")
-      && !blockedHtml.includes("sde-shift-action-btn"),
-    "real canonical renderer keeps exiting red lifecycle cards and ordered blocked steps visible without exposing blocked actions"
+      && blockedHtml.includes("sde-shift-action-btn")
+      && blockedHtml.includes("disabled")
+      && blockedHtml.includes("Utført"),
+    "real canonical renderer keeps exiting red lifecycle cards and ordered blocked steps visible with a disabled state-correct action"
   );
   const firstVisibleOrder=[...firstHtml.matchAll(/data-sde-canonical-card-id="([^"]+)"/g)].map(match=>match[1]).join(",");
   ctx.innerWidth=390;

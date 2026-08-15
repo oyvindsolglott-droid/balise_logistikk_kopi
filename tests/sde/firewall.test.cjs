@@ -455,20 +455,19 @@ test("H — card preview stays explicit, fail-closed and non-interactive", () =>
   );
 });
 
-test("Production UI — shows ordered cards, exposes actions only when executable, and has no retarget menu", () => {
+test("Production UI — shows all live cards with state-correct actions and no retarget menu", () => {
   const contract = source => {
     const visibleCards = extractFunction(source, "getSdeCanonicalProductionVisibleCards");
     assert.ok(visibleCards.includes("reader.cardProjection.actionableCards"));
     assert.ok(visibleCards.includes("reader.cardProjection.blockedChainCards"));
+    assert.ok(visibleCards.includes("reader.cardProjection.handlerBlockedCards"));
     assert.ok(visibleCards.includes("reader.cardProjection.exitingCards"));
     assert.ok(visibleCards.includes("adapter?.ready === true"));
     assert.ok(visibleCards.includes("adapter.canComplete === true || adapter.canCancel === true"));
-    for(const forbidden of ["handlerBlockedCards"]){
-      assert.equal(visibleCards.includes(forbidden), false, `production visible cards include ${forbidden}`);
-    }
-
     const controls = extractFunction(source, "buildSdeCanonicalCardActionControlsHtml");
-    assert.ok(controls.includes('card.status !== "actionable" || adapter?.ready !== true'));
+    assert.ok(controls.includes('status === "blocked_chain_step"'));
+    assert.ok(controls.includes('status === "handler_adapter_blocked"'));
+    assert.ok(controls.includes("disabled aria-disabled=\"true\""));
     for(const forbidden of ["Velg annet spor", "Avslå VN og velg annet spor", "data-sde-canonical-retarget-action", "beginSdeCanonicalRetarget"]){
       assert.equal(controls.includes(forbidden), false, `production card controls expose ${forbidden}`);
     }
@@ -509,20 +508,21 @@ test("Cancellation UI — cancelled card stays red, crumbles, and yields its pla
   );
 });
 
-test("Ordered chain UI — every booked step has a card while future steps have no action controls", () => {
+test("Ordered chain UI — every booked step has a card and future steps expose disabled state-correct controls", () => {
   const contract = source => {
     const visibleCards = extractFunction(source, "getSdeCanonicalProductionVisibleCards");
     assert.ok(visibleCards.includes("reader.cardProjection.blockedChainCards"));
-    assert.equal(visibleCards.includes("reader.cardProjection.handlerBlockedCards"), false);
+    assert.ok(visibleCards.includes("reader.cardProjection.handlerBlockedCards"));
     const controls = extractFunction(source, "buildSdeCanonicalCardActionControlsHtml");
-    assert.ok(controls.includes('card.status !== "actionable" || adapter?.ready !== true'));
-    assert.equal(controls.includes("blocked_chain_step"), false);
+    assert.ok(controls.includes('status === "blocked_chain_step"'));
+    assert.ok(controls.includes('status === "handler_adapter_blocked"'));
+    assert.ok(controls.includes("disabled aria-disabled=\"true\""));
     const cardHtml = extractFunction(source, "buildSdeCanonicalProductionCardHtml");
     assert.ok(cardHtml.includes("Fremtidig kjedesteg"));
     assert.ok(cardHtml.includes("blockedBy"));
   };
   assertHistoricalContractFailure(
-    "booked chain card visibility without blocked actions",
+    "booked chain card visibility with disabled blocked actions",
     currentHtml,
     "34d66488bf597252610d327ba240e52a3d066fcc",
     contract,
