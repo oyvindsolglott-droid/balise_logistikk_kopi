@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "sde-canonical-plan-lifecycle-closure-fixture-v1",
+  "description": "Sanitert deterministisk fixture for canonical drag, verkstedutkjøring og levende dependency-steg.",
+  "placements": [
+    {"vehicleId": "74-47", "slot": "5M"},
+    {"vehicleId": "74-23", "slot": "8N"},
+    {"vehicleId": "74-38", "slot": "7N"},
+    {"vehicleId": "75-76", "slot": "6N"}
+  ],
+  "intents": [
+    {"vehicleId": "74-47", "sourceSlot": "5M", "targetSlot": "6S", "sourceType": "MANUAL_DRAG"},
+    {"vehicleId": "74-23", "sourceSlot": "8N", "sourceType": "WORKSHOP_EXIT"},
+    {"vehicleId": "74-38", "sourceSlot": "7N", "sourceType": "WORKSHOP_EXIT"},
+    {"vehicleId": "75-76", "sourceSlot": "6N", "targetSlot": "10N", "sourceType": "MANUAL_DRAG", "status": "DEPENDENCY_BLOCKED"}
+  ],
+  "emptySlots": ["1N", "1S", "2N", "2S", "3N", "3M", "3S", "4N", "4M", "4S", "5N", "5S", "6S", "6SS", "7S", "7SS", "8S", "8SS", "9", "10N", "10S", "11N", "11S", "12N", "12S", "VN", "VS"],
+  "expected": {
+    "unresolvedWithSafePlan": 0,
+    "deadCardsWithoutControls": 0,
+    "manualTargetPreserved": "6S",
+    "dependencyVehicle": "75-76",
+    "dependencyTarget": "10N"
+  }
+}

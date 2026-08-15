@@ -33,6 +33,7 @@ function functionSource(name){
 const menuMarkup = source.match(/<div class="segmented" aria-label="Hovedmeny">([\s\S]*?)<\/div>\s*<section class="panel" id="grunnoppstilling">/)?.[1] || "";
 const stadlerMarkup = menuMarkup.match(/<button[^>]*data-tab="verkstedBestillinger"[^>]*>/)?.[0] || "";
 const stadlerRule = source.match(/\.segmented button\.seg-stadler-graphic\{([^}]*)\}/)?.[1] || "";
+const planRule = source.match(/\.segmented button\.seg-sde-plan-graphic\{([^}]*)\}/)?.[1] || "";
 const desktopMenuRule = source.match(/@media \(min-width:701px\)\{([\s\S]*?)\n\}\n@media \(max-width:700px\)/)?.[1] || "";
 
 put(
@@ -94,6 +95,16 @@ put(
     && /\.segmented button\.seg-stadler-graphic:focus-visible\{[\s\S]*?outline:3px solid #ef4444;/.test(source)
     && /data-tab="verkstedBestillinger" data-levels="0 4"/.test(stadlerMarkup),
   "direct Nightplan activation is authority-gated while STADLER keeps its route, focus surface and common mobile dimensions"
+);
+
+put(
+  "INV-MENU-005",
+  /width\s*:\s*100%/.test(planRule)
+    && /min-width\s*:\s*0/.test(planRule)
+    && /aspect-ratio\s*:\s*1810\s*\/\s*530/.test(planRule)
+    && !/width\s*:\s*160px/.test(planRule)
+    && !/min-width\s*:\s*160px/.test(planRule),
+  "Registrer Plan i SDE inherits the same desktop grid width and row aspect ratio as the common wide menu buttons"
 );
 
 const failed = results.filter(item=>item.status === "FAIL");

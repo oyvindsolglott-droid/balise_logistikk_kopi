@@ -17,8 +17,8 @@ if(run.error || ![0,1].includes(run.status)){
   process.exit(2);
 }
 const report = JSON.parse(String(run.stdout||"").trim().split(/\n/).filter(Boolean).at(-1)||"{}");
-if(!Array.isArray(report.results) || report.results.length !== 4){
-  process.stderr.write("menu harness did not emit exactly four invariant results\n");
+if(!Array.isArray(report.results) || report.results.length !== 5){
+  process.stderr.write("menu harness did not emit exactly five invariant results\n");
   process.exit(2);
 }
 process.stdout.write(`${JSON.stringify({category:"menu",results:report.results})}\n`);

@@ -9619,8 +9619,8 @@ button{padding:12px 12px}
 .segmented button.seg-sde-plan-graphic{
   position:relative;
   display:block;
-  width:160px;
-  min-width:160px;
+  width:100%;
+  min-width:0;
   min-height:0;
   padding:0;
   border:2px solid #d9a72e;
@@ -9630,7 +9630,7 @@ button{padding:12px 12px}
   cursor:pointer;
   line-height:0;
   isolation:isolate;
-  aspect-ratio:3 / 1;
+  aspect-ratio:1810 / 530;
   box-shadow:
     inset 0 2px 0 rgba(255,255,255,.78),
     inset 0 -4px 0 rgba(20,12,0,.72),
@@ -9788,7 +9788,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 14. august 2026</p>
+<p class="sub">Siste revisjon: 15. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -26423,6 +26423,51 @@ function getSdeArrivalParkingRecommendation(need, reservedSlots=new Map()){
   };
 }
 
+function getSdeCanonicalPlanCandidateRecommendation(need,reservedSlots=new Map()){
+  const ordinary = getSdeArrivalParkingRecommendation(need,reservedSlots);
+  const vehicle = sanitizeVehicleValue(need?.vehicle || need?.vehicleId);
+  const sourceSlot = normalizeSlot(need?.fromSlot || need?.arrivalSlot || need?.originalFromSlot || getSdeCurrentSlotForVehicle(vehicle));
+  const requestedTarget = normalizeSlot(need?.originalRequestedTarget || need?.requestedTarget || need?.finalTarget || need?.toSlot);
+  const temporaryReliefContext = {
+    ...need,
+    requestedTarget,
+    temporaryRelief:true,
+    reliefPlanning:true,
+    conflictKnown:true,
+    concreteBlockageKnown:true,
+    sourceType:"BLOCKED_TARGET_ACCESS",
+    activeReservations:reservedSlots
+  };
+  const temporaryRelief = sourceSlot
+    ? getSdeCanonicalResolutionRecommendation(vehicle,sourceSlot,requestedTarget,temporaryReliefContext)
+    : {slot:"",score:0,confidence:"low",diagnostics:[],alternatives:[],searchedSlots:[],safeCandidateCount:0,vnCompared:false};
+  const fullInventory = getSdeCanonicalSlotInventory();
+  const diagnosticBySlot = new Map([
+    ...(ordinary.candidateDiagnostics || []),
+    ...(temporaryRelief.diagnostics || [])
+  ].map(item=>[normalizeSlot(item?.slot),item]));
+  const candidateDiagnostics = fullInventory.map(slot=>diagnosticBySlot.get(slot) || {
+    slot,
+    finalStatus:"rejected",
+    hardEligibility:false,
+    finalReason:"Sporet er ikke autorisert for denne candidate-konteksten."
+  });
+  const vnCandidate = (temporaryRelief.diagnostics || []).find(item=>item?.slot === "VN") || null;
+  return {
+    ...ordinary,
+    candidateDiagnostics,
+    searchedSlots:fullInventory,
+    temporaryRelief:{
+      enabled:true,
+      selectedAsFinalTarget:false,
+      recommendation:temporaryRelief,
+      vnCompared:temporaryRelief.vnCompared === true,
+      vnCandidate,
+      candidateSlots:(temporaryRelief.diagnostics || []).filter(item=>item?.hardEligibility === true).map(item=>item.slot)
+    }
+  };
+}
+
 
 function isSdeBorgestad10855Flow(arrival){
   return String(arrival?.train || arrival?.arrivalTrain || "").trim() === "855";
@@ -28143,6 +28188,42 @@ function sortSdeCanonicalObjects(values=[]){
   });
 }
 
+function buildSdeCanonicalPlanIdentity(outcome={}, planRevision=""){
+  const activeOutcomeId = String(outcome?.candidateOutcomeId || outcome?.activeOutcomeId || "").trim();
+  const obligationId = String(outcome?.obligationId || "").trim();
+  const stepId = String(outcome?.stepId || "").trim();
+  const chainId = String(outcome?.chainId || outcome?.chainScope || "").trim();
+  const actionKey = String(outcome?.actionKey || outcome?.legacyCardId || "").trim();
+  const vehicleId = sanitizeVehicleValue(outcome?.vehicleId || outcome?.raw?.vehicle);
+  const sourceSlot = normalizeSlot(outcome?.canonicalSourceSlot || outcome?.stepSourceSlot || outcome?.sourceSlot);
+  const targetSlot = normalizeSlot(outcome?.targetSlot || outcome?.raw?.recommendedSlot || outcome?.raw?.toSlot);
+  const intentId = String(
+    outcome?.raw?.sdeNightPlacementDragIdentity
+    || outcome?.raw?.manualPlanId
+    || outcome?.raw?.workshopExitRequestId
+    || outcome?.raw?.needKey
+    || obligationId
+  ).trim();
+  return {
+    schemaVersion:"sde-canonical-plan-identity-v1",
+    chainId,
+    intentId,
+    obligationId,
+    stepId,
+    candidateOutcomeId:activeOutcomeId,
+    activeOutcomeId,
+    canonicalCardId:activeOutcomeId ? `sde-canonical-card-v1|${activeOutcomeId}` : "",
+    reservationId:activeOutcomeId ? `sde-canonical-reservation-v1|${activeOutcomeId}` : "",
+    overlayId:activeOutcomeId ? `sde-canonical-graphic-overlay-v1|${activeOutcomeId}` : "",
+    executionKey:"",
+    actionKey,
+    planRevision:String(planRevision || "").trim(),
+    vehicleId,
+    sourceSlot,
+    targetSlot
+  };
+}
+
 function getSdeCanonicalPurpose(row, obligationKind){
   const explicit = String(row?.canonicalPurpose || row?.operationalPurpose || row?.sdeOperationalPurpose || row?.obligationPurpose || row?.movePurpose || "").trim();
   if(explicit) return normalizeSdeCanonicalToken(explicit).toLowerCase();
@@ -29639,8 +29720,9 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
   };
   const buildCardBase = outcome => {
     const recoveryRequired = isRecovery(outcome);
+    const identity = buildSdeCanonicalPlanIdentity(outcome, plan.planRevision || plan.metadata?.planRevision);
     return {
-      canonicalCardId:`sde-canonical-card-v1|${outcome.candidateOutcomeId}`,
+      canonicalCardId:identity.canonicalCardId,
       obligationId:outcome.obligationId,
       stepId:outcome.stepId,
       activeOutcomeId:outcome.candidateOutcomeId,
@@ -29655,7 +29737,8 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
       legacyCardId:outcome.legacyCardId || "",
       recoveryRequired,
       vnEntryToken:String(outcome.raw?.sdeVnEntryToken || "").trim(),
-      activeRecoveryMode:String(outcome.raw?.sdeVnRecoveryStatus || outcome.raw?.sdePhysicalResolutionContext || (recoveryRequired ? "authoritative_recovery" : "")).trim()
+      activeRecoveryMode:String(outcome.raw?.sdeVnRecoveryStatus || outcome.raw?.sdePhysicalResolutionContext || (recoveryRequired ? "authoritative_recovery" : "")).trim(),
+      canonicalIdentity:identity
     };
   };
   const hasBlockingConflict = outcome => conflicts.some(conflict=>
@@ -30052,8 +30135,9 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
       : (outcome?.obligationKind === "vn-recovery" || outcome?.raw?.sdeVnRecoveryRequired || outcome?.raw?.isSdePhysicalVnRecoveryMove || [sourceSlot,card.targetSlot].some(slot=>["VN","VS"].includes(slot)))
         ? ["VN","VS"]
         : [];
+    const identity = buildSdeCanonicalPlanIdentity(outcome, plan.planRevision || plan.metadata?.planRevision);
     return [{
-      reservationId:`sde-canonical-reservation-v1|${card.activeOutcomeId}`,
+      reservationId:identity.reservationId,
       reservationKind,
       obligationId:card.obligationId,
       stepId:card.stepId,
@@ -30075,7 +30159,8 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
       routeResources,
       physicalValidation:cloneSdeCanonicalValue(outcome.physicalValidation || {valid:true}),
       producerProvenance:cloneSdeCanonicalValue(card.producerProvenance || {producer:outcome.producer, provenance:outcome.provenance}),
-      legacyAliases:sortSdeCanonicalObjects(card.legacyAliases || outcome.legacyAliases || [])
+      legacyAliases:sortSdeCanonicalObjects(card.legacyAliases || outcome.legacyAliases || []),
+      canonicalIdentity:identity
     }];
   });
   (plan.reservationsPreview || []).filter(preview=>!proposalEntries.some(item=>item.activeOutcomeId === preview.candidateOutcomeId)).forEach(preview=>{
@@ -30432,8 +30517,9 @@ function buildSdeCanonicalGraphicProjection(canonicalPlan={}, cardProjection={},
       recordConflict("DIAGNOSTIC_OUTCOME_WITH_OVERLAY", {activeOutcomeId:card.activeOutcomeId, obligationId:card.obligationId, stepId:card.stepId});
       return null;
     }
+    const identity = buildSdeCanonicalPlanIdentity(outcome, plan.planRevision || plan.metadata?.planRevision);
     return {
-      overlayId:`sde-canonical-graphic-overlay-v1|${card.activeOutcomeId}`,
+      overlayId:identity.overlayId,
       obligationId:card.obligationId,
       stepId:card.stepId,
       activeOutcomeId:card.activeOutcomeId,
@@ -30454,7 +30540,8 @@ function buildSdeCanonicalGraphicProjection(canonicalPlan={}, cardProjection={},
         producer:card.producerProvenance?.producer || reservation.producerProvenance?.producer || "",
         source:card.producerProvenance?.provenance || reservation.producerProvenance?.provenance || ""
       },
-      legacyAliases:sortSdeCanonicalObjects(card.legacyAliases || reservation.legacyAliases || [])
+      legacyAliases:sortSdeCanonicalObjects(card.legacyAliases || reservation.legacyAliases || []),
+      canonicalIdentity:identity
     };
   };
   const activeCandidates = (cards.actionableCards || []).map(card=>buildOverlay(card,"active")).filter(Boolean);
@@ -34848,6 +34935,7 @@ function getSdeFreshWorkshopExitClassification(vehicle, request, readback){
 }
 
 function getSdeWorkshopExitRecommendation(need, reservedSlots){
+  const canonicalCandidates = getSdeCanonicalPlanCandidateRecommendation(need,reservedSlots);
   const explicitTarget = normalizeSlot(need?.finalTarget || need?.toSlot);
   if(explicitTarget && !isSdeWorkshopSlot(explicitTarget) && !reservedSlots.has(explicitTarget)){
     const candidate = scoreSdeArrivalParkingCandidate(need,explicitTarget);
@@ -34865,11 +34953,14 @@ function getSdeWorkshopExitRecommendation(need, reservedSlots){
           ...(evaluation.violations || []),
           score < 45 ? `Lav ønskelighetsscore ${score}, men kandidaten er fysisk sikker og beholdes.` : ""
         ].filter(Boolean).slice(0,5).join(" "),
-        alternatives:[]
+        alternatives:canonicalCandidates.alternatives || [],
+        candidateDiagnostics:canonicalCandidates.candidateDiagnostics,
+        searchedSlots:canonicalCandidates.searchedSlots,
+        temporaryRelief:canonicalCandidates.temporaryRelief
       };
     }
   }
-  return getSdeArrivalParkingRecommendation(need,reservedSlots);
+  return canonicalCandidates;
 }
 
 function reconcileSdeWorkshopExitPlacement(request, placements=[], activeRequests=[]){
@@ -40254,7 +40345,41 @@ function inspectSdeCanonicalGraphicDragPhysicalReliefChain(reader, expected={}){
   };
 }
 
-function stageSdeCanonicalGraphicDragOrder(override){
+// SDE_CANONICAL_SHADOW_VALIDATE_ATOMIC_COMMIT
+function runSdeCanonicalGraphicDragShadowTransaction(buildShadow,validateCommit){
+  const liveAuthorities = state.sdeActiveMoveOutcomes;
+  const liveReplans = state.sdePhysicalReleaseReplans;
+  const shadowAuthorities = cloneSdeCanonicalValue(liveAuthorities) || {};
+  const shadowReplans = cloneSdeCanonicalValue(liveReplans) || {};
+  let shadowResult;
+  let committedAuthorities;
+  let committedReplans;
+  state.sdeActiveMoveOutcomes = shadowAuthorities;
+  state.sdePhysicalReleaseReplans = shadowReplans;
+  try{
+    shadowResult = buildShadow();
+    committedAuthorities = cloneSdeCanonicalValue(state.sdeActiveMoveOutcomes) || {};
+    committedReplans = cloneSdeCanonicalValue(state.sdePhysicalReleaseReplans) || {};
+  }catch(error){
+    state.sdeActiveMoveOutcomes = liveAuthorities;
+    state.sdePhysicalReleaseReplans = liveReplans;
+    throw error;
+  }
+
+  state.sdeActiveMoveOutcomes = liveAuthorities;
+  state.sdePhysicalReleaseReplans = liveReplans;
+  try{
+    state.sdeActiveMoveOutcomes = committedAuthorities;
+    state.sdePhysicalReleaseReplans = committedReplans;
+    return validateCommit(shadowResult);
+  }catch(error){
+    state.sdeActiveMoveOutcomes = liveAuthorities;
+    state.sdePhysicalReleaseReplans = liveReplans;
+    throw error;
+  }
+}
+
+function buildSdeCanonicalGraphicDragShadowOrder(override){
   const generatedMove = buildSdeNightPlacementGeneratedMove(override);
   if(!generatedMove) throw new Error("Canonical drag-rad kunne ikke bygges.");
   const outcomeKey = getSdeMoveObligationStepKey(generatedMove);
@@ -40390,7 +40515,41 @@ function stageSdeCanonicalGraphicDragOrder(override){
   const committedReader = buildSdeCanonicalProductionReader();
   const committed = inspectSdeCanonicalGraphicDragOrder(committedReader, expected);
   if(!committed.ok) throw new Error(`Canonical authority er ikke stabil: ${committed.reason}`);
-  return {reader:committed,authority,outcome:committed.outcome,card:committed.card,reservation:committed.reservation,overlay:committed.overlay,adapter:committed.adapter};
+  return {reader:committedReader,authority,outcome:committed.outcome,card:committed.card,reservation:committed.reservation,overlay:committed.overlay,adapter:committed.adapter};
+}
+
+function stageSdeCanonicalGraphicDragOrder(override){
+  const shadowOverride = cloneSdeCanonicalValue(override) || {};
+  const liveOverrideSnapshot = cloneSdeCanonicalValue(override) || {};
+  const restoreLiveOverride = ()=>{
+    Object.keys(override).forEach(key=>delete override[key]);
+    Object.assign(override,cloneSdeCanonicalValue(liveOverrideSnapshot) || {});
+  };
+  const committed = runSdeCanonicalGraphicDragShadowTransaction(
+    ()=>buildSdeCanonicalGraphicDragShadowOrder(shadowOverride),
+    shadowResult=>{
+      Object.keys(override).forEach(key=>delete override[key]);
+      Object.assign(override,cloneSdeCanonicalValue(shadowOverride) || {});
+      try{
+        const committedReader = shadowResult?.reader?.canonicalPlan
+          ? shadowResult.reader
+          : buildSdeCanonicalProductionReader();
+        if(
+          !committedReader?.canonicalPlan
+          || !shadowResult?.outcome
+          || (shadowResult?.chain && shadowResult.chain.ok !== true)
+          || committedReader?.integrityReport?.status !== "PASS"
+        ){
+          throw new Error("Canonical atomic commit mangler en komplett, validert shadow-readback.");
+        }
+        return {...shadowResult,reader:committedReader};
+      }catch(error){
+        restoreLiveOverride();
+        throw error;
+      }
+    }
+  );
+  return committed;
 }
 
 function applySdeNightPlacementDragOverride(payload, toSlot){
@@ -42454,6 +42613,14 @@ function applySdePassiveBlockedSlotAtomicProjectionGate(reader, adapters={}){
     const reservations = (reader.reservationProjection?.reservations || []).filter(item=>outcomeIds.has(item.activeOutcomeId));
     const overlays = allOverlays.filter(item=>outcomeIds.has(item.activeOutcomeId));
     const chainAdapters = cards.map(card=>adapters[card.canonicalCardId]).filter(Boolean);
+    const activeAdapters = cards
+      .filter(card=>card.status === "actionable")
+      .map(card=>adapters[card.canonicalCardId])
+      .filter(Boolean);
+    const deferredAdapters = cards
+      .filter(card=>card.status !== "actionable")
+      .map(card=>adapters[card.canonicalCardId])
+      .filter(Boolean);
     const missingPlanParts = [];
     if(cards.length !== outcomes.length || cards.filter(card=>card.status === "actionable").length !== 1) missingPlanParts.push("steps");
     if(reservations.length !== outcomes.length) missingPlanParts.push("reservations");
@@ -42461,6 +42628,8 @@ function applySdePassiveBlockedSlotAtomicProjectionGate(reader, adapters={}){
     if(outcomes.some(item=>!Array.isArray(item.routeResources) || !item.routeResources.length)) missingPlanParts.push("routeResources");
     if(chainAdapters.length !== outcomes.length) missingPlanParts.push("adapters");
     if(chainAdapters.some(adapter=>!adapter.executionDescriptor)) missingPlanParts.push("executionIdentity");
+    if(activeAdapters.length !== 1 || activeAdapters.filter(adapter=>adapter.ready === true).length !== activeAdapters.length) missingPlanParts.push("activeAdapterReadiness");
+    if(deferredAdapters.length !== outcomes.length - 1 || deferredAdapters.filter(adapter=>adapter.ready === false).length !== deferredAdapters.length) missingPlanParts.push("deferredAdapterReadiness");
     if(!missingPlanParts.length) return;
     failedChainIds.add(chainId);
     findings.push(buildSdePassiveBlockedSlotFinding({
@@ -43210,6 +43379,7 @@ function getSdeCanonicalProductionVisibleCards(reader){
     });
   return orderSdeCanonicalProductionProjectedCards([
     ...actionableCards,
+    ...(reader.cardProjection.handlerBlockedCards || []),
     ...(reader.cardProjection.blockedChainCards || []),
     ...(reader.cardProjection.exitingCards || [])
   ]);
@@ -43334,8 +43504,8 @@ function buildSdeCanonicalProductionReader(runtimeSnapshot=null){
     card.canonicalCardId,
     buildSdeCanonicalHandlerAdapter(card, reader)
   ]));
-  applySdePassiveBlockedSlotAtomicProjectionGate(reader, initialAdapters);
   applySdeCanonicalHandlerActionableGate(reader, initialAdapters);
+  applySdePassiveBlockedSlotAtomicProjectionGate(reader, initialAdapters);
   reader.handlerAdapters = Object.fromEntries(getSdeCanonicalProductionProjectedCards(reader).filter(needsHandlerAdapter).map(card=>[
     card.canonicalCardId,
     buildSdeCanonicalHandlerAdapter(card, reader)
@@ -43371,63 +43541,63 @@ function buildSdeCanonicalUnifiedCardPipeline(reader, options={}){
         row?.sdeNightPlacementDragOverrideActive !== false &&
         row?.sdeOutcomeActive !== false
       );
-  const projectedCards = getSdeCanonicalProductionProjectedCards(reader);
-  const actionableCards = getSdeCanonicalProductionVisibleCards(reader)
-    .filter(card=>card?.status === "actionable")
-    .map(card=>{
-      const adapter = reader?.handlerAdapters?.[card.canonicalCardId] || null;
-      const row = adapter?.row || adapter?.outcome?.raw || {};
-      const sourceType = getSdeCanonicalUnifiedCardSourceType(row);
-      const sourceReference = sourceType === "WORKSHOP_EXIT"
-        ? String(row?.workshopExitRequestId || "").trim()
-        : sourceType === "MANUAL_DRAG"
-          ? String(row?.sdeNightPlacementDragIdentity || row?.manualPlanId || adapter?.actionKey || "").trim()
-          : String(adapter?.actionKey || card?.activeOutcomeId || "").trim();
-      const planGeneration = String(
-        row?.planGeneration ||
-        row?.sdePlanGeneration ||
-        row?.sdeNightPlacementDragIdentity ||
-        card?.activeOutcomeId ||
-        ""
-      ).trim();
-      const assessmentRevision = String(
-        row?.workshopExitPlacementRevision ||
-        row?.canonicalSourceRevision ||
-        row?.sourceRevision ||
-        reader?.planRevision ||
-        ""
-      ).trim();
-      return {
-        ...card,
-        sourceType,
-        sourceReference,
-        planGeneration,
-        assessmentRevision,
-        semanticCardKey:[
-          normalizeVehicleToken(card?.vehicleId),
-          normalizeSlot(card?.sourceSlot),
-          normalizeSlot(card?.targetSlot),
-          assessmentRevision,
-          planGeneration,
-          sourceType,
-          sourceReference
-        ].join("|")
-      };
-    });
-  const activeCardByOutcomeId = new Map(actionableCards.map(card=>[card.activeOutcomeId,card]));
-  const reservationOwnerCards = [
-    ...actionableCards,
-    ...(reader?.cardProjection?.blockedChainCards || []).map(card=>{
-      const adapter = reader?.handlerAdapters?.[card.canonicalCardId] || null;
-      const row = adapter?.row || adapter?.outcome?.raw || {};
-      return {
-        ...card,
-        sourceType:getSdeCanonicalUnifiedCardSourceType(row),
-        planGeneration:String(row?.planGeneration || row?.sdePlanGeneration || card?.activeOutcomeId || "").trim(),
-        assessmentRevision:String(row?.workshopExitPlacementRevision || row?.canonicalSourceRevision || row?.sourceRevision || reader?.planRevision || "").trim()
-      };
-    })
+  const projectedCards = [
+    ...(reader?.cardProjection?.actionableCards || []),
+    ...(reader?.cardProjection?.blockedChainCards || []),
+    ...(reader?.cardProjection?.handlerBlockedCards || [])
   ];
+  const decorateLiveCard = card=>{
+    const adapter = reader?.handlerAdapters?.[card.canonicalCardId] || null;
+    const outcome = adapter?.outcome || (reader?.canonicalPlan?.candidateOutcomes || []).find(item=>item?.candidateOutcomeId === card?.activeOutcomeId) || null;
+    const row = adapter?.row || outcome?.raw || {};
+    const sourceType = getSdeCanonicalUnifiedCardSourceType(row);
+    const sourceReference = sourceType === "WORKSHOP_EXIT"
+      ? String(row?.workshopExitRequestId || "").trim()
+      : sourceType === "MANUAL_DRAG"
+        ? String(row?.sdeNightPlacementDragIdentity || row?.manualPlanId || adapter?.actionKey || outcome?.actionKey || "").trim()
+        : String(adapter?.actionKey || outcome?.actionKey || card?.activeOutcomeId || "").trim();
+    const planGeneration = String(
+      row?.planGeneration
+      || row?.sdePlanGeneration
+      || row?.sdeNightPlacementDragIdentity
+      || card?.activeOutcomeId
+      || ""
+    ).trim();
+    const assessmentRevision = String(
+      row?.workshopExitPlacementRevision
+      || row?.canonicalSourceRevision
+      || row?.sourceRevision
+      || reader?.planRevision
+      || ""
+    ).trim();
+    return {
+      ...card,
+      sourceType,
+      sourceReference,
+      planGeneration,
+      assessmentRevision,
+      semanticCardKey:[
+        normalizeVehicleToken(card?.vehicleId),
+        normalizeSlot(card?.sourceSlot),
+        normalizeSlot(card?.targetSlot),
+        assessmentRevision,
+        planGeneration,
+        sourceType,
+        sourceReference
+      ].join("|")
+    };
+  };
+  const liveCanonicalCards = projectedCards
+    .filter(card=>["actionable","blocked_chain_step","handler_adapter_blocked"].includes(String(card?.status || "")))
+    .map(decorateLiveCard);
+  const actionableCards = liveCanonicalCards.filter(card=>{
+    const adapter = reader?.handlerAdapters?.[card.canonicalCardId] || null;
+    return card.status === "actionable"
+      && adapter?.ready === true
+      && (adapter.canComplete === true || adapter.canCancel === true || adapter.canDelete === true);
+  });
+  const activeCardByOutcomeId = new Map(liveCanonicalCards.map(card=>[card.activeOutcomeId,card]));
+  const reservationOwnerCards = liveCanonicalCards;
   const reservationOwnerByOutcomeId = new Map(reservationOwnerCards.map(card=>[card.activeOutcomeId,card]));
   const reservations = [];
   const orphanReservations = [];
@@ -43457,15 +43627,16 @@ function buildSdeCanonicalUnifiedCardPipeline(reader, options={}){
   const unresolvedCards = [];
   const workshopRequestReadback = workshopExitRequests.map(request=>{
     const exitRequestId = String(request?.exitRequestId || "").trim();
-    const linkedCard = actionableCards.find(card=>
+    const linkedCard = liveCanonicalCards.find(card=>
       card.sourceType === "WORKSHOP_EXIT" &&
       card.sourceReference === exitRequestId
     ) || null;
     if(linkedCard){
       return {
         ...request,
-        status:"CARD_CREATED",
+        status:linkedCard.status === "actionable" ? "CARD_CREATED" : "CHAIN_CREATED",
         linkedCardId:linkedCard.canonicalCardId,
+        linkedCardStatus:linkedCard.status,
         planGeneration:linkedCard.planGeneration,
         assessmentRevision:linkedCard.assessmentRevision
       };
@@ -43532,13 +43703,18 @@ function buildSdeCanonicalUnifiedCardPipeline(reader, options={}){
     };
   });
 
-  const activeManualActionKeys = new Set(actionableCards
+  const liveManualActionKeys = new Set(liveCanonicalCards
     .filter(card=>card.sourceType === "MANUAL_DRAG")
-    .map(card=>String(reader?.handlerAdapters?.[card.canonicalCardId]?.actionKey || "").trim())
+    .map(card=>String(
+      reader?.handlerAdapters?.[card.canonicalCardId]?.actionKey
+      || reader?.handlerAdapters?.[card.canonicalCardId]?.outcome?.actionKey
+      || card?.activeOutcomeId
+      || ""
+    ).trim())
     .filter(Boolean));
   for(const plan of manualPlans){
     const actionKey = String(plan?.sdeNightPlacementGeneratedActionKey || plan?.stableActionKey || "").trim();
-    if(!actionKey || activeManualActionKeys.has(actionKey)) continue;
+    if(!actionKey || liveManualActionKeys.has(actionKey)) continue;
     if(plan?.sdeOutcomeActive === false || plan?.sdeNightPlacementDragOverrideActive === false) continue;
     const targetSlot = normalizeSlot(plan?.recommendedSlot || plan?.toSlot);
     const targetOccupant = targetSlot
@@ -43590,6 +43766,7 @@ function buildSdeCanonicalUnifiedCardPipeline(reader, options={}){
   return {
     schemaVersion:"sde-canonical-unified-card-pipeline-v1",
     planRevision:String(reader?.planRevision || "").trim(),
+    liveCanonicalCards:sortSdeCanonicalObjects(liveCanonicalCards),
     actionableCards:sortSdeCanonicalObjects(actionableCards),
     unresolvedCards:sortSdeCanonicalObjects(unresolvedCards),
     reservations:sortSdeCanonicalObjects(reservations),
@@ -44005,14 +44182,29 @@ function buildSdeCanonicalGraphicOverviewData(reader){
 function buildSdeCanonicalCardActionControlsHtml(card, adapter, reader=null){
   const encodedCardId = encodeURIComponent(card.canonicalCardId || "");
   const encodedExecutionDescriptor = encodeURIComponent(JSON.stringify(adapter?.executionDescriptor || {}));
-  if(card.status !== "actionable" || adapter?.ready !== true) return "";
-  const completeHtml = adapter?.canComplete
+  const status = String(card?.status || "").trim();
+  const actionable = status === "actionable" && adapter?.ready === true;
+  const dependencyBlocked = status === "blocked_chain_step";
+  const handlerBlocked = status === "handler_adapter_blocked";
+  if(!actionable && !dependencyBlocked && !handlerBlocked) return "";
+  const blockReason = String(
+    card?.explanation
+    || card?.handlerBlockReasons?.[0]
+    || card?.blockedBy?.[0]
+    || card?.dependencyIds?.[0]
+    || adapter?.reasons?.[0]
+    || "Steget venter på en canonical dependency."
+  ).trim();
+  const completeHtml = actionable && adapter?.canComplete
     ? `<button class="sde-shift-action-btn done" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'completed', '${escapeHtml(encodedExecutionDescriptor)}')">Utført</button>`
-    : "";
+    : `<button class="sde-shift-action-btn done" type="button" disabled aria-disabled="true" title="${escapeHtml(blockReason)}">Utført</button><span class="sde-shift-action-block-reason">${escapeHtml(blockReason)}</span>`;
   const cancelHtml = adapter?.canCancel
     ? `<button class="sde-shift-action-btn cancel" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'cancelled', '${escapeHtml(encodedExecutionDescriptor)}')">Annullert</button>`
     : "";
-  return `<div class="sde-shift-actions" aria-label="Kvitter canonical skifteforslag">${completeHtml}${cancelHtml}</div>`;
+  const deleteHtml = actionable && adapter?.canDelete && card?.recoveryRequired !== true
+    ? `<button class="sde-shift-action-btn delete-card" type="button" onclick="handleSdeCanonicalCardAction('${escapeHtml(encodedCardId)}', 'deleted', '${escapeHtml(encodedExecutionDescriptor)}')">Fjern</button>`
+    : "";
+  return `<div class="sde-shift-actions" aria-label="Canonical korthandlinger">${completeHtml}${cancelHtml}${deleteHtml}</div>`;
 }
 
 function buildSdeCanonicalProductionCardHtml(card, reader, index){
@@ -44149,10 +44341,25 @@ async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action, enco
     alert(getSdeCanonicalExecutionResolutionMessage(resolution));
     return;
   }
-  const allowed = actionType === "completed" ? adapter?.canComplete : actionType === "cancelled" ? adapter?.canCancel : false;
+  const allowed = actionType === "completed"
+    ? adapter?.canComplete
+    : actionType === "cancelled"
+      ? adapter?.canCancel
+      : actionType === "deleted"
+        ? adapter?.canDelete
+        : false;
   if(!allowed){
     renderSdeSkiftebevegelser();
-    alert(`Canonical-kortet er ikke handlingsklart: ${actionType === "completed" ? "Utført" : "Annullert"} er sperret for gjeldende steg.`);
+    alert(`Canonical-kortet er ikke handlingsklart: ${actionType === "completed" ? "Utført" : actionType === "deleted" ? "Fjern" : "Annullert"} er sperret for gjeldende steg.`);
+    return;
+  }
+  if(actionType === "deleted"){
+    const activeRows = Array.isArray(reader?.runtimeSnapshot?.legacy?.activeCards)
+      ? reader.runtimeSnapshot.legacy.activeCards
+      : [];
+    if(deleteSdeLocalMoveCard(adapter?.row, activeRows) !== true){
+      renderSdeSkiftebevegelser();
+    }
     return;
   }
   await handleSdeShiftMoveAction(encodeURIComponent(adapter.actionKey), actionType, {
@@ -44179,27 +44386,7 @@ function buildSdeCanonicalUnresolvedFollowupCardHtml(card, index=0){
       ? "Manuell drag/omruting"
       : "Canonical oppfølging";
   const target = normalizeSlot(card?.targetSlot);
-  const targetHtml = target
-    ? `<div class="sde-shift-track to"><strong>${escapeHtml(target)}</strong><span>Tidligere/foreslått mål</span></div>`
-    : `<div class="sde-shift-track to"><strong>UAVKLART</strong><span>Ingen sikkert mål</span></div>`;
-  return `<article class="sde-shift-card canonical-blocked" data-sde-canonical-unresolved-card data-sde-canonical-card-id="${escapeHtml(card?.canonicalCardId || "")}" data-sde-canonical-card-status="${escapeHtml(status)}" data-sde-source-type="${escapeHtml(card?.sourceType || "")}" style="--delay:${index * 55}ms">
-    <div class="sde-shift-card-head">
-      <div><span>Kjøretøy</span><strong>${escapeHtml(card?.vehicleId || "Ukjent")}</strong></div>
-      <div class="sde-shift-card-badges">
-        <span class="sde-shift-state-badge">${escapeHtml(status === "REPLAN_REQUIRED" ? "REPLAN REQUIRED" : "BLOCKED/UNRESOLVED")}</span>
-        <span class="sde-shift-meta-badge">${escapeHtml(sourceType)}</span>
-      </div>
-    </div>
-    <div class="sde-shift-route">
-      <div class="sde-shift-track from"><strong>${escapeHtml(card?.sourceSlot || "UKJENT")}</strong><span>Canonical source</span></div>
-      <div class="sde-shift-arrow">→</div>
-      ${targetHtml}
-    </div>
-    <div class="sde-shift-card-info canonical-card-blocked">
-      <strong>${escapeHtml(status === "REPLAN_REQUIRED" ? "Planen må beregnes på nytt" : "Behovet krever oppfølging")}</strong>
-      <span>${escapeHtml(card?.explanation || "Ingen aktiv targetreservation beholdes.")}</span>
-    </div>
-  </article>`;
+  return `<div class="sde-shift-unresolved-item" data-sde-canonical-unresolved-diagnostic data-sde-canonical-card-id="${escapeHtml(card?.canonicalCardId || "")}" data-sde-canonical-card-status="${escapeHtml(status)}" data-sde-source-type="${escapeHtml(card?.sourceType || "")}" style="--delay:${index * 55}ms"><strong>${escapeHtml(card?.vehicleId || "Ukjent")} · ${escapeHtml(status === "REPLAN_REQUIRED" ? "REPLAN REQUIRED" : "BLOCKED/UNRESOLVED")}</strong><br>${escapeHtml(sourceType)} · ${escapeHtml(card?.sourceSlot || "UKJENT")}${target ? ` → ${escapeHtml(target)}` : ""}<br>${escapeHtml(card?.explanation || "Ingen aktiv targetreservation beholdes.")}</div>`;
 }
 
 function renderSdeCanonicalProductionReader(){
@@ -44232,11 +44419,7 @@ function renderSdeCanonicalProductionReader(){
   const graphicPlanVisible = isSdeGraphicPlanViewMode();
   const viewToggleText = graphicPlanVisible ? "Til Skifte-kort" : "SDE Grafisk planverktøy";
   const projectedCards = getSdeCanonicalProductionVisibleCards(reader);
-  const unresolvedCardsHtml = unifiedPipeline.unresolvedCards
-    .map((card,index)=>buildSdeCanonicalUnresolvedFollowupCardHtml(card,projectedCards.length + index))
-    .join("");
   const cardsHtml = projectedCards.map((card,index)=>buildSdeCanonicalProductionCardHtml(card,reader,index)).filter(Boolean).join("")
-    + unresolvedCardsHtml
     || `<div class="sde-shift-empty">Ingen actionable canonical skiftekort. Se canonical diagnostics for behov som er stanset.</div>`;
   const diagnosticsHtml = buildSdeCanonicalDiagnosticsHtml(diagnostics, reader.integrityReport.status);
   const scorePresentation = buildSdeCanonicalProductionScorePresentation(reader, diagnostics, data.score);

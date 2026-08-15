@@ -229,9 +229,57 @@ assert.equal(replanned.actionableCards.filter(card=>card.vehicleId === "70-14").
 assert.equal(replanned.actionableCards.find(card=>card.vehicleId === "70-14").targetSlot,"8N");
 assert.equal(replanned.reservations.some(item=>item.targetSlot === "11N"),false);
 
+const dependencyWorkshopCard = {
+  ...healthyReader.cardProjection.actionableCards.find(card=>card.vehicleId === "74-07"),
+  status:"blocked_chain_step",
+  active:false,
+  canComplete:false,
+  canCancel:false,
+  canDelete:false,
+  blockedBy:["release-step"],
+  dependencyIds:["release-step"],
+  explanation:"Venter på release-step."
+};
+const dependencyWorkshopReader = structuredClone(healthyReader);
+dependencyWorkshopReader.cardProjection.actionableCards = dependencyWorkshopReader.cardProjection.actionableCards.filter(card=>card.vehicleId !== "74-07");
+dependencyWorkshopReader.cardProjection.blockedChainCards = [dependencyWorkshopCard];
+dependencyWorkshopReader.cardProjection.cardByOutcomeId = {[dependencyWorkshopCard.activeOutcomeId]:dependencyWorkshopCard};
+const dependencyWorkshop = buildSdeCanonicalUnifiedCardPipeline(dependencyWorkshopReader,{
+  workshopExitRequests:[workshopRequest],
+  manualPlans:[]
+});
+assert.equal(dependencyWorkshop.liveCanonicalCards.filter(card=>card.sourceType === "WORKSHOP_EXIT").length,1);
+assert.equal(dependencyWorkshop.workshopExitRequests[0].status,"CHAIN_CREATED");
+assert.equal(dependencyWorkshop.workshopExitRequests[0].linkedCardId,dependencyWorkshopCard.canonicalCardId);
+assert.equal(dependencyWorkshop.unresolvedCards.length,0);
+
+const dependencyManualCard = {
+  ...healthyReader.cardProjection.actionableCards.find(card=>card.vehicleId === "70-14"),
+  status:"blocked_chain_step",
+  active:false,
+  canComplete:false,
+  canCancel:false,
+  canDelete:false,
+  blockedBy:["manual-release-step"],
+  dependencyIds:["manual-release-step"],
+  explanation:"Venter på manual-release-step."
+};
+const dependencyManualReader = structuredClone(healthyReader);
+dependencyManualReader.cardProjection.actionableCards = dependencyManualReader.cardProjection.actionableCards.filter(card=>card.vehicleId !== "70-14");
+dependencyManualReader.cardProjection.blockedChainCards = [dependencyManualCard];
+dependencyManualReader.cardProjection.cardByOutcomeId = {[dependencyManualCard.activeOutcomeId]:dependencyManualCard};
+const dependencyManual = buildSdeCanonicalUnifiedCardPipeline(dependencyManualReader,{
+  workshopExitRequests:[],
+  manualPlans:[dragRow]
+});
+assert.equal(dependencyManual.liveCanonicalCards.filter(card=>card.sourceType === "MANUAL_DRAG").length,1);
+assert.equal(dependencyManual.unresolvedCards.length,0);
+
 const unresolvedHtml = buildSdeCanonicalUnresolvedFollowupCardHtml(unresolved.unresolvedCards[0],0);
 assert.match(unresolvedHtml,/BLOCKED\/UNRESOLVED/);
 assert.match(unresolvedHtml,/75-01/);
+assert.match(unresolvedHtml,/sde-shift-unresolved-item/);
+assert.doesNotMatch(unresolvedHtml,/class="sde-shift-card/);
 assert.doesNotMatch(unresolvedHtml,/data-sde-canonical-action|>Utført<|>Annullert</);
 
 assert.ok(script.includes("const unifiedPipeline = buildSdeCanonicalUnifiedCardPipeline(reader);"));
@@ -240,7 +288,7 @@ assert.ok(script.includes("getSdeCanonicalDropTargetReservationState"));
 
 process.stdout.write(JSON.stringify({
   schemaVersion:"sde-unified-card-pipeline-workshop-drag-v1",
-  counts:{passed:20,total:20},
+  counts:{passed:30,total:30},
   workshop:{
     status:linkedRequest.status,
     linkedCardId:linkedRequest.linkedCardId,
@@ -256,6 +304,8 @@ process.stdout.write(JSON.stringify({
     reservations:healthy.reservations.length,
     orphanReservations:orphanGuard.orphanReservations.length,
     staleStatus:stale.workshopExitRequests[0].status,
-    unresolvedVisible:unresolved.unresolvedCards.length
+    unresolvedVisible:unresolved.unresolvedCards.length,
+    dependencyWorkshopStatus:dependencyWorkshop.workshopExitRequests[0].status,
+    dependencyManualUnresolved:dependencyManual.unresolvedCards.length
   }
 }) + "\n");

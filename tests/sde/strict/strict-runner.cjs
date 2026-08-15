@@ -19,6 +19,7 @@ const drivers = [
   "blocked-slot-invariants.cjs",
   "empty-drop-invariants.cjs",
   "candidate-engine-invariants.cjs",
+  "lifecycle-closure-invariants.cjs",
   "menu-invariants.cjs",
 ];
 

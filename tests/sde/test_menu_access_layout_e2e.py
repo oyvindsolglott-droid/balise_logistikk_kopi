@@ -77,12 +77,49 @@ class SdeMenuAccessLayoutBrowserTests(unittest.TestCase):
 
             stadler = page.locator('[data-tab="verkstedBestillinger"]')
             reference = page.locator('[data-tab="sdeVaktplan"]')
+            plan_button = page.locator('[data-tab="sdeNattplanErfaring"]')
             stadler_box = stadler.bounding_box()
             reference_box = reference.bounding_box()
+            plan_box = plan_button.bounding_box()
             self.assertIsNotNone(stadler_box)
             self.assertIsNotNone(reference_box)
+            self.assertIsNotNone(plan_box)
             self.assertLessEqual(abs(stadler_box["width"] - reference_box["width"]), 1.0)
             self.assertLessEqual(abs(stadler_box["height"] - reference_box["height"]), 1.0)
+            peer_boxes = [
+                page.locator(selector).bounding_box()
+                for selector in (
+                    '[data-tab="sdeVaktplan"]',
+                    '[data-tab="dropsMateriellstyrer"]',
+                    '[data-tab="agilia"]',
+                    '[data-tab="verkstedBestillinger"]',
+                )
+            ]
+            peer_widths = sorted(box["width"] for box in peer_boxes if box)
+            peer_heights = sorted(box["height"] for box in peer_boxes if box)
+            median_width = (peer_widths[1] + peer_widths[2]) / 2
+            median_height = (peer_heights[1] + peer_heights[2]) / 2
+            self.assertLessEqual(abs(plan_box["width"] - median_width), 2.0)
+            self.assertLessEqual(abs(plan_box["height"] - median_height), 2.0)
+            image_contract = plan_button.locator("img").evaluate(
+                """image => {
+                  const button=image.closest('button');
+                  const buttonRect=button.getBoundingClientRect();
+                  const imageRect=image.getBoundingClientRect();
+                  const style=getComputedStyle(image);
+                  return {
+                    naturalWidth:image.naturalWidth,naturalHeight:image.naturalHeight,
+                    objectFit:style.objectFit,overflow:getComputedStyle(button).overflow,
+                    inside:imageRect.left>=buttonRect.left&&imageRect.right<=buttonRect.right
+                      &&imageRect.top>=buttonRect.top&&imageRect.bottom<=buttonRect.bottom
+                  };
+                }"""
+            )
+            self.assertEqual(image_contract["naturalWidth"], 1536)
+            self.assertEqual(image_contract["naturalHeight"], 512)
+            self.assertEqual(image_contract["objectFit"], "contain")
+            self.assertEqual(image_contract["overflow"], "hidden")
+            self.assertTrue(image_contract["inside"])
             self.assertTrue(
                 page.evaluate(
                     """() => {
@@ -228,10 +265,13 @@ class SdeMenuAccessLayoutBrowserTests(unittest.TestCase):
             reference.scroll_into_view_if_needed()
             mobile_stadler_box = stadler.bounding_box()
             mobile_reference_box = reference.bounding_box()
+            mobile_plan_box = plan_button.bounding_box()
             self.assertEqual(round(mobile_stadler_box["width"]), 160)
             self.assertEqual(round(mobile_stadler_box["height"]), 76)
             self.assertEqual(round(mobile_reference_box["width"]), 160)
             self.assertEqual(round(mobile_reference_box["height"]), 76)
+            self.assertEqual(round(mobile_plan_box["width"]), 160)
+            self.assertEqual(round(mobile_plan_box["height"]), 76)
             self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"))
             self.assertEqual(page_errors, [])
 

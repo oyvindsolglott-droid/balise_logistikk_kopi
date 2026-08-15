@@ -172,8 +172,9 @@ const blockedAdapter = duplicateReader.handlerAdapters[blockedCard.canonicalCard
 assert.equal(blockedAdapter.ready,false);
 assert.ok(blockedAdapter.reasons.some(reason=>reason.includes("nøyaktig ett legacy handlingsgrunnlag")));
 const blockedControls = buildSdeCanonicalCardActionControlsHtml(blockedCard,blockedAdapter);
-assert.equal(blockedControls,"","handler-blocked cards must expose no production controls");
-assert.equal(getSdeCanonicalProductionVisibleCards(duplicateReader).length,0,"handler-blocked cards must stay out of the production card list");
+assert.match(blockedControls,/disabled/,"handler-blocked cards must expose a disabled production control");
+assert.match(blockedControls,/Utført/);
+assert.equal(getSdeCanonicalProductionVisibleCards(duplicateReader).length,1,"handler-blocked cards must remain visible in the production card list");
 assert.deepEqual(buildSdeCanonicalProductionScorePresentation(duplicateReader,buildSdeCanonicalProductionDiagnostics(duplicateReader),100),{
   calculated:false,label:"Ikke beregnet",detail:"Ingen gjennomførbar plan"
 });
