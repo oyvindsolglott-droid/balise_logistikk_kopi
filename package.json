@@ -29,6 +29,7 @@
     "test:sde:qe:browserguard": "python3.11 -B -m unittest discover -s tests/sde-quality-engine/browserguard -p 'test_*.py' -v",
     "test:sde:menu-browser": "python3.11 -B -m unittest -v tests/sde/test_menu_access_layout_e2e.py",
     "test:sde:empty-target-browser": "python3.11 -B -m unittest -v tests/sde/test_empty_target_drag_e2e.py",
+    "test:sde:chain-liveness-browser": "python3.11 -B -m unittest -v tests/sde/test_chain_liveness_drag_e2e.py",
     "test:sde:qe:ci": "node tests/sde-quality-engine/run.cjs --suite ci",
     "test:sde:prepush": "node --test --test-concurrency=1 tests/sde-quality-engine/prepush-gate.test.cjs",
     "sde:prepush:install": "node scripts/sde-prepush-gate.cjs install",

@@ -16,6 +16,7 @@ const suffixPersistenceHarness = path.join(root, "tests/sde/strict/suffix-persis
 const candidateEngineHarness = path.join(root, "tests/sde/strict/candidate-engine-invariants.cjs");
 const menuHarness = path.join(root, "tests/sde/harnesses/sde-menu-access-layout-harness.js");
 const lifecycleHarness = path.join(root, "tests/sde/strict/lifecycle-closure-invariants.cjs");
+const chainLivenessHarness = path.join(root, "tests/sde/harnesses/sde-chain-liveness-and-drag-closure-harness.js");
 const baliseHarness = path.join(root, "tests/sde/harnesses/sde-24xx-focused-mutation-harness.py");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-final-focused-mutations-"));
 fs.mkdirSync(path.join(temporary,"assets"),{recursive:true});
@@ -108,6 +109,10 @@ function runMenu(source, label) {
 
 function runLifecycle(source, label) {
   return runIndexHarness(source,label,lifecycleHarness,"sde-canonical-plan-lifecycle-closure-invariants-v1");
+}
+
+function runChainLiveness(source, label) {
+  return runIndexHarness(source,label,chainLivenessHarness,"sde-chain-liveness-and-drag-closure-harness-v1");
 }
 
 const mutations = [
@@ -722,6 +727,135 @@ const mutations = [
       "planning writes actual placement",
     ),
   },
+  {
+    id:"DRAG_SAFE_TARGET_RETURNS_PRESTAGE_INCOMPLETE",
+    kind:"chainLiveness",
+    expectedInvariant:"INV-CHAIN-LIVENESS-025",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCompletePhysicalReliefCandidateSelection",
+      "rejectedIncompleteTargets.push(targetSlot);",
+      "break; // focused mutation: first incomplete candidate ends search",
+      "drag safe target returns prestage incomplete",
+    ),
+  },
+  {
+    id:"LIVE_STATE_MUTATED_BEFORE_SHADOW_VALIDATION",
+    kind:"lifecycle",
+    expectedInvariant:"INV-LIFECYCLE-009",
+    apply:source=>mutateFunction(
+      source,
+      "runSdeCanonicalGraphicDragShadowTransaction",
+      "const shadowAuthorities = cloneSdeCanonicalValue(liveAuthorities) || {};",
+      "const shadowAuthorities = liveAuthorities; // focused mutation: live authority alias",
+      "live state mutated before shadow validation",
+    ),
+  },
+  {
+    id:"ONE_N_FORCED_AS_DEFAULT",
+    kind:"candidateEngine",
+    expectedInvariant:"INV-CANDIDATE-004",
+    apply:source=>mutateFunction(
+      source,
+      "scoreSdeCanonicalResolutionCandidate",
+      "const base = scoreSdeResolutionTarget(normalized);",
+      "const base = normalized === \"1N\" ? 99999 : scoreSdeResolutionTarget(normalized); // focused mutation",
+      "1N forced default",
+    ),
+  },
+  {
+    id:"DEPENDENCY_CARD_REFERENCES_MISSING_PREDECESSOR",
+    kind:"chainLiveness",
+    expectedInvariant:"INV-CHAIN-LIVENESS-002",
+    apply:source=>mutateFunction(
+      source,
+      "reconcileSdeCanonicalDependencyRows",
+      "const reconstructed = buildSdeCanonicalReconstructedPredecessorRow(row,dependencyKey,snapshot);",
+      "const reconstructed = null; // focused mutation: missing predecessor remains missing",
+      "dependency references missing predecessor",
+    ),
+  },
+  {
+    id:"COMPLETED_PREDECESSOR_NOT_RECOGNIZED",
+    kind:"chainLiveness",
+    expectedInvariant:"INV-CHAIN-LIVENESS-007",
+    apply:source=>mutateFunction(
+      source,
+      "isSdeCanonicalDependencyCompletionActualStateProven",
+      "const key = String(actionKey || \"\").trim();",
+      "return false; // focused mutation: completion proof ignored\n  const key = String(actionKey || \"\").trim();",
+      "completed predecessor not recognized",
+    ),
+  },
+  {
+    id:"ORPHAN_DEPENDENCY_CARD_RENDERED",
+    kind:"chainLiveness",
+    expectedInvariant:"INV-CHAIN-LIVENESS-023",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalCardProjection",
+      "&& orphanDependencyCandidates.length === 0",
+      "&& true // focused mutation: orphan dependency allowed",
+      "orphan dependency rendered",
+    ),
+  },
+  {
+    id:"TECHNICAL_INTEGRITY_FAIL_WITH_LIVE_CARD_ALLOWED",
+    kind:"chainLiveness",
+    expectedInvariant:"INV-CHAIN-LIVENESS-005",
+    apply:source=>{
+      const withoutReconciliation = mutateFunction(
+        source,
+        "reconcileSdeCanonicalDependencyRows",
+        "const reconciledRows = (Array.isArray(rows) ? rows : []).map(row=>cloneSdeCanonicalValue(row) || {});",
+        "const reconciledRows = (Array.isArray(rows) ? rows : []).map(row=>cloneSdeCanonicalValue(row) || {}); return {rows:reconciledRows,operativeRows:reconciledRows,completionProvenKeys:[],reconstructedKeys:[],successorMappings:[],findings:[],originalIntentPreserved:true}; // focused mutation: bypass liveness reconciliation",
+        "technical fail no reconciliation",
+      );
+      return mutateFunction(
+        withoutReconciliation,
+        "buildSdeCanonicalCardProjection",
+        "&& orphanDependencyCandidates.length === 0",
+        "&& true // focused mutation: live orphan allowed",
+        "technical fail live orphan",
+      );
+    },
+  },
+  {
+    id:"CARD_2_AND_CARD_3_REMOVED_AFTER_CARD_1",
+    kind:"chainLiveness",
+    expectedInvariant:"INV-CHAIN-LIVENESS-009",
+    apply:source=>mutateFunction(
+      source,
+      "buildSdeCanonicalProductionReaderSource",
+      "snapshot.legacy.finalCards = chainLiveness.operativeRows;",
+      "snapshot.legacy.finalCards = chainLiveness.operativeRows.filter(row=>Number(row?.sdePhysicalChainStep||0)<=1); // focused mutation: discard remaining suffix after card 1",
+      "remaining suffix discarded",
+    ),
+  },
+  {
+    id:"RECOVERY_REMOVED_BEFORE_COMPLETION",
+    kind:"chainLiveness",
+    expectedInvariant:"INV-CHAIN-LIVENESS-010",
+    apply:source=>mutateFunction(
+      source,
+      "reconcileSdeCanonicalDependencyRows",
+      "operativeRows:sortSdeCanonicalObjects(reconciledRows.filter(row=>row?.sdeChainLivenessDiagnosticOnly !== true)),",
+      "operativeRows:sortSdeCanonicalObjects(reconciledRows.filter(row=>row?.sdeChainLivenessDiagnosticOnly !== true && row?.sdePhysicalDependencyRole !== \"return\")), // focused mutation",
+      "recovery removed before completion",
+    ),
+  },
+  {
+    id:"DUPLICATE_CHAIN_SURVIVES_REPLAN",
+    kind:"chainLiveness",
+    expectedInvariant:"INV-CHAIN-LIVENESS-026",
+    apply:source=>mutateFunction(
+      source,
+      "reconcileSdeCanonicalDependencyRows",
+      "reconciledRows.push(reconstructed);",
+      "reconciledRows.push(reconstructed,reconstructed); // focused mutation: duplicate rebuilt step",
+      "duplicate chain survives replan",
+    ),
+  },
 ];
 
 const reports = [];
@@ -731,6 +865,8 @@ try {
       ? runBalise(generatorSource, mutation.id, `${mutation.id}-baseline`)
       : mutation.kind === "lifecycle"
         ? runLifecycle(indexSource, `${mutation.id}-baseline`)
+      : mutation.kind === "chainLiveness"
+        ? runChainLiveness(indexSource, `${mutation.id}-baseline`)
       : mutation.kind === "menu"
         ? runMenu(indexSource, `${mutation.id}-baseline`)
       : mutation.kind === "emptyDrop"
@@ -751,6 +887,8 @@ try {
       ? runBalise(mutatedSource, mutation.id, mutation.id)
       : mutation.kind === "lifecycle"
         ? runLifecycle(mutatedSource, mutation.id)
+      : mutation.kind === "chainLiveness"
+        ? runChainLiveness(mutatedSource, mutation.id)
       : mutation.kind === "menu"
         ? runMenu(mutatedSource, mutation.id)
       : mutation.kind === "emptyDrop"
@@ -770,7 +908,7 @@ try {
       : ["menu","lifecycle","egress","vnRelief","suffixPersistence","candidateEngine"].includes(mutation.kind)
         ? mutant.report.counts?.fail > 0
           && mutant.report.results?.some(report=>report.id===mutation.expectedInvariant&&report.status==="FAIL")
-        : mutation.kind === "emptyDrop"
+        : ["emptyDrop","chainLiveness"].includes(mutation.kind)
           ? mutant.report.results?.some(report=>report.id===mutation.expectedInvariant&&report.status==="FAIL")
         : mutant.report.counts?.fail > 0
         && mutant.report.reports?.some(report=>report.invariantFailures?.includes(mutation.expectedInvariant));

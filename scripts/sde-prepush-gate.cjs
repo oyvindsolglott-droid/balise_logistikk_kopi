@@ -1260,6 +1260,12 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
       "npm",
       ["run", "test:sde:empty-target-browser"],
       8 * 60 * 1000
+    ],
+    [
+      "chain-liveness-browser-drag",
+      "npm",
+      ["run", "test:sde:chain-liveness-browser"],
+      8 * 60 * 1000
     ]
   ];
   for (const [id, command, args, timeoutMs] of commands) {

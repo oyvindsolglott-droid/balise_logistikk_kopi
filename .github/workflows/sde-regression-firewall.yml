@@ -58,6 +58,11 @@ jobs:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
         run: xvfb-run -a npm run test:sde:empty-target-browser
 
+      - name: Run chain-liveness candidate-continuation browser regression
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
+        run: xvfb-run -a npm run test:sde:chain-liveness-browser
+
   permanent-regressions:
     name: permanent-regressions
     runs-on: ubuntu-latest
