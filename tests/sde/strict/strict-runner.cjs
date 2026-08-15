@@ -22,6 +22,7 @@ const drivers = [
   "candidate-engine-invariants.cjs",
   "lifecycle-closure-invariants.cjs",
   "menu-invariants.cjs",
+  "multileg-route-invariants.cjs",
 ];
 
 function runDriver(driver) {
@@ -70,4 +71,4 @@ const report = {
 };
 
 process.stdout.write(`${JSON.stringify(report)}\n`);
-process.exit(failIds.length ? 1 : 0);
+process.exitCode = failIds.length ? 1 : 0;

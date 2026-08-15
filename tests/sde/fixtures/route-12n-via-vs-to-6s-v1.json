@@ -1,0 +1,50 @@
+{
+  "fixtureId": "SDE-ROUTE-12N-VIA-VS-TO-6S-V1",
+  "operationalDate": "2026-08-15",
+  "initialActualPlacement": [
+    ["12N", "70-11"],
+    ["6N", "75-76"],
+    ["6SS", "74-36"]
+  ],
+  "emptySlots": ["6S", "VN", "VS"],
+  "userIntent": {
+    "vehicle": "70-11",
+    "source": "12N",
+    "requestedTarget": "6S",
+    "intentId": "SDE-ROUTE-12N-VIA-VS-TO-6S-V1-INTENT"
+  },
+  "expected": {
+    "cardCount": 3,
+    "cards": [
+      {
+        "role": "prerequisite",
+        "vehicle": "75-76",
+        "source": "6N",
+        "target": "VN",
+        "viaSlots": ["VS"],
+        "status": "actionable"
+      },
+      {
+        "role": "dependent",
+        "vehicle": "70-11",
+        "source": "12N",
+        "target": "6S",
+        "viaSlots": ["VS"],
+        "reversalPoint": "VS",
+        "approachSide": "NORTH",
+        "status": "blocked_chain_step"
+      },
+      {
+        "role": "return",
+        "vehicle": "75-76",
+        "source": "VN",
+        "target": "6N",
+        "viaSlots": ["VS"],
+        "status": "blocked_chain_step"
+      }
+    ],
+    "untouchedPlacement": ["6SS", "74-36"],
+    "routeResource": "VS",
+    "sequence": ["RELEASE", "MAIN", "RECOVERY"]
+  }
+}

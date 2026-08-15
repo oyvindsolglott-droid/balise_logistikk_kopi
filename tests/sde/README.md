@@ -10,9 +10,9 @@ npm run test:sde:strict
 ```
 
 Strict returnerer non-zero for hver brutt invariant. Den aktive lukkede
-baselinen er 119/119 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
+baselinen er 219/219 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
 tre ganger og blir bare grønn når alle kjøringene har exit 0, eksakt samme
-normaliserte semantikk, unike invariant-ID-er og 119/119 PASS:
+normaliserte semantikk, unike invariant-ID-er og 219/219 PASS:
 
 ```sh
 npm run test:sde:baseline-audit
@@ -61,6 +61,13 @@ MAIN/RECOVERY-suffixen etter autorisert fullføring av RELEASE. De dekker alle
 seks slottene `4M`, `5M`, `6S`, `10S`, `11S` og `12S`, automatisk atomisk
 replan fra fersk actual-state, trygg VN-prioritering via VS og uendret actual
 placement før autorisert fullføring.
+
+`INV-MULTILEG-001`–`026` låser den historiske fixturen
+`SDE-ROUTE-12N-VIA-VS-TO-6S-V1`: nordlig adkomst til 6S er tilstrekkelig,
+75-76 får midlertidig VN-holding via VS, MAIN beholder 12N→6S-intenten med
+vending i VS, og RECOVERY returnerer VN→6N via VS. Den samme VS-ruteressursen
+kan gjenbrukes dependency-sekvensielt som ACTIVE/DEFERRED uten samtidig
+konflikt. Fjorten fokuserte multileg-mutanter må alle drepes uten timeout-kill.
 
 Produksjons-UI viser alle fysisk validerte og bestilte kjedesteg: det aktive
 steget, dependency-sperrede fremtidige steg og et annullert kort mens den røde
