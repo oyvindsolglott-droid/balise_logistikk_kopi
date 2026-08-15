@@ -1,8 +1,8 @@
 {
   "ok": true,
-  "updatedAt": "14.08.2026 21:16:27",
+  "updatedAt": "15.08.2026 07:07:59",
   "mode": "idag",
-  "date": "2026-08-14",
+  "date": "2026-08-15",
   "source": "balise.no",
   "requestedTrains": [
     "802",
@@ -73,953 +73,794 @@
     "2489"
   ],
   "vehicles": {
-    "802": "74-01, 74-11",
-    "803": "74-13",
-    "804": "74-47, 74-52",
-    "805": "74-20",
-    "806": "74-53, 74-14",
-    "807": "74-22, 74-49",
-    "808": "74-04, 74-44",
-    "809": "74-11, 74-01",
-    "810": "74-41, 74-02",
-    "811": "74-52, 74-47",
-    "812": "74-13, 74-06",
-    "813": "74-14, 74-53",
-    "815": "74-44, 74-04",
-    "817": "74-02, 74-41",
-    "818": "74-47, 74-52",
-    "819": "74-06, 74-13",
-    "820": "74-53, 74-14",
-    "821": "74-22, 74-49",
-    "822": "74-04, 74-44",
-    "823": "74-11, 74-01",
-    "824": "74-41, 74-02",
-    "825": "74-52, 74-47",
-    "826": "74-13, 74-06",
-    "829": "74-44, 74-04",
-    "830": "74-01",
-    "831": "74-02, 74-41",
-    "832": "74-47, 74-52",
-    "833": "74-06, 74-13",
-    "834": "74-53, 74-14",
-    "835": "74-20",
-    "836": "74-04",
-    "837": "74-01",
-    "838": "74-41",
-    "839": "74-47",
-    "840": "74-13",
-    "851": "74-28",
-    "852": "74-28",
-    "853": "74-08, 74-39",
-    "854": "74-39, 74-08",
-    "855": "70-06, 70-14",
-    "856": "70-14, 70-06",
-    "861": "74-51",
-    "862": "74-51",
-    "864": "74-54",
-    "873": "74-41",
-    "2470": "69-63",
-    "2473": "69-63",
-    "2474": "69-63",
-    "2477": "69-63",
-    "2478": "69-63",
-    "2481": "69-63",
-    "2482": "69-63",
-    "2485": "69-63",
-    "2486": "69-63",
-    "2489": "69-63"
+    "804": "74-47",
+    "805": "74-41",
+    "806": "74-44",
+    "807": "74-14",
+    "808": "74-02",
+    "809": "74-53",
+    "810": "74-13, 74-06",
+    "811": "74-47",
+    "812": "74-38, 74-49",
+    "813": "74-44",
+    "814": "74-14, 74-41",
+    "815": "74-52, 74-02",
+    "816": "74-53, 74-01",
+    "817": "74-13",
+    "818": "74-47, 74-20",
+    "819": "74-49, 74-38",
+    "820": "74-44",
+    "821": "74-41, 74-14",
+    "822": "74-02, 74-52",
+    "823": "74-01, 74-53",
+    "824": "74-13",
+    "825": "74-20, 74-47",
+    "826": "74-38",
+    "827": "74-06, 74-44",
+    "828": "74-14",
+    "829": "74-52, 74-02",
+    "830": "74-53",
+    "831": "74-13",
+    "832": "74-47",
+    "833": "74-38",
+    "90834": "74-44",
+    "835": "74-01",
+    "90836": "74-02",
+    "837": "74-44",
+    "90838": "74-13",
+    "839": "74-47"
   },
   "departureVehicles": {
-    "802": "74-01, 74-11",
-    "804": "74-47, 74-52",
-    "806": "74-53, 74-14",
-    "808": "74-04, 74-44",
-    "810": "74-41, 74-02",
-    "812": "74-13, 74-06",
-    "818": "74-47, 74-52",
-    "820": "74-53, 74-14",
-    "822": "74-04, 74-44",
-    "824": "74-41, 74-02",
-    "826": "74-13, 74-06",
-    "830": "74-01",
-    "832": "74-47, 74-52",
-    "834": "74-53, 74-14",
-    "836": "74-04",
-    "838": "74-41",
-    "840": "74-13",
-    "852": "74-28",
-    "854": "74-39, 74-08",
-    "856": "70-14, 70-06",
-    "862": "74-51",
-    "864": "74-54",
-    "2470": "69-63",
-    "2473": "69-63",
-    "2474": "69-63",
-    "2477": "69-63",
-    "2478": "69-63",
-    "2481": "69-63",
-    "2482": "69-63",
-    "2485": "69-63",
-    "2486": "69-63"
+    "804": "74-47",
+    "806": "74-44",
+    "808": "74-02",
+    "810": "74-13, 74-06",
+    "812": "74-38, 74-49",
+    "814": "74-14, 74-41",
+    "816": "74-53, 74-01",
+    "818": "74-47, 74-20",
+    "820": "74-44",
+    "822": "74-02, 74-52",
+    "824": "74-13",
+    "826": "74-38",
+    "828": "74-14",
+    "830": "74-53",
+    "832": "74-47",
+    "90834": "74-44",
+    "90836": "74-02",
+    "90838": "74-13"
   },
   "arrivalVehicles": {
-    "802": "74-01, 74-11",
-    "803": "74-13",
-    "804": "74-47, 74-52",
-    "805": "74-20",
-    "806": "74-53, 74-14",
-    "807": "74-22, 74-49",
-    "808": "74-04, 74-44",
-    "809": "74-11, 74-01",
-    "811": "74-52, 74-47",
-    "812": "74-13, 74-06",
-    "813": "74-14, 74-53",
-    "815": "74-44, 74-04",
-    "817": "74-02, 74-41",
-    "819": "74-06, 74-13",
-    "821": "74-22, 74-49",
-    "823": "74-11, 74-01",
-    "825": "74-52, 74-47",
-    "827": "74-14, 74-53",
-    "828": "74-20",
-    "829": "74-44, 74-04",
-    "831": "74-02, 74-41",
-    "833": "74-06, 74-13",
-    "835": "74-20",
-    "837": "74-01",
-    "839": "74-47",
-    "851": "74-28",
-    "852": "74-28",
-    "853": "74-08, 74-39",
-    "854": "74-39, 74-08",
-    "855": "70-06, 70-14",
-    "861": "74-51",
-    "862": "74-51",
-    "863": "74-54",
-    "864": "74-54",
-    "873": "74-41",
-    "2470": "69-63",
-    "2473": "69-63",
-    "2474": "69-63",
-    "2477": "69-63",
-    "2478": "69-63",
-    "2481": "69-63",
-    "2482": "69-63",
-    "2485": "69-63",
-    "2486": "69-63",
-    "2489": "69-63"
+    "804": "74-47",
+    "805": "74-41",
+    "806": "74-44",
+    "807": "74-14",
+    "808": "74-02",
+    "809": "74-53",
+    "811": "74-47",
+    "813": "74-44",
+    "815": "74-52, 74-02",
+    "817": "74-13",
+    "819": "74-49, 74-38",
+    "821": "74-41, 74-14",
+    "823": "74-01, 74-53",
+    "825": "74-20, 74-47",
+    "827": "74-06, 74-44",
+    "829": "74-52, 74-02",
+    "831": "74-13",
+    "833": "74-38",
+    "90835": "74-01",
+    "90837": "74-44",
+    "839": "74-47"
   },
   "vehicleErrors": {
-    "814": "Uavklart forekomstbundet materiell: routeId 01KZCVR65XXJVGE08G1TED056X; Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen.",
-    "816": "Uavklart forekomstbundet materiell: routeId 01KZCVRB24SK2T7WXMF3EWP7VN; Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen.",
-    "827": "Uavklart forekomstbundet materiell: tog 827, dato 2026-08-14, routeId 01KZCVR7NTQA3X56DGD6XFCJPC; forekomstidentiteten er ufullstendig eller avviker.",
-    "828": "Uavklart forekomstbundet materiell: routeId 01KZCVR8GMQ3G412XXHQZ5B24R; Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen.",
-    "863": "Uavklart forekomstbundet materiell: tog 863, dato 2026-08-14, routeId 01KZCVRB9ETJCHFRAKHQ1P254W; forekomstidentiteten er ufullstendig eller avviker.",
-    "2472": "Uavklart forekomstbundet materiell: routeId 01KZCVR5554P81E48E3XM8JRTW; den eksakte Skien-avgangen har ingen kjøretøydata.",
-    "2475": "Uavklart forekomstbundet materiell: routeId 01KZCVR7NQXVXKZBZHZWJ44ADA; den eksakte Skien-avgangen har ingen kjøretøydata.",
-    "2480": "Uavklart forekomstbundet materiell: routeId 01KZCVRC96CKJXZ6NJ29M6CM2K; den eksakte Skien-avgangen har ingen kjøretøydata.",
-    "2483": "Uavklart forekomstbundet materiell: routeId 01KZCVR76XS2CYAYZX1PJFFV0J; den eksakte Skien-avgangen har ingen kjøretøydata.",
-    "2484": "Uavklart forekomstbundet materiell: routeId 01KZCVRC7JFD1K4PVBBNK5ENFN; den eksakte Skien-avgangen har ingen kjøretøydata.",
-    "2487": "Uavklart forekomstbundet materiell: routeId 01KZCVR8TDF2CTNYB000AF7CTD; den eksakte Skien-avgangen har ingen kjøretøydata."
+    "802": "Fant ingen kjøretøy i siden 90802",
+    "803": "Fant ingen kjøretøy i siden 90803",
+    "840": "Fant ingen kjøretøy i siden 90840",
+    "851": "Fant ingen kjøretøy i siden 90851",
+    "852": "Fant ingen kjøretøy i siden 90852",
+    "853": "Fant ingen kjøretøy i siden 90853",
+    "854": "Fant ingen kjøretøy i siden 90854",
+    "855": "Fant ingen kjøretøy i siden 90855",
+    "856": "Fant ingen kjøretøy i siden 90856",
+    "861": "Fant ingen kjøretøy i siden 90861",
+    "862": "Fant ingen kjøretøy i siden 90862",
+    "863": "Fant ingen kjøretøy i siden 90863",
+    "864": "Fant ingen kjøretøy i siden 90864",
+    "873": "Fant ingen kjøretøy i siden 90873",
+    "2470": "Fant ingen kjøretøy i siden 12470",
+    "2472": "Fant ingen kjøretøy i siden 12472",
+    "2473": "Fant ingen kjøretøy i siden 12473",
+    "2474": "Fant ingen kjøretøy i siden 12474",
+    "2475": "Fant ingen kjøretøy i siden 12475",
+    "2477": "Fant ingen kjøretøy i siden 12477",
+    "2478": "Fant ingen kjøretøy i siden 12478",
+    "2480": "Fant ingen kjøretøy i siden 12480",
+    "2481": "Fant ingen kjøretøy i siden 12481",
+    "2482": "Fant ingen kjøretøy i siden 12482",
+    "2483": "Fant ingen kjøretøy i siden 12483",
+    "2484": "Fant ingen kjøretøy i siden 12484",
+    "2485": "Fant ingen kjøretøy i siden 12485",
+    "2486": "Fant ingen kjøretøy i siden 12486",
+    "2487": "Fant ingen kjøretøy i siden 12487",
+    "2489": "Fant ingen kjøretøy i siden 12489"
   },
   "departures": {
-    "802": "04:10",
-    "852": "04:29",
     "804": "05:11",
-    "854": "05:25",
-    "2470": "05:27",
-    "862": "05:37",
     "806": "06:07",
-    "864": "06:17",
-    "856": "06:25",
-    "2472": "06:49",
     "808": "07:09",
-    "2473": "07:31",
-    "2474": "07:59",
     "810": "08:09",
-    "2475": "09:00",
     "812": "09:09",
-    "2477": "10:01",
     "814": "10:09",
     "816": "11:09",
-    "2478": "12:01",
     "818": "12:09",
     "820": "13:09",
-    "2480": "13:21",
-    "2481": "14:04",
     "822": "14:09",
-    "2482": "14:55",
     "824": "15:09",
-    "2483": "15:39",
     "826": "16:08",
-    "2484": "16:20",
-    "2485": "17:03",
     "828": "17:08",
-    "2486": "18:01",
     "830": "18:08",
-    "2487": "19:02",
     "832": "19:09",
-    "834": "20:09",
-    "836": "21:09",
-    "838": "22:09",
-    "840": "23:09"
+    "90834": "20:09",
+    "90836": "21:09",
+    "90838": "22:09"
   },
   "departureOccurrences": {
-    "802": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "802",
-      "displayTrainNumber": "802",
-      "routeId": "01KZCVR54NS4RVRVWN8PAPM790",
-      "origin": "Skien",
-      "destination": "Eidsvoll",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR54PH07DG2PVY3THCBBF",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|802|04:10",
-      "departureTime": "04:10",
-      "plannedDeparture": "04:10",
-      "actualDeparture": "04:10",
-      "sourceRevision": "2026-08-14T21:12:34+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:12:34+02:00",
-      "vehicleIds": [
-        "74-01",
-        "74-11"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "74-01",
-        "74-11"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-01",
-        "74-11"
-      ],
-      "departureVehicles": [
-        "74-01",
-        "74-11"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
-      "vehicleError": ""
-    },
     "804": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "804",
       "displayTrainNumber": "804",
-      "routeId": "01KZCVR7SG2XAXAA4X2P60WQJK",
+      "routeId": "01KZFE4XSXZG71S9JCKN46ZDEY",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR7SGPPJNJS4JGS9FCF6G",
+      "stopId": "01KZFE4XSXQXKR1BYKME1WYVMV",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|804|05:11",
+      "occurrenceId": "2026-08-15|departure|804|05:11",
       "departureTime": "05:11",
       "plannedDeparture": "05:11",
       "actualDeparture": "05:11",
-      "sourceRevision": "2026-08-14T21:12:41+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:12:41+02:00",
+      "sourceRevision": "2026-08-15T07:04:30+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:04:30+02:00",
       "vehicleIds": [
-        "74-47",
-        "74-52"
+        "74-47"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-47",
-        "74-52"
+        "74-47"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-47",
-        "74-52"
+        "74-47"
       ],
       "departureVehicles": [
-        "74-47",
-        "74-52"
+        "74-47"
       ],
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "806": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "806",
       "displayTrainNumber": "806",
-      "routeId": "01KZCVR5AGHF5FAXKTDJZ7GA5Z",
+      "routeId": "01KZFE4WN58CX0EQC1FYWTASH5",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR5AG06V1GC49F1Y1ETA9",
+      "stopId": "01KZFE4WN6B4WET85W4CF4EM19",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|806|06:07",
+      "occurrenceId": "2026-08-15|departure|806|06:07",
       "departureTime": "06:07",
       "plannedDeparture": "06:07",
       "actualDeparture": "06:07",
-      "sourceRevision": "2026-08-14T21:12:49+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:12:49+02:00",
+      "sourceRevision": "2026-08-15T07:04:37+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:04:37+02:00",
       "vehicleIds": [
-        "74-53",
-        "74-14"
+        "74-44"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-53",
-        "74-14"
+        "74-44"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-53",
-        "74-14"
+        "74-44"
       ],
       "departureVehicles": [
-        "74-53",
-        "74-14"
+        "74-44"
       ],
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "808": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "808",
       "displayTrainNumber": "808",
-      "routeId": "01KZCVR51DEMCAPA54JD0GE8R6",
+      "routeId": "01KZFE518R8MBPSAJ1GWDR1G59",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR51D7M0CGR50XH3MCGPP",
+      "stopId": "01KZFE518RJWAE5Z5KMEVP5KQM",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|808|07:09",
+      "occurrenceId": "2026-08-15|departure|808|07:09",
       "departureTime": "07:09",
       "plannedDeparture": "07:09",
-      "actualDeparture": "07:09",
-      "sourceRevision": "2026-08-14T21:12:57+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:12:57+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:04:45+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:04:45+02:00",
       "vehicleIds": [
-        "74-04",
-        "74-44"
+        "74-02"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-04",
-        "74-44"
+        "74-02"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-04",
-        "74-44"
+        "74-02"
       ],
       "departureVehicles": [
-        "74-04",
-        "74-44"
+        "74-02"
       ],
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "810": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "810",
       "displayTrainNumber": "810",
-      "routeId": "01KZCVR9DX5N1PVDCCW59MF7GT",
+      "routeId": "01KZFE51Q0T68WXRQXKEPX5A5Y",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR9DY8CB92X6E0DWXSR5V",
+      "stopId": "01KZFE51Q1M1W2ARY4CEVDYFB1",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|810|08:09",
+      "occurrenceId": "2026-08-15|departure|810|08:09",
       "departureTime": "08:09",
       "plannedDeparture": "08:09",
-      "actualDeparture": "08:09",
-      "sourceRevision": "2026-08-14T21:13:04+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:13:04+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:04:52+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:04:52+02:00",
       "vehicleIds": [
-        "74-41",
-        "74-02"
+        "74-13",
+        "74-06"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-41",
-        "74-02"
+        "74-13",
+        "74-06"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-41",
-        "74-02"
+        "74-13",
+        "74-06"
       ],
       "departureVehicles": [
-        "74-41",
-        "74-02"
+        "74-13",
+        "74-06"
       ],
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "812": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "812",
       "displayTrainNumber": "812",
-      "routeId": "01KZCVRBWHHPADHMMSPBCAYK63",
+      "routeId": "01KZFE4WGGQ8WJJHT6PRX5YP37",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVRBWHWYHPS5TTF11H0DT6",
+      "stopId": "01KZFE4WGG8DPJYFW5ZRCHEH4Y",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|812|09:09",
+      "occurrenceId": "2026-08-15|departure|812|09:09",
       "departureTime": "09:09",
       "plannedDeparture": "09:09",
-      "actualDeparture": "09:09",
-      "sourceRevision": "2026-08-14T21:13:12+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:13:12+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:04:59+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:04:59+02:00",
       "vehicleIds": [
-        "74-13",
-        "74-06"
+        "74-38",
+        "74-49"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-13",
-        "74-06"
+        "74-38",
+        "74-49"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-13",
-        "74-06"
+        "74-38",
+        "74-49"
       ],
       "departureVehicles": [
-        "74-13",
-        "74-06"
+        "74-38",
+        "74-49"
       ],
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "814": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "814",
       "displayTrainNumber": "814",
-      "routeId": "01KZCVR65XXJVGE08G1TED056X",
+      "routeId": "01KZFE4WQYYQ1B3VB1DCDR0WBH",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR65YFGAA8TTD7V3HCTF2",
+      "stopId": "01KZFE4WQY3WYSRQAB5VQVBJMS",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|814|10:09",
+      "occurrenceId": "2026-08-15|departure|814|10:09",
       "departureTime": "10:09",
       "plannedDeparture": "10:09",
       "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:13:19+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:13:19+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: routeId 01KZCVR65XXJVGE08G1TED056X; Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-49",
-        "74-22"
+      "sourceRevision": "2026-08-15T07:05:06+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:05:06+02:00",
+      "vehicleIds": [
+        "74-14",
+        "74-41"
       ],
-      "departureVehicles": [],
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-14",
+        "74-41"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-14",
+        "74-41"
+      ],
+      "departureVehicles": [
+        "74-14",
+        "74-41"
+      ],
       "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
-      "vehicleError": "Uavklart forekomstbundet materiell: routeId 01KZCVR65XXJVGE08G1TED056X; Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen."
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "816": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "816",
       "displayTrainNumber": "816",
-      "routeId": "01KZCVRB24SK2T7WXMF3EWP7VN",
+      "routeId": "01KZFE51QJZE6KAAVFXA7RRV6D",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVRB24JBEA8S4VKH7NCGK4",
+      "stopId": "01KZFE51QJTN02ZJ0EVS4PA166",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|816|11:09",
+      "occurrenceId": "2026-08-15|departure|816|11:09",
       "departureTime": "11:09",
       "plannedDeparture": "11:09",
       "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:13:27+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:13:27+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: routeId 01KZCVRB24SK2T7WXMF3EWP7VN; Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-01",
-        "74-11"
+      "sourceRevision": "2026-08-15T07:05:14+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:05:14+02:00",
+      "vehicleIds": [
+        "74-53",
+        "74-01"
       ],
-      "departureVehicles": [],
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-53",
+        "74-01"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-53",
+        "74-01"
+      ],
+      "departureVehicles": [
+        "74-53",
+        "74-01"
+      ],
       "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
-      "vehicleError": "Uavklart forekomstbundet materiell: routeId 01KZCVRB24SK2T7WXMF3EWP7VN; Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen."
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "818": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "818",
       "displayTrainNumber": "818",
-      "routeId": "01KZCVR6TQYPHC2DVRWG53W6JN",
+      "routeId": "01KZFE4VHP62PYZZZ0SJWBYTB6",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR6TQPFGB0RG4TP8V61NJ",
+      "stopId": "01KZFE4VHP4RERKN0B816SE0G3",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|818|12:09",
+      "occurrenceId": "2026-08-15|departure|818|12:09",
       "departureTime": "12:09",
       "plannedDeparture": "12:09",
-      "actualDeparture": "12:09",
-      "sourceRevision": "2026-08-14T21:13:35+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:13:35+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:05:21+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:05:21+02:00",
       "vehicleIds": [
         "74-47",
-        "74-52"
+        "74-20"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
         "74-47",
-        "74-52"
+        "74-20"
       ],
       "vehiclesContinuingAtPorsgrunn": [
         "74-47",
-        "74-52"
+        "74-20"
       ],
       "departureVehicles": [
         "74-47",
-        "74-52"
+        "74-20"
       ],
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "820": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "820",
       "displayTrainNumber": "820",
-      "routeId": "01KZCVR4WMTDAJ5GA8ZQ9B76XE",
+      "routeId": "01KZFE4XXZNMQWV728KT1Q57SN",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR4WMFK3RNNJHE1ECNEH0",
+      "stopId": "01KZFE4XXZN6MFB10HB6572XSK",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|820|13:09",
+      "occurrenceId": "2026-08-15|departure|820|13:09",
       "departureTime": "13:09",
       "plannedDeparture": "13:09",
-      "actualDeparture": "13:09",
-      "sourceRevision": "2026-08-14T21:13:42+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:13:42+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:05:28+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:05:28+02:00",
       "vehicleIds": [
-        "74-53",
-        "74-14"
+        "74-44"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-53",
-        "74-14"
+        "74-44"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-53",
-        "74-14"
+        "74-44"
       ],
       "departureVehicles": [
-        "74-53",
-        "74-14"
+        "74-44"
       ],
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "822": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "822",
       "displayTrainNumber": "822",
-      "routeId": "01KZCVR5SZK26QF5EXR1G7MZXR",
+      "routeId": "01KZFE52DNJDH3S8V9K76YNB6W",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR5SZ9NNH0HAHXX5XNEYN",
+      "stopId": "01KZFE52DPM273ZCHR6GNZ0DMY",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|822|14:09",
+      "occurrenceId": "2026-08-15|departure|822|14:09",
       "departureTime": "14:09",
       "plannedDeparture": "14:09",
-      "actualDeparture": "14:09",
-      "sourceRevision": "2026-08-14T21:13:50+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:13:50+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:05:35+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:05:35+02:00",
       "vehicleIds": [
-        "74-04",
-        "74-44"
+        "74-02",
+        "74-52"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-04",
-        "74-44"
+        "74-02",
+        "74-52"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-04",
-        "74-44"
+        "74-02",
+        "74-52"
       ],
       "departureVehicles": [
-        "74-04",
-        "74-44"
+        "74-02",
+        "74-52"
       ],
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "824": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "824",
       "displayTrainNumber": "824",
-      "routeId": "01KZCVR66GXGVHD9Q9BCRJHBH2",
+      "routeId": "01KZFE4XRVKZ9420QR67SBKXT5",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR66GZT2GND7WAB9EV1CW",
+      "stopId": "01KZFE4XRVRKDAR54V62PYK63C",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|824|15:09",
+      "occurrenceId": "2026-08-15|departure|824|15:09",
       "departureTime": "15:09",
       "plannedDeparture": "15:09",
-      "actualDeparture": "15:09",
-      "sourceRevision": "2026-08-14T21:13:57+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:13:57+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:05:42+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:05:42+02:00",
       "vehicleIds": [
-        "74-41",
-        "74-02"
+        "74-13"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-41",
-        "74-02"
+        "74-13"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-41",
-        "74-02"
+        "74-13"
       ],
       "departureVehicles": [
-        "74-41",
-        "74-02"
+        "74-13"
       ],
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "826": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "826",
       "displayTrainNumber": "826",
-      "routeId": "01KZCVR4XM1XX3YS9NMNTMSKWF",
+      "routeId": "01KZFE4W5DNJDZMT67Z6X6X3DG",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR4XMQ122AGXJJHNEYW9K",
+      "stopId": "01KZFE4W5DX4FQT8AYTAD17C3J",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|826|16:08",
+      "occurrenceId": "2026-08-15|departure|826|16:08",
       "departureTime": "16:08",
       "plannedDeparture": "16:08",
-      "actualDeparture": "16:08",
-      "sourceRevision": "2026-08-14T21:14:05+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:14:05+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:05:50+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:05:50+02:00",
       "vehicleIds": [
-        "74-13",
-        "74-06"
+        "74-38"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-13",
-        "74-06"
+        "74-38",
+        "74-49"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-13",
-        "74-06"
+        "74-38"
       ],
       "departureVehicles": [
-        "74-13",
-        "74-06"
+        "74-38"
       ],
-      "detachedAtSkien": [],
+      "detachedAtSkien": [
+        "74-49"
+      ],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
-    "827": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "827",
-      "displayTrainNumber": "827",
-      "routeId": "01KZCVR7NTQA3X56DGD6XFCJPC",
-      "origin": "Eidsvoll",
-      "destination": "Skien",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR7NVYS9QCT4NFMAE69YG",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|827|19:53",
-      "departureTime": "19:53",
-      "plannedDeparture": "19:53",
-      "actualDeparture": "19:53",
-      "sourceRevision": "2026-08-14T21:14:09+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:14:09+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: tog 827, dato 2026-08-14, routeId 01KZCVR7NTQA3X56DGD6XFCJPC; forekomstidentiteten er ufullstendig eller avviker.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [],
-      "departureVehicles": [],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_occurrence_identity",
-      "vehicleError": "Uavklart forekomstbundet materiell: tog 827, dato 2026-08-14, routeId 01KZCVR7NTQA3X56DGD6XFCJPC; forekomstidentiteten er ufullstendig eller avviker."
-    },
     "828": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "828",
       "displayTrainNumber": "828",
-      "routeId": "01KZCVR8GMQ3G412XXHQZ5B24R",
+      "routeId": "01KZFE5262CA2QSWPWM8WDJER9",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR8GN28YP5KMQV1MBE6JX",
+      "stopId": "01KZFE52623T6SW5WDFPGPBAZ6",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|828|17:08",
+      "occurrenceId": "2026-08-15|departure|828|17:08",
       "departureTime": "17:08",
       "plannedDeparture": "17:08",
       "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:14:12+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:14:12+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: routeId 01KZCVR8GMQ3G412XXHQZ5B24R; Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-20"
+      "sourceRevision": "2026-08-15T07:05:57+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:05:57+02:00",
+      "vehicleIds": [
+        "74-14"
       ],
-      "departureVehicles": [],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
-      "vehicleError": "Uavklart forekomstbundet materiell: routeId 01KZCVR8GMQ3G412XXHQZ5B24R; Porsgrunn-sammensetningen er ikke en gyldig delmengde av Skien-sammensetningen."
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-14",
+        "74-41"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-14"
+      ],
+      "departureVehicles": [
+        "74-14"
+      ],
+      "detachedAtSkien": [
+        "74-41"
+      ],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
     },
     "830": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "830",
       "displayTrainNumber": "830",
-      "routeId": "01KZCVR4P3P476Q3X94RMKWHE2",
+      "routeId": "01KZFE511BPQA46D4QARWD0STH",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR4P3NZ8P1A81BM5Y0VAD",
+      "stopId": "01KZFE511B0ZD6SEKV94WGMR1P",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|830|18:08",
+      "occurrenceId": "2026-08-15|departure|830|18:08",
       "departureTime": "18:08",
       "plannedDeparture": "18:08",
-      "actualDeparture": "18:19",
-      "sourceRevision": "2026-08-14T21:14:20+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:14:20+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:06:05+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:06:05+02:00",
       "vehicleIds": [
-        "74-01"
+        "74-53"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
-        "74-01",
-        "74-11"
+        "74-53",
+        "74-01"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-01"
+        "74-53"
       ],
       "departureVehicles": [
-        "74-01"
+        "74-53"
       ],
       "detachedAtSkien": [
-        "74-11"
+        "74-01"
       ],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
     "832": {
-      "operationalDate": "2026-08-14",
+      "operationalDate": "2026-08-15",
       "requestedTrainNumber": "832",
       "displayTrainNumber": "832",
-      "routeId": "01KZCVR4G1KZ83VCYHYQ9XMYG4",
+      "routeId": "01KZFE505XEG36Q9FEX4T8H0WT",
       "origin": "Skien",
       "destination": "Eidsvoll",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR4G1RXZPD5K50D91F3HZ",
+      "stopId": "01KZFE505XS8ZCK2CYMC0ZYXC8",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|832|19:09",
+      "occurrenceId": "2026-08-15|departure|832|19:09",
       "departureTime": "19:09",
       "plannedDeparture": "19:09",
-      "actualDeparture": "19:09",
-      "sourceRevision": "2026-08-14T21:14:28+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:14:28+02:00",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:06:12+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:06:12+02:00",
       "vehicleIds": [
-        "74-47",
-        "74-52"
+        "74-47"
       ],
       "error": "",
       "vehiclesObservedAtSkien": [
         "74-47",
-        "74-52"
+        "74-20"
       ],
       "vehiclesContinuingAtPorsgrunn": [
-        "74-47",
-        "74-52"
+        "74-47"
       ],
       "departureVehicles": [
-        "74-47",
-        "74-52"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
-      "vehicleError": ""
-    },
-    "834": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "834",
-      "displayTrainNumber": "834",
-      "routeId": "01KZCVR6TVW1TXPYN41JXJWJX7",
-      "origin": "Skien",
-      "destination": "Eidsvoll",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR6TWE82XDWWS8KK5B3PA",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|834|20:09",
-      "departureTime": "20:09",
-      "plannedDeparture": "20:09",
-      "actualDeparture": "20:10",
-      "sourceRevision": "2026-08-14T21:14:35+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:14:35+02:00",
-      "vehicleIds": [
-        "74-53",
-        "74-14"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "74-53",
-        "74-14"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-53",
-        "74-14"
-      ],
-      "departureVehicles": [
-        "74-53",
-        "74-14"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
-      "vehicleError": ""
-    },
-    "836": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "836",
-      "displayTrainNumber": "836",
-      "routeId": "01KZCVR8J3R41SCKWW4QP3NQ1Y",
-      "origin": "Skien",
-      "destination": "Eidsvoll",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR8J3E5DZ7E5QWHFPJZB0",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|836|21:09",
-      "departureTime": "21:09",
-      "plannedDeparture": "21:09",
-      "actualDeparture": "21:09",
-      "sourceRevision": "2026-08-14T21:14:43+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:14:43+02:00",
-      "vehicleIds": [
-        "74-04"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "74-04",
-        "74-44"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-04"
-      ],
-      "departureVehicles": [
-        "74-04"
+        "74-47"
       ],
       "detachedAtSkien": [
-        "74-44"
+        "74-20"
       ],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
     },
-    "838": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "838",
-      "displayTrainNumber": "838",
-      "routeId": "01KZCVR7FYW9WEK8SM5BPE7APP",
+    "90834": {
+      "operationalDate": "2026-08-15",
+      "requestedTrainNumber": "834",
+      "displayTrainNumber": "90834",
+      "routeId": "01KZFE5291Z8143HD42N101S0J",
       "origin": "Skien",
-      "destination": "Eidsvoll",
+      "destination": "Lysaker",
       "station": "Skien",
       "stationRef": "SKN",
-      "stopId": "01KZCVR7FZXPQ6PY26M5AW2CHS",
+      "stopId": "01KZFE5291K6S6PASK90PCVDJY",
       "direction": "departure",
       "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|838|22:09",
+      "occurrenceId": "2026-08-15|departure|90834|20:09",
+      "departureTime": "20:09",
+      "plannedDeparture": "20:09",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:06:22+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:06:22+02:00",
+      "vehicleIds": [
+        "74-44"
+      ],
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-44",
+        "74-06"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-44"
+      ],
+      "departureVehicles": [
+        "74-44"
+      ],
+      "detachedAtSkien": [
+        "74-06"
+      ],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
+    },
+    "90836": {
+      "operationalDate": "2026-08-15",
+      "requestedTrainNumber": "836",
+      "displayTrainNumber": "90836",
+      "routeId": "01KZFE5100XPZRMHX82PJYA4HM",
+      "origin": "Skien",
+      "destination": "Lysaker",
+      "station": "Skien",
+      "stationRef": "SKN",
+      "stopId": "01KZFE5100Q2GZCAAP8VW5NJKG",
+      "direction": "departure",
+      "eventType": "departure",
+      "occurrenceId": "2026-08-15|departure|90836|21:09",
+      "departureTime": "21:09",
+      "plannedDeparture": "21:09",
+      "actualDeparture": null,
+      "sourceRevision": "2026-08-15T07:06:31+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:06:31+02:00",
+      "vehicleIds": [
+        "74-02"
+      ],
+      "error": "",
+      "vehiclesObservedAtSkien": [
+        "74-02",
+        "74-52"
+      ],
+      "vehiclesContinuingAtPorsgrunn": [
+        "74-02"
+      ],
+      "departureVehicles": [
+        "74-02"
+      ],
+      "detachedAtSkien": [
+        "74-52"
+      ],
+      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
+      "vehicleError": ""
+    },
+    "90838": {
+      "operationalDate": "2026-08-15",
+      "requestedTrainNumber": "838",
+      "displayTrainNumber": "90838",
+      "routeId": "01KZFE4XG4SWB8Y66ZQNMSD7H2",
+      "origin": "Skien",
+      "destination": "Lysaker",
+      "station": "Skien",
+      "stationRef": "SKN",
+      "stopId": "01KZFE4XG50FHV9B9EY59J2YQA",
+      "direction": "departure",
+      "eventType": "departure",
+      "occurrenceId": "2026-08-15|departure|90838|22:09",
       "departureTime": "22:09",
       "plannedDeparture": "22:09",
       "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:14:51+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:14:51+02:00",
-      "vehicleIds": [
-        "74-41"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "74-41",
-        "74-02"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-41"
-      ],
-      "departureVehicles": [
-        "74-41"
-      ],
-      "detachedAtSkien": [
-        "74-02"
-      ],
-      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
-      "vehicleError": ""
-    },
-    "840": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "840",
-      "displayTrainNumber": "840",
-      "routeId": "01KZCVR8WHJ0X2M2K3QR51MT0F",
-      "origin": "Skien",
-      "destination": "Drammen",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR8WJWJE0ZV2YKPDJ1SRM",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|840|23:09",
-      "departureTime": "23:09",
-      "plannedDeparture": "23:09",
-      "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:14:58+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:14:58+02:00",
+      "sourceRevision": "2026-08-15T07:06:38+02:00",
+      "sourceUpdatedAt": "2026-08-15T07:06:38+02:00",
       "vehicleIds": [
         "74-13"
       ],
@@ -1036,782 +877,38 @@
       "detachedAtSkien": [],
       "vehicleResolutionSource": "porsgrunn_occurrence_subset",
       "vehicleError": ""
-    },
-    "852": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "852",
-      "displayTrainNumber": "852",
-      "routeId": "01KZCVR6B89GS0ZY9BWFXP56CA",
-      "origin": "Skien",
-      "destination": "Oslo lufthavn",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR6B92KAJ1DBN7NF7QYPM",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|852|04:29",
-      "departureTime": "04:29",
-      "plannedDeparture": "04:29",
-      "actualDeparture": "04:29",
-      "sourceRevision": "2026-08-14T21:15:05+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:05+02:00",
-      "vehicleIds": [
-        "74-28"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "74-28"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-28"
-      ],
-      "departureVehicles": [
-        "74-28"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
-      "vehicleError": ""
-    },
-    "854": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "854",
-      "displayTrainNumber": "854",
-      "routeId": "01KZCVRBP8G5851K24S5BR24EK",
-      "origin": "Skien",
-      "destination": "Oslo S",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVRBP8KDDVEC23TW7H76SA",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|854|05:25",
-      "departureTime": "05:25",
-      "plannedDeparture": "05:25",
-      "actualDeparture": "05:25",
-      "sourceRevision": "2026-08-14T21:15:12+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:12+02:00",
-      "vehicleIds": [
-        "74-39",
-        "74-08"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "74-39",
-        "74-08"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-39",
-        "74-08"
-      ],
-      "departureVehicles": [
-        "74-39",
-        "74-08"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
-      "vehicleError": ""
-    },
-    "856": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "856",
-      "displayTrainNumber": "856",
-      "routeId": "01KZCVRA4MJ5HQ87B1V6NV5DD1",
-      "origin": "Skien",
-      "destination": "Oslo S",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVRA4MRJRAR1YN79RPJ71Y",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|856|06:25",
-      "departureTime": "06:25",
-      "plannedDeparture": "06:25",
-      "actualDeparture": "06:25",
-      "sourceRevision": "2026-08-14T21:15:20+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:20+02:00",
-      "vehicleIds": [
-        "70-14",
-        "70-06"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "70-14",
-        "70-06"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "70-14",
-        "70-06"
-      ],
-      "departureVehicles": [
-        "70-14",
-        "70-06"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
-      "vehicleError": ""
-    },
-    "862": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "862",
-      "displayTrainNumber": "862",
-      "routeId": "01KZCVR708B29K47XR0QT0X6VJ",
-      "origin": "Skien",
-      "destination": "Lillestrøm",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR708JGQCRJBZD3ZSCSK6",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|862|05:37",
-      "departureTime": "05:37",
-      "plannedDeparture": "05:37",
-      "actualDeparture": "05:37",
-      "sourceRevision": "2026-08-14T21:15:26+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:26+02:00",
-      "vehicleIds": [
-        "74-51"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "74-51"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-51"
-      ],
-      "departureVehicles": [
-        "74-51"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
-      "vehicleError": ""
-    },
-    "863": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "863",
-      "displayTrainNumber": "863",
-      "routeId": "01KZCVRB9ETJCHFRAKHQ1P254W",
-      "origin": "Oslo S",
-      "destination": "Skien",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVRB9ETH0Y6Q52WQDR31PE",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|863|18:42",
-      "departureTime": "18:42",
-      "plannedDeparture": "18:42",
-      "actualDeparture": "18:42",
-      "sourceRevision": "2026-08-14T21:15:29+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:29+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: tog 863, dato 2026-08-14, routeId 01KZCVRB9ETJCHFRAKHQ1P254W; forekomstidentiteten er ufullstendig eller avviker.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [],
-      "departureVehicles": [],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_occurrence_identity",
-      "vehicleError": "Uavklart forekomstbundet materiell: tog 863, dato 2026-08-14, routeId 01KZCVRB9ETJCHFRAKHQ1P254W; forekomstidentiteten er ufullstendig eller avviker."
-    },
-    "864": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "864",
-      "displayTrainNumber": "864",
-      "routeId": "01KZCVR9WWZSD0M6HDY0SQBC3K",
-      "origin": "Skien",
-      "destination": "Oslo S",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR9WXJ0Z1DYJEMJ56EKDV",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|864|06:17",
-      "departureTime": "06:17",
-      "plannedDeparture": "06:17",
-      "actualDeparture": "06:17",
-      "sourceRevision": "2026-08-14T21:15:32+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:32+02:00",
-      "vehicleIds": [
-        "74-54"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "74-54"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "74-54"
-      ],
-      "departureVehicles": [
-        "74-54"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "porsgrunn_occurrence_subset",
-      "vehicleError": ""
-    },
-    "2470": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2470",
-      "displayTrainNumber": "2470",
-      "routeId": "01KZCVRAB7M0Y913NZNQM9R7VG",
-      "origin": "Skien",
-      "destination": "Notodden",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVRAB7TCE32XWHCBA7A83T",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2470|05:27",
-      "departureTime": "05:27",
-      "plannedDeparture": "05:27",
-      "actualDeparture": "05:27",
-      "sourceRevision": "2026-08-14T21:15:38+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:38+02:00",
-      "vehicleIds": [
-        "69-63"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "69-63"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [],
-      "departureVehicles": [
-        "69-63"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "skien_occurrence_departure_assignment",
-      "vehicleError": ""
-    },
-    "2472": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2472",
-      "displayTrainNumber": "2472",
-      "routeId": "01KZCVR5554P81E48E3XM8JRTW",
-      "origin": "Porsgrunn",
-      "destination": "Notodden",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR556NZJ9E98NDYQ9YJ73",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2472|06:49",
-      "departureTime": "06:49",
-      "plannedDeparture": "06:49",
-      "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:15:41+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:41+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: routeId 01KZCVR5554P81E48E3XM8JRTW; den eksakte Skien-avgangen har ingen kjøretøydata.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [],
-      "departureVehicles": [],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
-      "vehicleError": "Uavklart forekomstbundet materiell: routeId 01KZCVR5554P81E48E3XM8JRTW; den eksakte Skien-avgangen har ingen kjøretøydata."
-    },
-    "2473": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2473",
-      "displayTrainNumber": "2473",
-      "routeId": "01KZCVR7A7H4HR78YCFDE2M919",
-      "origin": "Notodden",
-      "destination": "Porsgrunn",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR7A7J63Z2HXKYVAW7FDH",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2473|07:31",
-      "departureTime": "07:31",
-      "plannedDeparture": "07:31",
-      "actualDeparture": "07:31",
-      "sourceRevision": "2026-08-14T21:15:44+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:44+02:00",
-      "vehicleIds": [
-        "69-63"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "69-63"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "69-63"
-      ],
-      "departureVehicles": [
-        "69-63"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "skien_occurrence_route_vehicles",
-      "vehicleError": ""
-    },
-    "2474": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2474",
-      "displayTrainNumber": "2474",
-      "routeId": "01KZCVR8M3GB1SQMZZ1ER7553Q",
-      "origin": "Porsgrunn",
-      "destination": "Notodden",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR8M3Y7DG90YQQ2Q0T596",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2474|07:59",
-      "departureTime": "07:59",
-      "plannedDeparture": "07:59",
-      "actualDeparture": "07:59",
-      "sourceRevision": "2026-08-14T21:15:48+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:48+02:00",
-      "vehicleIds": [
-        "69-63"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "69-63"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "69-63"
-      ],
-      "departureVehicles": [
-        "69-63"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "skien_occurrence_route_vehicles",
-      "vehicleError": ""
-    },
-    "2475": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2475",
-      "displayTrainNumber": "2475",
-      "routeId": "01KZCVR7NQXVXKZBZHZWJ44ADA",
-      "origin": "Notodden",
-      "destination": "Porsgrunn",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR7NRFA8M5BV5CPA3HFQ7",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2475|09:00",
-      "departureTime": "09:00",
-      "plannedDeparture": "09:00",
-      "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:15:51+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:51+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: routeId 01KZCVR7NQXVXKZBZHZWJ44ADA; den eksakte Skien-avgangen har ingen kjøretøydata.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [],
-      "departureVehicles": [],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
-      "vehicleError": "Uavklart forekomstbundet materiell: routeId 01KZCVR7NQXVXKZBZHZWJ44ADA; den eksakte Skien-avgangen har ingen kjøretøydata."
-    },
-    "2477": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2477",
-      "displayTrainNumber": "2477",
-      "routeId": "01KZCVR9RSFY9ZZK74Y8PA2JH6",
-      "origin": "Notodden",
-      "destination": "Porsgrunn",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR9RSE2CBVD0ZGG0XE6NH",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2477|10:01",
-      "departureTime": "10:01",
-      "plannedDeparture": "10:01",
-      "actualDeparture": "10:09",
-      "sourceRevision": "2026-08-14T21:15:54+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:54+02:00",
-      "vehicleIds": [
-        "69-63"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "69-63"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "69-63"
-      ],
-      "departureVehicles": [
-        "69-63"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "skien_occurrence_route_vehicles",
-      "vehicleError": ""
-    },
-    "2478": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2478",
-      "displayTrainNumber": "2478",
-      "routeId": "01KZCVR8H0ZS249GQ6W3GS3R1A",
-      "origin": "Porsgrunn",
-      "destination": "Notodden",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR8H0RMC4FS8X1SWCFCDB",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2478|12:01",
-      "departureTime": "12:01",
-      "plannedDeparture": "12:01",
-      "actualDeparture": "12:01",
-      "sourceRevision": "2026-08-14T21:15:57+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:15:57+02:00",
-      "vehicleIds": [
-        "69-63"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "69-63"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "69-63"
-      ],
-      "departureVehicles": [
-        "69-63"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "skien_occurrence_route_vehicles",
-      "vehicleError": ""
-    },
-    "2480": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2480",
-      "displayTrainNumber": "2480",
-      "routeId": "01KZCVRC96CKJXZ6NJ29M6CM2K",
-      "origin": "Porsgrunn",
-      "destination": "Notodden",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVRC97065VFQV9Y93WG7ZD",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2480|13:21",
-      "departureTime": "13:21",
-      "plannedDeparture": "13:21",
-      "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:16:00+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:16:00+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: routeId 01KZCVRC96CKJXZ6NJ29M6CM2K; den eksakte Skien-avgangen har ingen kjøretøydata.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [],
-      "departureVehicles": [],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
-      "vehicleError": "Uavklart forekomstbundet materiell: routeId 01KZCVRC96CKJXZ6NJ29M6CM2K; den eksakte Skien-avgangen har ingen kjøretøydata."
-    },
-    "2481": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2481",
-      "displayTrainNumber": "2481",
-      "routeId": "01KZCVRBZ17B8YX9YXAW67Q109",
-      "origin": "Notodden",
-      "destination": "Porsgrunn",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVRBZ2KS8MY88AWGPSRZZB",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2481|14:04",
-      "departureTime": "14:04",
-      "plannedDeparture": "14:04",
-      "actualDeparture": "14:04",
-      "sourceRevision": "2026-08-14T21:16:03+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:16:03+02:00",
-      "vehicleIds": [
-        "69-63"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "69-63"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "69-63"
-      ],
-      "departureVehicles": [
-        "69-63"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "skien_occurrence_route_vehicles",
-      "vehicleError": ""
-    },
-    "2482": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2482",
-      "displayTrainNumber": "2482",
-      "routeId": "01KZCVRB0KYFDYNWQJ9YV434V2",
-      "origin": "Porsgrunn",
-      "destination": "Notodden",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVRB0KEJNRX0Q7THW11X9R",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2482|14:55",
-      "departureTime": "14:55",
-      "plannedDeparture": "14:55",
-      "actualDeparture": "14:57",
-      "sourceRevision": "2026-08-14T21:16:06+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:16:06+02:00",
-      "vehicleIds": [
-        "69-63"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "69-63"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "69-63"
-      ],
-      "departureVehicles": [
-        "69-63"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "skien_occurrence_route_vehicles",
-      "vehicleError": ""
-    },
-    "2483": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2483",
-      "displayTrainNumber": "2483",
-      "routeId": "01KZCVR76XS2CYAYZX1PJFFV0J",
-      "origin": "Notodden",
-      "destination": "Porsgrunn",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR76YRM3E45X1P6QBX9C5",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2483|15:39",
-      "departureTime": "15:39",
-      "plannedDeparture": "15:39",
-      "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:16:09+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:16:09+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: routeId 01KZCVR76XS2CYAYZX1PJFFV0J; den eksakte Skien-avgangen har ingen kjøretøydata.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [],
-      "departureVehicles": [],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
-      "vehicleError": "Uavklart forekomstbundet materiell: routeId 01KZCVR76XS2CYAYZX1PJFFV0J; den eksakte Skien-avgangen har ingen kjøretøydata."
-    },
-    "2484": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2484",
-      "displayTrainNumber": "2484",
-      "routeId": "01KZCVRC7JFD1K4PVBBNK5ENFN",
-      "origin": "Porsgrunn",
-      "destination": "Notodden",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVRC7J8WTYECTVXK8F0A9W",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2484|16:20",
-      "departureTime": "16:20",
-      "plannedDeparture": "16:20",
-      "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:16:13+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:16:13+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: routeId 01KZCVRC7JFD1K4PVBBNK5ENFN; den eksakte Skien-avgangen har ingen kjøretøydata.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [],
-      "departureVehicles": [],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
-      "vehicleError": "Uavklart forekomstbundet materiell: routeId 01KZCVRC7JFD1K4PVBBNK5ENFN; den eksakte Skien-avgangen har ingen kjøretøydata."
-    },
-    "2485": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2485",
-      "displayTrainNumber": "2485",
-      "routeId": "01KZCVRC00RMNKTY6A4X21VZD7",
-      "origin": "Notodden",
-      "destination": "Porsgrunn",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVRC00CAJ4KHT889E7DSH6",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2485|17:03",
-      "departureTime": "17:03",
-      "plannedDeparture": "17:03",
-      "actualDeparture": "17:08",
-      "sourceRevision": "2026-08-14T21:16:16+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:16:16+02:00",
-      "vehicleIds": [
-        "69-63"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "69-63"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "69-63"
-      ],
-      "departureVehicles": [
-        "69-63"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "skien_occurrence_route_vehicles",
-      "vehicleError": ""
-    },
-    "2486": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2486",
-      "displayTrainNumber": "2486",
-      "routeId": "01KZCVR6W3BNDVJDJNQ7RTCA94",
-      "origin": "Porsgrunn",
-      "destination": "Notodden",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR6W38ZX5ZK8VE31D01SJ",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2486|18:01",
-      "departureTime": "18:01",
-      "plannedDeparture": "18:01",
-      "actualDeparture": "18:02",
-      "sourceRevision": "2026-08-14T21:16:19+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:16:19+02:00",
-      "vehicleIds": [
-        "69-63"
-      ],
-      "error": "",
-      "vehiclesObservedAtSkien": [
-        "69-63"
-      ],
-      "vehiclesContinuingAtPorsgrunn": [
-        "69-63"
-      ],
-      "departureVehicles": [
-        "69-63"
-      ],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "skien_occurrence_route_vehicles",
-      "vehicleError": ""
-    },
-    "2487": {
-      "operationalDate": "2026-08-14",
-      "requestedTrainNumber": "2487",
-      "displayTrainNumber": "2487",
-      "routeId": "01KZCVR8TDF2CTNYB000AF7CTD",
-      "origin": "Notodden",
-      "destination": "Porsgrunn",
-      "station": "Skien",
-      "stationRef": "SKN",
-      "stopId": "01KZCVR8TD093RNGCCKP3YAWXW",
-      "direction": "departure",
-      "eventType": "departure",
-      "occurrenceId": "2026-08-14|departure|2487|19:02",
-      "departureTime": "19:02",
-      "plannedDeparture": "19:02",
-      "actualDeparture": null,
-      "sourceRevision": "2026-08-14T21:16:22+02:00",
-      "sourceUpdatedAt": "2026-08-14T21:16:22+02:00",
-      "vehicleIds": [],
-      "error": "Uavklart forekomstbundet materiell: routeId 01KZCVR8TDF2CTNYB000AF7CTD; den eksakte Skien-avgangen har ingen kjøretøydata.",
-      "vehiclesObservedAtSkien": [],
-      "vehiclesContinuingAtPorsgrunn": [],
-      "departureVehicles": [],
-      "detachedAtSkien": [],
-      "vehicleResolutionSource": "unresolved_porsgrunn_occurrence",
-      "vehicleError": "Uavklart forekomstbundet materiell: routeId 01KZCVR8TDF2CTNYB000AF7CTD; den eksakte Skien-avgangen har ingen kjøretøydata."
     }
   },
-  "arrivalDisplayTrainNumbers": {},
+  "arrivalDisplayTrainNumbers": {
+    "835": "90835",
+    "837": "90837"
+  },
   "arrivals": {
-    "2472": {
-      "time": "06:47",
+    "805": {
+      "time": "08:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2472",
-        "occurrenceId": "2026-08-14|arrival|2472|06:47",
-        "routeId": "01KZCVR5554P81E48E3XM8JRTW",
-        "stopId": "01KZCVR556NZJ9E98NDYQ9YJ73",
+        "operationalDate": "2026-08-15",
+        "trainNumber": "805",
+        "occurrenceId": "2026-08-15|arrival|805|08:53",
+        "routeId": "01KZFE4VTZXB88KXSFR6YJ4F2E",
+        "stopId": "01KZFE4VTZEA738TRZM3VEPWBK",
         "stationName": "Skien",
         "stationRef": "SKN",
-        "origin": "Porsgrunn",
-        "destination": "Notodden",
-        "plannedArrival": "2026-08-14 06:47:00",
-        "estimatedArrival": null,
-        "actualArrival": null,
-        "plannedDeparture": "2026-08-14 06:49:00",
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "2",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "2",
-        "movementStatus": "planned_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:41+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:41+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [],
-        "consistContext": "unknown"
-      }
-    },
-    "2473": {
-      "time": "07:30",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2473",
-        "occurrenceId": "2026-08-14|arrival|2473|07:30",
-        "routeId": "01KZCVR7A7H4HR78YCFDE2M919",
-        "stopId": "01KZCVR7A7J63Z2HXKYVAW7FDH",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Notodden",
-        "destination": "Porsgrunn",
-        "plannedArrival": "2026-08-14 07:30:00",
-        "estimatedArrival": "2026-08-14 07:29:14",
-        "actualArrival": "2026-08-14 07:29:14",
-        "plannedDeparture": "2026-08-14 07:31:00",
-        "estimatedDeparture": "2026-08-14 07:31:08",
-        "actualDeparture": "2026-08-14 07:31:08",
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:44+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:44+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "69-63"
-        ],
-        "consistContext": "single_set"
-      }
-    },
-    "873": {
-      "time": "07:42",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "873",
-        "occurrenceId": "2026-08-14|arrival|873|07:42",
-        "routeId": "01KZCVRBN7GJQ05XEK45KYRX6G",
-        "stopId": "01KZCVRBN7QBYEAEYDP4Q45SBW",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Tønsberg",
+        "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 07:42:00",
-        "estimatedArrival": "2026-08-14 07:41:30",
-        "actualArrival": "2026-08-14 07:41:30",
+        "plannedArrival": "2026-08-15 08:53:00",
+        "estimatedArrival": "2026-08-15 08:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
         "actualDeparture": null,
         "platformTrack": "3",
         "rawTrackField": "stop_track",
         "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:35+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:35+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:04:34+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:04:34+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-41"
@@ -1819,147 +916,21 @@
         "consistContext": "single_set"
       }
     },
-    "2474": {
-      "time": "07:57",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2474",
-        "occurrenceId": "2026-08-14|arrival|2474|07:57",
-        "routeId": "01KZCVR8M3GB1SQMZZ1ER7553Q",
-        "stopId": "01KZCVR8M3Y7DG90YQQ2Q0T596",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Porsgrunn",
-        "destination": "Notodden",
-        "plannedArrival": "2026-08-14 07:57:00",
-        "estimatedArrival": "2026-08-14 07:56:40",
-        "actualArrival": "2026-08-14 07:56:40",
-        "plannedDeparture": "2026-08-14 07:59:00",
-        "estimatedDeparture": "2026-08-14 07:59:40",
-        "actualDeparture": "2026-08-14 07:59:40",
-        "platformTrack": "2",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:48+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:48+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "69-63"
-        ],
-        "consistContext": "single_set"
-      }
-    },
-    "803": {
-      "time": "08:07",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "803",
-        "occurrenceId": "2026-08-14|arrival|803|08:07",
-        "routeId": "01KZCVRABZZF2QXMMT5ZM2EW6N",
-        "stopId": "01KZCVRAC09EJY08809E6532MN",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Eidsvoll",
-        "destination": "Skien",
-        "plannedArrival": "2026-08-14 08:07:00",
-        "estimatedArrival": "2026-08-14 08:06:37",
-        "actualArrival": "2026-08-14 08:06:37",
-        "plannedDeparture": null,
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "2",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:12:37+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:12:37+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "74-13"
-        ],
-        "consistContext": "single_set"
-      }
-    },
-    "805": {
-      "time": "08:53",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "805",
-        "occurrenceId": "2026-08-14|arrival|805|08:53",
-        "routeId": "01KZCVR898QJNRBCJQ55V74NZ2",
-        "stopId": "01KZCVR899JN33XZ0NY06S45YK",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Eidsvoll",
-        "destination": "Skien",
-        "plannedArrival": "2026-08-14 08:53:00",
-        "estimatedArrival": "2026-08-14 08:52:48",
-        "actualArrival": "2026-08-14 08:52:48",
-        "plannedDeparture": null,
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "2",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:12:45+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:12:45+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "74-20"
-        ],
-        "consistContext": "single_set"
-      }
-    },
-    "2475": {
-      "time": "08:59",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2475",
-        "occurrenceId": "2026-08-14|arrival|2475|08:59",
-        "routeId": "01KZCVR7NQXVXKZBZHZWJ44ADA",
-        "stopId": "01KZCVR7NRFA8M5BV5CPA3HFQ7",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Notodden",
-        "destination": "Porsgrunn",
-        "plannedArrival": "2026-08-14 08:59:00",
-        "estimatedArrival": null,
-        "actualArrival": null,
-        "plannedDeparture": "2026-08-14 09:00:00",
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "planned_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:51+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:51+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [],
-        "consistContext": "unknown"
-      }
-    },
     "807": {
       "time": "09:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "807",
-        "occurrenceId": "2026-08-14|arrival|807|09:53",
-        "routeId": "01KZCVR905BA2PAMEEVPAY6V03",
-        "stopId": "01KZCVR906F8CMGVE4ZVXSSSDS",
+        "occurrenceId": "2026-08-15|arrival|807|09:53",
+        "routeId": "01KZFE4Z13JC315KXZR819QP79",
+        "stopId": "01KZFE4Z143K2X4E00KMBB8GAD",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 09:53:00",
-        "estimatedArrival": "2026-08-14 10:17:11",
+        "plannedArrival": "2026-08-15 09:53:00",
+        "estimatedArrival": "2026-08-15 09:53:00",
         "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
@@ -1968,44 +939,11 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-08-14T21:12:53+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:12:53+02:00",
+        "sourceObservedAt": "2026-08-15T07:04:41+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:04:41+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-22",
-          "74-49"
-        ],
-        "consistContext": "double_set"
-      }
-    },
-    "2477": {
-      "time": "10:00",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2477",
-        "occurrenceId": "2026-08-14|arrival|2477|10:00",
-        "routeId": "01KZCVR9RSFY9ZZK74Y8PA2JH6",
-        "stopId": "01KZCVR9RSE2CBVD0ZGG0XE6NH",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Notodden",
-        "destination": "Porsgrunn",
-        "plannedArrival": "2026-08-14 10:00:00",
-        "estimatedArrival": "2026-08-14 09:59:38",
-        "actualArrival": "2026-08-14 09:59:38",
-        "plannedDeparture": "2026-08-14 10:01:00",
-        "estimatedDeparture": "2026-08-14 10:09:09",
-        "actualDeparture": "2026-08-14 10:09:09",
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:54+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:54+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "69-63"
+          "74-14"
         ],
         "consistContext": "single_set"
       }
@@ -2014,17 +952,17 @@
       "time": "10:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "809",
-        "occurrenceId": "2026-08-14|arrival|809|10:53",
-        "routeId": "01KZCVR7VJ6V8AQDCRDYKTJFZH",
-        "stopId": "01KZCVR7VKJF8SDFV9R4YDV6F8",
+        "occurrenceId": "2026-08-15|arrival|809|10:53",
+        "routeId": "01KZFE50SGXEEE4TCYKFCV5D8Z",
+        "stopId": "01KZFE50SGN0ZG7ASM9VXRYWA8",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 10:53:00",
-        "estimatedArrival": "2026-08-14 11:17:55",
+        "plannedArrival": "2026-08-15 10:53:00",
+        "estimatedArrival": "2026-08-15 10:53:00",
         "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
@@ -2033,77 +971,43 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-08-14T21:13:01+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:13:00+02:00",
+        "sourceObservedAt": "2026-08-15T07:04:49+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:04:48+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-11",
-          "74-01"
+          "74-53"
         ],
-        "consistContext": "double_set"
+        "consistContext": "single_set"
       }
     },
     "811": {
       "time": "11:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "811",
-        "occurrenceId": "2026-08-14|arrival|811|11:53",
-        "routeId": "01KZCVR60JNFGE3ZACMAW8TW9C",
-        "stopId": "01KZCVR60K3VMTM7NHKBWG5XEM",
+        "occurrenceId": "2026-08-15|arrival|811|11:53",
+        "routeId": "01KZFE4VH315WA5FDDJ3ABRGE4",
+        "stopId": "01KZFE4VH3KTNMH7JVDRTB3GGK",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 11:53:00",
-        "estimatedArrival": "2026-08-14 11:55:44",
-        "actualArrival": "2026-08-14 11:56:01",
+        "plannedArrival": "2026-08-15 11:53:00",
+        "estimatedArrival": "2026-08-15 11:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
-        "actualDeparture": "2026-08-14 11:56:01",
+        "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:13:08+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:13:08+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:04:56+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:04:56+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-52",
           "74-47"
-        ],
-        "consistContext": "double_set"
-      }
-    },
-    "2478": {
-      "time": "11:59",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2478",
-        "occurrenceId": "2026-08-14|arrival|2478|11:59",
-        "routeId": "01KZCVR8H0ZS249GQ6W3GS3R1A",
-        "stopId": "01KZCVR8H0RMC4FS8X1SWCFCDB",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Porsgrunn",
-        "destination": "Notodden",
-        "plannedArrival": "2026-08-14 11:59:00",
-        "estimatedArrival": "2026-08-14 11:59:34",
-        "actualArrival": "2026-08-14 11:59:34",
-        "plannedDeparture": "2026-08-14 12:01:00",
-        "estimatedDeparture": "2026-08-14 12:01:22",
-        "actualDeparture": "2026-08-14 12:01:22",
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:57+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:57+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "69-63"
         ],
         "consistContext": "single_set"
       }
@@ -2112,672 +1016,260 @@
       "time": "12:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "813",
-        "occurrenceId": "2026-08-14|arrival|813|12:53",
-        "routeId": "01KZCVR73THJF7K1KK43KXBYTM",
-        "stopId": "01KZCVR73V272XVNXWQH2VFCG2",
+        "occurrenceId": "2026-08-15|arrival|813|12:53",
+        "routeId": "01KZFE5098S0BX4WRD29QZ4BWV",
+        "stopId": "01KZFE5099K550V1D8ZDDH0SFE",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 12:53:00",
-        "estimatedArrival": "2026-08-14 12:51:52",
-        "actualArrival": "2026-08-14 12:52:09",
+        "plannedArrival": "2026-08-15 12:53:00",
+        "estimatedArrival": "2026-08-15 12:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
         "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:13:16+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:13:16+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:05:03+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:05:03+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-14",
-          "74-53"
+          "74-44"
         ],
-        "consistContext": "double_set"
-      }
-    },
-    "2480": {
-      "time": "13:19",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2480",
-        "occurrenceId": "2026-08-14|arrival|2480|13:19",
-        "routeId": "01KZCVRC96CKJXZ6NJ29M6CM2K",
-        "stopId": "01KZCVRC97065VFQV9Y93WG7ZD",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Porsgrunn",
-        "destination": "Notodden",
-        "plannedArrival": "2026-08-14 13:19:00",
-        "estimatedArrival": null,
-        "actualArrival": null,
-        "plannedDeparture": "2026-08-14 13:21:00",
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "planned_arrival",
-        "sourceObservedAt": "2026-08-14T21:16:00+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:16:00+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [],
-        "consistContext": "unknown"
+        "consistContext": "single_set"
       }
     },
     "815": {
       "time": "13:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "815",
-        "occurrenceId": "2026-08-14|arrival|815|13:53",
-        "routeId": "01KZCVR8RFCPCQSMZBV4N7XZRX",
-        "stopId": "01KZCVR8RFE04TTMRVAK88XGPK",
+        "occurrenceId": "2026-08-15|arrival|815|13:53",
+        "routeId": "01KZFE507NPF9REXPXA80A59Z5",
+        "stopId": "01KZFE507P3KKKA675FQ7HHK7M",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 13:53:00",
-        "estimatedArrival": "2026-08-14 13:53:14",
-        "actualArrival": "2026-08-14 13:53:14",
+        "plannedArrival": "2026-08-15 13:53:00",
+        "estimatedArrival": "2026-08-15 13:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
         "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:13:23+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:13:23+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:05:10+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:05:10+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-44",
-          "74-04"
+          "74-52",
+          "74-02"
         ],
         "consistContext": "double_set"
-      }
-    },
-    "2481": {
-      "time": "14:02",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2481",
-        "occurrenceId": "2026-08-14|arrival|2481|14:02",
-        "routeId": "01KZCVRBZ17B8YX9YXAW67Q109",
-        "stopId": "01KZCVRBZ2KS8MY88AWGPSRZZB",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Notodden",
-        "destination": "Porsgrunn",
-        "plannedArrival": "2026-08-14 14:02:00",
-        "estimatedArrival": "2026-08-14 14:00:43",
-        "actualArrival": "2026-08-14 14:00:43",
-        "plannedDeparture": "2026-08-14 14:04:00",
-        "estimatedDeparture": "2026-08-14 14:04:10",
-        "actualDeparture": "2026-08-14 14:04:10",
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:16:03+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:16:03+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "69-63"
-        ],
-        "consistContext": "single_set"
-      }
-    },
-    "2482": {
-      "time": "14:49",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2482",
-        "occurrenceId": "2026-08-14|arrival|2482|14:49",
-        "routeId": "01KZCVRB0KYFDYNWQJ9YV434V2",
-        "stopId": "01KZCVRB0KEJNRX0Q7THW11X9R",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Porsgrunn",
-        "destination": "Notodden",
-        "plannedArrival": "2026-08-14 14:49:00",
-        "estimatedArrival": "2026-08-14 14:49:10",
-        "actualArrival": "2026-08-14 14:49:10",
-        "plannedDeparture": "2026-08-14 14:55:00",
-        "estimatedDeparture": "2026-08-14 14:57:53",
-        "actualDeparture": "2026-08-14 14:57:53",
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:16:06+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:16:06+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "69-63"
-        ],
-        "consistContext": "single_set"
       }
     },
     "817": {
       "time": "14:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "817",
-        "occurrenceId": "2026-08-14|arrival|817|14:53",
-        "routeId": "01KZCVR6HHRJ349SWRKBM9GYXV",
-        "stopId": "01KZCVR6HJF9FPNA0ERCXB6EV8",
+        "occurrenceId": "2026-08-15|arrival|817|14:53",
+        "routeId": "01KZFE51524ED8PQNTE3SZY7MQ",
+        "stopId": "01KZFE51536HQTHRET55ME235A",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 14:53:00",
-        "estimatedArrival": "2026-08-14 14:55:21",
-        "actualArrival": "2026-08-14 14:55:38",
+        "plannedArrival": "2026-08-15 14:53:00",
+        "estimatedArrival": "2026-08-15 14:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
         "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:13:31+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:13:31+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:05:17+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:05:17+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-02",
-          "74-41"
+          "74-13"
         ],
-        "consistContext": "double_set"
-      }
-    },
-    "2483": {
-      "time": "15:38",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2483",
-        "occurrenceId": "2026-08-14|arrival|2483|15:38",
-        "routeId": "01KZCVR76XS2CYAYZX1PJFFV0J",
-        "stopId": "01KZCVR76YRM3E45X1P6QBX9C5",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Notodden",
-        "destination": "Porsgrunn",
-        "plannedArrival": "2026-08-14 15:38:00",
-        "estimatedArrival": null,
-        "actualArrival": null,
-        "plannedDeparture": "2026-08-14 15:39:00",
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "planned_arrival",
-        "sourceObservedAt": "2026-08-14T21:16:10+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:16:09+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [],
-        "consistContext": "unknown"
+        "consistContext": "single_set"
       }
     },
     "819": {
       "time": "15:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "819",
-        "occurrenceId": "2026-08-14|arrival|819|15:53",
-        "routeId": "01KZCVR5NVP3QW0WJE89KQ147H",
-        "stopId": "01KZCVR5NW8CJQ98ENN3DRZVZC",
+        "occurrenceId": "2026-08-15|arrival|819|15:53",
+        "routeId": "01KZFE4ZP5EDGV3DQM0Z155QYS",
+        "stopId": "01KZFE4ZP6BRMC3R3H01KZE6VJ",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 15:53:00",
-        "estimatedArrival": "2026-08-14 15:54:25",
-        "actualArrival": "2026-08-14 15:54:25",
+        "plannedArrival": "2026-08-15 15:53:00",
+        "estimatedArrival": "2026-08-15 15:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
-        "actualDeparture": "2026-08-14 15:54:25",
+        "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:13:38+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:13:38+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:05:25+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:05:24+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-06",
-          "74-13"
+          "74-49",
+          "74-38"
         ],
         "consistContext": "double_set"
-      }
-    },
-    "2484": {
-      "time": "16:18",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2484",
-        "occurrenceId": "2026-08-14|arrival|2484|16:18",
-        "routeId": "01KZCVRC7JFD1K4PVBBNK5ENFN",
-        "stopId": "01KZCVRC7J8WTYECTVXK8F0A9W",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Porsgrunn",
-        "destination": "Notodden",
-        "plannedArrival": "2026-08-14 16:18:00",
-        "estimatedArrival": null,
-        "actualArrival": null,
-        "plannedDeparture": "2026-08-14 16:20:00",
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "planned_arrival",
-        "sourceObservedAt": "2026-08-14T21:16:13+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:16:13+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [],
-        "consistContext": "unknown"
-      }
-    },
-    "851": {
-      "time": "16:30",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "851",
-        "occurrenceId": "2026-08-14|arrival|851|16:30",
-        "routeId": "01KZCVRBYFT1TD4SEMD4A04WWS",
-        "stopId": "01KZCVRBYFTZDBYTQWEA4QMS29",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Oslo S",
-        "destination": "Skien",
-        "plannedArrival": "2026-08-14 16:30:00",
-        "estimatedArrival": "2026-08-14 16:31:13",
-        "actualArrival": "2026-08-14 16:31:32",
-        "plannedDeparture": null,
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "2",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:02+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:02+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "74-28"
-        ],
-        "consistContext": "single_set"
       }
     },
     "821": {
       "time": "16:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "821",
-        "occurrenceId": "2026-08-14|arrival|821|16:53",
-        "routeId": "01KZCVR9FZDRTB6Z9216PXQFZK",
-        "stopId": "01KZCVR9G0T5W9QDRF9TENCD0M",
+        "occurrenceId": "2026-08-15|arrival|821|16:53",
+        "routeId": "01KZFE4V8RT3EKVC7NS03BKBEB",
+        "stopId": "01KZFE4V8ZD1G4A8BZ7GFEXK3Q",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 16:53:00",
-        "estimatedArrival": "2026-08-14 17:39:52",
-        "actualArrival": "2026-08-14 17:39:52",
+        "plannedArrival": "2026-08-15 16:53:00",
+        "estimatedArrival": "2026-08-15 16:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
         "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:13:46+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:13:46+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:05:32+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:05:32+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-22",
-          "74-49"
+          "74-41",
+          "74-14"
         ],
         "consistContext": "double_set"
-      }
-    },
-    "2485": {
-      "time": "17:02",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2485",
-        "occurrenceId": "2026-08-14|arrival|2485|17:02",
-        "routeId": "01KZCVRC00RMNKTY6A4X21VZD7",
-        "stopId": "01KZCVRC00CAJ4KHT889E7DSH6",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Notodden",
-        "destination": "Porsgrunn",
-        "plannedArrival": "2026-08-14 17:02:00",
-        "estimatedArrival": "2026-08-14 17:02:05",
-        "actualArrival": "2026-08-14 17:02:05",
-        "plannedDeparture": "2026-08-14 17:03:00",
-        "estimatedDeparture": "2026-08-14 17:08:43",
-        "actualDeparture": "2026-08-14 17:08:43",
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:16:16+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:16:16+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "69-63"
-        ],
-        "consistContext": "single_set"
-      }
-    },
-    "853": {
-      "time": "17:30",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "853",
-        "occurrenceId": "2026-08-14|arrival|853|17:30",
-        "routeId": "01KZCVRA9DSSSC8G7DCFFWX7GV",
-        "stopId": "01KZCVRA9DQ8H9PSWZGJV97A02",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Oslo S",
-        "destination": "Skien",
-        "plannedArrival": "2026-08-14 17:30:00",
-        "estimatedArrival": "2026-08-14 17:47:28",
-        "actualArrival": "2026-08-14 17:47:28",
-        "plannedDeparture": null,
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "2",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:09+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:09+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "74-08",
-          "74-39"
-        ],
-        "consistContext": "double_set"
-      }
-    },
-    "861": {
-      "time": "17:42",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "861",
-        "occurrenceId": "2026-08-14|arrival|861|17:42",
-        "routeId": "01KZCVR7ZD618N0BNCYV54JCJK",
-        "stopId": "01KZCVR7ZEK2QVSE6AW5TV0X75",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Oslo S",
-        "destination": "Skien",
-        "plannedArrival": "2026-08-14 17:42:00",
-        "estimatedArrival": "2026-08-14 17:58:04",
-        "actualArrival": "2026-08-14 17:58:04",
-        "plannedDeparture": null,
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:23+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:23+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "74-51"
-        ],
-        "consistContext": "single_set"
       }
     },
     "823": {
       "time": "17:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "823",
-        "occurrenceId": "2026-08-14|arrival|823|17:53",
-        "routeId": "01KZCVR5R1SNR9ZGBKKPA03GXA",
-        "stopId": "01KZCVR5R2W9S4M7Y3PWXNNWYM",
+        "occurrenceId": "2026-08-15|arrival|823|17:53",
+        "routeId": "01KZFE52HENY0DRJBDVT1KPESQ",
+        "stopId": "01KZFE52HF8YWF0AGJN7WH9CN1",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 17:53:00",
-        "estimatedArrival": "2026-08-14 18:10:12",
-        "actualArrival": "2026-08-14 18:10:12",
+        "plannedArrival": "2026-08-15 17:53:00",
+        "estimatedArrival": "2026-08-15 17:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
         "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:13:54+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:13:54+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:05:39+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:05:39+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-11",
-          "74-01"
+          "74-01",
+          "74-53"
         ],
         "consistContext": "double_set"
-      }
-    },
-    "2486": {
-      "time": "17:59",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2486",
-        "occurrenceId": "2026-08-14|arrival|2486|17:59",
-        "routeId": "01KZCVR6W3BNDVJDJNQ7RTCA94",
-        "stopId": "01KZCVR6W38ZX5ZK8VE31D01SJ",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Porsgrunn",
-        "destination": "Notodden",
-        "plannedArrival": "2026-08-14 17:59:00",
-        "estimatedArrival": "2026-08-14 18:01:32",
-        "actualArrival": "2026-08-14 18:01:32",
-        "plannedDeparture": "2026-08-14 18:01:00",
-        "estimatedDeparture": "2026-08-14 18:02:56",
-        "actualDeparture": "2026-08-14 18:02:56",
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:16:19+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:16:19+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "69-63"
-        ],
-        "consistContext": "single_set"
-      }
-    },
-    "855": {
-      "time": "18:30",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "855",
-        "occurrenceId": "2026-08-14|arrival|855|18:30",
-        "routeId": "01KZCVR86NE28ZQ3FH7N8EW49Y",
-        "stopId": "01KZCVR86N36HAX6D1XE7WN3GT",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Oslo S",
-        "destination": "Skien",
-        "plannedArrival": "2026-08-14 18:30:00",
-        "estimatedArrival": "2026-08-14 18:34:18",
-        "actualArrival": "2026-08-14 18:34:18",
-        "plannedDeparture": null,
-        "estimatedDeparture": null,
-        "actualDeparture": "2026-08-14 18:34:18",
-        "platformTrack": "2",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:16+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:16+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "70-06",
-          "70-14"
-        ],
-        "consistContext": "double_set"
-      }
-    },
-    "863": {
-      "time": "18:42",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "863",
-        "occurrenceId": "2026-08-14|arrival|863|18:42",
-        "routeId": "01KZCVRB9ETJCHFRAKHQ1P254W",
-        "stopId": "01KZCVRB9ETH0Y6Q52WQDR31PE",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Oslo S",
-        "destination": "Skien",
-        "plannedArrival": "2026-08-14 18:42:00",
-        "estimatedArrival": "2026-08-14 18:42:43",
-        "actualArrival": "2026-08-14 18:42:43",
-        "plannedDeparture": null,
-        "estimatedDeparture": null,
-        "actualDeparture": "2026-08-14 18:42:43",
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:15:29+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:15:29+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "74-54"
-        ],
-        "consistContext": "single_set"
       }
     },
     "825": {
       "time": "18:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "825",
-        "occurrenceId": "2026-08-14|arrival|825|18:53",
-        "routeId": "01KZCVR6R372HJ8WDH1PJDGZHV",
-        "stopId": "01KZCVR6R4EYSFSRHJ40TTQJ2R",
+        "occurrenceId": "2026-08-15|arrival|825|18:53",
+        "routeId": "01KZFE527ENKMMF6QFXZ6DGQ2T",
+        "stopId": "01KZFE527EG4VB2S100QPFXKFK",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 18:53:00",
-        "estimatedArrival": "2026-08-14 19:01:38",
-        "actualArrival": "2026-08-14 19:01:38",
+        "plannedArrival": "2026-08-15 18:53:00",
+        "estimatedArrival": "2026-08-15 18:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
-        "actualDeparture": "2026-08-14 19:01:38",
+        "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:14:01+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:14:01+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:05:47+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:05:47+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-52",
+          "74-20",
           "74-47"
         ],
         "consistContext": "double_set"
-      }
-    },
-    "2487": {
-      "time": "19:01",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2487",
-        "occurrenceId": "2026-08-14|arrival|2487|19:01",
-        "routeId": "01KZCVR8TDF2CTNYB000AF7CTD",
-        "stopId": "01KZCVR8TD093RNGCCKP3YAWXW",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Notodden",
-        "destination": "Porsgrunn",
-        "plannedArrival": "2026-08-14 19:01:00",
-        "estimatedArrival": null,
-        "actualArrival": null,
-        "plannedDeparture": "2026-08-14 19:02:00",
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "planned_arrival",
-        "sourceObservedAt": "2026-08-14T21:16:22+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:16:22+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [],
-        "consistContext": "unknown"
       }
     },
     "827": {
       "time": "19:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "827",
-        "occurrenceId": "2026-08-14|arrival|827|19:53",
-        "routeId": "01KZCVR7NTQA3X56DGD6XFCJPC",
-        "stopId": "01KZCVR7NVYS9QCT4NFMAE69YG",
+        "occurrenceId": "2026-08-15|arrival|827|19:53",
+        "routeId": "01KZFE5295TZE2QYQTFP9DYGDT",
+        "stopId": "01KZFE5296NJCTZZ3TB8S5T7HH",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 19:53:00",
-        "estimatedArrival": "2026-08-14 19:53:51",
-        "actualArrival": "2026-08-14 19:53:51",
+        "plannedArrival": "2026-08-15 19:53:00",
+        "estimatedArrival": "2026-08-15 19:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
-        "actualDeparture": "2026-08-14 19:53:51",
+        "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:14:09+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:14:09+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:05:54+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:05:54+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-14",
-          "74-53"
+          "74-06",
+          "74-44"
         ],
         "consistContext": "double_set"
       }
@@ -2786,82 +1278,50 @@
       "time": "20:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "829",
-        "occurrenceId": "2026-08-14|arrival|829|20:53",
-        "routeId": "01KZCVRBTYD8SKYBDJY8ZB6059",
-        "stopId": "01KZCVRBTZP1VH2NCH4PKJ1R5Y",
+        "occurrenceId": "2026-08-15|arrival|829|20:53",
+        "routeId": "01KZFE4XG3ZXDRZHAFHCZM22A2",
+        "stopId": "01KZFE4XG4K46M6RM91ZXMN33C",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 20:53:00",
-        "estimatedArrival": "2026-08-14 20:54:50",
-        "actualArrival": "2026-08-14 20:54:50",
+        "plannedArrival": "2026-08-15 20:53:00",
+        "estimatedArrival": "2026-08-15 20:53:00",
+        "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
-        "actualDeparture": "2026-08-14 20:54:50",
+        "actualDeparture": null,
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:14:16+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:14:16+02:00",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:06:01+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:06:01+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-44",
-          "74-04"
+          "74-52",
+          "74-02"
         ],
         "consistContext": "double_set"
-      }
-    },
-    "2489": {
-      "time": "20:59",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "2489",
-        "occurrenceId": "2026-08-14|arrival|2489|20:59",
-        "routeId": "01KZCVR6ZX2M4YY7FBRJRK4TFA",
-        "stopId": "01KZCVR6ZXE2QV9W5C4PH8ZDH0",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Notodden",
-        "destination": "Skien",
-        "plannedArrival": "2026-08-14 20:59:00",
-        "estimatedArrival": "2026-08-14 20:58:59",
-        "actualArrival": "2026-08-14 20:58:59",
-        "plannedDeparture": null,
-        "estimatedDeparture": null,
-        "actualDeparture": "2026-08-14 20:58:59",
-        "platformTrack": "3",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "3",
-        "movementStatus": "actual_arrival",
-        "sourceObservedAt": "2026-08-14T21:16:25+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:16:25+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "69-63"
-        ],
-        "consistContext": "single_set"
       }
     },
     "831": {
       "time": "21:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "831",
-        "occurrenceId": "2026-08-14|arrival|831|21:53",
-        "routeId": "01KZCVRAY98B7RXT9MBY34Z9M8",
-        "stopId": "01KZCVRAYAQ0H7VFRC10H4QF99",
+        "occurrenceId": "2026-08-15|arrival|831|21:53",
+        "routeId": "01KZFE4Z7DXD20XPYSXPKV9TWD",
+        "stopId": "01KZFE4Z7EJSB6H70PJWXTVP7R",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 21:53:00",
-        "estimatedArrival": "2026-08-14 21:53:00",
+        "plannedArrival": "2026-08-15 21:53:00",
+        "estimatedArrival": "2026-08-15 21:53:00",
         "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
@@ -2870,31 +1330,30 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-08-14T21:14:24+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:14:24+02:00",
+        "sourceObservedAt": "2026-08-15T07:06:09+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:06:09+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-02",
-          "74-41"
+          "74-13"
         ],
-        "consistContext": "double_set"
+        "consistContext": "single_set"
       }
     },
     "833": {
       "time": "22:53",
       "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "833",
-        "occurrenceId": "2026-08-14|arrival|833|22:53",
-        "routeId": "01KZCVR9EZM92S1DWQMQF2B1NQ",
-        "stopId": "01KZCVR9F0MV2RHFF93VTZA4K9",
+        "occurrenceId": "2026-08-15|arrival|833|22:53",
+        "routeId": "01KZFE515AN54ZRMZSBFNGJA9R",
+        "stopId": "01KZFE515BX6A1N6TY913ZFDAV",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-14 22:53:00",
-        "estimatedArrival": "2026-08-14 22:53:00",
+        "plannedArrival": "2026-08-15 22:53:00",
+        "estimatedArrival": "2026-08-15 22:53:00",
         "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
@@ -2903,63 +1362,30 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-08-14T21:14:32+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:14:31+02:00",
+        "sourceObservedAt": "2026-08-15T07:06:16+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:06:16+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
-          "74-06",
-          "74-13"
-        ],
-        "consistContext": "double_set"
-      }
-    },
-    "835": {
-      "time": "23:53",
-      "nextDay": false,
-      "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "835",
-        "occurrenceId": "2026-08-14|arrival|835|23:53",
-        "routeId": "01KZCVR59C7CKD2TF2CGA7XV2Z",
-        "stopId": "01KZCVR59DVJQT9356G32HK892",
-        "stationName": "Skien",
-        "stationRef": "SKN",
-        "origin": "Eidsvoll",
-        "destination": "Skien",
-        "plannedArrival": "2026-08-14 23:53:00",
-        "estimatedArrival": "2026-08-14 23:53:00",
-        "actualArrival": null,
-        "plannedDeparture": null,
-        "estimatedDeparture": null,
-        "actualDeparture": null,
-        "platformTrack": "2",
-        "rawTrackField": "stop_track",
-        "rawTrackValue": "2",
-        "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-08-14T21:14:40+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:14:40+02:00",
-        "trackProvenance": "balise.no/api/train/stops.stop_track",
-        "vehicleIds": [
-          "74-20"
+          "74-38"
         ],
         "consistContext": "single_set"
       }
     },
-    "837": {
-      "time": "00:50",
-      "nextDay": true,
+    "90835": {
+      "time": "23:53",
+      "nextDay": false,
       "movementContext": {
-        "operationalDate": "2026-08-14",
-        "trainNumber": "837",
-        "occurrenceId": "2026-08-14|arrival|837|00:50",
-        "routeId": "01KZCVR9W15CZFY8N1GPD7DYN2",
-        "stopId": "01KZCVR9W2MHMZTZQKRCV4FAP9",
+        "operationalDate": "2026-08-15",
+        "trainNumber": "90835",
+        "occurrenceId": "2026-08-15|arrival|90835|23:53",
+        "routeId": "01KZFE4ZTH8F0RDB2TE9EEM4AH",
+        "stopId": "01KZFE4ZTJVTF7BHS5QWE541RB",
         "stationName": "Skien",
         "stationRef": "SKN",
-        "origin": "Eidsvoll",
+        "origin": "Lysaker",
         "destination": "Skien",
-        "plannedArrival": "2026-08-15 00:50:00",
-        "estimatedArrival": "2026-08-15 00:50:00",
+        "plannedArrival": "2026-08-15 23:53:00",
+        "estimatedArrival": "2026-08-15 23:53:00",
         "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
@@ -2968,11 +1394,43 @@
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
         "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-08-14T21:14:47+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:14:47+02:00",
+        "sourceObservedAt": "2026-08-15T07:06:26+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:06:26+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-01"
+        ],
+        "consistContext": "single_set"
+      }
+    },
+    "90837": {
+      "time": "00:50",
+      "nextDay": true,
+      "movementContext": {
+        "operationalDate": "2026-08-15",
+        "trainNumber": "90837",
+        "occurrenceId": "2026-08-15|arrival|90837|00:50",
+        "routeId": "01KZFE50ATRZ42YF5C04GEKA4F",
+        "stopId": "01KZFE50AVYK2T361M36CV7SMZ",
+        "stationName": "Skien",
+        "stationRef": "SKN",
+        "origin": "Lysaker",
+        "destination": "Skien",
+        "plannedArrival": "2026-08-16 00:50:00",
+        "estimatedArrival": "2026-08-16 00:50:00",
+        "actualArrival": null,
+        "plannedDeparture": null,
+        "estimatedDeparture": null,
+        "actualDeparture": null,
+        "platformTrack": "3",
+        "rawTrackField": "stop_track",
+        "rawTrackValue": "3",
+        "movementStatus": "estimated_arrival",
+        "sourceObservedAt": "2026-08-15T07:06:35+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:06:34+02:00",
+        "trackProvenance": "balise.no/api/train/stops.stop_track",
+        "vehicleIds": [
+          "74-44"
         ],
         "consistContext": "single_set"
       }
@@ -2981,17 +1439,17 @@
       "time": "01:45",
       "nextDay": true,
       "movementContext": {
-        "operationalDate": "2026-08-14",
+        "operationalDate": "2026-08-15",
         "trainNumber": "839",
-        "occurrenceId": "2026-08-14|arrival|839|01:45",
-        "routeId": "01KZCVR6EGVK9W1NVSQ6Z7PB66",
-        "stopId": "01KZCVR6EH9BAEG220H3YVQS35",
+        "occurrenceId": "2026-08-15|arrival|839|01:45",
+        "routeId": "01KZFE4WFRWXD51DK3TX7D4FM4",
+        "stopId": "01KZFE4WFSWW7HP9Q7BAAYFVED",
         "stationName": "Skien",
         "stationRef": "SKN",
         "origin": "Eidsvoll",
         "destination": "Skien",
-        "plannedArrival": "2026-08-15 01:45:00",
-        "estimatedArrival": "2026-08-15 01:45:00",
+        "plannedArrival": "2026-08-16 01:45:00",
+        "estimatedArrival": null,
         "actualArrival": null,
         "plannedDeparture": null,
         "estimatedDeparture": null,
@@ -2999,9 +1457,9 @@
         "platformTrack": "2",
         "rawTrackField": "stop_track",
         "rawTrackValue": "2",
-        "movementStatus": "estimated_arrival",
-        "sourceObservedAt": "2026-08-14T21:14:55+02:00",
-        "sourceUpdatedAt": "2026-08-14T21:14:55+02:00",
+        "movementStatus": "planned_arrival",
+        "sourceObservedAt": "2026-08-15T07:06:40+02:00",
+        "sourceUpdatedAt": "2026-08-15T07:06:40+02:00",
         "trackProvenance": "balise.no/api/train/stops.stop_track",
         "vehicleIds": [
           "74-47"
