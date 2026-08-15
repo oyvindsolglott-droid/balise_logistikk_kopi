@@ -18759,8 +18759,85 @@ function getSdePhysicalBlockerAccessReliefCandidateOrder(vehicle, fromSlot, bloc
   return Array.from(new Set([...ordinaryCandidates,...(preferDedicatedVn ? ["VN"] : [])]));
 }
 
-function shouldSdePreferDedicatedVnForTargetAccess(targetSlot){
-  return /^(10|11|12)S$/.test(normalizeSlot(targetSlot));
+function shouldSdeUseCanonicalNorthYardVsRoute(sourceSlot, targetSlot, accessEnd=""){
+  const source = normalizeSlot(sourceSlot);
+  const target = normalizeSlot(targetSlot);
+  const end = String(accessEnd || "").trim().toLowerCase();
+  const sourceTrack = getSdeSlotTrack(source);
+  const targetTrack = getSdeSlotTrack(target);
+  if(!source || !target || !sourceTrack || !targetTrack || sourceTrack === targetTrack) return false;
+  if([source,target].some(slot=>isSdeWorkshopSlot(slot) || ["VN","VS"].includes(slot))) return false;
+  if(end !== "north") return false;
+  const sourceNorth = getSdeAccessOptionsForSlot(source,"source").find(option=>option?.end === "north" && option?.clear === true);
+  const targetNorth = getSdeAccessOptionsForSlot(target,"target").find(option=>option?.end === "north");
+  return Boolean(sourceNorth && targetNorth && inputSlots.includes("VN") && inputSlots.includes("VS"));
+}
+
+function shouldSdePreferDedicatedVnForTargetAccess(sourceSlot, targetSlot="", accessEnd="", ordinaryCandidateSlots=null){
+  const source = normalizeSlot(sourceSlot);
+  const target = normalizeSlot(targetSlot || sourceSlot);
+  if(/^(10|11|12)S$/.test(target)) return true;
+  if(!shouldSdeUseCanonicalNorthYardVsRoute(source,target,accessEnd)) return false;
+  const candidates = Array.isArray(ordinaryCandidateSlots)
+    ? ordinaryCandidateSlots.map(normalizeSlot).filter(Boolean)
+    : [];
+  const sourceTrack = getSdeSlotTrack(source);
+  return !candidates.some(slot=>getSdeSlotTrack(slot) === sourceTrack);
+}
+
+function buildSdeCanonicalRouteResourceClaims(routeResources=[], active=false){
+  return sortSdeCanonicalStrings(routeResources).map(resource=>({
+    resource,
+    state:active ? "ACTIVE_ROUTE_RESOURCE" : "DEFERRED_ROUTE_RESOURCE"
+  }));
+}
+
+function buildSdeCanonicalMultilegRoute({sourceSlot,targetSlot,viaSlots=[],reversalPoint="",approachSide="",routeResources=[],active=false}={}){
+  const source = normalizeSlot(sourceSlot);
+  const target = normalizeSlot(targetSlot);
+  const via = Array.from(new Set((Array.isArray(viaSlots) ? viaSlots : []).map(normalizeSlot).filter(Boolean)));
+  const points = [source,...via,target].filter(Boolean);
+  const resources = sortSdeCanonicalStrings([
+    ...routeResources,
+    ...via
+  ]);
+  return {
+    schemaVersion:"sde-canonical-multileg-route-v1",
+    sourceSlot:source,
+    targetSlot:target,
+    routeSegments:points.slice(0,-1).map((fromSlot,index)=>({fromSlot,toSlot:points[index + 1]})),
+    viaSlots:via,
+    reversalPoint:normalizeSlot(reversalPoint),
+    approachSide:String(approachSide || "").trim().toUpperCase(),
+    routeResources:resources,
+    routeResourceClaims:buildSdeCanonicalRouteResourceClaims(resources,active)
+  };
+}
+
+function buildSdeCanonicalAccessReliefRoute(plan, role){
+  if(!plan || normalizeSlot(plan.holdingSlot) !== "VN" || String(plan.accessEnd || "").toLowerCase() !== "north") return null;
+  const normalizedRole = String(role || "").trim();
+  const routeInput = normalizedRole === "prerequisite"
+    ? {sourceSlot:plan.blockerFromSlot,targetSlot:"VN",viaSlots:["VS"],routeResources:["VS"],active:true}
+    : normalizedRole === "dependent"
+      ? {sourceSlot:plan.blockedFromSlot,targetSlot:plan.mainTargetSlot,viaSlots:["VS"],reversalPoint:"VS",approachSide:"NORTH",routeResources:["VS"],active:false}
+      : normalizedRole === "return"
+        ? {sourceSlot:"VN",targetSlot:plan.returnTargetSlot,viaSlots:["VS"],routeResources:["VS"],active:false}
+        : null;
+  return routeInput ? buildSdeCanonicalMultilegRoute(routeInput) : null;
+}
+
+function annotateSdeCanonicalMultilegRoute(row, route){
+  if(!row || !route) return row;
+  return {
+    ...row,
+    sdeCanonicalRoute:{...route},
+    routeSegments:[...route.routeSegments],
+    viaSlots:[...route.viaSlots],
+    reversalPoint:route.reversalPoint,
+    approachSide:route.approachSide,
+    sdeCanonicalRouteResourceClaims:[...route.routeResourceClaims]
+  };
 }
 
 function buildSdePhysicalBlockerReturnAssessment(blockerVehicle, originSlot, freeingTarget, blockedVehicle, blockedFromSlot){
@@ -18938,8 +19015,6 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
         reservedSlots:Array.isArray(context?.sequenceReservedSlots) ? context.sequenceReservedSlots : []
       })
     : null;
-  const preferDedicatedAccessVn = accessVnAssessment?.eligible === true
-    && shouldSdePreferDedicatedVnForTargetAccess(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot);
   const ordinaryCandidateOrder = accessReliefEnd
     ? getSdePhysicalBlockerAccessReliefCandidateOrder(
         blockerVehicle,
@@ -18954,6 +19029,13 @@ function buildSdePhysicalBlockerFreeingMoveForBlocker(blockedRow, blockState, bl
         normalizeSlot(context.avoidSlot || blockedFromSlot),
         {avoidSlots:baseAvoidSlots}
       );
+  const preferDedicatedAccessVn = accessVnAssessment?.eligible === true
+    && shouldSdePreferDedicatedVnForTargetAccess(
+      blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot,
+      blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot,
+      accessReliefEnd,
+      ordinaryCandidateOrder
+    );
   const retargetIntent = getSdeCanonicalPhysicalReleaseRetargetIntent(blockedRow,blockState,blocker);
   const manualRejectedTargets = new Set(retargetIntent?.rejectedTargets || []);
   const existingRejectedTargets = getSdePhysicalReleaseRejectedTargetsForBlocker(blockedRow, blockState, blocker);
@@ -19176,7 +19258,12 @@ function buildSdePhysicalBlockerFreeingMove(blockedRow, blockState, rows=[], con
           })
         : [];
       const preferDedicatedAccessVn = accessVnAssessment?.eligible === true
-        && shouldSdePreferDedicatedVnForTargetAccess(blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot);
+        && shouldSdePreferDedicatedVnForTargetAccess(
+          blockState?.fromSlot || blockedRow?.fromSlot || blockedRow?.arrivalSlot,
+          blockState?.toSlot || blockedRow?.recommendedSlot || blockedRow?.toSlot,
+          accessReliefEnd,
+          accessCandidateOrder
+        );
       const target = accessReliefEnd
         ? (preferDedicatedAccessVn ? "VN" : accessCandidateOrder[0] || "")
         : getSdeBestPhysicalBlockerReleaseTarget(blocker?.vehicle, blocker?.slot, blockState?.fromSlot, {
@@ -19591,7 +19678,7 @@ function buildSdeCanonicalAlternateReliefReturnRow(plan){
 
 function annotateSdeTemporaryAccessReliefMainRow(row, plan){
   if(!row || !plan) return row;
-  return {
+  const annotated = {
     ...row,
     sdePhysicalChainId:plan.chainId,
     sdePhysicalChainStep:2,
@@ -19602,6 +19689,10 @@ function annotateSdeTemporaryAccessReliefMainRow(row, plan){
     sdePhysicalResolutionContext:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,
     sdePhysicalAccessReliefChain:{...plan}
   };
+  return annotateSdeCanonicalMultilegRoute(
+    annotated,
+    buildSdeCanonicalAccessReliefRoute(plan,"dependent")
+  );
 }
 
 function buildSdeTemporaryAccessReturnRow(plan){
@@ -19627,7 +19718,7 @@ function buildSdeTemporaryAccessReturnRow(plan){
         return accessOption ? "" : `${targetSlot} har ikke lenger validert adkomst via ${plan.accessEnd}. Returkortet beholdes fail-closed.`;
       })()
     : "";
-  return {
+  const row = {
     vehicle:plan.blockerVehicle,
     fromSlot:holdingSlot,
     arrivalSlot:holdingSlot,
@@ -19665,6 +19756,10 @@ function buildSdeTemporaryAccessReturnRow(plan){
     sdePhysicalAccessReliefChain:{...plan},
     sdePhysicalSequenceConflictReason:recoveryConflict
   };
+  return annotateSdeCanonicalMultilegRoute(
+    row,
+    buildSdeCanonicalAccessReliefRoute(plan,"return")
+  );
 }
 
 function getSdeCompletedTemporaryAccessReliefPlanForMainRow(row){
@@ -21816,7 +21911,10 @@ function getSdeTrappedEgressMainSourceEnds(sourceSlot, targetSlot=""){
   const targetTrack = getSdeSlotTrack(target);
   const order = getSdeSameTrackSlotOrder(sourceTrack);
   const sourceIndex = order.indexOf(source);
-  if(!source || !target || !sourceTrack || sourceTrack === targetTrack || order.length < 3 || sourceIndex < 0) return null;
+  if(!source || !target || !sourceTrack || sourceTrack === targetTrack || sourceIndex < 0) return null;
+  const modeledEnds = getSdeSameTrackOpenEnds(sourceTrack);
+  if(modeledEnds.length === 1) return [...modeledEnds];
+  if(order.length < 3) return null;
   // Innkjøring til buttsporenes S-slot skjer fra nord. En kryssporbevegelse
   // dit må derfor også ha reell nordlig egress fra kildesporet; en lokalt fri
   // sørende er ikke en alternativ ende-til-ende-rute. Dette er særlig viktig
@@ -22676,16 +22774,18 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
     }
     if(blockState?.accessAssessment?.targetAccessBlocked === true){
       const targetSlot = normalizeSlot(blockState?.toSlot || row?.recommendedSlot || row?.toSlot);
-      const hasSafeOrdinaryRelief = blockers.some(blocker=>
+      const safeOrdinaryReliefCandidates = blockers.flatMap(blocker=>
         getSdePhysicalBlockerAccessReliefCandidateOrder(
           blocker?.vehicle,
           blocker?.slot,
           blockState?.fromSlot,
           blocker?.accessEnd,
           {avoidSlots:[blockState?.fromSlot,targetSlot,...reservedSlots],blockedRow:row,blockState}
-        ).length > 0
+        )
       );
-      if(!shouldSdePreferDedicatedVnForTargetAccess(targetSlot) && hasSafeOrdinaryRelief) return null;
+      const hasSafeOrdinaryRelief = safeOrdinaryReliefCandidates.length > 0;
+      const accessEnd = String(blockers.find(blocker=>blocker?.accessEnd)?.accessEnd || "").trim();
+      if(!shouldSdePreferDedicatedVnForTargetAccess(blockState?.fromSlot || row?.fromSlot || row?.arrivalSlot,targetSlot,accessEnd,safeOrdinaryReliefCandidates) && hasSafeOrdinaryRelief) return null;
       const accessClaim = [...blockers]
         .sort((left,right)=>String(left?.slot || "").localeCompare(String(right?.slot || "")))
         .map(blocker=>buildSdeTargetAccessTemporaryVnAssessment(row, blockState, blocker, sourceRows, {
@@ -22891,7 +22991,7 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
         if(rejectedKey) insertedFreeingKeys.add(rejectedKey);
       });
       if(freeingMove && freeingKey && !insertedFreeingKeys.has(freeingKey)){
-        const guardedFreeingMove = {
+        let guardedFreeingMove = {
           ...freeingMove,
           sdePhysicalChainId:chainId,
           sdePhysicalChainStep:1,
@@ -22926,6 +23026,12 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
             parkingInstruction:`Midlertidig frigjøring til ${alternateChainPlan.holdingSlot}. Mandatory recovery til ${alternateChainPlan.returnTargetSlot} følger hovedflyttingen.`
           } : {})
         };
+        if(accessChainPlan){
+          guardedFreeingMove = annotateSdeCanonicalMultilegRoute(
+            guardedFreeingMove,
+            buildSdeCanonicalAccessReliefRoute(accessChainPlan,"prerequisite")
+          );
+        }
         const freeingParts = getSdePhysicalMoveParts(guardedFreeingMove);
         const existingGuardedIndex = guarded.findIndex(candidate=>{
           if(getSdeMoveActionKey(candidate) === freeingKey) return true;
@@ -27607,6 +27713,16 @@ function getSdeMoveActionSnapshot(row){
     canonicalChainStepActive:Boolean(row.canonicalChainStepActive),
     sdeTrappedEgressChainStep:Boolean(row.sdeTrappedEgressChainStep),
     sdeTrappedEgressRouteResources:Array.isArray(row.sdeTrappedEgressRouteResources) ? [...row.sdeTrappedEgressRouteResources] : [],
+    sdeCanonicalRoute:row.sdeCanonicalRoute && typeof row.sdeCanonicalRoute === "object"
+      ? cloneSdeCanonicalValue(row.sdeCanonicalRoute)
+      : null,
+    routeSegments:Array.isArray(row.routeSegments) ? cloneSdeCanonicalValue(row.routeSegments) : [],
+    viaSlots:Array.isArray(row.viaSlots) ? [...row.viaSlots] : [],
+    reversalPoint:normalizeSlot(row.reversalPoint),
+    approachSide:String(row.approachSide || "").trim().toUpperCase(),
+    sdeCanonicalRouteResourceClaims:Array.isArray(row.sdeCanonicalRouteResourceClaims)
+      ? cloneSdeCanonicalValue(row.sdeCanonicalRouteResourceClaims)
+      : [],
     sdeNightPlacementStepIndex:Number.isFinite(Number(row.sdeNightPlacementStepIndex)) ? Number(row.sdeNightPlacementStepIndex) : null,
     originalFromSlot:normalizeSlot(row.originalFromSlot || row.fromSlot || row.arrivalSlot),
     sdeVnRecoveryObligationId:String(row.sdeVnRecoveryObligationId || "").trim(),
@@ -29715,6 +29831,10 @@ function isSdeCanonicalRetargetableOutcome(outcome={}){
 
 function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
   const plan = cloneSdeCanonicalValue(canonicalPlan) || {};
+  const buildRouteResourceClaims = (routeResources=[],active=false)=>sortSdeCanonicalStrings(routeResources).map(resource=>({
+    resource,
+    state:active ? "ACTIVE_ROUTE_RESOURCE" : "DEFERRED_ROUTE_RESOURCE"
+  }));
   const actionRecords = cloneSdeCanonicalValue(options.actionRecords || {});
   const candidates = Array.isArray(plan.candidateOutcomes) ? plan.candidateOutcomes : [];
   const groups = Array.isArray(plan.outcomesByObligationStep) ? plan.outcomesByObligationStep : [];
@@ -29806,6 +29926,9 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
   const buildCardBase = outcome => {
     const recoveryRequired = isRecovery(outcome);
     const identity = buildSdeCanonicalPlanIdentity(outcome, plan.planRevision || plan.metadata?.planRevision);
+    const route = outcome.raw?.sdeCanonicalRoute && typeof outcome.raw.sdeCanonicalRoute === "object"
+      ? cloneSdeCanonicalValue(outcome.raw.sdeCanonicalRoute)
+      : null;
     return {
       canonicalCardId:identity.canonicalCardId,
       obligationId:outcome.obligationId,
@@ -29823,6 +29946,12 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
       recoveryRequired,
       vnEntryToken:String(outcome.raw?.sdeVnEntryToken || "").trim(),
       activeRecoveryMode:String(outcome.raw?.sdeVnRecoveryStatus || outcome.raw?.sdePhysicalResolutionContext || (recoveryRequired ? "authoritative_recovery" : "")).trim(),
+      route,
+      routeSegments:route?.routeSegments || [],
+      viaSlots:route?.viaSlots || [],
+      reversalPoint:route?.reversalPoint || "",
+      approachSide:route?.approachSide || "",
+      routeResourceClaims:route?.routeResourceClaims || [],
       canonicalIdentity:identity
     };
   };
@@ -29869,6 +29998,8 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
       canCancel:!base.recoveryRequired && !outcome.raw?.isSdePhysicalBlockerReturnMove,
       canDelete,
       canRetarget:Boolean(canRetarget), // SDE_RETARGET_CAPABILITY_INDEPENDENT
+      route:base.route ? {...base.route,routeResourceClaims:buildRouteResourceClaims(base.route.routeResources || [],true)} : null,
+      routeResourceClaims:base.route ? buildRouteResourceClaims(base.route.routeResources || [],true) : [],
       explanation:`Canonical active outcome (${outcome.selectionReason || "validated"}) er fysisk validert og gjeldende for steget.`
     };
   });
@@ -29915,6 +30046,13 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
         canCancel:false,
         canDelete:false,
         canRetarget:resolveCanRetarget(candidate),
+        route:candidate.raw?.sdeCanonicalRoute ? {
+          ...cloneSdeCanonicalValue(candidate.raw.sdeCanonicalRoute),
+          routeResourceClaims:buildRouteResourceClaims(candidate.raw.sdeCanonicalRoute.routeResources || [],false)
+        } : null,
+        routeResourceClaims:candidate.raw?.sdeCanonicalRoute
+          ? buildRouteResourceClaims(candidate.raw.sdeCanonicalRoute.routeResources || [],false)
+          : [],
         blockedBy:sortSdeCanonicalStrings(candidate.unmetDependencies || candidate.dependencies || []),
         explanation:"Canonical kjedesteg er fysisk validert, men sperret til dependencies er Utført."
       };
@@ -30089,6 +30227,10 @@ function compareSdeCanonicalCardProjectionWithLegacy(cardProjection, legacy={}){
 function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection={}){
   const plan = cloneSdeCanonicalValue(canonicalPlan) || {};
   const cards = cloneSdeCanonicalValue(cardProjection) || {};
+  const buildRouteResourceClaims = (routeResources=[],active=false)=>sortSdeCanonicalStrings(routeResources).map(resource=>({
+    resource,
+    state:active ? "ACTIVE_ROUTE_RESOURCE" : "DEFERRED_ROUTE_RESOURCE"
+  }));
   const candidates = Array.isArray(plan.candidateOutcomes) ? plan.candidateOutcomes : [];
   const outcomeById = new Map(candidates.map(outcome=>[outcome.candidateOutcomeId, outcome]));
   const actionKeyToOutcomeId = new Map(candidates.flatMap(outcome=>[
@@ -30257,6 +30399,11 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
       startOrder:getRank(card.activeOutcomeId),
       endOrder:null,
       routeResources,
+      routeResourceClaims:buildRouteResourceClaims(
+        card.route?.routeResources || routeResources,
+        card.status === "actionable"
+      ),
+      route:cloneSdeCanonicalValue(card.route || null),
       physicalValidation:cloneSdeCanonicalValue(outcome.physicalValidation || {valid:true}),
       producerProvenance:cloneSdeCanonicalValue(card.producerProvenance || {producer:outcome.producer, provenance:outcome.provenance}),
       legacyAliases:sortSdeCanonicalObjects(card.legacyAliases || outcome.legacyAliases || []),
@@ -30412,7 +30559,8 @@ function buildSdeCanonicalReservationProjection(canonicalPlan={}, cardProjection
         releasedAfterStep:reservation?.releasedAfterStep || "",
         startOrder:reservation?.startOrder ?? null,
         accepted:Boolean(reservation && !rejectedReservationIds.has(reservation.reservationId)),
-        routeResources:reservation?.routeResources || []
+        routeResources:reservation?.routeResources || [],
+        routeResourceClaims:reservation?.routeResourceClaims || []
       };
     }))
   })));
@@ -31726,6 +31874,13 @@ function buildSdeCanonicalCardPreviewCardHtml(card, variant="actionable"){
   const dependencies = sortSdeCanonicalStrings(card.blockedBy || card.dependencyIds || []);
   const sourceSlot = card.sourceSlot || card.previousSourceSlot || "Ukjent";
   const targetSlot = card.targetSlot || card.previousTargetSlot || "Ukjent";
+  const route = card.route || null;
+  const viaSlots = Array.isArray(route?.viaSlots) ? route.viaSlots.map(normalizeSlot).filter(Boolean) : [];
+  const reversalPoint = normalizeSlot(route?.reversalPoint);
+  const approachSide = String(route?.approachSide || "").trim().toUpperCase();
+  const routeDetailHtml = viaSlots.length || reversalPoint || approachSide
+    ? `<div class="sde-night-card-override sde-canonical-multileg-route"><strong>Fysisk kjørevei</strong><span>${escapeHtml([sourceSlot,...viaSlots,targetSlot].join(" → "))}${viaSlots.length ? ` · via ${escapeHtml(viaSlots.join(", "))}` : ""}${reversalPoint ? ` · vending ${escapeHtml(reversalPoint)}` : ""}${approachSide ? ` · adkomst ${escapeHtml(approachSide)}` : ""}</span></div>`
+    : "";
   return `<article class="sde-canonical-preview-card ${escapeHtml(variant)}" data-sde-canonical-preview-card="${escapeHtml(card.canonicalCardId || card.activeOutcomeId || "")}" aria-disabled="true">
     <div class="sde-canonical-preview-card-top">
       <div class="sde-canonical-preview-vehicle">${escapeHtml(card.vehicleId || "Ukjent")}</div>
@@ -31734,6 +31889,7 @@ function buildSdeCanonicalCardPreviewCardHtml(card, variant="actionable"){
     <div class="sde-canonical-preview-route" aria-label="Canonical source og target">
       <strong>${escapeHtml(sourceSlot)}</strong><b>→</b><strong>${escapeHtml(targetSlot)}</strong>
     </div>
+    ${routeDetailHtml}
     <div class="sde-canonical-preview-tags">
       <span class="sde-canonical-preview-tag">Steg ${escapeHtml(card.sequenceStep || "ukjent")}</span>
       ${card.chainId ? `<span class="sde-canonical-preview-tag">Kjede ${escapeHtml(card.chainId)}</span>` : ""}
@@ -43725,10 +43881,20 @@ function getSdeCanonicalProductionVisibleCards(reader){
 }
 
 function applySdeCanonicalHandlerActionableGate(reader, initialAdapters){
-  const blockedCards = (reader.cardProjection.actionableCards || []).flatMap(card=>{
+  const nonReadyCards = (reader.cardProjection.actionableCards || []).filter(card=>{
     const adapter = initialAdapters[card.canonicalCardId];
-    if(adapter?.ready) return [];
-    return [{
+    return adapter?.ready !== true;
+  });
+  const isAlreadyProcessed = card=>{
+    const adapter = initialAdapters[card.canonicalCardId];
+    const actionKey = String(adapter?.actionKey || adapter?.outcome?.actionKey || card?.legacyCardId || "").trim();
+    const record = actionKey ? reader.runtimeSnapshot.runtimeState?.actions?.[actionKey] : null;
+    return ["completed","cancelled"].includes(String(record?.action || "").trim());
+  };
+  const processedCards = nonReadyCards.filter(isAlreadyProcessed);
+  const blockedCards = nonReadyCards.filter(card=>!isAlreadyProcessed(card)).map(card=>{
+    const adapter = initialAdapters[card.canonicalCardId];
+    return {
       ...card,
       status:"handler_adapter_blocked",
       active:false,
@@ -43738,27 +43904,28 @@ function applySdeCanonicalHandlerActionableGate(reader, initialAdapters){
       canRetarget:false,
       handlerBlockReasons:Array.from(new Set(adapter?.reasons || ["ukjent handleradapterfeil"])),
       explanation:"Handling krever avklaring: canonical handleradapter er ikke entydig og klar."
-    }];
+    };
   });
-  if(!blockedCards.length){
+  if(!blockedCards.length && !processedCards.length){
     reader.cardProjection.handlerBlockedCards = [];
     return reader;
   }
 
   const blockedOutcomeIds = new Set(blockedCards.map(card=>card.activeOutcomeId));
+  const removedOutcomeIds = new Set([...blockedCards,...processedCards].map(card=>card.activeOutcomeId));
   reader.canonicalPlan.activeOutcomes = (reader.canonicalPlan.activeOutcomes || [])
-    .filter(outcome=>!blockedOutcomeIds.has(outcome.candidateOutcomeId));
+    .filter(outcome=>!removedOutcomeIds.has(outcome.candidateOutcomeId));
   reader.canonicalPlan.reservationsPreview = (reader.canonicalPlan.reservationsPreview || [])
-    .filter(item=>!blockedOutcomeIds.has(item.candidateOutcomeId));
+    .filter(item=>!removedOutcomeIds.has(item.candidateOutcomeId));
   reader.canonicalPlan.overlaysPreview = (reader.canonicalPlan.overlaysPreview || [])
-    .filter(item=>!blockedOutcomeIds.has(item.candidateOutcomeId));
+    .filter(item=>!removedOutcomeIds.has(item.candidateOutcomeId));
   reader.canonicalPlan.outcomesByObligationStep = (reader.canonicalPlan.outcomesByObligationStep || []).map(group=>{
-    if(!blockedOutcomeIds.has(group.activeOutcome?.candidateOutcomeId)) return group;
-    return {...group, activeOutcome:null, selectionReason:"handler_adapter_blocked"};
+    if(!removedOutcomeIds.has(group.activeOutcome?.candidateOutcomeId)) return group;
+    return {...group, activeOutcome:null, selectionReason:blockedOutcomeIds.has(group.activeOutcome?.candidateOutcomeId) ? "handler_adapter_blocked" : "completed_action_suppressed"};
   });
   reader.canonicalPlan.activeChains = (reader.canonicalPlan.activeChains || []).map(chain=>({
     ...chain,
-    steps:(chain.steps || []).map(step=>blockedOutcomeIds.has(step.candidateOutcomeId) ? {...step,active:false} : step)
+    steps:(chain.steps || []).map(step=>removedOutcomeIds.has(step.candidateOutcomeId) ? {...step,active:false} : step)
   }));
   const adapterDiagnostics = blockedCards.map(card=>({
     code:"handler_adapter_blocked",
@@ -43781,7 +43948,8 @@ function applySdeCanonicalHandlerActionableGate(reader, initialAdapters){
     ...(reader.canonicalPlan.metadata || {}),
     activeOutcomeCount:reader.canonicalPlan.activeOutcomes.length,
     diagnosticCount:reader.canonicalPlan.diagnostics.length,
-    handlerBlockedOutcomeCount:blockedCards.length
+    handlerBlockedOutcomeCount:blockedCards.length,
+    completedActionSuppressedOutcomeCount:processedCards.length
   };
 
   reader.cardProjection = buildSdeCanonicalCardProjection(reader.canonicalPlan, {
@@ -44560,6 +44728,13 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
   const sourceSlot = normalizeSlot(card.sourceSlot || card.previousSourceSlot) || "Ukjent";
   const targetSlot = normalizeSlot(card.targetSlot || card.previousTargetSlot) || "Ukjent";
   const dependencies = sortSdeCanonicalStrings(card.blockedBy || card.dependencyIds || []);
+  const route = card.route || row.sdeCanonicalRoute || null;
+  const viaSlots = Array.isArray(route?.viaSlots) ? route.viaSlots.map(normalizeSlot).filter(Boolean) : [];
+  const reversalPoint = normalizeSlot(route?.reversalPoint);
+  const approachSide = String(route?.approachSide || "").trim().toUpperCase();
+  const routeDetailHtml = viaSlots.length || reversalPoint || approachSide
+    ? `<div class="sde-night-card-override sde-canonical-multileg-route"><strong>Fysisk kjørevei</strong><span>${escapeHtml([sourceSlot,...viaSlots,targetSlot].join(" → "))}${viaSlots.length ? ` · via ${escapeHtml(viaSlots.join(", "))}` : ""}${reversalPoint ? ` · vending ${escapeHtml(reversalPoint)}` : ""}${approachSide ? ` · adkomst ${escapeHtml(approachSide)}` : ""}</span></div>`
+    : "";
   const stateLabel = exiting ? "Exiting" : handlerBlocked ? "Handling krever avklaring" : blocked ? "Avventer dependency" : "Canonical aktiv";
   const actionKey = adapter?.actionKey || getSdeMoveActionKey(row) || card.canonicalCardId;
   const workshopExitRequestId = String(row.workshopExitRequestId || "").trim();
@@ -44592,6 +44767,7 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
       ${workshopExitMetaHtml}
     </div>
     ${workshopExitReasonHtml}
+    ${routeDetailHtml}
     ${exiting ? `<span class="sde-release-cancelled-message">${escapeHtml(card.visualText || "Annullert. Kortet avsluttes.")}</span>` : ""}
     ${blocked && !handlerBlocked ? `<div class="sde-night-card-override"><strong>Fremtidig kjedesteg</strong><span>${escapeHtml(card.explanation || "Steget åpnes når dependencies er Utført.")}</span><span>Sperret av: ${escapeHtml(dependencies.join(", ") || "ukjent dependency")}</span></div>` : ""}
     ${handlerBlocked ? `<div class="sde-night-card-override"><strong>Handling krever avklaring</strong><span>${escapeHtml(card.explanation || "Canonical handleradapter er ikke entydig og klar.")}</span></div>` : ""}

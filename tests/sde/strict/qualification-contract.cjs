@@ -116,6 +116,32 @@ const STRICT_INVARIANT_IDS = Object.freeze([
   "INV-MENU-003",
   "INV-MENU-004",
   "INV-MENU-005",
+  "INV-MULTILEG-001",
+  "INV-MULTILEG-002",
+  "INV-MULTILEG-003",
+  "INV-MULTILEG-004",
+  "INV-MULTILEG-005",
+  "INV-MULTILEG-006",
+  "INV-MULTILEG-007",
+  "INV-MULTILEG-008",
+  "INV-MULTILEG-009",
+  "INV-MULTILEG-010",
+  "INV-MULTILEG-011",
+  "INV-MULTILEG-012",
+  "INV-MULTILEG-013",
+  "INV-MULTILEG-014",
+  "INV-MULTILEG-015",
+  "INV-MULTILEG-016",
+  "INV-MULTILEG-017",
+  "INV-MULTILEG-018",
+  "INV-MULTILEG-019",
+  "INV-MULTILEG-020",
+  "INV-MULTILEG-021",
+  "INV-MULTILEG-022",
+  "INV-MULTILEG-023",
+  "INV-MULTILEG-024",
+  "INV-MULTILEG-025",
+  "INV-MULTILEG-026",
   "INV-RELIEF-001",
   "INV-RELIEF-002",
   "INV-RELIEF-003",
@@ -200,11 +226,11 @@ const STRICT_INVARIANT_IDS = Object.freeze([
 const STRICT_TOTAL = STRICT_INVARIANT_IDS.length;
 const DETERMINISM_RUNS = 3;
 const STRICT_REPLAY_TIMEOUT_MS = 120_000;
-const BASELINE_REPLAY_TIMEOUT_MS = 180_000;
+const BASELINE_REPLAY_TIMEOUT_MS = 240_000;
 const CHILD_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
-if (STRICT_TOTAL !== 193 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
-  throw new Error("active strict invariant catalog must contain exactly 193 unique IDs");
+if (STRICT_TOTAL !== 219 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
+  throw new Error("active strict invariant catalog must contain exactly 219 unique IDs");
 }
 
 function canonical(value) {
