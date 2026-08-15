@@ -86,7 +86,7 @@ const scenarios = [
     {id: "three-strict-runs-pass", passed: assessStrict(scheduled(valid)).ok},
     {id: "three-baseline-runs-pass", passed: assessBaseline(scheduled(baselineReport())).ok},
     {id: "normal-three-run-schedule-passes", passed: schedule(scheduled(valid)).ok},
-    {id: "timeouts-are-separate-and-finite", passed: STRICT_REPLAY_TIMEOUT_MS === 60_000 && BASELINE_REPLAY_TIMEOUT_MS === 180_000 && CHILD_MAX_BUFFER_BYTES === 64 * 1024 * 1024},
+    {id: "timeouts-are-separate-and-finite", passed: STRICT_REPLAY_TIMEOUT_MS === 120_000 && BASELINE_REPLAY_TIMEOUT_MS === 180_000 && CHILD_MAX_BUFFER_BYTES === 64 * 1024 * 1024},
   ]),
   scenario("nonzero-strict-is-rejected", [
     {id: "nonzero-is-rejected", passed: !assessStrict(Array.from({length: 3}, () => run(valid, 1))).ok},

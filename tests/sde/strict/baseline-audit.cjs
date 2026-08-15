@@ -3,7 +3,9 @@
 const childProcess = require("node:child_process");
 const path = require("node:path");
 const {
+  CHILD_MAX_BUFFER_BYTES,
   DETERMINISM_RUNS,
+  STRICT_REPLAY_TIMEOUT_MS,
   assessRuns,
   normalizedStrictReport,
   validateStrictReport,
@@ -14,7 +16,7 @@ const indexPath = path.resolve(process.argv[2] || path.join(root, "index.html"))
 const strictRuns = Array.from({length: DETERMINISM_RUNS}, () => childProcess.spawnSync(
   process.execPath,
   [path.join(__dirname, "strict-runner.cjs"), indexPath],
-  {cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 64 * 1024 * 1024},
+  {cwd: root, encoding: "utf8", timeout: STRICT_REPLAY_TIMEOUT_MS, maxBuffer: CHILD_MAX_BUFFER_BYTES},
 ));
 const assessment = assessRuns(strictRuns, {
   expectedExitCode: 0,

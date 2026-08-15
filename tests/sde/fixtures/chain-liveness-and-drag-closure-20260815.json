@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "sde-chain-liveness-and-drag-closure-fixture-v1",
+  "drag": {
+    "name": "empty-safe-target-first-relief-prestage-fails",
+    "placements": [
+      ["9", "DRAG-SAFE-MAIN"],
+      ["12N", "DRAG-SAFE-BLOCKER"]
+    ],
+    "source": "9",
+    "requestedTarget": "12S",
+    "firstRejectedRelief": "VN",
+    "targetPhysicallyEmpty": true,
+    "infrastructureUnavailable": [],
+    "requireActualPointerDrag": true
+  },
+  "orphanDependency": {
+    "name": "historical-75-76-missing-main-predecessor",
+    "placements": [
+      ["6N", "75-76"],
+      ["11S", "74-53"]
+    ],
+    "actions": {
+      "night-placement-release|75-76|10N|6N": {
+        "action": "completed",
+        "time": "2026-08-14T20:00:00.000Z",
+        "actualStateRevision": "fixture-actual-r1",
+        "snapshot": {
+          "vehicle": "75-76",
+          "fromSlot": "10N",
+          "toSlot": "6N",
+          "stableActionKey": "night-placement-release|75-76|10N|6N",
+          "sdePhysicalChainId": "fixture-chain-75-76",
+          "sdePhysicalIntentId": "fixture-intent-75-76",
+          "sdePhysicalObligationId": "fixture-obligation-75-76",
+          "sdePhysicalPlanRevision": "fixture-plan-r1",
+          "sdePhysicalStepId": "fixture-chain-75-76|release-1",
+          "sdePhysicalChainStep": 1,
+          "sdePhysicalChainStepCount": 3,
+          "sdePhysicalDependsOn": [],
+          "sdePhysicalDependencyRole": "prerequisite",
+          "sdeTrappedEgressRouteResources": [
+            "track-access|10|north",
+            "fixture-chain|75-76"
+          ]
+        }
+      }
+    },
+    "row": {
+      "vehicle": "75-76",
+      "fromSlot": "6N",
+      "arrivalSlot": "6N",
+      "originalFromSlot": "6N",
+      "recommendedSlot": "10N",
+      "toSlot": "10N",
+      "stableActionKey": "night-placement-recovery|75-76|6N|10N",
+      "needKey": "fixture-recovery-need|75-76|6N|10N",
+      "source": "sanitized historical recovery fixture",
+      "canonicalProducer": "physical_blocker_guard",
+      "canonicalPurpose": "physical-chain",
+      "isManualOnly": true,
+      "isSdePhysicalBlockerReturnMove": true,
+      "sdeRecoveryUsesPostMainTopology": true,
+      "sdePhysicalChainId": "fixture-chain-75-76",
+      "sdePhysicalIntentId": "fixture-intent-75-76",
+      "sdePhysicalObligationId": "fixture-obligation-75-76",
+      "sdePhysicalPlanRevision": "fixture-plan-r1",
+      "sdePhysicalStepId": "fixture-chain-75-76|recovery-1",
+      "sdePhysicalChainStep": 3,
+      "sdePhysicalChainStepCount": 3,
+      "sdePhysicalDependsOn": [
+        "night-placement-hard-blocked|74-53|11S|10S"
+      ],
+      "sdePhysicalDependencyRole": "return",
+      "sdePhysicalDependencyLabel": "Venter på hovedflyttingen 74-53 11S til 10S.",
+      "canonicalChainStepActive": true,
+      "sdeTrappedEgressRouteResources": [
+        "track-access|10|north",
+        "fixture-chain|75-76"
+      ],
+      "sdePhysicalAccessReliefChain": {
+        "context": "target_access_temporary_relief",
+        "chainId": "fixture-chain-75-76",
+        "intentId": "fixture-intent-75-76",
+        "obligationId": "fixture-obligation-75-76",
+        "planRevision": "fixture-plan-r1",
+        "releaseActionKey": "night-placement-release|75-76|10N|6N",
+        "mainActionKey": "night-placement-hard-blocked|74-53|11S|10S",
+        "returnActionKey": "night-placement-recovery|75-76|6N|10N",
+        "blockerVehicle": "75-76",
+        "blockerFromSlot": "10N",
+        "holdingSlot": "6N",
+        "returnTargetSlot": "10N",
+        "blockedVehicle": "74-53",
+        "blockedFromSlot": "11S",
+        "mainTargetSlot": "10S",
+        "accessResource": "track-access|10|north",
+        "routeResources": [
+          "track-access|10|north",
+          "fixture-chain|75-76"
+        ],
+        "sequenceStepCount": 3
+      }
+    },
+    "missingDependency": "night-placement-hard-blocked|74-53|11S|10S",
+    "expectedRebuiltPredecessor": {
+      "vehicle": "74-53",
+      "source": "11S",
+      "target": "10S"
+    },
+    "historicalTechnicalIntegrity": "FAIL"
+  }
+}

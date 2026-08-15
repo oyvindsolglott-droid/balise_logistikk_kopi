@@ -18794,6 +18794,65 @@ function getSdePhysicalBlockerReturnPlanSummary(row){
     : "Retur må vurderes etter utført frigjøring.";
 }
 
+function buildSdeCompletePhysicalReliefCandidateSelection(blockedRow, blockState, sourceRows=[], context={}){
+  const initialAvoidSlots = (Array.isArray(context?.avoidSlots) ? context.avoidSlots : [])
+    .map(normalizeSlot)
+    .filter(Boolean);
+  const rejectedIncompleteTargets = [];
+  const attemptLimit = Math.max(1,getSdeCanonicalSlotInventory().length + 2);
+  for(let attempt=0;attempt<attemptLimit;attempt+=1){
+    const freeingMove = buildSdePhysicalBlockerFreeingMove(blockedRow,blockState,sourceRows,{
+      ...context,
+      avoidSlots:[...initialAvoidSlots,...rejectedIncompleteTargets],
+      sequenceReservedSlots:Array.isArray(context?.sequenceReservedSlots)
+        ? context.sequenceReservedSlots
+        : initialAvoidSlots
+    });
+    if(!freeingMove) break;
+    const targetSlot = normalizeSlot(freeingMove.recommendedSlot || freeingMove.toSlot);
+    const chainId = getSdePhysicalDependencyChainId(blockedRow,blockState,freeingMove);
+    const vnChainPlan = buildSdeTemporaryVnReliefChainPlan(blockedRow,blockState,freeingMove,chainId);
+    const accessChainPlan = vnChainPlan ? null : buildSdeTemporaryAccessReliefChainPlan(
+      blockedRow,
+      blockState,
+      freeingMove,
+      chainId,
+      {reservedSlots:Array.isArray(context?.reservedSlots) ? context.reservedSlots : []}
+    );
+    const alternateChainPlan = vnChainPlan || accessChainPlan ? null : buildSdeCanonicalAlternateReliefChainPlan(
+      blockedRow,
+      blockState,
+      freeingMove,
+      chainId
+    );
+    const completeChainPlan = vnChainPlan || accessChainPlan || alternateChainPlan;
+    if(blockState?.accessAssessment?.targetAccessBlocked !== true || completeChainPlan){
+      return {
+        freeingMove,
+        chainId,
+        vnChainPlan,
+        accessChainPlan,
+        alternateChainPlan,
+        completeChainPlan,
+        rejectedIncompleteTargets:sortSdeCanonicalStrings(rejectedIncompleteTargets),
+        candidateSearchExhausted:false
+      };
+    }
+    if(!targetSlot || rejectedIncompleteTargets.includes(targetSlot)) break;
+    rejectedIncompleteTargets.push(targetSlot);
+  }
+  return {
+    freeingMove:null,
+    chainId:"",
+    vnChainPlan:null,
+    accessChainPlan:null,
+    alternateChainPlan:null,
+    completeChainPlan:null,
+    rejectedIncompleteTargets:sortSdeCanonicalStrings(rejectedIncompleteTargets),
+    candidateSearchExhausted:true
+  };
+}
+
 function annotateSdePhysicalBlockerFreeingMove(row, blockedRow, blockState, blocker, targetSlot="", options={}){
   const freeingTarget = normalizeSlot(targetSlot || row?.recommendedSlot || row?.toSlot);
   const blockerVehicle = sanitizeVehicleValue(blocker?.vehicle || row?.vehicle);
@@ -22770,31 +22829,18 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
           .map(([, target]) => target)
           .filter(Boolean)
         : [];
-      let freeingMove = buildSdePhysicalBlockerFreeingMove(row, blockState, sourceRows, {
+      const reliefSelection = buildSdeCompletePhysicalReliefCandidateSelection(row, blockState, sourceRows, {
         avoidSlots:[...reservedSlots, ...otherStableReleaseTargets, ...getVnClaimAvoidSlots(rowKey)],
-        sequenceReservedSlots:[...reservedSlots, ...getVnClaimAvoidSlots(rowKey)]
+        sequenceReservedSlots:[...reservedSlots, ...getVnClaimAvoidSlots(rowKey)],
+        reservedSlots:[...reservedSlots]
       });
-      let freeingKey = getSdeMoveActionKey(freeingMove);
-      const chainId = getSdePhysicalDependencyChainId(row, blockState, freeingMove);
-      const vnChainPlan = buildSdeTemporaryVnReliefChainPlan(row, blockState, freeingMove, chainId);
-      const accessChainPlan = vnChainPlan ? null : buildSdeTemporaryAccessReliefChainPlan(
-        row,
-        blockState,
-        freeingMove,
-        chainId,
-        {reservedSlots:[...reservedSlots]}
-      );
-      const alternateChainPlan = vnChainPlan || accessChainPlan ? null : buildSdeCanonicalAlternateReliefChainPlan(
-        row,
-        blockState,
-        freeingMove,
-        chainId
-      );
-      const completeChainPlan = vnChainPlan || accessChainPlan || alternateChainPlan;
-      if(blockState?.accessAssessment?.targetAccessBlocked && !completeChainPlan){
-        freeingMove = null;
-        freeingKey = "";
-      }
+      const freeingMove = reliefSelection.freeingMove;
+      const freeingKey = getSdeMoveActionKey(freeingMove);
+      const chainId = reliefSelection.chainId || getSdePhysicalDependencyChainId(row, blockState, freeingMove);
+      const vnChainPlan = reliefSelection.vnChainPlan;
+      const accessChainPlan = reliefSelection.accessChainPlan;
+      const alternateChainPlan = reliefSelection.alternateChainPlan;
+      const completeChainPlan = reliefSelection.completeChainPlan;
       const rejectedRowHistory = (Array.isArray(blockState.blockers) ? blockState.blockers : [])
         .flatMap(blocker => buildSdeRejectedPhysicalReleaseRows(row, blockState, blocker, {chainId}));
       const rejectedRows = rejectedRowHistory.map((rejectedRow, index) => {
@@ -22832,7 +22878,9 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
         .find(intent=>intent?.rejectedTargets?.length);
       const noSafeReleaseReason = contextualRejection?.rejectedTargets?.includes("VN")
         ? "VN ble brukeravvist i gjeldende replankontekst, og ingen annen komplett sikker frigjøringsslot finnes."
-        : "Ingen trygg frigjøringsslot er tilgjengelig i gjeldende sporplan.";
+        : reliefSelection.rejectedIncompleteTargets.length
+          ? `Alle fysisk trygge frigjøringskandidater ble undersøkt; ufullstendige chain-kandidater (${reliefSelection.rejectedIncompleteTargets.join(", ")}) ble forkastet før commit.`
+          : "Ingen trygg frigjøringsslot er tilgjengelig i gjeldende sporplan.";
       const dependencyLabel = freeingMove && freeingKey
         ? `${rejectedTargetsText ? `Tidligere frigjøringsmål ${rejectedTargetsText} er avvist. ` : ""}Venter på frigjøringssteg: ${sanitizeVehicleValue(freeingMove.vehicle)} ${normalizeSlot(freeingMove.fromSlot || freeingMove.arrivalSlot)} → ${normalizeSlot(freeingMove.recommendedSlot || freeingMove.toSlot)}.`
         : noSafeReleaseReason;
@@ -29673,6 +29721,43 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
   const conflicts = Array.isArray(plan.conflicts) ? plan.conflicts : [];
   const activeOutcomes = Array.isArray(plan.activeOutcomes) ? plan.activeOutcomes : [];
   const actionKeyToOutcomeId = new Map(candidates.map(candidate=>[candidate.actionKey, candidate.candidateOutcomeId]).filter(([key])=>key));
+  const outcomeAliasesByDependency = candidates.reduce((aliases,candidate)=>{
+    [candidate.actionKey,candidate.candidateId,candidate.candidateOutcomeId,candidate.legacyCardId]
+      .map(value=>String(value || "").trim())
+      .filter(Boolean)
+      .forEach(key=>aliases.set(key,[...(aliases.get(key) || []),candidate]));
+    return aliases;
+  },new Map());
+  const completedActionKeys = new Set(Object.entries(actionRecords)
+    .filter(([,record])=>record?.action === "completed")
+    .map(([key])=>String(key || "").trim())
+    .filter(Boolean));
+  const resolveDependencyLiveness = dependencyKey=>{
+    const key = String(dependencyKey || "").trim();
+    const directOutcomeId = actionKeyToOutcomeId.get(key) || "";
+    const liveMatches = candidates.filter(candidate=>
+      (candidate.candidateOutcomeId === directOutcomeId || (outcomeAliasesByDependency.get(key) || []).includes(candidate))
+      &&
+      !["completed","cancelled","exiting","superseded","inactive"].includes(String(candidate?.status || "").toLowerCase())
+    );
+    if(liveMatches.length === 1) return {kind:"live_predecessor",key,outcomeId:liveMatches[0].candidateOutcomeId};
+    if(completedActionKeys.has(key)) return {kind:"completed_predecessor",key,outcomeId:""};
+    const record = actionRecords[key] || {};
+    const successorKey = String(
+      record.supersededByActionKey
+      || record.replacedByCardId
+      || record.replacementActionKey
+      || record.successorActionKey
+      || ""
+    ).trim();
+    const successorOutcomeId = successorKey ? actionKeyToOutcomeId.get(successorKey) || "" : "";
+    const successorMatches = successorKey ? candidates.filter(candidate=>
+      (candidate.candidateOutcomeId === successorOutcomeId || (outcomeAliasesByDependency.get(successorKey) || []).includes(candidate))
+      && !["completed","cancelled","exiting","superseded","inactive"].includes(String(candidate?.status || "").toLowerCase())
+    ) : [];
+    if(successorMatches.length === 1) return {kind:"successor_mapping",key,outcomeId:successorMatches[0].candidateOutcomeId,successorKey};
+    return {kind:"missing",key,outcomeId:"",successorKey};
+  };
   const dependencyGraph = new Map(candidates.map(candidate=>[
     candidate.candidateOutcomeId,
     (candidate.dependencies || []).map(key=>actionKeyToOutcomeId.get(key)).filter(Boolean)
@@ -29806,8 +29891,21 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
       && (candidate.status === "future" || candidate.unmetDependencies?.length)
       && !cyclicOutcomeIds.has(candidate.candidateOutcomeId)
     );
+    const orphanDependencyCandidates = futureCandidates.map(candidate=>({
+      candidate,
+      missingDependencies:(candidate.unmetDependencies || candidate.dependencies || [])
+        .map(resolveDependencyLiveness)
+        .filter(item=>item.kind === "missing")
+        .map(item=>item.key)
+    })).filter(item=>item.missingDependencies.length);
     let blockedCard = null;
-    if(!activeCard && futureCandidates.length === 1 && getChainId(futureCandidates[0]) && !blockingConflicts.length){
+    if(
+      !activeCard
+      && futureCandidates.length === 1
+      && orphanDependencyCandidates.length === 0
+      && getChainId(futureCandidates[0])
+      && !blockingConflicts.length
+    ){
       const candidate = futureCandidates[0];
       blockedCard = {
         ...buildCardBase(candidate),
@@ -29839,7 +29937,8 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
     if(!needsDiagnostic) return;
     let diagnosticType = "no_actionable_outcome";
     let severity = "warning";
-    if(cyclic.length){ diagnosticType = "cyclic_dependency"; severity = "error"; }
+    if(orphanDependencyCandidates.length){ diagnosticType = "orphan_dependency"; severity = "error"; }
+    else if(cyclic.length){ diagnosticType = "cyclic_dependency"; severity = "error"; }
     else if(blockingConflicts.some(conflict=>conflict.code === "stale_graphic_override_source")){ diagnosticType = "stale_or_inconsistent_override"; }
     else if(blockingConflicts.some(conflict=>conflict.code === "pendulum_stale_north_source")){ diagnosticType = "pendulum_stale_north_source"; }
     else if(blockingConflicts.some(conflict=>conflict.code === "candidate_source_conflict")){ diagnosticType = "candidate_source_conflict"; }
@@ -29856,6 +29955,7 @@ function buildSdeCanonicalCardProjection(canonicalPlan={}, options={}){
     else if(activeCard){ diagnosticType = "suppressed_alternative"; severity = "info"; }
     const explanations = {
       cyclic_dependency:"Dependency-kjeden er syklisk og kan ikke projiseres som handlingskort.",
+      orphan_dependency:"Dependency-kjedesteget mangler levende forgjenger, ferskt completion-bevis og gyldig successor-mapping; det kan ikke rendres operativt.",
       competing_targets:"Flere fysisk mulige targets konkurrerer uten entydig canonical authority.",
       identity_ambiguity:"Canonical identitet eller authority er tvetydig for steget.",
       slot_conflict:"Canonical målspor har en konflikt som sperrer kortprojeksjon.",
@@ -42787,6 +42887,221 @@ function isSdeCanonicalAutomaticReplanSource(row={}){
     /BLOCKED_SOURCE|BLOCKED_TARGET|REPLAN_REQUIRED|BLOCKED_UNRESOLVED/.test(sourceText);
 }
 
+function getSdeCanonicalDependencyPlan(row={}){
+  return row?.sdePhysicalAccessReliefChain
+    || row?.sdePhysicalVnReliefChain
+    || row?.sdeCanonicalAlternateReliefChain
+    || null;
+}
+
+function getSdeCanonicalSnapshotActualRows(snapshot={}){
+  const sources = Array.isArray(snapshot?.actualSources) ? snapshot.actualSources : [];
+  const selected = sources.find(source=>source?.selected === true) || sources[0] || null;
+  return Array.isArray(selected?.rows)
+    ? selected.rows
+    : Array.isArray(snapshot?.legacy?.actualSlots) ? snapshot.legacy.actualSlots : [];
+}
+
+function isSdeCanonicalDependencyCompletionActualStateProven(actionKey, dependentRow={}, snapshot={}){
+  const key = String(actionKey || "").trim();
+  const record = snapshot?.runtimeState?.actions?.[key] || null;
+  if(!key || record?.action !== "completed") return false;
+  const actualRows = getSdeCanonicalSnapshotActualRows(snapshot);
+  const actualHas = (vehicle,slot)=>actualRows.some(item=>
+    normalizeVehicleToken(item?.vehicleId || item?.vehicle || item?.mat) === normalizeVehicleToken(vehicle)
+    && normalizeSlot(item?.slot || item?.sourceSlot || item?.fromSlot) === normalizeSlot(slot)
+  );
+  const completedSnapshot = record?.snapshot || {};
+  const completedVehicle = sanitizeVehicleValue(completedSnapshot.vehicle || record.vehicle);
+  const completedTarget = normalizeSlot(completedSnapshot.toSlot || completedSnapshot.recommendedSlot || record.toSlot);
+  if(completedVehicle && completedTarget && actualHas(completedVehicle,completedTarget)) return true;
+  const plan = getSdeCanonicalDependencyPlan(dependentRow) || {};
+  if(key === String(plan.releaseActionKey || "").trim()){
+    return actualHas(plan.blockerVehicle,plan.holdingSlot || "VN");
+  }
+  if((Array.isArray(plan.completedPrefixActionKeys) ? plan.completedPrefixActionKeys : [])
+    .map(value=>String(value || "").trim()).includes(key)){
+    return actualHas(plan.blockerVehicle,plan.holdingSlot || "VN");
+  }
+  if(key === String(plan.mainActionKey || "").trim()){
+    return actualHas(plan.blockedVehicle,plan.mainTargetSlot);
+  }
+  return false;
+}
+
+function buildSdeCanonicalReconstructedPredecessorRow(dependentRow={}, dependencyKey="", snapshot={}){
+  const key = String(dependencyKey || "").trim();
+  const plan = getSdeCanonicalDependencyPlan(dependentRow);
+  const chainId = String(dependentRow?.sdePhysicalChainId || plan?.chainId || "").trim();
+  if(!key || !plan || !chainId) return null;
+  const intentId = String(dependentRow?.sdePhysicalIntentId || plan.intentId || "").trim();
+  const obligationId = String(dependentRow?.sdePhysicalObligationId || plan.obligationId || `physical-chain|${chainId}`).trim();
+  const planRevision = String(dependentRow?.sdePhysicalPlanRevision || plan.planRevision || "").trim();
+  const stepCount = Math.max(1,Number(dependentRow?.sdePhysicalChainStepCount || plan.sequenceStepCount || 3));
+  const common = {
+    source:"SDE automatic chain-liveness reconciliation",
+    canonicalProducer:"physical_blocker_guard",
+    canonicalPurpose:"physical-chain",
+    isManualOnly:true,
+    sdePhysicalChainId:chainId,
+    sdePhysicalIntentId:intentId,
+    sdePhysicalObligationId:obligationId,
+    sdePhysicalPlanRevision:planRevision,
+    sdePhysicalChainStepCount:stepCount,
+    canonicalChainStepActive:true,
+    sdePhysicalResolutionContext:String(plan.context || dependentRow?.sdePhysicalResolutionContext || "").trim(),
+    sdeTrappedEgressChainStep:Boolean(plan.sdeTrappedEgressChain || dependentRow?.sdeTrappedEgressChainStep),
+    sdeTrappedEgressRouteResources:sortSdeCanonicalStrings(plan.routeResources || dependentRow?.sdeTrappedEgressRouteResources || []),
+    ...(dependentRow?.sdePhysicalAccessReliefChain ? {sdePhysicalAccessReliefChain:{...plan}} : {}),
+    ...(dependentRow?.sdePhysicalVnReliefChain ? {sdePhysicalVnReliefChain:{...plan}} : {}),
+    ...(dependentRow?.sdeCanonicalAlternateReliefChain ? {sdeCanonicalAlternateReliefChain:{...plan}} : {})
+  };
+  if(key === String(plan.mainActionKey || "").trim()){
+    const vehicle = sanitizeVehicleValue(plan.blockedVehicle);
+    const fromSlot = normalizeSlot(plan.blockedFromSlot);
+    const toSlot = normalizeSlot(plan.mainTargetSlot);
+    if(!vehicle || !fromSlot || !toSlot) return null;
+    return {
+      ...common,
+      vehicle,fromSlot,arrivalSlot:fromSlot,originalFromSlot:fromSlot,recommendedSlot:toSlot,toSlot,
+      stableActionKey:key,
+      needKey:`sde-chain-liveness-main-need|${key}`,
+      sdePhysicalStepId:`${chainId}|main`,
+      sdePhysicalChainStep:Math.max(1,Number(dependentRow?.sdePhysicalChainStep || stepCount) - 1),
+      sdePhysicalDependsOn:String(plan.releaseActionKey || "").trim() ? [String(plan.releaseActionKey).trim()] : [],
+      sdePhysicalDependencyRole:"dependent",
+      sdePhysicalDependencyLabel:"Automatisk gjenoppbygd hovedsteg fra bevart canonical intent.",
+      sdePhysicalHardBlocked:true,
+      sdePhysicalNoSafeReleaseMove:false,
+      sdeChainLivenessReconstructed:true
+    };
+  }
+  if(key === String(plan.releaseActionKey || "").trim()){
+    const vehicle = sanitizeVehicleValue(plan.blockerVehicle);
+    const fromSlot = normalizeSlot(plan.blockerFromSlot);
+    const toSlot = normalizeSlot(plan.holdingSlot || (plan.context === SDE_BUTT_TRACK_TEMPORARY_VN_RELIEF_CONTEXT ? "VN" : ""));
+    if(!vehicle || !fromSlot || !toSlot) return null;
+    return {
+      ...common,
+      vehicle,fromSlot,arrivalSlot:fromSlot,originalFromSlot:fromSlot,recommendedSlot:toSlot,toSlot,
+      stableActionKey:key,
+      needKey:`sde-chain-liveness-release-need|${key}`,
+      isSdePhysicalBlockerFreeingMove:true,
+      sdePhysicalStepId:`${chainId}|release-1`,
+      sdePhysicalChainStep:1,
+      sdePhysicalDependsOn:[],
+      sdePhysicalDependencyRole:"prerequisite",
+      sdePhysicalDependencyLabel:"Automatisk gjenoppbygd frigjøringssteg fra bevart canonical intent.",
+      sdeChainLivenessReconstructed:true
+    };
+  }
+  return null;
+}
+
+function reconcileSdeCanonicalDependencyRows(rows=[], snapshot={}){
+  const reconciledRows = (Array.isArray(rows) ? rows : []).map(row=>cloneSdeCanonicalValue(row) || {});
+  const actionKeyFor = row=>String(getSdeMoveActionKey(row) || row?.actionKey || row?.stableActionKey || "").trim();
+  const actionKeys = new Set(reconciledRows.map(actionKeyFor).filter(Boolean));
+  const completionProvenKeys = new Set();
+  const reconstructedKeys = new Set();
+  const successorMappings = [];
+  const findings = [];
+  const dependencyKeysFor = row=>sortSdeCanonicalStrings(
+    Array.isArray(row?.sdePhysicalDependsOn) ? row.sdePhysicalDependsOn : Array.isArray(row?.dependsOn) ? row.dependsOn : []
+  );
+  const actionRecords = snapshot?.runtimeState?.actions || {};
+  const resolveSuccessor = dependencyKey=>{
+    const record = actionRecords?.[dependencyKey] || {};
+    const successor = String(
+      record.supersededByActionKey
+      || record.replacedByCardId
+      || record.replacementActionKey
+      || record.successorActionKey
+      || ""
+    ).trim();
+    return successor && actionKeys.has(successor) ? successor : "";
+  };
+
+  for(let pass=0;pass<Math.max(2,reconciledRows.length + 2);pass+=1){
+    let changed = false;
+    for(const row of [...reconciledRows]){
+      const dependencies = dependencyKeysFor(row);
+      if(!dependencies.length) continue;
+      const rewritten = [];
+      for(const dependencyKey of dependencies){
+        if(actionKeys.has(dependencyKey)){
+          rewritten.push(dependencyKey);
+          continue;
+        }
+        if(isSdeCanonicalDependencyCompletionActualStateProven(dependencyKey,row,snapshot)){
+          completionProvenKeys.add(dependencyKey);
+          rewritten.push(dependencyKey);
+          continue;
+        }
+        const successor = resolveSuccessor(dependencyKey);
+        if(successor){
+          rewritten.push(successor);
+          successorMappings.push({dependencyKey,successor,chainId:String(row?.sdePhysicalChainId || "").trim()});
+          changed = true;
+          continue;
+        }
+        const reconstructed = buildSdeCanonicalReconstructedPredecessorRow(row,dependencyKey,snapshot);
+        if(reconstructed){
+          const reconstructedKey = actionKeyFor(reconstructed);
+          if(reconstructedKey && !actionKeys.has(reconstructedKey)){
+            reconciledRows.push(reconstructed);
+            actionKeys.add(reconstructedKey);
+            reconstructedKeys.add(reconstructedKey);
+            changed = true;
+          }
+          rewritten.push(dependencyKey);
+          continue;
+        }
+        rewritten.push(dependencyKey);
+      }
+      if(stableStringifySdeCanonicalValue(rewritten) !== stableStringifySdeCanonicalValue(dependencies)){
+        row.sdePhysicalDependsOn = rewritten;
+      }
+    }
+    if(!changed) break;
+  }
+
+  reconciledRows.forEach(row=>{
+    const missingDependencies = dependencyKeysFor(row).filter(key=>
+      !actionKeys.has(key)
+      && !completionProvenKeys.has(key)
+      && !isSdeCanonicalDependencyCompletionActualStateProven(key,row,snapshot)
+    );
+    if(!missingDependencies.length) return;
+    row.sdeChainLivenessDiagnosticOnly = true;
+    row.sdeOutcomeActive = false;
+    findings.push({
+      code:"orphan_dependency_reconciliation_exhausted",
+      diagnosticType:"orphan_dependency_reconciliation_exhausted",
+      severity:"error",
+      chainId:String(row?.sdePhysicalChainId || "").trim(),
+      intentId:String(row?.sdePhysicalIntentId || "").trim(),
+      obligationId:String(row?.sdePhysicalObligationId || "").trim(),
+      stepId:String(row?.sdePhysicalStepId || "").trim(),
+      vehicleId:sanitizeVehicleValue(row?.vehicle),
+      sourceSlot:normalizeSlot(row?.fromSlot || row?.arrivalSlot),
+      targetSlot:normalizeSlot(row?.recommendedSlot || row?.toSlot),
+      missingDependencies,
+      message:"Canonical dependency mangler levende forgjenger, ferskt completion-bevis og gyldig successor-mapping. Kortet er fail-closed diagnostic-only, mens original intent beholdes."
+    });
+  });
+
+  return {
+    rows:sortSdeCanonicalObjects(reconciledRows),
+    operativeRows:sortSdeCanonicalObjects(reconciledRows.filter(row=>row?.sdeChainLivenessDiagnosticOnly !== true)),
+    completionProvenKeys:sortSdeCanonicalStrings([...completionProvenKeys]),
+    reconstructedKeys:sortSdeCanonicalStrings([...reconstructedKeys]),
+    successorMappings:sortSdeCanonicalObjects(successorMappings),
+    findings:sortSdeCanonicalObjects(findings),
+    originalIntentPreserved:true
+  };
+}
+
 function buildSdeCanonicalAutomaticReplanRows(rows=[], snapshot={}){
   const replans = [];
   const mapped = (Array.isArray(rows) ? rows : []).map(row=>{
@@ -42851,6 +43166,22 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   const snapshot = cloneSdeCanonicalValue(runtimeSnapshot) || captureSdeCanonicalShadowRuntimeSnapshot();
   const automaticReplan = buildSdeCanonicalAutomaticReplanRows(snapshot.legacy?.finalCards || [],snapshot);
   if(snapshot.legacy) snapshot.legacy.finalCards = automaticReplan.rows;
+  const chainLiveness = reconcileSdeCanonicalDependencyRows(snapshot.legacy?.finalCards || [],snapshot);
+  if(snapshot.legacy){
+    snapshot.legacy.finalCards = chainLiveness.operativeRows;
+    snapshot.legacy.activeCards = (snapshot.legacy.activeCards || []).filter(row=>
+      !chainLiveness.findings.some(finding=>
+        finding.chainId && finding.chainId === String(row?.sdePhysicalChainId || "").trim()
+        && finding.stepId && finding.stepId === String(row?.sdePhysicalStepId || "").trim()
+      )
+    );
+    snapshot.legacy.visibleCards = (snapshot.legacy.visibleCards || []).filter(row=>
+      !chainLiveness.findings.some(finding=>
+        finding.chainId && finding.chainId === String(row?.sdePhysicalChainId || "").trim()
+        && finding.stepId && finding.stepId === String(row?.sdePhysicalStepId || "").trim()
+      )
+    );
+  }
   const diagnosticOnlyRows = (snapshot.legacy?.finalCards || []).filter(row=>row?.sdeTrappedEgressDiagnosticOnly === true);
   const passiveBlockedSlotSweep = reconcileSdePassiveBlockedSlotRows(snapshot); // SDE_BLOCKED_SLOT_PASSIVE_SWEEP
   const activeAuthorities = Object.fromEntries(Object.entries(snapshot.runtimeState?.activeAuthorities || {}).map(([key,value])=>[
@@ -42872,6 +43203,7 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
   canonicalPlan.diagnostics = sortSdeCanonicalObjects([
     ...(canonicalPlan.diagnostics || []),
     ...(passiveBlockedSlotSweep.findings || []),
+    ...(chainLiveness.findings || []),
     ...diagnosticOnlyRows.map(row=>{
       const diagnostic = row.sdeTrappedEgressDiagnostic || {};
       return {
@@ -42896,6 +43228,13 @@ function buildSdeCanonicalProductionReaderSource(runtimeSnapshot=null){
     automaticReplanCount:automaticReplan.replans.length,
     automaticReplans:automaticReplan.replans,
     originalIntentPreserved:automaticReplan.replans.every(item=>Object.prototype.hasOwnProperty.call(item,"requestedTarget"))
+      && chainLiveness.originalIntentPreserved === true,
+    chainLivenessReconstructedCount:chainLiveness.reconstructedKeys.length,
+    chainLivenessReconstructedActionKeys:chainLiveness.reconstructedKeys,
+    chainLivenessCompletionProofCount:chainLiveness.completionProvenKeys.length,
+    chainLivenessSuccessorMappingCount:chainLiveness.successorMappings.length,
+    orphanDependencyDiagnosticCount:chainLiveness.findings.length,
+    dependencyLivenessInvariant:"DEPENDENCY_BLOCKED_CARD_MUST_HAVE_RESOLVABLE_PREDECESSOR"
   };
   const cardProjection = buildSdeCanonicalCardProjection(canonicalPlan, {actionRecords:snapshot.runtimeState?.actions});
   cardProjection.diagnostics = sortSdeCanonicalObjects([
