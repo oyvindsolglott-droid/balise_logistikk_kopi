@@ -23,6 +23,7 @@ const drivers = [
   "lifecycle-closure-invariants.cjs",
   "menu-invariants.cjs",
   "multileg-route-invariants.cjs",
+  "actual-drag-source-invariants.cjs",
 ];
 
 function runDriver(driver) {

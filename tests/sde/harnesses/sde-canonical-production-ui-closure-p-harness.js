@@ -59,6 +59,10 @@ assert.doesNotMatch(diagnosticHtml, /<button\b|Utført|Annullert|Slett kort/);
 global.getSdeNightPlacementLayoutRows = ()=>[["2N","4S","5N","10S","5M"]];
 global.washMachineSlots = ["VN","VS"];
 global.isSdeNightPlacementOrdinarySlot = slot=>!["VN","VS"].includes(normalizeSlot(slot));
+global.rebuildSdeNightPlacementCanonicalActualIndex = ()=>({
+  actualRevision:"canonical-actual-test-revision",
+  valid:true
+});
 const graphicReader = {
   cardProjection:{
     actionableCards:[{canonicalCardId:"card-1",activeOutcomeId:"outcome-1"}]

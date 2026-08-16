@@ -8,7 +8,7 @@
     "test:sde:strict": "node tests/sde/strict/strict-runner.cjs",
     "test:sde:baseline-audit": "node tests/sde/strict/baseline-audit.cjs",
     "test:sde:determinism": "node tests/sde/strict/determinism-audit.cjs",
-    "test:sde:mutations": "node tests/sde/strict/mutation-audit.cjs && node tests/sde/strict/focused-final-mutation-audit.cjs && node tests/sde/strict/multileg-route-mutation-audit.cjs",
+    "test:sde:mutations": "node tests/sde/strict/mutation-audit.cjs && node tests/sde/strict/focused-final-mutation-audit.cjs && node tests/sde/strict/multileg-route-mutation-audit.cjs && node tests/sde/strict/actual-drag-source-mutation-audit.cjs",
     "test:sde:contracts": "node --test --test-concurrency=1 tests/sde/firewall.test.cjs",
     "test:sde:qualification": "npm run test:sde:determinism && npm run test:sde:contracts && npm run test:sde:mutations",
     "test:sde:all": "node tests/sde-quality-engine/run.cjs --suite all",

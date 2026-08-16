@@ -607,8 +607,8 @@ const mutations = [
     id: "Y5-ORIGINAL-SNAPSHOT-AFTER-PROGRESS",
     apply: html => replaceOnce(
       html,
-      "const source = state.grunnoppstilling || {}; // SDE_EGRESS_FRESH_ACTUAL",
-      "const source = globalThis.__sdeEgressOriginalSnapshot || (globalThis.__sdeEgressOriginalSnapshot={...(state.grunnoppstilling||{})}); // mutation: original snapshot",
+      "const snapshot = getSdeNightPlacementCanonicalActualStateSnapshot({fresh:true}); // SDE_EGRESS_FRESH_ACTUAL",
+      "const snapshot = globalThis.__sdeEgressOriginalSnapshot || (globalThis.__sdeEgressOriginalSnapshot=getSdeNightPlacementCanonicalActualStateSnapshot({fresh:true})); // mutation: original snapshot",
       "fresh trapped actual state",
     ),
     catches: ["INV-EGRESS-009", "INV-EGRESS-011"],
