@@ -1,3 +1,8 @@
+"""HISTORICAL_FIXTURE_ONLY: deterministic legacy CLI/test data.
+
+Production planning modules must never import this module.
+"""
+
 from typing import Dict, Optional
 
 from sde_models import SLOTS, Vehicle

@@ -2,7 +2,6 @@ from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 
 from sde_models import SLOTS, Move, Scenario, Vehicle
-from sde_scenarios import initial_test_status, initial_test_vehicles
 
 
 
@@ -541,13 +540,9 @@ def search_best_plan_for_scenario(start: Scenario, max_depth: int = 3) -> Scenar
     return scenarios[0]
 
 
-def search_best_plan(max_depth: int = 3) -> Scenario:
-    start = Scenario(
-        status=initial_test_status(),
-        vehicles=initial_test_vehicles(),
-    )
-
-    return search_best_plan_for_scenario(start, max_depth=max_depth)
+def search_best_plan(scenario: Scenario, max_depth: int = 3) -> Scenario:
+    """Compatibility wrapper that requires caller-supplied canonical state."""
+    return search_best_plan_for_scenario(scenario, max_depth=max_depth)
 
 
 def minute_to_time(minutes: int) -> str:
@@ -620,16 +615,6 @@ def print_first_step_candidates_for_scenario(scenario: Scenario, limit: int = 12
     print()
 
 
-def print_first_step_candidates(limit: int = 12) -> None:
-    scenario = Scenario(
-        status=initial_test_status(),
-        vehicles=initial_test_vehicles(),
-    )
-
+def print_first_step_candidates(scenario: Scenario, limit: int = 12) -> None:
+    """Print candidates for an explicit scenario; no fixture is loaded here."""
     print_first_step_candidates_for_scenario(scenario, limit=limit)
-
-
-if __name__ == "__main__":
-    print_first_step_candidates()
-    best_plan = search_best_plan(max_depth=4)
-    print_plan(best_plan)

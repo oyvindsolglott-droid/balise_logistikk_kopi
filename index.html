@@ -22015,14 +22015,32 @@ function shouldSdePreferDedicatedVnForGlobalRelief(sourceSlot, targetSlot){
     && getSdeTrappedEgressMainSourceEnds(source,target)?.includes("north");
 }
 
-const SDE_DIRECT_WASH_TRANSIT_TARGETS_BY_SOURCE = Object.freeze({
-  "4N":["10S","11S","12S"]
+const SDE_DIRECT_WASH_TRANSIT_TOPOLOGY_BY_SOURCE = Object.freeze({
+  "4N":Object.freeze({
+    targets:Object.freeze(["10S","11S","12S"]),
+    sourceEnds:Object.freeze(["north"]),
+    targetEnds:Object.freeze(["north"]),
+    viaSlots:Object.freeze(["VN","VS"]),
+    routeResources:Object.freeze(["VN","VS"]),
+    reversalPoint:"VN",
+    approachSide:"NORTH"
+  }),
+  "VN":Object.freeze({
+    targets:Object.freeze(["10N","11N","12N"]),
+    sourceEnds:Object.freeze(["south"]),
+    targetEnds:Object.freeze(["north"]),
+    viaSlots:Object.freeze(["VS"]),
+    routeResources:Object.freeze(["VS"]),
+    reversalPoint:"",
+    approachSide:"NORTH"
+  })
 });
 
 function getSdeDirectWashTransitRouteAssessment(row, occupancy=getSdeTrappedEgressActualOccupancy()){
   const {vehicle,fromSlot,toSlot} = getSdePhysicalMoveParts(row);
-  const allowedTargets = SDE_DIRECT_WASH_TRANSIT_TARGETS_BY_SOURCE[fromSlot] || [];
-  const routeResources = ["VN","VS"];
+  const topology = SDE_DIRECT_WASH_TRANSIT_TOPOLOGY_BY_SOURCE[fromSlot] || null;
+  const allowedTargets = topology?.targets || [];
+  const routeResources = [...(topology?.routeResources || [])];
   const unavailable = reason=>({
     eligible:false,
     vehicle,
@@ -22049,14 +22067,23 @@ function getSdeDirectWashTransitRouteAssessment(row, occupancy=getSdeTrappedEgre
   if(unavailableWashResource || (typeof isTxpWashRouteUnavailable === "function" && isTxpWashRouteUnavailable())){
     return unavailable(`Vaskespor-ruten er markert utilgjengelig${unavailableWashResource ? ` i ${unavailableWashResource}` : ""}.`);
   }
-  const sourceOption = getSdeTrappedEgressAccessOptions(occupancy,fromSlot,["north"])
+  const sourceOption = getSdeTrappedEgressAccessOptions(occupancy,fromSlot,topology.sourceEnds)
     .find(option=>option.clear);
-  if(!sourceOption) return unavailable(`Nordenden fra ${fromSlot} er ikke fri.`);
+  if(!sourceOption) return unavailable(`Den modellerte utkjøringsenden fra ${fromSlot} er ikke fri.`);
   const afterDeparture = cloneSdeTrappedEgressOccupancy(occupancy);
   afterDeparture.delete(fromSlot);
-  const targetOption = getSdeTrappedEgressAccessOptions(afterDeparture,toSlot,["north"])
+  const targetOption = getSdeTrappedEgressAccessOptions(afterDeparture,toSlot,topology.targetEnds)
     .find(option=>option.clear);
-  if(!targetOption) return unavailable(`Nordlig innkjøring til ${toSlot} er ikke fri.`);
+  if(!targetOption) return unavailable(`Den modellerte innkjøringsenden til ${toSlot} er ikke fri.`);
+  const canonicalRoute = buildSdeCanonicalMultilegRoute({
+    sourceSlot:fromSlot,
+    targetSlot:toSlot,
+    viaSlots:topology.viaSlots,
+    reversalPoint:topology.reversalPoint,
+    approachSide:topology.approachSide,
+    routeResources,
+    active:true
+  });
   return {
     eligible:true,
     vehicle,
@@ -22065,8 +22092,9 @@ function getSdeDirectWashTransitRouteAssessment(row, occupancy=getSdeTrappedEgre
     sourceOption,
     targetOption,
     routeResources,
+    canonicalRoute,
     routeKind:"direct_wash_transit",
-    reason:`Direkte fysisk rute ${fromSlot} → Vaskesporet (VN/VS) → ${toSlot} er fri. Ingen mellomparkering eller frigjøringskjede er nødvendig.`
+    reason:`Direkte fysisk rute ${fromSlot} → ${topology.viaSlots.join("/")} → ${toSlot} er fri. Ingen mellomparkering eller frigjøringskjede er nødvendig.`
   };
 }
 
@@ -23181,13 +23209,21 @@ function buildSdePhysicalBlockerGuardMoves(rows=[], options={}){
       return;
     }
 
+    const directWashTransit = getSdeDirectWashTransitRouteAssessment(row);
     const directWorkshopRouteResources = getSdeDirectWorkshopRouteResources(
       normalizeSlot(row.fromSlot || row.arrivalSlot),
       normalizeSlot(row.recommendedSlot || row.toSlot)
     );
-    guarded.push(directWorkshopRouteResources.length
-      ? {...row,sdeTrappedEgressRouteResources:directWorkshopRouteResources}
-      : row);
+    const directRow = directWashTransit.eligible
+      ? annotateSdeCanonicalMultilegRoute({
+          ...row,
+          sdeDirectWashTransit:true,
+          sdeTrappedEgressRouteResources:[...directWashTransit.routeResources]
+        },directWashTransit.canonicalRoute)
+      : directWorkshopRouteResources.length
+        ? {...row,sdeTrappedEgressRouteResources:directWorkshopRouteResources}
+        : row;
+    guarded.push(directRow);
     const targetSlot = normalizeSlot(row.recommendedSlot || row.toSlot);
     if(targetSlot) reservedSlots.add(targetSlot);
   });
@@ -25079,6 +25115,18 @@ function getSdeNextActionsText(rows,currentDayType,options={}){
     };
   };
 
+  const getSdeVyDemoServiceSteps = ()=>{
+    const demoRow = (Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [])
+      .find(row=>String(row?.source || "") === "Vy-demo");
+    const demoVehicle = sanitizeVehicleValue(demoRow?.vehicle) || "DEMO-SETT";
+    return [
+      {time:"16:45",heading:"Nå: Neste utførbare handling – 16:45",detail:`${demoVehicle} | plattform → brua`,reason:`Årsak: ${demoVehicle} har autoritativt registrert servicebehov. Første nødvendige handling er å frigjøre plattformspor og transportere kjøretøyet til behandlingsløpet.`,timingRank:0},
+      {time:"16:47",heading:"Nå: Neste utførbare handling – 16:47",detail:`${demoVehicle} | brua → spor 4`,reason:`Årsak: ${demoVehicle} føres gjennom spor 4 for å komme inn i riktig behandlingsløp mot vaskemaskinen.`,timingRank:1},
+      {time:"16:50",heading:"Nå: Neste utførbare handling – 16:50",detail:`${demoVehicle} | spor 4 → vaskemaskin`,reason:`Årsak: ${demoVehicle} må vaskes og klargjøres før serviceplassering.`,timingRank:1},
+      {time:"16:55",heading:"Nå: Neste utførbare handling – 16:55",detail:`${demoVehicle} | vaskemaskin → 6N`,reason:`Årsak: Servicebehov krever opphold i 6N for tømming/fylling før endelig plassering.`,timingRank:1}
+    ];
+  };
+
   const getSdeTopActionPreviews = ()=>{
     const candidates = [];
 
@@ -25090,36 +25138,7 @@ function getSdeNextActionsText(rows,currentDayType,options={}){
     });
 
     if(state.demoMode === "vy"){
-      const serviceSteps = [
-        {
-          time:"16:45",
-          heading:"Nå: Neste utførbare handling – 16:45",
-          detail:"74-24 | 823/2 → brua",
-          reason:"Årsak: 74-24 er 823/2 og skal tas ut av trafikk grunnet toalettfeil. Første nødvendige handling er å frigjøre plattformspor for blokkeringer og transportere kjøretøyet til fylle-/tømmespor 6.",
-          timingRank:0
-        },
-        {
-          time:"16:47",
-          heading:"Nå: Neste utførbare handling – 16:47",
-          detail:"74-24 | brua → spor 4",
-          reason:"Årsak: 74-24 føres tilbake gjennom spor 4 for å komme inn i riktig behandlingsløp mot vaskemaskinen.",
-          timingRank:1
-        },
-        {
-          time:"16:50",
-          heading:"Nå: Neste utførbare handling – 16:50",
-          detail:"74-24 | spor 4 → vaskemaskin",
-          reason:"Årsak: 74-24 må vaskes og klargjøres før sluttplassering i 6N.",
-          timingRank:1
-        },
-        {
-          time:"16:55",
-          heading:"Nå: Neste utførbare handling – 16:55",
-          detail:"74-24 | vaskemaskin → 6N",
-          reason:"Årsak: Servicebehov. 74-24 må stå ca. 30 minutter i 6N for tømming/fylling før flytting til endelig plassering.",
-          timingRank:1
-        }
-      ];
+      const serviceSteps = getSdeVyDemoServiceSteps();
 
       serviceSteps.forEach(step=>{
         candidates.push({
@@ -25179,7 +25198,7 @@ function getSdeNextActionsText(rows,currentDayType,options={}){
         return false;
       }
 
-      if(/\b74-24\b/.test(detail) && /\b(?:2S|2N|3S|3M|3N|plattform)\s*→\s*6N\b/i.test(detail)){
+      if(preview.row?.serviceRequired === true && /\b(?:2S|2N|3S|3M|3N|plattform)\s*→\s*6N\b/i.test(detail)){
         return false;
       }
 
@@ -25197,40 +25216,14 @@ function getSdeNextActionsText(rows,currentDayType,options={}){
   let topActionPreviews = getSdeTopActionPreviews();
 
   if(!suppressDemo && state.demoMode === "vy"){
-    topActionPreviews = [
-      {
-        group:"Kan utføres",
-        row:{arrival:"16:45", priority:"Høy", status:"Planlagt", source:"SDE behandlingssekvens"},
-        headingText:"Nå: Neste utførbare handling – 16:45",
-        detailText:"74-24 | 823/2 → brua",
-        reasonText:"Årsak: 74-24 er 823/2 og skal tas ut av trafikk grunnet toalettfeil. Første nødvendige handling er å frigjøre plattformspor for blokkeringer og transportere kjøretøyet til fylle-/tømmespor 6.",
-        timingRank:0
-      },
-      {
-        group:"Kan utføres",
-        row:{arrival:"16:47", priority:"Høy", status:"Planlagt", source:"SDE behandlingssekvens"},
-        headingText:"Nå: Neste utførbare handling – 16:47",
-        detailText:"74-24 | brua → spor 4",
-        reasonText:"Årsak: 74-24 føres tilbake gjennom spor 4 for å komme inn i riktig behandlingsløp mot vaskemaskinen.",
-        timingRank:1
-      },
-      {
-        group:"Kan utføres",
-        row:{arrival:"16:50", priority:"Høy", status:"Planlagt", source:"SDE behandlingssekvens"},
-        headingText:"Nå: Neste utførbare handling – 16:50",
-        detailText:"74-24 | spor 4 → vaskemaskin",
-        reasonText:"Årsak: 74-24 må vaskes og klargjøres før sluttplassering i 6N.",
-        timingRank:1
-      },
-      {
-        group:"Kan utføres",
-        row:{arrival:"16:55", priority:"Høy", status:"Planlagt", source:"SDE behandlingssekvens"},
-        headingText:"Nå: Neste utførbare handling – 16:55",
-        detailText:"74-24 | vaskemaskin → 6N",
-        reasonText:"Årsak: Servicebehov. 74-24 må stå ca. 30 minutter i 6N for tømming/fylling før flytting til endelig plassering.",
-        timingRank:1
-      }
-    ];
+    topActionPreviews = getSdeVyDemoServiceSteps().map(step=>({
+      group:"Kan utføres",
+      row:{arrival:step.time,priority:"Høy",status:"Planlagt",source:"SDE behandlingssekvens",serviceRequired:true},
+      headingText:step.heading,
+      detailText:step.detail,
+      reasonText:step.reason,
+      timingRank:step.timingRank
+    }));
   }
 
   const nextBestAction = topActionPreviews[0] || null;
@@ -25458,13 +25451,16 @@ function applyVyDemoScenario(){
   state.preDemoSnapshot = makePreDemoSnapshot();
   state.demoMode = "vy";
 
+  const demoVehicles = Object.values(getDropsVehicleCatalog()).flat().slice(0,9);
+  const [demoA,demoB,demoC,demoD,demoE,demoF,demoG,demoH,demoI] = demoVehicles;
+
   state.grunnoppstilling = {
     ...state.grunnoppstilling,
-    "1S":"75-21",
+    "1S":demoA,
     "1N":"",
-    "2S":"74-24",
-    "2N":"74-09",
-    "3S":"74-37",
+    "2S":demoB,
+    "2N":demoC,
+    "3S":demoD,
     "3M":"",
     "3N":"",
     "4S":"",
@@ -25472,22 +25468,22 @@ function applyVyDemoScenario(){
     "4N":"",
     "5S":"",
     "5M":"",
-    "5N":"74-04",
+    "5N":demoE,
     "6SS":"",
-    "6S":"74-12",
+    "6S":demoF,
     "6N":"",
     "7SS":"",
-    "7S":"74-21",
+    "7S":demoG,
     "7N":"",
-    "8SS":"70-12",
-    "8S":"75-42",
+    "8SS":demoH,
+    "8S":demoI,
     "8N":""
   };
 
   state.planSkifteRows = makeEmptyPlanSkifteRows();
   state.planSkifteRows[0] = {
     time:"16:45",
-    vehicle:"74-24",
+    vehicle:demoB,
     fromSpor:"2S",
     toSpor:"6N",
     crew:"1/2/12",
@@ -25736,10 +25732,15 @@ function getSdeArrivalParkingCandidateSlots(need){
 
 function getSdeServiceTrackNightRole(need){
   const arrivalTrain = String(need?.arrivalTrain || "").trim();
-  const vehicle = sanitizeVehicleValue(need?.vehicle);
+  const semanticTarget = normalizeSlot(
+    need?.preferredServiceSlot ||
+    need?.serviceTargetSlot ||
+    need?.canonicalVehicleStatus?.preferredServiceSlot ||
+    ""
+  );
 
-  if(arrivalTrain === "837") return "837-night-6n";
-  if(arrivalTrain === "835" && vehicle === "74-20") return "835-service-6s";
+  if(["6N","6S"].includes(semanticTarget)) return semanticTarget;
+  if(arrivalTrain === "837") return "6N";
 
   return "";
 }
@@ -25748,9 +25749,13 @@ function getSdeServiceTrackNightRole(need){
 function isSdeLateNightTrack3Candidate(need, slot){
   const candidate = normalizeSlot(slot);
   const arrivalTrain = String(need?.arrivalTrain || "").trim();
-  const vehicle = sanitizeVehicleValue(need?.vehicle);
+  const semanticTarget = normalizeSlot(
+    need?.platformParkingSlot ||
+    need?.canonicalVehicleStatus?.platformParkingSlot ||
+    ""
+  );
 
-  return candidate === "3N" && arrivalTrain === "839" && vehicle === "74-06";
+  return candidate === "3N" && arrivalTrain === "839" && semanticTarget === "3N";
 }
 
 function isSdeSpor3ProductionNeed(need){
@@ -25959,7 +25964,7 @@ function scoreSdeArrivalParkingCandidate(need, slot){
 
   if(isSdeLateNightTrack3Candidate(need, candidate)){
     score += 12;
-    reasons.push(`${candidate} tillates som særvurdering for 839/74-06 når helhetsflyten tilsier at spor 6 bør frigjøres til andre natt-/servicebehov.`);
+    reasons.push(`${candidate} tillates fordi fersk semantisk status angir plattformparkering for denne nattankomsten når spor 6 må frigjøres til andre natt-/servicebehov.`);
   }
 
   if(isSdeSpor3ProductionCandidate(need, candidate)){
@@ -26080,10 +26085,7 @@ function scoreSdeArrivalParkingCandidate(need, slot){
 
   if(["6N","6S"].includes(candidate)){
     const serviceTrackNightRole = getSdeServiceTrackNightRole(need);
-    const preferredServiceSlot =
-      serviceTrackNightRole === "837-night-6n" ? "6N" :
-      serviceTrackNightRole === "835-service-6s" ? "6S" :
-      "";
+    const preferredServiceSlot = normalizeSlot(serviceTrackNightRole);
 
     const hasSpecificServiceTrackNeed = !!preferredServiceSlot;
 
