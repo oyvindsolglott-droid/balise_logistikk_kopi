@@ -1,0 +1,13 @@
+{
+  "fixtureRole": "HISTORICAL_FIXTURE_ONLY",
+  "schemaVersion": "sde-generic-vehicle-id-permutations-v1",
+  "semanticContract": "All physical and operational attributes are identical inside each matrix; only opaque vehicleId values differ.",
+  "directMoveIds": ["69-63", "70-11", "74-51"],
+  "threeStepPermutations": [
+    {"movingVehicle": "70-11", "blockingVehicle": "75-76", "otherVehicle": "74-36"},
+    {"movingVehicle": "69-63", "blockingVehicle": "74-51", "otherVehicle": "75-42"},
+    {"movingVehicle": "75-21", "blockingVehicle": "70-12", "otherVehicle": "74-53"}
+  ],
+  "blockedSlotIds": ["69-64", "70-14", "74-47", "75-20"],
+  "workshopExitIds": ["69-67", "70-10", "74-38"]
+}

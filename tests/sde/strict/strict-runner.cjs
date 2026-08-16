@@ -24,6 +24,8 @@ const drivers = [
   "menu-invariants.cjs",
   "multileg-route-invariants.cjs",
   "actual-drag-source-invariants.cjs",
+  "vehicle-id-policy-invariants.cjs",
+  "vehicle-id-invariance-invariants.cjs",
 ];
 
 function runDriver(driver) {
