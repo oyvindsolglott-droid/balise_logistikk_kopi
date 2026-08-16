@@ -124,6 +124,96 @@ def actual_pointer_drag(page: Page, source_slot: str, target_slot: str) -> dict[
 
 
 class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
+    def test_exact_12n_to_11n_pointer_drag_uses_rendered_canonical_source(self) -> None:
+        placements = [["12N", "70-11"]]
+        with static_server() as base_url, sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            for width, height in ((1280, 900), (390, 844)):
+                with self.subTest(width=width):
+                    context = browser.new_context(viewport={"width": width, "height": height})
+                    page = context.new_page()
+                    page_errors: list[str] = []
+                    page.on("pageerror", lambda error: page_errors.append(str(error)))
+                    page.goto(base_url, wait_until="domcontentloaded")
+                    reset_graphic_fixture(page, placements)
+
+                    source_contract = page.locator(
+                        '[data-sde-night-placement-slot="12N"]'
+                        '[data-sde-night-placement-draggable="1"]'
+                    ).evaluate(
+                        """element => ({
+                          vehicleId:element.dataset.sdeNightPlacementVehicleId||'',
+                          renderedSourceSlot:element.dataset.sdeNightPlacementRenderedSourceSlot||'',
+                          actualRevision:element.dataset.sdeNightPlacementActualRevision||'',
+                          panelRevision:element.closest('#sdeNightPlacementPanel')?.dataset.sdeNightPlacementActualRevision||''
+                        })"""
+                    )
+                    self.assertEqual(source_contract["vehicleId"], "70-11")
+                    self.assertEqual(source_contract["renderedSourceSlot"], "12N")
+                    self.assertTrue(source_contract["actualRevision"])
+                    self.assertEqual(source_contract["actualRevision"], source_contract["panelRevision"])
+
+                    actual_before = page.evaluate("JSON.stringify(state.grunnoppstilling)")
+                    hover = actual_pointer_drag(page, "12N", "11N")
+                    self.assertEqual(hover["state"], "DIRECTLY_AVAILABLE")
+                    self.assertTrue(hover["dragOver"])
+                    self.assertFalse(hover["red"])
+
+                    result = page.evaluate(
+                        """() => {
+                          const reader=buildSdeCanonicalProductionReader();
+                          const cards=[...(reader.cardProjection.actionableCards||[]),...(reader.cardProjection.blockedChainCards||[])];
+                          const exact=cards.find(card=>card.vehicleId==='70-11'&&card.sourceSlot==='12N'&&card.targetSlot==='11N')||null;
+                          const override=Object.values(state.sdeNightPlacementManualOverrides||{})[0]||null;
+                          return {
+                            messageType:sdeNightPlacementDropMessage?.type||'',
+                            messageText:sdeNightPlacementDropMessage?.text||'',
+                            messageState:sdeNightPlacementDropMessage?.targetAvailabilityState||'',
+                            exact:Boolean(exact),
+                            cardCount:cards.length,
+                            source:exact?.sourceSlot||'',
+                            target:exact?.targetSlot||'',
+                            intentId:exact?.canonicalIdentity?.intentId||'',
+                            overrideIntent:override?.intentIdentity||'',
+                            actualRevision:override?.actualStateRevision||'',
+                            plannerInvoked:override?.canonicalPlannerInvoked===true,
+                            integrity:reader.integrityReport.status,
+                            ghosts:document.querySelectorAll('.dragging,.drop-rejected').length,
+                            actualLocation:getSdeCanonicalActualLocationForVehicle('70-11')?.slot||''
+                          };
+                        }"""
+                    )
+                    self.assertEqual(result["messageType"], "info", result)
+                    self.assertEqual(result["messageState"], "DIRECTLY_AVAILABLE", result)
+                    self.assertNotIn("står allerede", result["messageText"].lower())
+                    self.assertTrue(result["exact"], result)
+                    self.assertEqual(result["cardCount"], 1, result)
+                    self.assertEqual([result["source"], result["target"]], ["12N", "11N"])
+                    self.assertTrue(result["intentId"])
+                    self.assertEqual(result["intentId"], result["overrideIntent"])
+                    self.assertTrue(result["actualRevision"])
+                    self.assertTrue(result["plannerInvoked"])
+                    self.assertEqual(result["integrity"], "PASS")
+                    self.assertEqual(result["ghosts"], 0)
+                    self.assertEqual(result["actualLocation"], "12N")
+                    self.assertEqual(page.evaluate("JSON.stringify(state.grunnoppstilling)"), actual_before)
+
+                    page.reload(wait_until="domcontentloaded")
+                    reloaded = page.evaluate(
+                        """() => {
+                          state.sharedSporplanDraftAppliedRevision=1;
+                          getSdeShiftShowcaseData=()=>({score:100,baseScore:100,needs:[],moves:[],scoreMoves:[],unresolved:[],flexibleUnknownParking:[],filteredPastDepartureNeeds:[],totalArrivals:0,solvedArrivals:0,totalDepartures:0,securedDepartures:0,unresolvedCount:0,flexibleUnknownCount:0,baseMoveCount:0,adaptiveMoveCount:0});
+                          const reader=buildSdeCanonicalProductionReader();
+                          const cards=[...(reader.cardProjection.actionableCards||[]),...(reader.cardProjection.blockedChainCards||[])];
+                          return {cards:cards.map(card=>[card.vehicleId,card.sourceSlot,card.targetSlot]),integrity:reader.integrityReport.status};
+                        }"""
+                    )
+                    self.assertEqual(reloaded["cards"], [["70-11", "12N", "11N"]])
+                    self.assertEqual(reloaded["integrity"], "PASS")
+                    self.assertEqual(page_errors, [])
+                    context.close()
+            browser.close()
+
     def test_actual_drag_accepts_empty_relief_target_on_desktop_and_390(self) -> None:
         scenarios = (
             {

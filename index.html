@@ -9788,7 +9788,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 15. august 2026</p>
+<p class="sub">Siste revisjon: 16. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -15677,20 +15677,104 @@ function computeCanonicalActualPlacementViewRows(){
     : computeInndata();
 }
 
-function computeCanonicalActualPlacementRows(){
-  const seenSlots = new Set();
-  const seenVehicleTokens = new Set();
 
-  return computeCanonicalActualPlacementViewRows().filter(row=>{
+let sdeNightPlacementCanonicalActualIndex = null;
+
+
+function buildSdeNightPlacementCanonicalActualStateSnapshot(){
+  const placements = [];
+  const placementsByVehicle = {};
+  const placementsBySlot = {};
+  const vehicleSlots = new Map();
+  const slotRows = new Map();
+
+  computeCanonicalActualPlacementViewRows().forEach((row,index)=>{
     const slot = normalizeSlot(row?.slot);
-    const vehicle = sanitizeVehicleValue(row?.mat);
-    const tokens = splitVehicleList(vehicle).map(normalizeVehicleToken).filter(Boolean);
-    if(!slot || !vehicle || !tokens.length) return false;
-    if(seenSlots.has(slot) || tokens.some(token => seenVehicleTokens.has(token))) return false;
-    seenSlots.add(slot);
-    tokens.forEach(token => seenVehicleTokens.add(token));
-    return true;
+    const vehicleId = sanitizeVehicleValue(row?.mat);
+    const vehicleTokens = Array.from(new Set(
+      splitVehicleList(vehicleId).map(normalizeVehicleToken).filter(Boolean)
+    ));
+    if(!slot || !vehicleId || !vehicleTokens.length) return;
+    const placement = {slot,vehicleId,vehicleTokens,row:{...row},sourceIndex:index};
+    placements.push(placement);
+    if(!slotRows.has(slot)) slotRows.set(slot,[]);
+    slotRows.get(slot).push(placement);
+    vehicleTokens.forEach(token=>{
+      if(!vehicleSlots.has(token)) vehicleSlots.set(token,[]);
+      vehicleSlots.get(token).push(placement);
+    });
   });
+
+  placements.sort((left,right)=>left.slot.localeCompare(right.slot)||left.vehicleId.localeCompare(right.vehicleId));
+  const duplicateVehicleTokens = Array.from(vehicleSlots.entries())
+    .filter(([,rows])=>new Set(rows.map(row=>row.slot)).size > 1)
+    .map(([token])=>token)
+    .sort();
+  const duplicateSlots = Array.from(slotRows.entries())
+    .filter(([,rows])=>rows.length > 1)
+    .map(([slot])=>slot)
+    .sort();
+  const valid = duplicateVehicleTokens.length === 0 && duplicateSlots.length === 0;
+
+  if(valid){
+    placements.forEach(placement=>{
+      placementsBySlot[placement.slot] = placement;
+      placement.vehicleTokens.forEach(token=>{
+        placementsByVehicle[token] = placement;
+      });
+    });
+  }
+
+  const actualRevision = getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
+    placements:placements.map(({slot,vehicleId,vehicleTokens})=>({slot,vehicleId,vehicleTokens})),
+    unavailableInfrastructure:state.txpUnavailableInfrastructure || {},
+    sharedDraftAppliedRevision:state.sharedSporplanDraftAppliedRevision || null
+  }));
+  return {
+    schemaVersion:"sde-canonical-actual-state-snapshot-v1",
+    actualRevision,
+    valid,
+    placements,
+    placementsByVehicle,
+    placementsBySlot,
+    duplicateVehicleTokens,
+    duplicateSlots
+  };
+}
+
+
+function rebuildSdeNightPlacementCanonicalActualIndex(){
+  computeInndataCachedRows = null;
+  sdeNightPlacementCanonicalActualIndex = buildSdeNightPlacementCanonicalActualStateSnapshot();
+  return sdeNightPlacementCanonicalActualIndex;
+}
+
+
+function getSdeNightPlacementCanonicalActualStateSnapshot(options={}){
+  const current = buildSdeNightPlacementCanonicalActualStateSnapshot();
+  if(
+    options?.fresh === true
+    || !sdeNightPlacementCanonicalActualIndex
+    || sdeNightPlacementCanonicalActualIndex.actualRevision !== current.actualRevision
+  ){
+    sdeNightPlacementCanonicalActualIndex = current;
+  }
+  return sdeNightPlacementCanonicalActualIndex;
+}
+
+
+function getSdeCanonicalActualLocationForVehicle(vehicle,snapshot=getSdeNightPlacementCanonicalActualStateSnapshot()){
+  const token = normalizeVehicleToken(vehicle);
+  if(!token || !snapshot?.valid) return null;
+  const placement = snapshot.placementsByVehicle?.[token] || null;
+  return placement ? {slot:placement.slot,vehicleId:placement.vehicleId,actualRevision:snapshot.actualRevision} : null;
+}
+
+
+function computeCanonicalActualPlacementRows(){
+  const snapshot = getSdeNightPlacementCanonicalActualStateSnapshot();
+  if(!snapshot.valid) return [];
+  return snapshot.placements.map(placement=>({...placement.row,slot:placement.slot,mat:placement.vehicleId}));
 }
 
 function buildCanonicalActualPlacementSlotMap(rows=computeCanonicalActualPlacementRows()){
@@ -21812,12 +21896,11 @@ function buildSdeShiftMoveActionControlsHtml(row, encodedActionKey, options={}){
 }
 
 function getSdeTrappedEgressActualOccupancy(){
-  const source = state.grunnoppstilling || {}; // SDE_EGRESS_FRESH_ACTUAL
   const occupancy = new Map();
-  Object.entries(source).forEach(([slotValue,vehicleValue])=>{
-    const slot = normalizeSlot(slotValue);
-    const vehicle = sanitizeVehicleValue(vehicleValue);
-    if(slot && vehicle) occupancy.set(slot,vehicle);
+  const snapshot = getSdeNightPlacementCanonicalActualStateSnapshot({fresh:true}); // SDE_EGRESS_FRESH_ACTUAL
+  if(!snapshot.valid) return occupancy;
+  snapshot.placements.forEach(placement=>{
+    if(placement.slot && placement.vehicleId) occupancy.set(placement.slot,placement.vehicleId);
   });
   return occupancy;
 }
@@ -38203,23 +38286,27 @@ function getSdeNightPlacementManualVehicleKey(vehicle){
 }
 
 function getSdeNightPlacementOriginalFromSlot(vehicle, fallback=""){
-  return normalizeSlot(getSdeCurrentSlotForVehicle(vehicle)) || normalizeSlot(fallback);
+  return getSdePhysicalSlotForVehicle(vehicle) || normalizeSlot(fallback);
 }
 
 function getSdePhysicalSlotForVehicle(vehicle){
-  return normalizeSlot(getSdeCurrentSlotForVehicle(vehicle));
+  return normalizeSlot(getSdeCanonicalActualLocationForVehicle(
+    vehicle,getSdeNightPlacementCanonicalActualStateSnapshot({fresh:true})
+  )?.slot);
 }
 
-function isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot){
+function isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot, renderedActualRevision="", snapshot=getSdeNightPlacementCanonicalActualStateSnapshot({fresh:true})){
   const cleanVehicle = sanitizeVehicleValue(vehicle);
+  const renderedSourceSlot = normalizeSlot(fromSlot);
   const targetSlot = normalizeSlot(toSlot);
-  if(!cleanVehicle || !targetSlot) return false;
-
-  const physicalSlot = getSdePhysicalSlotForVehicle(cleanVehicle);
-  if(physicalSlot && physicalSlot === targetSlot) return true;
-
-  const originalFromSlot = normalizeSlot(fromSlot);
-  return Boolean(originalFromSlot && originalFromSlot === targetSlot);
+  const renderedRevision = String(renderedActualRevision || "").trim();
+  if(!cleanVehicle || !renderedSourceSlot || !targetSlot || !renderedRevision || !snapshot?.valid) return false;
+  const canonicalLocation = getSdeCanonicalActualLocationForVehicle(cleanVehicle,snapshot);
+  return Boolean(
+    canonicalLocation?.slot === targetSlot
+    && renderedSourceSlot === targetSlot
+    && renderedRevision === snapshot.actualRevision
+  );
 }
 
 function isSdeNightPlacementNoOpOverride(override){
@@ -38227,7 +38314,8 @@ function isSdeNightPlacementNoOpOverride(override){
   return isSdeNightPlacementNoOpMove(
     override.vehicle,
     override.originalFromSlot || override.fromSlot || override.payloadFromSlot || override.payloadSlot,
-    override.toSlot
+    override.toSlot,
+    override.actualStateRevision
   );
 }
 
@@ -38236,7 +38324,8 @@ function isSdeNightPlacementMoveAlreadySatisfied(row){
   return isSdeNightPlacementNoOpMove(
     row.vehicle,
     row.originalFromSlot || row.fromSlot || row.arrivalSlot,
-    row.recommendedSlot || row.toSlot
+    row.recommendedSlot || row.toSlot,
+    row.actualStateRevision
   );
 }
 
@@ -38787,7 +38876,7 @@ function buildSdeNightPlacementGeneratedMove(override){
   const toSlot = normalizeSlot(override?.toSlot);
   const actionKey = getSdeNightPlacementGeneratedMoveKey(override);
   if(!vehicle || !fromSlot || !toSlot || !actionKey) return null;
-  if(isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot)) return null;
+  if(isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot, override?.actualStateRevision)) return null;
 
   // Manual orders survive reloads. Re-evaluate their physical route against
   // current actual state so an order created before the direct wash corridor
@@ -39037,7 +39126,7 @@ function buildSdeNightPlacementStepRoleContext(rows=[]){
     const fromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || row?.originalFromSlot);
     const toSlot = normalizeSlot(row?.recommendedSlot || row?.toSlot);
     if(!vehicle || !token || !fromSlot || !toSlot) return;
-    if(isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot)) return;
+    if(isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot, row?.actualStateRevision)) return;
 
     const step = {
       row,
@@ -39370,7 +39459,7 @@ function buildSdeNightPlacementDragOverrideMoves(baseRows){
     const toSlot = normalizeSlot(override.toSlot);
     if(!vehicle || !toSlot) return null;
     if(isSdeNightPlacementOverrideActioned(override)) return null;
-    if(isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot)) return null;
+    if(isSdeNightPlacementNoOpMove(vehicle, fromSlot, toSlot, override?.actualStateRevision)) return null;
 
     const needKey = String(override.needKey || "").trim();
     const moveKey = String(override.moveKey || "").trim();
@@ -39431,12 +39520,13 @@ function buildSdeNightPlacementDragOverrideMoves(baseRows){
   }).filter(Boolean);
 }
 
-function getSdeNightPlacementPhysicalOccupants(){
+function getSdeNightPlacementPhysicalOccupants(snapshot=getSdeNightPlacementCanonicalActualStateSnapshot({fresh:true})){
   const occupants = {};
   const completedLockedSlots = getSdeNightPlacementCompletedLockedSlots();
-  computeCanonicalActualPlacementRows().forEach(row=>{
-    const slot = normalizeSlot(row?.slot);
-    const vehicle = sanitizeVehicleValue(row?.mat);
+  if(!snapshot?.valid) return occupants;
+  snapshot.placements.forEach(placement=>{
+    const slot = placement.slot;
+    const vehicle = placement.vehicleId;
     if(slot && vehicle){
       const completedLocked = completedLockedSlots[slot];
       occupants[slot] = {
@@ -39590,18 +39680,141 @@ function getSdeNightPlacementWashTargetAssessment(targetSlot, row, fromSlot){
   return {ok:true, reason:vnAvailability.reason};
 }
 
-function getSdeNightPlacementActualStateRevision(){
-  return getSdeShiftSnapshotHash(stableStringifySdeCanonicalValue({
-    physicalOccupants:getSdeNightPlacementPhysicalOccupants(),
-    unavailableInfrastructure:state.txpUnavailableInfrastructure || {},
-    sharedDraftAppliedRevision:state.sharedSporplanDraftAppliedRevision || null
-  }));
+function getSdeNightPlacementActualStateRevision(snapshot=getSdeNightPlacementCanonicalActualStateSnapshot({fresh:true})){
+  return String(snapshot?.actualRevision || "");
 }
 
+
+function buildSdeNightPlacementDragIntentPayload(slotEl,intentId=""){
+  const dataset = slotEl?.dataset || {};
+  const vehicleId = sanitizeVehicleValue(
+    dataset.sdeNightPlacementVehicleId || dataset.sdeNightPlacementVehicle
+  );
+  const renderedSourceSlot = normalizeSlot(
+    dataset.sdeNightPlacementRenderedSourceSlot || dataset.sdeNightPlacementFromSlot
+  );
+  const actualRevision = String(dataset.sdeNightPlacementActualRevision || "").trim();
+  const stableIntentId = String(
+    intentId
+    || dataset.sdeNightPlacementIntentId
+    || `sde-drag-intent|${normalizeVehicleToken(vehicleId)}|${renderedSourceSlot}|${actualRevision}|${Date.now()}`
+  ).trim();
+  return {
+    vehicleId,
+    renderedSourceSlot,
+    requestedTarget:normalizeSlot(dataset.sdeNightPlacementRequestedTarget),
+    actualRevision,
+    intentId:stableIntentId,
+    vehicle:vehicleId,
+    slot:renderedSourceSlot,
+    fromSlot:renderedSourceSlot,
+    needKey:String(dataset.sdeNightPlacementNeedKey || "").trim(),
+    moveKey:String(dataset.sdeNightPlacementMoveKey || "").trim(),
+    sourceKind:String(dataset.sdeNightPlacementSourceKind || "").trim(),
+    displayedTargetSlot:normalizeSlot(dataset.sdeNightPlacementCurrentSlot)
+  };
+}
+
+
+function reconcileSdeNightPlacementDragIntent(payload,toSlot){
+  const vehicleId = sanitizeVehicleValue(payload?.vehicleId || payload?.vehicle);
+  const renderedSourceSlot = normalizeSlot(
+    payload?.renderedSourceSlot || payload?.fromSlot || payload?.slot
+  );
+  const requestedTarget = normalizeSlot(toSlot || payload?.requestedTarget);
+  const renderedActualRevision = String(payload?.actualRevision || "").trim();
+  const intentId = String(
+    payload?.intentId
+    || `sde-drag-intent|${normalizeVehicleToken(vehicleId)}|${renderedSourceSlot}|${requestedTarget}|${renderedActualRevision || "legacy"}`
+  ).trim();
+  let snapshot = rebuildSdeNightPlacementCanonicalActualIndex();
+  let reconciliationPasses = 1;
+  const invalid = message=>({
+    ok:false,
+    stateDesync:true,
+    code:"SOURCE_STATE_MISMATCH",
+    vehicleId,
+    renderedSourceSlot,
+    requestedTarget,
+    renderedActualRevision,
+    plannerActualRevision:String(snapshot?.actualRevision || ""),
+    intentId,
+    message
+  });
+  if(!vehicleId || !renderedSourceSlot || !requestedTarget){
+    return invalid("Tilstandsavvik: drag-intenten mangler entydig kjøretøy, rendered source eller målslot.");
+  }
+  if(!snapshot.valid){
+    return {
+      ...invalid(`Tilstandsavvik: canonical actual-state er tvetydig for ${vehicleId}. Ingen plan ble opprettet.`),
+      code:"ACTUAL_STATE_AMBIGUOUS",
+      duplicateVehicleTokens:[...snapshot.duplicateVehicleTokens],
+      duplicateSlots:[...snapshot.duplicateSlots]
+    };
+  }
+
+  let canonicalLocation = getSdeCanonicalActualLocationForVehicle(vehicleId,snapshot);
+  if(!canonicalLocation){
+    return invalid(`Tilstandsavvik: ${vehicleId} mangler entydig canonical actual source. Ingen plan ble opprettet.`);
+  }
+  let sourceMismatch = canonicalLocation.slot !== renderedSourceSlot;
+  let revisionMismatch = !renderedActualRevision || renderedActualRevision !== snapshot.actualRevision;
+  if(sourceMismatch || revisionMismatch){
+    snapshot = rebuildSdeNightPlacementCanonicalActualIndex();
+    reconciliationPasses += 1;
+    if(!snapshot.valid){
+      return {
+        ...invalid(`Tilstandsavvik: canonical actual-state ble tvetydig under automatisk reconciliation for ${vehicleId}.`),
+        code:"ACTUAL_STATE_AMBIGUOUS",
+        duplicateVehicleTokens:[...snapshot.duplicateVehicleTokens],
+        duplicateSlots:[...snapshot.duplicateSlots]
+      };
+    }
+    canonicalLocation = getSdeCanonicalActualLocationForVehicle(vehicleId,snapshot);
+    if(!canonicalLocation){
+      return invalid(`Tilstandsavvik: ${vehicleId} mangler canonical actual source etter automatisk reconciliation.`);
+    }
+    sourceMismatch = canonicalLocation.slot !== renderedSourceSlot;
+    revisionMismatch = !renderedActualRevision || renderedActualRevision !== snapshot.actualRevision;
+  }
+
+  const noOpAuthorized = Boolean(
+    canonicalLocation.slot === requestedTarget
+    && renderedSourceSlot === requestedTarget
+    && renderedActualRevision
+    && renderedActualRevision === snapshot.actualRevision
+  );
+  if(canonicalLocation.slot === requestedTarget && !noOpAuthorized){
+    return invalid(
+      `Tilstandsavvik: rendered source ${renderedSourceSlot} og canonical actual source ${canonicalLocation.slot} bruker ikke samme revision. Visningen må reconcileres før ny planlegging.`
+    );
+  }
+  return {
+    ok:true,
+    code:sourceMismatch || revisionMismatch ? "SOURCE_STATE_MISMATCH" : "SOURCE_STATE_MATCH",
+    sourceStateMismatch:sourceMismatch || revisionMismatch,
+    sourceMismatch,
+    revisionMismatch,
+    automaticallyReconciled:sourceMismatch || revisionMismatch,
+    reconciliationPasses,
+    vehicleId,
+    renderedSourceSlot,
+    effectiveSourceSlot:canonicalLocation.slot,
+    requestedTarget,
+    renderedActualRevision,
+    plannerActualRevision:snapshot.actualRevision,
+    intentId,
+    noOpAuthorized,
+    uniqueIdentity:true,
+    snapshot
+  };
+}
+
+
 function getSdeNightPlacementDragTargetEligibility(payload, toSlot, data=sdeShiftLastRenderedData || getSdeShiftShowcaseData()){
-  const vehicle = sanitizeVehicleValue(payload?.vehicle);
+  const vehicle = sanitizeVehicleValue(payload?.vehicleId || payload?.vehicle);
   const targetSlot = normalizeSlot(toSlot);
-  const fromSlot = normalizeSlot(payload?.slot || payload?.fromSlot || getSdePhysicalSlotForVehicle(vehicle));
+  const fromSlot = normalizeSlot(payload?.renderedSourceSlot || payload?.fromSlot || payload?.slot || getSdePhysicalSlotForVehicle(vehicle));
   const actualStateRevision = getSdeNightPlacementActualStateRevision();
   const unavailable = (targetAvailabilityState, message, extra={}) => ({
     droppable:false,
@@ -39691,14 +39904,46 @@ function getSdeNightPlacementDragTargetEligibility(payload, toSlot, data=sdeShif
 }
 
 function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLastRenderedData || getSdeShiftShowcaseData()){
-  const vehicle = sanitizeVehicleValue(payload?.vehicle);
-  const targetSlot = normalizeSlot(toSlot);
-  const payloadSlot = normalizeSlot(payload?.slot);
-  const payloadFromSlot = normalizeSlot(payload?.fromSlot);
+  const reconciledIntent = reconcileSdeNightPlacementDragIntent(payload,toSlot);
+  const targetSlot = normalizeSlot(toSlot || payload?.requestedTarget);
+  if(!reconciledIntent.ok){
+    return {
+      ok:false,
+      stateDesync:true,
+      sourceStateMismatch:true,
+      plannerRequired:false,
+      plannerInvoked:false,
+      targetAvailabilityState:reconciledIntent.code || "SOURCE_STATE_MISMATCH",
+      vehicle:sanitizeVehicleValue(payload?.vehicleId || payload?.vehicle),
+      vehicleId:sanitizeVehicleValue(payload?.vehicleId || payload?.vehicle),
+      fromSlot:normalizeSlot(payload?.renderedSourceSlot || payload?.fromSlot || payload?.slot),
+      toSlot:targetSlot,
+      intentId:reconciledIntent.intentId,
+      actualStateRevision:reconciledIntent.plannerActualRevision,
+      timeStatus:"SOURCE_STATE_MISMATCH",
+      message:reconciledIntent.message,
+      conflicts:[reconciledIntent.message],
+      affectedVehicles:[],
+      reconciliation:reconciledIntent
+    };
+  }
+  const vehicle = reconciledIntent.vehicleId;
+  const payloadSlot = reconciledIntent.effectiveSourceSlot;
+  const payloadFromSlot = reconciledIntent.effectiveSourceSlot;
   const payloadSourceKind = String(payload?.sourceKind || "").trim();
-  const fromSlot = payloadSlot || payloadFromSlot;
-  const isProjectedSource = Boolean(payloadSlot && payloadFromSlot && payloadSlot !== payloadFromSlot);
+  const fromSlot = reconciledIntent.effectiveSourceSlot;
+  const isProjectedSource = payloadSourceKind === "plan";
   const isCompletedLockedSource = payloadSourceKind === "completedLocked";
+  const reconciliationMeta = {
+    vehicleId:vehicle,
+    intentId:reconciledIntent.intentId,
+    renderedSourceSlot:reconciledIntent.renderedSourceSlot,
+    renderedActualRevision:reconciledIntent.renderedActualRevision,
+    actualStateRevision:reconciledIntent.plannerActualRevision,
+    sourceStateMismatch:reconciledIntent.sourceStateMismatch,
+    automaticallyReconciled:reconciledIntent.automaticallyReconciled,
+    reconciliation:reconciledIntent
+  };
 
   if(!vehicle || !targetSlot){
     return {
@@ -39710,10 +39955,11 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
     };
   }
 
-  if(fromSlot && fromSlot === targetSlot){
+  if(reconciledIntent.noOpAuthorized){
     return {
       ok:false,
       noOp:true,
+      ...reconciliationMeta,
       vehicle,
       fromSlot,
       toSlot:targetSlot,
@@ -39746,22 +39992,18 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
     };
   }
 
-  const physicalSlot = getSdePhysicalSlotForVehicle(vehicle);
-  if(physicalSlot && physicalSlot === targetSlot){
-    return {
-      ok:false,
-      noOp:true,
-      vehicle,
-      fromSlot,
-      toSlot:targetSlot,
-      timeStatus:"UNKNOWN_TIME_MANUAL_REVIEW",
-      message:`${vehicle} står allerede i ${targetSlot}. Ingen skiftebevegelse opprettet.`,
-      conflicts:["Kjøretøyet står allerede fysisk i målsporet."],
-      affectedVehicles:[]
-    };
-  }
-
-  const targetEligibility = getSdeNightPlacementDragTargetEligibility(payload,targetSlot,data);
+  const effectivePayload = {
+    ...(payload || {}),
+    vehicleId:vehicle,
+    vehicle,
+    renderedSourceSlot:fromSlot,
+    slot:fromSlot,
+    fromSlot,
+    requestedTarget:targetSlot,
+    actualRevision:reconciledIntent.plannerActualRevision,
+    intentId:reconciledIntent.intentId
+  };
+  const targetEligibility = getSdeNightPlacementDragTargetEligibility(effectivePayload,targetSlot,data);
   if(!targetEligibility.droppable){
     const occupied = targetEligibility.targetAvailabilityState === "PHYSICALLY_OCCUPIED";
     const unavailableInfrastructure = targetEligibility.targetAvailabilityState === "INFRASTRUCTURE_OUT_OF_SERVICE";
@@ -39905,6 +40147,7 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
     return {
       ok:true,
       ...targetEligibility,
+      ...reconciliationMeta,
       plannerInvoked:true,
       hardPhysicalBlocked:true,
       vehicle,
@@ -39944,6 +40187,7 @@ function buildSdeNightPlacementDropAssessment(payload, toSlot, data=sdeShiftLast
   return {
     ok:true,
     ...targetEligibility,
+    ...reconciliationMeta,
     plannerInvoked:true,
     vehicle,
     fromSlot:assessmentFromSlot,
@@ -40928,7 +41172,9 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     existingOverride?.originalFromSlot ||
     getSdeNightPlacementOriginalFromSlot(assessment.vehicle, payload?.fromSlot || payload?.slot)
   );
-  const generatedId = `night-drag-${Date.now()}`;
+  const generatedId = String(
+    assessment.intentId || payload?.intentId || `night-drag-${Date.now()}`
+  ).trim();
   let generatedActionKey = canonicalReaderMode
     ? `night-placement-drag|${normalizeVehicleToken(assessment.vehicle)}|${originalFromSlot}|${assessment.toSlot}|${generatedId}`
     : existingOverride?.stableActionKey || "";
@@ -41336,6 +41582,7 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
   const layoutRows = getSdeNightPlacementLayoutRows();
   const ordinarySlots = new Set();
   const washSlots = washMachineSlots.map(normalizeSlot).filter(Boolean);
+  const canonicalActualSnapshot = rebuildSdeNightPlacementCanonicalActualIndex();
 
   layoutRows.forEach(row=>{
     row.forEach(slot=>{
@@ -41528,9 +41775,9 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     }
     return "";
   };
-  computeCanonicalActualPlacementRows().forEach(row=>{
-    const slot = normalizeSlot(row?.slot);
-    const vehicle = sanitizeVehicleValue(row?.mat);
+  (canonicalActualSnapshot.valid ? canonicalActualSnapshot.placements : []).forEach(placement=>{
+    const slot = placement.slot;
+    const vehicle = placement.vehicleId;
     if(!vehicle || !slot) return;
     const completedLocked = completedLockedSlots[slot];
     const source = completedLocked && placementVehiclesMatch(completedLocked.vehicle, vehicle)
@@ -41774,6 +42021,9 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
   const unresolvedCount = Object.values(slots)
     .reduce((count,entry) => count + entry.unresolvedRows.length, 0);
   return {
+    actualStateRevision:canonicalActualSnapshot.actualRevision,
+    actualStateValid:canonicalActualSnapshot.valid,
+    canonicalActualSnapshot,
     layoutRows,
     washSlots,
     slots,
@@ -41925,6 +42175,7 @@ function buildSdeNightPlacementSlotTitle(slot, entry, context={}){
 function renderSdeNightPlacementOverview(data, options={}){
   const overview = options?.overview || buildSdeNightPlacementOverviewData(data);
   const canonicalReader = options?.readerMode === "canonical";
+  const renderedActualRevision = String(overview.actualStateRevision || "").trim();
   const limitedPlanningMode = Boolean(data?.limitedPlanningMode);
   const columnLabels = ["12","11","10","9","8","7","","6","5","4","3","","2","1"];
   const headerHtml = columnLabels
@@ -41988,12 +42239,15 @@ function renderSdeNightPlacementOverview(data, options={}){
           : isPlanned && physicalSlot
           ? `Planlagt mål · fysisk nå ${physicalSlot}`
           : "";
-    const dragFromSlot = normalizeSlot(row?.fromSlot || row?.arrivalSlot || slot);
+    const canonicalDragSourceSlot = normalizeSlot(
+      overview.canonicalActualSnapshot?.placementsByVehicle?.[normalizeVehicleToken(entry.vehicle)]?.slot
+    );
+    const dragFromSlot = canonicalDragSourceSlot || normalizeSlot(row?.fromSlot || row?.arrivalSlot || slot);
     const dragNeedKey = row ? getSdeMoveNeedKey(row) || row?.needKey || "" : "";
     const dragMoveKey = row ? getSdeMoveActionKey(row) || row?.moveKey || "" : "";
     const canDragVehicle = canDragSdeNightPlacementVehicle(entry, {hasVehicle, hasCollision});
     const draggableAttr = canDragVehicle
-      ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-from-slot="${escapeHtml(dragFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(dragNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(dragMoveKey)}" data-sde-night-placement-source-kind="${escapeHtml(entry.sourceKind || "")}"`
+      ? ` draggable="true" data-sde-night-placement-draggable="1" data-sde-night-placement-vehicle-id="${escapeHtml(entry.vehicle)}" data-sde-night-placement-vehicle="${escapeHtml(entry.vehicle)}" data-sde-night-placement-rendered-source-slot="${escapeHtml(dragFromSlot)}" data-sde-night-placement-from-slot="${escapeHtml(dragFromSlot)}" data-sde-night-placement-actual-revision="${escapeHtml(renderedActualRevision)}" data-sde-night-placement-need-key="${escapeHtml(dragNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(dragMoveKey)}" data-sde-night-placement-source-kind="${escapeHtml(entry.sourceKind || "")}"`
       : "";
     const slotInfoAttr = (isHardOccupied || isTemporary) && hasVehicle && !hasCollision
       ? ` data-sde-night-placement-info="1"${isHardOccupied ? ` data-sde-night-placement-locked-info="1"` : ""}`
@@ -42039,6 +42293,9 @@ function renderSdeNightPlacementOverview(data, options={}){
     const proposalLayersHtml = hasProposal
       ? `<div class="sde-night-placement-plan-overlays">${proposals.map(proposal=>{
           const proposalFromSlot = normalizeSlot(proposal?.fromSlot);
+          const proposalActualSourceSlot = normalizeSlot(
+            overview.canonicalActualSnapshot?.placementsByVehicle?.[normalizeVehicleToken(proposal?.vehicle)]?.slot
+          ) || proposalFromSlot;
           const proposalSource = String(proposal?.source || "Forslag").trim();
           const activeOutcomeId = String(proposal?.activeOutcomeId || "").trim();
           const proposalNeedKey = getSdeMoveNeedKey(proposal?.row) || proposal?.row?.needKey || "";
@@ -42048,7 +42305,7 @@ function renderSdeNightPlacementOverview(data, options={}){
           const proposalDragAttributes = proposalDraggable
             ? ` draggable="true" data-sde-night-placement-draggable="1"`
             : ` aria-disabled="true"`;
-          return `<div class="sde-night-placement-proposal${deferred ? " deferred" : ""}"${proposalDragAttributes} data-sde-night-placement-vehicle="${escapeHtml(proposal?.vehicle || "")}" data-sde-night-placement-current-slot="${escapeHtml(slot)}" data-sde-night-placement-from-slot="${escapeHtml(proposalFromSlot)}" data-sde-night-placement-need-key="${escapeHtml(proposalNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(proposalMoveKey)}" data-sde-night-placement-source-kind="plan" data-sde-plan-overlay="1" data-sde-overlay-kind="${deferred ? "deferred" : "active"}" data-sde-overlay-id="${escapeHtml(proposal?.overlayId || "")}" data-sde-reservation-id="${escapeHtml(proposal?.reservationId || "")}" data-sde-active-outcome-id="${escapeHtml(activeOutcomeId)}" data-sde-plan-vehicle="${escapeHtml(proposal?.vehicle || "")}" data-sde-plan-from-slot="${escapeHtml(proposalFromSlot)}" data-sde-plan-target-slot="${escapeHtml(slot)}">
+          return `<div class="sde-night-placement-proposal${deferred ? " deferred" : ""}"${proposalDragAttributes} data-sde-night-placement-vehicle-id="${escapeHtml(proposal?.vehicle || "")}" data-sde-night-placement-vehicle="${escapeHtml(proposal?.vehicle || "")}" data-sde-night-placement-rendered-source-slot="${escapeHtml(proposalActualSourceSlot)}" data-sde-night-placement-current-slot="${escapeHtml(slot)}" data-sde-night-placement-from-slot="${escapeHtml(proposalActualSourceSlot)}" data-sde-night-placement-actual-revision="${escapeHtml(renderedActualRevision)}" data-sde-night-placement-need-key="${escapeHtml(proposalNeedKey)}" data-sde-night-placement-move-key="${escapeHtml(proposalMoveKey)}" data-sde-night-placement-source-kind="plan" data-sde-plan-overlay="1" data-sde-overlay-kind="${deferred ? "deferred" : "active"}" data-sde-overlay-id="${escapeHtml(proposal?.overlayId || "")}" data-sde-reservation-id="${escapeHtml(proposal?.reservationId || "")}" data-sde-active-outcome-id="${escapeHtml(activeOutcomeId)}" data-sde-plan-vehicle="${escapeHtml(proposal?.vehicle || "")}" data-sde-plan-from-slot="${escapeHtml(proposalFromSlot)}" data-sde-plan-target-slot="${escapeHtml(slot)}">
             <span>${deferred ? "Avventer dependency" : "Forslag"}</span>
             <strong>${escapeHtml(proposal?.vehicle || "Ukjent")}</strong>
             <span>${escapeHtml(proposalFromSlot ? `${proposalFromSlot} → ${slot}` : proposalSource)}</span>
@@ -42126,7 +42383,7 @@ function renderSdeNightPlacementOverview(data, options={}){
     ? "aktive planresultater"
     : "aktive SDE-resultater";
 
-  return `<section class="sde-night-placement-panel" id="sdeNightPlacementPanel" aria-label="SDE Grafisk planverktøy">
+  return `<section class="sde-night-placement-panel" id="sdeNightPlacementPanel" aria-label="SDE Grafisk planverktøy" data-sde-night-placement-actual-revision="${escapeHtml(renderedActualRevision)}">
     <div class="sde-night-placement-header">
       <div>
         <div class="sde-night-placement-title">SDE Grafisk planverktøy</div>
@@ -42183,14 +42440,7 @@ function setupSdeNightPlacementDragAndDrop(){
     return target && panel.contains(target) ? target : null;
   };
 
-  const buildDragPayloadFromSlot = slotEl => ({
-    vehicle:slotEl.dataset.sdeNightPlacementVehicle || "",
-    slot:slotEl.dataset.sdeNightPlacementCurrentSlot || slotEl.dataset.sdeNightPlacementSlot || "",
-    fromSlot:slotEl.dataset.sdeNightPlacementFromSlot || "",
-    needKey:slotEl.dataset.sdeNightPlacementNeedKey || "",
-    moveKey:slotEl.dataset.sdeNightPlacementMoveKey || "",
-    sourceKind:slotEl.dataset.sdeNightPlacementSourceKind || ""
-  });
+  const buildDragPayloadFromSlot = slotEl => buildSdeNightPlacementDragIntentPayload(slotEl);
 
   const markDragTarget = (target,payload=sdeNightPlacementDragPayload) => {
     panel.querySelectorAll(".sde-night-placement-slot.drag-over,.sde-night-placement-slot.drop-plan-relief,.sde-night-placement-slot.drop-reservation-conflict,.sde-night-placement-slot.drop-unavailable").forEach(el=>{
@@ -42272,7 +42522,8 @@ function setupSdeNightPlacementDragAndDrop(){
     clearDragClasses();
     sdeNightPlacementDragPayload = null;
     if(target){
-      applySdeNightPlacementDragOverride(drag.payload, target.dataset.sdeNightPlacementSlot);
+      const requestedTarget = normalizeSlot(target.dataset.sdeNightPlacementSlot);
+      applySdeNightPlacementDragOverride({...drag.payload,requestedTarget}, requestedTarget);
     }
   };
 
@@ -42340,7 +42591,8 @@ function setupSdeNightPlacementDragAndDrop(){
     }
     clearDragClasses();
     sdeNightPlacementDragPayload = null;
-    applySdeNightPlacementDragOverride(payload, target.dataset.sdeNightPlacementSlot);
+    const requestedTarget = normalizeSlot(target.dataset.sdeNightPlacementSlot);
+    applySdeNightPlacementDragOverride(payload ? {...payload,requestedTarget} : payload, requestedTarget);
   });
 
   panel.addEventListener("dragend", ()=>{
@@ -44571,6 +44823,7 @@ function handleSdeCanonicalRetargetAutomaticSelection(){
 }
 
 function buildSdeCanonicalGraphicOverviewData(reader){
+  const canonicalActualSnapshot = rebuildSdeNightPlacementCanonicalActualIndex();
   const layoutRows = getSdeNightPlacementLayoutRows();
   const washSlots = washMachineSlots.map(normalizeSlot).filter(Boolean);
   const ordinarySlots = new Set();
@@ -44665,6 +44918,9 @@ function buildSdeCanonicalGraphicOverviewData(reader){
   const ordinaryOccupied = Array.from(ordinarySlots).filter(slot=>Boolean(slots[slot]?.vehicle)).length;
   const allOverlays = [...(reader.graphicProjection.activeOverlays || []),...(reader.graphicProjection.deferredOverlays || [])];
   return {
+    actualStateRevision:canonicalActualSnapshot.actualRevision,
+    actualStateValid:canonicalActualSnapshot.valid,
+    canonicalActualSnapshot,
     layoutRows,
     washSlots,
     slots,
@@ -47538,8 +47794,10 @@ function applySharedSporplanDraftToActiveState(readback){
   sharedSporplanDraftHasUnsavedLocalChanges = false;
   clearSharedSporplanDraftAutosaveTimer();
 
+  rebuildSdeNightPlacementCanonicalActualIndex();
   buildGrunnoppstilling();
   buildSporplan();
+  renderSdeSkiftebevegelser();
   persist(true);
   return true;
 }

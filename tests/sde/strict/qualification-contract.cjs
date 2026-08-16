@@ -196,6 +196,16 @@ const STRICT_INVARIANT_IDS = Object.freeze([
   "INV-CHAIN-LIVENESS-024",
   "INV-CHAIN-LIVENESS-025",
   "INV-CHAIN-LIVENESS-026",
+  "INV-ACTUAL-DRAG-001",
+  "INV-ACTUAL-DRAG-002",
+  "INV-ACTUAL-DRAG-003",
+  "INV-ACTUAL-DRAG-004",
+  "INV-ACTUAL-DRAG-005",
+  "INV-ACTUAL-DRAG-006",
+  "INV-ACTUAL-DRAG-007",
+  "INV-ACTUAL-DRAG-008",
+  "INV-ACTUAL-DRAG-009",
+  "INV-ACTUAL-DRAG-010",
   "VN-PREFERRED-OVER-ORDINARY-TRACK-FOR-GLOBAL-RELIEF",
   "AVAILABLE-VN-IS-NOT-IGNORED",
   "OCCUPIED-ORDINARY-TEMP-TARGET-IS-REJECTED",
@@ -229,8 +239,8 @@ const STRICT_REPLAY_TIMEOUT_MS = 120_000;
 const BASELINE_REPLAY_TIMEOUT_MS = 240_000;
 const CHILD_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
-if (STRICT_TOTAL !== 219 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
-  throw new Error("active strict invariant catalog must contain exactly 219 unique IDs");
+if (STRICT_TOTAL !== 229 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
+  throw new Error("active strict invariant catalog must contain exactly 229 unique IDs");
 }
 
 function canonical(value) {

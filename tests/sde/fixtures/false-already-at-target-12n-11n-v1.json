@@ -1,0 +1,24 @@
+{
+  "fixtureId": "SDE-FALSE-ALREADY-AT-TARGET-12N-11N-V1",
+  "operationalDate": "2026-08-16",
+  "canonicalActualPlacement": [
+    ["12N", "70-11"]
+  ],
+  "emptySlots": ["11N"],
+  "staleDerivedPlacement": [
+    ["11N", "70-11"]
+  ],
+  "userIntent": {
+    "vehicleId": "70-11",
+    "renderedSourceSlot": "12N",
+    "requestedTarget": "11N",
+    "intentId": "SDE-FALSE-ALREADY-AT-TARGET-12N-11N-V1-INTENT"
+  },
+  "expected": {
+    "falseAlreadyAtTarget": false,
+    "plannerInvoked": true,
+    "source": "12N",
+    "target": "11N",
+    "directOrSafeReliefPlan": true
+  }
+}

@@ -72,6 +72,9 @@ const functionNames = [
   "getDropsVehicleStatusRecord",
   "getDropsRegisterFaultAvailability",
   "getAuthoritativeVehicleStatusPresentation",
+  "buildSdeNightPlacementCanonicalActualStateSnapshot",
+  "rebuildSdeNightPlacementCanonicalActualIndex",
+  "getSdeNightPlacementCanonicalActualStateSnapshot",
   "computeCanonicalActualPlacementRows",
   "computeCanonicalActualPlacementViewRows",
   "buildCanonicalActualPlacementSlotMap",
@@ -130,6 +133,9 @@ const context = {
   stableStringifySdeCanonicalValue(value) {
     return JSON.stringify(value);
   },
+  getSdeShiftSnapshotHash(value) {
+    return String(value || "").length.toString(16);
+  },
   computeInndata() {
     return computedRows.map((row) => ({ ...row }));
   },
@@ -177,7 +183,12 @@ const context = {
   },
 };
 vm.createContext(context);
-vm.runInContext(functions.join("\n") + `\nthis.api={${functionNames.join(",")}};`, context);
+vm.runInContext(
+  "let sdeNightPlacementCanonicalActualIndex=null; let computeInndataCachedRows=null;\n"
+    + functions.join("\n")
+    + `\nthis.api={${functionNames.join(",")}};`,
+  context,
+);
 const api = context.api;
 
 function capabilities(allowed = true, fields = {}) {
@@ -377,6 +388,8 @@ for (const forbidden of [
   assert.equal(
     [
       extractFunction(source, "computeCanonicalActualPlacementRows"),
+      extractFunction(source, "buildSdeNightPlacementCanonicalActualStateSnapshot"),
+      extractFunction(source, "getSdeNightPlacementCanonicalActualStateSnapshot"),
       extractFunction(source, "computeCanonicalActualPlacementViewRows"),
       extractFunction(source, "buildCanonicalActualPlacementSlotMap"),
       extractFunction(source, "captureSdeCanonicalActualPlacementSnapshot"),

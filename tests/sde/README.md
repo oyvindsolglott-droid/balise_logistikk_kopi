@@ -10,9 +10,9 @@ npm run test:sde:strict
 ```
 
 Strict returnerer non-zero for hver brutt invariant. Den aktive lukkede
-baselinen er 219/219 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
+baselinen er 229/229 PASS med et tomt `failIds`-sett. Baseline-audit kjører strict
 tre ganger og blir bare grønn når alle kjøringene har exit 0, eksakt samme
-normaliserte semantikk, unike invariant-ID-er og 219/219 PASS:
+normaliserte semantikk, unike invariant-ID-er og 229/229 PASS:
 
 ```sh
 npm run test:sde:baseline-audit
@@ -68,6 +68,13 @@ placement før autorisert fullføring.
 vending i VS, og RECOVERY returnerer VN→6N via VS. Den samme VS-ruteressursen
 kan gjenbrukes dependency-sekvensielt som ACTIVE/DEFERRED uten samtidig
 konflikt. Fjorten fokuserte multileg-mutanter må alle drepes uten timeout-kill.
+
+`INV-ACTUAL-DRAG-001`–`010` låser den eksakte fixturen
+`SDE-FALSE-ALREADY-AT-TARGET-12N-11N-V1`: grafisk source, canonical actual
+source og planner bruker samme revision; reservasjon, planoverlay og historiske
+kort er aldri actual placement; stale source repareres automatisk uten å miste
+intent; duplikatplassering feiler lukket; og både 12N→11N og den eksisterende
+12N→6S RELEASE→MAIN→RECOVERY-fixturen når canonical planner.
 
 Produksjons-UI viser alle fysisk validerte og bestilte kjedesteg: det aktive
 steget, dependency-sperrede fremtidige steg og et annullert kort mens den røde

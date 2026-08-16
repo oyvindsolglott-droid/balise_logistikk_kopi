@@ -11,8 +11,11 @@ assert.ok(html.includes("stageSdeCanonicalGraphicDragOrder(override)"));
 assert.ok(html.includes("sdeCanonicalGraphicDragOrder:true"));
 assert.ok(html.includes("dragRequestId:generatedId"));
 const script = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g)).map(match=>match[1]).find(source=>source.includes("function setupSdeNightPlacementDragAndDrop")) || "";
+const payloadBuilderStart = script.indexOf("function buildSdeNightPlacementDragIntentPayload");
+const payloadBuilderEnd = script.indexOf("function reconcileSdeNightPlacementDragIntent",payloadBuilderStart);
 const start = script.indexOf("function setupSdeNightPlacementDragAndDrop");
 const end = script.indexOf("\n\nlet sdeProductionReaderFallbackError",start);
+assert.ok(payloadBuilderStart >= 0 && payloadBuilderEnd > payloadBuilderStart);
 assert.ok(start >= 0 && end > start);
 
 const handlers = {};
@@ -23,9 +26,13 @@ const classSet = target=>({
 const source = {
   dataset:{
     sdeNightPlacementVehicle:"69-55",
+    sdeNightPlacementVehicleId:"69-55",
     sdeNightPlacementCurrentSlot:"5M",
     sdeNightPlacementSlot:"5M",
     sdeNightPlacementFromSlot:"5M",
+    sdeNightPlacementRenderedSourceSlot:"5M",
+    sdeNightPlacementActualRevision:"actual-revision-1",
+    sdeNightPlacementIntentId:"drag-intent-1",
     sdeNightPlacementNeedKey:"need-69-55",
     sdeNightPlacementMoveKey:"move-69-55",
     sdeNightPlacementSourceKind:"standing"
@@ -66,9 +73,12 @@ global.sdeShiftLastRenderedData = {moves:[]};
 global.getSdeShiftShowcaseData = ()=>sdeShiftLastRenderedData;
 global.clearSdeNightPlacementDragOverrides = ()=>{};
 global.normalizeSlot = value=>String(value || "").trim().toUpperCase();
+global.sanitizeVehicleValue = value=>String(value || "").trim();
+global.normalizeVehicleToken = value=>String(value || "").trim().toUpperCase();
 global.renderSdeSkiftebevegelser = ()=>{};
 global.sdeNightPlacementSelectedSlot = "";
 
+vm.runInThisContext(script.slice(payloadBuilderStart,payloadBuilderEnd),{filename:"drag-payload.js"});
 vm.runInThisContext(script.slice(start,end),{filename:"drag-dom.js"});
 setupSdeNightPlacementDragAndDrop();
 assert.equal(panel.dataset.sdeNightPlacementDragReady,"1");
@@ -86,7 +96,7 @@ sdeNightPlacementDragPayload = null;
 handlers.dragover({target,preventDefault(){},dataTransfer});
 handlers.drop({target,preventDefault(){},dataTransfer});
 assert.deepEqual(applied[0],{
-  payload:{vehicle:"69-55",slot:"5M",fromSlot:"5M",needKey:"need-69-55",moveKey:"move-69-55",sourceKind:"standing"},
+  payload:{vehicleId:"69-55",renderedSourceSlot:"5M",requestedTarget:"10N",actualRevision:"actual-revision-1",intentId:"drag-intent-1",vehicle:"69-55",slot:"5M",fromSlot:"5M",needKey:"need-69-55",moveKey:"move-69-55",sourceKind:"standing",displayedTargetSlot:"5M"},
   toSlot:"10N"
 });
 assert.equal(target.classes.has("drag-over"),false);
@@ -98,7 +108,7 @@ handlers.pointermove({...pointerBase,clientX:130,clientY:130});
 assert.equal(target.classes.has("drag-over"),true);
 handlers.pointerup({...pointerBase,target,clientX:140,clientY:140});
 assert.deepEqual(applied[1],{
-  payload:{vehicle:"69-55",slot:"5M",fromSlot:"5M",needKey:"need-69-55",moveKey:"move-69-55",sourceKind:"standing"},
+  payload:{vehicleId:"69-55",renderedSourceSlot:"5M",requestedTarget:"10N",actualRevision:"actual-revision-1",intentId:"drag-intent-1",vehicle:"69-55",slot:"5M",fromSlot:"5M",needKey:"need-69-55",moveKey:"move-69-55",sourceKind:"standing",displayedTargetSlot:"5M"},
   toSlot:"10N"
 });
 assert.equal(target.classes.has("drag-over"),false);

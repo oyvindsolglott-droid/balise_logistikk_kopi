@@ -225,6 +225,13 @@ registerHarnessTest({
 });
 
 registerHarnessTest({
+  phase: "ACTUAL-DRAG",
+  name: "rendered 12N source cannot be replaced by 11N target before canonical planning",
+  harness: "sde-false-already-at-target-12n-11n-harness.js",
+  baseline: "f520d237c27e57b7b8a18772fd1cd2616acedc1b",
+});
+
+registerHarnessTest({
   phase: "C",
   name: "shadow comparison stays opt-in, deterministic and read-only",
   harness: "sde-shadow-c-harness.js",

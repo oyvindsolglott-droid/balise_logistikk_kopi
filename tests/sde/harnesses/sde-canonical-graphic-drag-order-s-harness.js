@@ -223,8 +223,8 @@ assert.equal(twoReader.graphicProjection.activeOverlays.length,2);
 assert.equal(twoReader.cardProjection.activeProposalCount,2);
 assert.deepEqual(twoReader.canonicalPlan.activeOutcomes.map(item=>item.targetSlot).sort(),["10N","11S"]);
 
-assert.ok(script.includes("clearDragClasses();\n    sdeNightPlacementDragPayload = null;\n    applySdeNightPlacementDragOverride(payload, target.dataset.sdeNightPlacementSlot);"));
-assert.ok(script.includes("clearDragClasses();\n    sdeNightPlacementDragPayload = null;\n    if(target){\n      applySdeNightPlacementDragOverride(drag.payload, target.dataset.sdeNightPlacementSlot);"));
+assert.ok(script.includes("clearDragClasses();\n    sdeNightPlacementDragPayload = null;\n    const requestedTarget = normalizeSlot(target.dataset.sdeNightPlacementSlot);\n    applySdeNightPlacementDragOverride(payload ? {...payload,requestedTarget} : payload, requestedTarget);"));
+assert.ok(script.includes("clearDragClasses();\n    sdeNightPlacementDragPayload = null;\n    if(target){\n      const requestedTarget = normalizeSlot(target.dataset.sdeNightPlacementSlot);\n      applySdeNightPlacementDragOverride({...drag.payload,requestedTarget}, requestedTarget);"));
 assert.ok(script.includes("state.sdeNightPlacementManualOverrides = previousOverrides;"));
 assert.ok(script.includes("state.sdeActiveMoveOutcomes = previousAuthorities;"));
 assert.ok(script.includes("Bestilling avvist som operativ kjede, men plan-intent er beholdt diagnostic-only:"));
