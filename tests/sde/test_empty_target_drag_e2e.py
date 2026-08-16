@@ -124,6 +124,135 @@ def actual_pointer_drag(page: Page, source_slot: str, target_slot: str) -> dict[
 
 
 class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
+    def test_topology_complete_direct_and_three_step_pointer_drag_on_desktop_and_390(self) -> None:
+        direct_scenarios = (
+            {"target": "2N", "placements": [["VN", "movingVehicle"]]},
+            {"target": "3N", "placements": [["VN", "movingVehicle"]]},
+            {"target": "9", "placements": [["VN", "movingVehicle"]]},
+            {"target": "11N", "placements": [["VN", "movingVehicle"], ["11S", "otherVehicle"]]},
+        )
+        chain_scenarios = (
+            {
+                "name": "blocked-11s-to-10s",
+                "source": "11S",
+                "target": "10S",
+                "placements": [["11S", "movingVehicle"], ["10N", "blockingVehicle"]],
+                "path": [["10N", "VN", "prerequisite"], ["11S", "10S", "dependent"], ["VN", "10N", "return"]],
+            },
+            {
+                "name": "blocked-5m-to-6s",
+                "source": "5M",
+                "target": "6S",
+                "placements": [["5M", "movingVehicle"], ["6N", "blockingVehicle"], ["6SS", "otherVehicle"]],
+                "path": [["6N", "VN", "prerequisite"], ["5M", "6S", "dependent"], ["VN", "6N", "return"]],
+            },
+        )
+        with static_server() as base_url, sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            for width, height in ((1280, 900), (390, 844)):
+                for scenario in direct_scenarios:
+                    with self.subTest(width=width, kind="direct", target=scenario["target"]):
+                        context = browser.new_context(viewport={"width": width, "height": height})
+                        page = context.new_page()
+                        page_errors: list[str] = []
+                        page.on("pageerror", lambda error: page_errors.append(str(error)))
+                        page.goto(base_url, wait_until="domcontentloaded")
+                        reset_graphic_fixture(page, scenario["placements"])
+                        actual_before = page.evaluate("JSON.stringify(state.grunnoppstilling)")
+                        hover = actual_pointer_drag(page, "VN", scenario["target"])
+                        self.assertEqual(hover["state"], "DIRECTLY_AVAILABLE", hover)
+                        self.assertFalse(hover["red"], hover)
+                        result = page.evaluate(
+                            """target => {
+                              const reader=buildSdeCanonicalProductionReader();
+                              const cards=[...(reader.cardProjection.actionableCards||[]),...(reader.cardProjection.blockedChainCards||[])];
+                              const card=cards.find(item=>item.vehicleId==='movingVehicle'&&item.sourceSlot==='VN'&&item.targetSlot===target)||null;
+                              const adapter=card?reader.handlerAdapters?.[card.canonicalCardId]||null:null;
+                              const controlsHtml=card&&adapter?buildSdeCanonicalCardActionControlsHtml(card,adapter,reader):'';
+                              const controls=['Utført','Annullert'].filter(label=>controlsHtml.includes(`>${label}<`));
+                              const message=String(sdeNightPlacementDropMessage?.text||'');
+                              return {
+                                message,messageType:sdeNightPlacementDropMessage?.type||'',
+                                cardCount:cards.length,outcomes:reader.canonicalPlan.activeOutcomes.length,
+                                reservations:reader.reservationProjection.reservations.length,
+                                overlays:reader.graphicProjection.activeOverlays.length,
+                                adapters:Object.keys(reader.handlerAdapters||{}).length,
+                                source:card?.sourceSlot||'',target:card?.targetSlot||'',status:card?.status||'',
+                                viaSlots:card?.route?.viaSlots||[],adapterReady:adapter?.ready===true,
+                                cardCanCancel:card?.canCancel===true,adapterBaseCanCancel:adapter?.baseCanCancel===true,
+                                adapterCanCancel:adapter?.canCancel===true,cancelStatus:adapter?.cancelResolution?.status||'',cancelReason:adapter?.cancelResolution?.reason||'',
+                                identityMatch:Boolean(card&&adapter&&adapter.activeOutcomeId===card.activeOutcomeId),
+                                controls,integrity:reader.integrityReport.status,
+                                actual:getSdeCanonicalActualLocationForVehicle('movingVehicle')?.slot||'',
+                                ghosts:document.querySelectorAll('.dragging,.drop-rejected').length
+                              };
+                            }""",
+                            scenario["target"],
+                        )
+                        self.assertEqual(result["messageType"], "info", result)
+                        self.assertNotIn("diagnostic-only", result["message"].lower())
+                        self.assertNotIn("ufullstendig", result["message"].lower())
+                        self.assertEqual([result["outcomes"], result["cardCount"], result["reservations"], result["overlays"], result["adapters"]], [1, 1, 1, 1, 1], result)
+                        self.assertEqual([result["source"], result["target"], result["status"]], ["VN", scenario["target"], "actionable"], result)
+                        self.assertEqual(result["viaSlots"], ["VS"], result)
+                        self.assertTrue(result["adapterReady"], result)
+                        self.assertTrue(result["identityMatch"], result)
+                        self.assertIn("Utført", result["controls"], result)
+                        self.assertIn("Annullert", result["controls"], result)
+                        self.assertEqual(result["integrity"], "PASS", result)
+                        self.assertEqual(result["actual"], "VN", result)
+                        self.assertEqual(result["ghosts"], 0, result)
+                        self.assertEqual(page.evaluate("JSON.stringify(state.grunnoppstilling)"), actual_before)
+                        self.assertEqual(page_errors, [])
+                        context.close()
+
+                for scenario in chain_scenarios:
+                    with self.subTest(width=width, kind="chain", name=scenario["name"]):
+                        context = browser.new_context(viewport={"width": width, "height": height})
+                        page = context.new_page()
+                        page_errors: list[str] = []
+                        page.on("pageerror", lambda error: page_errors.append(str(error)))
+                        page.goto(base_url, wait_until="domcontentloaded")
+                        reset_graphic_fixture(page, scenario["placements"])
+                        actual_before = page.evaluate("JSON.stringify(state.grunnoppstilling)")
+                        hover = actual_pointer_drag(page, scenario["source"], scenario["target"])
+                        self.assertEqual(hover["state"], "AVAILABLE_WITH_RELIEF_PLANNING", hover)
+                        self.assertTrue(hover["relief"], hover)
+                        self.assertFalse(hover["red"], hover)
+                        result = page.evaluate(
+                            """() => {
+                              const rows=buildSdeShiftCardMoveCandidates({moves:[]},{reconcileActive:false}).filter(row=>row?.sdePhysicalChainId);
+                              const reader=buildSdeCanonicalProductionReader();
+                              const cards=[...(reader.cardProjection.actionableCards||[]),...(reader.cardProjection.blockedChainCards||[])];
+                              const message=String(sdeNightPlacementDropMessage?.text||'');
+                              return {
+                                message,messageType:sdeNightPlacementDropMessage?.type||'',
+                                path:rows.map(row=>[row.fromSlot,row.toSlot,row.sdePhysicalDependencyRole]),
+                                statuses:cards.map(card=>card.status),
+                                outcomes:reader.canonicalPlan.candidateOutcomes.filter(item=>item.status!=='completed').length,
+                                cards:cards.length,reservations:reader.reservationProjection.reservations.length,
+                                overlays:reader.graphicProjection.activeOverlays.length+reader.graphicProjection.deferredOverlays.length,
+                                adapters:Object.keys(reader.handlerAdapters||{}).length,
+                                integrity:reader.integrityReport.status,
+                                actual:getSdeCanonicalActualLocationForVehicle('movingVehicle')?.slot||'',
+                                ghosts:document.querySelectorAll('.dragging,.drop-rejected').length
+                              };
+                            }"""
+                        )
+                        self.assertEqual(result["messageType"], "info", result)
+                        self.assertNotIn("diagnostic-only", result["message"].lower())
+                        self.assertNotIn("forhåndsstages komplett", result["message"].lower())
+                        self.assertEqual(result["path"], scenario["path"], result)
+                        self.assertEqual(result["statuses"], ["actionable", "blocked_chain_step", "blocked_chain_step"], result)
+                        self.assertEqual([result["outcomes"], result["cards"], result["reservations"], result["overlays"], result["adapters"]], [3, 3, 3, 3, 3], result)
+                        self.assertEqual(result["integrity"], "PASS", result)
+                        self.assertEqual(result["actual"], scenario["source"], result)
+                        self.assertEqual(result["ghosts"], 0, result)
+                        self.assertEqual(page.evaluate("JSON.stringify(state.grunnoppstilling)"), actual_before)
+                        self.assertEqual(page_errors, [])
+                        context.close()
+            browser.close()
+
     def test_exact_12n_to_11n_pointer_drag_uses_rendered_canonical_source(self) -> None:
         placements = [["12N", "70-11"]]
         with static_server() as base_url, sync_playwright() as playwright:

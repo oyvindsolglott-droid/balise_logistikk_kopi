@@ -18860,13 +18860,16 @@ function shouldSdeUseCanonicalNorthYardVsRoute(sourceSlot, targetSlot, accessEnd
 function shouldSdePreferDedicatedVnForTargetAccess(sourceSlot, targetSlot="", accessEnd="", ordinaryCandidateSlots=null){
   const source = normalizeSlot(sourceSlot);
   const target = normalizeSlot(targetSlot || sourceSlot);
-  if(/^(10|11|12)S$/.test(target)) return true;
-  if(!shouldSdeUseCanonicalNorthYardVsRoute(source,target,accessEnd)) return false;
-  const candidates = Array.isArray(ordinaryCandidateSlots)
-    ? ordinaryCandidateSlots.map(normalizeSlot).filter(Boolean)
-    : [];
-  const sourceTrack = getSdeSlotTrack(source);
-  return !candidates.some(slot=>getSdeSlotTrack(slot) === sourceTrack);
+  const end = String(accessEnd || "").trim().toLowerCase();
+  if(!source || !target || source === target || source === "VN" || target === "VN") return false;
+  // VN participates in the same exhaustive search as ordinary holding slots,
+  // but remains a topology-derived preference only for the global north-end
+  // relief corridor and the service-track north approach. Local yard access
+  // keeps its safe local holding slot when one exists.
+  return end === "north" && (
+    /^(10|11|12)S$/.test(target)
+    || getSdeCanonicalSlotRole(target) === "service"
+  );
 }
 
 function buildSdeCanonicalRouteResourceClaims(routeResources=[], active=false){
@@ -21966,6 +21969,31 @@ function getSdeTrappedEgressInternalBlockers(occupancy, fromSlot, toSlot){
     .filter(slot=>sanitizeVehicleValue(occupancy.get(slot)));
 }
 
+function selectSdeCanonicalSafeRouteCandidate(candidates=[]){
+  const endRank = end=>({south:0,north:1,workshop:2,yard:3})[String(end || "yard").trim()] ?? 4;
+  const evaluated = (Array.isArray(candidates) ? candidates : []).map((candidate,index)=>({
+    ...candidate,
+    candidateIndex:index,
+    sourceEnd:String(candidate?.sourceOption?.end || candidate?.sourceEnd || "yard").trim(),
+    targetEnd:String(candidate?.targetOption?.end || candidate?.targetEnd || "yard").trim(),
+    valid:candidate?.valid === true
+  }));
+  const safeCandidates = evaluated.filter(candidate=>candidate.valid).sort((left,right)=>
+    endRank(left.sourceEnd) - endRank(right.sourceEnd)
+    || endRank(left.targetEnd) - endRank(right.targetEnd)
+    || String(left.routeKey || "").localeCompare(String(right.routeKey || ""))
+  );
+  const rejectedCandidates = evaluated.filter(candidate=>!candidate.valid);
+  return {
+    selected:safeCandidates[0] || null,
+    safeCandidates,
+    rejectedCandidates,
+    firstRejectedCandidate:rejectedCandidates[0] || null,
+    candidateSearchExhausted:true,
+    topologicalRoutesConsidered:evaluated.length
+  };
+}
+
 function assessSdeTrappedEgressVirtualMove(occupancy, vehicle, fromSlot, toSlot, options={}){
   const from = normalizeSlot(fromSlot);
   const to = normalizeSlot(toSlot);
@@ -21974,15 +22002,29 @@ function assessSdeTrappedEgressVirtualMove(occupancy, vehicle, fromSlot, toSlot,
   if(normalizeVehicleToken(occupancy.get(from)) !== normalizeVehicleToken(vehicleId)) return {valid:false};
   const targetVehicle = sanitizeVehicleValue(occupancy.get(to));
   if(targetVehicle && !haveSameSdeVehicleTokens(targetVehicle,vehicleId)) return {valid:false};
-  if(isSdeDiscouragedPlatformToPlatformMove(from,to)) return {valid:false};
+  if(options?.allowSoftPreference !== true && isSdeDiscouragedPlatformToPlatformMove(from,to)) return {valid:false};
   if(getSdeTrappedEgressInternalBlockers(occupancy,from,to).length) return {valid:false};
-  const sourceOption = getSdeTrappedEgressAccessOptions(occupancy,from,options?.sourceEnds).find(option=>option.clear);
-  if(!sourceOption) return {valid:false};
+  const sourceOptions = getSdeTrappedEgressAccessOptions(occupancy,from,options?.sourceEnds);
+  if(!sourceOptions.length) return {valid:false};
   const afterDeparture = cloneSdeTrappedEgressOccupancy(occupancy);
   afterDeparture.delete(from);
-  const targetOption = getSdeTrappedEgressAccessOptions(afterDeparture,to).find(option=>option.clear);
-  if(!targetOption) return {valid:false};
-  return {valid:true,sourceOption,targetOption};
+  const targetOptions = getSdeTrappedEgressAccessOptions(afterDeparture,to,options?.targetEnds);
+  if(!targetOptions.length) return {valid:false};
+  const selection = selectSdeCanonicalSafeRouteCandidate(sourceOptions.flatMap(sourceOption=>
+    targetOptions.map(targetOption=>({
+      sourceOption,
+      targetOption,
+      valid:sourceOption.clear === true && targetOption.clear === true,
+      routeKey:`${sourceOption.end || "yard"}|${targetOption.end || "yard"}`
+    }))
+  ));
+  if(!selection.selected) return {valid:false,...selection};
+  return {
+    valid:true,
+    sourceOption:selection.selected.sourceOption,
+    targetOption:selection.selected.targetOption,
+    ...selection
+  };
 }
 
 function getSdeTrappedEgressMainSourceEnds(sourceSlot, targetSlot=""){
@@ -22015,32 +22057,73 @@ function shouldSdePreferDedicatedVnForGlobalRelief(sourceSlot, targetSlot){
     && getSdeTrappedEgressMainSourceEnds(source,target)?.includes("north");
 }
 
-const SDE_DIRECT_WASH_TRANSIT_TOPOLOGY_BY_SOURCE = Object.freeze({
-  "4N":Object.freeze({
-    targets:Object.freeze(["10S","11S","12S"]),
-    sourceEnds:Object.freeze(["north"]),
-    targetEnds:Object.freeze(["north"]),
-    viaSlots:Object.freeze(["VN","VS"]),
-    routeResources:Object.freeze(["VN","VS"]),
-    reversalPoint:"VN",
-    approachSide:"NORTH"
-  }),
-  "VN":Object.freeze({
-    targets:Object.freeze(["10N","11N","12N"]),
-    sourceEnds:Object.freeze(["south"]),
-    targetEnds:Object.freeze(["north"]),
-    viaSlots:Object.freeze(["VS"]),
-    routeResources:Object.freeze(["VS"]),
-    reversalPoint:"",
-    approachSide:"NORTH"
-  })
-});
+function getSdeCanonicalManualSlotDescriptor(slot){
+  const id = normalizeSlot(slot);
+  const role = getSdeCanonicalSlotRole(id);
+  return {
+    id,
+    role,
+    canContainVehicle:Boolean(id && role !== "route_resource"),
+    targetEligible:Boolean(id && role !== "route_resource"),
+    infrastructureOperational:Boolean(
+      id
+      && !(typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(id))
+    )
+  };
+}
 
-function getSdeDirectWashTransitRouteAssessment(row, occupancy=getSdeTrappedEgressActualOccupancy()){
+function getSdeCanonicalManualRouteTopology(sourceSlot, targetSlot){
+  const source = normalizeSlot(sourceSlot);
+  const target = normalizeSlot(targetSlot);
+  const sourceDescriptor = getSdeCanonicalManualSlotDescriptor(source);
+  const targetDescriptor = getSdeCanonicalManualSlotDescriptor(target);
+  if(!sourceDescriptor.canContainVehicle || !targetDescriptor.targetEligible || source === target) return null;
+  const sourceTrack = getSdeSlotTrack(source);
+  const targetTrack = getSdeSlotTrack(target);
+  const sourceOrder = getSdeSameTrackSlotOrder(sourceTrack);
+  const sourceAtNorthOpenEnd = sourceOrder.length > 0 && sourceOrder[sourceOrder.length - 1] === source;
+  const targetIsButtSouth = /^(10|11|12)S$/.test(target);
+  const workshopSource = isSdeWorkshopSlot(source);
+  const washSource = source === "VN";
+  const washTarget = target === "VN";
+  const semanticSourceEnds = getSdeTrappedEgressMainSourceEnds(source,target);
+  const northYardWashTransit = sourceTrack !== targetTrack
+    && targetIsButtSouth
+    && (sourceAtNorthOpenEnd || semanticSourceEnds?.includes("north"));
+  const viaSlots = washSource || washTarget
+    ? ["VS"]
+    : northYardWashTransit
+      ? ["VN","VS"]
+      : [];
+  const routeResources = washSource || washTarget
+    ? ["VS"]
+    : northYardWashTransit
+      ? ["VN","VS"]
+      : [];
+  return {
+    source,
+    target,
+    sourceDescriptor,
+    targetDescriptor,
+    sourceEnds:workshopSource
+      ? ["workshop"]
+      : washSource
+        ? ["south"]
+        : northYardWashTransit
+          ? ["north"]
+          : semanticSourceEnds,
+    targetEnds:targetIsButtSouth && northYardWashTransit ? ["north"] : null,
+    viaSlots,
+    routeResources,
+    reversalPoint:northYardWashTransit ? "VN" : "",
+    approachSide:targetIsButtSouth || /N$/.test(target) ? "NORTH" : ""
+  };
+}
+
+function getSdeCanonicalManualRouteAssessment(row, occupancy=getSdeTrappedEgressActualOccupancy(), options={}){
   const {vehicle,fromSlot,toSlot} = getSdePhysicalMoveParts(row);
-  const topology = SDE_DIRECT_WASH_TRANSIT_TOPOLOGY_BY_SOURCE[fromSlot] || null;
-  const allowedTargets = topology?.targets || [];
-  const routeResources = [...(topology?.routeResources || [])];
+  const topology = getSdeCanonicalManualRouteTopology(fromSlot,toSlot);
+  const transitRouteResources = [...(topology?.routeResources || [])];
   const unavailable = reason=>({
     eligible:false,
     vehicle,
@@ -22049,8 +22132,8 @@ function getSdeDirectWashTransitRouteAssessment(row, occupancy=getSdeTrappedEgre
     routeResources:[],
     reason:String(reason || "Direkte transitt gjennom Vaskesporet er ikke tilgjengelig.")
   });
-  if(!vehicle || !fromSlot || !toSlot || !allowedTargets.includes(toSlot)){
-    return unavailable("Flyttingen inngår ikke i en verifisert direkte Vaskespor-korridor.");
+  if(!vehicle || !fromSlot || !toSlot || !topology){
+    return unavailable("Source eller target inngår ikke i canonical fysisk slotregister.");
   }
   if(!(occupancy instanceof Map)) return unavailable("Fersk fysisk sporstatus mangler.");
   if(normalizeVehicleToken(occupancy.get(fromSlot)) !== normalizeVehicleToken(vehicle)){
@@ -22059,22 +22142,50 @@ function getSdeDirectWashTransitRouteAssessment(row, occupancy=getSdeTrappedEgre
   if(sanitizeVehicleValue(occupancy.get(toSlot))){
     return unavailable(`${toSlot} er fysisk opptatt.`);
   }
-  const occupiedWashResource = routeResources.find(slot=>sanitizeVehicleValue(occupancy.get(slot)));
+  if(options?.ignoreInfrastructure !== true && (!topology.sourceDescriptor.infrastructureOperational || !topology.targetDescriptor.infrastructureOperational)){
+    return unavailable("Source eller target er markert uvirksom i TXP.");
+  }
+  const occupiedWashResource = transitRouteResources.find(slot=>sanitizeVehicleValue(occupancy.get(slot)));
   if(occupiedWashResource){
     return unavailable(`${occupiedWashResource} er fysisk opptatt og kan ikke brukes som transittkorridor.`);
   }
-  const unavailableWashResource = routeResources.find(slot=>typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(slot));
+  const unavailableWashResource = options?.ignoreInfrastructure === true
+    ? ""
+    : transitRouteResources.find(slot=>typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(slot));
   if(unavailableWashResource || (typeof isTxpWashRouteUnavailable === "function" && isTxpWashRouteUnavailable())){
     return unavailable(`Vaskespor-ruten er markert utilgjengelig${unavailableWashResource ? ` i ${unavailableWashResource}` : ""}.`);
   }
-  const sourceOption = getSdeTrappedEgressAccessOptions(occupancy,fromSlot,topology.sourceEnds)
-    .find(option=>option.clear);
-  if(!sourceOption) return unavailable(`Den modellerte utkjøringsenden fra ${fromSlot} er ikke fri.`);
+  const sourceOptions = getSdeTrappedEgressAccessOptions(occupancy,fromSlot,topology.sourceEnds);
   const afterDeparture = cloneSdeTrappedEgressOccupancy(occupancy);
   afterDeparture.delete(fromSlot);
-  const targetOption = getSdeTrappedEgressAccessOptions(afterDeparture,toSlot,topology.targetEnds)
-    .find(option=>option.clear);
-  if(!targetOption) return unavailable(`Den modellerte innkjøringsenden til ${toSlot} er ikke fri.`);
+  const targetOptions = getSdeTrappedEgressAccessOptions(afterDeparture,toSlot,topology.targetEnds);
+  const topologicalRoutesConsidered = [];
+  sourceOptions.forEach(sourceOption=>targetOptions.forEach(targetOption=>{
+    topologicalRoutesConsidered.push({
+      sourceEnd:sourceOption.end,
+      targetEnd:targetOption.end,
+      sourceClear:sourceOption.clear === true,
+      targetClear:targetOption.clear === true
+    });
+  }));
+  const physical = assessSdeTrappedEgressVirtualMove(occupancy,vehicle,fromSlot,toSlot,{
+    sourceEnds:topology.sourceEnds,
+    targetEnds:topology.targetEnds,
+    allowSoftPreference:true
+  });
+  if(!physical.valid){
+    return {
+      ...unavailable(`Ingen av ${topologicalRoutesConsidered.length} canonical rutealternativer er fysisk fri.`),
+      topologicalRoutesConsidered,
+      firstRejectedCandidate:physical.firstRejectedCandidate || null,
+      candidateSearchExhausted:physical.candidateSearchExhausted === true
+    };
+  }
+  const sourceOption = physical.sourceOption;
+  const targetOption = physical.targetOption;
+  const routeResources = transitRouteResources.length
+    ? sortSdeCanonicalStrings(transitRouteResources)
+    : getSdeDirectWorkshopRouteResources(fromSlot,toSlot);
   const canonicalRoute = buildSdeCanonicalMultilegRoute({
     sourceSlot:fromSlot,
     targetSlot:toSlot,
@@ -22091,26 +22202,82 @@ function getSdeDirectWashTransitRouteAssessment(row, occupancy=getSdeTrappedEgre
     toSlot,
     sourceOption,
     targetOption,
+    topologicalRoutesConsidered,
+    firstRejectedCandidate:physical.firstRejectedCandidate || null,
+    candidateSearchExhausted:physical.candidateSearchExhausted === true,
+    safeRouteCount:topologicalRoutesConsidered.filter(route=>route.sourceClear && route.targetClear).length,
     routeResources,
     canonicalRoute,
-    routeKind:"direct_wash_transit",
-    reason:`Direkte fysisk rute ${fromSlot} → ${topology.viaSlots.join("/")} → ${toSlot} er fri. Ingen mellomparkering eller frigjøringskjede er nødvendig.`
+    routeKind:"direct_canonical_topology",
+    reason:`Direkte fysisk rute ${[fromSlot,...topology.viaSlots,toSlot].join(" → ")} er fri. Ingen mellomparkering eller frigjøringskjede er nødvendig.`
+  };
+}
+
+function getSdeDirectWashTransitRouteAssessment(row, occupancy=getSdeTrappedEgressActualOccupancy()){
+  const {vehicle,fromSlot,toSlot} = getSdePhysicalMoveParts(row);
+  return getSdeCanonicalManualRouteAssessment({...row,vehicle,fromSlot,toSlot},occupancy);
+}
+
+function buildSdeCanonicalManualRouteCoverageMatrix(vehicle="MATRIX-VEHICLE"){
+  const vehicleId = sanitizeVehicleValue(vehicle);
+  const descriptors = getSdeCanonicalSlotInventory().map(getSdeCanonicalManualSlotDescriptor);
+  const sources = descriptors.filter(item=>item.canContainVehicle);
+  const targets = descriptors.filter(item=>item.targetEligible);
+  const rows = [];
+  sources.forEach(source=>targets.forEach(target=>{
+    if(source.id === target.id) return;
+    const occupancy = new Map([[source.id,vehicleId]]);
+    const assessment = getSdeCanonicalManualRouteAssessment({
+      vehicle:vehicleId,fromSlot:source.id,arrivalSlot:source.id,recommendedSlot:target.id,toSlot:target.id
+    },occupancy,{ignoreInfrastructure:true});
+    rows.push({
+      sourceSlot:source.id,
+      targetSlot:target.id,
+      planKind:assessment.eligible ? "DIRECT" : "UNREACHABLE",
+      topologicalRoutesConsidered:assessment.topologicalRoutesConsidered?.length || 0,
+      routeKind:assessment.routeKind || "",
+      eligible:assessment.eligible === true,
+      reason:assessment.reason || ""
+    });
+  }));
+  return {
+    schemaVersion:"sde-canonical-manual-route-coverage-v1",
+    sourceCount:sources.length,
+    targetCount:targets.length,
+    pairCount:rows.length,
+    directCount:rows.filter(row=>row.eligible).length,
+    unreachableCount:rows.filter(row=>!row.eligible).length,
+    rows
   };
 }
 
 function getSdeCompleteTrappedEgressBlockState(row, existingState=null){
   const original = existingState || getSdeHardPhysicalBlockStateForMove(row);
-  if(original?.hardBlocked) return original;
   const {vehicle,fromSlot,toSlot} = getSdePhysicalMoveParts(row);
   const occupancy = getSdeTrappedEgressActualOccupancy();
-  const directWashTransit = getSdeDirectWashTransitRouteAssessment(row,occupancy);
-  if(directWashTransit.eligible){
-    return {...original,directWashTransit};
+  const canonicalRouteTopology = getSdeCanonicalManualRouteTopology(fromSlot,toSlot);
+  const canonicalRouteAssessment = getSdeCanonicalManualRouteAssessment(row,occupancy);
+  const canonicalRouteContext = {
+    canonicalRouteTopology,
+    canonicalRouteAssessment,
+    // Compatibility field retained for persisted manual drag readers. It now
+    // points at the one canonical topology assessment used by every drag.
+    directWashTransit:canonicalRouteAssessment
+  };
+  if(original?.hardBlocked) return {...original,...canonicalRouteContext};
+  if(canonicalRouteAssessment.eligible){
+    return {
+      ...original,
+      ...canonicalRouteContext,
+      hardBlocked:false,
+      blockers:[],
+      reason:canonicalRouteAssessment.reason
+    };
   }
   const sourceOptions = getSdeTrappedEgressAccessOptions(
     occupancy,fromSlot,getSdeTrappedEgressMainSourceEnds(fromSlot,toSlot)
   );
-  if(!sourceOptions.length || sourceOptions.some(option=>option.clear)) return original;
+  if(!sourceOptions.length || sourceOptions.some(option=>option.clear)) return {...original,...canonicalRouteContext};
   const blockers = [];
   const seen = new Set();
   sourceOptions.forEach(option=>option.blockers.forEach(blocker=>{
@@ -22119,9 +22286,10 @@ function getSdeCompleteTrappedEgressBlockState(row, existingState=null){
     seen.add(slot);
     blockers.push({...blocker,accessEnd:option.end,reason:`blokkerer fysisk adkomst ut fra ${fromSlot}`});
   }));
-  if(!blockers.length) return original;
+  if(!blockers.length) return {...original,...canonicalRouteContext};
   return {
     ...original,
+    ...canonicalRouteContext,
     hardBlocked:true,
     kind:"physical_blocked",
     vehicle,
@@ -28532,7 +28700,18 @@ function getSdeCanonicalProducer(row){
 
 function getSdeCanonicalObligationKind(row){
   if(row?.sdeTrappedEgressChainStep === true) return "physical-chain";
-  if(row?.sdeVnRecoveryRequired || row?.isSdePhysicalVnRecoveryMove || normalizeSlot(row?.fromSlot || row?.arrivalSlot) === "VN") return "vn-recovery";
+  // VN is a physical slot, not a policy role. A row from VN is recovery only
+  // when canonical recovery metadata says so; explicit manual VN drags remain
+  // ordinary vehicle-relocation obligations with normal cancel rights.
+  const fromVn = normalizeSlot(row?.fromSlot || row?.arrivalSlot) === "VN";
+  const semanticVnRecovery = fromVn && Boolean(
+    row?.isSdePhysicalBlockerReturnMove
+    || row?.sdePhysicalDependencyRole === "return"
+    || String(row?.sdePhysicalChainId || row?.chainId || "").trim()
+  );
+  const explicitVnRecoveryFallback = ["missing_recovery_metadata","ambiguous_recovery_target"]
+    .includes(String(row?.sdeVnRecoveryStatus || "").trim());
+  if(row?.sdeVnRecoveryRequired || row?.isSdePhysicalVnRecoveryMove || semanticVnRecovery || explicitVnRecoveryFallback) return "vn-recovery";
   if(row?.sdePhysicalChainId || row?.sdePhysicalDependencyRole) return "physical-chain";
   if(row?.isWorkshopMoveNeed) return "workshop-relocation";
   if(row?.isSpor3ProductionNeed) return "spor3-production";
@@ -31327,7 +31506,13 @@ function buildSdeCanonicalIntegrityReport(input={}){
     localProblems.forEach(classification=>addConflict(classification,{chainId,declaredStepCounts,sequenceSteps,missingDependencies,cyclicOutcomeIds:cyclic,activeOutcomeIds:active.map(item=>item.activeOutcomeId)}));
     return {chainId,status:localProblems.length ? "FAIL" : "PASS",declaredStepCounts,sequenceSteps,stepIds:chainStepIds,activeOutcomeIds:sortSdeCanonicalStrings(active.map(item=>item.activeOutcomeId)),blockedOutcomeIds:sortSdeCanonicalStrings(blockedCards.filter(card=>card.chainId === chainId).map(item=>item.activeOutcomeId)),missingDependencies,cyclicOutcomeIds:sortSdeCanonicalStrings(cyclic),conflictClassifications:localProblems.sort()};
   });
-  const recoveryCandidates = candidates.filter(candidate=>candidate.raw?.sdeVnRecoveryRequired || candidate.raw?.isSdePhysicalVnRecoveryMove || (candidate.obligationKind === "vn-recovery" && candidate.actualSourceSlot === "VN"));
+  const recoveryCandidates = candidates.filter(candidate=>
+    candidate.raw?.sdeVnRecoveryRequired
+    || candidate.raw?.isSdePhysicalVnRecoveryMove
+    || candidate.raw?.isSdePhysicalBlockerReturnMove
+    || candidate.raw?.sdePhysicalDependencyRole === "return"
+    || (candidate.obligationKind === "vn-recovery" && candidate.actualSourceSlot === "VN")
+  );
   const recoveryResults = sortSdeCanonicalStrings(recoveryCandidates.map(item=>item.vehicleId)).map(vehicleId=>{
     const rows = recoveryCandidates.filter(item=>item.vehicleId === vehicleId);
     const obligationIds = sortSdeCanonicalStrings(rows.map(item=>item.obligationId));
@@ -40888,7 +41073,8 @@ function buildSdeCanonicalGraphicDragShadowOrder(override){
   const actionKey = getSdeMoveActionKey(generatedMove);
   if(!outcomeKey || !actionKey) throw new Error("Canonical drag-identitet mangler.");
 
-  if(override?.hardPhysicalBlocked && generatedMove.sdeDirectWashTransit !== true){
+  const existingGuardedChainId = String(override?.sdeCanonicalManualAuthority?.chainId || "").trim();
+  if(override?.hardPhysicalBlocked && (generatedMove.sdeDirectWashTransit !== true || existingGuardedChainId)){
     removeSdeActiveOutcomeAuthoritiesForPhysicalStep(generatedMove.vehicle, generatedMove.fromSlot);
     const previousPhysicalReleaseReplans = cloneSdeCanonicalValue(state.sdePhysicalReleaseReplans) || {};
     let stagedRows = [];
