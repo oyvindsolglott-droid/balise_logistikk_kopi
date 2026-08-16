@@ -26,6 +26,7 @@ const drivers = [
   "actual-drag-source-invariants.cjs",
   "vehicle-id-policy-invariants.cjs",
   "vehicle-id-invariance-invariants.cjs",
+  "topology-complete-drag-invariants.cjs",
 ];
 
 function runDriver(driver) {

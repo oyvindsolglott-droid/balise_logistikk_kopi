@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "sde-topology-complete-drag-and-relief-v1",
+  "fixtureIds": {
+    "direct": "SDE-DIRECT-VN-TO-ELIGIBLE-TARGETS-V1",
+    "blocked10s": "SDE-BUTT-10S-BLOCKED-BY-10N-RELIEF-V1",
+    "blocked6s": "SDE-5M-TO-ACCESS-BLOCKED-6S-RELIEF-V1"
+  },
+  "directTargets": ["2N", "3N", "9", "11N"],
+  "vehiclePermutations": [
+    {"movingVehicle": "69-67", "blockingVehicle": "70-10", "otherVehicle": "74-38"},
+    {"movingVehicle": "70-10", "blockingVehicle": "74-38", "otherVehicle": "69-67"},
+    {"movingVehicle": "74-38", "blockingVehicle": "69-67", "otherVehicle": "70-10"}
+  ],
+  "candidateOrders": [
+    ["VN", "4M", "9"],
+    ["4M", "9", "VN"],
+    ["9", "VN", "4M"]
+  ]
+}
