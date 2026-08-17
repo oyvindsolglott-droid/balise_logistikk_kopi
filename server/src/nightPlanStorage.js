@@ -14,6 +14,13 @@ const ROW_COUNT = 29;
 const ALLOWED_MIME_TYPES = Object.freeze(["image/jpeg", "image/png"]);
 const ALLOWED_SOURCE_TYPES = new Set(["CAMERA", "DEVICE_FILE", "MANUAL", "LEGACY_LOCAL"]);
 const ALLOWED_PLAN_STATUSES = new Set(["SAVED"]);
+const ALLOWED_MAPPING_STATUSES = new Set([
+  "FORM_MAPPING_COMPLETE",
+  "FORM_MAPPING_REQUIRES_REVIEW",
+  "MAPPING_FAILED",
+  "OCR_FAILED",
+  "NOT_RUN_HUMAN_ENTERED"
+]);
 const ROW_FIELDS = Object.freeze([
   "fromTrain",
   "toTrain",
@@ -77,6 +84,8 @@ function ensureNightPlanSchema(db){
       source_image_sha256 TEXT,
       imported_at TEXT,
       human_corrected INTEGER NOT NULL,
+      mapping_status TEXT,
+      mapping_report_json TEXT,
       saved_at TEXT NOT NULL,
       saved_by TEXT NOT NULL,
       final_form_sha256 TEXT NOT NULL,
@@ -114,6 +123,13 @@ function ensureNightPlanSchema(db){
     CREATE INDEX IF NOT EXISTS night_plan_learning_plan_idx
       ON night_plan_learning_records(plan_id, plan_revision);
   `);
+  ensureColumn(db, "night_plan_provenance", "mapping_status", "TEXT");
+  ensureColumn(db, "night_plan_provenance", "mapping_report_json", "TEXT");
+}
+
+function ensureColumn(db, table, column, definition){
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all().map(row => row.name);
+  if(!columns.includes(column)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 function saveNightPlan(db, payload, options = {}){
@@ -227,9 +243,9 @@ function saveNightPlan(db, payload, options = {}){
     db.prepare(`
       INSERT INTO night_plan_provenance (
         plan_id, plan_revision, source_type, ocr_engine, ocr_version,
-        source_image_sha256, imported_at, human_corrected, saved_at, saved_by,
-        final_form_sha256, schema_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        source_image_sha256, imported_at, human_corrected, mapping_status,
+        mapping_report_json, saved_at, saved_by, final_form_sha256, schema_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       planId,
       revision,
@@ -239,6 +255,8 @@ function saveNightPlan(db, payload, options = {}){
       validated.image?.sha256 || null,
       validated.source.importedAt,
       validated.source.humanCorrected ? 1 : 0,
+      validated.source.mappingStatus,
+      validated.source.mappingReport ? JSON.stringify(validated.source.mappingReport) : null,
       now,
       normalizeSavedBy(options.savedBy),
       validated.finalFormSha256,
@@ -523,7 +541,8 @@ function validateRow(value, index){
 function validateSource(value){
   requirePlainObject(value, "invalid_source");
   rejectUnexpectedFields(value, [
-    "sourceType", "ocrEngine", "ocrVersion", "importedAt", "humanCorrected"
+    "sourceType", "ocrEngine", "ocrVersion", "importedAt", "humanCorrected",
+    "mappingStatus", "mappingReport"
   ], "unexpected_source_field");
   const sourceType = normalizeExactString(value.sourceType, 40);
   if(!ALLOWED_SOURCE_TYPES.has(sourceType)){
@@ -537,7 +556,67 @@ function validateSource(value){
   const importedAt = imageSource ? toIsoTimestamp(value.importedAt) : null;
   const ocrEngine = imageSource ? normalizeNullableString(value.ocrEngine, 120, "ocrEngine") : null;
   const ocrVersion = imageSource ? normalizeNullableString(value.ocrVersion, 120, "ocrVersion") : null;
-  return Object.freeze({sourceType, ocrEngine, ocrVersion, importedAt, humanCorrected});
+  const mappingStatus = imageSource ? normalizeNullableString(value.mappingStatus, 80, "mappingStatus") : null;
+  if(imageSource && !ALLOWED_MAPPING_STATUSES.has(mappingStatus)){
+    throw invalid("invalid_mapping_status", "Image plans require an explicit truthful mappingStatus.");
+  }
+  const mappingReport = imageSource && value.mappingReport != null ? validateMappingReport(value.mappingReport) : null;
+  if(mappingReport && mappingReport.mappingStatus !== mappingStatus){
+    throw invalid("mapping_status_mismatch", "mappingStatus must match the structured mapping report.");
+  }
+  if(imageSource && ocrEngine && mappingStatus !== "NOT_RUN_HUMAN_ENTERED" && !mappingReport){
+    throw invalid("mapping_report_required", "OCR-backed plans require their structured mapping report.");
+  }
+  if(!imageSource && (value.mappingStatus != null || value.mappingReport != null)){
+    throw invalid("non_image_mapping_not_allowed", "Manual and legacy plans cannot claim OCR mapping provenance.");
+  }
+  return Object.freeze({sourceType, ocrEngine, ocrVersion, importedAt, humanCorrected, mappingStatus, mappingReport});
+}
+
+function validateMappingReport(value){
+  requirePlainObject(value, "invalid_mapping_report");
+  rejectUnexpectedFields(value, [
+    "schemaVersion", "ocrTokenCount", "recognizedLineCount", "detectedHeaderCount",
+    "detectedRowCount", "mappedCellCount", "unmappedTokenCount", "mappingConfidence",
+    "mappingStatus", "discardedReasonCounts", "geometrySource", "requiresHumanReview"
+  ], "unexpected_mapping_report_field");
+  if(normalizeExactString(value.schemaVersion, 100) !== "sde-night-form-mapping-report-v1"){
+    throw invalid("invalid_mapping_report_schema", "Unsupported mapping report schema.");
+  }
+  const integerFields = [
+    "ocrTokenCount", "recognizedLineCount", "detectedHeaderCount", "detectedRowCount",
+    "mappedCellCount", "unmappedTokenCount"
+  ];
+  const report = {schemaVersion: "sde-night-form-mapping-report-v1"};
+  for(const field of integerFields){
+    const count = Number(value[field]);
+    if(!Number.isInteger(count) || count < 0 || count > 100000){
+      throw invalid("invalid_mapping_report_count", `${field} must be a bounded non-negative integer.`);
+    }
+    report[field] = count;
+  }
+  const mappingConfidence = Number(value.mappingConfidence);
+  if(!Number.isFinite(mappingConfidence) || mappingConfidence < 0 || mappingConfidence > 1){
+    throw invalid("invalid_mapping_confidence", "mappingConfidence must be between zero and one.");
+  }
+  report.mappingConfidence = mappingConfidence;
+  report.mappingStatus = normalizeExactString(value.mappingStatus, 80);
+  if(!ALLOWED_MAPPING_STATUSES.has(report.mappingStatus) || report.mappingStatus === "NOT_RUN_HUMAN_ENTERED"){
+    throw invalid("invalid_mapping_status", "The mapping report has an invalid mappingStatus.");
+  }
+  requirePlainObject(value.discardedReasonCounts, "invalid_discarded_reason_counts");
+  const allowedReasons = new Set(["MISSING_GEOMETRY", "OUTSIDE_FORM", "LOW_CONFIDENCE"]);
+  const reasonCounts = {};
+  for(const [reason, rawCount] of Object.entries(value.discardedReasonCounts)){
+    if(!allowedReasons.has(reason) || !Number.isInteger(rawCount) || rawCount < 0 || rawCount > 100000){
+      throw invalid("invalid_discarded_reason_count", "Discard reasons must be allowlisted bounded counts.");
+    }
+    reasonCounts[reason] = rawCount;
+  }
+  report.discardedReasonCounts = Object.freeze(reasonCounts);
+  report.geometrySource = normalizeNullableString(value.geometrySource, 120, "geometrySource");
+  report.requiresHumanReview = value.requiresHumanReview === true;
+  return Object.freeze(report);
 }
 
 function validatePipeline(value){
@@ -702,6 +781,8 @@ function buildSaveReadback(input){
     finalFormSha256: input.validated.finalFormSha256,
     form: input.validated.form,
     sourceType: input.validated.source.sourceType,
+    mappingStatus: input.validated.source.mappingStatus,
+    mappingReport: input.validated.source.mappingReport,
     status: input.validated.status,
     learningRecordId: input.learningRecordId,
     learningStatus: "READY",
@@ -745,6 +826,8 @@ function projectStoredPlan(plan, image, provenance, learning){
       sourceImageSha256: provenance.source_image_sha256,
       importedAt: provenance.imported_at,
       humanCorrected: Boolean(provenance.human_corrected),
+      mappingStatus: provenance.mapping_status,
+      mappingReport: provenance.mapping_report_json ? JSON.parse(provenance.mapping_report_json) : null,
       savedAt: provenance.saved_at,
       savedBy: provenance.saved_by,
       finalFormSha256: provenance.final_form_sha256

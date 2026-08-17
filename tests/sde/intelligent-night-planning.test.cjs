@@ -706,3 +706,156 @@ test("read-only analyse endrer ingen operativ state utover at caller eventuelt v
   assert.equal(result.status, "RANKED_DECISION_SUPPORT");
   assert.equal(JSON.stringify(operational), before);
 });
+
+function readOcrFixture(name) {
+  return JSON.parse(fs.readFileSync(path.join(root, "tests/sde/fixtures/night-plan", name), "utf8"));
+}
+
+function mapFixture(subject, fixture, planId) {
+  return subject.mapOcrResultToNightPlan(fixture.ocr, {
+    planId,
+    operationalDate: "2026-08-18",
+    createdAt: "2026-08-17T18:00:00.000Z",
+    sourceFingerprint: `sha256:${fixture.image.sha256}`,
+  });
+}
+
+function mappedFormRow(entry) {
+  return {
+    fromTrain: entry.arrivalOccurrence.normalizedValue,
+    toTrain: entry.departureOccurrence.normalizedValue,
+    vehicleId: entry.vehicleId.normalizedValue,
+    toTrack: entry.desiredSlot.normalizedValue,
+    wcWater: entry.taskContext.normalizedValue,
+    notes: entry.notes.normalizedValue,
+  };
+}
+
+test("historisk nattplanfixture bruker geometri til flere rader og kolonner uten produksjonsbinding", () => {
+  const subject = loadSubject();
+  const fixture = readOcrFixture("historical-togplassering-skien.json");
+  const image = fs.readFileSync(path.join(root, "tests/sde/fixtures/night-plan", fixture.image.file));
+  assert.equal(crypto.createHash("sha256").update(image).digest("hex"), fixture.image.sha256);
+  assert.equal(fixture.fixtureClass, "HISTORICAL_OCR_FIXTURE_ONLY");
+  assert.equal(fixture.productionImportAllowed, false);
+
+  const plan = mapFixture(subject, fixture, "historical-geometry-fixture");
+  assert.equal(plan.entries.length, 29);
+  assert.equal(plan.ocrMapping.mappingStatus, "FORM_MAPPING_COMPLETE");
+  assert.equal(plan.ocrMapping.detectedHeaderCount, 6);
+  assert.equal(plan.ocrMapping.detectedRowCount > 1, true);
+  assert.equal(plan.ocrMapping.mappedCellCount > 1, true);
+  for (const expected of fixture.expected.nonEmptyRows) {
+    assert.deepEqual(mappedFormRow(plan.entries[expected.row - 1]), {
+      fromTrain: expected.fromTrain,
+      toTrain: expected.toTrain,
+      vehicleId: expected.vehicleId,
+      toTrack: expected.toTrack,
+      wcWater: expected.wcWater,
+      notes: expected.notes,
+    });
+  }
+  for (let index = fixture.expected.emptyRowsStartAt - 1; index < 29; index += 1) {
+    assert.deepEqual(mappedFormRow(plan.entries[index]), {
+      fromTrain: "", toTrain: "", vehicleId: "", toTrack: "", wcWater: "", notes: "",
+    });
+  }
+  assert.notDeepEqual(mappedFormRow(plan.entries[0]), {fromTrain: "", toTrain: "", vehicleId: "", toTrack: "8S", wcWater: "", notes: ""});
+});
+
+test("to syntetiske bilde-fixtures bytter alle aktuelle verdier uten kryssimportlekkasje", () => {
+  const subject = loadSubject();
+  const fixtureA = readOcrFixture("synthetic-fixture-a.json");
+  const fixtureB = readOcrFixture("synthetic-fixture-b.json");
+  for (const fixture of [fixtureA, fixtureB]) {
+    const image = fs.readFileSync(path.join(root, "tests/sde/fixtures/night-plan", fixture.image.file));
+    assert.equal(crypto.createHash("sha256").update(image).digest("hex"), fixture.image.sha256);
+  }
+  const first = mapFixture(subject, fixtureA, "synthetic-a-plan");
+  const second = mapFixture(subject, fixtureB, "synthetic-b-plan");
+  assert.deepEqual(mappedFormRow(first.entries[0]), fixtureA.expected.row1);
+  assert.deepEqual(mappedFormRow(second.entries[0]), fixtureB.expected.row1);
+  assert.equal(first.entries[2].notes.normalizedValue, fixtureA.expected.row3Notes);
+  assert.equal(second.entries[2].notes.normalizedValue, fixtureB.expected.row3Notes);
+  const secondValues = JSON.stringify(second.entries.map(mappedFormRow));
+  for (const stale of ["A101", "A201", "TEST-A-01", "4M", "Fixture A"]) {
+    assert.equal(secondValues.includes(stale), false, stale);
+  }
+  assert.equal(secondValues.includes("8S"), false);
+});
+
+test("mappingrapport klassifiserer mange OCR-tokens og én celle som ikke-komplett", () => {
+  const subject = loadSubject();
+  const base = readOcrFixture("synthetic-fixture-a.json").ocr;
+  const headers = base.tokens.filter(token => token.lineIndex === 2);
+  const oneCell = base.tokens.find(token => token.text === "4M");
+  const discarded = Array.from({length: 24}, (_unused, index) => ({
+    text: `NOISE-${index}`,
+    confidence: 0.8,
+    bbox: {x0: -200, y0: 300 + index, x1: -100, y1: 320 + index},
+    lineIndex: 10 + index,
+  }));
+  const plan = subject.mapOcrResultToNightPlan({...base, tokens: [...headers, oneCell, ...discarded]}, {
+    planId: "single-cell-not-success",
+    operationalDate: "2026-08-18",
+    createdAt: "2026-08-17T18:00:00.000Z",
+  });
+  assert.notEqual(plan.ocrMapping.mappingStatus, "FORM_MAPPING_COMPLETE");
+  assert.equal(plan.ocrMapping.mappedCellCount, 1);
+  assert.equal(plan.ocrMapping.unmappedTokenCount >= 24, true);
+  assert.equal(plan.ocrMapping.discardedReasonCounts.OUTSIDE_FORM >= 24, true);
+});
+
+test("tom OCR og råtekst uten geometri får sannferdig fail/review-status", () => {
+  const subject = loadSubject();
+  const options = {planId: "empty-ocr", operationalDate: "2026-08-18", createdAt: "2026-08-17T18:00:00.000Z"};
+  const empty = subject.mapOcrResultToNightPlan({rawText: "", tokens: [], confidence: 0}, options);
+  const rawOnly = subject.mapOcrResultToNightPlan({rawText: "Fra 833 Til 802 74-38 12S", confidence: 0.8}, {...options, planId: "raw-only"});
+  assert.equal(empty.ocrMapping.mappingStatus, "OCR_FAILED");
+  assert.equal(empty.ocrMapping.ocrTokenCount, 0);
+  assert.notEqual(rawOnly.ocrMapping.mappingStatus, "FORM_MAPPING_COMPLETE");
+  assert.equal(rawOnly.ocrMapping.discardedReasonCounts.MISSING_GEOMETRY > 0, true);
+});
+
+test("lokal OCR-adapter ber eksplisitt om blocks og eksponerer dimensjoner, linjer og tokens", async () => {
+  const subject = loadSubject();
+  let receivedOutput = null;
+  const analyzer = subject.createLocalOcrAnalyzer({
+    createWorker: async () => ({
+      recognize: async (_image, _options, output) => {
+        receivedOutput = output;
+        return {data: {
+          text: "Fra Tog 851",
+          confidence: 93,
+          blocks: [{paragraphs: [{lines: [{text: "Fra Tog 851", bbox: {x0: 0, y0: 0, x1: 160, y1: 40}, words: [
+            {text: "Fra", confidence: 99, bbox: {x0: 0, y0: 0, x1: 40, y1: 40}},
+            {text: "Tog", confidence: 99, bbox: {x0: 45, y0: 0, x1: 90, y1: 40}},
+            {text: "851", confidence: 91, bbox: {x0: 100, y0: 0, x1: 150, y1: 40}},
+          ]}]}]}],
+        }};
+      },
+      terminate: async () => {},
+    }),
+  });
+  const result = await analyzer.analyze({name: "fixture.png", type: "image/png", width: 1200, height: 1500});
+  assert.deepEqual(receivedOutput, {text: true, blocks: true});
+  assert.equal(result.tokens.length, 3);
+  assert.equal(result.lineCount, 1);
+  assert.equal(result.ocrTokenCount, 3);
+  assert.equal(result.tokens[2].text, "851");
+  assert.deepEqual(result.tokens[2].bbox, {x0: 100, y0: 0, x1: 150, y1: 40});
+});
+
+test("ny manuell 29-radersmodell er tom og inneholder ingen design- eller 8S-default", () => {
+  const subject = loadSubject();
+  const plan = subject.createNightPlan({
+    planId: "empty-manual-form",
+    operationalDate: "2026-08-18",
+    createdAt: "2026-08-17T18:00:00.000Z",
+    sourceType: "HUMAN_MANUAL_PLAN",
+    entries: Array.from({length: 29}, () => ({})),
+  });
+  assert.equal(plan.entries.length, 29);
+  assert.equal(plan.entries.flatMap(entry => Object.values(mappedFormRow(entry))).filter(Boolean).length, 0);
+  assert.equal(JSON.stringify(plan).includes("8S"), false);
+});

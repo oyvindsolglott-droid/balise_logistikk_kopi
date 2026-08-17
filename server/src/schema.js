@@ -85,6 +85,8 @@ function createSchemaSql(){
       source_image_sha256 TEXT,
       imported_at TEXT,
       human_corrected INTEGER NOT NULL,
+      mapping_status TEXT,
+      mapping_report_json TEXT,
       saved_at TEXT NOT NULL,
       saved_by TEXT NOT NULL,
       final_form_sha256 TEXT NOT NULL,

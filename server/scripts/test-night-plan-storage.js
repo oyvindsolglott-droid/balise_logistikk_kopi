@@ -80,6 +80,23 @@ function rows(){
   }));
 }
 
+function mappingReport(){
+  return {
+    schemaVersion: "sde-night-form-mapping-report-v1",
+    ocrTokenCount: 90,
+    recognizedLineCount: 27,
+    detectedHeaderCount: 6,
+    detectedRowCount: 3,
+    mappedCellCount: 16,
+    unmappedTokenCount: 4,
+    mappingConfidence: 0.88,
+    mappingStatus: "FORM_MAPPING_COMPLETE",
+    discardedReasonCounts: {LOW_CONFIDENCE: 4},
+    geometrySource: "PREPROCESSED_KNOWN_FORM_LAYOUT",
+    requiresHumanReview: true
+  };
+}
+
 function payload(overrides = {}){
   const base = {
     idempotencyKey: `night-plan-test:${cryptoId()}`,
@@ -93,7 +110,9 @@ function payload(overrides = {}){
       ocrEngine: "tesseract.js-local",
       ocrVersion: "bundled",
       importedAt: "2026-08-17T08:01:00.000Z",
-      humanCorrected: true
+      humanCorrected: true,
+      mappingStatus: "FORM_MAPPING_COMPLETE",
+      mappingReport: mappingReport()
     },
     image: {mimeType: "image/png", originalFileName: "plan.png", bytesBase64: PNG.toString("base64")},
     pipeline: {modelVersion: "test-model", pipelineVersion: "test-pipeline"}
@@ -142,6 +161,11 @@ function runStorageContract(){
   check("15 provenance stores human correction", () => assert.equal(readback.provenance.humanCorrected, true));
   check("16 provenance binds source hash", () => assert.equal(readback.provenance.sourceImageSha256, sha256(PNG)));
   check("17 identity comes from server option", () => assert.equal(readback.savedBy, "cf-subject-txp"));
+  check("17a provenance stores truthful mapping status", () => assert.equal(readback.provenance.mappingStatus, "FORM_MAPPING_COMPLETE"));
+  check("17b provenance stores bounded mapping counts without raw OCR text", () => {
+    assert.equal(readback.provenance.mappingReport.mappedCellCount, 16);
+    assert.equal(JSON.stringify(readback.provenance.mappingReport).includes("rawText"), false);
+  });
 
   const image = getNightPlanImage(context.db, saved.planId, saved.storedImageId, {
     imageStorageRoot: context.imageRoot,
@@ -249,6 +273,12 @@ function runValidationAndSecurityContract(){
       fs.readFileSync(path.join(__dirname, "../src/nightPlanRoutes.js"), "utf8");
     assert.equal(/console\.(?:log|info|debug)\s*\(/.test(source), false);
   });
+  check("46d OCR-backed image source requires mapping provenance", () => expectCode(() => validateNightPlanSavePayload(payload({
+    source: {sourceType: "DEVICE_FILE", ocrEngine: "tesseract.js-local", ocrVersion: "bundled", importedAt: "2026-08-17T08:01:00.000Z", humanCorrected: true, mappingStatus: "FORM_MAPPING_COMPLETE", mappingReport: null}
+  })), "mapping_report_required"));
+  check("46e mapping status and report cannot contradict each other", () => expectCode(() => validateNightPlanSavePayload(payload({
+    source: {...payload().source, mappingStatus: "MAPPING_FAILED"}
+  })), "mapping_status_mismatch"));
   check("47 symlinked ancestor cannot redirect storage into repository", () => {
     const context = freshContext("symlink-ancestor-into-repo");
     const link = path.join(tempRoot, "repo-alias");

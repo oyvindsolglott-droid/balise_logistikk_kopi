@@ -15,6 +15,12 @@
   const CONFIRMATION_STATES = new Set(["UNCONFIRMED", "CONFIRMED", "EXCLUDED"]);
   const IMAGE_MIME_TYPES = Object.freeze(["image/jpeg", "image/png"]);
   const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+  const FORM_ROW_COUNT = 29;
+  const FORM_COLUMN_FIELDS = Object.freeze([
+    "arrivalOccurrence", "departureOccurrence", "vehicleId",
+    "desiredSlot", "taskContext", "notes",
+  ]);
+  const FORM_COLUMN_RATIOS = Object.freeze([0.015, 0.14, 0.27, 0.40, 0.52, 0.63, 0.985]);
   const EDITABLE_FIELDS = Object.freeze([
     "time",
     "trainNumber",
@@ -82,6 +88,19 @@
     return match ? match[1] : "";
   }
 
+  function normalizeTrainCell(value) {
+    return cleanText(value).replace(/[‐‑‒–—]/g, "-").replace(/\s+/g, " ");
+  }
+
+  function normalizeTrackCell(value) {
+    return cleanText(value)
+      .toUpperCase()
+      .replace(/[‐‑‒–—]/g, "-")
+      .replace(/(?:-|=)+\s*>/g, "→")
+      .replace(/\s*→\s*/g, "→")
+      .replace(/\s+/g, "");
+  }
+
   function clone(value) {
     return value == null ? value : JSON.parse(JSON.stringify(value));
   }
@@ -132,10 +151,10 @@
     return {
       entryId: cleanText(entry && entry.entryId) || `${options.planId}-entry-${index + 1}`,
       vehicleId: makeField(entry && entry.vehicleId, normalizeVehicle, defaults),
-      desiredSlot: makeField(entry && entry.desiredSlot, normalizeSlot, defaults),
+      desiredSlot: makeField(entry && entry.desiredSlot, normalizeTrackCell, defaults),
       trainNumber: makeField(entry && entry.trainNumber, normalizeTrain, defaults),
-      arrivalOccurrence: makeField(entry && entry.arrivalOccurrence, normalizeTrain, defaults),
-      departureOccurrence: makeField(entry && entry.departureOccurrence, normalizeTrain, defaults),
+      arrivalOccurrence: makeField(entry && entry.arrivalOccurrence, normalizeTrainCell, defaults),
+      departureOccurrence: makeField(entry && entry.departureOccurrence, normalizeTrainCell, defaults),
       taskContext: makeField(entry && entry.taskContext, cleanText, defaults),
       notes: makeField(entry && entry.notes, cleanText, defaults),
       time: makeField(entry && entry.time, normalizeTime, defaults),
@@ -166,6 +185,8 @@
       sourceFingerprint: cleanText(source.sourceFingerprint),
       planStatus,
       dataRevision: cleanText(source.dataRevision),
+      ocrMetadata: source.ocrMetadata && typeof source.ocrMetadata === "object" ? clone(source.ocrMetadata) : null,
+      ocrMapping: source.ocrMapping && typeof source.ocrMapping === "object" ? clone(source.ocrMapping) : null,
       audit: source.audit && typeof source.audit === "object" ? clone(source.audit) : {
         confirmedAt: "",
         confirmedBy: "",
@@ -256,6 +277,279 @@
     });
   }
 
+  function normalizeOcrConfidence(value) {
+    const numeric = Number(value);
+    return clamp(Number.isFinite(numeric) && numeric > 1 ? numeric / 100 : numeric || 0, 0, 1);
+  }
+
+  function normalizeOcrToken(token, index) {
+    const value = token && typeof token === "object" ? token : {};
+    const text = cleanText(value.text);
+    const sourceBbox = value.bbox && typeof value.bbox === "object" ? value.bbox : {};
+    const bbox = {
+      x0: Number(sourceBbox.x0), y0: Number(sourceBbox.y0),
+      x1: Number(sourceBbox.x1), y1: Number(sourceBbox.y1),
+    };
+    const hasGeometry = [bbox.x0, bbox.y0, bbox.x1, bbox.y1].every(Number.isFinite)
+      && bbox.x1 > bbox.x0 && bbox.y1 > bbox.y0;
+    return {
+      index,
+      text,
+      confidence: normalizeOcrConfidence(value.confidence),
+      bbox: hasGeometry ? bbox : null,
+      lineIndex: Number.isFinite(Number(value.lineIndex)) ? Number(value.lineIndex) : null,
+    };
+  }
+
+  function flattenOcrBlocks(blocks) {
+    const tokens = [];
+    let lineIndex = 0;
+    for (const block of Array.isArray(blocks) ? blocks : []) {
+      for (const paragraph of Array.isArray(block && block.paragraphs) ? block.paragraphs : []) {
+        for (const line of Array.isArray(paragraph && paragraph.lines) ? paragraph.lines : []) {
+          const words = Array.isArray(line && line.words) ? line.words : [];
+          if (words.length) {
+            for (const word of words) tokens.push({...word, lineIndex});
+          } else if (cleanText(line && line.text)) {
+            tokens.push({text: line.text, confidence: line.confidence, bbox: line.bbox, lineIndex});
+          }
+          lineIndex += 1;
+        }
+      }
+    }
+    return {tokens, lineCount: lineIndex};
+  }
+
+  function normalizeHeaderText(value) {
+    return cleanText(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+  }
+
+  function headerKind(value) {
+    const normalized = normalizeHeaderText(value);
+    if (/^FRATOG$/.test(normalized)) return "fromTrain";
+    if (/^TILTOG$/.test(normalized)) return "toTrain";
+    if (/^(?:SETT?NR|SETTNUMMER)$/.test(normalized)) return "vehicleId";
+    if (/^TILSPOR$/.test(normalized)) return "toTrack";
+    if (/^(?:WC|WCVANN|VANN)$/.test(normalized)) return "wcWater";
+    if (/^MERKNAD$/.test(normalized)) return "notes";
+    return "";
+  }
+
+  function verticallyRelated(left, right, imageHeight) {
+    if (left.lineIndex != null && right.lineIndex != null && left.lineIndex === right.lineIndex) return true;
+    if (!left.bbox || !right.bbox) return false;
+    const leftCenter = (left.bbox.y0 + left.bbox.y1) / 2;
+    const rightCenter = (right.bbox.y0 + right.bbox.y1) / 2;
+    return Math.abs(leftCenter - rightCenter) <= Math.max(10, imageHeight * 0.012);
+  }
+
+  function detectFormHeaders(tokens, dataTop, imageHeight) {
+    const candidates = [];
+    const headerTokens = tokens.filter(token => token.bbox && (token.bbox.y0 + token.bbox.y1) / 2 < dataTop);
+    for (let start = 0; start < headerTokens.length; start += 1) {
+      for (let length = 1; length <= 3 && start + length <= headerTokens.length; length += 1) {
+        const slice = headerTokens.slice(start, start + length);
+        const sorted = [...slice].sort((left, right) => left.bbox.x0 - right.bbox.x0);
+        if (sorted.some((token, index) => index > 0 && !verticallyRelated(sorted[index - 1], token, imageHeight))) continue;
+        const kind = headerKind(sorted.map(token => token.text).join(""));
+        if (!kind) continue;
+        candidates.push({
+          kind,
+          indexes: sorted.map(token => token.index),
+          confidence: sorted.reduce((sum, token) => sum + token.confidence, 0) / sorted.length,
+        });
+      }
+    }
+    const detected = new Map();
+    for (const candidate of candidates.sort((left, right) => right.confidence - left.confidence || right.indexes.length - left.indexes.length)) {
+      if (!detected.has(candidate.kind)) detected.set(candidate.kind, candidate);
+    }
+    return detected;
+  }
+
+  function validTableGeometry(source, imageWidth, imageHeight) {
+    const candidate = source && typeof source === "object" ? source : {};
+    const boundaries = Array.isArray(candidate.columnBoundaries) ? candidate.columnBoundaries.map(Number) : [];
+    const validBoundaries = boundaries.length === 7 && boundaries.every(Number.isFinite)
+      && boundaries.every((value, index) => index === 0 || value > boundaries[index - 1]);
+    const dataTop = Number(candidate.dataTop);
+    const dataBottom = Number(candidate.dataBottom);
+    if (validBoundaries && Number.isFinite(dataTop) && Number.isFinite(dataBottom) && dataBottom > dataTop) {
+      return {
+        left: boundaries[0], right: boundaries[6], dataTop, dataBottom,
+        columnBoundaries: boundaries,
+        source: cleanText(candidate.source) || "DETECTED_TABLE_GEOMETRY",
+      };
+    }
+    return {
+      left: imageWidth * FORM_COLUMN_RATIOS[0],
+      right: imageWidth * FORM_COLUMN_RATIOS[6],
+      dataTop: imageHeight * 0.19,
+      dataBottom: imageHeight * 0.975,
+      columnBoundaries: FORM_COLUMN_RATIOS.map(ratio => imageWidth * ratio),
+      source: "KNOWN_FORM_LAYOUT_FALLBACK",
+    };
+  }
+
+  function metadataValue(tokens, label, nextLabel, excludedIndexes, imageHeight) {
+    if (!label || !label.bbox) return "";
+    const centerY = (label.bbox.y0 + label.bbox.y1) / 2;
+    const upperX = nextLabel && nextLabel.bbox ? nextLabel.bbox.x0 : Number.POSITIVE_INFINITY;
+    const candidates = tokens.filter(token => token.bbox && !excludedIndexes.has(token.index)
+      && token.bbox.x0 >= label.bbox.x1 && token.bbox.x0 < upperX
+      && Math.abs(((token.bbox.y0 + token.bbox.y1) / 2) - centerY) <= Math.max(12, imageHeight * 0.025));
+    for (const token of candidates) excludedIndexes.add(token.index);
+    return candidates.sort((left, right) => left.bbox.x0 - right.bbox.x0).map(token => token.text).join(" ").trim();
+  }
+
+  function mappingField(value, confidence, sourceRegion) {
+    return {
+      rawValue: cleanText(value),
+      normalizedValue: cleanText(value),
+      confidence: normalizeOcrConfidence(confidence),
+      sourceRegion: clone(sourceRegion),
+      validationState: confidence >= 0.85 ? "MAPPED" : "REVIEW_REQUIRED",
+    };
+  }
+
+  function mapOcrResultToNightPlan(ocrResult, options) {
+    const result = ocrResult && typeof ocrResult === "object" ? ocrResult : {};
+    const source = options && typeof options === "object" ? options : {};
+    const suppliedTokens = Array.isArray(result.tokens) ? result.tokens : [];
+    const rawTokens = suppliedTokens.length
+      ? suppliedTokens
+      : cleanText(result.rawText).split(/\s+/).filter(Boolean).map(text => ({text, confidence: result.confidence}));
+    const tokens = rawTokens.map(normalizeOcrToken).filter(token => token.text);
+    const geometryTokens = tokens.filter(token => token.bbox);
+    const derivedWidth = geometryTokens.reduce((maximum, token) => Math.max(maximum, token.bbox.x1), 0);
+    const derivedHeight = geometryTokens.reduce((maximum, token) => Math.max(maximum, token.bbox.y1), 0);
+    const imageWidth = Math.max(1, Number(result.imageWidth) || derivedWidth || 1);
+    const imageHeight = Math.max(1, Number(result.imageHeight) || derivedHeight || 1);
+    const geometry = validTableGeometry(result.tableGeometry, imageWidth, imageHeight);
+    const headers = detectFormHeaders(tokens, geometry.dataTop, imageHeight);
+    const excludedIndexes = new Set();
+    for (const candidate of headers.values()) for (const index of candidate.indexes) excludedIndexes.add(index);
+
+    const metadataLabels = {};
+    for (const token of tokens.filter(item => item.bbox && (item.bbox.y0 + item.bbox.y1) / 2 < geometry.dataTop)) {
+      const normalized = normalizeHeaderText(token.text);
+      if (normalized === "DATO") metadataLabels.date = token;
+      if (normalized === "SIGNATUR") metadataLabels.signature = token;
+      if (normalized === "DS") metadataLabels.ds = token;
+    }
+    for (const token of Object.values(metadataLabels)) if (token) excludedIndexes.add(token.index);
+    const ocrMetadata = {
+      date: metadataValue(tokens, metadataLabels.date, metadataLabels.signature, excludedIndexes, imageHeight),
+      signature: metadataValue(tokens, metadataLabels.signature, metadataLabels.ds, excludedIndexes, imageHeight),
+      ds: metadataValue(tokens, metadataLabels.ds, null, excludedIndexes, imageHeight),
+    };
+
+    const cellTokens = new Map();
+    const discardedReasonCounts = {};
+    const discarded = [];
+    function discard(token, reason) {
+      discarded.push({tokenIndex: token.index, reason});
+      discardedReasonCounts[reason] = Number(discardedReasonCounts[reason] || 0) + 1;
+    }
+    for (const token of tokens) {
+      if (excludedIndexes.has(token.index)) continue;
+      const normalized = normalizeHeaderText(token.text);
+      if (/^(?:TOGPLASSERINGSKIEN|TOGPLASSERING|SKIEN)$/.test(normalized)) continue;
+      if (!token.bbox) { discard(token, "MISSING_GEOMETRY"); continue; }
+      const centerX = (token.bbox.x0 + token.bbox.x1) / 2;
+      const centerY = (token.bbox.y0 + token.bbox.y1) / 2;
+      if (centerX < geometry.left || centerX >= geometry.right || centerY < geometry.dataTop || centerY >= geometry.dataBottom) {
+        discard(token, "OUTSIDE_FORM");
+        continue;
+      }
+      let column = -1;
+      for (let index = 0; index < 6; index += 1) {
+        if (centerX >= geometry.columnBoundaries[index] && centerX < geometry.columnBoundaries[index + 1]) {
+          column = index;
+          break;
+        }
+      }
+      const row = Math.floor(((centerY - geometry.dataTop) / (geometry.dataBottom - geometry.dataTop)) * FORM_ROW_COUNT);
+      if (column < 0 || row < 0 || row >= FORM_ROW_COUNT) { discard(token, "OUTSIDE_FORM"); continue; }
+      const minimumConfidence = column === 5 ? 0.35 : 0.45;
+      if (token.confidence < minimumConfidence) { discard(token, "LOW_CONFIDENCE"); continue; }
+      const key = `${row}:${column}`;
+      if (!cellTokens.has(key)) cellTokens.set(key, []);
+      cellTokens.get(key).push(token);
+    }
+
+    const entries = Array.from({length: FORM_ROW_COUNT}, () => ({}));
+    const mappedRows = new Set();
+    let mappedCellCount = 0;
+    for (const [key, values] of cellTokens.entries()) {
+      const [row, column] = key.split(":").map(Number);
+      const sorted = values.sort((left, right) => left.bbox.x0 - right.bbox.x0);
+      const text = sorted.map(token => token.text).join(" ").trim();
+      if (!text) continue;
+      const confidence = sorted.reduce((sum, token) => sum + token.confidence, 0) / sorted.length;
+      entries[row][FORM_COLUMN_FIELDS[column]] = mappingField(text, confidence, {
+        row: row + 1,
+        column: column + 1,
+        tokenIndexes: sorted.map(token => token.index),
+      });
+      mappedRows.add(row);
+      mappedCellCount += 1;
+    }
+
+    const detectedHeaderCount = headers.size;
+    const detectedRowCount = mappedRows.size;
+    const ocrTokenCount = tokens.length;
+    const unmappedTokenCount = discarded.length;
+    const meanMappedConfidence = [...cellTokens.values()].flat().reduce((sum, token) => sum + token.confidence, 0)
+      / Math.max(1, [...cellTokens.values()].flat().length);
+    const mappingRatio = mappedCellCount / Math.max(1, mappedCellCount + unmappedTokenCount);
+    const mappingConfidence = clamp(
+      (detectedHeaderCount / 6) * 0.35
+      + mappingRatio * 0.25
+      + meanMappedConfidence * 0.2
+      + Math.min(1, detectedRowCount / 3) * 0.2,
+      0,
+      1,
+    );
+    let mappingStatus = "FORM_MAPPING_REQUIRES_REVIEW";
+    if (ocrTokenCount === 0) mappingStatus = "OCR_FAILED";
+    else if (mappedCellCount === 0) mappingStatus = "MAPPING_FAILED";
+    else if (ocrTokenCount >= 8 && mappedCellCount <= 1) mappingStatus = "MAPPING_FAILED";
+    else if (detectedHeaderCount === 6 && mappedCellCount >= 2 && mappingRatio >= 0.45) mappingStatus = "FORM_MAPPING_COMPLETE";
+    else if (detectedHeaderCount < 3) mappingStatus = "FORM_MAPPING_REQUIRES_REVIEW";
+
+    const ocrMapping = {
+      schemaVersion: "sde-night-form-mapping-report-v1",
+      ocrTokenCount,
+      recognizedLineCount: Number(result.lineCount) || new Set(tokens.map(token => token.lineIndex).filter(Number.isFinite)).size,
+      detectedHeaderCount,
+      detectedRowCount,
+      mappedCellCount,
+      unmappedTokenCount,
+      mappingConfidence: Number(mappingConfidence.toFixed(4)),
+      mappingStatus,
+      discardedReasonCounts,
+      geometrySource: geometry.source,
+      requiresHumanReview: mappingStatus !== "FORM_MAPPING_COMPLETE" || meanMappedConfidence < 0.85,
+    };
+    return createNightPlan({
+      planId: source.planId,
+      operationalDate: source.operationalDate,
+      createdAt: source.createdAt,
+      createdBy: source.createdBy,
+      sourceType: "HUMAN_IMPORTED_PLAN",
+      sourceFingerprint: source.sourceFingerprint,
+      planStatus: "DRAFT",
+      ocrMetadata,
+      ocrMapping,
+      entries,
+    });
+  }
+
   function valueOf(field) {
     if (field && typeof field === "object" && "normalizedValue" in field) return field.normalizedValue;
     return field;
@@ -292,10 +586,10 @@
     const normalizers = {
       time: normalizeTime,
       trainNumber: normalizeTrain,
-      arrivalOccurrence: normalizeTrain,
-      departureOccurrence: normalizeTrain,
+      arrivalOccurrence: normalizeTrainCell,
+      departureOccurrence: normalizeTrainCell,
       vehicleId: normalizeVehicle,
-      desiredSlot: normalizeSlot,
+      desiredSlot: normalizeTrackCell,
       taskContext: cleanText,
       notes: cleanText,
     };
@@ -306,7 +600,7 @@
       ...previous,
       rawValue: cleanText(previous.rawValue),
       normalizedValue: normalizers[fieldName](value),
-      validationState: "UNCONFIRMED",
+      validationState: "HUMAN_CONFIRMED",
       humanCorrected: true,
     };
     entry.confirmationState = "UNCONFIRMED";
@@ -946,12 +1240,21 @@
             logger: typeof onProgress === "function" ? onProgress : undefined,
           });
           if (session.cancelled) throw new Error("ocr_cancelled");
-          const result = await session.worker.recognize(image);
+          const result = await session.worker.recognize(image, {}, {text: true, blocks: true});
           if (session.cancelled) throw new Error("ocr_cancelled");
           const rawConfidence = Number(result && result.data && result.data.confidence || 0);
+          const structured = flattenOcrBlocks(result && result.data && result.data.blocks);
           return {
             rawText: cleanText(result && result.data && result.data.text),
             confidence: clamp(rawConfidence > 1 ? rawConfidence / 100 : rawConfidence, 0, 1),
+            tokens: structured.tokens.map(normalizeOcrToken),
+            ocrTokenCount: structured.tokens.length,
+            lineCount: structured.lineCount,
+            imageWidth: Number(image && (image.width || image.naturalWidth) || 0) || undefined,
+            imageHeight: Number(image && (image.height || image.naturalHeight) || 0) || undefined,
+            tableGeometry: result && result.data && result.data.tableGeometry
+              ? clone(result.data.tableGeometry)
+              : (image && image.sdeOcrGeometry ? clone(image.sdeOcrGeometry) : undefined),
             sourceType: "LOCAL_BROWSER_OCR",
             rawImagePersisted: false,
           };
@@ -978,6 +1281,7 @@
     canonical,
     createNightPlan,
     parseOcrText,
+    mapOcrResultToNightPlan,
     validateImageFileDescriptor,
     updateNightPlanField,
     addNightPlanEntry,
