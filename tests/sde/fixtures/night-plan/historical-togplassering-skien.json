@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "sde-ocr-fixture-v1",
+  "fixtureClass": "HISTORICAL_OCR_FIXTURE_ONLY",
+  "productionImportAllowed": false,
+  "image": {
+    "file": "historical-togplassering-skien.png",
+    "sha256": "15b56d386a22e021b6271f7751f838f033d948a84a7a0191bd45116f175e514e",
+    "width": 1125,
+    "height": 1355
+  },
+  "ocr": {
+    "imageWidth": 1125,
+    "imageHeight": 1355,
+    "confidence": 0.86,
+    "tableGeometry": {"left":20,"right":1105,"dataTop":250,"dataBottom":1325,"columnBoundaries":[20,157,305,445,583,708,1105],"source":"HISTORICAL_GROUND_TRUTH"},
+    "tokens": [
+      {"text":"TOGPLASSERING","confidence":0.99,"bbox":{"x0":330,"y0":20,"x1":610,"y1":70},"lineIndex":0},
+      {"text":"SKIEN","confidence":0.99,"bbox":{"x0":620,"y0":20,"x1":760,"y1":70},"lineIndex":0},
+      {"text":"Dato","confidence":0.98,"bbox":{"x0":105,"y0":86,"x1":175,"y1":112},"lineIndex":1},
+      {"text":"2/6","confidence":0.84,"bbox":{"x0":200,"y0":80,"x1":275,"y1":116},"lineIndex":1},
+      {"text":"Signatur","confidence":0.98,"bbox":{"x0":585,"y0":80,"x1":705,"y1":112},"lineIndex":1},
+      {"text":"ds","confidence":0.98,"bbox":{"x0":895,"y0":80,"x1":935,"y1":112},"lineIndex":1},
+      {"text":"Fra","confidence":0.99,"bbox":{"x0":45,"y0":155,"x1":92,"y1":188},"lineIndex":2},
+      {"text":"Tog","confidence":0.99,"bbox":{"x0":96,"y0":155,"x1":140,"y1":188},"lineIndex":2},
+      {"text":"Til","confidence":0.99,"bbox":{"x0":185,"y0":155,"x1":220,"y1":188},"lineIndex":2},
+      {"text":"Tog","confidence":0.99,"bbox":{"x0":225,"y0":155,"x1":270,"y1":188},"lineIndex":2},
+      {"text":"Settnr.","confidence":0.99,"bbox":{"x0":330,"y0":155,"x1":420,"y1":188},"lineIndex":2},
+      {"text":"Til","confidence":0.99,"bbox":{"x0":465,"y0":155,"x1":500,"y1":188},"lineIndex":2},
+      {"text":"spor","confidence":0.99,"bbox":{"x0":505,"y0":155,"x1":560,"y1":188},"lineIndex":2},
+      {"text":"Wc/","confidence":0.99,"bbox":{"x0":615,"y0":145,"x1":665,"y1":175},"lineIndex":2},
+      {"text":"vann","confidence":0.99,"bbox":{"x0":615,"y0":178,"x1":680,"y1":207},"lineIndex":3},
+      {"text":"Merknad","confidence":0.99,"bbox":{"x0":820,"y0":155,"x1":950,"y1":188},"lineIndex":2},
+      {"text":"851","confidence":0.91,"bbox":{"x0":60,"y0":265,"x1":120,"y1":296},"lineIndex":4},
+      {"text":"REP","confidence":0.88,"bbox":{"x0":195,"y0":265,"x1":260,"y1":296},"lineIndex":4},
+      {"text":"74-08","confidence":0.91,"bbox":{"x0":335,"y0":265,"x1":420,"y1":296},"lineIndex":4},
+      {"text":"8S","confidence":0.94,"bbox":{"x0":480,"y0":265,"x1":530,"y1":296},"lineIndex":4},
+      {"text":"ut syd.","confidence":0.83,"bbox":{"x0":750,"y0":260,"x1":870,"y1":298},"lineIndex":4},
+      {"text":"821","confidence":0.92,"bbox":{"x0":60,"y0":303,"x1":120,"y1":334},"lineIndex":5},
+      {"text":"840","confidence":0.92,"bbox":{"x0":195,"y0":303,"x1":255,"y1":334},"lineIndex":5},
+      {"text":"74-43","confidence":0.91,"bbox":{"x0":335,"y0":303,"x1":420,"y1":334},"lineIndex":5},
+      {"text":"6→4S","confidence":0.84,"bbox":{"x0":465,"y0":303,"x1":555,"y1":334},"lineIndex":5},
+      {"text":"*","confidence":0.78,"bbox":{"x0":625,"y0":303,"x1":650,"y1":334},"lineIndex":5},
+      {"text":"853","confidence":0.91,"bbox":{"x0":60,"y0":341,"x1":120,"y1":372},"lineIndex":6},
+      {"text":"806","confidence":0.86,"bbox":{"x0":195,"y0":341,"x1":255,"y1":372},"lineIndex":6},
+      {"text":"74-39","confidence":0.91,"bbox":{"x0":335,"y0":341,"x1":420,"y1":372},"lineIndex":6},
+      {"text":"6→4N","confidence":0.82,"bbox":{"x0":465,"y0":341,"x1":555,"y1":372},"lineIndex":6},
+      {"text":"*","confidence":0.79,"bbox":{"x0":625,"y0":341,"x1":650,"y1":372},"lineIndex":6}
+    ]
+  },
+  "expected": {
+    "metadata": {"date":"2/6","signature":"","ds":""},
+    "nonEmptyRows": [
+      {"row":1,"fromTrain":"851","toTrain":"REP","vehicleId":"74-08","toTrack":"8S","wcWater":"","notes":"ut syd."},
+      {"row":2,"fromTrain":"821","toTrain":"840","vehicleId":"74-43","toTrack":"6→4S","wcWater":"*","notes":""},
+      {"row":3,"fromTrain":"853","toTrain":"806","vehicleId":"74-39","toTrack":"6→4N","wcWater":"*","notes":""}
+    ],
+    "emptyRowsStartAt": 4
+  }
+}

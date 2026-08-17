@@ -28,6 +28,7 @@
   let selectedImageSource = null;
   let selectedImageMimeType = null;
   let selectedImageOcrCompleted = false;
+  let importState = {status: "NO_IMAGE", report: null};
   let imageObjectUrl = "";
   let ocrAnalyzer = null;
   let ocrGeneration = 0;
@@ -39,6 +40,10 @@
   let dirty = false;
   let lastInteractionAt = Date.now();
   const inferenceAuditInMemory = [];
+
+  function setImportState(status, report) {
+    importState = {status: String(status || "NO_IMAGE"), report: report ? JSON.parse(JSON.stringify(report)) : null};
+  }
 
   function el(id) {
     return document.getElementById(id);
@@ -202,11 +207,14 @@
       const input = function input(name, label) {
         const descriptor = entry[name] || {};
         const original = String(descriptor.rawValue || "");
+        const uncertain = descriptor.validationState === "REVIEW_REQUIRED";
         return [
           "<input type=\"text\" data-sde-night-index=\"", index,
           "\" data-sde-night-field=\"", html(name),
+          "\" class=\"", uncertain ? "sde-night-uncertain" : "",
           "\" value=\"", html(fieldValue(entry, name)),
           "\" aria-label=\"", html(label + " linje " + (index + 1)),
+          uncertain ? "\" data-sde-night-uncertain=\"true" : "",
           "\" title=\"", html(original ? "Opprinnelig OCR-verdi: " + original : "Manuell verdi"),
           "\"", editMode ? "" : " readonly",
           ">",
@@ -291,6 +299,8 @@
   async function buildSavePayload() {
     const form = buildServerForm();
     if (!form.signature) throw new Error("signature_required");
+    const imageSource = ["CAMERA", "DEVICE_FILE"].includes(selectedImageSource);
+    if (imageSource && !humanReviewActivated) throw new Error("image_import_not_reviewed");
     if (!humanReviewActivated) throw new Error("human_review_required");
     let image = null;
     if (["CAMERA", "DEVICE_FILE"].includes(selectedImageSource)) {
@@ -316,9 +326,11 @@
         ocrVersion: selectedImageOcrCompleted ? String(root.Tesseract?.version || "bundled") : null,
         importedAt: selectedImageSource ? String(draft.sdeImportedAt || new Date().toISOString()) : null,
         humanCorrected: true,
+        mappingStatus: imageSource ? (selectedImageOcrCompleted ? String(importState.status) : "NOT_RUN_HUMAN_ENTERED") : null,
+        mappingReport: imageSource && selectedImageOcrCompleted && importState.report ? importState.report : null,
       },
       image,
-      pipeline: {modelVersion: "0.0.0-cold-start", pipelineVersion: "sde-night-local-ocr-v1"},
+      pipeline: {modelVersion: "0.0.0-cold-start", pipelineVersion: "sde-night-local-ocr-v2"},
     };
   }
 
@@ -373,6 +385,7 @@
       const code = String(error?.message || error);
       const messages = {
         signature_required: "Signatur må fylles ut før lagring.",
+        image_import_not_reviewed: "Planen er ikke kontrollert etter bildeimport. Velg «Endre innhold» og kontroller feltene.",
         human_review_required: "Velg «Endre innhold» og gjennomfør menneskelig kontroll før lagring.",
         source_image_required: "Originalbildet må fortsatt være valgt når en bildebasert plan lagres.",
         authentication_required: "Innloggingen må være gyldig for å lagre planen.",
@@ -472,6 +485,7 @@
     selectedImageSource = null;
     selectedImageMimeType = null;
     selectedImageOcrCompleted = false;
+    setImportState("NO_IMAGE", null);
     [el("sdeNightImageInput"), el("sdeNightCameraInput")].forEach(function clear(input) {
       if (input) input.value = "";
     });
@@ -495,6 +509,7 @@
     selectedImage = file;
     selectedImageSource = sourceType;
     selectedImageMimeType = validation.mimeType;
+    setImportState("IMAGE_SELECTED", null);
     draft.sdeImportedAt = new Date().toISOString();
     imageObjectUrl = root.URL.createObjectURL(file);
     const preview = el("sdeNightImagePreview");
@@ -517,6 +532,69 @@
     return Array.from(new Uint8Array(digest), function toHex(byte) {
       return byte.toString(16).padStart(2, "0");
     }).join("");
+  }
+
+  function normalizeImportedDate(value, fallbackIsoDate) {
+    const raw = String(value || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const complete = raw.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+    const partial = raw.match(/^(\d{1,2})[./-](\d{1,2})$/);
+    const fallbackYear = String(fallbackIsoDate || "").slice(0, 4);
+    const match = complete || partial;
+    if (!match) return "";
+    const year = complete ? complete[3] : fallbackYear;
+    const month = Number(match[2]);
+    const day = Number(match[1]);
+    const candidate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const parsed = new Date(candidate + "T00:00:00Z");
+    return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === candidate ? candidate : "";
+  }
+
+  function applyImportedMetadata(plan) {
+    const metadata = plan && plan.ocrMetadata || {};
+    const date = normalizeImportedDate(metadata.date, plan.operationalDate);
+    if (date) plan.operationalDate = date;
+    plan.createdBy = String(metadata.signature || "").trim();
+    plan.sdeDs = String(metadata.ds || "").trim();
+    return plan;
+  }
+
+  async function preprocessImageForOcr(file) {
+    if (!file) throw new Error("source_image_required");
+    const bitmap = await root.createImageBitmap(file, {imageOrientation: "from-image"});
+    try {
+      const longest = Math.max(bitmap.width, bitmap.height);
+      const scale = longest > 2200 ? 2200 / longest : 1;
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d", {willReadFrequently: true});
+      if (!context) throw new Error("image_preprocessing_unavailable");
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const frame = context.getImageData(0, 0, canvas.width, canvas.height);
+      for (let offset = 0; offset < frame.data.length; offset += 4) {
+        const gray = Math.round(frame.data[offset] * 0.299 + frame.data[offset + 1] * 0.587 + frame.data[offset + 2] * 0.114);
+        frame.data[offset] = gray;
+        frame.data[offset + 1] = gray;
+        frame.data[offset + 2] = gray;
+        frame.data[offset + 3] = 255;
+      }
+      context.putImageData(frame, 0, 0);
+      const columnRatios = [0.015, 0.14, 0.27, 0.40, 0.52, 0.63, 0.985];
+      canvas.sdeOcrGeometry = {
+        left: canvas.width * columnRatios[0],
+        right: canvas.width * columnRatios[6],
+        dataTop: canvas.height * 0.19,
+        dataBottom: canvas.height * 0.975,
+        columnBoundaries: columnRatios.map(function boundary(ratio) { return canvas.width * ratio; }),
+        source: "PREPROCESSED_KNOWN_FORM_LAYOUT",
+      };
+      return canvas;
+    } finally {
+      if (typeof bitmap.close === "function") bitmap.close();
+    }
   }
 
   function getOcrAnalyzer() {
@@ -544,11 +622,14 @@
     const cancelButton = el("sdeNightCancelOcrBtn");
     if (analyzeButton) analyzeButton.disabled = true;
     if (cancelButton) cancelButton.disabled = false;
+    selectedImageOcrCompleted = false;
+    setImportState("OCR_PROCESSING", null);
     setStatus("Lokal OCR analyserer bildet. Ingen bildepiksler sendes til en ekstern tjeneste.", "warn");
     try {
       const analyzer = getOcrAnalyzer();
       const fingerprintPromise = fileFingerprint(selectedImage);
-      const result = await analyzer.analyze(selectedImage, function onProgress(message) {
+      const preprocessedImage = await preprocessImageForOcr(selectedImage);
+      const result = await analyzer.analyze(preprocessedImage, function onProgress(message) {
         if (generation !== ocrGeneration) return;
         const progress = Math.round(Number(message && message.progress || 0) * 100);
         const label = String(message && message.status || "analyserer");
@@ -557,7 +638,12 @@
       });
       if (generation !== ocrGeneration) return;
       const fingerprint = await fingerprintPromise;
-      const plan = logic.parseOcrText(result.rawText, {
+      setImportState("OCR_TEXT_EXTRACTED", null);
+      const progressTarget = el("sdeNightOcrProgress");
+      if (progressTarget) {
+        progressTarget.textContent = `OCR_TEXT_EXTRACTED · ${Number(result.ocrTokenCount || 0)} tokens · ${Number(result.lineCount || 0)} linjer · råbildet er ikke lagret`;
+      }
+      const plan = logic.mapOcrResultToNightPlan(result, {
         planId: makeId("image-plan"),
         operationalDate: String(el("sdeNightOperationalDate") && el("sdeNightOperationalDate").value || defaultOperationalDate()),
         createdAt: new Date().toISOString(),
@@ -565,35 +651,43 @@
         sourceFingerprint: fingerprint ? "sha256:" + fingerprint : "",
         ocrConfidence: result.confidence,
       });
+      applyImportedMetadata(plan);
       plan.dataRevision = currentDataRevision();
-      if (!plan.entries.length) {
-        throw new Error("ocr_no_plan_lines");
-      }
       draft = plan;
       while (draft.entries.length < ROW_COUNT) draft = logic.addNightPlanEntry(draft);
       while (draft.entries.length > ROW_COUNT) draft = logic.removeNightPlanEntry(draft, draft.entries.length - 1);
       draft.sdeImportedAt = new Date().toISOString();
       selectedImageOcrCompleted = true;
+      setImportState(draft.ocrMapping.mappingStatus, draft.ocrMapping);
       editMode = false;
       humanReviewActivated = false;
       markDirty();
       renderDraftRows();
-      setStatus(
-        "Bildet er tolket til 29 faste planlinjer. Velg «Endre innhold» og kontroller resultatet; OCR er aldri fasit.",
-        "warn"
-      );
-      const target = el("sdeNightOcrProgress");
-      if (target) target.textContent = "OCR ferdig · råbildet er ikke lagret";
+      const report = draft.ocrMapping;
+      const summary = `${report.mappingStatus} · ${report.ocrTokenCount} tokens · ${report.recognizedLineCount} linjer · ${report.detectedHeaderCount}/6 overskrifter · ${report.detectedRowCount} rader · ${report.mappedCellCount} celler · ${report.unmappedTokenCount} forkastet · råbildet er ikke lagret`;
+      if (progressTarget) progressTarget.textContent = summary;
+      if (report.mappingStatus === "FORM_MAPPING_COMPLETE") {
+        setStatus("Skjemamappingen er fullført. Velg «Endre innhold» og kontroller alle verdier før Lagre.", "warn");
+      } else if (report.mappingStatus === "FORM_MAPPING_REQUIRES_REVIEW") {
+        setStatus("Bildet er lest, men innholdet kunne ikke plasseres sikkert i skjemaet. Velg «Endre innhold» og kontroller feltene.", "warn");
+      } else if (report.mappingStatus === "OCR_FAILED") {
+        setStatus("Ingen lesbar tekst ble funnet. Ingen vellykket skjemamapping er registrert.", "error");
+      } else {
+        setStatus("Skjemamappingen feilet. Resultatet er ikke klassifisert som en vellykket import; velg «Endre innhold» for manuell kontroll.", "error");
+      }
     } catch (error) {
       if (generation !== ocrGeneration || /ocr_cancelled/i.test(String(error && error.message || error))) {
+        setImportState("OCR_FAILED", null);
         setStatus("Bildeanalysen ble avbrutt. Ingen plan ble lagret.", "warn");
       } else if (/unsupported_image_type/i.test(String(error && error.message || error))) {
+        setImportState("OCR_FAILED", null);
         setStatus("Ugyldig filtype. Bare JPG og PNG støttes.", "error");
-      } else if (/ocr_no_plan_lines/i.test(String(error && error.message || error))) {
-        setStatus("Bildet kunne leses, men ingen sikre planlinjer ble funnet. Prøv et skarpere bilde eller registrer manuelt.", "error");
       } else {
+        setImportState("OCR_FAILED", null);
         setStatus("Lokal bildeanalyse feilet. Ingen data ble lagret; bruk manuell registrering eller prøv et tydeligere bilde.", "error");
       }
+      const target = el("sdeNightOcrProgress");
+      if (target) target.textContent = "OCR_FAILED · råbildet er ikke lagret";
     } finally {
       if (generation === ocrGeneration) {
         if (analyzeButton) analyzeButton.disabled = false;
@@ -604,6 +698,7 @@
 
   async function cancelOcr() {
     ocrGeneration += 1;
+    setImportState("OCR_FAILED", null);
     if (ocrAnalyzer && typeof ocrAnalyzer.cancel === "function") {
       try {
         await ocrAnalyzer.cancel();
@@ -1005,7 +1100,16 @@
   root.renderSdeNightPlanningWorkspace = renderWorkspace;
   root.SdeNightPlanUiTestApi = Object.freeze({
     getUnsavedState: function getUnsavedState() {
-      return {dirty, hasImage: Boolean(selectedImage), sourceType: selectedImageSource || (draft.sdeLegacyLocal ? "LEGACY_LOCAL" : "MANUAL"), rowCount: draft.entries.length};
+      return {
+        dirty,
+        hasImage: Boolean(selectedImage),
+        sourceType: selectedImageSource || (draft.sdeLegacyLocal ? "LEGACY_LOCAL" : "MANUAL"),
+        rowCount: draft.entries.length,
+        importStatus: importState.status,
+        mappingReport: importState.report ? JSON.parse(JSON.stringify(importState.report)) : null,
+        visibleForm: draft ? buildServerForm() : null,
+        humanReviewActivated,
+      };
     },
     readLegacyPlans: function readLegacyPlans() { return readPlanStore().plans; },
   });
