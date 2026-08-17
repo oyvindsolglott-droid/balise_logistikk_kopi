@@ -9,8 +9,11 @@ const indexPath = path.resolve(process.argv[2]);
 const source = fs.readFileSync(indexPath,"utf8");
 const repositoryRoot = path.resolve(__dirname,"../../..");
 const planButtonAssetPath = path.join(repositoryRoot,"assets","registrer-plan-i-sde-button.png");
+const nightPlanIntelligencePath = path.join(repositoryRoot,"sde_intelligent_night_planning.js");
+const nightPlanUiPath = path.join(repositoryRoot,"sde_night_planning_ui.js");
+const sha256File = filePath => crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 const planButtonAssetSha256 = fs.existsSync(planButtonAssetPath)
-  ? crypto.createHash("sha256").update(fs.readFileSync(planButtonAssetPath)).digest("hex")
+  ? sha256File(planButtonAssetPath)
   : "missing";
 const results = [];
 const put = (id,pass,detail)=>results.push({id,status:pass?"PASS":"FAIL",detail});
@@ -106,6 +109,15 @@ put(
     && !/width\s*:\s*160px/.test(planRule)
     && !/min-width\s*:\s*160px/.test(planRule),
   "Registrer Plan i SDE inherits the same desktop grid width and row aspect ratio as the common wide menu buttons"
+);
+
+const intelligenceSha256 = sha256File(nightPlanIntelligencePath);
+const nightPlanUiSha256 = sha256File(nightPlanUiPath);
+put(
+  "INV-MENU-006",
+  source.includes(`src="sde_intelligent_night_planning.js?v=${intelligenceSha256}"`)
+    && source.includes(`src="sde_night_planning_ui.js?v=${nightPlanUiSha256}"`),
+  "night-plan runtime script URLs are content-addressed so a deployed HTML revision cannot reuse stale cached behavior"
 );
 
 const failed = results.filter(item=>item.status === "FAIL");
