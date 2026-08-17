@@ -15,6 +15,8 @@ const sha256File = filePath => crypto.createHash("sha256").update(fs.readFileSyn
 const planButtonAssetSha256 = fs.existsSync(planButtonAssetPath)
   ? sha256File(planButtonAssetPath)
   : "missing";
+const nightPlanIntelligenceSha256 = sha256File(nightPlanIntelligencePath);
+const nightPlanUiSha256 = sha256File(nightPlanUiPath);
 const results = [];
 const put = (id,pass,detail)=>results.push({id,status:pass?"PASS":"FAIL",detail});
 
@@ -84,6 +86,8 @@ put(
     && /image\.src = SDE_NIGHT_PLAN_BUTTON_ASSET;/.test(createSource)
     && /label\.textContent = SDE_NIGHT_PLAN_BUTTON_LABEL;/.test(createSource)
     && planButtonAssetSha256 === "f74058d3cc40f47c4049f962f3a299f7fed725babf685f7e6b9daa16a2761fad"
+    && source.includes(`src="sde_intelligent_night_planning.js?v=${nightPlanIntelligenceSha256}"`)
+    && source.includes(`src="sde_night_planning_ui.js?v=${nightPlanUiSha256}"`)
     && /menu\.insertBefore\(button,menu\.querySelector\("\.seg-vaktplan-graphic"\)\);/.test(syncSource)
     && /button\.remove\(\);/.test(syncSource)
     && !/>\s*Nattplan\s*<br>\s*og erfaring\s*</i.test(menuMarkup),
@@ -109,15 +113,6 @@ put(
     && !/width\s*:\s*160px/.test(planRule)
     && !/min-width\s*:\s*160px/.test(planRule),
   "Registrer Plan i SDE inherits the same desktop grid width and row aspect ratio as the common wide menu buttons"
-);
-
-const intelligenceSha256 = sha256File(nightPlanIntelligencePath);
-const nightPlanUiSha256 = sha256File(nightPlanUiPath);
-put(
-  "INV-MENU-006",
-  source.includes(`src="sde_intelligent_night_planning.js?v=${intelligenceSha256}"`)
-    && source.includes(`src="sde_night_planning_ui.js?v=${nightPlanUiSha256}"`),
-  "night-plan runtime script URLs are content-addressed so a deployed HTML revision cannot reuse stale cached behavior"
 );
 
 const failed = results.filter(item=>item.status === "FAIL");
