@@ -114,6 +114,16 @@ async function main(){
     }
   });
 
+  await check("10b private night-plan read and save are Admin/TXP only", () => {
+    for(const capability of [CAPABILITY_IDS.NIGHT_PLAN_READ, CAPABILITY_IDS.NIGHT_PLAN_SAVE]){
+      for(const role of EXPECTED_ROLES){
+        const decision = decide(humanIdentity, role, capability);
+        if([ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.TXP].includes(role)) assertAllowed(decision);
+        else assertDenied(decision, "role_not_allowed");
+      }
+    }
+  });
+
   await check("11 unverified identity is denied", () => {
     assertDenied(decide({ ...humanIdentity, identityVerified: false }, ROLE_KEYS.DROPS), "identity_unverified");
   });
@@ -289,10 +299,14 @@ async function main(){
       assert.equal(response.body.capabilities[CAPABILITY_IDS.ANALYTICS_READ].allowed, true);
       for(const capability of Object.values(CAPABILITY_IDS).filter((id) =>
         id !== CAPABILITY_IDS.READ &&
-        id !== CAPABILITY_IDS.ANALYTICS_READ
+        id !== CAPABILITY_IDS.ANALYTICS_READ &&
+        id !== CAPABILITY_IDS.NIGHT_PLAN_READ &&
+        id !== CAPABILITY_IDS.NIGHT_PLAN_SAVE
       )){
         assert.equal(response.body.capabilities[capability].allowed, false, capability);
       }
+      assert.equal(response.body.capabilities[CAPABILITY_IDS.NIGHT_PLAN_READ].allowed, true);
+      assert.equal(response.body.capabilities[CAPABILITY_IDS.NIGHT_PLAN_SAVE].allowed, true);
     });
 
     await check("30 no capability write method exists", async () => {

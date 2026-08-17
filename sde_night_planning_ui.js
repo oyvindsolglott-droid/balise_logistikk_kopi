@@ -2,9 +2,10 @@
   "use strict";
 
   const logic = root.SdeNightIntelligence;
+  const API_ROOT = "/api/night-plans";
   const PLAN_STORAGE_KEY = "sde_night_plans_v1";
-  const INFERENCE_AUDIT_STORAGE_KEY = "sde_night_inference_audit_v1";
   const PLAN_STORE_SCHEMA = "sde-night-plan-store-v1";
+  const ROW_COUNT = 29;
   const FIELD_NAMES = [
     "time",
     "arrivalOccurrence",
@@ -24,10 +25,20 @@
   let initialized = false;
   let draft = null;
   let selectedImage = null;
+  let selectedImageSource = null;
+  let selectedImageMimeType = null;
+  let selectedImageOcrCompleted = false;
   let imageObjectUrl = "";
   let ocrAnalyzer = null;
   let ocrGeneration = 0;
   let assetPromise = null;
+  let editMode = true;
+  let humanReviewActivated = true;
+  let serverPlans = [];
+  let saveAttempt = null;
+  let dirty = false;
+  let lastInteractionAt = Date.now();
+  const inferenceAuditInMemory = [];
 
   function el(id) {
     return document.getElementById(id);
@@ -92,13 +103,6 @@
     }
   }
 
-  function writePlanStore(store) {
-    root.localStorage.setItem(PLAN_STORAGE_KEY, JSON.stringify({
-      schemaVersion: PLAN_STORE_SCHEMA,
-      plans: Array.isArray(store && store.plans) ? store.plans : [],
-    }));
-  }
-
   function setStatus(message, tone) {
     const target = el("sdeNightPlanStatus");
     if (!target) return;
@@ -116,8 +120,14 @@
       sourceType: "HUMAN_MANUAL_PLAN",
       dataRevision: currentDataRevision(),
       planStatus: "DRAFT",
-      entries: [{}],
+      entries: Array.from({length: ROW_COUNT}, function emptyEntry() { return {}; }),
     });
+  }
+
+  function markDirty() {
+    dirty = true;
+    saveAttempt = null;
+    lastInteractionAt = Date.now();
   }
 
   function knownVehicleIds() {
@@ -145,10 +155,7 @@
         false
       );
     });
-    document.querySelectorAll("#sdeNightPlanRows [data-sde-night-confirm]").forEach(function syncConfirmation(input) {
-      const entry = draft.entries[Number(input.dataset.sdeNightConfirm)];
-      if (entry) entry.confirmationState = input.checked ? "CONFIRMED" : "UNCONFIRMED";
-    });
+    draft.sdeDs = String(el("sdeNightDs") && el("sdeNightDs").value || "").trim();
   }
 
   function validateDraft() {
@@ -176,22 +183,22 @@
     const host = el("sdeNightPlanRows");
     if (!host || !logic) return;
     if (!draft) draft = makeManualDraft();
-    validateDraft();
+    while (draft.entries.length < ROW_COUNT) draft = logic.addNightPlanEntry(draft);
+    while (draft.entries.length > ROW_COUNT) draft = logic.removeNightPlanEntry(draft, draft.entries.length - 1);
     const operationalDateInput = el("sdeNightOperationalDate");
     if (operationalDateInput && document.activeElement !== operationalDateInput) {
       operationalDateInput.value = draft.operationalDate || defaultOperationalDate();
     }
+    const confirmedByInput = el("sdeNightConfirmedBy");
+    const dsInput = el("sdeNightDs");
+    if (confirmedByInput && document.activeElement !== confirmedByInput) confirmedByInput.value = draft.createdBy || "";
+    if (dsInput && document.activeElement !== dsInput) dsInput.value = draft.sdeDs || "";
+    [operationalDateInput, confirmedByInput, dsInput].forEach(function applyReadOnly(input) {
+      if (input) input.readOnly = !editMode;
+    });
+    const editState = el("sdeNightEditState");
+    if (editState) editState.textContent = editMode ? "Innholdet kan redigeres" : "Wc/vann låst i visningsmodus";
     host.innerHTML = (draft.entries || []).map(function renderEntry(entry, index) {
-      const warning = validationText(entry);
-      const excluded = entry.confirmationState === "EXCLUDED";
-      const rowClass = excluded ? " class=\"excluded\"" : warning ? " class=\"invalid\"" : "";
-      const confidenceValues = FIELD_NAMES.map(function confidence(name) {
-        return Number(entry[name] && entry[name].confidence);
-      }).filter(Number.isFinite);
-      const minimumConfidence = confidenceValues.length ? Math.min.apply(null, confidenceValues) : null;
-      const interpretation = draft.sourceType === "HUMAN_IMPORTED_PLAN"
-        ? "Laveste felt-confidence " + Math.round(Number(minimumConfidence || 0) * 100) + "% · " + entry.confirmationState
-        : "Manuell input · " + entry.confirmationState;
       const input = function input(name, label) {
         const descriptor = entry[name] || {};
         const original = String(descriptor.rawValue || "");
@@ -200,33 +207,19 @@
           "\" data-sde-night-field=\"", html(name),
           "\" value=\"", html(fieldValue(entry, name)),
           "\" aria-label=\"", html(label + " linje " + (index + 1)),
-          "\" title=\"", html(original ? "Opprinnelig: " + original : "Manuell verdi"),
-          "\">",
+          "\" title=\"", html(original ? "Opprinnelig OCR-verdi: " + original : "Manuell verdi"),
+          "\"", editMode ? "" : " readonly",
+          ">",
         ].join("");
       };
       return [
-        "<tr", rowClass, " data-sde-night-row=\"", index, "\">",
-        "<td><span>", entry.order || index + 1, "</span><div class=\"sde-night-order-actions\">",
-        "<button type=\"button\" data-sde-night-move=\"", index, "\" data-sde-night-direction=\"UP\" aria-label=\"Flytt linje ", index + 1, " opp\"", index === 0 ? " disabled" : "", ">↑</button>",
-        "<button type=\"button\" data-sde-night-move=\"", index, "\" data-sde-night-direction=\"DOWN\" aria-label=\"Flytt linje ", index + 1, " ned\"", index === draft.entries.length - 1 ? " disabled" : "", ">↓</button>",
-        "</div></td>",
-        "<td>", input("time", "Tid"), "</td>",
+        "<tr data-sde-night-row=\"", index, "\">",
         "<td>", input("arrivalOccurrence", "Fra tog"), "</td>",
         "<td>", input("departureOccurrence", "Til tog"), "</td>",
-        "<td>", input("vehicleId", "Kjøretøy"),
-        warning ? "<span class=\"sde-night-field-note\">" + html(warning) + "</span>" : "",
-        "</td>",
-        "<td>", input("desiredSlot", "Ønsket spor"), "</td>",
-        "<td>", input("taskContext", "Oppgave"), "</td>",
-        "<td>", input("notes", "Notat"), "</td>",
-        "<td><span class=\"sde-night-field-note\">", html(interpretation), "</span></td>",
-        "<td class=\"sde-night-confirm-cell\"><input type=\"checkbox\" data-sde-night-confirm=\"", index,
-        "\" aria-label=\"Kritiske felt kontrollert for linje ", index + 1, "\"",
-        entry.confirmationState === "CONFIRMED" ? " checked" : "",
-        excluded ? " disabled" : "",
-        "></td>",
-        "<td><button type=\"button\" data-sde-night-exclude=\"", index, "\">", excluded ? "Gjenoppta" : "Avvis", "</button> ",
-        "<button type=\"button\" data-sde-night-remove=\"", index, "\">Fjern</button></td>",
+        "<td>", input("vehicleId", "Settnr"), "</td>",
+        "<td>", input("desiredSlot", "Til spor"), "</td>",
+        "<td>", input("taskContext", "Wc/vann"), "</td>",
+        "<td>", input("notes", "Merknad"), "</td>",
         "</tr>",
       ].join("");
     }).join("");
@@ -234,173 +227,237 @@
 
   function updateDraftField(index, fieldName, value, shouldRender) {
     if (!draft || !draft.entries[index] || !FIELD_NAMES.includes(fieldName)) return;
+    const changed = fieldValue(draft.entries[index], fieldName) !== String(value == null ? "" : value);
     draft = logic.updateNightPlanField(draft, index, fieldName, value);
+    if (changed) markDirty();
     if (shouldRender !== false) {
       renderDraftRows();
       setStatus("Linjen er endret. Kontroller kritiske felt på nytt før CONFIRMED.", "warn");
     }
   }
 
-  function addDraftEntry() {
-    if (!draft) draft = makeManualDraft();
-    draft = logic.addNightPlanEntry(draft);
-    draft.entries[draft.entries.length - 1].entryId = makeId("manual-entry");
+  function enableEditing() {
+    editMode = true;
+    humanReviewActivated = true;
+    markDirty();
     renderDraftRows();
-    setStatus("Tom linje lagt til. Fyll inn og kontroller kjøretøy og ønsket spor.", "warn");
+    setStatus("Innholdet er åpnet for menneskelig kontroll og korrigering. Ingen data er lagret.", "warn");
   }
 
-  function removeDraftEntry(index) {
-    if (!draft || !draft.entries[index]) return;
-    draft = logic.removeNightPlanEntry(draft, index);
-    renderDraftRows();
-    setStatus("Linjen er fjernet fra utkastet. Ingen operativ tilstand er endret.", "warn");
+  function canonicalJson(value) {
+    if (Array.isArray(value)) return "[" + value.map(canonicalJson).join(",") + "]";
+    if (value && typeof value === "object") {
+      return "{" + Object.keys(value).sort().map(function pair(key) {
+        return JSON.stringify(key) + ":" + canonicalJson(value[key]);
+      }).join(",") + "}";
+    }
+    return JSON.stringify(value);
   }
 
-  function moveDraftEntry(index, direction) {
-    if (!draft) return;
-    draft = logic.moveNightPlanEntry(draft, index, direction);
-    renderDraftRows();
-    setStatus("Rekkefølgen er endret i utkastet. Ingen operativ tilstand er endret.", "warn");
+  async function sha256Bytes(bytes) {
+    const digest = await root.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), function hex(byte) {
+      return byte.toString(16).padStart(2, "0");
+    }).join("");
   }
 
-  function toggleDraftEntryExcluded(index) {
-    if (!draft || !draft.entries[index]) return;
-    const exclude = draft.entries[index].confirmationState !== "EXCLUDED";
-    draft = logic.setNightPlanEntryExcluded(draft, index, exclude);
-    renderDraftRows();
-    setStatus(
-      exclude
-        ? "Linjen er satt til EXCLUDED og tas ikke med i analyse eller bekreftelseskrav."
-        : "Linjen er gjenopptatt som UNCONFIRMED og må kontrolleres på nytt.",
-      "warn"
-    );
+  function bytesToBase64(bytes) {
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(offset, offset + 0x8000));
+    }
+    return btoa(binary);
   }
 
-  function collectCorrections(plan) {
-    const corrections = [];
-    (plan.entries || []).forEach(function eachEntry(entry) {
-      FIELD_NAMES.forEach(function eachField(name) {
-        const descriptor = entry[name] || {};
-        if (!descriptor.humanCorrected && !descriptor.humanAdded) return;
-        corrections.push({
-          entryId: entry.entryId,
-          field: name,
-          originalValue: String(descriptor.rawValue || ""),
-          correctedValue: String(descriptor.normalizedValue || ""),
-          originalConfidence: Number(descriptor.confidence || 0),
-          humanAdded: descriptor.humanAdded === true,
-        });
-      });
-    });
-    return corrections;
-  }
-
-  function averageOriginalConfidence(plan) {
-    const values = [];
-    (plan.entries || []).forEach(function eachEntry(entry) {
-      FIELD_NAMES.forEach(function eachField(name) {
-        const value = Number(entry[name] && entry[name].confidence);
-        if (Number.isFinite(value)) values.push(value);
-      });
-    });
-    if (!values.length) return null;
-    return Math.round(values.reduce((total, value) => total + value, 0) / values.length * 1000) / 1000;
-  }
-
-  function criticalFieldsReady(plan) {
-    return logic.canConfirmNightPlan(plan);
-  }
-
-  function saveDraft(status) {
-    if (!logic || !draft) return;
+  function buildServerForm() {
     syncDraftFromEditor();
-    validateDraft();
-    const confirmedBy = String(el("sdeNightConfirmedBy") && el("sdeNightConfirmedBy").value || "").trim();
-    if (status === "CONFIRMED" && !criticalFieldsReady(draft)) {
-      setStatus("CONFIRMED krever gyldig vehicleId, gyldig spor og avkrysset menneskelig kontroll på hver linje.", "error");
-      return;
+    return {
+      planDate: draft.operationalDate,
+      signature: String(el("sdeNightConfirmedBy")?.value || "").trim(),
+      ds: String(el("sdeNightDs")?.value || "").trim(),
+      rows: draft.entries.map(function row(entry) {
+        return {
+          fromTrain: fieldValue(entry, "arrivalOccurrence"),
+          toTrain: fieldValue(entry, "departureOccurrence"),
+          vehicleId: fieldValue(entry, "vehicleId"),
+          toTrack: fieldValue(entry, "desiredSlot"),
+          wcWater: fieldValue(entry, "taskContext"),
+          notes: fieldValue(entry, "notes"),
+        };
+      }),
+    };
+  }
+
+  async function buildSavePayload() {
+    const form = buildServerForm();
+    if (!form.signature) throw new Error("signature_required");
+    if (!humanReviewActivated) throw new Error("human_review_required");
+    let image = null;
+    if (["CAMERA", "DEVICE_FILE"].includes(selectedImageSource)) {
+      if (!selectedImage) throw new Error("source_image_required");
+      const bytes = new Uint8Array(await selectedImage.arrayBuffer());
+      image = {
+        mimeType: selectedImageMimeType,
+        originalFileName: selectedImage.name || "night-plan-image",
+        bytesBase64: bytesToBase64(bytes),
+      };
     }
-    if (status === "CONFIRMED" && !confirmedBy) {
-      setStatus("Oppgi rolle eller initialer for den som bekrefter planen.", "error");
-      return;
-    }
-    const now = new Date().toISOString();
-    const saved = logic.createNightPlan({
-      ...draft,
-      planStatus: status,
-      createdBy: draft.createdBy || confirmedBy,
-      dataRevision: currentDataRevision(),
-      audit: {
-        confirmedAt: status === "CONFIRMED" ? now : "",
-        confirmedBy: status === "CONFIRMED" ? confirmedBy : "",
-        originalConfidence: averageOriginalConfidence(draft),
-        corrections: collectCorrections(draft),
-        savedAt: now,
-        rawImagePersisted: false,
-        authority: "PLAN_EXPERIENCE_ONLY",
+    if (!saveAttempt) saveAttempt = makeId("night-plan-save");
+    return {
+      idempotencyKey: saveAttempt,
+      expectedRevision: Number(draft.sdeServerRevision || 0),
+      planId: draft.sdeServerPlanId || null,
+      createdAt: draft.createdAt,
+      status: "SAVED",
+      form,
+      source: {
+        sourceType: draft.sdeLegacyLocal ? "LEGACY_LOCAL" : (selectedImageSource || "MANUAL"),
+        ocrEngine: selectedImageOcrCompleted ? "tesseract.js-local" : null,
+        ocrVersion: selectedImageOcrCompleted ? String(root.Tesseract?.version || "bundled") : null,
+        importedAt: selectedImageSource ? String(draft.sdeImportedAt || new Date().toISOString()) : null,
+        humanCorrected: true,
       },
-    });
-    const store = readPlanStore();
-    const index = store.plans.findIndex(function samePlan(plan) { return plan.planId === saved.planId; });
-    if (index >= 0) store.plans[index] = saved;
-    else store.plans.unshift(saved);
-    writePlanStore(store);
-    draft = saved;
-    releaseSelectedImage();
-    renderDraftRows();
+      image,
+      pipeline: {modelVersion: "0.0.0-cold-start", pipelineVersion: "sde-night-local-ocr-v1"},
+    };
+  }
+
+  async function saveDraft() {
+    const button = el("sdeNightSaveBtn");
+    if (button) button.disabled = true;
+    setStatus("Lagrer bilde, korrigert skjema, proveniens og læringsgrunnlag atomisk …", "warn");
+    try {
+      const payload = await buildSavePayload();
+      const response = await root.fetch(API_ROOT, {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload),
+      });
+      const result = await response.json().catch(function invalidJson() { return null; });
+      if (!response.ok || !result?.ok) throw new Error(result?.error || "night_plan_save_failed");
+      const readbackResponse = await root.fetch(API_ROOT + "/" + encodeURIComponent(result.planId), {
+        credentials: "same-origin", cache: "no-store",
+      });
+      const readback = await readbackResponse.json().catch(function invalidJson() { return null; });
+      const expectedFormSha = await sha256Bytes(new TextEncoder().encode(canonicalJson(payload.form)));
+      if (!readbackResponse.ok || !readback?.ok || readback.revision !== result.revision ||
+          readback.finalFormSha256 !== expectedFormSha || canonicalJson(readback.form) !== canonicalJson(payload.form)) {
+        throw new Error("night_plan_form_readback_mismatch");
+      }
+      if (payload.image) {
+        const imageResponse = await root.fetch(
+          API_ROOT + "/" + encodeURIComponent(result.planId) + "/images/" + encodeURIComponent(result.storedImageId),
+          {credentials: "same-origin", cache: "no-store"}
+        );
+        const actualBytes = await imageResponse.arrayBuffer();
+        const expectedImageSha = await sha256Bytes(await selectedImage.arrayBuffer());
+        if (!imageResponse.ok || await sha256Bytes(actualBytes) !== expectedImageSha ||
+            result.storedImageSha256 !== expectedImageSha || Number(result.storedImageByteCount) !== actualBytes.byteLength) {
+          throw new Error("night_plan_image_readback_mismatch");
+        }
+      }
+      draft.sdeServerPlanId = result.planId;
+      draft.sdeServerRevision = result.revision;
+      draft.createdBy = payload.form.signature;
+      draft.sdeDs = payload.form.ds;
+      dirty = false;
+      saveAttempt = null;
+      releaseSelectedImage();
+      editMode = false;
+      renderDraftRows();
+      await loadServerPlans();
+      setStatus("Planen er lagret og verifisert fra server: bilde, 29-raders skjema, proveniens og menneskelig korrigert læringsgrunnlag.", "ok");
+    } catch (error) {
+      const code = String(error?.message || error);
+      const messages = {
+        signature_required: "Signatur må fylles ut før lagring.",
+        human_review_required: "Velg «Endre innhold» og gjennomfør menneskelig kontroll før lagring.",
+        source_image_required: "Originalbildet må fortsatt være valgt når en bildebasert plan lagres.",
+        authentication_required: "Innloggingen må være gyldig for å lagre planen.",
+        night_plan_capability_denied: "Bare Admin og TXP kan lagre nattplaner.",
+      };
+      setStatus(messages[code] || "Lagring eller verifisert readback feilet (" + code + "). Ingen vellykket lagring er bekreftet.", "error");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function loadServerPlans() {
+    try {
+      const response = await root.fetch(API_ROOT + "?limit=50", {credentials: "same-origin", cache: "no-store"});
+      const result = await response.json();
+      serverPlans = response.ok && result?.ok && Array.isArray(result.plans) ? result.plans : [];
+    } catch (_error) {
+      serverPlans = [];
+    }
     renderSavedPlans();
-    setStatus(
-      status === "CONFIRMED"
-        ? "Planen er lagret som CONFIRMED i separat plan-/erfaringspersistence. Dette er ikke bevis på gjennomføring."
-        : "Utkastet er lagret separat som DRAFT. Ingen operativ business-write er utført.",
-      "ok"
-    );
   }
 
   function renderSavedPlans() {
     const host = el("sdeNightSavedPlans");
     if (!host) return;
-    const plans = readPlanStore().plans;
-    if (!plans.length) {
-      host.innerHTML = "<div class=\"sde-night-status\">Ingen planer er lagret i denne nettleseren.</div>";
-      return;
-    }
-    host.innerHTML = plans.map(function renderSaved(plan) {
-      const audit = plan.audit || {};
+    const legacyPlans = readPlanStore().plans;
+    const serverHtml = serverPlans.map(function renderServer(plan) {
       return [
-        "<article class=\"sde-night-saved-item\">",
-        "<strong>", html(plan.operationalDate || "Ukjent dato"), " · ", html(plan.planStatus || "DRAFT"), "</strong>",
-        "<p>", html(String((plan.entries || []).length)), " linje(r) · ", html(plan.sourceType || "ukjent kilde"), "</p>",
-        "<p class=\"sde-night-model-meta\">PlanId ", html(plan.planId || ""), " · datarevision ", html(plan.dataRevision || "ukjent"),
-        audit.confirmedBy ? " · bekreftet av " + html(audit.confirmedBy) : "",
-        audit.confirmedAt ? " · " + html(audit.confirmedAt) : "",
-        "</p>",
-        "<button type=\"button\" data-sde-night-open=\"", html(plan.planId || ""), "\">Åpne kopi</button>",
-        "</article>",
+        "<article class=\"sde-night-saved-item\"><strong>", html(plan.planDate), " · SAVED</strong>",
+        "<p>", html(plan.signature), " · revisjon ", html(plan.revision), " · ", html(plan.sourceType), "</p>",
+        "<p class=\"sde-night-model-meta\">PlanId ", html(plan.planId), " · skjema SHA-256 ", html(plan.finalFormSha256), "</p>",
+        "<button type=\"button\" data-sde-night-open-server=\"", html(plan.planId), "\">Åpne read-only</button></article>",
       ].join("");
     }).join("");
+    const legacyHtml = legacyPlans.map(function renderLegacy(plan, index) {
+      return [
+        "<article class=\"sde-night-saved-item\"><strong>Lokal legacy-kopi · ", html(plan.operationalDate || "ukjent dato"), "</strong>",
+        "<p>Leses bare lokalt og overføres aldri automatisk.</p>",
+        "<button type=\"button\" data-sde-night-open-legacy=\"", index, "\">Velg for eksplisitt overføring</button></article>",
+      ].join("");
+    }).join("");
+    host.innerHTML = serverHtml + legacyHtml || "<div class=\"sde-night-status\">Ingen serverlagrede planer eller lokale legacy-kopier.</div>";
   }
 
-  function openSavedPlan(planId) {
-    const saved = readPlanStore().plans.find(function findPlan(plan) { return plan.planId === planId; });
+  async function openServerPlan(planId) {
+    try {
+      const response = await root.fetch(API_ROOT + "/" + encodeURIComponent(planId), {credentials: "same-origin", cache: "no-store"});
+      const plan = await response.json();
+      if (!response.ok || !plan?.ok) throw new Error("night_plan_read_failed");
+      releaseSelectedImage();
+      draft = logic.createNightPlan({
+        planId: makeId("server-plan-readback"), operationalDate: plan.form.planDate,
+        createdAt: plan.createdAt, createdBy: plan.form.signature, sourceType: "HUMAN_MANUAL_PLAN",
+        planStatus: "DRAFT", entries: plan.form.rows.map(function row(value) {
+          return {arrivalOccurrence: value.fromTrain, departureOccurrence: value.toTrain, vehicleId: value.vehicleId,
+            desiredSlot: value.toTrack, taskContext: value.wcWater, notes: value.notes};
+        }),
+      });
+      draft.sdeServerPlanId = plan.planId;
+      draft.sdeServerRevision = plan.revision;
+      draft.sdeDs = plan.form.ds;
+      editMode = false;
+      humanReviewActivated = false;
+      dirty = false;
+      renderDraftRows();
+      setStatus("Serverplanen er åpnet read-only. En bildebasert revisjon krever at originalbildet velges på nytt.", "ok");
+    } catch (_error) {
+      setStatus("Serverplanen kunne ikke leses med verifisert tilgang.", "error");
+    }
+  }
+
+  function openLegacyPlan(index) {
+    const saved = readPlanStore().plans[index];
     if (!saved) return;
-    draft = logic.createNightPlan({
-      ...saved,
-      planId: makeId("plan-copy"),
-      createdAt: new Date().toISOString(),
-      planStatus: "DRAFT",
-      audit: {
-        confirmedAt: "",
-        confirmedBy: "",
-        originalConfidence: saved.audit && saved.audit.originalConfidence,
-        corrections: [],
-        copiedFromPlanId: saved.planId,
-      },
-    });
-    const confirmedBy = el("sdeNightConfirmedBy");
-    if (confirmedBy) confirmedBy.value = "";
+    releaseSelectedImage();
+    draft = logic.createNightPlan({...saved, planId: makeId("legacy-transfer"), createdAt: new Date().toISOString(), planStatus: "DRAFT"});
+    while (draft.entries.length < ROW_COUNT) draft = logic.addNightPlanEntry(draft);
+    while (draft.entries.length > ROW_COUNT) draft = logic.removeNightPlanEntry(draft, draft.entries.length - 1);
+    draft.sdeLegacyLocal = true;
+    draft.sdeDs = "Legacy lokal kopi";
+    editMode = true;
+    humanReviewActivated = true;
+    markDirty();
     renderDraftRows();
-    setStatus("En kopi av den lagrede planen er åpnet som DRAFT. Originalen er uendret.", "ok");
+    setStatus("Den valgte legacy-kopien er lastet i minnet. Bare et eksplisitt trykk på «Lagre» overfører den.", "warn");
   }
 
   function validImageFile(file) {
@@ -412,8 +469,12 @@
     if (imageObjectUrl) root.URL.revokeObjectURL(imageObjectUrl);
     imageObjectUrl = "";
     selectedImage = null;
-    const input = el("sdeNightImageInput");
-    if (input) input.value = "";
+    selectedImageSource = null;
+    selectedImageMimeType = null;
+    selectedImageOcrCompleted = false;
+    [el("sdeNightImageInput"), el("sdeNightCameraInput")].forEach(function clear(input) {
+      if (input) input.value = "";
+    });
     const preview = el("sdeNightImagePreview");
     if (preview) {
       preview.removeAttribute("src");
@@ -423,14 +484,18 @@
     if (remove) remove.disabled = true;
   }
 
-  function selectImage(file) {
-    releaseSelectedImage();
+  function selectImage(file, sourceType) {
     const validation = validImageFile(file);
     if (!validation.ok) {
       setStatus(validation.message, "error");
       return;
     }
+    releaseSelectedImage();
+    draft = makeManualDraft();
     selectedImage = file;
+    selectedImageSource = sourceType;
+    selectedImageMimeType = validation.mimeType;
+    draft.sdeImportedAt = new Date().toISOString();
     imageObjectUrl = root.URL.createObjectURL(file);
     const preview = el("sdeNightImagePreview");
     if (preview) {
@@ -439,7 +504,11 @@
     }
     const remove = el("sdeNightRemoveImageBtn");
     if (remove) remove.disabled = false;
-    setStatus("Bildet er valgt og holdes bare midlertidig i nettleserminnet.", "ok");
+    editMode = false;
+    humanReviewActivated = false;
+    markDirty();
+    renderDraftRows();
+    setStatus("Bildet er valgt og holdes bare midlertidig i nettleserminnet. Velg «Importer nå» for lokal OCR.", "ok");
   }
 
   async function fileFingerprint(file) {
@@ -501,9 +570,16 @@
         throw new Error("ocr_no_plan_lines");
       }
       draft = plan;
+      while (draft.entries.length < ROW_COUNT) draft = logic.addNightPlanEntry(draft);
+      while (draft.entries.length > ROW_COUNT) draft = logic.removeNightPlanEntry(draft, draft.entries.length - 1);
+      draft.sdeImportedAt = new Date().toISOString();
+      selectedImageOcrCompleted = true;
+      editMode = false;
+      humanReviewActivated = false;
+      markDirty();
       renderDraftRows();
       setStatus(
-        "Bildet er tolket til " + plan.entries.length + " planlinje(r). Kontroller og korriger alle kritiske felt; OCR er aldri truth.",
+        "Bildet er tolket til 29 faste planlinjer. Velg «Endre innhold» og kontroller resultatet; OCR er aldri fasit.",
         "warn"
       );
       const target = el("sdeNightOcrProgress");
@@ -687,13 +763,8 @@
   }
 
   function appendInferenceAudit(record) {
-    try {
-      const existing = JSON.parse(root.localStorage.getItem(INFERENCE_AUDIT_STORAGE_KEY) || "[]");
-      const records = Array.isArray(existing) ? existing : [];
-      records.unshift(record);
-      root.localStorage.setItem(INFERENCE_AUDIT_STORAGE_KEY, JSON.stringify(records.slice(0, 200)));
-    } catch (_error) {
-    }
+    inferenceAuditInMemory.unshift(record);
+    if (inferenceAuditInMemory.length > 200) inferenceAuditInMemory.length = 200;
   }
 
   function scoreText(value, status) {
@@ -744,9 +815,14 @@
   async function analyzeDraftAgainstSde() {
     if (!draft) return;
     syncDraftFromEditor();
-    validateDraft();
-    renderDraftRows();
-    if (!draft.entries.length) {
+    const analysisDraft = logic.createNightPlan({
+      ...draft,
+      planId: draft.planId || makeId("analysis-plan"),
+      entries: draft.entries.filter(function populated(entry) {
+        return FIELD_NAMES.some(function hasValue(name) { return fieldValue(entry, name); });
+      }),
+    });
+    if (!analysisDraft.entries.length) {
       setStatus("Planen har ingen linjer å analysere.", "error");
       return;
     }
@@ -761,7 +837,7 @@
         : "ML_DISABLED · modell/config/registry kunne ikke lastes. Safe fallback uten ML-vekt.";
     }
     const gateByEntry = new Map();
-    const planAnalysis = logic.analyzeNightPlan(draft, {
+    const planAnalysis = logic.analyzeNightPlan(analysisDraft, {
       revision: currentDataRevision(),
       actualSlotForVehicle: currentSlotForVehicle,
       absoluteTargetGate: function absoluteTargetGate(_vehicle, _slot, entry) {
@@ -773,7 +849,7 @@
     const experienceRecords = plannedExperienceRecords();
     const rendered = [];
     for (const analysis of planAnalysis.entries) {
-      const entry = draft.entries.find(function findEntry(item) { return item.entryId === analysis.entryId; });
+      const entry = analysisDraft.entries.find(function findEntry(item) { return item.entryId === analysis.entryId; });
       const gate = gateByEntry.get(analysis.entryId) || buildAbsoluteGate(entry);
       const features = candidateFeatures(entry, gate.actualSlot || analysis.canonicalActual);
       let machine = {
@@ -840,35 +916,55 @@
     if (!draft) draft = makeManualDraft();
     renderDraftRows();
     renderSavedPlans();
+    loadServerPlans();
+  }
+
+  function resetWorkspace(message) {
+    releaseSelectedImage();
+    draft = makeManualDraft();
+    editMode = true;
+    humanReviewActivated = true;
+    dirty = false;
+    saveAttempt = null;
+    renderDraftRows();
+    if (message) setStatus(message, "ok");
+  }
+
+  function discardUnsavedForLifecycle(message) {
+    if (!dirty && !selectedImage) return;
+    resetWorkspace("");
+    if (message) setStatus(message, "warn");
   }
 
   function bindEvents() {
     if (initialized) return;
     initialized = true;
-    el("sdeNightImageInput") && el("sdeNightImageInput").addEventListener("change", function onImage(event) {
-      selectImage(event.target.files && event.target.files[0] || null);
+    el("sdeNightTakePhotoBtn")?.addEventListener("click", function takePhoto() { el("sdeNightCameraInput")?.click(); });
+    el("sdeNightChooseImageBtn")?.addEventListener("click", function chooseImage() { el("sdeNightImageInput")?.click(); });
+    el("sdeNightCameraInput")?.addEventListener("change", function onCameraImage(event) {
+      selectImage(event.target.files && event.target.files[0] || null, "CAMERA");
+    });
+    el("sdeNightImageInput")?.addEventListener("change", function onDeviceImage(event) {
+      selectImage(event.target.files && event.target.files[0] || null, "DEVICE_FILE");
     });
     el("sdeNightAnalyzeImageBtn") && el("sdeNightAnalyzeImageBtn").addEventListener("click", analyzeSelectedImage);
     el("sdeNightCancelOcrBtn") && el("sdeNightCancelOcrBtn").addEventListener("click", cancelOcr);
+    el("sdeNightEditBtn")?.addEventListener("click", enableEditing);
     el("sdeNightRemoveImageBtn") && el("sdeNightRemoveImageBtn").addEventListener("click", function removeImage() {
-      releaseSelectedImage();
-      setStatus("Råbildet er fjernet fra nettleserminnet. Utkastet er beholdt.", "ok");
+      resetWorkspace("Råbildet, OCR-resultatet og alle ulagrede endringer er fjernet fra nettleserminnet.");
     });
     el("sdeNightNewManualBtn") && el("sdeNightNewManualBtn").addEventListener("click", function newManual() {
-      releaseSelectedImage();
-      draft = makeManualDraft();
-      const confirmedBy = el("sdeNightConfirmedBy");
-      if (confirmedBy) confirmedBy.value = "";
-      renderDraftRows();
-      setStatus("Ny manuell DRAFT er opprettet i samme canonical nattplanmodell.", "ok");
+      resetWorkspace("Ny manuell plan med 29 tomme linjer er opprettet i nettleserminnet.");
     });
-    el("sdeNightAddEntryBtn") && el("sdeNightAddEntryBtn").addEventListener("click", addDraftEntry);
     el("sdeNightValidateBtn") && el("sdeNightValidateBtn").addEventListener("click", analyzeDraftAgainstSde);
-    el("sdeNightSaveDraftBtn") && el("sdeNightSaveDraftBtn").addEventListener("click", function saveAsDraft() { saveDraft("DRAFT"); });
-    el("sdeNightConfirmPlanBtn") && el("sdeNightConfirmPlanBtn").addEventListener("click", function confirmPlan() { saveDraft("CONFIRMED"); });
+    el("sdeNightSaveBtn")?.addEventListener("click", saveDraft);
     el("sdeNightOperationalDate") && el("sdeNightOperationalDate").addEventListener("change", function dateChanged() {
       syncDraftDate();
+      markDirty();
       setStatus("Driftsdato er endret i utkastet. Lagre eksplisitt for å beholde endringen.", "warn");
+    });
+    ["sdeNightConfirmedBy", "sdeNightDs"].forEach(function bindHeader(id) {
+      el(id)?.addEventListener("input", markDirty);
     });
     el("sdeNightPlanRows") && el("sdeNightPlanRows").addEventListener("input", function rowInput(event) {
       const field = event.target.closest && event.target.closest("[data-sde-night-field]");
@@ -880,39 +976,39 @@
       const field = event.target.closest && event.target.closest("[data-sde-night-field]");
       if (field) {
         updateDraftField(Number(field.dataset.sdeNightIndex), String(field.dataset.sdeNightField || ""), field.value, false);
-        setStatus("Linjen er endret. Kontroller kritiske felt på nytt før CONFIRMED.", "warn");
-        return;
+        setStatus("Linjen er endret. Endringen finnes bare i nettleserminnet frem til «Lagre».", "warn");
       }
-      const confirmation = event.target.closest && event.target.closest("[data-sde-night-confirm]");
-      if (confirmation && draft && draft.entries[Number(confirmation.dataset.sdeNightConfirm)]) {
-        draft.entries[Number(confirmation.dataset.sdeNightConfirm)].confirmationState = confirmation.checked ? "CONFIRMED" : "UNCONFIRMED";
-        setStatus(confirmation.checked ? "Linjen er markert menneskelig kontrollert." : "Menneskelig kontroll er fjernet fra linjen.", "warn");
-      }
-    });
-    el("sdeNightPlanRows") && el("sdeNightPlanRows").addEventListener("click", function rowClicked(event) {
-      const confirmation = event.target.closest && event.target.closest("[data-sde-night-confirm]");
-      if (confirmation && draft && draft.entries[Number(confirmation.dataset.sdeNightConfirm)]) {
-        const entry = draft.entries[Number(confirmation.dataset.sdeNightConfirm)];
-        const checked = confirmation.checked === true;
-        entry.confirmationState = checked ? "CONFIRMED" : "UNCONFIRMED";
-        setStatus(checked ? "Linjen er markert menneskelig kontrollert." : "Menneskelig kontroll er fjernet fra linjen.", "warn");
-        return;
-      }
-      const button = event.target.closest && event.target.closest("[data-sde-night-remove]");
-      if (button) removeDraftEntry(Number(button.dataset.sdeNightRemove));
-      const excludeButton = event.target.closest && event.target.closest("[data-sde-night-exclude]");
-      if (excludeButton) toggleDraftEntryExcluded(Number(excludeButton.dataset.sdeNightExclude));
-      const moveButton = event.target.closest && event.target.closest("[data-sde-night-move]");
-      if (moveButton) moveDraftEntry(Number(moveButton.dataset.sdeNightMove), String(moveButton.dataset.sdeNightDirection || ""));
     });
     el("sdeNightSavedPlans") && el("sdeNightSavedPlans").addEventListener("click", function savedClicked(event) {
-      const button = event.target.closest && event.target.closest("[data-sde-night-open]");
-      if (button) openSavedPlan(String(button.dataset.sdeNightOpen || ""));
+      const serverButton = event.target.closest && event.target.closest("[data-sde-night-open-server]");
+      const legacyButton = event.target.closest && event.target.closest("[data-sde-night-open-legacy]");
+      if (serverButton) openServerPlan(String(serverButton.dataset.sdeNightOpenServer || ""));
+      if (legacyButton) openLegacyPlan(Number(legacyButton.dataset.sdeNightOpenLegacy));
     });
     root.addEventListener("beforeunload", releaseSelectedImage);
+    root.addEventListener("pagehide", function pageHidden() { discardUnsavedForLifecycle(""); });
+    const panel = el("sdeNattplanErfaring");
+    if (panel && typeof MutationObserver === "function") {
+      new MutationObserver(function panelChanged() {
+        if (panel.hidden || panel.inert || !panel.classList.contains("active")) {
+          discardUnsavedForLifecycle("Ulagret bilde, OCR-data og endringer er slettet ved navigering bort.");
+        }
+      }).observe(panel, {attributes: true, attributeFilter: ["hidden", "inert", "class"]});
+    }
+    root.setInterval(function expireSession() {
+      if (Date.now() - lastInteractionAt < 30 * 60 * 1000) return;
+      discardUnsavedForLifecycle("Ulagrede data er slettet fordi arbeidsøkten utløp.");
+      lastInteractionAt = Date.now();
+    }, 60 * 1000);
   }
 
   root.renderSdeNightPlanningWorkspace = renderWorkspace;
+  root.SdeNightPlanUiTestApi = Object.freeze({
+    getUnsavedState: function getUnsavedState() {
+      return {dirty, hasImage: Boolean(selectedImage), sourceType: selectedImageSource || (draft.sdeLegacyLocal ? "LEGACY_LOCAL" : "MANUAL"), rowCount: draft.entries.length};
+    },
+    readLegacyPlans: function readLegacyPlans() { return readPlanStore().plans; },
+  });
   bindEvents();
   renderWorkspace();
 })(window);

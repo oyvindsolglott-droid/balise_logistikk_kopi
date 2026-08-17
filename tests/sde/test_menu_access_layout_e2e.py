@@ -28,7 +28,7 @@ class SdeMenuHandler(http.server.SimpleHTTPRequestHandler):
                     "ok": True,
                     "roleResolved": True,
                     "roles": ["drops", "txp", "sde_skiftere", "verksted", "agila"],
-                    "capabilities": {},
+                    "capabilities": {"night_plan.read": {"allowed": True}},
                 }
             ).encode("utf-8")
             self.send_response(200)

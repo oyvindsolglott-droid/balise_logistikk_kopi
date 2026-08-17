@@ -77,6 +77,7 @@ const {
   buildProductionVehicleStatusReadModel
 } = require("./vehicleStatusReadModel");
 const {createApprovedStaticAssetHandler} = require("./staticAssetDelivery");
+const {createNightPlanApi} = require("./nightPlanRoutes");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
@@ -138,7 +139,11 @@ const CLIENT_READ_CONTRACT = Object.freeze({
     "/api/server/status",
     "/api/state/revision",
     "/api/events",
-    "/api/shared-sporplan-draft"
+    "/api/shared-sporplan-draft",
+    "/api/night-plans"
+  ],
+  allowedDocumentationWriteEndpoints: [
+    "POST /api/night-plans"
   ],
   disallowedWriteEndpoints: [
     "/api/actions/server-note",
@@ -336,6 +341,15 @@ try{
 const app = express();
 const sseClients = new Set();
 
+let nightPlanApi;
+try{
+  nightPlanApi = createNightPlanApi({db, repositoryRoot: REPO_ROOT});
+}catch(error){
+  console.error(`night-plan storage startup blocked: ${error.message}`);
+  process.exit(1);
+}
+
+app.use("/api/night-plans", nightPlanApi.router);
 app.use(express.json({ limit: "1mb" }));
 
 app.use((req, res, next) => {
@@ -403,6 +417,7 @@ app.get("/api/server/status", (_req, res) => {
     sdeRecommendationAckActionsEnabled: SDE_RECOMMENDATION_ACK_STATUS.sdeRecommendationAckActionsEnabled,
     sdeRecommendationAckProductionActionsEnabled: SDE_RECOMMENDATION_ACK_STATUS.sdeRecommendationAckProductionActionsEnabled,
     sharedSporplanDraftWritesEnabled: SHARED_SPORPLAN_DRAFT_WRITES_ENABLED,
+    nightPlanStorage: nightPlanApi.status,
     operationalStateWritesEnabled: OPERATIONAL_STATE_STATUS.operationalStateWritesEnabled,
     operationalStateProductionWritesEnabled: OPERATIONAL_STATE_STATUS.operationalStateProductionWritesEnabled,
     operationalStateWritesAllowed: OPERATIONAL_STATE_STATUS.writesAllowed,
