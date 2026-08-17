@@ -9709,7 +9709,19 @@ button{padding:12px 12px}
 }
 .sde-night-controls button.primary{background:#1d4ed8;border-color:#1d4ed8;color:#fff}
 .sde-night-controls button.danger{border-color:#b91c1c;color:#991b1b}
+.sde-night-controls button.save{background:#15803d;border-color:#15803d;color:#fff}
 .sde-night-controls button:disabled{opacity:.5;cursor:not-allowed}
+.sde-night-file-input{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+.sde-night-form-head{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin:20px 0}
+.sde-night-form-head label{display:grid;gap:7px;font-weight:800;color:#1e293b}
+.sde-night-form-head input{min-height:48px;border:1px solid #9fb3cf;border-radius:10px;padding:8px 11px;font:inherit}
+.sde-night-form-title{text-align:center;font-size:42px;letter-spacing:.02em;margin:8px 0 4px;color:#111827}
+.sde-night-lock{margin-left:auto;border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:8px 18px;font-weight:800;font-size:13px}
+.sde-night-import-note{display:flex;gap:18px;justify-content:space-between;align-items:center;font-size:13px;font-weight:750;color:#52657f}
+.sde-night-import-note strong{color:#15803d}
+.sde-night-editor input:read-only{border-color:transparent;background:transparent;box-shadow:none}
+.sde-night-editor td:nth-child(6){min-width:300px}
+.sde-night-row-count{display:flex;justify-content:space-between;gap:12px;padding:14px 16px;border:1px solid #dbe6f4;border-radius:10px;background:#f8fafc;color:#52657f;font-weight:800}
 .sde-night-image-preview{display:none;max-width:min(100%,680px);max-height:440px;border:1px solid #cbd5e1;border-radius:12px;object-fit:contain}
 .sde-night-image-preview.visible{display:block}
 .sde-night-progress{font-size:13px;font-weight:750;color:#334155}
@@ -9741,6 +9753,8 @@ button{padding:12px 12px}
 @media(max-width:700px){
   .sde-night-hero,.sde-night-card{padding:12px}
   .sde-night-score-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .sde-night-form-head{grid-template-columns:1fr}
+  .sde-night-form-title{font-size:30px}
 }
 
 </style>
@@ -10153,51 +10167,50 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 <section class="panel" id="sdeNattplanErfaring" hidden inert aria-hidden="true">
 <div class="sde-night-workspace">
   <header class="sde-night-hero">
-    <h2>Nattplan og erfaring</h2>
-    <p>Importer et JPG/PNG-bilde eller registrer planen manuelt. Begge går inn i samme canonical nattplanmodell og må kontrolleres av et menneske før bekreftelse.</p>
-    <p class="sde-night-policy"><strong>Read-only beslutningsstøtte:</strong> Dette oppretter aldri actual placement, status, disposisjon, reservasjon, skiftekort, godkjenning eller «Utført». Gjeldende Sporplan/Tursatt og eksisterende absolutte porter har alltid høyest authority.</p>
+    <h2>Registrer Plan i SDE</h2>
+    <p>Importer et JPG/PNG-bilde eller opprett nattplanen manuelt. Råbilde, skjemadata, proveniens og læringsgrunnlag lagres samlet først når du velger «Lagre».</p>
+    <p class="sde-night-policy"><strong>Separat dokumentasjonskontrakt:</strong> Lagringen oppretter aldri actual placement, status, disposisjon, reservasjon, skiftekort, godkjenning eller «Utført».</p>
   </header>
 
   <section class="sde-night-card" aria-labelledby="sdeNightImportTitle">
     <h3 id="sdeNightImportTitle">1. Importer eller opprett nattplan</h3>
+    <strong>Bildekilde</strong>
     <div class="sde-night-controls">
-      <label>Planleggingsbilde
-        <input id="sdeNightImageInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" capture="environment">
-      </label>
-      <button class="primary" id="sdeNightAnalyzeImageBtn" type="button">Analyser bilde lokalt</button>
-      <button id="sdeNightCancelOcrBtn" type="button" disabled>Avbryt analyse</button>
+      <input class="sde-night-file-input" id="sdeNightCameraInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" capture="environment">
+      <input class="sde-night-file-input" id="sdeNightImageInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png">
+      <button id="sdeNightTakePhotoBtn" type="button">Ta bilde</button>
+      <button id="sdeNightChooseImageBtn" type="button">Velg bilde fra enheten</button>
+      <button class="primary" id="sdeNightAnalyzeImageBtn" type="button">Importer nå</button>
+      <button id="sdeNightEditBtn" type="button">Endre innhold</button>
       <button class="danger" id="sdeNightRemoveImageBtn" type="button" disabled>Fjern bilde</button>
       <button id="sdeNightNewManualBtn" type="button">Ny manuell plan</button>
+      <button class="save" id="sdeNightSaveBtn" type="button">Lagre</button>
+      <button id="sdeNightCancelOcrBtn" type="button" disabled hidden>Avbryt analyse</button>
     </div>
     <img class="sde-night-image-preview" id="sdeNightImagePreview" alt="Forhåndsvisning av valgt nattplanbilde">
-    <div class="sde-night-progress" id="sdeNightOcrProgress" aria-live="polite">Lokal OCR er klar. Råbildet lagres ikke.</div>
+    <div class="sde-night-import-note"><span id="sdeNightOcrProgress" aria-live="polite">Lokal OCR er klar. Råbildet lagres ikke.</span><strong>Uten «Lagre» slettes bilde, OCR-data og endringer når siden lukkes eller lastes på nytt.</strong></div>
   </section>
 
   <section class="sde-night-card" aria-labelledby="sdeNightCorrectionTitle">
-    <h3 id="sdeNightCorrectionTitle">2. Menneskelig kontroll og korrigering</h3>
-    <div class="sde-night-controls">
-      <label>Driftsdato
-        <input id="sdeNightOperationalDate" type="date">
-      </label>
-      <label>Bekreftet av (rolle/initialer)
-        <input id="sdeNightConfirmedBy" type="text" maxlength="80" autocomplete="off" placeholder="f.eks. TXP OS">
-      </label>
-      <button id="sdeNightAddEntryBtn" type="button">Legg til linje</button>
-      <button id="sdeNightValidateBtn" type="button">Valider og analyser mot SDE</button>
-      <button id="sdeNightSaveDraftBtn" type="button">Lagre DRAFT</button>
-      <button class="primary" id="sdeNightConfirmPlanBtn" type="button">Bekreft plan</button>
+    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 class="sde-night-form-title" id="sdeNightCorrectionTitle">TOGPLASSERING SKIEN</h3><span class="sde-night-lock" id="sdeNightEditState">Wc/vann låst i visningsmodus</span></div>
+    <div class="sde-night-form-head">
+      <label>Dato<input id="sdeNightOperationalDate" type="date"></label>
+      <label>Signatur<input id="sdeNightConfirmedBy" type="text" maxlength="120" autocomplete="off" placeholder="Initialer eller navn"></label>
+      <label>ds<input id="sdeNightDs" type="text" maxlength="120" autocomplete="off" placeholder="ds / referanse"></label>
     </div>
     <div class="sde-night-table-wrap">
-      <table class="sde-night-editor" aria-label="Korrigerbar canonical nattplan">
-        <thead><tr><th>Rekkefølge</th><th>Tid</th><th>Fra tog</th><th>Til tog</th><th>Kjøretøy</th><th>Ønsket spor</th><th>Oppgave</th><th>Notat</th><th>Tolkning</th><th>Kontrollert</th><th>Handling</th></tr></thead>
+      <table class="sde-night-editor" aria-label="TOGPLASSERING SKIEN med 29 faste linjer">
+        <thead><tr><th>Fra Tog</th><th>Til Tog</th><th>Settnr</th><th>Til spor</th><th>Wc/vann</th><th>Merknad</th></tr></thead>
         <tbody id="sdeNightPlanRows"></tbody>
       </table>
     </div>
+    <div class="sde-night-row-count"><span>29 faste linjer · 6 kolonner · original struktur</span><span>Wc/vann blir redigerbart først etter «Endre innhold».</span></div>
     <div class="sde-night-status" id="sdeNightPlanStatus" aria-live="polite">Opprett en manuell plan eller velg et bilde.</div>
   </section>
 
   <section class="sde-night-card" aria-labelledby="sdeNightAnalysisTitle">
     <h3 id="sdeNightAnalysisTitle">3. Read-only analyse og separat scoring</h3>
+    <div class="sde-night-controls"><button id="sdeNightValidateBtn" type="button">Valider og analyser mot SDE</button></div>
     <div class="sde-night-model-meta" id="sdeNightModelStatus">Modellstatus lastes ved analyse.</div>
     <div class="sde-night-analysis-list" id="sdeNightAnalysisResults">
       <div class="sde-night-status">Ingen analyse kjørt. Absolutte porter kjøres før operativ, menneskelig eller maskinlært score.</div>
@@ -10205,7 +10218,7 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
   </section>
 
   <section class="sde-night-card" aria-labelledby="sdeNightSavedTitle">
-    <h3 id="sdeNightSavedTitle">Lagrede planer og proveniens</h3>
+    <h3 id="sdeNightSavedTitle">Serverlagrede planer og lokal legacy-kopi</h3>
     <div class="sde-night-saved" id="sdeNightSavedPlans"></div>
   </section>
 </div>
@@ -46824,8 +46837,10 @@ function isSdeNightPlanMenuAuthorized(level, capabilityReadback=dropsRuntimeCapa
   const roles = Array.isArray(capabilityReadback?.roles)
     ? capabilityReadback.roles.map(role=>String(role || ""))
     : [];
+  const nightPlanRead = capabilityReadback?.capabilities?.["night_plan.read"];
   return capabilityReadback?.ok === true
     && capabilityReadback?.roleResolved === true
+    && nightPlanRead?.allowed === true
     && requiredRoles.every(role=>roles.includes(role));
 }
 

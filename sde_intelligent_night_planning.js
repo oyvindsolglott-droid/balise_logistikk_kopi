@@ -14,7 +14,7 @@
   const PLAN_STATUSES = new Set(["DRAFT", "CONFIRMED", "ARCHIVED"]);
   const CONFIRMATION_STATES = new Set(["UNCONFIRMED", "CONFIRMED", "EXCLUDED"]);
   const IMAGE_MIME_TYPES = Object.freeze(["image/jpeg", "image/png"]);
-  const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+  const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
   const EDITABLE_FIELDS = Object.freeze([
     "time",
     "trainNumber",
@@ -278,7 +278,7 @@
       return {ok: false, reasonCode: "EMPTY_IMAGE", message: "Bildet er tomt eller kunne ikke leses."};
     }
     if (size > maximumBytes) {
-      return {ok: false, reasonCode: "IMAGE_TOO_LARGE", message: "Bildet er større enn 15 MB. Velg et mindre bilde."};
+      return {ok: false, reasonCode: "IMAGE_TOO_LARGE", message: "Bildet er større enn 8 MB. Velg et mindre bilde."};
     }
     return {ok: true, reasonCode: "IMAGE_ACCEPTED", mimeType: mimeType || (/\.png$/.test(name) ? "image/png" : "image/jpeg")};
   }

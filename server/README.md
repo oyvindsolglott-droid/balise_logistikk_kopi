@@ -9653,9 +9653,38 @@ Senere writefase må fortsatt ha eksplisitt brukerhandling, konfliktvisning,
 ingen automatisk overskriving av nyere serverdraft og ingen operativ effekt på
 SDE-score, SDE-motor, DROPS eller Utført/Annullert.
 
+## Privat nattplanlagring
+
+`/api/night-plans` er en separat dokumentasjons- og læringskontrakt. Den deler
+ikke `shared_sporplan_draft` og har aldri operativ authority. Ruten er
+fail-closed uten verifisert Cloudflare Access-identitet, serverbundet rolle og
+kapabiliteten `night_plan.read` eller `night_plan.save`; bare `admin_pilot` og
+`txp` har disse kapabilitetene.
+
+Aktivering krever begge miljøvariablene:
+
+- `SDE_ENABLE_NIGHT_PLAN_STORAGE=1`
+- `SDE_NIGHT_PLAN_IMAGE_DIR=<absolutt privat katalog utenfor repository/public root>`
+
+Originale JPEG-/PNG-bytes lagres med opaque UUID-navn og private filmoduser.
+Én eksplisitt save lagrer bilde, eksakt 29-raders `TOGPLASSERING SKIEN`-skjema,
+proveniens, idempotency/revisjon og læringsrecord i én atomisk aggregate. Ved
+feil rulles database og fil tilbake; startup fjerner crash-orphans. Klienten
+godtar ikke suksess før skjema og eventuelt bilde er lest tilbake og kontrollert
+med SHA-256/byteantall. Lokal legacy-storage er kun en read-only kilde og blir
+aldri overført automatisk.
+
+Permanent kontraktstest:
+
+```sh
+node server/scripts/test-night-plan-storage.js
+```
+
 ## Neste fase
 
-Dette er fortsatt servergrunnmurfasen, og PWA-en er ikke koblet til serveren.
+Nattplanflaten er koblet til den avgrensede dokumentasjonskontrakten over.
+Andre operative writeflater følger fortsatt sine egne aktiverings-, migrerings-
+og kvalifiseringsporter og får ingen authority fra nattplanlagringen.
 Før operative handlinger flyttes, må action-format,
 `expectedRevision`, `409 Conflict` ved revision-konflikter og audit-logg
 verifiseres med små, avgrensede server-writes.

@@ -53,6 +53,8 @@ const CAPABILITY_IDS = Object.freeze({
   SET_WAIT_REASON: "vehicle_status.set_wait_reason",
   ANALYTICS_READ: "vehicle_status.analytics_read",
   REGISTER_RESOLUTIONS: "vehicle_status.register_resolutions",
+  NIGHT_PLAN_READ: "night_plan.read",
+  NIGHT_PLAN_SAVE: "night_plan.save",
   CLEAR_WORKSHOP_DISPOSITION_WITH_OPERATIONAL:
     "vehicle_status.clear_workshop_disposition_with_operational",
   ACKNOWLEDGE_DROPS_NOTIFICATION: "vehicle_status.acknowledge_drops_notification",
@@ -194,6 +196,18 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
     description: "Override vehicle-status policy.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: []
+  },
+  {
+    capability: CAPABILITY_IDS.NIGHT_PLAN_READ,
+    description: "Read private, non-operational saved night-plan documentation.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.TXP]
+  },
+  {
+    capability: CAPABILITY_IDS.NIGHT_PLAN_SAVE,
+    description: "Save private night-plan image, corrected form, provenance and learning record atomically.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.TXP]
   }
 ]);
 
@@ -393,7 +407,7 @@ function normalizeCatalogEntry(entry, diagnostics){
     ? entry.allowedRoles.map((role) => normalizeExactString(role, 100))
     : null;
 
-  if(!capability || !capability.startsWith("vehicle_status.")){
+  if(!capability || !/^(?:vehicle_status|night_plan)\./.test(capability)){
     diagnostics.add("capability_catalog_invalid_id");
   }
   if(!description) diagnostics.add("capability_catalog_invalid_description");
@@ -412,7 +426,7 @@ function normalizeCatalogEntry(entry, diagnostics){
 
   if(
     !capability ||
-    !capability.startsWith("vehicle_status.") ||
+    !/^(?:vehicle_status|night_plan)\./.test(capability) ||
     !description ||
     !Object.values(CAPABILITY_STATUSES).includes(status) ||
     !allowedRoles ||

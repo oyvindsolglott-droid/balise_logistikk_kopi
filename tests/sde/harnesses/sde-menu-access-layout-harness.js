@@ -56,15 +56,16 @@ try{
     ${functionSource("isSdeNightPlanMenuAuthorized")}
     globalThis.authorize=isSdeNightPlanMenuAuthorized;
   `,context);
-  const allRoles={ok:true,roleResolved:true,roles:["drops","txp","sde_skiftere","verksted","agila"]};
-  const txp={ok:true,roleResolved:true,roles:["txp"]};
+  const allRoles={ok:true,roleResolved:true,roles:["drops","txp","sde_skiftere","verksted","agila"],capabilities:{"night_plan.read":{allowed:true}}};
+  const txp={ok:true,roleResolved:true,roles:["txp"],capabilities:{"night_plan.read":{allowed:true}}};
   authorityPass = context.authorize("0",allRoles) === true
     && context.authorize("2",txp) === true
     && ["1","3","4","5"].every(level=>context.authorize(level,allRoles) === false)
     && context.authorize("0",txp) === false
     && context.authorize("2",{...txp,roleResolved:false}) === false
     && context.authorize("2",{...txp,ok:false}) === false
-    && context.authorize("2",{ok:true,roleResolved:true,roles:[]}) === false;
+    && context.authorize("2",{ok:true,roleResolved:true,roles:[],capabilities:{"night_plan.read":{allowed:true}}}) === false
+    && context.authorize("2",{...txp,capabilities:{"night_plan.read":{allowed:false}}}) === false;
 }catch(_error){}
 put("INV-MENU-002",authorityPass,"only server-authorized active levels 0 and 2 can receive Registrer Plan i SDE");
 

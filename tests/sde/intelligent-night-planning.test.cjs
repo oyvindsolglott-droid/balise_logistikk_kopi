@@ -507,6 +507,20 @@ test("dårlig og delvis OCR blir usikker DRAFT, aldri autoritativ sannhet", () =
   assert.equal(partial.entries[0].confirmationState, "UNCONFIRMED");
 });
 
+test("ulike OCR-fixtures gir ulike Settnr og uleselig Settnr får aldri design-default", () => {
+  const subject = loadSubject();
+  const base = {operationalDate: "2026-08-18", createdAt: "2026-08-17T20:00:00Z", ocrConfidence: 0.9};
+  const first = subject.parseOcrText("22:53 833 802 74-14 12S", {...base, planId: "fixture-one"});
+  const second = subject.parseOcrText("00:50 837 808 75-53 6N", {...base, planId: "fixture-two"});
+  const unreadable = subject.parseOcrText("22:53 833 802 XX-?? 12S", {...base, planId: "fixture-unreadable", ocrConfidence: 0.2});
+
+  assert.equal(first.entries[0].vehicleId.normalizedValue, "74-14");
+  assert.equal(second.entries[0].vehicleId.normalizedValue, "75-53");
+  assert.notEqual(first.entries[0].vehicleId.normalizedValue, second.entries[0].vehicleId.normalizedValue);
+  assert.equal(unreadable.entries[0].vehicleId.normalizedValue, "");
+  assert.equal(unreadable.entries[0].vehicleId.confidence < 0.5, true);
+});
+
 test("menneskelig korrigering, fjerning og tillegg skjer i canonical nattplan og krever ny kontroll", () => {
   const subject = loadSubject();
   const original = subject.parseOcrText("22:53 74-38 12S", {
