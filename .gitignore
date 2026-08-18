@@ -23,5 +23,5 @@ sde_live_sporplan_snapshot.json
 tests/sde-quality-engine/reports/*
 !tests/sde-quality-engine/reports/.gitignore
 # Operative nattplanbilder skal bare brukes lokalt/read-only og aldri versjonsstyres.
-tests/sde/fixtures/night-plan/historical-togplassering-skien.*
+# De historisk navngitte, versjonsstyrte filene er syntetiske kompatibilitets-fixturer.
 tests/sde/fixtures/night-plan/local-operational-*

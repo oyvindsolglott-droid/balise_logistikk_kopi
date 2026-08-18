@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "sde-synthetic-htr-compatibility-fixture-v1",
+  "fixtureClass": "TEST_FIXTURE_ONLY",
+  "containsOperationalData": false,
+  "productionImportAllowed": false,
+  "legacyPathRetainedForPermanentTestPolicy": true,
+  "canonicalSyntheticFixture": "synthetic-htr-neat.json",
+  "image": {
+    "file": "historical-togplassering-skien.png",
+    "sha256": "2d25041b54aff7f655b0ce0ea04da1ebf485c01c9c22a75e8f19051b92c7491e",
+    "width": 1200,
+    "height": 1500
+  },
+  "metadata": {
+    "date": "18.08.2026",
+    "signature": "Test A",
+    "ds": "DS A"
+  },
+  "rows": [
+    {
+      "rowIndex": 0,
+      "fromTrain": "991",
+      "toTrain": "1204",
+      "vehicleId": "73-26",
+      "toTrack": "4N",
+      "wcWater": "*",
+      "notes": "Kontroll sør"
+    },
+    {
+      "rowIndex": 1,
+      "fromTrain": "993",
+      "toTrain": "REP",
+      "vehicleId": "75-41",
+      "toTrack": "6S",
+      "wcWater": "CHECK",
+      "notes": "vann"
+    },
+    {
+      "rowIndex": 2,
+      "fromTrain": "997",
+      "toTrain": "1210",
+      "vehicleId": "76-32",
+      "toTrack": "VN",
+      "wcWater": "",
+      "notes": "Etter vask"
+    }
+  ]
+}

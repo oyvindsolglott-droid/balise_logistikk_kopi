@@ -210,6 +210,47 @@ def save_fixture(name: str, spec: dict[str, object]) -> None:
     (ROOT / f"{name}.json").write_text(json.dumps(ground_truth, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def save_legacy_compatibility_fixture() -> None:
+    """Keep the permanent legacy fixture paths without retaining operational data."""
+    spec = SETS["synthetic-htr-neat"]
+    output = ROOT / "historical-togplassering-skien.png"
+    image = draw_form(spec)
+    image.save(output, format="PNG", optimize=True)
+    payload = output.read_bytes()
+    compatibility = {
+        "schemaVersion": "sde-synthetic-htr-compatibility-fixture-v1",
+        "fixtureClass": "TEST_FIXTURE_ONLY",
+        "containsOperationalData": False,
+        "productionImportAllowed": False,
+        "legacyPathRetainedForPermanentTestPolicy": True,
+        "canonicalSyntheticFixture": "synthetic-htr-neat.json",
+        "image": {
+            "file": output.name,
+            "sha256": hashlib.sha256(payload).hexdigest(),
+            "width": image.width,
+            "height": image.height,
+        },
+        "metadata": spec["metadata"],
+        "rows": [
+            {
+                "rowIndex": index,
+                "fromTrain": values[0],
+                "toTrain": values[1],
+                "vehicleId": values[2],
+                "toTrack": values[3],
+                "wcWater": {"✓": "CHECK", "X": "CROSS"}.get(values[4], values[4]),
+                "notes": values[5],
+            }
+            for index, values in enumerate(spec["rows"])
+        ],
+    }
+    (ROOT / "historical-togplassering-skien.json").write_text(
+        json.dumps(compatibility, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 if __name__ == "__main__":
     for fixture_name, fixture_spec in SETS.items():
         save_fixture(fixture_name, fixture_spec)
+    save_legacy_compatibility_fixture()
