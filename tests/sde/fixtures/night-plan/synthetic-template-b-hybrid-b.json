@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "sde-synthetic-hybrid-form-fixture-v1",
+  "fixtureClass": "TEST_FIXTURE_ONLY",
+  "containsOperationalData": false,
+  "productionImportAllowed": false,
+  "templateId": "TEMPLATE_B",
+  "templateVersion": "togplassering-skien-template-b-29x8-v1",
+  "recognitionMode": "HYBRID_PRINT_OCR_HTR",
+  "images": [
+    {
+      "file": "synthetic-template-b-hybrid-b.png",
+      "condition": "independent_content_set",
+      "sha256": "3901fc006e19f6dff62ae0e75a8da7eee250e5ed8200cd46b94a8430d51fdfbc",
+      "width": 1200,
+      "height": 1500
+    }
+  ],
+  "metadata": {
+    "clock": "",
+    "date": "30.12.2099",
+    "signature": "QB"
+  },
+  "rows": [
+    {
+      "rowIndex": 0,
+      "arrivalTime": "09:14",
+      "fromTrain": "9801/1",
+      "toTrain": "9802/1",
+      "vehicleId": "92-11",
+      "toTrack": "4S",
+      "wcWater": "",
+      "info": "TEST INFO D",
+      "notes": "syntetisk sett B"
+    },
+    {
+      "rowIndex": 1,
+      "arrivalTime": "10:25",
+      "fromTrain": "9803/2",
+      "toTrain": "9804/2",
+      "vehicleId": "92-12",
+      "toTrack": "7N",
+      "wcWater": "CROSS",
+      "info": "",
+      "notes": ""
+    },
+    {
+      "rowIndex": 2,
+      "arrivalTime": "11:36",
+      "fromTrain": "9805",
+      "toTrain": "9806",
+      "vehicleId": "92-13",
+      "toTrack": "12S",
+      "wcWater": "",
+      "info": "TEST INFO F",
+      "notes": "slutt"
+    }
+  ],
+  "layerGroundTruth": {
+    "red": "PRINT_OCR",
+    "black": "HANDWRITING_HTR",
+    "grid": "EXCLUDED",
+    "strikeThroughAutoAccepted": false
+  }
+}

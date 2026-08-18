@@ -15,8 +15,19 @@
     "vehicleId",
     "desiredSlot",
     "taskContext",
+    "info",
     "notes",
   ];
+  const REPORT_COLUMN_BY_FIELD = Object.freeze({
+    time: "arrivalTime",
+    arrivalOccurrence: "fromTrain",
+    departureOccurrence: "toTrain",
+    vehicleId: "vehicleId",
+    desiredSlot: "toTrack",
+    taskContext: "wcWater",
+    info: "info",
+    notes: "notes",
+  });
   const SAFE_FALLBACK_WEIGHTS = Object.freeze({
     version: "sde-night-weights-safe-fallback-v1",
     deterministic: 0.8,
@@ -162,6 +173,7 @@
         false
       );
     });
+    draft.sdeClock = String(el("sdeNightClock") && el("sdeNightClock").value || "").trim();
     draft.sdeDs = String(el("sdeNightDs") && el("sdeNightDs").value || "").trim();
   }
 
@@ -194,15 +206,47 @@
     while (draft.entries.length > ROW_COUNT) draft = logic.removeNightPlanEntry(draft, draft.entries.length - 1);
     const operationalDateInput = el("sdeNightOperationalDate");
     if (operationalDateInput && document.activeElement !== operationalDateInput) {
-      operationalDateInput.value = draft.operationalDate || defaultOperationalDate();
+      operationalDateInput.value = draft.operationalDate || (draft.sourceType === "HUMAN_IMPORTED_PLAN" ? "" : defaultOperationalDate());
     }
+    const clockInput = el("sdeNightClock");
     const confirmedByInput = el("sdeNightConfirmedBy");
     const dsInput = el("sdeNightDs");
+    if (clockInput && document.activeElement !== clockInput) clockInput.value = draft.sdeClock || "";
     if (confirmedByInput && document.activeElement !== confirmedByInput) confirmedByInput.value = draft.createdBy || "";
     if (dsInput && document.activeElement !== dsInput) dsInput.value = draft.sdeDs || "";
-    [operationalDateInput, confirmedByInput, dsInput].forEach(function applyReadOnly(input) {
+    const applyMetadataReview = function applyMetadataReview(input, columnId) {
+      if (!input) return;
+      const cell = (importState.report?.metadataCells || []).find(item => item?.columnId === columnId);
+      const uncertain = cell?.needsReview === true;
+      input.classList.toggle("sde-night-uncertain", uncertain);
+      if (uncertain) {
+        input.dataset.sdeNightMetadata = columnId;
+        input.title = "Metadatafeltet krever menneskelig kontroll";
+      } else {
+        delete input.dataset.sdeNightMetadata;
+        input.removeAttribute("title");
+      }
+    };
+    applyMetadataReview(clockInput, "clock");
+    applyMetadataReview(operationalDateInput, "date");
+    applyMetadataReview(confirmedByInput, "signature");
+    applyMetadataReview(dsInput, "ds");
+    [operationalDateInput, clockInput, confirmedByInput, dsInput].forEach(function applyReadOnly(input) {
       if (input) input.readOnly = !editMode;
     });
+    const templateId = draft.formTemplateId === "TEMPLATE_B" ? "TEMPLATE_B" : "TEMPLATE_A";
+    const templateB = templateId === "TEMPLATE_B";
+    const clockLabel = el("sdeNightClockLabel");
+    const dsLabel = el("sdeNightDsLabel");
+    if (clockLabel) clockLabel.hidden = !templateB;
+    if (dsLabel) dsLabel.hidden = templateB;
+    const head = el("sdeNightPlanHead");
+    if (head) head.innerHTML = "<tr>" + (templateB
+      ? ["Inn kl", "Fra Tog", "Til Tog", "Settnr", "Til spor", "WC/vann", "INFO", "Merknad"]
+      : ["Fra Tog", "Til Tog", "Settnr", "Til spor", "Wc/vann", "Merknad"]
+    ).map(function header(label) { return "<th>" + html(label) + "</th>"; }).join("") + "</tr>";
+    const structure = el("sdeNightFormStructure");
+    if (structure) structure.textContent = templateB ? "29 faste linjer · 8 kolonner · Template B" : "29 faste linjer · 6 kolonner · Template A";
     const editState = el("sdeNightEditState");
     if (editState) editState.textContent = editMode ? "Innholdet kan redigeres" : "Wc/vann låst i visningsmodus";
     host.innerHTML = (draft.entries || []).map(function renderEntry(entry, index) {
@@ -222,17 +266,95 @@
           ">",
         ].join("");
       };
+      const templateAInputs = [
+        input("arrivalOccurrence", "Fra tog"),
+        input("departureOccurrence", "Til tog"),
+        input("vehicleId", "Settnr"),
+        input("desiredSlot", "Til spor"),
+        input("taskContext", "Wc/vann"),
+        input("notes", "Merknad"),
+      ];
+      const templateBInputs = [
+        input("time", "Inn kl"),
+        input("arrivalOccurrence", "Fra tog"),
+        input("departureOccurrence", "Til tog"),
+        input("vehicleId", "Settnr"),
+        input("desiredSlot", "Til spor"),
+        input("taskContext", "WC/vann"),
+        input("info", "INFO"),
+        input("notes", "Merknad"),
+      ];
       return [
         "<tr data-sde-night-row=\"", index, "\">",
-        "<td>", input("arrivalOccurrence", "Fra tog"), "</td>",
-        "<td>", input("departureOccurrence", "Til tog"), "</td>",
-        "<td>", input("vehicleId", "Settnr"), "</td>",
-        "<td>", input("desiredSlot", "Til spor"), "</td>",
-        "<td>", input("taskContext", "Wc/vann"), "</td>",
-        "<td>", input("notes", "Merknad"), "</td>",
+        (templateB ? templateBInputs : templateAInputs).map(function cell(value) { return "<td>" + value + "</td>"; }).join(""),
         "</tr>",
       ].join("");
     }).join("");
+  }
+
+  function hideCellEvidence() {
+    const host = el("sdeNightCellEvidence");
+    if (host) host.hidden = true;
+  }
+
+  async function showCellEvidence(input) {
+    if (!input?.classList?.contains("sde-night-uncertain") || !selectedImage || !imageObjectUrl || !importState.report) {
+      hideCellEvidence();
+      return;
+    }
+    const metadataColumn = String(input.dataset.sdeNightMetadata || "");
+    const rowIndex = metadataColumn ? null : Number(input.dataset.sdeNightIndex);
+    const columnId = metadataColumn || REPORT_COLUMN_BY_FIELD[String(input.dataset.sdeNightField || "")];
+    const cell = metadataColumn
+      ? (importState.report.metadataCells || []).find(item => item?.columnId === columnId)
+      : (importState.report.cells || []).find(item => Number(item?.rowIndex) === rowIndex && item?.columnId === columnId);
+    const box = cell?.sourceBoundingBox || cell?.boundingBox;
+    if (!box || box.coordinateSpace !== "ORIGINAL_IMAGE") {
+      hideCellEvidence();
+      return;
+    }
+    const expectedUrl = imageObjectUrl;
+    try {
+      const sourceImage = new root.Image();
+      sourceImage.src = expectedUrl;
+      await sourceImage.decode();
+      if (expectedUrl !== imageObjectUrl) return;
+      const landscape = sourceImage.naturalWidth > sourceImage.naturalHeight;
+      const orientedWidth = landscape ? sourceImage.naturalHeight : sourceImage.naturalWidth;
+      const orientedHeight = landscape ? sourceImage.naturalWidth : sourceImage.naturalHeight;
+      const frameScale = Math.min(1, 1800 / Math.max(orientedWidth, orientedHeight));
+      const oriented = document.createElement("canvas");
+      oriented.width = orientedWidth;
+      oriented.height = orientedHeight;
+      const orientedContext = oriented.getContext("2d", {alpha: false});
+      orientedContext.fillStyle = "#fff";
+      orientedContext.fillRect(0, 0, oriented.width, oriented.height);
+      if (landscape) {
+        orientedContext.translate(oriented.width, 0);
+        orientedContext.rotate(Math.PI / 2);
+      }
+      orientedContext.drawImage(sourceImage, 0, 0);
+      const sx = Math.max(0, Number(box.x0) / frameScale);
+      const sy = Math.max(0, Number(box.y0) / frameScale);
+      const sw = Math.max(1, Math.min(oriented.width - sx, (Number(box.x1) - Number(box.x0)) / frameScale));
+      const sh = Math.max(1, Math.min(oriented.height - sy, (Number(box.y1) - Number(box.y0)) / frameScale));
+      const canvas = el("sdeNightCellEvidenceCanvas");
+      const context = canvas?.getContext("2d", {alpha: false});
+      if (!canvas || !context || !(sw > 0) || !(sh > 0)) throw new Error("cell_evidence_unavailable");
+      canvas.width = Math.max(160, Math.min(640, Math.round(sw * 2)));
+      canvas.height = Math.max(72, Math.min(180, Math.round(canvas.width * sh / sw)));
+      context.fillStyle = "#fff";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(oriented, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+      const candidateText = candidate => String(candidate?.text || "ikke funnet");
+      const caption = el("sdeNightCellEvidenceCaption");
+      const location = metadataColumn ? `Metadata ${columnId}` : `Rad ${rowIndex + 1}, ${columnId}`;
+      if (caption) caption.textContent = `${location}. Trykt forslag: ${candidateText(cell.printedCandidate)}. Håndskrevet forslag: ${candidateText(cell.handwrittenCandidate)}. Feltet krever menneskelig kontroll.`;
+      const host = el("sdeNightCellEvidence");
+      if (host) host.hidden = false;
+    } catch (_error) {
+      hideCellEvidence();
+    }
   }
 
   function updateDraftField(index, fieldName, value, shouldRender) {
@@ -249,11 +371,13 @@
   function correctedMappingReport(form) {
     if (!importState.report || !Array.isArray(importState.report.cells) || !htrLogic) return importState.report;
     const fieldNames = {
+      arrivalTime: "arrivalTime",
       fromTrain: "fromTrain",
       toTrain: "toTrain",
       vehicleId: "vehicleId",
       toTrack: "toTrack",
       wcWater: "wcWater",
+      info: "info",
       notes: "notes",
     };
     const cells = importState.report.cells.map(function correctedCell(cell) {
@@ -265,6 +389,7 @@
       return htrLogic.applyHumanCorrection(cell, humanValue);
     });
     const metadataValues = {
+      clock: form.clock,
       date: form.planDate,
       signature: form.signature,
       ds: form.ds,
@@ -325,15 +450,18 @@
     syncDraftFromEditor();
     return {
       planDate: draft.operationalDate,
+      clock: String(el("sdeNightClock")?.value || "").trim(),
       signature: String(el("sdeNightConfirmedBy")?.value || "").trim(),
       ds: String(el("sdeNightDs")?.value || "").trim(),
       rows: draft.entries.map(function row(entry) {
         return {
+          arrivalTime: fieldValue(entry, "time"),
           fromTrain: fieldValue(entry, "arrivalOccurrence"),
           toTrain: fieldValue(entry, "departureOccurrence"),
           vehicleId: fieldValue(entry, "vehicleId"),
           toTrack: fieldValue(entry, "desiredSlot"),
           wcWater: fieldValue(entry, "taskContext"),
+          info: fieldValue(entry, "info"),
           notes: fieldValue(entry, "notes"),
         };
       }),
@@ -366,7 +494,7 @@
       form,
       source: {
         sourceType: draft.sdeLegacyLocal ? "LEGACY_LOCAL" : (selectedImageSource || "MANUAL"),
-        ocrEngine: selectedImageOcrCompleted ? "paddleocr-local-htr-onnx-wasm" : null,
+        ocrEngine: selectedImageOcrCompleted ? "paddleocr-local-hybrid-print-ocr-htr-onnx-wasm" : null,
         ocrVersion: selectedImageOcrCompleted ? String(htrLogic?.MODEL_SPEC?.version || "") : null,
         importedAt: selectedImageSource ? String(draft.sdeImportedAt || new Date().toISOString()) : null,
         humanCorrected: true,
@@ -376,7 +504,7 @@
       image,
       pipeline: {
         modelVersion: selectedImageOcrCompleted ? String(htrLogic?.MODEL_SPEC?.version || "") : "not-run",
-        pipelineVersion: "sde-night-local-htr-v1",
+        pipelineVersion: "sde-night-local-hybrid-print-htr-v2",
       },
     };
   }
@@ -483,16 +611,22 @@
       const plan = await response.json();
       if (!response.ok || !plan?.ok) throw new Error("night_plan_read_failed");
       releaseSelectedImage();
+      const formTemplateId = plan.provenance?.mappingReport?.templateId === "TEMPLATE_B"
+        ? "TEMPLATE_B"
+        : "TEMPLATE_A";
       draft = logic.createNightPlan({
         planId: makeId("server-plan-readback"), operationalDate: plan.form.planDate,
         createdAt: plan.createdAt, createdBy: plan.form.signature, sourceType: "HUMAN_MANUAL_PLAN",
+        formTemplateId,
         planStatus: "DRAFT", entries: plan.form.rows.map(function row(value) {
-          return {arrivalOccurrence: value.fromTrain, departureOccurrence: value.toTrain, vehicleId: value.vehicleId,
-            desiredSlot: value.toTrack, taskContext: value.wcWater, notes: value.notes};
+          return {time: value.arrivalTime, arrivalOccurrence: value.fromTrain, departureOccurrence: value.toTrain,
+            vehicleId: value.vehicleId, desiredSlot: value.toTrack, taskContext: value.wcWater,
+            info: value.info, notes: value.notes};
         }),
       });
       draft.sdeServerPlanId = plan.planId;
       draft.sdeServerRevision = plan.revision;
+      draft.sdeClock = plan.form.clock;
       draft.sdeDs = plan.form.ds;
       editMode = false;
       humanReviewActivated = false;
@@ -543,6 +677,7 @@
     }
     const remove = el("sdeNightRemoveImageBtn");
     if (remove) remove.disabled = true;
+    hideCellEvidence();
   }
 
   function selectImage(file, sourceType) {
@@ -601,7 +736,9 @@
     const metadata = plan && plan.ocrMetadata || {};
     const date = normalizeImportedDate(metadata.date, plan.operationalDate);
     if (date) plan.operationalDate = date;
+    else if (plan.formTemplateId === "TEMPLATE_B") plan.operationalDate = "";
     plan.createdBy = String(metadata.signature || "").trim();
+    plan.sdeClock = String(metadata.clock || "").trim();
     plan.sdeDs = String(metadata.ds || "").trim();
     return plan;
   }
@@ -614,7 +751,7 @@
     if (!htrLogic.supportsLocalRuntime(root)) throw new Error("local_htr_runtime_unavailable");
     ocrAnalyzer = htrRuntime.createLocalHandwritingAnalyzer({
       environment: root,
-      workerUrl: new URL("sde_handwriting_worker.js?v=2e0ce08173a01db59c4a429311bb1a66386e27b7b42f0b76b6cd604e052d25a4", document.baseURI).href,
+      workerUrl: new URL("sde_handwriting_worker.js?v=8360a4689bf2887314c21e2de745e91b8b8e6c858a302c5f8f7abdd61e268336", document.baseURI).href,
       maximumDimension: 1800,
     });
     return ocrAnalyzer;
@@ -671,7 +808,7 @@
       markDirty();
       renderDraftRows();
       const report = draft.ocrMapping;
-      const summary = `${report.mappingStatus} · 29 rader × 6 kolonner · ${report.mappedCellCount} utfylte celler · ${report.reviewedCellCount} trenger kontroll · lokal HTR ${result.model.hashVerified ? "hashverifisert" : "ikke verifisert"} · råbildet er ikke lagret`;
+      const summary = `${report.mappingStatus} · ${report.templateId} · 29 rader × ${report.columnCount} kolonner · ${report.mappedCellCount} utfylte celler · ${report.reviewedCellCount} trenger kontroll · lokal hybrid print-OCR/HTR ${result.model.hashVerified ? "hashverifisert" : "ikke verifisert"} · råbildet er ikke lagret`;
       if (progressTarget) progressTarget.textContent = summary;
       if (report.mappingStatus === "FORM_MAPPING_COMPLETE") {
         setStatus("Skjemaet er lest. Velg «Endre innhold» og kontroller verdiene før lagring.", "warn");
@@ -684,17 +821,17 @@
       }
     } catch (error) {
       if (generation !== ocrGeneration || /(?:ocr|htr)_cancelled/i.test(String(error && error.message || error))) {
-        setImportState("RECOGNITION_FAILED", null);
+        setImportState("IMPORT_FAILED", null);
         setStatus("Bildeanalysen ble avbrutt. Ingen plan ble lagret.", "warn");
       } else if (/unsupported_image_type/i.test(String(error && error.message || error))) {
-        setImportState("RECOGNITION_FAILED", null);
+        setImportState("IMPORT_FAILED", null);
         setStatus("Ugyldig filtype. Bare JPG og PNG støttes.", "error");
       } else {
-        setImportState("RECOGNITION_FAILED", null);
+        setImportState("IMPORT_FAILED", null);
         setStatus("Lokal bildeanalyse feilet. Ingen data ble lagret; bruk manuell registrering eller prøv et tydeligere bilde.", "error");
       }
       const target = el("sdeNightOcrProgress");
-      if (target) target.textContent = "RECOGNITION_FAILED · råbildet er ikke lagret";
+      if (target) target.textContent = "IMPORT_FAILED · råbildet er ikke lagret";
     } finally {
       if (generation === ocrGeneration) {
         if (analyzeButton) analyzeButton.disabled = false;
@@ -705,7 +842,7 @@
 
   async function cancelOcr() {
     ocrGeneration += 1;
-    setImportState("RECOGNITION_FAILED", null);
+    setImportState("IMPORT_FAILED", null);
     if (ocrAnalyzer && typeof ocrAnalyzer.cancel === "function") {
       try {
         await ocrAnalyzer.cancel();
@@ -1065,14 +1202,19 @@
       markDirty();
       setStatus("Driftsdato er endret i utkastet. Lagre eksplisitt for å beholde endringen.", "warn");
     });
-    ["sdeNightConfirmedBy", "sdeNightDs"].forEach(function bindHeader(id) {
+    ["sdeNightClock", "sdeNightConfirmedBy", "sdeNightDs"].forEach(function bindHeader(id) {
       el(id)?.addEventListener("input", markDirty);
+      el(id)?.addEventListener("focus", function metadataFocus(event) { showCellEvidence(event.target); });
     });
+    el("sdeNightOperationalDate")?.addEventListener("focus", function dateFocus(event) { showCellEvidence(event.target); });
     el("sdeNightPlanRows") && el("sdeNightPlanRows").addEventListener("input", function rowInput(event) {
       const field = event.target.closest && event.target.closest("[data-sde-night-field]");
       if (field) {
         updateDraftField(Number(field.dataset.sdeNightIndex), String(field.dataset.sdeNightField || ""), field.value, false);
       }
+    });
+    el("sdeNightPlanRows") && el("sdeNightPlanRows").addEventListener("focusin", function rowFocus(event) {
+      showCellEvidence(event.target);
     });
     el("sdeNightPlanRows") && el("sdeNightPlanRows").addEventListener("change", function rowChanged(event) {
       const field = event.target.closest && event.target.closest("[data-sde-night-field]");

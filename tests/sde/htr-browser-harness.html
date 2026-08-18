@@ -37,6 +37,41 @@
         analyzer.dispose();
       }
     };
+    window.runHtrRegistrationFixture = async function runHtrRegistrationFixture(relativeUrl) {
+      const response = await fetch(relativeUrl, {cache: "no-store"});
+      if (!response.ok) throw new Error("fixture_http_" + response.status);
+      const bitmap = await createImageBitmap(await response.blob(), {imageOrientation: "from-image"});
+      try {
+        const rotateToPortrait = bitmap.width > bitmap.height;
+        const orientedWidth = rotateToPortrait ? bitmap.height : bitmap.width;
+        const orientedHeight = rotateToPortrait ? bitmap.width : bitmap.height;
+        const scale = Math.min(1, 1800 / Math.max(orientedWidth, orientedHeight));
+        const width = Math.round(orientedWidth * scale);
+        const height = Math.round(orientedHeight * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d", {willReadFrequently: true, alpha: false});
+        context.fillStyle = "#fff";
+        context.fillRect(0, 0, width, height);
+        if (rotateToPortrait) {
+          context.save();
+          context.translate(width, 0);
+          context.rotate(Math.PI / 2);
+          context.drawImage(bitmap, 0, 0, height, width);
+          context.restore();
+        } else {
+          context.drawImage(bitmap, 0, 0, width, height);
+        }
+        return window.SdeHandwritingRecognition.detectFormRegistration({
+          pixels: context.getImageData(0, 0, width, height).data,
+          width,
+          height,
+        });
+      } finally {
+        bitmap.close();
+      }
+    };
   </script>
 </body>
 </html>

@@ -116,11 +116,51 @@ const mutations = [
     "const candidates = normalizedCandidates(recognition);", "const candidates = normalizedCandidates(recognition); if(!candidates.length && context.canonicalSlots?.length) candidates.push({text: context.canonicalSlots[0], confidence: 1});", "invent from slot register")},
 ];
 
+const hybridMutations = [
+  {id: "ALL_FORMS_FORCED_TO_TEMPLATE_A", kind: "recognition", expected: "INV-HYBRID-001", apply: source => replaceOnce(source,
+    'templateId: minimumEvidence && uniqueWinner ? best.templateId : "TEMPLATE_UNKNOWN",',
+    'templateId: minimumEvidence && uniqueWinner ? "TEMPLATE_A" : "TEMPLATE_UNKNOWN",', "force all templates to A")},
+  {id: "TEMPLATE_B_INN_KL_DROPPED", kind: "recognition", expected: "INV-HYBRID-002", apply: source => replaceOnce(source,
+    "const TEMPLATE_B_COLUMN_IDS = CANONICAL_COLUMN_IDS;",
+    'const TEMPLATE_B_COLUMN_IDS = CANONICAL_COLUMN_IDS.filter(columnId => columnId !== "arrivalTime");', "drop Inn kl")},
+  {id: "TEMPLATE_B_INFO_DROPPED", kind: "recognition", expected: "INV-HYBRID-003", apply: source => replaceOnce(source,
+    "const TEMPLATE_B_COLUMN_IDS = CANONICAL_COLUMN_IDS;",
+    'const TEMPLATE_B_COLUMN_IDS = CANONICAL_COLUMN_IDS.filter(columnId => columnId !== "info");', "drop INFO")},
+  {id: "CURRENT_DATE_OVERRIDES_SOURCE_DATE", kind: "recognition", expected: "INV-HYBRID-004", apply: source => replaceOnce(source,
+    "const date = normalizeDate(candidates.date);", 'const date = "18.08.2026";', "override source date")},
+  {id: "SOURCE_INITIALS_REDUCED_TO_FIRST_CHARACTER", kind: "recognition", expected: "INV-HYBRID-005", apply: source => replaceOnce(source,
+    'const signature = String(candidates.signature || "").normalize("NFKC").trim();',
+    'const signature = String(candidates.signature || "").normalize("NFKC").trim().slice(0, 1);', "truncate initials")},
+  {id: "RED_PRINT_SENT_TO_HANDWRITING_ONLY", kind: "recognition", expected: "INV-HYBRID-006", apply: source => replaceOnce(source,
+    "printInk[index] = 0;", "handwritingInk[index] = 0;", "misroute red print")},
+  {id: "BLACK_HANDWRITING_SENT_TO_PRINT_OCR_ONLY", kind: "recognition", expected: "INV-HYBRID-007", apply: source => replaceOnce(source,
+    "handwritingInk[index] = 0;", "printInk[index] = 0;", "misroute black handwriting")},
+  {id: "PRINT_AND_HANDWRITING_LAYERS_MERGED_BLINDLY", kind: "recognition", expected: "INV-HYBRID-008", apply: source => replaceOnce(source,
+    'needsReview: true,\n        reason: "PRINT_HANDWRITING_CONFLICT",',
+    'needsReview: false,\n        reason: "PRINT_HANDWRITING_CONFLICT",', "accept layer conflict")},
+  {id: "GRID_LINES_RECOGNIZED_AS_TEXT", kind: "recognition", expected: "INV-HYBRID-009", apply: source => replaceOnce(source,
+    "if(gridMask[index]) continue;", "if(false && gridMask[index]) continue;", "disable grid exclusion")},
+  {id: "ROW_MAPPING_SHIFTED", kind: "recognition", expected: "INV-HYBRID-010", apply: source => replaceOnce(source,
+    "cells.push(Object.freeze({\n          rowIndex,", "cells.push(Object.freeze({\n          rowIndex: rowIndex + 1,", "shift row mapping")},
+  {id: "COLUMN_MAPPING_SHIFTED", kind: "recognition", expected: "INV-HYBRID-011", apply: source => replaceOnce(source,
+    "columnId: template.columns[columnIndex],", "columnId: template.columns[(columnIndex + 1) % template.columns.length],", "shift column mapping")},
+  {id: "SETTNR_DROPPED", kind: "recognition", expected: "INV-HYBRID-012", apply: source => replaceOnce(source,
+    "return Object.freeze(row);", 'return Object.freeze({...row, vehicleId: ""});', "drop Settnr")},
+  {id: "TRACK_DROPPED", kind: "recognition", expected: "INV-HYBRID-013", apply: source => replaceOnce(source,
+    "return Object.freeze(row);", 'return Object.freeze({...row, toTrack: ""});', "drop track")},
+  {id: "ORPHAN_TEXT_FRAGMENT_ACCEPTED", kind: "recognition", expected: "INV-HYBRID-014", apply: source => replaceOnce(source,
+    'let selectedValue = "";', 'let selectedValue = "39";', "invent orphan fragment")},
+  {id: "LOW_CONFIDENCE_VALUE_AUTO_ACCEPTED", kind: "recognition", expected: "INV-HYBRID-015", apply: source => replaceOnce(source,
+    "FREE_TEXT: 0.98,", "FREE_TEXT: 0,", "accept low confidence")},
+  {id: "PREVIOUS_IMPORT_VALUE_USED_AS_FALLBACK", kind: "recognition", expected: "INV-HYBRID-016", apply: source => replaceOnce(source,
+    'let selectedValue = "";', 'let selectedValue = String(context.previousPlanValue || "");', "reuse previous import")},
+];
+
 const results = [];
 try{
   const baseline = run(sources, "baseline");
   if(baseline.execution.status !== 0 || baseline.report.counts?.fail !== 0) throw new Error("HTR mutation baseline is not green");
-  for(const mutation of mutations){
+  for(const mutation of hybridMutations){
     const candidate = {...sources, [mutation.kind]: mutation.apply(sources[mutation.kind])};
     const mutant = run(candidate, mutation.id);
     const failedIds = mutant.report.results.filter(result => result.status === "FAIL").map(result => result.id);

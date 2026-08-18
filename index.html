@@ -9714,7 +9714,9 @@ button{padding:12px 12px}
 .sde-night-file-input{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
 .sde-night-form-head{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin:20px 0}
 .sde-night-form-head label{display:grid;gap:7px;font-weight:800;color:#1e293b}
+.sde-night-form-head label[hidden]{display:none}
 .sde-night-form-head input{min-height:48px;border:1px solid #9fb3cf;border-radius:10px;padding:8px 11px;font:inherit}
+.sde-night-form-head input.sde-night-uncertain{border-color:#d97706;background:#fffbeb;box-shadow:inset 0 0 0 1px rgba(217,119,6,.18)}
 .sde-night-form-title{text-align:center;font-size:42px;letter-spacing:.02em;margin:8px 0 4px;color:#111827}
 .sde-night-lock{margin-left:auto;border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;border-radius:999px;padding:8px 18px;font-weight:800;font-size:13px}
 .sde-night-import-note{display:flex;gap:18px;justify-content:space-between;align-items:center;font-size:13px;font-weight:750;color:#52657f}
@@ -9736,6 +9738,10 @@ button{padding:12px 12px}
 .sde-night-editor input{width:100%;min-width:80px}
 .sde-night-editor input.sde-night-uncertain{border-color:#d97706;background:#fffbeb;box-shadow:inset 0 0 0 1px rgba(217,119,6,.18)}
 .sde-night-editor input.sde-night-uncertain:focus{outline:2px solid #f59e0b;outline-offset:1px}
+.sde-night-cell-evidence{display:grid;grid-template-columns:minmax(180px,420px) 1fr;gap:14px;align-items:center;margin:12px 0 0;padding:12px;border:1px solid #f59e0b;border-radius:12px;background:#fffbeb}
+.sde-night-cell-evidence[hidden]{display:none}
+.sde-night-cell-evidence canvas{display:block;width:100%;max-height:150px;border:1px solid #d97706;border-radius:8px;background:#fff;object-fit:contain}
+.sde-night-cell-evidence figcaption{font-size:13px;line-height:1.5;color:#78350f}
 .sde-night-editor tr.invalid{background:#fff7ed}
 .sde-night-editor tr.excluded{background:#f1f5f9;color:#64748b;text-decoration:line-through}
 .sde-night-order-actions{display:flex;gap:4px;white-space:nowrap}
@@ -10196,17 +10202,22 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
   <section class="sde-night-card" aria-labelledby="sdeNightCorrectionTitle">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap"><h3 class="sde-night-form-title" id="sdeNightCorrectionTitle">TOGPLASSERING SKIEN</h3><span class="sde-night-lock" id="sdeNightEditState">Wc/vann låst i visningsmodus</span></div>
     <div class="sde-night-form-head">
+      <label id="sdeNightClockLabel" hidden>Klokken<input id="sdeNightClock" type="text" maxlength="20" autocomplete="off" placeholder="Klokken fra skjema"></label>
       <label>Dato<input id="sdeNightOperationalDate" type="date"></label>
       <label>Signatur<input id="sdeNightConfirmedBy" type="text" maxlength="120" autocomplete="off" placeholder="Initialer eller navn"></label>
-      <label>ds<input id="sdeNightDs" type="text" maxlength="120" autocomplete="off" placeholder="ds / referanse"></label>
+      <label id="sdeNightDsLabel">ds<input id="sdeNightDs" type="text" maxlength="120" autocomplete="off" placeholder="ds / referanse"></label>
     </div>
     <div class="sde-night-table-wrap">
       <table class="sde-night-editor" aria-label="TOGPLASSERING SKIEN med 29 faste linjer">
-        <thead><tr><th>Fra Tog</th><th>Til Tog</th><th>Settnr</th><th>Til spor</th><th>Wc/vann</th><th>Merknad</th></tr></thead>
+        <thead id="sdeNightPlanHead"><tr><th>Fra Tog</th><th>Til Tog</th><th>Settnr</th><th>Til spor</th><th>Wc/vann</th><th>Merknad</th></tr></thead>
         <tbody id="sdeNightPlanRows"></tbody>
       </table>
     </div>
-    <div class="sde-night-row-count"><span>29 faste linjer · 6 kolonner · original struktur</span><span>Wc/vann blir redigerbart først etter «Endre innhold».</span></div>
+    <figure class="sde-night-cell-evidence" id="sdeNightCellEvidence" hidden>
+      <canvas id="sdeNightCellEvidenceCanvas" width="640" height="128" aria-label="Originalt celleutsnitt for felt som krever kontroll"></canvas>
+      <figcaption id="sdeNightCellEvidenceCaption">Originalt celleutsnitt og separate kandidater vises her når et usikkert felt får fokus.</figcaption>
+    </figure>
+    <div class="sde-night-row-count"><span id="sdeNightFormStructure">29 faste linjer · 6 kolonner · Template A</span><span>Wc/vann blir redigerbart først etter «Endre innhold».</span></div>
     <div class="sde-night-status" id="sdeNightPlanStatus" aria-live="polite">Opprett en manuell plan eller velg et bilde.</div>
   </section>
 
@@ -10325,9 +10336,9 @@ Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for v
 </div>
 
 
-<script src="sde_intelligent_night_planning.js?v=3aa105a7cd4d037257f759b7bb5b8a33a3a43a2665f31152390236c61eaa9173"></script>
-<script src="sde_handwriting_recognition.js?v=6e2774d66f637e22554df0d2b5e65c8fe98a1a8a9681a2dd329a3465c575bb6d"></script>
-<script src="sde_handwriting_runtime.js?v=a733c22af7a353c28669311b4569788b7326333a708632f449750265704c5f97"></script>
+<script src="sde_intelligent_night_planning.js?v=ae80afdb91c70b122aedf202bb7ffc1c78e865cf9bc20dece76652990416b386"></script>
+<script src="sde_handwriting_recognition.js?v=e0056d403e318bb69e281b90ffce58e047e0f04f7267b97ba47681f913de082c"></script>
+<script src="sde_handwriting_runtime.js?v=a4a5fceb24d5f16aa2d745f634e2961cdf6130185b0682130e6fe6c03368892f"></script>
 <script>
 const STORAGE_KEY="skien_sporplan_iphone_v13";
 
@@ -57159,7 +57170,7 @@ if(!isPublicGithubPagesApp()){
 if(isSdeCanonicalShadowAnalysisRequested()) runSdeCanonicalShadowAnalysis();
 </script>
 
-<script src="sde_night_planning_ui.js?v=26f57de1311d74ea6992ab7d93e121a9f570120bf379e795ec4ae3645f3739e6"></script>
+<script src="sde_night_planning_ui.js?v=d756bc3f16dd396afb14dc02a0662552caea7e7843bf1388bed074d8bbb43045"></script>
 
 <div class="rights-notice" id="rightsNotice">
   <div class="rights-title">© Øyvind Solgløtt. Alle rettigheter reservert.</div>

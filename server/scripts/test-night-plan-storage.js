@@ -38,6 +38,7 @@ async function main(){
   tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "sde-night-plan-storage-"));
   try{
     runStorageContract();
+    runTemplateBStorageContract();
     runValidationAndSecurityContract();
     runFailureAtomicityContract();
     runRestartReadbackContract();
@@ -71,11 +72,13 @@ function freshContext(name){
 
 function rows(){
   return Array.from({length: 29}, (_unused, index) => ({
+    arrivalTime: "",
     fromTrain: index === 0 ? "851" : "",
     toTrain: index === 0 ? "REP" : "",
     vehicleId: index === 0 ? "74-08" : "",
     toTrack: index === 0 ? "8S" : "",
     wcWater: index === 0 ? "*" : "",
+    info: "",
     notes: index === 0 ? "ut syd." : ""
   }));
 }
@@ -142,6 +145,97 @@ function mappingReport(){
   };
 }
 
+function templateBRows(){
+  return Array.from({length: 29}, (_unused, index) => ({
+    arrivalTime: index === 0 ? "06:11" : "",
+    fromTrain: index === 0 ? "9901/1" : "",
+    toTrain: index === 0 ? "9902/1" : "",
+    vehicleId: index === 0 ? "91-01" : "",
+    toTrack: index === 0 ? "3N" : "",
+    wcWater: index === 0 ? "CROSS" : "",
+    info: index === 0 ? "TEST INFO" : "",
+    notes: index === 0 ? "syntetisk rad" : ""
+  }));
+}
+
+function templateBMappingReport(){
+  const columns = ["arrivalTime", "fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater", "info", "notes"];
+  const sourceRows = templateBRows();
+  const box = (rowIndex, columnIndex) => ({
+    x0: 20 + columnIndex * 120,
+    y0: rowIndex == null ? 140 : 270 + rowIndex * 38,
+    x1: 130 + columnIndex * 120,
+    y1: rowIndex == null ? 170 : 300 + rowIndex * 38,
+    coordinateSpace: "ORIGINAL_IMAGE",
+    polygon: [
+      {x: 20 + columnIndex * 120, y: rowIndex == null ? 140 : 270 + rowIndex * 38},
+      {x: 130 + columnIndex * 120, y: rowIndex == null ? 140 : 270 + rowIndex * 38},
+      {x: 130 + columnIndex * 120, y: rowIndex == null ? 170 : 300 + rowIndex * 38},
+      {x: 20 + columnIndex * 120, y: rowIndex == null ? 170 : 300 + rowIndex * 38}
+    ]
+  });
+  const cell = (rowIndex, columnId, columnIndex, value, sourceLayer = "PRINT_OCR") => ({
+    rowIndex,
+    columnId,
+    boundingBox: box(rowIndex, columnIndex),
+    sourceBoundingBox: box(rowIndex, columnIndex),
+    recognizedText: value,
+    normalizedValue: value,
+    selectedValue: value,
+    confidence: value ? 0.999 : 1,
+    alternatives: value ? [value] : [],
+    needsReview: false,
+    validationState: value ? "VALID" : "BLANK_IMAGE_CELL",
+    recognizerVersion: "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e",
+    groundTruthSource: "HUMAN_CORRECTED_FORM",
+    rawRecognizerIsGroundTruth: false,
+    imageEvidence: {
+      inkRatio: value ? 0.1 : 0,
+      printInkRatio: value && sourceLayer === "PRINT_OCR" ? 0.1 : 0,
+      handwritingInkRatio: value && sourceLayer === "HANDWRITING_HTR" ? 0.1 : 0,
+      strikeThroughDetected: false,
+      gridLineMask: {horizontalLineCount: 0, verticalLineCount: 0, gridPixelCount: 0},
+      blank: !value
+    },
+    printedCandidate: value && sourceLayer === "PRINT_OCR" ? {text: value, confidence: 0.999} : null,
+    handwrittenCandidate: value && sourceLayer === "HANDWRITING_HTR" ? {text: value, confidence: 0.999} : null,
+    finalCandidate: {text: value, confidence: value ? 0.999 : 1},
+    recognitionMode: "HYBRID_PRINT_OCR_HTR",
+    normalizationReason: value ? "IMAGE_CANDIDATE_PASSED_FIELD_VALIDATION" : "BLANK_IMAGE_CELL",
+    humanFinalValue: value
+  });
+  const cells = Array.from({length: 29}, (_unused, rowIndex) => columns.map((column, columnIndex) => (
+    cell(rowIndex, column, columnIndex, sourceRows[rowIndex][column], column === "notes" ? "HANDWRITING_HTR" : "PRINT_OCR")
+  ))).flat();
+  const metadataCells = [
+    cell(null, "clock", 0, ""),
+    cell(null, "date", 1, "31.12.2099"),
+    cell(null, "signature", 2, "QA", "HANDWRITING_HTR")
+  ];
+  return {
+    schemaVersion: "sde-night-form-mapping-report-v3",
+    mappingStatus: "FORM_MAPPING_COMPLETE",
+    htrCompleted: true,
+    registrationStatus: "CELL_SEGMENTATION_COMPLETE",
+    templateId: "TEMPLATE_B",
+    templateVersion: "togplassering-skien-template-b-29x8-v1",
+    columnCount: 8,
+    recognitionMode: "HYBRID_PRINT_OCR_HTR",
+    recognizerVersion: "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e",
+    modelSha256: "7888113072263cb471b93f66dd5e2ad70548dc526fa1ace760d0d973dd121498",
+    cellCount: cells.length,
+    mappedCellCount: cells.filter(item => item.selectedValue).length,
+    reviewedCellCount: 0,
+    requiresHumanReview: false,
+    mappingConfidence: 0.999,
+    cells,
+    metadataCells,
+    humanGroundTruthSource: "HUMAN_CORRECTED_FORM",
+    rawRecognizerIsGroundTruth: false,
+    humanReviewCompleted: true
+  };
+}
+
 function payload(overrides = {}){
   const base = {
     idempotencyKey: `night-plan-test:${cryptoId()}`,
@@ -149,7 +243,7 @@ function payload(overrides = {}){
     planId: null,
     createdAt: "2026-08-17T08:00:00.000Z",
     status: "SAVED",
-    form: {planDate: "2026-08-18", signature: "TXP TEST", ds: "ds-1", rows: rows()},
+    form: {planDate: "2026-08-18", clock: "", signature: "TXP TEST", ds: "ds-1", rows: rows()},
     source: {
       sourceType: "DEVICE_FILE",
       ocrEngine: "paddleocr-local-htr-onnx-wasm",
@@ -163,6 +257,21 @@ function payload(overrides = {}){
     pipeline: {modelVersion: "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e", pipelineVersion: "sde-night-local-htr-v1"}
   };
   return {...base, ...overrides};
+}
+
+function templateBPayload(){
+  const base = payload();
+  return {
+    ...base,
+    idempotencyKey: `night-plan-template-b-test:${cryptoId()}`,
+    form: {planDate: "2099-12-31", clock: "", signature: "QA", ds: "", rows: templateBRows()},
+    source: {
+      ...base.source,
+      ocrEngine: "paddleocr-local-hybrid-print-htr-onnx-wasm",
+      mappingReport: templateBMappingReport()
+    },
+    pipeline: {...base.pipeline, pipelineVersion: "sde-night-local-hybrid-ocr-htr-v2"}
+  };
 }
 
 function manualPayload(overrides = {}){
@@ -262,6 +371,42 @@ function runStorageContract(){
   context.db.close();
 }
 
+function runTemplateBStorageContract(){
+  const context = freshContext("template-b");
+  const input = templateBPayload();
+  const saved = saveNightPlan(context.db, input, {
+    imageStorageRoot: context.imageRoot,
+    repositoryRoot: context.repo,
+    savedBy: "cf-subject-qa",
+    now: "2099-12-30T08:02:00.000Z"
+  });
+  const readback = getNightPlan(context.db, saved.planId);
+  check("30a Template B persists all eight canonical columns", () => assert.deepEqual(readback.form.rows, input.form.rows));
+  check("30b Template B persists the source clock field", () => assert.equal(readback.form.clock, ""));
+  check("30c Template B persists source date and initials", () => assert.deepEqual(
+    [readback.form.planDate, readback.form.signature], ["2099-12-31", "QA"]
+  ));
+  check("30d Template B provenance retains the detected template", () => assert.equal(
+    readback.provenance.mappingReport.templateId, "TEMPLATE_B"
+  ));
+  check("30e Template B provenance retains all 232 cells", () => assert.equal(
+    readback.provenance.mappingReport.cells.length, 232
+  ));
+  check("30f hybrid print/HTR provenance survives readback", () => {
+    assert.equal(readback.provenance.mappingReport.recognitionMode, "HYBRID_PRINT_OCR_HTR");
+    assert.equal(readback.provenance.mappingReport.cells[0].printedCandidate.text, "06:11");
+    assert.equal(readback.provenance.mappingReport.cells[7].handwrittenCandidate.text, "syntetisk rad");
+  });
+  check("30g raw hybrid recognizer output is not learning ground truth", () => assert.equal(
+    readback.provenance.mappingReport.rawRecognizerIsGroundTruth, false
+  ));
+  check("30h atomic learning record uses the reviewed eight-column form", () => {
+    const learning = context.db.prepare("SELECT canonical_form_json AS form FROM night_plan_learning_records").get();
+    assert.deepEqual(JSON.parse(learning.form), input.form);
+  });
+  context.db.close();
+}
+
 function runValidationAndSecurityContract(){
   check("31 valid PNG is detected from bytes", () => assert.equal(detectImage(PNG).mimeType, "image/png"));
   check("32 declared MIME mismatch rejected", () => expectCode(() => validateNightPlanSavePayload(payload({
@@ -298,6 +443,16 @@ function runValidationAndSecurityContract(){
     const context = freshContext("inside-repo");
     expectCode(() => preparePrivateStorage({imageStorageRoot: path.join(context.repo, "assets", "private"), repositoryRoot: context.repo}), "image_storage_inside_repository");
     context.db.close();
+  });
+  check("44a hybrid layer ratios are bounded", () => {
+    const invalidPayload = templateBPayload();
+    invalidPayload.source.mappingReport.cells[0].imageEvidence.printInkRatio = 2;
+    expectCode(() => validateNightPlanSavePayload(invalidPayload), "invalid_htr_image_evidence");
+  });
+  check("44b hybrid grid-mask provenance is closed-schema", () => {
+    const invalidPayload = templateBPayload();
+    invalidPayload.source.mappingReport.cells[0].imageEvidence.gridLineMask.unexpected = 1;
+    expectCode(() => validateNightPlanSavePayload(invalidPayload), "unexpected_htr_grid_line_mask_field");
   });
   check("45 symlink storage root rejected", () => {
     const context = freshContext("symlink-root");
