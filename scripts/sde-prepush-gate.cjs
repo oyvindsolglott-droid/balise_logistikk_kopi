@@ -1242,6 +1242,7 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
   const commands = [
     ["qe-unit", "npm", ["run", "test:sde:qe:unit"], 5 * 60 * 1000],
     ["qe-policy", "npm", ["run", "test:sde:qe:policy"], 5 * 60 * 1000],
+    ["tursatt-post-arrival-shift-cards", "npm", ["run", "test:sde:tursatt-post-arrival"], 5 * 60 * 1000],
     ["strict", "npm", ["run", "test:sde:strict"], 25 * 60 * 1000],
     ["permanent-contracts", "npm", ["run", "test:sde:contracts"], 25 * 60 * 1000],
     ["determinism", "npm", ["run", "test:sde:determinism"], 50 * 60 * 1000],

@@ -99,6 +99,9 @@ jobs:
         id: permanent_regression
         run: npm run test:sde:strict
 
+      - name: Run Tursatt post-arrival shift-card gate
+        run: npm run test:sde:tursatt-post-arrival
+
       - name: Run SDE Quality Engine contracts and data parity
         id: quality_engine
         if: always()
