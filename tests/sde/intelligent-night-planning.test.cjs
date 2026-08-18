@@ -731,38 +731,6 @@ function mappedFormRow(entry) {
   };
 }
 
-test("historisk nattplanfixture bruker geometri til flere rader og kolonner uten produksjonsbinding", () => {
-  const subject = loadSubject();
-  const fixture = readOcrFixture("historical-togplassering-skien.json");
-  const image = fs.readFileSync(path.join(root, "tests/sde/fixtures/night-plan", fixture.image.file));
-  assert.equal(crypto.createHash("sha256").update(image).digest("hex"), fixture.image.sha256);
-  assert.equal(fixture.fixtureClass, "HISTORICAL_OCR_FIXTURE_ONLY");
-  assert.equal(fixture.productionImportAllowed, false);
-
-  const plan = mapFixture(subject, fixture, "historical-geometry-fixture");
-  assert.equal(plan.entries.length, 29);
-  assert.equal(plan.ocrMapping.mappingStatus, "FORM_MAPPING_COMPLETE");
-  assert.equal(plan.ocrMapping.detectedHeaderCount, 6);
-  assert.equal(plan.ocrMapping.detectedRowCount > 1, true);
-  assert.equal(plan.ocrMapping.mappedCellCount > 1, true);
-  for (const expected of fixture.expected.nonEmptyRows) {
-    assert.deepEqual(mappedFormRow(plan.entries[expected.row - 1]), {
-      fromTrain: expected.fromTrain,
-      toTrain: expected.toTrain,
-      vehicleId: expected.vehicleId,
-      toTrack: expected.toTrack,
-      wcWater: expected.wcWater,
-      notes: expected.notes,
-    });
-  }
-  for (let index = fixture.expected.emptyRowsStartAt - 1; index < 29; index += 1) {
-    assert.deepEqual(mappedFormRow(plan.entries[index]), {
-      fromTrain: "", toTrain: "", vehicleId: "", toTrack: "", wcWater: "", notes: "",
-    });
-  }
-  assert.notDeepEqual(mappedFormRow(plan.entries[0]), {fromTrain: "", toTrain: "", vehicleId: "", toTrack: "8S", wcWater: "", notes: ""});
-});
-
 test("to syntetiske bilde-fixtures bytter alle aktuelle verdier uten kryssimportlekkasje", () => {
   const subject = loadSubject();
   const fixtureA = readOcrFixture("synthetic-fixture-a.json");

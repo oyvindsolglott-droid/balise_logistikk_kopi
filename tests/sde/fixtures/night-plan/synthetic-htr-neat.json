@@ -1,16 +1,30 @@
 {
-  "schemaVersion": "sde-synthetic-htr-compatibility-fixture-v1",
+  "schemaVersion": "sde-synthetic-htr-fixture-v1",
   "fixtureClass": "TEST_FIXTURE_ONLY",
   "containsOperationalData": false,
-  "productionImportAllowed": false,
-  "legacyPathRetainedForPermanentTestPolicy": true,
-  "canonicalSyntheticFixture": "synthetic-htr-neat.json",
-  "image": {
-    "file": "historical-togplassering-skien.png",
-    "sha256": "2d25041b54aff7f655b0ce0ea04da1ebf485c01c9c22a75e8f19051b92c7491e",
-    "width": 1200,
-    "height": 1500
-  },
+  "images": [
+    {
+      "file": "synthetic-htr-neat.png",
+      "condition": "neat_dark_pen",
+      "sha256": "2d25041b54aff7f655b0ce0ea04da1ebf485c01c9c22a75e8f19051b92c7491e",
+      "width": 1200,
+      "height": 1500
+    },
+    {
+      "file": "synthetic-htr-neat-skew.png",
+      "condition": "skewed_photo",
+      "sha256": "e4f66fbf26d583b6245f17625b0167e745a3419b02cb845391ade294d3763cb5",
+      "width": 1258,
+      "height": 1546
+    },
+    {
+      "file": "synthetic-htr-neat-sideways.png",
+      "condition": "sideways_orientation",
+      "sha256": "eb3ed25c8f033cbe0dc0c1190cc52e3894fa9e1f5f3c96dd3577019cc276948e",
+      "width": 1500,
+      "height": 1200
+    }
+  ],
   "metadata": {
     "date": "18.08.2026",
     "signature": "Test A",

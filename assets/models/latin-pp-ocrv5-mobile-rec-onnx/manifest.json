@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "sde-local-htr-model-manifest-v1",
+  "modelId": "PaddlePaddle/latin_PP-OCRv5_mobile_rec_onnx",
+  "modelRevision": "89d3a50e2c27e2e7cceeab0e944c25c807d5db4f",
+  "modelLicense": "Apache-2.0",
+  "modelSource": "https://huggingface.co/PaddlePaddle/latin_PP-OCRv5_mobile_rec_onnx",
+  "handwritingCapable": true,
+  "languages": ["Norwegian", "Latin-script", "numeric"],
+  "runtime": {
+    "name": "onnxruntime-web",
+    "version": "1.27.0",
+    "license": "MIT",
+    "executionProvider": "wasm",
+    "requiresWebGpu": false
+  },
+  "files": {
+    "inference.onnx": "7888113072263cb471b93f66dd5e2ad70548dc526fa1ace760d0d973dd121498",
+    "inference.yml": "0bbe984570f597af3638e50bdf2e8276f3ab26a61966096538b3b0d1849f5c84",
+    "../../vendor/onnxruntime-web/ort.wasm.min.mjs": "9608e98a3fba9716f0cbd0bca0c94808b71dae2e9265ca3fe742ddc393a53ebc",
+    "../../vendor/onnxruntime-web/ort-wasm-simd-threaded.mjs": "0a1e718d99c41b22c21f2520ff4f9e883a6b5533856e398d21816ee8eb8185d3",
+    "../../vendor/onnxruntime-web/ort-wasm-simd-threaded.wasm": "d1ab1b94b16a65b29d710d0b587b29e7bed336827577623913479b8afe8113e6"
+  },
+  "networkPolicy": {
+    "modelAssetsSameOriginOnly": true,
+    "remoteModelFallback": false,
+    "userImageUploadBeforeExplicitSave": false
+  }
+}

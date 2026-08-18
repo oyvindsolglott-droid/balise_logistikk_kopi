@@ -106,6 +106,8 @@ function createSchemaSql(){
       created_at TEXT NOT NULL,
       model_version TEXT,
       pipeline_version TEXT,
+      recognizer_result_json TEXT,
+      human_ground_truth_json TEXT,
       schema_version TEXT NOT NULL,
       UNIQUE(plan_id, plan_revision)
     );

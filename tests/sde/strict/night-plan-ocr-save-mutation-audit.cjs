@@ -54,7 +54,7 @@ function run(candidate, label) {
 
 const mutations = [
   {id: "OCR_RESULT_NEVER_REACHES_FORM_MAPPER", kind: "ui", expected: "INV-OCR-SAVE-001", apply: input => replaceOnce(input,
-    "logic.mapOcrResultToNightPlan(result, {", "logic.mapOcrResultToNightPlan({rawText: '', tokens: []}, {", "disconnect OCR result")},
+    "htrRuntime.mapResultToNightPlan(result, {", "htrRuntime.mapResultToNightPlan({cells: [], mappingReport: null}, {", "disconnect HTR result")},
   {id: "FORM_MAPPER_RETURNS_ONLY_FIRST_CELL", kind: "logic", expected: "INV-OCR-SAVE-002", apply: input => replaceOnce(input,
     "for (const [key, values] of cellTokens.entries()) {", "for (const [key, values] of [...cellTokens.entries()].slice(0, 1)) {", "first cell only")},
   {id: "FORM_STATE_CLEARED_AFTER_SUCCESSFUL_MAPPING", kind: "ui", expected: "INV-OCR-SAVE-003", apply: input => replaceOnce(input,
@@ -68,7 +68,7 @@ const mutations = [
   {id: "DESIGN_SAMPLE_VALUES_USED_AS_FALLBACK", kind: "logic", expected: "INV-OCR-SAVE-007", apply: input => replaceOnce(input,
     "vehicleId: makeField(entry && entry.vehicleId, normalizeVehicle, defaults),", "vehicleId: makeField((entry && entry.vehicleId) || '74-38', normalizeVehicle, defaults),", "sample fallback")},
   {id: "OCR_SUCCESS_SHOWN_BEFORE_MAPPING", kind: "ui", expected: "INV-OCR-SAVE-008", apply: input => replaceOnce(input,
-    'setImportState("OCR_PROCESSING", null);', 'setImportState("FORM_MAPPING_COMPLETE", null); // mutation: premature success', "premature success")},
+    'setImportState("IMAGE_PREPROCESSING", null);', 'setImportState("FORM_MAPPING_COMPLETE", null); // mutation: premature success', "premature success")},
   {id: "SAVE_HANDLER_MISSING", kind: "ui", expected: "INV-OCR-SAVE-009", apply: input => replaceOnce(input,
     'el("sdeNightSaveBtn")?.addEventListener("click", saveDraft);', '// mutation: save handler missing', "missing save handler")},
   {id: "SAVE_READS_EMPTY_PARALLEL_MODEL", kind: "ui", expected: "INV-OCR-SAVE-010", apply: input => mutateFunction(input, "buildSavePayload",

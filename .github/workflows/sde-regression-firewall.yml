@@ -33,10 +33,10 @@ jobs:
           python -m pip install --require-hashes
           -r tests/sde-quality-engine/browserguard/requirements.lock
 
-      - name: Install matching Browserguard Chromium
+      - name: Install matching Browserguard Chromium and WebKit
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
-        run: python -m playwright install --with-deps chromium
+        run: python -m playwright install --with-deps chromium webkit
 
       - name: Verify Browserguard runtime contract
         env:
@@ -62,6 +62,11 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
         run: xvfb-run -a npm run test:sde:chain-liveness-browser
+
+      - name: Run local handwriting recognition and private-save browser regressions
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
+        run: xvfb-run -a npm run test:sde:htr-browser
 
   permanent-regressions:
     name: permanent-regressions

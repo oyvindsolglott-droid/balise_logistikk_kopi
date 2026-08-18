@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "sde-synthetic-htr-fixture-v1",
+  "fixtureClass": "TEST_FIXTURE_ONLY",
+  "containsOperationalData": false,
+  "images": [
+    {
+      "file": "synthetic-htr-varied.png",
+      "condition": "varied_faint_pencil",
+      "sha256": "e67bdaf0a919ab14479c4660233ef64989660acf2d6df8d87d1e707703da0ec3",
+      "width": 1200,
+      "height": 1500
+    },
+    {
+      "file": "synthetic-htr-varied-shadow.png",
+      "condition": "shadow_low_contrast",
+      "sha256": "0d37791be9ea0ff072d518bf45e039e6c016599d447453890d7995b292747556",
+      "width": 1200,
+      "height": 1500
+    },
+    {
+      "file": "synthetic-htr-varied-perspective.png",
+      "condition": "perspective_from_side",
+      "sha256": "2d698f57acb06fdab8a9f45c413b2f34f0b1ceadb733166f9c43d9cfd953de22",
+      "width": 1200,
+      "height": 1500
+    }
+  ],
+  "metadata": {
+    "date": "19.08.2026",
+    "signature": "Test B",
+    "ds": "DS B"
+  },
+  "rows": [
+    {
+      "rowIndex": 0,
+      "fromTrain": "701",
+      "toTrain": "1402",
+      "vehicleId": "72-63",
+      "toTrack": "5M",
+      "wcWater": "CROSS",
+      "notes": "Ny test"
+    },
+    {
+      "rowIndex": 1,
+      "fromTrain": "703",
+      "toTrain": "1404",
+      "vehicleId": "77-25",
+      "toTrack": "10S",
+      "wcWater": "*",
+      "notes": "lav kontrast"
+    },
+    {
+      "rowIndex": 2,
+      "fromTrain": "709",
+      "toTrain": "REP",
+      "vehicleId": "78-46",
+      "toTrack": "7N",
+      "wcWater": "",
+      "notes": "klar"
+    }
+  ]
+}

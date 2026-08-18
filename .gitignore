@@ -22,3 +22,6 @@ sde_live_sporplan_snapshot.json
 # Genererte rapporter fra SDE Quality Engine
 tests/sde-quality-engine/reports/*
 !tests/sde-quality-engine/reports/.gitignore
+# Operative nattplanbilder skal bare brukes lokalt/read-only og aldri versjonsstyres.
+# De historisk navngitte, versjonsstyrte filene er syntetiske kompatibilitets-fixturer.
+tests/sde/fixtures/night-plan/local-operational-*
