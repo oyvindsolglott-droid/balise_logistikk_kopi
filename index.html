@@ -9810,7 +9810,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 16. august 2026</p>
+<p class="sub">Siste revisjon: 18. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -10339,6 +10339,7 @@ Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for v
 <script src="sde_intelligent_night_planning.js?v=ae80afdb91c70b122aedf202bb7ffc1c78e865cf9bc20dece76652990416b386"></script>
 <script src="sde_handwriting_recognition.js?v=e0056d403e318bb69e281b90ffce58e047e0f04f7267b97ba47681f913de082c"></script>
 <script src="sde_handwriting_runtime.js?v=a4a5fceb24d5f16aa2d745f634e2961cdf6130185b0682130e6fe6c03368892f"></script>
+<script src="sde_tursatt_post_arrival.js?v=44f462a93a6a23348cdea2211d10b3ddecc6367da69dedec2fab21be89610795"></script>
 <script>
 const STORAGE_KEY="skien_sporplan_iphone_v13";
 
@@ -15038,6 +15039,15 @@ function buildSdeTursattVehicleBindings(){
       displayTime:String(row?.displayTime || row?.time || "").trim(),
       sortMinutes:row?.sortMinutes ?? 9999,
       operationalDate,
+      actualArrival:side === "arrival"
+        ? String(
+            row?.actualArrival ||
+            row?.raw?.actualArrival ||
+            row?.movementContext?.actualArrival ||
+            row?.movementContext?.actualTime ||
+            ""
+          ).trim()
+        : "",
       occurrenceId:occurrenceIdentity?.sourceOccurrenceId || [operationalDate,side,displayTrain,String(row?.time || "").trim()].join("|"),
       canonicalOccurrencePartKey:occurrenceIdentity
         ? getTursattCanonicalOccurrencePartKey(occurrenceIdentity,String(partIndex + 1))
@@ -15079,6 +15089,53 @@ function buildSdeTursattVehicleBindings(){
 
     return Number(a.part || 0) - Number(b.part || 0);
   });
+}
+
+function getSdeTursattPostArrivalCardRole(row){
+  if(!row?.isTursattPostArrivalShiftNeed) return "";
+  const dependencyRole = String(row?.sdePhysicalDependencyRole || "").trim();
+  if(dependencyRole === "prerequisite") return "RELEASE";
+  if(dependencyRole === "return") return "RECOVERY";
+  return "MAIN";
+}
+
+function getSdeCompletedTursattPostArrivalLifecycleKeys(){
+  return new Set(
+    Object.values(state.sdeMoveActions || {})
+      .filter(action => action?.action === "completed")
+      .filter(action => String(action?.snapshot?.tursattPostArrivalCardRole || "").trim() === "MAIN")
+      .map(action => String(action?.snapshot?.tursattPostArrivalLifecycleKey || "").trim())
+      .filter(Boolean)
+  );
+}
+
+function buildSdeTursattPostArrivalShiftNeeds(bindings=[]){
+  const engine = window.SdeTursattPostArrival;
+  if(!engine || typeof engine.generatePostArrivalShiftNeeds !== "function" || typeof engine.scheduleShiftWindows !== "function"){
+    return {
+      needs:[],
+      diagnostics:[{code:"TURSATT_POST_ARRIVAL_ENGINE_UNAVAILABLE"}],
+      requiredMainObligationCount:0,
+      generatedMainObligationCount:0
+    };
+  }
+
+  const rows = Array.isArray(bindings) ? bindings : [];
+  const generated = engine.generatePostArrivalShiftNeeds({
+    arrivals:rows.filter(binding => binding?.role === "arrival"),
+    departures:rows.filter(binding => binding?.role === "departure" && binding?.mustBeAccessible)
+  });
+  const completedLifecycleKeys = getSdeCompletedTursattPostArrivalLifecycleKeys();
+  const scheduled = engine.scheduleShiftWindows(generated.needs)
+    .filter(need => !completedLifecycleKeys.has(String(need?.lifecycleKey || "").trim()));
+
+  return {
+    ...generated,
+    needs:scheduled,
+    completedLifecycleKeys,
+    requiredMainObligationCount:scheduled.length,
+    generatedMainObligationCount:scheduled.length
+  };
 }
 
 function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=true, modeOverride="", rowData={}){
@@ -27386,6 +27443,18 @@ function getSdeArrivalParkingNeedProcessingPriority(need){
 }
 
 function compareSdeArrivalParkingNeedProcessingOrder(a, b){
+  if(a?.isTursattPostArrivalShiftNeed || b?.isTursattPostArrivalShiftNeed){
+    const dateCompare = String(a?.arrivalOperationalDate || "").localeCompare(String(b?.arrivalOperationalDate || ""), "nb");
+    if(dateCompare) return dateCompare;
+    const ta = Number(a?.arrivalSequenceMinutes);
+    const tb = Number(b?.arrivalSequenceMinutes);
+    if(Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta - tb;
+    if(Number.isFinite(ta) !== Number.isFinite(tb)) return Number.isFinite(ta) ? -1 : 1;
+    const wa = Number(a?.tursattPostArrivalSequenceIndex);
+    const wb = Number(b?.tursattPostArrivalSequenceIndex);
+    if(Number.isFinite(wa) && Number.isFinite(wb) && wa !== wb) return wa - wb;
+  }
+
   const pa = getSdeArrivalParkingNeedProcessingPriority(a);
   const pb = getSdeArrivalParkingNeedProcessingPriority(b);
   if(pa !== pb) return pa - pb;
@@ -27405,26 +27474,8 @@ function compareSdeArrivalParkingNeedProcessingOrder(a, b){
 function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
   const bindings = buildSdeTursattVehicleBindings();
   const departures = bindings.filter(binding => binding.role === "departure" && binding.mustBeAccessible);
-  const spor3ProductionVehicleTokens = new Set(
-    departures
-      .filter(binding => {
-        const train = normalizeTognr(binding?.train);
-        const part = String(binding?.part || "").trim();
-
-        return sanitizeVehicleValue(binding?.vehicle) &&
-          (
-            train === "802" ||
-            (train === "852" && (!part || part === "1"))
-          );
-      })
-      .map(binding => normalizeVehicleToken(binding.vehicle))
-      .filter(Boolean)
-  );
-  const arrivals = bindings.filter(binding =>
-    binding.role === "arrival" &&
-    !isSdeBorgestad10855Flow(binding) &&
-    !spor3ProductionVehicleTokens.has(normalizeVehicleToken(binding.vehicle))
-  );
+  const arrivals = bindings.filter(binding => binding.role === "arrival");
+  const tursattPostArrivalPlan = buildSdeTursattPostArrivalShiftNeeds(bindings);
   const productionNeeds = buildSdeProductionNeeds();
 
   function getFirstDepartureForVehicle(vehicle){
@@ -27450,32 +27501,30 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
     ) || null;
   }
 
-  const latestArrivalByVehicle = new Map();
-
-  arrivals.forEach(arrival=>{
-    const vehicle = sanitizeVehicleValue(arrival.vehicle);
-    const token = normalizeVehicleToken(vehicle);
-    if(!token) return;
-
-    const arrivalMinutes = getSdeArrivalLatestSequenceMinutes(arrival);
-
-    const existing = latestArrivalByVehicle.get(token);
-    const existingMinutes = existing
-      ? getSdeArrivalLatestSequenceMinutes(existing)
-      : -1;
-
-    if(!existing || arrivalMinutes >= existingMinutes){
-      latestArrivalByVehicle.set(token, arrival);
-    }
-  });
-
-  const relevantArrivals = Array.from(latestArrivalByVehicle.values())
-    .sort((a,b)=>{
-      const ta = getSdeArrivalLatestSequenceMinutes(a);
-      const tb = getSdeArrivalLatestSequenceMinutes(b);
-      if(ta !== tb) return ta - tb;
-      return String(a.vehicle || "").localeCompare(String(b.vehicle || ""), "nb");
-    });
+  const relevantArrivals = tursattPostArrivalPlan.needs
+    .map(tursattNeed=>{
+      const arrival = arrivals.find(binding =>
+        String(binding?.occurrenceId || "").trim() === String(tursattNeed?.sourceOccurrenceId || "").trim() &&
+        String(binding?.part || "").trim() === String(tursattNeed?.part || "").trim() &&
+        normalizeVehicleToken(binding?.vehicle) === normalizeVehicleToken(tursattNeed?.vehicleId)
+      );
+      return arrival ? {...arrival,tursattPostArrivalNeed:tursattNeed} : null;
+    })
+    .filter(Boolean)
+    .sort((a,b)=>compareSdeArrivalParkingNeedProcessingOrder(
+      {
+        isTursattPostArrivalShiftNeed:true,
+        arrivalOperationalDate:a?.tursattPostArrivalNeed?.operationalDate,
+        arrivalSequenceMinutes:a?.tursattPostArrivalNeed?.arrivalSequenceMinutes,
+        tursattPostArrivalSequenceIndex:a?.tursattPostArrivalNeed?.sequenceIndex
+      },
+      {
+        isTursattPostArrivalShiftNeed:true,
+        arrivalOperationalDate:b?.tursattPostArrivalNeed?.operationalDate,
+        arrivalSequenceMinutes:b?.tursattPostArrivalNeed?.arrivalSequenceMinutes,
+        tursattPostArrivalSequenceIndex:b?.tursattPostArrivalNeed?.sequenceIndex
+      }
+    ));
 
   const reservedRecommendedSlots = new Map();
   const recommendationsByVehicle = new Map();
@@ -27514,13 +27563,24 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
     const vehicle = sanitizeVehicleValue(arrival.vehicle);
     if(!vehicle) return null;
 
-    const arrivalSequenceMinutes = getSdeArrivalLatestSequenceMinutes(arrival);
+    const tursattPostArrivalNeed = arrival?.tursattPostArrivalNeed || null;
+    const arrivalSequenceMinutes = Number.isFinite(Number(tursattPostArrivalNeed?.arrivalSequenceMinutes))
+      ? Number(tursattPostArrivalNeed.arrivalSequenceMinutes)
+      : getSdeArrivalLatestSequenceMinutes(arrival);
     const normalizedArrivalSequenceMinutes = arrivalSequenceMinutes >= 0 ? arrivalSequenceMinutes : null;
-    if(isSdeEveningExitVehicle(vehicle) && arrivalSequenceMinutes < 1440){
+    if(!tursattPostArrivalNeed && isSdeEveningExitVehicle(vehicle) && arrivalSequenceMinutes < 1440){
       return null;
     }
 
-    const nextDeparture = getFirstDepartureForVehicle(vehicle);
+    const nextDepartureOccurrenceId = String(tursattPostArrivalNeed?.nextUseOccurrence?.occurrenceId || "").trim();
+    const nextDeparture = tursattPostArrivalNeed
+      ? nextDepartureOccurrenceId
+        ? departures.find(binding =>
+            String(binding?.occurrenceId || "").trim() === nextDepartureOccurrenceId &&
+            normalizeVehicleToken(binding?.vehicle) === normalizeVehicleToken(vehicle)
+          ) || null
+        : null
+      : getFirstDepartureForVehicle(vehicle);
     const serviceNeed = getServiceNeedForVehicle(vehicle);
     const departureClockMinutes = nextDeparture
       ? getSdeTimeMinutes(nextDeparture.time || nextDeparture.displayTime)
@@ -27529,10 +27589,17 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
 
     const nightPlatformClearance = isSdeNightArrivalPlatformClearanceNeed(arrival);
 
-    let parkingStrategy = "Fleksibel nattparkering";
-    let parkingInstruction = "Ingen kjent morgendagsavgang er koblet mot kjøretøyet. Kan vurderes som fleksibel nattparkering, men må ikke blokkere kjøretøy med kjent avgangsbehov.";
+    let parkingStrategy = tursattPostArrivalNeed ? "Tursatt post-arrival shift" : "Fleksibel nattparkering";
+    let parkingInstruction = tursattPostArrivalNeed
+      ? String(tursattPostArrivalNeed.reason || "Tursatt krever post-arrival skifting.")
+      : "Ingen kjent morgendagsavgang er koblet mot kjøretøyet. Kan vurderes som fleksibel nattparkering, men må ikke blokkere kjøretøy med kjent avgangsbehov.";
 
-    if(serviceNeed){
+    if(tursattPostArrivalNeed){
+      parkingStrategy = tursattPostArrivalNeed.forcedTrainRule
+        ? "Fast post-arrival-shunt-regel 835/837/839"
+        : "Tursatt post-arrival shift";
+      parkingInstruction = String(tursattPostArrivalNeed.reason || parkingInstruction);
+    }else if(serviceNeed){
       parkingStrategy = "Service før nattplassering";
       parkingInstruction = "Kjøretøyet har servicebehov. Det må via spor 6 før endelig nattplassering vurderes mot morgendagens Tursatt og blokkering.";
     }else if(nightPlatformClearance){
@@ -27558,6 +27625,24 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
 
     return {
       source:"Ankomstbasert parkeringsbehov",
+      isTursattPostArrivalShiftNeed:Boolean(tursattPostArrivalNeed),
+      requiresPostArrivalShunt:Boolean(tursattPostArrivalNeed?.requiresPostArrivalShunt),
+      tursattPostArrivalForcedTrainRule:Boolean(tursattPostArrivalNeed?.forcedTrainRule),
+      tursattPostArrivalObligationId:String(tursattPostArrivalNeed?.obligationId || ""),
+      tursattPostArrivalLifecycleKey:String(tursattPostArrivalNeed?.lifecycleKey || ""),
+      tursattPostArrivalOccurrenceVersionKey:String(tursattPostArrivalNeed?.occurrenceVersionKey || ""),
+      tursattPostArrivalSequenceIndex:Number(tursattPostArrivalNeed?.sequenceIndex || 0),
+      tursattPostArrivalCardRole:"MAIN",
+      tursattPostArrivalDependency:"ARRIVAL_CONFIRMED",
+      plannedWindowStart:String(tursattPostArrivalNeed?.plannedWindowStart || ""),
+      plannedWindowEnd:String(tursattPostArrivalNeed?.plannedWindowEnd || ""),
+      windowStatus:String(tursattPostArrivalNeed?.windowStatus || ""),
+      windowReason:String(tursattPostArrivalNeed?.windowReason || ""),
+      arrivalReadyAt:String(tursattPostArrivalNeed?.arrivalReadyAt || ""),
+      nextUseReadyBy:String(tursattPostArrivalNeed?.nextUseReadyBy || ""),
+      tursattPostArrivalResourceId:String(tursattPostArrivalNeed?.constrainedResourceId || ""),
+      sourceRevision:String(tursattPostArrivalNeed?.sourceRevision || arrival.sourceRevision || ""),
+      needKey:String(tursattPostArrivalNeed?.lifecycleKey || ""),
       arrivalTrain:arrival.train,
       arrivalDisplayTrain,
       arrivalPart:arrival.part,
@@ -27602,11 +27687,12 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
       const vehicle = sanitizeVehicleValue(need.vehicle);
 
       const vehicleKey = normalizeVehicleToken(vehicle);
+      const recommendationKey = String(need?.tursattPostArrivalLifecycleKey || vehicleKey || "").trim();
       let recommendation = null;
       let manualOverrideMeta = null;
 
-      if(vehicleKey && recommendationsByVehicle.has(vehicleKey)){
-        recommendation = recommendationsByVehicle.get(vehicleKey);
+      if(recommendationKey && recommendationsByVehicle.has(recommendationKey)){
+        recommendation = recommendationsByVehicle.get(recommendationKey);
         manualOverrideMeta = recommendation?.manualOverrideMeta || null;
       }else{
         const reservedForNeed = getSdeReservedSlotsWithoutNeed(reservedRecommendedSlots, need);
@@ -27642,8 +27728,8 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
         }
       }
 
-      if(vehicleKey && !recommendationsByVehicle.has(vehicleKey)){
-        recommendationsByVehicle.set(vehicleKey, recommendation);
+      if(recommendationKey && !recommendationsByVehicle.has(recommendationKey)){
+        recommendationsByVehicle.set(recommendationKey, recommendation);
         if(recommendation.slot){
           reservedRecommendedSlots.set(recommendation.slot, {need, recommendation});
         }
@@ -27661,6 +27747,9 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
     })
     .filter(Boolean)
     .sort((a,b)=>{
+      if(a?.isTursattPostArrivalShiftNeed || b?.isTursattPostArrivalShiftNeed){
+        return compareSdeArrivalParkingNeedProcessingOrder(a,b);
+      }
       const priority = row => {
         if(row.serviceRequired) return 0;
         if(row.parkingStrategy === "839 nattankomst – plattform må ryddes") return 1;
@@ -28028,6 +28117,19 @@ function getSdeMoveActionSnapshot(row){
       ? [...row.workshopExitSnapshotReasonCodes]
       : [],
     isSpor3ProductionNeed:Boolean(row.isSpor3ProductionNeed),
+    isTursattPostArrivalShiftNeed:Boolean(row.isTursattPostArrivalShiftNeed),
+    tursattPostArrivalObligationId:String(row.tursattPostArrivalObligationId || "").trim(),
+    tursattPostArrivalLifecycleKey:String(row.tursattPostArrivalLifecycleKey || "").trim(),
+    tursattPostArrivalOccurrenceVersionKey:String(row.tursattPostArrivalOccurrenceVersionKey || "").trim(),
+    tursattPostArrivalSequenceIndex:Number(row.tursattPostArrivalSequenceIndex || 0),
+    tursattPostArrivalCardRole:getSdeTursattPostArrivalCardRole(row),
+    tursattPostArrivalDependency:String(row.tursattPostArrivalDependency || "").trim(),
+    plannedWindowStart:String(row.plannedWindowStart || "").trim(),
+    plannedWindowEnd:String(row.plannedWindowEnd || "").trim(),
+    windowStatus:String(row.windowStatus || "").trim(),
+    windowReason:String(row.windowReason || "").trim(),
+    arrivalReadyAt:String(row.arrivalReadyAt || "").trim(),
+    nextUseReadyBy:String(row.nextUseReadyBy || "").trim(),
     sdePhysicalReleaseReplanKey:String(row.sdePhysicalReleaseReplanKey || "").trim(),
     sdePhysicalReleaseRoundNumber:Number(row.sdePhysicalReleaseRoundNumber || 0),
     sdeCancellationPhysicalFromSlot:normalizeSlot(row.sdeCancellationPhysicalFromSlot || row.originalFromSlot || row.fromSlot || row.arrivalSlot),
@@ -32243,6 +32345,8 @@ function renderSdeCanonicalCardPreview(){
 
 function getSdeMoveNeedKey(row){
   if(!row) return "";
+  const tursattPostArrivalLifecycleKey = String(row.tursattPostArrivalLifecycleKey || "").trim();
+  if(tursattPostArrivalLifecycleKey) return tursattPostArrivalLifecycleKey;
   const workshopExitRequestId = String(row.workshopExitRequestId || "").trim();
   if(workshopExitRequestId) return `workshop-exit|${workshopExitRequestId}`;
   const cancellationNeedKey = String(row.sdeCancellationNeedKey || "").trim();
@@ -35803,6 +35907,7 @@ function getSdeCurrentOsloClockMinutes(){
 
 function isSdePastDepartureMoveForCurrentDay(row, nowMinutes=getSdeCurrentOsloClockMinutes()){
   if(!row || row.isWorkshopMoveNeed) return false;
+  if(row.isTursattPostArrivalShiftNeed) return false;
   if(!normalizeTognr(row.nextDepartureTrain)) return false;
 
   const departureMinutes = getSdeTimeMinutes(row.nextDepartureTime);
@@ -36114,6 +36219,7 @@ function getSdeShiftShowcaseData(){
       .filter(Boolean)
   );
   const nonSpor3ArrivalNeeds = baseArrivalNeeds.filter(row =>
+    row?.isTursattPostArrivalShiftNeed ||
     !spor3VehicleTokens.has(normalizeVehicleToken(row?.vehicle))
   );
   const workshopMoveNeeds = buildSdeWorkshopMoveNeeds([
@@ -36127,7 +36233,10 @@ function getSdeShiftShowcaseData(){
   );
 
   const rawNeeds = [
-    ...nonSpor3ArrivalNeeds.filter(row => !workshopVehicleTokens.has(normalizeVehicleToken(row?.vehicle))),
+    ...nonSpor3ArrivalNeeds.filter(row =>
+      row?.isTursattPostArrivalShiftNeed ||
+      !workshopVehicleTokens.has(normalizeVehicleToken(row?.vehicle))
+    ),
     ...spor3ProductionNeeds.filter(row => !workshopVehicleTokens.has(normalizeVehicleToken(row?.vehicle))),
     ...workshopMoveNeeds
   ];
@@ -45218,6 +45327,15 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
   const workshopExitReasonHtml = row.isWorkshopExitRequestNeed
     ? `<div class="sde-night-card-override"><strong>Bestilt utkjøring fra Verksted</strong><span>${escapeHtml(row.recommendationReason || "Utkjøringsforslaget følger fersk autoritativ klassifisering og gjeldende fysisk plan.")}</span></div>`
     : "";
+  const tursattCardRole = getSdeTursattPostArrivalCardRole(row);
+  const tursattWindowHtml = row.isTursattPostArrivalShiftNeed
+    ? `<div class="sde-night-card-override" data-sde-tursatt-post-arrival-window="1">
+        <strong>Tursatt post-arrival · ${escapeHtml(tursattCardRole || "MAIN")}</strong>
+        <span>Tidsluke ${escapeHtml(row.plannedWindowStart || "ukjent")}–${escapeHtml(row.plannedWindowEnd || "ukjent")} · ${escapeHtml(row.windowStatus || "ukjent status")}</span>
+        <span>Klar etter ankomst ${escapeHtml(row.arrivalReadyAt || "ukjent")}${row.nextUseReadyBy ? ` · klar for neste bruk senest ${escapeHtml(row.nextUseReadyBy)}` : ""}</span>
+        <span>Dependency ${escapeHtml(row.tursattPostArrivalDependency || "ARRIVAL_CONFIRMED")} · ${escapeHtml(row.windowReason || row.parkingInstruction || "Tursatt occurrence-bundet skifteforpliktelse.")}</span>
+      </div>`
+    : "";
   return `<article class="sde-shift-card ${priorityClass}${blocked ? " canonical-blocked" : ""}${exiting ? " sde-release-cancelled" : ""}${cancelledCardUi.className}" data-sde-card-key="${escapeHtml(actionKey)}" data-sde-canonical-card-id="${escapeHtml(card.canonicalCardId)}" data-sde-active-outcome-id="${escapeHtml(card.activeOutcomeId)}" data-sde-obligation-id="${escapeHtml(card.obligationId)}" data-sde-step-id="${escapeHtml(card.stepId)}" data-sde-plan-revision="${escapeHtml(reader.planRevision || "")}" data-sde-execution-key="${escapeHtml(adapter?.executionKey || "")}" data-sde-relevant-revision="${escapeHtml(adapter?.relevantRevision || "")}" data-sde-reservation-id="${escapeHtml(adapter?.reservation?.reservationId || "")}" data-sde-overlay-id="${escapeHtml(adapter?.overlay?.overlayId || "")}" data-sde-canonical-card-status="${escapeHtml(card.status)}"${workshopExitRequestId ? ` data-sde-workshop-exit-request-id="${escapeHtml(workshopExitRequestId)}"` : ""}${cancelledCardUi.attributes} style="--delay:${index * 55}ms">
     <div class="sde-shift-card-top">
       <div><div class="sde-shift-eyebrow">Kjøretøy</div><div class="sde-shift-vehicle">${escapeHtml(card.vehicleId || "Ukjent")}</div></div>
@@ -45235,9 +45353,12 @@ function buildSdeCanonicalProductionCardHtml(card, reader, index){
       ${dependencies.length ? `<span class="sde-shift-badge">Dependency ${escapeHtml(dependencies.join(", "))}</span>` : ""}
       ${card.recoveryRequired ? `<span class="sde-shift-badge sde-night-card-override-badge">${escapeHtml(row?.sdePhysicalResolutionContext === "target_access_temporary_relief" ? "OBLIGATORISK RETUR" : "VN RECOVERY")}</span>` : ""}
       ${adapter?.canDelete ? `<span class="sde-shift-badge">Slett kort tillatt i Annullert-dialog</span>` : ""}
+      ${tursattCardRole ? `<span class="sde-shift-badge">Tursatt ${escapeHtml(tursattCardRole)}</span>` : ""}
+      ${row.isTursattPostArrivalShiftNeed && row.plannedWindowStart && row.plannedWindowEnd ? `<span class="sde-shift-badge">${escapeHtml(row.plannedWindowStart)}–${escapeHtml(row.plannedWindowEnd)}</span>` : ""}
       ${workshopExitMetaHtml}
     </div>
     ${workshopExitReasonHtml}
+    ${tursattWindowHtml}
     ${routeDetailHtml}
     ${exiting ? `<span class="sde-release-cancelled-message">${escapeHtml(card.visualText || "Annullert. Kortet avsluttes.")}</span>` : ""}
     ${blocked && !handlerBlocked ? `<div class="sde-night-card-override"><strong>Fremtidig kjedesteg</strong><span>${escapeHtml(card.explanation || "Steget åpnes når dependencies er Utført.")}</span><span>Sperret av: ${escapeHtml(dependencies.join(", ") || "ukjent dependency")}</span></div>` : ""}
@@ -48067,27 +48188,38 @@ function buildSharedSporplanDraftSavePayload(options = {}){
   }
 
   const draft = getLocalSharedSporplanDraft();
-  if(isLocalSharedSporplanDraftEmpty(draft) && !isReset){
-    return {ok:false, message:"Tom lokal Input Sporplan kan ikke lagres som delt draft. Ingen POST sendt."};
-  }
+  const isEmptyDraftTombstone = isLocalSharedSporplanDraftEmpty(draft) && !isReset;
+  const isEffectiveReset = isReset || isEmptyDraftTombstone;
+  const effectiveDraft = isEffectiveReset
+    ? {
+        grunnoppstilling:{
+          [SHARED_SPORPLAN_DRAFT_RESET_MARKER_KEY]:SHARED_SPORPLAN_DRAFT_RESET_MARKER_VALUE
+        },
+        grunnoppstillingRep:{}
+      }
+    : draft;
 
   return {
     ok:true,
     payload:{
       expectedRevision,
-      draft,
+      draft:effectiveDraft,
       audit:{
         actor:"serverhosted-frontend",
         device:window.location.hostname || "unknown-client",
         clientContext:{
-          phase:isReset ? "SDE-SYNC-M" : (phaseOverride || (isAutosave ? "SDE-SYNC-K2" : "SDE-SYNC-H")),
-          action:isReset ? "reset-sporplan" : (actionOverride || (isAutosave ? "txp-input-autosave-debounce" : "explicit-save-click")),
+          phase:isEffectiveReset ? "SDE-SYNC-M" : (phaseOverride || (isAutosave ? "SDE-SYNC-K2" : "SDE-SYNC-H")),
+          action:isReset
+            ? "reset-sporplan"
+            : isEmptyDraftTombstone
+              ? (actionOverride || "empty-draft-tombstone")
+              : (actionOverride || (isAutosave ? "txp-input-autosave-debounce" : "explicit-save-click")),
           scope:"input-sporplan-draft",
           readbackOnly:true,
           draftReadbackOnly:true,
           manualActionOnly:!isAutosave,
           autosave:isAutosave,
-          sharedReset:isReset,
+          sharedReset:isEffectiveReset,
           sdeCompletedMove:isSdeCompletedMove,
           notOperationalOrder:true,
           notSdeMotorSource:true,

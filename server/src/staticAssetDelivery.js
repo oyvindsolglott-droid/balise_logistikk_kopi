@@ -16,6 +16,7 @@ const ASSET_DEFINITIONS = Object.freeze([
   definition("/sde_handwriting_recognition.js", ".", "sde_handwriting_recognition.js", "application/javascript; charset=utf-8", CACHE_POLICIES.APPLICATION),
   definition("/sde_handwriting_runtime.js", ".", "sde_handwriting_runtime.js", "application/javascript; charset=utf-8", CACHE_POLICIES.APPLICATION),
   definition("/sde_handwriting_worker.js", ".", "sde_handwriting_worker.js", "application/javascript; charset=utf-8", CACHE_POLICIES.APPLICATION),
+  definition("/sde_tursatt_post_arrival.js", ".", "sde_tursatt_post_arrival.js", "application/javascript; charset=utf-8", CACHE_POLICIES.APPLICATION),
   definition("/assets/registrer-plan-i-sde-button.png", "assets", "registrer-plan-i-sde-button.png", "image/png", CACHE_POLICIES.APPLICATION),
   definition("/assets/vendor/tesseract/tesseract.min.js", "assets/vendor/tesseract", "tesseract.min.js", "application/javascript; charset=utf-8", CACHE_POLICIES.IMMUTABLE_VENDOR),
   definition("/assets/vendor/tesseract/worker.min.js", "assets/vendor/tesseract", "worker.min.js", "application/javascript; charset=utf-8", CACHE_POLICIES.IMMUTABLE_VENDOR),
