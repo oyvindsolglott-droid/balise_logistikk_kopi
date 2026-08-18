@@ -135,6 +135,315 @@
     ];
   }
 
+  function grayscaleAtFrame(pixels, width, height, x, y){
+    const boundedX = Math.max(0, Math.min(width - 1, Math.round(x)));
+    const boundedY = Math.max(0, Math.min(height - 1, Math.round(y)));
+    const offset = ((boundedY * width) + boundedX) * 4;
+    return (Number(pixels[offset]) * 0.299)
+      + (Number(pixels[offset + 1]) * 0.587)
+      + (Number(pixels[offset + 2]) * 0.114);
+  }
+
+  function darkNear(pixels, width, height, x, y, radius = 1){
+    for(let delta = -radius; delta <= radius; delta += 1){
+      if(grayscaleAtFrame(pixels, width, height, x + delta, y) < 145) return true;
+    }
+    return false;
+  }
+
+  function verticalLineScore(pixels, width, height, xAtReference, slope, referenceY){
+    const yStart = Math.floor(height * 0.16);
+    const yEnd = Math.ceil(height * 0.985);
+    let score = 0;
+    let samples = 0;
+    for(let y = yStart; y <= yEnd; y += 2){
+      const x = xAtReference + (slope * (y - referenceY));
+      if(x >= 0 && x < width){
+        samples += 1;
+        if(darkNear(pixels, width, height, x, y, 1)) score += 1;
+      }
+    }
+    return {score, samples};
+  }
+
+  function bestVerticalLines(pixels, width, height){
+    const referenceY = height * 0.18;
+    const scored = [];
+    for(let x = 0; x < width; x += 2){
+      let best = {score: -1, samples: 0, slope: 0};
+      for(let slopeStep = -14; slopeStep <= 14; slopeStep += 1){
+        const slope = slopeStep / 100;
+        const value = verticalLineScore(pixels, width, height, x, slope, referenceY);
+        if(value.score > best.score) best = {...value, slope};
+      }
+      scored.push(Object.freeze({xAtReference: x, ...best}));
+    }
+    const candidates = [];
+    for(let index = 0; index < scored.length; index += 1){
+      const candidate = scored[index];
+      if(candidate.samples < 20 || candidate.score < candidate.samples * 0.28) continue;
+      const neighborhood = scored.slice(Math.max(0, index - 3), Math.min(scored.length, index + 4));
+      if(neighborhood.some(item => item.score > candidate.score)) continue;
+      candidates.push(candidate);
+    }
+    return {referenceY, candidates};
+  }
+
+  function selectFormGrid(lines, width){
+    const ratios = TEMPLATE.columnBoundaries.map(value => (
+      (value - TEMPLATE.columnBoundaries[0])
+      / (TEMPLATE.columnBoundaries.at(-1) - TEMPLATE.columnBoundaries[0])
+    ));
+    const leftCandidates = lines.candidates.filter(candidate => candidate.xAtReference < width * 0.2);
+    const rightCandidates = lines.candidates.filter(candidate => candidate.xAtReference > width * 0.76);
+    let best = null;
+    for(const left of leftCandidates){
+      for(const right of rightCandidates){
+        const span = right.xAtReference - left.xAtReference;
+        if(span < width * 0.68) continue;
+        const tolerance = Math.max(5, span * 0.022);
+        const selected = [left];
+        let deviation = 0;
+        let lineScore = left.score;
+        let valid = true;
+        for(const ratio of ratios.slice(1, -1)){
+          const expectedX = left.xAtReference + (span * ratio);
+          const choices = lines.candidates
+            .filter(candidate => Math.abs(candidate.xAtReference - expectedX) <= tolerance)
+            .sort((a, b) => (b.score - (Math.abs(b.xAtReference - expectedX) * 1.5))
+              - (a.score - (Math.abs(a.xAtReference - expectedX) * 1.5)));
+          const choice = choices[0];
+          if(!choice){ valid = false; break; }
+          selected.push(choice);
+          deviation += Math.abs(choice.xAtReference - expectedX) / tolerance;
+          lineScore += choice.score;
+        }
+        if(!valid) continue;
+        selected.push(right);
+        lineScore += right.score;
+        const score = lineScore - (deviation * 8);
+        if(!best || score > best.score) best = {score, selected, lineScore, deviation};
+      }
+    }
+    return best;
+  }
+
+  function verticalLineExtent(pixels, width, height, line, referenceY){
+    let best = null;
+    let segmentStart = null;
+    let lastDark = null;
+    let gap = 0;
+    const closeSegment = () => {
+      if(segmentStart == null || lastDark == null) return;
+      const length = lastDark - segmentStart + 1;
+      if(!best || length > best.length) best = {start: segmentStart, end: lastDark, length};
+      segmentStart = null;
+      lastDark = null;
+      gap = 0;
+    };
+    for(let y = 0; y < height; y += 1){
+      const x = line.xAtReference + (line.slope * (y - referenceY));
+      if(x >= 0 && x < width && darkNear(pixels, width, height, x, y, 2)){
+        if(segmentStart == null) segmentStart = y;
+        lastDark = y;
+        gap = 0;
+      }else if(segmentStart != null){
+        gap += 1;
+        if(gap > 10) closeSegment();
+      }
+    }
+    closeSegment();
+    return best;
+  }
+
+  function horizontalLineScore(pixels, width, height, yAtReference, slope, referenceX){
+    let score = 0;
+    let samples = 0;
+    const xStart = Math.floor(width * 0.01);
+    const xEnd = Math.ceil(width * 0.99);
+    for(let x = xStart; x <= xEnd; x += 2){
+      const y = yAtReference + (slope * (x - referenceX));
+      if(y < 0 || y >= height) continue;
+      samples += 1;
+      let dark = false;
+      for(let delta = -2; delta <= 2; delta += 1){
+        if(grayscaleAtFrame(pixels, width, height, x, y + delta) < 145){ dark = true; break; }
+      }
+      if(dark) score += 1;
+    }
+    return {score, samples};
+  }
+
+  function bestHorizontalBoundary(pixels, width, height, edge){
+    const referenceX = width * 0.5;
+    const start = edge === "top" ? 0 : Math.floor(height * 0.84);
+    const end = edge === "top" ? Math.ceil(height * 0.16) : height - 1;
+    const candidates = [];
+    for(let y = start; y <= end; y += 2){
+      for(let slopeStep = -10; slopeStep <= 10; slopeStep += 1){
+        const slope = slopeStep / 200;
+        const value = horizontalLineScore(pixels, width, height, y, slope, referenceX);
+        const candidate = {yAtReference: y, slope, referenceX, ...value};
+        if(candidate.samples > 0 && candidate.score >= candidate.samples * 0.45) candidates.push(candidate);
+      }
+    }
+    candidates.sort((left, right) => {
+      const edgeOrder = edge === "top"
+        ? left.yAtReference - right.yAtReference
+        : right.yAtReference - left.yAtReference;
+      return edgeOrder || right.score - left.score;
+    });
+    return candidates[0] || null;
+  }
+
+  function intersectVerticalHorizontal(vertical, verticalReferenceY, horizontal){
+    const verticalIntercept = vertical.xAtReference - (vertical.slope * verticalReferenceY);
+    const horizontalIntercept = horizontal.yAtReference - (horizontal.slope * horizontal.referenceX);
+    const divisor = 1 - (vertical.slope * horizontal.slope);
+    const x = (verticalIntercept + (vertical.slope * horizontalIntercept)) / divisor;
+    return Object.freeze({x, y: horizontalIntercept + (horizontal.slope * x)});
+  }
+
+  function horizontalGridCandidates(pixels, width, height){
+    const referenceX = width * 0.5;
+    const values = [];
+    for(let y = Math.floor(height * 0.14); y <= Math.ceil(height * 0.995); y += 2){
+      let best = null;
+      for(let slopeStep = -12; slopeStep <= 12; slopeStep += 1){
+        const slope = slopeStep / 200;
+        const value = horizontalLineScore(pixels, width, height, y, slope, referenceX);
+        const candidate = {yAtReference: y, slope, referenceX, ...value};
+        if(!best || candidate.score > best.score) best = candidate;
+      }
+      values.push(best);
+    }
+    const candidates = [];
+    for(let index = 0; index < values.length; index += 1){
+      const candidate = values[index];
+      if(!candidate || candidate.score < candidate.samples * 0.28) continue;
+      const neighborhood = values.slice(Math.max(0, index - 3), Math.min(values.length, index + 4));
+      if(neighborhood.some(value => value && value.score > candidate.score)) continue;
+      candidates.push(Object.freeze({...candidate, coverage: candidate.score / Math.max(1, candidate.samples)}));
+    }
+    return Object.freeze(candidates);
+  }
+
+  function selectHorizontalGrid(candidates, perspective, width, height){
+    const topCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.14 && candidate.yAtReference <= height * 0.28);
+    const bottomCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.9 && candidate.yAtReference <= height * 0.995);
+    const canonicalX = TEMPLATE.width * 0.5;
+    let best = null;
+    for(const top of topCandidates){
+      for(const bottom of bottomCandidates){
+        if(bottom.yAtReference - top.yAtReference < height * 0.62) continue;
+        const topCanonical = projectPoint(perspective.forward, {x: width * 0.5, y: top.yAtReference});
+        const bottomCanonical = projectPoint(perspective.forward, {x: width * 0.5, y: bottom.yAtReference});
+        if(bottomCanonical.y <= topCanonical.y) continue;
+        const averageSpacing = (bottom.yAtReference - top.yAtReference) / 29;
+        const tolerance = Math.max(5, averageSpacing * 0.38);
+        const matched = [];
+        let evidenceScore = 0;
+        for(let row = 0; row < 30; row += 1){
+          const canonicalY = topCanonical.y + ((bottomCanonical.y - topCanonical.y) * row / 29);
+          const expected = projectPoint(perspective.inverse, {x: canonicalX, y: canonicalY});
+          const choices = candidates
+            .filter(candidate => Math.abs(candidate.yAtReference - expected.y) <= tolerance)
+            .sort((left, right) => (right.score - (Math.abs(right.yAtReference - expected.y) * 3))
+              - (left.score - (Math.abs(left.yAtReference - expected.y) * 3)));
+          const choice = choices[0];
+          if(choice && !matched.includes(choice)){
+            matched.push(choice);
+            evidenceScore += choice.coverage;
+          }
+        }
+        if(matched.length < 26) continue;
+        const score = (matched.length * 100) + evidenceScore;
+        const earlierTop = !best || top.yAtReference < best.topImageY - 3;
+        const sameTopBetterEvidence = best && Math.abs(top.yAtReference - best.topImageY) <= 3 && score > best.score;
+        if(earlierTop || sameTopBetterEvidence){
+          best = {score, topImageY: top.yAtReference, topCanonicalY: topCanonical.y, bottomCanonicalY: bottomCanonical.y, matched};
+        }
+      }
+    }
+    if(!best) return null;
+    return Object.freeze({
+      canonicalRowBoundaries: Object.freeze(Array.from({length: 30}, (_unused, row) => (
+        best.topCanonicalY + ((best.bottomCanonicalY - best.topCanonicalY) * row / 29)
+      ))),
+      horizontalLineCount: best.matched.length,
+      averageCoverage: best.matched.reduce((sum, line) => sum + line.coverage, 0) / best.matched.length,
+    });
+  }
+
+  function detectFormRegistration(input = {}){
+    const width = Number(input.width);
+    const height = Number(input.height);
+    const pixels = input.pixels;
+    if(!(width > 0) || !(height > 0) || !pixels || pixels.length !== width * height * 4){
+      throw new Error("invalid_form_image_frame");
+    }
+    const lines = bestVerticalLines(pixels, width, height);
+    const grid = selectFormGrid(lines, width);
+    if(grid && grid.selected.length === TEMPLATE.columnBoundaries.length){
+      const left = grid.selected[0];
+      const right = grid.selected.at(-1);
+      const leftExtent = verticalLineExtent(pixels, width, height, left, lines.referenceY);
+      const rightExtent = verticalLineExtent(pixels, width, height, right, lines.referenceY);
+      const topBoundary = bestHorizontalBoundary(pixels, width, height, "top");
+      const bottomBoundary = bestHorizontalBoundary(pixels, width, height, "bottom");
+      if(leftExtent && rightExtent
+        && leftExtent.length > height * 0.76
+        && rightExtent.length > height * 0.76
+        && topBoundary && topBoundary.score >= topBoundary.samples * 0.45
+        && bottomBoundary && bottomBoundary.score >= bottomBoundary.samples * 0.45){
+        const averageLineCoverage = grid.selected.reduce((sum, line) => sum + (line.score / Math.max(1, line.samples)), 0) / grid.selected.length;
+        const sequenceFit = Math.max(0, 1 - (grid.deviation / Math.max(1, grid.selected.length - 2)));
+        const horizontalCoverage = Math.min(
+          topBoundary.score / Math.max(1, topBoundary.samples),
+          bottomBoundary.score / Math.max(1, bottomBoundary.samples),
+        );
+        const corners = Object.freeze([
+          intersectVerticalHorizontal(left, lines.referenceY, topBoundary),
+          intersectVerticalHorizontal(right, lines.referenceY, topBoundary),
+          intersectVerticalHorizontal(right, lines.referenceY, bottomBoundary),
+          intersectVerticalHorizontal(left, lines.referenceY, bottomBoundary),
+        ]);
+        const perspective = createPerspectiveTransform(corners, fullImageQuadrilateral(TEMPLATE.width, TEMPLATE.height));
+        const horizontalGrid = selectHorizontalGrid(horizontalGridCandidates(pixels, width, height), perspective, width, height);
+        if(horizontalGrid) return Object.freeze({
+          corners,
+          confidence: clamp((averageLineCoverage * 0.55) + (sequenceFit * 0.25) + (horizontalCoverage * 0.2), 0, 1),
+          source: "FORM_GRID_RULE_SEQUENCE",
+          verticalLineCount: grid.selected.length,
+          horizontalBoundaryCount: 2,
+          horizontalLineCount: horizontalGrid.horizontalLineCount,
+          canonicalRowBoundaries: horizontalGrid.canonicalRowBoundaries,
+          horizontalLineCoverage: horizontalGrid.averageCoverage,
+          verticalLines: Object.freeze(grid.selected.map(line => Object.freeze({
+            xAtReference: line.xAtReference,
+            slope: line.slope,
+            coverage: line.score / Math.max(1, line.samples),
+          }))),
+        });
+      }
+    }
+    const insetX = Math.max(1, width * 0.01);
+    const insetY = Math.max(1, height * 0.01);
+    return Object.freeze({
+      corners: Object.freeze([
+        Object.freeze({x: insetX, y: insetY}),
+        Object.freeze({x: width - insetX, y: insetY}),
+        Object.freeze({x: width - insetX, y: height - insetY}),
+        Object.freeze({x: insetX, y: height - insetY}),
+      ]),
+      confidence: 0.25,
+      source: "FORM_GRID_REGISTRATION_FAILED",
+      verticalLineCount: 0,
+      verticalLines: Object.freeze([]),
+      diagnostics: Object.freeze({candidateCount: lines.candidates.length, sequenceFound: Boolean(grid), candidates: Object.freeze(lines.candidates)}),
+    });
+  }
+
   function registerTemplate(input = {}){
     const imageWidth = Number(input.imageWidth);
     const imageHeight = Number(input.imageHeight);
@@ -142,15 +451,20 @@
     const original = (input.quadrilateral || fullImageQuadrilateral(imageWidth, imageHeight)).map((point, index) => finitePoint(point, `corner_${index}`));
     const canonical = fullImageQuadrilateral(TEMPLATE.width, TEMPLATE.height);
     const perspective = createPerspectiveTransform(original, canonical);
-    const rowHeight = (TEMPLATE.dataBottom - TEMPLATE.dataTop) / 29;
+    const suppliedRows = Array.isArray(input.rowBoundaries) ? input.rowBoundaries.map(Number) : [];
+    const rowBoundaries = suppliedRows.length === 30
+      && suppliedRows.every(Number.isFinite)
+      && suppliedRows.every((value, index) => index === 0 || value > suppliedRows[index - 1])
+      ? suppliedRows
+      : Array.from({length: 30}, (_unused, index) => TEMPLATE.dataTop + (((TEMPLATE.dataBottom - TEMPLATE.dataTop) / 29) * index));
     const cells = [];
     for(let rowIndex = 0; rowIndex < 29; rowIndex += 1){
       for(let columnIndex = 0; columnIndex < COLUMN_IDS.length; columnIndex += 1){
         const canonicalBox = Object.freeze({
           x0: TEMPLATE.columnBoundaries[columnIndex],
-          y0: TEMPLATE.dataTop + (rowIndex * rowHeight),
+          y0: rowBoundaries[rowIndex],
           x1: TEMPLATE.columnBoundaries[columnIndex + 1],
-          y1: TEMPLATE.dataTop + ((rowIndex + 1) * rowHeight),
+          y1: rowBoundaries[rowIndex + 1],
         });
         cells.push(Object.freeze({
           rowIndex,
@@ -167,12 +481,13 @@
       boundingBox: projectBox(perspective.inverse, item.canonicalBox),
     }));
     return Object.freeze({
-      status: "FORM_DETECTED",
+      status: "FORM_REGISTRATION_COMPLETE",
       templateVersion: "togplassering-skien-29x6-v1",
       canonicalWidth: TEMPLATE.width,
       canonicalHeight: TEMPLATE.height,
       perspectiveCorrectionApplied: true,
       perspective,
+      rowBoundaries: Object.freeze(rowBoundaries),
       cells: Object.freeze(cells),
       metadataCells: Object.freeze(metadataCells),
     });
@@ -188,7 +503,7 @@
   }
 
   function createRecognitionRequests(registration){
-    if(!registration || registration.status !== "FORM_DETECTED") throw new Error("form_registration_required");
+    if(!registration || registration.status !== "FORM_REGISTRATION_COMPLETE") throw new Error("form_registration_required");
     return Object.freeze([...registration.metadataCells, ...registration.cells].map(cell => Object.freeze({
       ...cell,
       recognizerKind: "HANDWRITING",
@@ -206,7 +521,9 @@
   }
 
   function canonicalizeVehicle(value){
-    const parts = String(value || "").toUpperCase().replace(/[–—]/g, "-").replace(/\s+/g, "").split("-");
+    const compact = String(value || "").toUpperCase().replace(/[–—]/g, "-").replace(/\s+/g, "");
+    const withSeparator = /^\d{4}$/.test(compact) ? `${compact.slice(0, 2)}-${compact.slice(2)}` : compact;
+    const parts = withSeparator.split("-");
     if(parts.length !== 2) return "";
     const digits = part => part.replace(/[OQ]/g, "0").replace(/[IL|]/g, "1").replace(/Z/g, "2").replace(/S/g, "5").replace(/G/g, "6").replace(/B/g, "8");
     const left = digits(parts[0]);
@@ -222,7 +539,7 @@
     const upper = String(value || "").normalize("NFKC").trim().toUpperCase().replace(/\s+/g, "");
     if(upper === "REP") return upper;
     const normalized = upper.replace(/[OQ]/g, "0").replace(/[IL|]/g, "1").replace(/\)/g, "2");
-    return /^\d+[A-Z]?$/.test(normalized) ? normalized : "";
+    return /^[1-9]\d{2,3}[¹²]?$/.test(normalized) ? normalized : "";
   }
 
   function wcSymbol(value){
@@ -263,9 +580,11 @@
     if(normalizer === "VEHICLE_ID"){
       for(const candidate of candidates){
         const normalized = canonicalizeVehicle(candidate.text);
-        if(normalized) sourceAlternatives.push(normalized);
+        if(normalized){
+          sourceAlternatives.push(normalized);
+          if(!selectedValue){ selectedValue = normalized; confidence = candidate.confidence; }
+        }
       }
-      selectedValue = sourceAlternatives[0] || "";
       validationState = selectedValue ? (Array.isArray(context.vehicleCatalog) && context.vehicleCatalog.length && !context.vehicleCatalog.includes(selectedValue) ? "REVIEW_REQUIRED" : "VALID") : "UNSUPPORTED";
     }else if(normalizer === "CANONICAL_SLOT"){
       const canonicalSlots = new Set(Array.isArray(context.canonicalSlots) ? context.canonicalSlots.map(canonicalizeSlot) : []);
@@ -273,33 +592,84 @@
         const normalized = canonicalizeSlot(candidate.text);
         const components = normalized.split("→");
         const target = components.at(-1);
-        if(canonicalSlots.has(normalized)) sourceAlternatives.push(normalized);
-        else if(components.length > 1 && canonicalSlots.has(target)) sourceAlternatives.push(normalized);
+        let accepted = canonicalSlots.has(normalized) ? normalized : (components.length > 1 && canonicalSlots.has(target) ? normalized : "");
+        if(!accepted && !normalized.includes("→")){
+          for(const targetSlot of canonicalSlots){
+            if(!normalized.endsWith(targetSlot)) continue;
+            const prefix = normalized.slice(0, normalized.length - targetSlot.length);
+            const match = prefix.match(/^(\d{1,2}[NSMV]?)([0O+>/-])$/);
+            if(match){
+              accepted = `${match[1]}→${targetSlot}`;
+              break;
+            }
+          }
+        }
+        if(accepted){
+          sourceAlternatives.push(accepted);
+          if(!selectedValue){ selectedValue = accepted; confidence = candidate.confidence; }
+        }
       }
-      selectedValue = sourceAlternatives[0] || "";
       validationState = selectedValue ? "VALID" : "UNSUPPORTED";
     }else if(normalizer === "WC_WATER_SYMBOL"){
-      sourceAlternatives.push(...candidates.map(candidate => wcSymbol(candidate.text)));
-      selectedValue = sourceAlternatives.find(Boolean) || "";
+      for(const candidate of candidates){
+        const normalized = wcSymbol(candidate.text);
+        if(normalized){
+          sourceAlternatives.push(normalized);
+          if(!selectedValue){ selectedValue = normalized; confidence = candidate.confidence; }
+        }
+      }
       validationState = selectedValue ? "VALID" : "UNREADABLE";
     }else if(normalizer === "TRAIN_IDENTIFIER"){
-      sourceAlternatives.push(...candidates.map(candidate => normalizeTrain(candidate.text)));
-      selectedValue = sourceAlternatives.find(Boolean) || "";
+      for(const candidate of candidates){
+        const normalized = normalizeTrain(candidate.text);
+        if(normalized){
+          sourceAlternatives.push(normalized);
+          if(!selectedValue){ selectedValue = normalized; confidence = candidate.confidence; }
+        }
+      }
       validationState = selectedValue ? "VALID" : "UNREADABLE";
     }else if(normalizer === "DATE"){
-      sourceAlternatives.push(...candidates.map(candidate => normalizeDate(candidate.text)));
-      selectedValue = sourceAlternatives.find(Boolean) || "";
+      for(const candidate of candidates){
+        const normalized = normalizeDate(candidate.text);
+        if(normalized){
+          sourceAlternatives.push(normalized);
+          if(!selectedValue){ selectedValue = normalized; confidence = candidate.confidence; }
+        }
+      }
       validationState = selectedValue ? "VALID" : "UNREADABLE";
     }else{
-      sourceAlternatives.push(...candidates.map(candidate => candidate.text));
-      selectedValue = sourceAlternatives.find(Boolean) || "";
+      for(const candidate of candidates){
+        sourceAlternatives.push(candidate.text);
+        if(!selectedValue){ selectedValue = candidate.text; confidence = candidate.confidence; }
+      }
       validationState = selectedValue ? "VALID" : "UNREADABLE";
     }
     const alternatives = unique(sourceAlternatives);
-    // Free handwriting is deliberately fail-closed: a plausible-looking note is
-    // not silently accepted unless the recognizer is exceptionally confident.
-    const threshold = normalizer === "FREE_TEXT" ? 0.98 : 0.86;
-    const needsReview = !selectedValue || confidence < threshold || validationState !== "VALID";
+    // Handwritten identifiers can look plausible while one glyph is wrong or a
+    // small superscript is missing. Keep the proposed value visible, but accept
+    // it without review only at a precision-oriented confidence level.
+    const reviewThresholds = Object.freeze({
+      FREE_TEXT: 0.98,
+      VEHICLE_ID: 0.98,
+      CANONICAL_SLOT: 0.98,
+      WC_WATER_SYMBOL: 0.98,
+      TRAIN_IDENTIFIER: 0.995,
+      DATE: 0.98,
+    });
+    const threshold = reviewThresholds[normalizer] ?? 0.995;
+    const materialCompetition = alternatives.length > 1
+      && candidates.length > 1
+      && Math.abs(candidates[0].confidence - candidates[1].confidence) < 0.04;
+    const needsReview = !selectedValue || confidence < threshold || validationState !== "VALID" || materialCompetition;
+    const normalizationReason = !selectedValue
+      ? "NO_VALID_IMAGE_BASED_CANDIDATE"
+      : validationState !== "VALID"
+        ? "FIELD_VALIDATION_REQUIRES_REVIEW"
+        : materialCompetition
+          ? "COMPETING_IMAGE_CANDIDATES"
+          : confidence < threshold
+            ? "CONFIDENCE_REQUIRES_REVIEW"
+            : "IMAGE_CANDIDATE_PASSED_FIELD_VALIDATION";
     if(!selectedValue) confidence = Math.min(confidence, 0.49);
     return Object.freeze({
       selectedValue,
@@ -309,6 +679,7 @@
       needsReview,
       validationState,
       normalizer,
+      normalizationReason,
     });
   }
 
@@ -320,7 +691,7 @@
     const reviewedCellCount = allRecognizedCells.filter(cell => cell?.needsReview === true).length;
     let mappingStatus;
     if(input.htrCompleted !== true) mappingStatus = "RECOGNITION_FAILED";
-    else if(input.registrationStatus !== "CELLS_SEGMENTED" || cells.length !== 29 * 6 || metadataCells.length !== 3) mappingStatus = "MAPPING_FAILED";
+    else if(input.registrationStatus !== "CELL_SEGMENTATION_COMPLETE" || cells.length !== 29 * 6 || metadataCells.length !== 3) mappingStatus = "MAPPING_FAILED";
     else if(mappedCellCount <= 1) mappingStatus = "MAPPING_FAILED";
     else if(reviewedCellCount > 0) mappingStatus = "FORM_MAPPING_REQUIRES_REVIEW";
     else mappingStatus = "FORM_MAPPING_COMPLETE";
@@ -353,6 +724,7 @@
       needsReview: false,
       groundTruthSource: "HUMAN_CORRECTED_FORM",
       rawRecognizerIsGroundTruth: false,
+      normalizationReason: "HUMAN_CORRECTED_FORM",
     });
   }
 
@@ -410,6 +782,7 @@
     createPerspectiveTransform,
     createRecognitionRequests,
     createRecognitionSession,
+    detectFormRegistration,
     normalizeRecognition,
     projectPoint,
     recordRecognition,

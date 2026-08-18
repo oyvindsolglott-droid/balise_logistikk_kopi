@@ -1,4 +1,4 @@
-import "./sde_handwriting_recognition.js?v=f34cc5c606700a100524abdc9ef35c060f6adb13be59323e19a313b3dd2c9028";
+import "./sde_handwriting_recognition.js?v=6e2774d66f637e22554df0d2b5e65c8fe98a1a8a9681a2dd329a3465c575bb6d";
 import * as ort from "./assets/vendor/onnxruntime-web/ort.wasm.min.mjs";
 
 const htr = globalThis.SdeHandwritingRecognition;
@@ -95,123 +95,6 @@ function grayscaleAt(pixels, width, x, y){
   return (pixels[offset] * 0.299) + (pixels[offset + 1] * 0.587) + (pixels[offset + 2] * 0.114);
 }
 
-function strongestHorizontalLine(pixels, width, height, startRatio, endRatio, edgePreference){
-  const start = Math.max(0, Math.floor(height * startRatio));
-  const end = Math.min(height - 1, Math.ceil(height * endRatio));
-  let best = null;
-  const edgeCandidates = [];
-  for(let y = start; y <= end; y += 1){
-    const positions = [];
-    for(let x = 0; x < width; x += 1){
-      if(grayscaleAt(pixels, width, x, y) < 105) positions.push(x);
-    }
-    if(positions.length < width * 0.25) continue;
-    const candidate = {
-      y,
-      count: positions.length,
-      left: positions[Math.min(positions.length - 1, Math.floor(positions.length * 0.01))],
-      right: positions[Math.max(0, Math.ceil(positions.length * 0.99) - 1)],
-    };
-    candidate.span = candidate.right - candidate.left;
-    const score = candidate.count + (candidate.span * 0.35);
-    if(candidate.span > width * 0.65) edgeCandidates.push({...candidate, score});
-    if(!best || score > best.score) best = {...candidate, score};
-  }
-  if(edgePreference === "top" && edgeCandidates.length) return edgeCandidates[0];
-  if(edgePreference === "bottom" && edgeCandidates.length) return edgeCandidates.at(-1);
-  return best;
-}
-
-function fitBoundaryLine(pixels, width, height, edge){
-  const maximumDepth = Math.floor(height * 0.22);
-  const points = [];
-  for(let x = 0; x < width; x += 2){
-    let found = null;
-    if(edge === "top"){
-      for(let y = 0; y <= maximumDepth; y += 1){
-        if(grayscaleAt(pixels, width, x, y) < 100){ found = y; break; }
-      }
-    }else{
-      for(let y = height - 1; y >= height - 1 - maximumDepth; y -= 1){
-        if(grayscaleAt(pixels, width, x, y) < 100){ found = y; break; }
-      }
-    }
-    if(found != null) points.push({x, y: found});
-  }
-  if(points.length < width * 0.28) return null;
-  const regression = values => {
-    const meanX = values.reduce((sum, point) => sum + point.x, 0) / values.length;
-    const meanY = values.reduce((sum, point) => sum + point.y, 0) / values.length;
-    const divisor = values.reduce((sum, point) => sum + ((point.x - meanX) ** 2), 0);
-    const slope = divisor ? values.reduce((sum, point) => sum + ((point.x - meanX) * (point.y - meanY)), 0) / divisor : 0;
-    return {slope, intercept: meanY - (slope * meanX)};
-  };
-  let line = regression(points);
-  const residuals = points.map(point => Math.abs(point.y - ((line.slope * point.x) + line.intercept))).sort((a, b) => a - b);
-  const medianResidual = residuals[Math.floor(residuals.length / 2)] || 0;
-  const tolerance = Math.max(3, medianResidual * 3);
-  const filtered = points.filter(point => Math.abs(point.y - ((line.slope * point.x) + line.intercept)) <= tolerance);
-  if(filtered.length < width * 0.25) return null;
-  line = regression(filtered);
-  const xs = filtered.map(point => point.x);
-  const left = Math.min(...xs);
-  const right = Math.max(...xs);
-  return Object.freeze({
-    left,
-    right,
-    yAtLeft: (line.slope * left) + line.intercept,
-    yAtRight: (line.slope * right) + line.intercept,
-    span: right - left,
-    sampleCount: filtered.length,
-  });
-}
-
-function detectQuadrilateral(pixels, width, height){
-  const topEdge = fitBoundaryLine(pixels, width, height, "top");
-  const bottomEdge = fitBoundaryLine(pixels, width, height, "bottom");
-  if(topEdge && bottomEdge
-    && topEdge.span > width * 0.65
-    && bottomEdge.span > width * 0.65
-    && Math.min(bottomEdge.yAtLeft, bottomEdge.yAtRight) - Math.max(topEdge.yAtLeft, topEdge.yAtRight) > height * 0.68){
-    return Object.freeze({
-      corners: Object.freeze([
-        Object.freeze({x: topEdge.left, y: topEdge.yAtLeft}),
-        Object.freeze({x: topEdge.right, y: topEdge.yAtRight}),
-        Object.freeze({x: bottomEdge.right, y: bottomEdge.yAtRight}),
-        Object.freeze({x: bottomEdge.left, y: bottomEdge.yAtLeft}),
-      ]),
-      confidence: Math.min(1, (topEdge.sampleCount + bottomEdge.sampleCount) / width),
-      source: "DARK_FORM_EDGE_REGRESSION",
-    });
-  }
-  const top = strongestHorizontalLine(pixels, width, height, 0, 0.16, "top");
-  const bottom = strongestHorizontalLine(pixels, width, height, 0.77, 0.999, "bottom");
-  if(top && bottom && top.span > width * 0.65 && bottom.span > width * 0.65 && bottom.y - top.y > height * 0.68){
-    return Object.freeze({
-      corners: Object.freeze([
-        Object.freeze({x: top.left, y: top.y}),
-        Object.freeze({x: top.right, y: top.y}),
-        Object.freeze({x: bottom.right, y: bottom.y}),
-        Object.freeze({x: bottom.left, y: bottom.y}),
-      ]),
-      confidence: Math.min(1, ((top.span + bottom.span) / (2 * width)) * ((bottom.y - top.y) / height)),
-      source: "DARK_FORM_BOUNDARY",
-    });
-  }
-  const insetX = Math.max(1, width * 0.01);
-  const insetY = Math.max(1, height * 0.01);
-  return Object.freeze({
-    corners: Object.freeze([
-      Object.freeze({x: insetX, y: insetY}),
-      Object.freeze({x: width - insetX, y: insetY}),
-      Object.freeze({x: width - insetX, y: height - insetY}),
-      Object.freeze({x: insetX, y: height - insetY}),
-    ]),
-    confidence: 0.5,
-    source: "KNOWN_FORM_EDGE_FALLBACK",
-  });
-}
-
 function bilinearGray(pixels, width, height, x, y){
   const x0 = Math.max(0, Math.min(width - 1, Math.floor(x)));
   const y0 = Math.max(0, Math.min(height - 1, Math.floor(y)));
@@ -228,12 +111,65 @@ function percentile(sorted, ratio){
   return sorted[Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * ratio)))] || 0;
 }
 
+function modelTensorFromGrayscale(image, width, height){
+  const tensor = new Float32Array(3 * 48 * 320);
+  for(let y = 0; y < height; y += 1){
+    for(let x = 0; x < width; x += 1){
+      const value = (image[(y * width) + x] / 127.5) - 1;
+      const index = (y * 320) + x;
+      tensor[index] = value;
+      tensor[(48 * 320) + index] = value;
+      tensor[(2 * 48 * 320) + index] = value;
+    }
+  }
+  return tensor;
+}
+
+function suppressGridLinePixels(image, width, height){
+  const horizontalMask = new Uint8Array(height);
+  const verticalMask = new Uint8Array(width);
+  for(let y = 0; y < height; y += 1){
+    let dark = 0;
+    for(let x = 0; x < width; x += 1) if(image[(y * width) + x] < 150) dark += 1;
+    if(dark >= width * 0.68) horizontalMask[y] = 1;
+  }
+  for(let x = 0; x < width; x += 1){
+    let dark = 0;
+    for(let y = 0; y < height; y += 1) if(image[(y * width) + x] < 150) dark += 1;
+    if(dark >= height * 0.68) verticalMask[x] = 1;
+  }
+  const output = Uint8Array.from(image);
+  for(let y = 0; y < height; y += 1){
+    for(let x = 0; x < width; x += 1){
+      if(!horizontalMask[y] && !verticalMask[x]) continue;
+      const index = (y * width) + x;
+      let replacement = 255;
+      if(horizontalMask[y]){
+        const above = image[(Math.max(0, y - 2) * width) + x];
+        const below = image[(Math.min(height - 1, y + 2) * width) + x];
+        replacement = Math.min(replacement, Math.min(above, below));
+      }
+      if(verticalMask[x]){
+        const left = image[(y * width) + Math.max(0, x - 2)];
+        const right = image[(y * width) + Math.min(width - 1, x + 2)];
+        replacement = Math.min(replacement, Math.min(left, right));
+      }
+      output[index] = replacement;
+    }
+  }
+  return Object.freeze({
+    image: output,
+    horizontalLineCount: horizontalMask.reduce((sum, value) => sum + value, 0),
+    verticalLineCount: verticalMask.reduce((sum, value) => sum + value, 0),
+  });
+}
+
 function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell){
   const box = cell.canonicalBox;
   const boxWidth = box.x1 - box.x0;
   const boxHeight = box.y1 - box.y0;
-  const xPadding = Math.max(3, boxWidth * (cell.columnId === "notes" ? 0.018 : 0.045));
-  const yPadding = Math.max(3, boxHeight * 0.14);
+  const xPadding = Math.max(2, boxWidth * (cell.columnId === "notes" ? 0.012 : 0.02));
+  const yPadding = Math.max(2, boxHeight * 0.055);
   const inner = {
     x0: box.x0 + xPadding,
     y0: box.y0 + yPadding,
@@ -251,42 +187,49 @@ function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell
       grayscale[(y * resizedWidth) + x] = Math.round(bilinearGray(pixels, imageWidth, imageHeight, original.x, original.y));
     }
   }
-  const ordered = [...grayscale].sort((left, right) => left - right);
+  const gridSuppression = suppressGridLinePixels(grayscale, resizedWidth, 48);
+  const lineSuppressed = gridSuppression.image;
+  const ordered = [...lineSuppressed].sort((left, right) => left - right);
   const dark = percentile(ordered, 0.02);
   const paper = percentile(ordered, 0.92);
   const range = Math.max(24, paper - dark);
-  const normalized = new Uint8Array(grayscale.length);
+  const normalized = new Uint8Array(lineSuppressed.length);
   let inkPixels = 0;
-  for(let index = 0; index < grayscale.length; index += 1){
-    const value = Math.max(0, Math.min(255, Math.round(((grayscale[index] - dark) / range) * 255)));
+  for(let index = 0; index < lineSuppressed.length; index += 1){
+    const value = Math.max(0, Math.min(255, Math.round(((lineSuppressed[index] - dark) / range) * 255)));
     normalized[index] = value;
     if(value < 165) inkPixels += 1;
   }
   const inkRatio = inkPixels / Math.max(1, normalized.length);
   const blank = inkPixels < Math.max(7, normalized.length * 0.0055) || inkRatio > 0.68;
-  const tensor = new Float32Array(3 * 48 * 320);
-  for(let y = 0; y < 48; y += 1){
-    for(let x = 0; x < resizedWidth; x += 1){
-      const value = (normalized[(y * resizedWidth) + x] / 127.5) - 1;
-      const index = (y * 320) + x;
-      tensor[index] = value;
-      tensor[(48 * 320) + index] = value;
-      tensor[(2 * 48 * 320) + index] = value;
-    }
-  }
+  const binaryDark = Uint8Array.from(normalized, value => value < 145 ? 0 : 255);
+  const binaryFaint = Uint8Array.from(normalized, value => value < 190 ? 0 : 255);
+  const tensors = Object.freeze([
+    modelTensorFromGrayscale(normalized, resizedWidth, 48),
+    modelTensorFromGrayscale(binaryDark, resizedWidth, 48),
+    modelTensorFromGrayscale(binaryFaint, resizedWidth, 48),
+  ]);
   return Object.freeze({
-    tensor,
+    tensor: tensors[0],
+    tensors,
     blank,
     inkRatio,
     croppedCellImage: normalized,
     cropWidth: resizedWidth,
     cropHeight: 48,
+    gridLineMask: Object.freeze({
+      horizontalLineCount: gridSuppression.horizontalLineCount,
+      verticalLineCount: gridSuppression.verticalLineCount,
+    }),
   });
 }
 
-function decodeCtc(output, characters){
+function decodeCtc(output, characters, allowedCharacters = null){
   const timeSteps = Number(output.dims[1]);
   const classCount = Number(output.dims[2]);
+  const allowedIndexes = allowedCharacters == null
+    ? null
+    : [0, ...characters.map((character, index) => allowedCharacters.has(character) ? index : -1).filter(index => index > 0)];
   let previous = -1;
   let text = "";
   let confidenceSum = 0;
@@ -295,7 +238,9 @@ function decodeCtc(output, characters){
     let bestIndex = 0;
     let bestValue = Number.NEGATIVE_INFINITY;
     const offset = time * classCount;
-    for(let index = 0; index < classCount; index += 1){
+    const indexes = allowedIndexes || Array.from({length: classCount}, (_unused, index) => index);
+    for(const index of indexes){
+      if(index >= classCount) continue;
       const value = Number(output.data[offset + index]);
       if(value > bestValue){
         bestValue = value;
@@ -315,11 +260,28 @@ function decodeCtc(output, characters){
   });
 }
 
-async function recognizeCell(runtime, crop){
+function recognitionAlphabet(columnId){
+  if(columnId === "fromTrain" || columnId === "toTrain") return new Set("0123456789REP¹²".split(""));
+  if(columnId === "vehicleId") return new Set("0123456789-– ".split(""));
+  if(columnId === "toTrack") return new Set("0123456789NSMV→>-+ ".split(""));
+  if(columnId === "wcWater") return new Set("*xX()○◯✓✔√✕✖×".split(""));
+  if(columnId === "date") return new Set("0123456789./-".split(""));
+  return null;
+}
+
+async function recognizeCell(runtime, tensor, columnId){
   const output = await runtime.session.run({
-    x: new ort.Tensor("float32", crop.tensor, [1, 3, 48, 320]),
+    x: new ort.Tensor("float32", tensor, [1, 3, 48, 320]),
   });
-  return decodeCtc(output.fetch_name_0, runtime.characters);
+  const unrestricted = decodeCtc(output.fetch_name_0, runtime.characters);
+  const alphabet = recognitionAlphabet(columnId);
+  const constrained = alphabet ? decodeCtc(output.fetch_name_0, runtime.characters, alphabet) : unrestricted;
+  const candidates = [];
+  for(const candidate of [constrained, unrestricted]){
+    if(!candidate.text || candidates.some(value => value.text === candidate.text)) continue;
+    candidates.push(candidate);
+  }
+  return Object.freeze({unrestricted, candidates: Object.freeze(candidates)});
 }
 
 function emptyCellResult(cell, inkRatio){
@@ -329,6 +291,7 @@ function emptyCellResult(cell, inkRatio){
     columnId: cell.columnId,
     boundingBox: cell.boundingBox,
     recognizedText: "",
+    rawCandidates: Object.freeze([]),
     normalizedValue: "",
     selectedValue: "",
     confidence: unreadableCrop ? 0 : 1,
@@ -336,6 +299,8 @@ function emptyCellResult(cell, inkRatio){
     needsReview: unreadableCrop,
     validationState: unreadableCrop ? "CROP_UNREADABLE" : "BLANK_IMAGE_CELL",
     recognizerVersion: htr.MODEL_SPEC.version,
+    sourceBoundingBox: cell.boundingBox,
+    normalizationReason: unreadableCrop ? "CROP_UNREADABLE" : "BLANK_IMAGE_CELL",
     groundTruthSource: "UNCONFIRMED_RECOGNIZER_OUTPUT",
     rawRecognizerIsGroundTruth: false,
     imageEvidence: Object.freeze({inkRatio, blank: !unreadableCrop}),
@@ -352,11 +317,19 @@ async function analyze(message){
   if(!(width > 0) || !(height > 0) || pixels.length !== width * height * 4) throw new Error("invalid_htr_image_frame");
 
   post("progress", sessionId, {status: "IMAGE_PREPROCESSING", progress: 0.05});
-  const detected = detectQuadrilateral(pixels, width, height);
-  const registration = htr.registerTemplate({imageWidth: width, imageHeight: height, quadrilateral: detected.corners});
-  post("progress", sessionId, {status: "FORM_DETECTED", progress: 0.12, detection: detected});
+  const detected = htr.detectFormRegistration({pixels, width, height});
+  if(detected.source !== "FORM_GRID_RULE_SEQUENCE" || detected.verticalLineCount !== 7 || detected.confidence < 0.55){
+    throw new Error("form_registration_failed");
+  }
+  const registration = htr.registerTemplate({
+    imageWidth: width,
+    imageHeight: height,
+    quadrilateral: detected.corners,
+    rowBoundaries: detected.canonicalRowBoundaries,
+  });
+  post("progress", sessionId, {status: "FORM_REGISTRATION_COMPLETE", progress: 0.12, detection: detected});
   const requests = htr.createRecognitionRequests(registration);
-  post("progress", sessionId, {status: "CELLS_SEGMENTED", progress: 0.18, cellCount: 29 * 6});
+  post("progress", sessionId, {status: "CELL_SEGMENTATION_COMPLETE", progress: 0.18, cellCount: 29 * 6});
   post("progress", sessionId, {status: "HANDWRITING_RECOGNITION_RUNNING", progress: 0.2});
   const runtime = await initializeRuntime();
   const cells = [];
@@ -367,10 +340,29 @@ async function analyze(message){
     if(crop.blank){
       cells.push(emptyCellResult(request, crop.inkRatio));
     }else{
-      const raw = await recognizeCell(runtime, crop);
+      const passes = [];
+      const passTensors = ["notes", "signature", "ds"].includes(request.columnId) ? [crop.tensor] : crop.tensors;
+      for(const tensor of passTensors) passes.push(await recognizeCell(runtime, tensor, request.columnId));
+      const votes = new Map();
+      for(const pass of passes){
+        for(const candidate of pass.candidates){
+          const current = votes.get(candidate.text) || {text: candidate.text, confidence: 0, votes: 0};
+          current.confidence = Math.max(current.confidence, candidate.confidence);
+          current.votes += 1;
+          votes.set(candidate.text, current);
+        }
+      }
+      const consensusCandidates = [...votes.values()]
+        .map(candidate => ({
+          text: candidate.text,
+          confidence: candidate.votes >= 2 ? candidate.confidence : Math.min(candidate.confidence, 0.84),
+          votes: candidate.votes,
+        }))
+        .sort((left, right) => (right.votes - left.votes) || (right.confidence - left.confidence));
+      const raw = passes[0];
       const normalized = htr.normalizeRecognition({
         columnId: request.columnId,
-        candidates: raw.text ? [{text: raw.text, confidence: raw.confidence}] : [],
+        candidates: consensusCandidates,
       }, {
         canonicalSlots: Array.isArray(message.canonicalSlots) ? message.canonicalSlots : [],
         vehicleCatalog: Array.isArray(message.vehicleCatalog) ? message.vehicleCatalog : [],
@@ -379,7 +371,8 @@ async function analyze(message){
         rowIndex: request.rowIndex,
         columnId: request.columnId,
         boundingBox: request.boundingBox,
-        recognizedText: raw.text,
+        recognizedText: raw.unrestricted.text,
+        rawCandidates: Object.freeze(consensusCandidates.map(candidate => Object.freeze({...candidate}))),
         normalizedValue: normalized.normalizedValue,
         selectedValue: normalized.selectedValue,
         confidence: normalized.confidence,
@@ -387,6 +380,8 @@ async function analyze(message){
         needsReview: normalized.needsReview,
         validationState: normalized.validationState,
         recognizerVersion: htr.MODEL_SPEC.version,
+        sourceBoundingBox: request.boundingBox,
+        normalizationReason: normalized.normalizationReason,
         groundTruthSource: "UNCONFIRMED_RECOGNIZER_OUTPUT",
         rawRecognizerIsGroundTruth: false,
         imageEvidence: Object.freeze({inkRatio: crop.inkRatio, blank: false}),
@@ -403,7 +398,7 @@ async function analyze(message){
   const metadataCells = cells.filter(cell => cell.rowIndex == null);
   const report = htr.buildMappingReport({
     htrCompleted: true,
-    registrationStatus: "CELLS_SEGMENTED",
+    registrationStatus: "CELL_SEGMENTATION_COMPLETE",
     cells: tableCells,
     metadataCells,
   });
@@ -411,11 +406,13 @@ async function analyze(message){
     result: {
       status: report.mappingStatus,
       registration: {
-        status: "CELLS_SEGMENTED",
+        status: "CELL_SEGMENTATION_COMPLETE",
         templateVersion: registration.templateVersion,
         perspectiveCorrectionApplied: true,
         detectionConfidence: detected.confidence,
         detectionSource: detected.source,
+        verticalLineCount: detected.verticalLineCount,
+        horizontalLineCount: detected.horizontalLineCount,
         quadrilateral: detected.corners,
       },
       cells: tableCells,
