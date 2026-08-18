@@ -490,10 +490,18 @@ function staticChecks(inventory = buildInventory(), options = {}) {
   const nightFiles = [
     "sde_intelligent_night_planning.js",
     "sde_night_planning_ui.js",
+    "sde_handwriting_recognition.js",
+    "sde_handwriting_runtime.js",
+    "sde_handwriting_worker.js",
+    "assets/models/latin-pp-ocrv5-mobile-rec-onnx/manifest.json",
+    "assets/models/latin-pp-ocrv5-mobile-rec-onnx/inference.onnx",
+    "assets/vendor/onnxruntime-web/ort.wasm.min.mjs",
     "config/sde-night-intelligence.json",
     "models/sde/production-model.json",
     "models/sde/model-registry.json",
     "tests/sde/intelligent-night-planning.test.cjs",
+    "tests/sde/handwriting-recognition.test.cjs",
+    "tests/sde/test_handwriting_recognition_e2e.py",
     "tests/sde/test_sde_night_model.py"
   ];
   const missingNightFiles = nightFiles.filter((file) => !fs.existsSync(path.join(root, file)));
@@ -508,7 +516,9 @@ function staticChecks(inventory = buildInventory(), options = {}) {
   const nightContractProblems = [
     ...missingNightFiles.map((file) => `mangler ${file}`),
     !nightPlanTabRegistered ? "mangler nattplan-tab" : null,
-    !/assets\/vendor\/tesseract\/tesseract\.min\.js/.test(indexSource) ? "mangler lokal OCR-runtime" : null,
+    !/sde_handwriting_recognition\.js/.test(indexSource) || !/sde_handwriting_runtime\.js/.test(indexSource)
+      ? "mangler lokal HTR-runtime" : null,
+    /assets\/vendor\/tesseract\/tesseract\.min\.js/.test(indexSource) ? "produktflyten laster fortsatt print-OCR som eneste recognizer" : null,
     /https?:\/\//.test(nightUiSource) ? "UI peker på ekstern tjeneste" : null,
     /localStorage\.setItem|fetch\(/.test(nightModuleSource) ? "beslutningsmodul har write/nettverksflate" : null,
     !/absoluteGatePassed: true/.test(nightUiSource) ? "ML mangler gate-evidens" : null

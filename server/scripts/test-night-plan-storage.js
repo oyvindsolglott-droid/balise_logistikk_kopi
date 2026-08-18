@@ -81,19 +81,64 @@ function rows(){
 }
 
 function mappingReport(){
+  const columns = ["fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater", "notes"];
+  const row = rows()[0];
+  const box = (rowIndex, columnIndex) => ({
+    x0: 30 + columnIndex * 180,
+    y0: rowIndex == null ? 80 : 170 + rowIndex * 37,
+    x1: 190 + columnIndex * 180,
+    y1: rowIndex == null ? 110 : 200 + rowIndex * 37,
+    coordinateSpace: "ORIGINAL_IMAGE",
+    polygon: [
+      {x: 30 + columnIndex * 180, y: rowIndex == null ? 80 : 170 + rowIndex * 37},
+      {x: 190 + columnIndex * 180, y: rowIndex == null ? 80 : 170 + rowIndex * 37},
+      {x: 190 + columnIndex * 180, y: rowIndex == null ? 110 : 200 + rowIndex * 37},
+      {x: 30 + columnIndex * 180, y: rowIndex == null ? 110 : 200 + rowIndex * 37}
+    ]
+  });
+  const cell = (rowIndex, columnId, columnIndex, value) => ({
+    rowIndex,
+    columnId,
+    boundingBox: box(rowIndex, columnIndex),
+    recognizedText: value,
+    normalizedValue: value,
+    selectedValue: value,
+    confidence: value ? 0.98 : 1,
+    alternatives: value ? [value] : [],
+    needsReview: false,
+    validationState: value ? "VALID" : "BLANK_IMAGE_CELL",
+    recognizerVersion: "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e",
+    groundTruthSource: "HUMAN_CORRECTED_FORM",
+    rawRecognizerIsGroundTruth: false,
+    imageEvidence: {inkRatio: value ? 0.1 : 0, blank: !value},
+    humanFinalValue: value
+  });
+  const cells = Array.from({length: 29}, (_unused, rowIndex) => columns.map((column, columnIndex) => (
+    cell(rowIndex, column, columnIndex, rowIndex === 0 ? row[column] : "")
+  ))).flat();
+  const metadataCells = [
+    cell(null, "date", 0, "2026-08-18"),
+    cell(null, "signature", 1, "TXP TEST"),
+    cell(null, "ds", 2, "ds-1")
+  ];
   return {
-    schemaVersion: "sde-night-form-mapping-report-v1",
-    ocrTokenCount: 90,
-    recognizedLineCount: 27,
-    detectedHeaderCount: 6,
-    detectedRowCount: 3,
-    mappedCellCount: 16,
-    unmappedTokenCount: 4,
-    mappingConfidence: 0.88,
+    schemaVersion: "sde-night-form-mapping-report-v2",
     mappingStatus: "FORM_MAPPING_COMPLETE",
-    discardedReasonCounts: {LOW_CONFIDENCE: 4},
-    geometrySource: "PREPROCESSED_KNOWN_FORM_LAYOUT",
-    requiresHumanReview: true
+    htrCompleted: true,
+    registrationStatus: "CELLS_SEGMENTED",
+    templateVersion: "togplassering-skien-29x6-v1",
+    recognizerVersion: "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e",
+    modelSha256: "7888113072263cb471b93f66dd5e2ad70548dc526fa1ace760d0d973dd121498",
+    cellCount: cells.length,
+    mappedCellCount: cells.filter(item => item.selectedValue).length,
+    reviewedCellCount: 0,
+    requiresHumanReview: false,
+    mappingConfidence: 0.98,
+    cells,
+    metadataCells,
+    humanGroundTruthSource: "HUMAN_CORRECTED_FORM",
+    rawRecognizerIsGroundTruth: false,
+    humanReviewCompleted: true
   };
 }
 
@@ -107,15 +152,15 @@ function payload(overrides = {}){
     form: {planDate: "2026-08-18", signature: "TXP TEST", ds: "ds-1", rows: rows()},
     source: {
       sourceType: "DEVICE_FILE",
-      ocrEngine: "tesseract.js-local",
-      ocrVersion: "bundled",
+      ocrEngine: "paddleocr-local-htr-onnx-wasm",
+      ocrVersion: "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e",
       importedAt: "2026-08-17T08:01:00.000Z",
       humanCorrected: true,
       mappingStatus: "FORM_MAPPING_COMPLETE",
       mappingReport: mappingReport()
     },
     image: {mimeType: "image/png", originalFileName: "plan.png", bytesBase64: PNG.toString("base64")},
-    pipeline: {modelVersion: "test-model", pipelineVersion: "test-pipeline"}
+    pipeline: {modelVersion: "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e", pipelineVersion: "sde-night-local-htr-v1"}
   };
   return {...base, ...overrides};
 }
@@ -162,8 +207,12 @@ function runStorageContract(){
   check("16 provenance binds source hash", () => assert.equal(readback.provenance.sourceImageSha256, sha256(PNG)));
   check("17 identity comes from server option", () => assert.equal(readback.savedBy, "cf-subject-txp"));
   check("17a provenance stores truthful mapping status", () => assert.equal(readback.provenance.mappingStatus, "FORM_MAPPING_COMPLETE"));
-  check("17b provenance stores bounded mapping counts without raw OCR text", () => {
-    assert.equal(readback.provenance.mappingReport.mappedCellCount, 16);
+  check("17b provenance stores all HTR cells and model provenance without treating raw output as truth", () => {
+    assert.equal(readback.provenance.mappingReport.mappedCellCount, 6);
+    assert.equal(readback.provenance.mappingReport.cells.length, 174);
+    assert.equal(readback.provenance.mappingReport.metadataCells.length, 3);
+    assert.equal(readback.provenance.mappingReport.modelSha256, "7888113072263cb471b93f66dd5e2ad70548dc526fa1ace760d0d973dd121498");
+    assert.equal(readback.provenance.mappingReport.rawRecognizerIsGroundTruth, false);
     assert.equal(JSON.stringify(readback.provenance.mappingReport).includes("rawText"), false);
   });
 
@@ -188,6 +237,9 @@ function runStorageContract(){
   check("25 learning payload is final corrected form", () => {
     const learning = context.db.prepare("SELECT * FROM night_plan_learning_records").get();
     assert.deepEqual(JSON.parse(learning.canonical_form_json), input.form);
+    assert.deepEqual(JSON.parse(learning.human_ground_truth_json), input.form);
+    assert.equal(JSON.parse(learning.recognizer_result_json).tableCells.length, 174);
+    assert.equal(JSON.parse(learning.recognizer_result_json).metadataCells.length, 3);
     assert.equal(learning.final_form_sha256, saved.finalFormSha256);
   });
   check("25a source image and plan share the same plan identifier", () => {
@@ -274,11 +326,33 @@ function runValidationAndSecurityContract(){
     assert.equal(/console\.(?:log|info|debug)\s*\(/.test(source), false);
   });
   check("46d OCR-backed image source requires mapping provenance", () => expectCode(() => validateNightPlanSavePayload(payload({
-    source: {sourceType: "DEVICE_FILE", ocrEngine: "tesseract.js-local", ocrVersion: "bundled", importedAt: "2026-08-17T08:01:00.000Z", humanCorrected: true, mappingStatus: "FORM_MAPPING_COMPLETE", mappingReport: null}
+    source: {sourceType: "DEVICE_FILE", ocrEngine: "paddleocr-local-htr-onnx-wasm", ocrVersion: "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e", importedAt: "2026-08-17T08:01:00.000Z", humanCorrected: true, mappingStatus: "FORM_MAPPING_COMPLETE", mappingReport: null}
   })), "mapping_report_required"));
   check("46e mapping status and report cannot contradict each other", () => expectCode(() => validateNightPlanSavePayload(payload({
     source: {...payload().source, mappingStatus: "MAPPING_FAILED"}
   })), "mapping_status_mismatch"));
+  check("46f HTR report requires the complete 29 x 6 cell set", () => {
+    const report = mappingReport();
+    report.cells = report.cells.slice(0, -1);
+    report.cellCount = report.cells.length;
+    expectCode(() => validateNightPlanSavePayload(payload({
+      source: {...payload().source, mappingReport: report}
+    })), "invalid_htr_cell_count");
+  });
+  check("46g HTR report requires all three metadata cells", () => {
+    const report = mappingReport();
+    report.metadataCells = report.metadataCells.slice(0, 2);
+    expectCode(() => validateNightPlanSavePayload(payload({
+      source: {...payload().source, mappingReport: report}
+    })), "invalid_htr_metadata_cell_count");
+  });
+  check("46h raw recognizer output can never be learning ground truth", () => {
+    const report = mappingReport();
+    report.cells[0] = {...report.cells[0], rawRecognizerIsGroundTruth: true};
+    expectCode(() => validateNightPlanSavePayload(payload({
+      source: {...payload().source, mappingReport: report}
+    })), "raw_recognizer_ground_truth_forbidden");
+  });
   check("47 symlinked ancestor cannot redirect storage into repository", () => {
     const context = freshContext("symlink-ancestor-into-repo");
     const link = path.join(tempRoot, "repo-alias");

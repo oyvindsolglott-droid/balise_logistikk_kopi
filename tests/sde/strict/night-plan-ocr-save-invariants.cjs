@@ -46,10 +46,10 @@ function emptyValues(plan) {
 }
 
 invariant("INV-OCR-SAVE-001", "OCR-resultatet sendes til mapperen", () =>
-  ui.includes("logic.mapOcrResultToNightPlan(result, {")
+  ui.includes("htrRuntime.mapResultToNightPlan(result, {")
 );
 invariant("INV-OCR-SAVE-002", "mapperen fyller mer enn første celle og rad", () => {
-  const mapped = mapFixture("historical-togplassering-skien.json", "historical-mutation-invariant");
+  const mapped = mapFixture("synthetic-fixture-a.json", "synthetic-mutation-invariant");
   return mapped.ocrMapping.mappedCellCount > 1 && mapped.ocrMapping.detectedRowCount > 1;
 });
 invariant("INV-OCR-SAVE-003", "vellykket mapping blir gjeldende form state", () =>
@@ -83,7 +83,7 @@ invariant("INV-OCR-SAVE-007", "designverdier brukes aldri som mapperfallback", (
   return values.every(value => value === "") && !values.some(value => ["8S", "74-38", "833", "802"].includes(value));
 });
 invariant("INV-OCR-SAVE-008", "success vises først etter fullført skjemamapping", () =>
-  ui.includes('setImportState("OCR_PROCESSING", null);')
+  ui.includes('setImportState("IMAGE_PREPROCESSING", null);')
   && ui.includes('if (report.mappingStatus === "FORM_MAPPING_COMPLETE")')
   && !ui.includes('setImportState("FORM_MAPPING_COMPLETE", null);')
 );

@@ -18,6 +18,7 @@ const ALLOWED_MAPPING_STATUSES = new Set([
   "FORM_MAPPING_COMPLETE",
   "FORM_MAPPING_REQUIRES_REVIEW",
   "MAPPING_FAILED",
+  "RECOGNITION_FAILED",
   "OCR_FAILED",
   "NOT_RUN_HUMAN_ENTERED"
 ]);
@@ -105,6 +106,8 @@ function ensureNightPlanSchema(db){
       created_at TEXT NOT NULL,
       model_version TEXT,
       pipeline_version TEXT,
+      recognizer_result_json TEXT,
+      human_ground_truth_json TEXT,
       schema_version TEXT NOT NULL,
       UNIQUE(plan_id, plan_revision)
     );
@@ -125,6 +128,8 @@ function ensureNightPlanSchema(db){
   `);
   ensureColumn(db, "night_plan_provenance", "mapping_status", "TEXT");
   ensureColumn(db, "night_plan_provenance", "mapping_report_json", "TEXT");
+  ensureColumn(db, "night_plan_learning_records", "recognizer_result_json", "TEXT");
+  ensureColumn(db, "night_plan_learning_records", "human_ground_truth_json", "TEXT");
 }
 
 function ensureColumn(db, table, column, definition){
@@ -269,8 +274,8 @@ function saveNightPlan(db, payload, options = {}){
         learning_record_id, plan_id, plan_revision, final_form_sha256,
         source_image_sha256, learning_status, learning_source,
         canonical_form_json, created_at, model_version, pipeline_version,
-        schema_version
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        recognizer_result_json, human_ground_truth_json, schema_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       learningRecordId,
       planId,
@@ -283,6 +288,11 @@ function saveNightPlan(db, payload, options = {}){
       now,
       validated.pipeline.modelVersion,
       validated.pipeline.pipelineVersion,
+      validated.source.mappingReport ? JSON.stringify({
+        tableCells: validated.source.mappingReport.cells || [],
+        metadataCells: validated.source.mappingReport.metadataCells || []
+      }) : null,
+      JSON.stringify(validated.form),
       LEARNING_SCHEMA_VERSION
     );
 
@@ -575,6 +585,7 @@ function validateSource(value){
 
 function validateMappingReport(value){
   requirePlainObject(value, "invalid_mapping_report");
+  if(value.schemaVersion === "sde-night-form-mapping-report-v2") return validateHtrMappingReport(value);
   rejectUnexpectedFields(value, [
     "schemaVersion", "ocrTokenCount", "recognizedLineCount", "detectedHeaderCount",
     "detectedRowCount", "mappedCellCount", "unmappedTokenCount", "mappingConfidence",
@@ -617,6 +628,141 @@ function validateMappingReport(value){
   report.geometrySource = normalizeNullableString(value.geometrySource, 120, "geometrySource");
   report.requiresHumanReview = value.requiresHumanReview === true;
   return Object.freeze(report);
+}
+
+function validateHtrMappingReport(value){
+  rejectUnexpectedFields(value, [
+    "schemaVersion", "mappingStatus", "htrCompleted", "registrationStatus",
+    "templateVersion", "recognizerVersion", "modelSha256", "cellCount",
+    "mappedCellCount", "reviewedCellCount", "requiresHumanReview",
+    "mappingConfidence", "cells", "metadataCells", "humanGroundTruthSource",
+    "rawRecognizerIsGroundTruth", "humanReviewCompleted"
+  ], "unexpected_mapping_report_field");
+  const report = {schemaVersion: "sde-night-form-mapping-report-v2"};
+  report.mappingStatus = normalizeExactString(value.mappingStatus, 80);
+  if(!ALLOWED_MAPPING_STATUSES.has(report.mappingStatus) || ["NOT_RUN_HUMAN_ENTERED", "OCR_FAILED"].includes(report.mappingStatus)){
+    throw invalid("invalid_mapping_status", "The HTR mapping report has an invalid mappingStatus.");
+  }
+  if(value.htrCompleted !== true) throw invalid("htr_not_completed", "An HTR mapping report requires completed handwriting recognition.");
+  report.htrCompleted = true;
+  report.registrationStatus = normalizeExactString(value.registrationStatus, 80);
+  if(report.registrationStatus !== "CELLS_SEGMENTED") throw invalid("invalid_registration_status", "The 29 x 6 cell segmentation must be complete.");
+  report.templateVersion = normalizeExactString(value.templateVersion, 120);
+  report.recognizerVersion = normalizeExactString(value.recognizerVersion, 120);
+  report.modelSha256 = normalizeExactString(value.modelSha256, 64);
+  if(!report.templateVersion || !report.recognizerVersion || !/^[a-f0-9]{64}$/.test(report.modelSha256 || "")){
+    throw invalid("invalid_htr_provenance", "HTR template, recognizer and model hash provenance are required.");
+  }
+  for(const field of ["cellCount", "mappedCellCount", "reviewedCellCount"]){
+    const count = Number(value[field]);
+    if(!Number.isInteger(count) || count < 0 || count > 177) throw invalid("invalid_mapping_report_count", `${field} is invalid.`);
+    report[field] = count;
+  }
+  if(!Array.isArray(value.cells) || value.cells.length !== ROW_COUNT * ROW_FIELDS.length || report.cellCount !== value.cells.length){
+    throw invalid("invalid_htr_cell_count", "Exactly 29 x 6 HTR table cells are required.");
+  }
+  report.cells = Object.freeze(value.cells.map((cell, index) => validateHtrCell(cell, index, false)));
+  if(!Array.isArray(value.metadataCells) || value.metadataCells.length !== 3){
+    throw invalid("invalid_htr_metadata_cell_count", "Exactly the date, signature and ds HTR metadata cells are required.");
+  }
+  report.metadataCells = Object.freeze(value.metadataCells.map((cell, index) => validateHtrCell(cell, index, true)));
+  const metadataColumns = new Set(report.metadataCells.map(cell => cell.columnId));
+  if(metadataColumns.size !== 3 || !["date", "signature", "ds"].every(column => metadataColumns.has(column))){
+    throw invalid("invalid_htr_metadata_cells", "HTR metadata cells must be date, signature and ds.");
+  }
+  const actualMapped = report.cells.filter(cell => cell.selectedValue).length;
+  if(actualMapped !== report.mappedCellCount) throw invalid("mapped_cell_count_mismatch", "mappedCellCount does not match the HTR cells.");
+  const confidence = Number(value.mappingConfidence);
+  if(!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw invalid("invalid_mapping_confidence", "mappingConfidence must be between zero and one.");
+  report.mappingConfidence = confidence;
+  report.requiresHumanReview = value.requiresHumanReview === true;
+  report.humanGroundTruthSource = value.humanGroundTruthSource == null
+    ? null
+    : normalizeExactString(value.humanGroundTruthSource, 80);
+  if(report.humanGroundTruthSource && report.humanGroundTruthSource !== "HUMAN_CORRECTED_FORM"){
+    throw invalid("invalid_learning_ground_truth", "Only the human-corrected form can be learning ground truth.");
+  }
+  report.rawRecognizerIsGroundTruth = value.rawRecognizerIsGroundTruth === true;
+  if(report.rawRecognizerIsGroundTruth) throw invalid("raw_recognizer_ground_truth_forbidden", "Raw recognizer output cannot be learning ground truth.");
+  report.humanReviewCompleted = value.humanReviewCompleted === true;
+  return Object.freeze(report);
+}
+
+function validateHtrCell(value, index, metadata = false){
+  requirePlainObject(value, "invalid_htr_cell");
+  rejectUnexpectedFields(value, [
+    "rowIndex", "columnId", "boundingBox", "recognizedText", "normalizedValue",
+    "selectedValue", "confidence", "alternatives", "needsReview",
+    "validationState", "recognizerVersion", "groundTruthSource",
+    "rawRecognizerIsGroundTruth", "imageEvidence", "humanFinalValue"
+  ], "unexpected_htr_cell_field");
+  const rowIndex = metadata ? null : Number(value.rowIndex);
+  if(metadata && value.rowIndex !== null) throw invalid("invalid_htr_row", `HTR metadata cell ${index} must not claim a table row.`);
+  if(!metadata && (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= ROW_COUNT)) throw invalid("invalid_htr_row", `HTR cell ${index} has an invalid row.`);
+  const columnId = normalizeExactString(value.columnId, 40);
+  const allowedColumns = metadata ? ["date", "signature", "ds"] : ROW_FIELDS;
+  if(!allowedColumns.includes(columnId)) throw invalid("invalid_htr_column", `HTR cell ${index} has an invalid column.`);
+  const boundingBox = validateHtrBoundingBox(value.boundingBox);
+  const maximum = columnId === "notes" ? 500 : 120;
+  const recognizedText = normalizeFormString(value.recognizedText, maximum, `cells[${index}].recognizedText`);
+  const normalizedValue = normalizeFormString(value.normalizedValue, maximum, `cells[${index}].normalizedValue`);
+  const selectedValue = normalizeFormString(value.selectedValue, maximum, `cells[${index}].selectedValue`);
+  const confidence = Number(value.confidence);
+  if(!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw invalid("invalid_htr_confidence", `HTR cell ${index} has invalid confidence.`);
+  if(!Array.isArray(value.alternatives) || value.alternatives.length > 8) throw invalid("invalid_htr_alternatives", `HTR cell ${index} has invalid alternatives.`);
+  const alternatives = value.alternatives.map((alternative, candidateIndex) => normalizeFormString(alternative, maximum, `cells[${index}].alternatives[${candidateIndex}]`));
+  const recognizerVersion = normalizeExactString(value.recognizerVersion, 120);
+  if(!recognizerVersion) throw invalid("invalid_htr_recognizer_version", `HTR cell ${index} lacks recognizer provenance.`);
+  const groundTruthSource = normalizeExactString(value.groundTruthSource, 80);
+  if(!["UNCONFIRMED_RECOGNIZER_OUTPUT", "HUMAN_CORRECTED_FORM"].includes(groundTruthSource)){
+    throw invalid("invalid_htr_ground_truth_source", `HTR cell ${index} has invalid ground-truth provenance.`);
+  }
+  if(value.rawRecognizerIsGroundTruth === true) throw invalid("raw_recognizer_ground_truth_forbidden", "Raw recognizer output cannot be learning ground truth.");
+  const humanFinalValue = value.humanFinalValue == null
+    ? null
+    : normalizeFormString(value.humanFinalValue, maximum, `cells[${index}].humanFinalValue`);
+  requirePlainObject(value.imageEvidence, "invalid_htr_image_evidence");
+  rejectUnexpectedFields(value.imageEvidence, ["inkRatio", "blank"], "unexpected_htr_image_evidence_field");
+  const inkRatio = Number(value.imageEvidence.inkRatio);
+  if(!Number.isFinite(inkRatio) || inkRatio < 0 || inkRatio > 1 || typeof value.imageEvidence.blank !== "boolean"){
+    throw invalid("invalid_htr_image_evidence", `HTR cell ${index} has invalid image evidence.`);
+  }
+  return Object.freeze({
+    rowIndex, columnId, boundingBox, recognizedText, normalizedValue,
+    selectedValue, confidence, alternatives: Object.freeze(alternatives),
+    needsReview: value.needsReview === true,
+    validationState: normalizeExactString(value.validationState, 80),
+    recognizerVersion, groundTruthSource, rawRecognizerIsGroundTruth: false,
+    imageEvidence: Object.freeze({inkRatio, blank: value.imageEvidence.blank}),
+    humanFinalValue
+  });
+}
+
+function validateHtrBoundingBox(value){
+  requirePlainObject(value, "invalid_htr_bounding_box");
+  rejectUnexpectedFields(value, ["x0", "y0", "x1", "y1", "coordinateSpace", "polygon"], "unexpected_htr_bounding_box_field");
+  const box = {};
+  for(const field of ["x0", "y0", "x1", "y1"]){
+    const coordinate = Number(value[field]);
+    if(!Number.isFinite(coordinate) || coordinate < 0 || coordinate > MAX_IMAGE_DIMENSION) throw invalid("invalid_htr_bounding_box", "HTR image coordinates are invalid.");
+    box[field] = coordinate;
+  }
+  if(!(box.x1 > box.x0) || !(box.y1 > box.y0) || value.coordinateSpace !== "ORIGINAL_IMAGE"){
+    throw invalid("invalid_htr_bounding_box", "HTR bounding boxes must use original-image coordinates.");
+  }
+  if(!Array.isArray(value.polygon) || value.polygon.length !== 4) throw invalid("invalid_htr_polygon", "HTR bounding polygons require four points.");
+  box.coordinateSpace = "ORIGINAL_IMAGE";
+  box.polygon = Object.freeze(value.polygon.map(point => {
+    requirePlainObject(point, "invalid_htr_polygon_point");
+    rejectUnexpectedFields(point, ["x", "y"], "unexpected_htr_polygon_point_field");
+    const x = Number(point.x);
+    const y = Number(point.y);
+    if(!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x > MAX_IMAGE_DIMENSION || y > MAX_IMAGE_DIMENSION){
+      throw invalid("invalid_htr_polygon_point", "HTR polygon coordinates are invalid.");
+    }
+    return Object.freeze({x, y});
+  }));
+  return Object.freeze(box);
 }
 
 function validatePipeline(value){

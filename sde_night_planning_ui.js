@@ -2,6 +2,8 @@
   "use strict";
 
   const logic = root.SdeNightIntelligence;
+  const htrLogic = root.SdeHandwritingRecognition;
+  const htrRuntime = root.SdeHandwritingRuntime;
   const API_ROOT = "/api/night-plans";
   const PLAN_STORAGE_KEY = "sde_night_plans_v1";
   const PLAN_STORE_SCHEMA = "sde-night-plan-store-v1";
@@ -207,7 +209,7 @@
       const input = function input(name, label) {
         const descriptor = entry[name] || {};
         const original = String(descriptor.rawValue || "");
-        const uncertain = descriptor.validationState === "REVIEW_REQUIRED";
+        const uncertain = descriptor.validationState === "REVIEW_REQUIRED" || descriptor.needsReview === true;
         return [
           "<input type=\"text\" data-sde-night-index=\"", index,
           "\" data-sde-night-field=\"", html(name),
@@ -242,6 +244,48 @@
       renderDraftRows();
       setStatus("Linjen er endret. Kontroller kritiske felt på nytt før CONFIRMED.", "warn");
     }
+  }
+
+  function correctedMappingReport(form) {
+    if (!importState.report || !Array.isArray(importState.report.cells) || !htrLogic) return importState.report;
+    const fieldNames = {
+      fromTrain: "fromTrain",
+      toTrain: "toTrain",
+      vehicleId: "vehicleId",
+      toTrack: "toTrack",
+      wcWater: "wcWater",
+      notes: "notes",
+    };
+    const cells = importState.report.cells.map(function correctedCell(cell) {
+      const row = Number(cell.rowIndex);
+      const formField = fieldNames[cell.columnId];
+      const humanValue = Number.isInteger(row) && row >= 0 && row < ROW_COUNT && formField
+        ? form.rows[row][formField]
+        : String(cell.selectedValue || "");
+      return htrLogic.applyHumanCorrection(cell, humanValue);
+    });
+    const metadataValues = {
+      date: form.planDate,
+      signature: form.signature,
+      ds: form.ds,
+    };
+    const metadataCells = Array.isArray(importState.report.metadataCells)
+      ? importState.report.metadataCells.map(function correctedMetadataCell(cell) {
+        return htrLogic.applyHumanCorrection(cell, metadataValues[cell.columnId] || "");
+      })
+      : [];
+    const mappedCellCount = cells.filter(cell => String(cell.selectedValue || "").trim()).length;
+    return {
+      ...importState.report,
+      cells,
+      metadataCells,
+      mappedCellCount,
+      reviewedCellCount: 0,
+      requiresHumanReview: false,
+      humanGroundTruthSource: "HUMAN_CORRECTED_FORM",
+      rawRecognizerIsGroundTruth: false,
+      humanReviewCompleted: true,
+    };
   }
 
   function enableEditing() {
@@ -322,15 +366,18 @@
       form,
       source: {
         sourceType: draft.sdeLegacyLocal ? "LEGACY_LOCAL" : (selectedImageSource || "MANUAL"),
-        ocrEngine: selectedImageOcrCompleted ? "tesseract.js-local" : null,
-        ocrVersion: selectedImageOcrCompleted ? String(root.Tesseract?.version || "bundled") : null,
+        ocrEngine: selectedImageOcrCompleted ? "paddleocr-local-htr-onnx-wasm" : null,
+        ocrVersion: selectedImageOcrCompleted ? String(htrLogic?.MODEL_SPEC?.version || "") : null,
         importedAt: selectedImageSource ? String(draft.sdeImportedAt || new Date().toISOString()) : null,
         humanCorrected: true,
         mappingStatus: imageSource ? (selectedImageOcrCompleted ? String(importState.status) : "NOT_RUN_HUMAN_ENTERED") : null,
-        mappingReport: imageSource && selectedImageOcrCompleted && importState.report ? importState.report : null,
+        mappingReport: imageSource && selectedImageOcrCompleted && importState.report ? correctedMappingReport(form) : null,
       },
       image,
-      pipeline: {modelVersion: "0.0.0-cold-start", pipelineVersion: "sde-night-local-ocr-v2"},
+      pipeline: {
+        modelVersion: selectedImageOcrCompleted ? String(htrLogic?.MODEL_SPEC?.version || "") : "not-run",
+        pipelineVersion: "sde-night-local-htr-v1",
+      },
     };
   }
 
@@ -523,7 +570,7 @@
     humanReviewActivated = false;
     markDirty();
     renderDraftRows();
-    setStatus("Bildet er valgt og holdes bare midlertidig i nettleserminnet. Velg «Importer nå» for lokal OCR.", "ok");
+    setStatus("Bildet er valgt og holdes bare midlertidig i nettleserminnet. Velg «Importer nå» for lokal håndskriftgjenkjenning.", "ok");
   }
 
   async function fileFingerprint(file) {
@@ -559,54 +606,16 @@
     return plan;
   }
 
-  async function preprocessImageForOcr(file) {
-    if (!file) throw new Error("source_image_required");
-    const bitmap = await root.createImageBitmap(file, {imageOrientation: "from-image"});
-    try {
-      const longest = Math.max(bitmap.width, bitmap.height);
-      const scale = longest > 2200 ? 2200 / longest : 1;
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
-      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
-      const context = canvas.getContext("2d", {willReadFrequently: true});
-      if (!context) throw new Error("image_preprocessing_unavailable");
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      const frame = context.getImageData(0, 0, canvas.width, canvas.height);
-      for (let offset = 0; offset < frame.data.length; offset += 4) {
-        const gray = Math.round(frame.data[offset] * 0.299 + frame.data[offset + 1] * 0.587 + frame.data[offset + 2] * 0.114);
-        frame.data[offset] = gray;
-        frame.data[offset + 1] = gray;
-        frame.data[offset + 2] = gray;
-        frame.data[offset + 3] = 255;
-      }
-      context.putImageData(frame, 0, 0);
-      const columnRatios = [0.015, 0.14, 0.27, 0.40, 0.52, 0.63, 0.985];
-      canvas.sdeOcrGeometry = {
-        left: canvas.width * columnRatios[0],
-        right: canvas.width * columnRatios[6],
-        dataTop: canvas.height * 0.19,
-        dataBottom: canvas.height * 0.975,
-        columnBoundaries: columnRatios.map(function boundary(ratio) { return canvas.width * ratio; }),
-        source: "PREPROCESSED_KNOWN_FORM_LAYOUT",
-      };
-      return canvas;
-    } finally {
-      if (typeof bitmap.close === "function") bitmap.close();
-    }
-  }
-
   function getOcrAnalyzer() {
     if (ocrAnalyzer) return ocrAnalyzer;
-    if (!root.Tesseract || typeof root.Tesseract.createWorker !== "function") {
-      throw new Error("local_ocr_runtime_unavailable");
+    if (!htrLogic || !htrRuntime || typeof htrRuntime.createLocalHandwritingAnalyzer !== "function") {
+      throw new Error("local_htr_runtime_unavailable");
     }
-    ocrAnalyzer = logic.createLocalOcrAnalyzer({
-      createWorker: root.Tesseract.createWorker,
-      workerPath: new URL("assets/vendor/tesseract/worker.min.js", document.baseURI).href,
-      corePath: new URL("assets/vendor/tesseract-core", document.baseURI).href,
-      langPath: new URL("assets/vendor/tessdata", document.baseURI).href,
+    if (!htrLogic.supportsLocalRuntime(root)) throw new Error("local_htr_runtime_unavailable");
+    ocrAnalyzer = htrRuntime.createLocalHandwritingAnalyzer({
+      environment: root,
+      workerUrl: new URL("sde_handwriting_worker.js?v=7bec10a124e2e0b0fe079a29fa6dfa974b12a50c748a7a603b5bb990dafef5f8", document.baseURI).href,
+      maximumDimension: 1800,
     });
     return ocrAnalyzer;
   }
@@ -623,33 +632,31 @@
     if (analyzeButton) analyzeButton.disabled = true;
     if (cancelButton) cancelButton.disabled = false;
     selectedImageOcrCompleted = false;
-    setImportState("OCR_PROCESSING", null);
-    setStatus("Lokal OCR analyserer bildet. Ingen bildepiksler sendes til en ekstern tjeneste.", "warn");
+    setImportState("IMAGE_PREPROCESSING", null);
+    setStatus("Bildet klargjøres lokalt før skjemaregistrering og håndskriftgjenkjenning. Ingen bildepiksler sendes til en ekstern tjeneste.", "warn");
     try {
       const analyzer = getOcrAnalyzer();
       const fingerprintPromise = fileFingerprint(selectedImage);
-      const preprocessedImage = await preprocessImageForOcr(selectedImage);
-      const result = await analyzer.analyze(preprocessedImage, function onProgress(message) {
+      const result = await analyzer.analyze(selectedImage, {
+        canonicalSlots: logic.VALID_SLOTS,
+        vehicleCatalog: knownVehicleIds(),
+      }, function onProgress(message) {
         if (generation !== ocrGeneration) return;
         const progress = Math.round(Number(message && message.progress || 0) * 100);
-        const label = String(message && message.status || "analyserer");
+        const label = String(message && message.status || "HANDWRITING_RECOGNITION_RUNNING");
+        setImportState(label, null);
         const target = el("sdeNightOcrProgress");
         if (target) target.textContent = label + " · " + progress + " %";
       });
       if (generation !== ocrGeneration) return;
       const fingerprint = await fingerprintPromise;
-      setImportState("OCR_TEXT_EXTRACTED", null);
       const progressTarget = el("sdeNightOcrProgress");
-      if (progressTarget) {
-        progressTarget.textContent = `OCR_TEXT_EXTRACTED · ${Number(result.ocrTokenCount || 0)} tokens · ${Number(result.lineCount || 0)} linjer · råbildet er ikke lagret`;
-      }
-      const plan = logic.mapOcrResultToNightPlan(result, {
+      const plan = htrRuntime.mapResultToNightPlan(result, {
+        logic,
         planId: makeId("image-plan"),
         operationalDate: String(el("sdeNightOperationalDate") && el("sdeNightOperationalDate").value || defaultOperationalDate()),
         createdAt: new Date().toISOString(),
-        createdBy: "",
         sourceFingerprint: fingerprint ? "sha256:" + fingerprint : "",
-        ocrConfidence: result.confidence,
       });
       applyImportedMetadata(plan);
       plan.dataRevision = currentDataRevision();
@@ -664,30 +671,30 @@
       markDirty();
       renderDraftRows();
       const report = draft.ocrMapping;
-      const summary = `${report.mappingStatus} · ${report.ocrTokenCount} tokens · ${report.recognizedLineCount} linjer · ${report.detectedHeaderCount}/6 overskrifter · ${report.detectedRowCount} rader · ${report.mappedCellCount} celler · ${report.unmappedTokenCount} forkastet · råbildet er ikke lagret`;
+      const summary = `${report.mappingStatus} · 29 rader × 6 kolonner · ${report.mappedCellCount} utfylte celler · ${report.reviewedCellCount} trenger kontroll · lokal HTR ${result.model.hashVerified ? "hashverifisert" : "ikke verifisert"} · råbildet er ikke lagret`;
       if (progressTarget) progressTarget.textContent = summary;
       if (report.mappingStatus === "FORM_MAPPING_COMPLETE") {
-        setStatus("Skjemamappingen er fullført. Velg «Endre innhold» og kontroller alle verdier før Lagre.", "warn");
+        setStatus("Skjemaet er lest. Velg «Endre innhold» og kontroller verdiene før lagring.", "warn");
       } else if (report.mappingStatus === "FORM_MAPPING_REQUIRES_REVIEW") {
-        setStatus("Bildet er lest, men innholdet kunne ikke plasseres sikkert i skjemaet. Velg «Endre innhold» og kontroller feltene.", "warn");
-      } else if (report.mappingStatus === "OCR_FAILED") {
-        setStatus("Ingen lesbar tekst ble funnet. Ingen vellykket skjemamapping er registrert.", "error");
+        setStatus("Skjemaet er lest. Kontroller markerte felt før lagring.", "warn");
+      } else if (report.mappingStatus === "RECOGNITION_FAILED") {
+        setStatus("Håndskriftgjenkjenningen ga ikke et forsvarlig resultat. Ingen vellykket skjemamapping er registrert.", "error");
       } else {
         setStatus("Skjemamappingen feilet. Resultatet er ikke klassifisert som en vellykket import; velg «Endre innhold» for manuell kontroll.", "error");
       }
     } catch (error) {
-      if (generation !== ocrGeneration || /ocr_cancelled/i.test(String(error && error.message || error))) {
-        setImportState("OCR_FAILED", null);
+      if (generation !== ocrGeneration || /(?:ocr|htr)_cancelled/i.test(String(error && error.message || error))) {
+        setImportState("RECOGNITION_FAILED", null);
         setStatus("Bildeanalysen ble avbrutt. Ingen plan ble lagret.", "warn");
       } else if (/unsupported_image_type/i.test(String(error && error.message || error))) {
-        setImportState("OCR_FAILED", null);
+        setImportState("RECOGNITION_FAILED", null);
         setStatus("Ugyldig filtype. Bare JPG og PNG støttes.", "error");
       } else {
-        setImportState("OCR_FAILED", null);
+        setImportState("RECOGNITION_FAILED", null);
         setStatus("Lokal bildeanalyse feilet. Ingen data ble lagret; bruk manuell registrering eller prøv et tydeligere bilde.", "error");
       }
       const target = el("sdeNightOcrProgress");
-      if (target) target.textContent = "OCR_FAILED · råbildet er ikke lagret";
+      if (target) target.textContent = "RECOGNITION_FAILED · råbildet er ikke lagret";
     } finally {
       if (generation === ocrGeneration) {
         if (analyzeButton) analyzeButton.disabled = false;
@@ -698,7 +705,7 @@
 
   async function cancelOcr() {
     ocrGeneration += 1;
-    setImportState("OCR_FAILED", null);
+    setImportState("RECOGNITION_FAILED", null);
     if (ocrAnalyzer && typeof ocrAnalyzer.cancel === "function") {
       try {
         await ocrAnalyzer.cancel();

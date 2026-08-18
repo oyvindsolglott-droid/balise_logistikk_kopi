@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="nb">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>SDE local HTR test harness</title>
+</head>
+<body>
+  <main id="result">TEST_FIXTURE_ONLY</main>
+  <script src="../../sde_handwriting_recognition.js"></script>
+  <script src="../../sde_handwriting_runtime.js"></script>
+  <script>
+    window.runHtrFixture = async function runHtrFixture(relativeUrl) {
+      const response = await fetch(relativeUrl, {cache: "no-store"});
+      if (!response.ok) throw new Error("fixture_http_" + response.status);
+      const blob = await response.blob();
+      const file = new File([blob], relativeUrl.split("/").pop(), {type: "image/png"});
+      const analyzer = window.SdeHandwritingRuntime.createLocalHandwritingAnalyzer({
+        environment: window,
+        workerUrl: new URL("../../sde_handwriting_worker.js", document.baseURI).href,
+        maximumDimension: 1800,
+      });
+      const startedAt = performance.now();
+      const progress = [];
+      try {
+        const result = await analyzer.analyze(file, {
+          canonicalSlots: ["1", "1N", "1S", "3M", "4N", "4S", "5M", "6N", "6S", "7N", "7S", "8N", "8S", "9", "10S", "10N", "11N", "11S", "12N", "12S", "VN", "VS"],
+          vehicleCatalog: [],
+        }, update => progress.push({status: update.status, progress: update.progress}));
+        return {
+          result,
+          elapsedMs: performance.now() - startedAt,
+          progress,
+          viewport: {width: innerWidth, height: innerHeight},
+        };
+      } finally {
+        analyzer.dispose();
+      }
+    };
+  </script>
+</body>
+</html>

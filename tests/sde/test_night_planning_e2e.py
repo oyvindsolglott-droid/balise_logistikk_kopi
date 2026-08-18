@@ -24,30 +24,108 @@ def load_ocr_fixture(name: str) -> dict[str, object]:
     return json.loads((FIXTURE_ROOT / name).read_text(encoding="utf-8"))
 
 
-def tesseract_data(fixture: dict[str, object]) -> dict[str, object]:
-    ocr = fixture["ocr"]
-    grouped: dict[int, list[dict[str, object]]] = {}
-    for token in ocr["tokens"]:
-        grouped.setdefault(int(token.get("lineIndex", 0)), []).append(token)
-    lines = []
-    for line_index in sorted(grouped):
-        tokens = sorted(grouped[line_index], key=lambda token: token["bbox"]["x0"])
-        bbox = {
-            "x0": min(token["bbox"]["x0"] for token in tokens),
-            "y0": min(token["bbox"]["y0"] for token in tokens),
-            "x1": max(token["bbox"]["x1"] for token in tokens),
-            "y1": max(token["bbox"]["y1"] for token in tokens),
-        }
-        lines.append({
-            "text": " ".join(str(token["text"]) for token in tokens),
-            "bbox": bbox,
-            "words": tokens,
-        })
+HTR_COLUMNS = ["fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater", "notes"]
+MODEL_SHA256 = "7888113072263cb471b93f66dd5e2ad70548dc526fa1ace760d0d973dd121498"
+MODEL_VERSION = "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e"
+
+
+def htr_rows(fixture: dict[str, object]) -> list[dict[str, object]]:
+    if "rows" in fixture:
+        return [dict(row) for row in fixture["rows"]]
+    expected = fixture["expected"]
+    return [
+        {"rowIndex": 0, **expected["row1"]},
+        {"rowIndex": 2, "notes": expected["row3Notes"]},
+    ]
+
+
+def htr_metadata(fixture: dict[str, object]) -> dict[str, str]:
+    value = fixture.get("metadata") or fixture["expected"]["metadata"]
+    return {key: str(value.get(key, "")) for key in ["date", "signature", "ds"]}
+
+
+def htr_box(row_index: int | None, column_index: int) -> dict[str, object]:
+    x0 = 30 + column_index * 180
+    y0 = 80 if row_index is None else 170 + row_index * 37
+    x1 = x0 + 160
+    y1 = y0 + 30
     return {
-        "text": "\n".join(line["text"] for line in lines),
-        "confidence": float(ocr["confidence"]) * 100,
-        "blocks": [{"paragraphs": [{"lines": lines}]}],
-        "tableGeometry": ocr["tableGeometry"],
+        "x0": x0, "y0": y0, "x1": x1, "y1": y1,
+        "coordinateSpace": "ORIGINAL_IMAGE",
+        "polygon": [
+            {"x": x0, "y": y0}, {"x": x1, "y": y0},
+            {"x": x1, "y": y1}, {"x": x0, "y": y1},
+        ],
+    }
+
+
+def htr_cell(row_index: int | None, column_id: str, column_index: int, value: str) -> dict[str, object]:
+    selected = str(value or "")
+    return {
+        "rowIndex": row_index,
+        "columnId": column_id,
+        "boundingBox": htr_box(row_index, column_index),
+        "recognizedText": selected,
+        "normalizedValue": selected,
+        "selectedValue": selected,
+        "confidence": 0.98 if selected else 1.0,
+        "alternatives": [selected] if selected else [],
+        "needsReview": False,
+        "validationState": "VALID" if selected else "BLANK_IMAGE_CELL",
+        "recognizerVersion": MODEL_VERSION,
+        "groundTruthSource": "UNCONFIRMED_RECOGNIZER_OUTPUT",
+        "rawRecognizerIsGroundTruth": False,
+        "imageEvidence": {"inkRatio": 0.1 if selected else 0.0, "blank": not bool(selected)},
+    }
+
+
+def htr_result(fixture: dict[str, object], mapping_status: str | None = None) -> dict[str, object]:
+    values = {(int(row["rowIndex"]), column): str(row.get(column, "")) for row in htr_rows(fixture) for column in HTR_COLUMNS}
+    cells = [
+        htr_cell(row, column, column_index, values.get((row, column), ""))
+        for row in range(29)
+        for column_index, column in enumerate(HTR_COLUMNS)
+    ]
+    metadata = htr_metadata(fixture)
+    metadata_cells = [htr_cell(None, column, index, metadata[column]) for index, column in enumerate(["date", "signature", "ds"])]
+    mapped = sum(bool(cell["selectedValue"]) for cell in cells)
+    status = mapping_status or ("FORM_MAPPING_COMPLETE" if mapped > 1 else "MAPPING_FAILED")
+    report = {
+        "schemaVersion": "sde-night-form-mapping-report-v2",
+        "mappingStatus": status,
+        "htrCompleted": True,
+        "registrationStatus": "CELLS_SEGMENTED",
+        "templateVersion": "togplassering-skien-29x6-v1",
+        "recognizerVersion": MODEL_VERSION,
+        "modelSha256": MODEL_SHA256,
+        "cellCount": len(cells),
+        "mappedCellCount": mapped,
+        "reviewedCellCount": 0,
+        "requiresHumanReview": status != "FORM_MAPPING_COMPLETE",
+        "mappingConfidence": 0.98,
+        "cells": cells,
+        "metadataCells": metadata_cells,
+    }
+    return {
+        "status": status,
+        "registration": {
+            "status": "CELLS_SEGMENTED",
+            "templateVersion": "togplassering-skien-29x6-v1",
+            "perspectiveCorrectionApplied": True,
+            "detectionConfidence": 0.99,
+            "detectionSource": "SYNTHETIC_TEST_DOUBLE",
+            "quadrilateral": [],
+        },
+        "cells": cells,
+        "metadataCells": metadata_cells,
+        "mappingReport": report,
+        "model": {
+            "version": MODEL_VERSION,
+            "sha256": MODEL_SHA256,
+            "runtime": "onnxruntime-web@1.27.0",
+            "executionProvider": "wasm",
+            "hashVerified": True,
+        },
     }
 
 
@@ -210,48 +288,50 @@ class NightPlanningBrowserTests(unittest.TestCase):
             )
             page.on("pageerror", lambda error: page_errors.append(str(error)))
 
-            historical_fixture = load_ocr_fixture("historical-togplassering-skien.json")
+            htr_fixture = load_ocr_fixture("synthetic-htr-neat.json")
             fixture_a = load_ocr_fixture("synthetic-fixture-a.json")
             fixture_b = load_ocr_fixture("synthetic-fixture-b.json")
             failed_fixture = {
-                "ocr": {
-                    "confidence": 0.8,
-                    "tableGeometry": fixture_a["ocr"]["tableGeometry"],
-                    "tokens": [
-                        *[token for token in fixture_a["ocr"]["tokens"] if token.get("lineIndex") == 2],
-                        next(token for token in fixture_a["ocr"]["tokens"] if token["text"] == "4M"),
-                        *[
-                            {
-                                "text": f"NOISE-{index}", "confidence": 0.8,
-                                "bbox": {"x0": -200, "y0": 300 + index, "x1": -100, "y1": 320 + index},
-                                "lineIndex": 10 + index,
-                            }
-                            for index in range(24)
-                        ],
-                    ],
-                },
+                "metadata": fixture_b["expected"]["metadata"],
+                "rows": [{"rowIndex": 0, "toTrack": "4M"}],
             }
-            historical_image = FIXTURE_ROOT / historical_fixture["image"]["file"]
+            htr_image = FIXTURE_ROOT / htr_fixture["images"][0]["file"]
             image_a = FIXTURE_ROOT / fixture_a["image"]["file"]
             image_b = FIXTURE_ROOT / fixture_b["image"]["file"]
 
-            def install_ocr(target_page, fixture: dict[str, object]) -> None:
+            def install_htr(target_page, fixture: dict[str, object], mapping_status: str | None = None) -> None:
                 target_page.evaluate(
                     """data => {
-                      window.__nextOcrData=data;
-                      window.Tesseract={version:'e2e-local-structured',createWorker:async()=>({
-                        recognize:async(_image,_options,output)=>{
-                          window.__lastOcrOutput=output;
-                          return {data:window.__nextOcrData};
-                        },
-                        terminate:async()=>{}
-                      })};
+                      window.__nextHtrResult=data;
+                      window.__htrWorkerInputs=window.__htrWorkerInputs || [];
+                      window.Worker=class FakeLocalHtrWorker {
+                        constructor(){ this.listeners={message:[],error:[]}; }
+                        addEventListener(type,listener){ this.listeners[type].push(listener); }
+                        removeEventListener(type,listener){ this.listeners[type]=this.listeners[type].filter(item=>item!==listener); }
+                        postMessage(message){
+                          if(message.type==='cancel') return;
+                          window.__htrWorkerInputs.push({
+                            width:message.width,
+                            height:message.height,
+                            byteLength:message.pixels.byteLength,
+                            canonicalSlots:Array.isArray(message.canonicalSlots)
+                          });
+                          const sessionId=message.sessionId;
+                          queueMicrotask(()=>this.listeners.message.forEach(listener=>listener({
+                            data:{type:'progress',sessionId,status:'HANDWRITING_RECOGNITION_RUNNING',progress:0.75}
+                          })));
+                          queueMicrotask(()=>this.listeners.message.forEach(listener=>listener({
+                            data:{type:'complete',sessionId,result:structuredClone(window.__nextHtrResult)}
+                          })));
+                        }
+                        terminate(){}
+                      };
                     }""",
-                    tesseract_data(fixture),
+                    htr_result(fixture, mapping_status),
                 )
 
-            def select_fixture(target_page, input_selector: str, image: pathlib.Path, fixture: dict[str, object]) -> None:
-                install_ocr(target_page, fixture)
+            def select_fixture(target_page, input_selector: str, image: pathlib.Path, fixture: dict[str, object], mapping_status: str | None = None) -> None:
+                install_htr(target_page, fixture, mapping_status)
                 target_page.locator(input_selector).set_input_files(str(image))
                 target_page.locator("#sdeNightPlanStatus").filter(has_text="holdes bare midlertidig").wait_for()
 
@@ -304,7 +384,7 @@ class NightPlanningBrowserTests(unittest.TestCase):
             self.assertEqual(page.evaluate("localStorage.getItem('sde_night_plans_v1')"), legacy_json)
             self.assertEqual(page.evaluate("window.__nightStorageWrites"), [])
 
-            select_fixture(page, "#sdeNightCameraInput", historical_image, historical_fixture)
+            select_fixture(page, "#sdeNightCameraInput", htr_image, htr_fixture)
             self.assertEqual(posted_payloads, [], "camera selection must not upload")
             page.locator("#sdeNightAnalyzeImageBtn").click()
             page.locator("#sdeNightOcrProgress").filter(has_text="FORM_MAPPING_COMPLETE").wait_for()
@@ -312,15 +392,15 @@ class NightPlanningBrowserTests(unittest.TestCase):
             self.assertEqual(page.evaluate("window.__nightStorageWrites"), [])
             self.assertEqual(page.evaluate("window.__nightIndexedDbCalls"), [])
             self.assertEqual(page.evaluate("window.__nightCacheWrites"), [])
-            self.assertEqual(page.evaluate("window.__lastOcrOutput"), {"text": True, "blocks": True})
-            self.assertEqual(page.get_by_label("Fra tog linje 1", exact=True).input_value(), "851")
-            self.assertEqual(page.get_by_label("Til tog linje 1", exact=True).input_value(), "REP")
-            self.assertEqual(page.get_by_label("Settnr linje 1", exact=True).input_value(), "74-08")
-            self.assertEqual(page.get_by_label("Til spor linje 1", exact=True).input_value(), "8S")
-            historical_report = page.evaluate("window.SdeNightPlanUiTestApi.getUnsavedState().mappingReport")
-            self.assertEqual(historical_report["mappingStatus"], "FORM_MAPPING_COMPLETE")
-            self.assertGreater(historical_report["mappedCellCount"], 1)
-            self.assertGreater(historical_report["detectedRowCount"], 1)
+            self.assertGreater(page.evaluate("window.__htrWorkerInputs[0].byteLength"), 0)
+            self.assertEqual(page.get_by_label("Fra tog linje 1", exact=True).input_value(), "991")
+            self.assertEqual(page.get_by_label("Til tog linje 1", exact=True).input_value(), "1204")
+            self.assertEqual(page.get_by_label("Settnr linje 1", exact=True).input_value(), "73-26")
+            self.assertEqual(page.get_by_label("Til spor linje 1", exact=True).input_value(), "4N")
+            htr_report = page.evaluate("window.SdeNightPlanUiTestApi.getUnsavedState().mappingReport")
+            self.assertEqual(htr_report["mappingStatus"], "FORM_MAPPING_COMPLETE")
+            self.assertEqual(htr_report["cellCount"], 174)
+            self.assertEqual(len(htr_report["metadataCells"]), 3)
 
             select_fixture(page, "#sdeNightImageInput", image_a, fixture_a)
             page.locator("#sdeNightAnalyzeImageBtn").click()
@@ -403,15 +483,20 @@ class NightPlanningBrowserTests(unittest.TestCase):
             self.assertEqual(len(posted_payloads), 2)
             image_payload = posted_payloads[1]
             self.assertEqual(image_payload["source"]["sourceType"], "DEVICE_FILE")
-            self.assertEqual(image_payload["source"]["ocrEngine"], "tesseract.js-local")
+            self.assertEqual(image_payload["source"]["ocrEngine"], "paddleocr-local-htr-onnx-wasm")
             self.assertEqual(image_payload["source"]["mappingStatus"], "FORM_MAPPING_COMPLETE")
             self.assertGreater(image_payload["source"]["mappingReport"]["mappedCellCount"], 1)
+            self.assertEqual(image_payload["source"]["mappingReport"]["modelSha256"], MODEL_SHA256)
+            self.assertEqual(len(image_payload["source"]["mappingReport"]["cells"]), 174)
+            self.assertEqual(len(image_payload["source"]["mappingReport"]["metadataCells"]), 3)
+            self.assertEqual(image_payload["source"]["mappingReport"]["cells"][2]["groundTruthSource"], "HUMAN_CORRECTED_FORM")
+            self.assertFalse(image_payload["source"]["mappingReport"]["cells"][2]["rawRecognizerIsGroundTruth"])
             self.assertEqual(image_payload["form"]["rows"][0]["vehicleId"], "TEST-A-CORRECTED")
             self.assertEqual(base64.b64decode(image_payload["image"]["bytesBase64"]), image_a.read_bytes())
             self.assertEqual(page.evaluate("window.__nightStorageWrites"), [])
 
             page.locator("#sdeNightNewManualBtn").click()
-            select_fixture(page, "#sdeNightImageInput", image_b, failed_fixture)
+            select_fixture(page, "#sdeNightImageInput", image_b, failed_fixture, "MAPPING_FAILED")
             page.locator("#sdeNightAnalyzeImageBtn").click()
             page.wait_for_function("window.SdeNightPlanUiTestApi.getUnsavedState().importStatus === 'MAPPING_FAILED'")
             self.assertEqual(page.evaluate("window.SdeNightPlanUiTestApi.getUnsavedState().mappingReport.mappedCellCount"), 1)
@@ -428,7 +513,7 @@ class NightPlanningBrowserTests(unittest.TestCase):
             self.assertEqual(len(posted_payloads), 3)
             failed_mapping_payload = posted_payloads[2]
             self.assertEqual(failed_mapping_payload["source"]["mappingStatus"], "MAPPING_FAILED")
-            self.assertEqual(failed_mapping_payload["source"]["mappingReport"]["mappedCellCount"], 1)
+            self.assertGreaterEqual(failed_mapping_payload["source"]["mappingReport"]["mappedCellCount"], 3)
             self.assertEqual(failed_mapping_payload["form"]["rows"][0]["fromTrain"], "B501")
             self.assertEqual(failed_mapping_payload["form"]["rows"][0]["vehicleId"], "HUMAN-B-01")
             self.assertEqual(base64.b64decode(failed_mapping_payload["image"]["bytesBase64"]), image_b.read_bytes())

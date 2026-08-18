@@ -263,8 +263,8 @@
       "area": "night-intelligence",
       "name": "Nattplan, erfaring og ML er rådgivende og gate-beskyttet",
       "critical": true,
-      "expected": "Bilde og manuell input bruker samme canonical 29-raders modell; før eksplisitt Lagre finnes råbilde, OCR og korrigeringer bare i minnet, mens vellykket Lagre atomisk binder originalbilde, menneskelig korrigert skjema, proveniens og læringsgrunnlag uten operativ business-write.",
-      "evidence": ["tests/sde/intelligent-night-planning.test.cjs", "tests/sde/test_night_planning_e2e.py", "server/scripts/test-night-plan-storage.js", "tests/sde/test_sde_night_model.py", "models/sde/model-registry.json"]
+      "expected": "Bilde og manuell input bruker samme canonical 29-raders modell; lokal, hashverifisert HTR i worker perspektivkorrigerer og segmenterer 29 x 6 celler uten sky-OCR; før eksplisitt Lagre finnes råbilde, recognizerresultat og korrigeringer bare i minnet, mens vellykket Lagre atomisk binder originalbilde, menneskelig korrigert skjema, proveniens og læringsgrunnlag uten operativ business-write.",
+      "evidence": ["tests/sde/handwriting-recognition.test.cjs", "tests/sde/test_handwriting_recognition_e2e.py", "tests/sde/test_night_planning_e2e.py", "server/scripts/test-night-plan-storage.js", "tests/sde/strict/handwriting-recognition-mutation-audit.cjs", "models/sde/model-registry.json"]
     },
     {
       "id": "UX-001",

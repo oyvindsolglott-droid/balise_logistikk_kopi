@@ -8,8 +8,8 @@ const os = require("node:os");
 const path = require("node:path");
 
 const GATE_ID = "SDE-QE-MANDATORY-PRE-PUSH";
-const GATE_VERSION = "1.2.0";
-const PROFILE_VERSION = "sde-qe-prepush-profile-v4";
+const GATE_VERSION = "1.3.0";
+const PROFILE_VERSION = "sde-qe-prepush-profile-v5";
 const REPORT_SCHEMA = "sde-qe-prepush-report/v1";
 const MANIFEST_SCHEMA = "sde-qe-prepush-install/v1";
 const STATE_SCHEMA = "sde-qe-prepush-approval/v1";
@@ -1265,6 +1265,12 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
       "chain-liveness-browser-drag",
       "npm",
       ["run", "test:sde:chain-liveness-browser"],
+      8 * 60 * 1000
+    ],
+    [
+      "local-handwriting-browser",
+      "npm",
+      ["run", "test:sde:htr-browser"],
       8 * 60 * 1000
     ]
   ];
