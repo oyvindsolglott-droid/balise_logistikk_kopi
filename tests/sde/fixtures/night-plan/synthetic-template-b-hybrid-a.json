@@ -1,0 +1,92 @@
+{
+  "schemaVersion": "sde-synthetic-hybrid-form-fixture-v1",
+  "fixtureClass": "TEST_FIXTURE_ONLY",
+  "containsOperationalData": false,
+  "productionImportAllowed": false,
+  "templateId": "TEMPLATE_B",
+  "templateVersion": "togplassering-skien-template-b-29x8-v1",
+  "recognitionMode": "HYBRID_PRINT_OCR_HTR",
+  "images": [
+    {
+      "file": "synthetic-template-b-hybrid-a.png",
+      "condition": "red_print_black_handwriting",
+      "sha256": "332b9043259df3242cffb47299dda1b41394dfb0a560c3f16b60a9117522dc35",
+      "width": 1200,
+      "height": 1500
+    },
+    {
+      "file": "synthetic-template-b-hybrid-a-correction.png",
+      "condition": "strike_through_and_black_correction",
+      "sha256": "7e2e73fdf8554657eaefc7deffec9eea54b5ad4d8c69f0076d3d7ca6293bff25",
+      "width": 1200,
+      "height": 1500
+    },
+    {
+      "file": "synthetic-template-b-hybrid-a-perspective.png",
+      "condition": "perspective_from_side",
+      "sha256": "405e67c878753320a2a18cf4a37a440e7cbb80434e6f7da4b30e1d751f80eda7",
+      "width": 1200,
+      "height": 1500
+    },
+    {
+      "file": "synthetic-template-b-hybrid-a-shadow.png",
+      "condition": "shadow_low_contrast",
+      "sha256": "8fbbf147d9a23d044280f1ac306a1cb1deddcf7ef43b124cbf1eb8e9ad10c66d",
+      "width": 1200,
+      "height": 1500
+    },
+    {
+      "file": "synthetic-template-b-hybrid-a-empty.png",
+      "condition": "empty_rows",
+      "sha256": "933b5adb4275560343faac97b291d426195f60a4fc1d73b31f066dcb68208bb5",
+      "width": 1200,
+      "height": 1500
+    }
+  ],
+  "metadata": {
+    "clock": "",
+    "date": "31.12.2099",
+    "signature": "QA"
+  },
+  "rows": [
+    {
+      "rowIndex": 0,
+      "arrivalTime": "06:11",
+      "fromTrain": "9901/1",
+      "toTrain": "9902/1",
+      "vehicleId": "91-01",
+      "toTrack": "3N",
+      "wcWater": "CROSS",
+      "info": "TEST INFO A",
+      "notes": "syntetisk rad A"
+    },
+    {
+      "rowIndex": 1,
+      "arrivalTime": "07:22",
+      "fromTrain": "9903/2",
+      "toTrain": "9904/2",
+      "vehicleId": "91-02",
+      "toTrack": "5M",
+      "wcWater": "",
+      "info": "",
+      "notes": "syntetisk rad B"
+    },
+    {
+      "rowIndex": 2,
+      "arrivalTime": "08:33",
+      "fromTrain": "9905",
+      "toTrain": "REP",
+      "vehicleId": "91-03",
+      "toTrack": "VN",
+      "wcWater": "CROSS",
+      "info": "TEST INFO C",
+      "notes": ""
+    }
+  ],
+  "layerGroundTruth": {
+    "red": "PRINT_OCR",
+    "black": "HANDWRITING_HTR",
+    "grid": "EXCLUDED",
+    "strikeThroughAutoAccepted": false
+  }
+}

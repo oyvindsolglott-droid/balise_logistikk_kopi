@@ -54,14 +54,52 @@ function syntheticPhotographedForm(){
   return {width, height, pixels};
 }
 
+function syntheticPhotographedTemplateB(){
+  const width = 420;
+  const height = 560;
+  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
+  for(let index = 3; index < pixels.length; index += 4) pixels[index] = 255;
+  const shade = (x, y, value = 30) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  const rules = [17, 44, 73, 110, 144, 180, 220, 316, 407];
+  const slopes = [0.045, 0.038, 0.03, 0.022, 0.014, 0.006, -0.002, -0.011, -0.022];
+  for(let rule = 0; rule < rules.length; rule += 1){
+    const startY = rule === 0 || rule === rules.length - 1 ? 12 : 104;
+    for(let y = startY; y <= 546; y += 1){
+      const x = rules[rule] + slopes[rule] * (y - 110);
+      shade(x - 1, y);
+      shade(x, y);
+      shade(x + 1, y);
+    }
+  }
+  for(let x = 13; x <= 409; x += 1) shade(x, 12 + ((409 - x) * 0.014));
+  for(let row = 0; row < 30; row += 1){
+    const y = 104 + ((row / 29) * 442);
+    const left = rules[0] + slopes[0] * (y - 110);
+    const right = rules.at(-1) + slopes.at(-1) * (y - 110);
+    for(let x = Math.round(left); x <= Math.round(right); x += 1) shade(x, y);
+  }
+  return {width, height, pixels};
+}
+
 test("HTR-pipelinen er eksplisitt, lokal og kjører før formmapping", () => {
   const subject = loadSubject();
   assert.deepEqual(subject.PIPELINE_STAGES, [
     "IMAGE",
     "ORIENTATION",
     "PERSPECTIVE_CORRECTION",
+    "TEMPLATE_DETECTION",
     "TEMPLATE_REGISTRATION",
     "CELL_SEGMENTATION",
+    "COLOR_LAYER_SEPARATION",
+    "PRINTED_TEXT_RECOGNITION",
     "HANDWRITING_RECOGNITION",
     "FIELD_NORMALIZATION",
     "FORM_MAPPING",
@@ -142,12 +180,13 @@ test("malregistrering gir nøyaktig 29 x 6 stabile håndskriftceller", () => {
   assert.equal(Math.max(...rowSeven.map(cell => cell.canonicalBox.y1)) <= Math.min(...rowEight.map(cell => cell.canonicalBox.y0)), true);
 });
 
-test("alle utfyllbare felt bruker HTR mens trykte labels ikke sendes til recognizer", () => {
+test("alle utfyllbare felt bruker separate print-OCR- og HTR-spor mens labels ikke segmenteres som verdier", () => {
   const subject = loadSubject();
   const registration = subject.registerTemplate({imageWidth: 1200, imageHeight: 1500});
   const requests = subject.createRecognitionRequests(registration);
   assert.equal(requests.length, (29 * 6) + 3);
-  assert.equal(requests.every(request => request.recognizerKind === "HANDWRITING"), true);
+  assert.equal(requests.every(request => request.recognizerKind === "HYBRID_PRINT_OCR_HTR"), true);
+  assert.equal(requests.every(request => request.recognizerKinds.includes("PRINT_OCR") && request.recognizerKinds.includes("HANDWRITING_HTR")), true);
   assert.equal(requests.some(request => request.columnId === "notes" && request.normalizer === "FREE_TEXT"), true);
   assert.equal(requests.some(request => request.columnId === "wcWater" && request.normalizer === "WC_WATER_SYMBOL"), true);
   assert.equal(requests.some(request => /header|label/i.test(request.columnId)), false);
@@ -313,4 +352,149 @@ test("HTR-modulen har ingen persistens-, sky-OCR- eller designverdi-fallback", (
     assert.equal(source.toLowerCase().includes(forbidden.toLowerCase()), false, forbidden);
   }
   assert.equal(/previous(?:Plan|Value)|historical(?:Plan|Value)/.test(source), false);
+});
+
+test("malvariant klassifiseres eksplisitt fra struktur og trykte skjemabevis", () => {
+  const subject = loadSubject();
+  assert.equal(subject.detectTemplateVariant({
+    title: "TOGPLASSERING SKIEN",
+    printedHeaders: ["Fra Tog", "Til Tog", "Settnr", "Til spor", "Wc/vann", "Merknad"],
+    metadataLabels: ["Dato", "Signatur", "ds"],
+    verticalLineCount: 7,
+  }).templateId, "TEMPLATE_A");
+  assert.equal(subject.detectTemplateVariant({
+    title: "TOGPLASSERING SKIEN",
+    printedHeaders: ["Inn kl", "Fra Tog", "Til Tog", "Settnr", "Til spor", "WC/vann", "INFO", "Merknad"],
+    metadataLabels: ["Klokken", "Dato", "Signatur"],
+    verticalLineCount: 9,
+  }).templateId, "TEMPLATE_B");
+  assert.equal(subject.detectTemplateVariant({title: "ukjent", verticalLineCount: 8}).templateId, "TEMPLATE_UNKNOWN");
+});
+
+test("fotografert Template B registreres som ni regler og 29 x 8 uten rad- eller kolonneforskyvning", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticPhotographedTemplateB());
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_B");
+  assert.equal(detected.verticalLineCount, 9);
+  assert.equal(detected.horizontalLineCount, 30);
+  const registration = subject.registerTemplate({
+    imageWidth: 420,
+    imageHeight: 560,
+    templateId: detected.templateId,
+    quadrilateral: detected.corners,
+    rowBoundaries: detected.canonicalRowBoundaries,
+  });
+  assert.equal(registration.cells.length, 29 * 8);
+  assert.deepEqual([...new Set(registration.cells.map(cell => cell.columnId))], subject.TEMPLATE_B_COLUMN_IDS);
+  assert.deepEqual(registration.metadataCells.map(cell => cell.columnId), ["clock", "date", "signature"]);
+});
+
+test("canonical superset bevarer Inn kl og INFO, mens Template A lar dem være tomme", () => {
+  const subject = loadSubject();
+  assert.deepEqual(subject.CANONICAL_COLUMN_IDS, [
+    "arrivalTime", "fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater", "info", "notes",
+  ]);
+  const templateA = subject.registerTemplate({imageWidth: 1200, imageHeight: 1500, templateId: "TEMPLATE_A"});
+  const templateB = subject.registerTemplate({imageWidth: 1200, imageHeight: 1500, templateId: "TEMPLATE_B"});
+  assert.deepEqual([...new Set(templateA.cells.map(cell => cell.columnId))], subject.TEMPLATE_A_COLUMN_IDS);
+  assert.deepEqual([...new Set(templateB.cells.map(cell => cell.columnId))], subject.TEMPLATE_B_COLUMN_IDS);
+  assert.equal(subject.toCanonicalRow("TEMPLATE_A", {fromTrain: "821", notes: "kontroll"}).arrivalTime, "");
+  assert.equal(subject.toCanonicalRow("TEMPLATE_A", {fromTrain: "821", notes: "kontroll"}).info, "");
+  assert.equal(subject.toCanonicalRow("TEMPLATE_B", {arrivalTime: "16:53", info: "RØD", notes: "svart"}).arrivalTime, "16:53");
+  assert.equal(subject.toCanonicalRow("TEMPLATE_B", {arrivalTime: "16:53", info: "RØD", notes: "svart"}).info, "RØD");
+});
+
+test("rødt print og svart håndskrift skilles før gjenkjenning og rutenett holdes ute", () => {
+  const subject = loadSubject();
+  const separated = subject.separateInkLayers({
+    width: 4,
+    height: 1,
+    pixels: new Uint8ClampedArray([
+      210, 35, 35, 255,
+      25, 25, 25, 255,
+      155, 155, 155, 255,
+      250, 250, 245, 255,
+    ]),
+    gridMask: new Uint8Array([0, 0, 1, 0]),
+  });
+  assert.deepEqual([...separated.printInk], [0, 255, 255, 255]);
+  assert.deepEqual([...separated.handwritingInk], [255, 0, 255, 255]);
+  assert.deepEqual([...separated.combinedInk], [0, 0, 255, 255]);
+});
+
+test("hybrid forespørsel bruker separate print-OCR- og HTR-spor med original crop", () => {
+  const subject = loadSubject();
+  const registration = subject.registerTemplate({imageWidth: 1200, imageHeight: 1500, templateId: "TEMPLATE_B"});
+  const requests = subject.createRecognitionRequests(registration);
+  assert.equal(requests.length, (29 * 8) + 3);
+  assert.equal(requests.every(request => JSON.stringify(request.recognizerKinds) === JSON.stringify(["PRINT_OCR", "HANDWRITING_HTR"])), true);
+  assert.equal(requests.every(request => request.boundingBox.coordinateSpace === "ORIGINAL_IMAGE"), true);
+});
+
+test("lagkonflikt og overstrykning kan aldri autoaksepteres", () => {
+  const subject = loadSubject();
+  const conflict = subject.reconcileLayerCandidates({
+    columnId: "vehicleId",
+    printedCandidate: {text: "91-77", confidence: 0.999},
+    handwrittenCandidate: {text: "74-38", confidence: 0.999},
+    strikeThroughDetected: false,
+  });
+  assert.equal(conflict.finalCandidate.text, "74-38");
+  assert.equal(conflict.needsReview, true);
+  assert.equal(conflict.reason, "PRINT_HANDWRITING_CONFLICT");
+  const corrected = subject.reconcileLayerCandidates({
+    columnId: "notes",
+    printedCandidate: {text: "opprinnelig", confidence: 0.999},
+    handwrittenCandidate: {text: "rettet", confidence: 0.999},
+    strikeThroughDetected: true,
+  });
+  assert.equal(corrected.needsReview, true);
+  assert.equal(corrected.finalCandidate.text, "rettet");
+  assert.equal(corrected.reason, "STRIKETHROUGH_OR_CORRECTION");
+});
+
+test("Template B-kildedato og initialer bevares uten current-date-fallback", () => {
+  const subject = loadSubject();
+  const metadata = subject.resolveSourceMetadata({
+    templateId: "TEMPLATE_B",
+    candidates: {clock: "14:19", date: "31.12.2099", signature: "QA"},
+    currentOperationalDate: "2026-08-18",
+  });
+  assert.equal(metadata.date, "31.12.2099");
+  assert.equal(metadata.signature, "QA");
+  assert.equal(metadata.clock, "14:19");
+  const missing = subject.resolveSourceMetadata({
+    templateId: "TEMPLATE_B",
+    candidates: {date: "", signature: ""},
+    currentOperationalDate: "2026-08-18",
+  });
+  assert.equal(missing.date, "");
+  assert.equal(missing.needsReview, true);
+});
+
+test("Template B mapping godtar bare komplett 29 x 8 og rapporterer hybrid proveniens", () => {
+  const subject = loadSubject();
+  const cells = Array.from({length: 29 * 8}, (_unused, index) => ({
+    rowIndex: Math.floor(index / 8),
+    columnId: subject.TEMPLATE_B_COLUMN_IDS[index % 8],
+    selectedValue: index < 8 ? String(index + 1) : "",
+    confidence: 0.999,
+    needsReview: false,
+    printedCandidate: null,
+    handwrittenCandidate: null,
+  }));
+  const metadataCells = ["clock", "date", "signature"].map(columnId => ({columnId, selectedValue: "test", confidence: 0.999, needsReview: false}));
+  const report = subject.buildMappingReport({
+    templateId: "TEMPLATE_B",
+    htrCompleted: true,
+    registrationStatus: "CELL_SEGMENTATION_COMPLETE",
+    cells,
+    metadataCells,
+  });
+  assert.equal(report.mappingStatus, "FORM_MAPPING_COMPLETE");
+  assert.equal(report.templateId, "TEMPLATE_B");
+  assert.equal(report.columnCount, 8);
+  assert.equal(report.cellCount, 232);
+  assert.equal(report.recognitionMode, "HYBRID_PRINT_OCR_HTR");
 });

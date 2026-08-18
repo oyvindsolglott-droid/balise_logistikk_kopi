@@ -71,11 +71,12 @@ def quality_metrics(output: dict[str, object], fixture: dict[str, object]) -> di
     correct = sum(cells.get(key, "") == value for key, value in expected.items())
     correct += metadata.get("date", "") == expected_metadata_date
     expected_count = len(expected) + 1
-    predicted = {
-        key: value
-        for key, value in cells.items()
-        if value and key[1] in structured_fields
+    accepted_cells = {
+        (int(cell["rowIndex"]), str(cell["columnId"])): str(cell["selectedValue"])
+        for cell in output["result"]["cells"]
+        if cell["selectedValue"] and not cell["needsReview"] and str(cell["columnId"]) in structured_fields
     }
+    predicted = accepted_cells
     true_positive = sum(expected.get(key) == value for key, value in predicted.items())
     false_positive = sum(key not in expected for key in predicted)
     notes_expected = {
@@ -129,9 +130,9 @@ class HandwritingRecognitionBrowserTests(unittest.TestCase):
                     )
                     cells, _metadata = normalized_output(output["result"])
                     prediction_count = sum(
-                        bool(value)
-                        for (row_index, field), value in cells.items()
-                        if field in ["fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater"]
+                        bool(cell["selectedValue"])
+                        for cell in output["result"]["cells"]
+                        if not cell["needsReview"] and cell["columnId"] in ["fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater"]
                     )
                     aggregate_expected += expected_count
                     aggregate_correct += float(metrics["structured_accuracy"]) * expected_count
@@ -143,10 +144,14 @@ class HandwritingRecognitionBrowserTests(unittest.TestCase):
                     self.assertEqual(len(output["result"]["cells"]), 29 * 6)
                     self.assertEqual(len(output["result"]["mappingReport"]["metadataCells"]), 3)
                     self.assertLess(float(output["elapsedMs"]), 30_000)
-                    self.assertIn("HANDWRITING_RECOGNITION_RUNNING", [step["status"] for step in output["progress"]])
+                    self.assertIn("HYBRID_PRINT_OCR_HTR_RUNNING", [step["status"] for step in output["progress"]])
                     unsupported = {
                         f"{row_index}:{field}": value
-                        for (row_index, field), value in cells.items()
+                        for (row_index, field), value in {
+                            (int(cell["rowIndex"]), str(cell["columnId"])): str(cell["selectedValue"])
+                            for cell in output["result"]["cells"]
+                            if cell["selectedValue"] and not cell["needsReview"]
+                        }.items()
                         if value and field in ["fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater"]
                         and not any(int(row["rowIndex"]) == row_index and str(row[field]) for row in fixture["rows"])
                     }
@@ -186,6 +191,137 @@ class HandwritingRecognitionBrowserTests(unittest.TestCase):
                 f" mobile_390_ms={mobile_elapsed:.1f}"
                 f" webkit_390_ms={webkit_elapsed:.1f}"
             )
+
+    def test_template_b_hybrid_fixtures_meet_fail_closed_quality_contract(self) -> None:
+        with static_server() as base_url, sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page(viewport={"width": 1280, "height": 900})
+            page_errors: list[str] = []
+            external_requests: list[str] = []
+            page.on("pageerror", lambda error: page_errors.append(str(error)))
+            page.on("request", lambda request: external_requests.append(request.url) if not request.url.startswith(base_url) else None)
+            page.goto(f"{base_url}/tests/sde/htr-browser-harness.html")
+
+            printed_total = 0
+            printed_exact = 0
+            printed_mismatches: list[dict[str, object]] = []
+            accepted_total = 0
+            accepted_correct = 0
+            correct_or_review = 0
+            review_required = 0
+            expected_total = 0
+            unsupported_accepted: list[dict[str, object]] = []
+            for name in ["synthetic-template-b-hybrid-a", "synthetic-template-b-hybrid-b"]:
+                fixture = expected_fixture(name)
+                base_image = str(fixture["images"][0]["file"])
+                output = run_fixture(page, base_image)
+                result = output["result"]
+                self.assertEqual(result["registration"]["templateId"], "TEMPLATE_B")
+                self.assertEqual(result["registration"]["columnCount"], 8)
+                self.assertEqual(len(result["cells"]), 29 * 8)
+                self.assertEqual(result["registration"]["rowGeometryStable"], True)
+                progress_states = [step["status"] for step in output["progress"]]
+                for required_state in [
+                    "IMAGE_PREPROCESSING", "TEMPLATE_DETECTION", "TEMPLATE_REGISTERED",
+                    "PRINT_OCR_RUNNING", "HANDWRITING_RECOGNITION_RUNNING",
+                    "HYBRID_PRINT_OCR_HTR_RUNNING", "CELL_MAPPING_REQUIRES_REVIEW",
+                ]:
+                    self.assertIn(required_state, progress_states)
+                actual = {
+                    (int(cell["rowIndex"]), str(cell["columnId"])): cell
+                    for cell in result["cells"]
+                }
+                expected: dict[tuple[int, str], str] = {}
+                for row in fixture["rows"]:
+                    row_index = int(row["rowIndex"])
+                    for field in ["arrivalTime", "fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater"]:
+                        value = str(row[field])
+                        if value:
+                            expected[(row_index, field)] = value
+                correction_fields: set[tuple[int, str]] = set()
+                for key, expected_value in expected.items():
+                    cell = actual[key]
+                    selected = str(cell["selectedValue"])
+                    expected_total += 1
+                    if selected == expected_value or bool(cell["needsReview"]):
+                        correct_or_review += 1
+                    if bool(cell["needsReview"]):
+                        review_required += 1
+                    if key not in correction_fields:
+                        printed_total += 1
+                        if selected == expected_value:
+                            printed_exact += 1
+                        else:
+                            printed_mismatches.append({"fixture": name, "key": key, "expected": expected_value, "cell": cell})
+                    if selected and not bool(cell["needsReview"]):
+                        accepted_total += 1
+                        if selected == expected_value:
+                            accepted_correct += 1
+                        else:
+                            unsupported_accepted.append(cell)
+                for key, cell in actual.items():
+                    if key[1] not in {"arrivalTime", "fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater"}:
+                        continue
+                    if str(cell["selectedValue"]) and not bool(cell["needsReview"]) and key not in expected:
+                        unsupported_accepted.append(cell)
+                metadata = {str(cell["columnId"]): cell for cell in result["metadataCells"]}
+                self.assertTrue(
+                    str(metadata["date"]["selectedValue"]) == str(fixture["metadata"]["date"])
+                    or bool(metadata["date"]["needsReview"])
+                )
+                self.assertTrue(any(str(cell["selectedValue"]) for cell in result["cells"] if cell["columnId"] == "info"))
+                self.assertGreaterEqual(sum(bool(str(cell["selectedValue"])) for cell in result["cells"] if cell["columnId"] == "vehicleId"), 2)
+                self.assertGreaterEqual(sum(bool(str(cell["selectedValue"])) for cell in result["cells"] if cell["columnId"] == "toTrack"), 2)
+
+                if name.endswith("-a"):
+                    correction_output = run_fixture(page, f"{name}-correction.png")
+                    correction_actual = {
+                        (int(cell["rowIndex"]), str(cell["columnId"])): cell
+                        for cell in correction_output["result"]["cells"]
+                    }
+                    for correction_key in [(1, "toTrain"), (1, "toTrack")]:
+                        correction_cell = correction_actual[correction_key]
+                        self.assertTrue(correction_cell["needsReview"], str(correction_cell))
+                        self.assertNotEqual(correction_cell["validationState"], "VALID")
+                        self.assertIsNotNone(correction_cell["printedCandidate"])
+                        self.assertIsNotNone(correction_cell["handwrittenCandidate"])
+                        self.assertNotEqual(
+                            correction_cell["printedCandidate"]["text"],
+                            correction_cell["handwrittenCandidate"]["text"],
+                        )
+
+                for image_spec in fixture["images"]:
+                    registration = page.evaluate(
+                        "url => window.runHtrRegistrationFixture(url)",
+                        f"/tests/sde/fixtures/night-plan/{image_spec['file']}",
+                    )
+                    self.assertEqual(registration["templateId"], "TEMPLATE_B", str(image_spec))
+                    self.assertEqual(registration["verticalLineCount"], 9, str(image_spec))
+
+            browser.close()
+            printed_accuracy = printed_exact / printed_total
+            accepted_precision = accepted_correct / max(1, accepted_total)
+            correct_or_review_rate = correct_or_review / expected_total
+            auto_accepted_coverage = accepted_total / expected_total
+            review_required_coverage = review_required / expected_total
+            print(
+                "HYBRID_OCR_QUALITY"
+                f" printed_exact={printed_accuracy:.4f}"
+                f" accepted_precision={accepted_precision:.4f}"
+                f" correct_or_review={correct_or_review_rate:.4f}"
+                f" auto_accepted_coverage={auto_accepted_coverage:.4f}"
+                f" review_required_coverage={review_required_coverage:.4f}"
+                f" unsupported_accepted={len(unsupported_accepted)}"
+                f" printed_mismatches={len(printed_mismatches)}"
+            )
+            self.assertGreaterEqual(printed_accuracy, 0.98, str(printed_mismatches))
+            self.assertGreaterEqual(accepted_precision, 0.98)
+            self.assertGreaterEqual(correct_or_review_rate, 0.95)
+            self.assertEqual(unsupported_accepted, [])
+            self.assertGreater(auto_accepted_coverage, 0)
+            self.assertLess(review_required_coverage, 1)
+            self.assertEqual(page_errors, [])
+            self.assertEqual(external_requests, [])
 
     def _assert_profile(
         self,

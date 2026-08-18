@@ -530,7 +530,8 @@ test("menneskelig korrigering, fjerning og tillegg skjer i canonical nattplan og
     ocrConfidence: 0.8,
   });
   const corrected = subject.updateNightPlanField(original, 0, "desiredSlot", "11s");
-  const withAdded = subject.addNightPlanEntry(corrected, {vehicleId: "74-47", desiredSlot: "12N"});
+  const correctedInfo = subject.updateNightPlanField(corrected, 0, "info", "Rød trykkinfo");
+  const withAdded = subject.addNightPlanEntry(correctedInfo, {vehicleId: "74-47", desiredSlot: "12N"});
   const removed = subject.removeNightPlanEntry(withAdded, 0);
 
   assert.equal(original.entries[0].desiredSlot.normalizedValue, "12S", "input plan must remain immutable");
@@ -538,6 +539,8 @@ test("menneskelig korrigering, fjerning og tillegg skjer i canonical nattplan og
   assert.equal(corrected.entries[0].desiredSlot.rawValue, "12S");
   assert.equal(corrected.entries[0].desiredSlot.humanCorrected, true);
   assert.equal(corrected.entries[0].confirmationState, "UNCONFIRMED");
+  assert.equal(correctedInfo.entries[0].info.normalizedValue, "Rød trykkinfo");
+  assert.equal(correctedInfo.entries[0].info.humanCorrected, true);
   assert.equal(withAdded.entries[1].vehicleId.humanAdded, true);
   const reordered = subject.moveNightPlanEntry(withAdded, 1, "UP");
   assert.equal(reordered.entries[0].vehicleId.normalizedValue, "74-47");

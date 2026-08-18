@@ -1,4 +1,4 @@
-import "./sde_handwriting_recognition.js?v=6e2774d66f637e22554df0d2b5e65c8fe98a1a8a9681a2dd329a3465c575bb6d";
+import "./sde_handwriting_recognition.js?v=e0056d403e318bb69e281b90ffce58e047e0f04f7267b97ba47681f913de082c";
 import * as ort from "./assets/vendor/onnxruntime-web/ort.wasm.min.mjs";
 
 const htr = globalThis.SdeHandwritingRecognition;
@@ -107,6 +107,19 @@ function bilinearGray(pixels, width, height, x, y){
   return top * (1 - dy) + bottom * dy;
 }
 
+function bilinearChannel(pixels, width, height, x, y, channel){
+  const x0 = Math.max(0, Math.min(width - 1, Math.floor(x)));
+  const y0 = Math.max(0, Math.min(height - 1, Math.floor(y)));
+  const x1 = Math.min(width - 1, x0 + 1);
+  const y1 = Math.min(height - 1, y0 + 1);
+  const dx = Math.max(0, Math.min(1, x - x0));
+  const dy = Math.max(0, Math.min(1, y - y0));
+  const at = (sampleX, sampleY) => pixels[((sampleY * width) + sampleX) * 4 + channel];
+  const top = at(x0, y0) * (1 - dx) + at(x1, y0) * dx;
+  const bottom = at(x0, y1) * (1 - dx) + at(x1, y1) * dx;
+  return top * (1 - dy) + bottom * dy;
+}
+
 function percentile(sorted, ratio){
   return sorted[Math.max(0, Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * ratio)))] || 0;
 }
@@ -125,6 +138,39 @@ function modelTensorFromGrayscale(image, width, height){
   return tensor;
 }
 
+function tightlyFittedTensor(image, width, height){
+  let minX = width;
+  let minY = height;
+  let maxX = -1;
+  let maxY = -1;
+  for(let y = 0; y < height; y += 1){
+    for(let x = 0; x < width; x += 1){
+      if(image[(y * width) + x] >= 235) continue;
+      minX = Math.min(minX, x);
+      minY = Math.min(minY, y);
+      maxX = Math.max(maxX, x);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  if(maxX < minX || maxY < minY) return modelTensorFromGrayscale(image, width, height);
+  minX = Math.max(0, minX - 2);
+  minY = Math.max(0, minY - 2);
+  maxX = Math.min(width - 1, maxX + 2);
+  maxY = Math.min(height - 1, maxY + 2);
+  const sourceWidth = maxX - minX + 1;
+  const sourceHeight = maxY - minY + 1;
+  const targetWidth = Math.max(8, Math.min(320, Math.round((sourceWidth / sourceHeight) * 48)));
+  const fitted = new Uint8Array(targetWidth * 48);
+  for(let y = 0; y < 48; y += 1){
+    const sourceY = Math.min(maxY, minY + Math.floor((y / 48) * sourceHeight));
+    for(let x = 0; x < targetWidth; x += 1){
+      const sourceX = Math.min(maxX, minX + Math.floor((x / targetWidth) * sourceWidth));
+      fitted[(y * targetWidth) + x] = image[(sourceY * width) + sourceX];
+    }
+  }
+  return modelTensorFromGrayscale(fitted, targetWidth, 48);
+}
+
 function suppressGridLinePixels(image, width, height){
   const horizontalMask = new Uint8Array(height);
   const verticalMask = new Uint8Array(width);
@@ -139,10 +185,12 @@ function suppressGridLinePixels(image, width, height){
     if(dark >= height * 0.68) verticalMask[x] = 1;
   }
   const output = Uint8Array.from(image);
+  const pixelMask = new Uint8Array(width * height);
   for(let y = 0; y < height; y += 1){
     for(let x = 0; x < width; x += 1){
       if(!horizontalMask[y] && !verticalMask[x]) continue;
       const index = (y * width) + x;
+      pixelMask[index] = 1;
       let replacement = 255;
       if(horizontalMask[y]){
         const above = image[(Math.max(0, y - 2) * width) + x];
@@ -159,9 +207,29 @@ function suppressGridLinePixels(image, width, height){
   }
   return Object.freeze({
     image: output,
+    pixelMask,
     horizontalLineCount: horizontalMask.reduce((sum, value) => sum + value, 0),
     verticalLineCount: verticalMask.reduce((sum, value) => sum + value, 0),
   });
+}
+
+function preprocessingPasses(image){
+  const ordered = [...image].sort((left, right) => left - right);
+  const dark = percentile(ordered, 0.02);
+  const paper = percentile(ordered, 0.92);
+  const range = Math.max(24, paper - dark);
+  const normalized = Uint8Array.from(image, value => (
+    Math.max(0, Math.min(255, Math.round(((value - dark) / range) * 255)))
+  ));
+  return Object.freeze([
+    normalized,
+    Uint8Array.from(normalized, value => value < 145 ? 0 : 255),
+    Uint8Array.from(normalized, value => value < 190 ? 0 : 255),
+  ]);
+}
+
+function layerPreprocessingPasses(layer, grayscale){
+  return preprocessingPasses(Uint8Array.from(layer, (value, index) => value === 0 ? grayscale[index] : 255));
 }
 
 function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell){
@@ -179,49 +247,70 @@ function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell
   const ratio = Math.max(0.4, (inner.x1 - inner.x0) / Math.max(1, inner.y1 - inner.y0));
   const resizedWidth = Math.max(20, Math.min(320, Math.ceil(48 * ratio)));
   const grayscale = new Uint8Array(resizedWidth * 48);
+  const originalCrop = new Uint8ClampedArray(resizedWidth * 48 * 4);
   for(let y = 0; y < 48; y += 1){
     const canonicalY = inner.y0 + ((y + 0.5) / 48) * (inner.y1 - inner.y0);
     for(let x = 0; x < resizedWidth; x += 1){
       const canonicalX = inner.x0 + ((x + 0.5) / resizedWidth) * (inner.x1 - inner.x0);
       const original = htr.projectPoint(inverseTransform, {x: canonicalX, y: canonicalY});
-      grayscale[(y * resizedWidth) + x] = Math.round(bilinearGray(pixels, imageWidth, imageHeight, original.x, original.y));
+      const pixelIndex = (y * resizedWidth) + x;
+      const cropOffset = pixelIndex * 4;
+      for(let channel = 0; channel < 3; channel += 1){
+        originalCrop[cropOffset + channel] = Math.round(bilinearChannel(pixels, imageWidth, imageHeight, original.x, original.y, channel));
+      }
+      originalCrop[cropOffset + 3] = 255;
+      grayscale[pixelIndex] = Math.round(bilinearGray(pixels, imageWidth, imageHeight, original.x, original.y));
     }
   }
   const gridSuppression = suppressGridLinePixels(grayscale, resizedWidth, 48);
-  const lineSuppressed = gridSuppression.image;
-  const ordered = [...lineSuppressed].sort((left, right) => left - right);
-  const dark = percentile(ordered, 0.02);
-  const paper = percentile(ordered, 0.92);
-  const range = Math.max(24, paper - dark);
-  const normalized = new Uint8Array(lineSuppressed.length);
-  let inkPixels = 0;
-  for(let index = 0; index < lineSuppressed.length; index += 1){
-    const value = Math.max(0, Math.min(255, Math.round(((lineSuppressed[index] - dark) / range) * 255)));
-    normalized[index] = value;
-    if(value < 165) inkPixels += 1;
-  }
-  const inkRatio = inkPixels / Math.max(1, normalized.length);
-  const blank = inkPixels < Math.max(7, normalized.length * 0.0055) || inkRatio > 0.68;
-  const binaryDark = Uint8Array.from(normalized, value => value < 145 ? 0 : 255);
-  const binaryFaint = Uint8Array.from(normalized, value => value < 190 ? 0 : 255);
-  const tensors = Object.freeze([
-    modelTensorFromGrayscale(normalized, resizedWidth, 48),
-    modelTensorFromGrayscale(binaryDark, resizedWidth, 48),
-    modelTensorFromGrayscale(binaryFaint, resizedWidth, 48),
-  ]);
+  const separated = htr.separateInkLayers({
+    width: resizedWidth,
+    height: 48,
+    pixels: originalCrop,
+    gridMask: gridSuppression.pixelMask,
+    handwritingLuminanceThreshold: cell.templateId === "TEMPLATE_B" ? 130 : 190,
+  });
+  const metadataField = cell.rowIndex == null;
+  const combinedInkPixels = [...separated.combinedInk].filter(value => value === 0).length;
+  const inkRatio = combinedInkPixels / Math.max(1, separated.combinedInk.length);
+  const blankThreshold = metadataField ? 0.0005 : 0.0035;
+  const blank = combinedInkPixels < Math.max(metadataField ? 3 : 5, separated.combinedInk.length * blankThreshold) || inkRatio > 0.68;
+  const printPasses = layerPreprocessingPasses(separated.printInk, grayscale);
+  const handwritingPasses = cell.templateId === "TEMPLATE_A"
+    ? preprocessingPasses(gridSuppression.image)
+    : layerPreprocessingPasses(separated.handwritingInk, grayscale);
+  const fitMetadata = metadataField && cell.templateId === "TEMPLATE_B";
+  const tensorFor = image => fitMetadata
+    ? tightlyFittedTensor(image, resizedWidth, 48)
+    : modelTensorFromGrayscale(image, resizedWidth, 48);
+  const printTensors = Object.freeze(printPasses.map(tensorFor));
+  const handwritingTensors = Object.freeze(handwritingPasses.map(tensorFor));
   return Object.freeze({
-    tensor: tensors[0],
-    tensors,
+    printTensors,
+    handwritingTensors,
     blank,
     inkRatio,
-    croppedCellImage: normalized,
+    originalCrop,
     cropWidth: resizedWidth,
     cropHeight: 48,
+    printInkRatio: separated.printInkRatio,
+    handwritingInkRatio: separated.handwritingInkRatio,
+    strikeThroughDetected: detectStrikeThrough(separated.handwritingInk, resizedWidth, 48),
     gridLineMask: Object.freeze({
       horizontalLineCount: gridSuppression.horizontalLineCount,
       verticalLineCount: gridSuppression.verticalLineCount,
+      gridPixelCount: separated.gridPixelCount,
     }),
   });
+}
+
+function detectStrikeThrough(layer, width, height){
+  for(let y = Math.floor(height * 0.2); y < Math.ceil(height * 0.8); y += 1){
+    let dark = 0;
+    for(let x = 0; x < width; x += 1) if(layer[(y * width) + x] === 0) dark += 1;
+    if(dark >= width * 0.48) return true;
+  }
+  return false;
 }
 
 function decodeCtc(output, characters, allowedCharacters = null){
@@ -261,10 +350,11 @@ function decodeCtc(output, characters, allowedCharacters = null){
 }
 
 function recognitionAlphabet(columnId){
-  if(columnId === "fromTrain" || columnId === "toTrain") return new Set("0123456789REP¹²".split(""));
+  if(columnId === "fromTrain" || columnId === "toTrain") return new Set("0123456789REP/¹²".split(""));
   if(columnId === "vehicleId") return new Set("0123456789-– ".split(""));
   if(columnId === "toTrack") return new Set("0123456789NSMV→>-+ ".split(""));
   if(columnId === "wcWater") return new Set("*xX()○◯✓✔√✕✖×".split(""));
+  if(columnId === "arrivalTime" || columnId === "clock") return new Set("0123456789:. ".split(""));
   if(columnId === "date") return new Set("0123456789./-".split(""));
   return null;
 }
@@ -284,6 +374,32 @@ async function recognizeCell(runtime, tensor, columnId){
   return Object.freeze({unrestricted, candidates: Object.freeze(candidates)});
 }
 
+async function recognizeLayer(runtime, tensors, columnId){
+  const passes = [];
+  for(const tensor of tensors) passes.push(await recognizeCell(runtime, tensor, columnId));
+  const votes = new Map();
+  for(const pass of passes){
+    for(const candidate of pass.candidates){
+      const current = votes.get(candidate.text) || {text: candidate.text, confidence: 0, votes: 0};
+      current.confidence = Math.max(current.confidence, candidate.confidence);
+      current.votes += 1;
+      votes.set(candidate.text, current);
+    }
+  }
+  const candidates = [...votes.values()]
+    .map(candidate => ({
+      text: candidate.text,
+      confidence: candidate.votes >= 2 ? candidate.confidence : Math.min(candidate.confidence, 0.84),
+      votes: candidate.votes,
+    }))
+    .sort((left, right) => (right.votes - left.votes) || (right.confidence - left.confidence));
+  return Object.freeze({
+    recognizedText: passes[0]?.unrestricted?.text || "",
+    candidates: Object.freeze(candidates),
+    candidate: candidates[0] ? Object.freeze({text: candidates[0].text, confidence: candidates[0].confidence}) : null,
+  });
+}
+
 function emptyCellResult(cell, inkRatio){
   const unreadableCrop = inkRatio > 0.68;
   return Object.freeze({
@@ -292,6 +408,9 @@ function emptyCellResult(cell, inkRatio){
     boundingBox: cell.boundingBox,
     recognizedText: "",
     rawCandidates: Object.freeze([]),
+    printedCandidate: null,
+    handwrittenCandidate: null,
+    finalCandidate: Object.freeze({text: "", confidence: unreadableCrop ? 0 : 1}),
     normalizedValue: "",
     selectedValue: "",
     confidence: unreadableCrop ? 0 : 1,
@@ -299,6 +418,7 @@ function emptyCellResult(cell, inkRatio){
     needsReview: unreadableCrop,
     validationState: unreadableCrop ? "CROP_UNREADABLE" : "BLANK_IMAGE_CELL",
     recognizerVersion: htr.MODEL_SPEC.version,
+    recognitionMode: "HYBRID_PRINT_OCR_HTR",
     sourceBoundingBox: cell.boundingBox,
     normalizationReason: unreadableCrop ? "CROP_UNREADABLE" : "BLANK_IMAGE_CELL",
     groundTruthSource: "UNCONFIRMED_RECOGNIZER_OUTPUT",
@@ -317,21 +437,30 @@ async function analyze(message){
   if(!(width > 0) || !(height > 0) || pixels.length !== width * height * 4) throw new Error("invalid_htr_image_frame");
 
   post("progress", sessionId, {status: "IMAGE_PREPROCESSING", progress: 0.05});
+  post("progress", sessionId, {status: "TEMPLATE_DETECTION", progress: 0.07});
   const detected = htr.detectFormRegistration({pixels, width, height});
-  if(detected.source !== "FORM_GRID_RULE_SEQUENCE" || detected.verticalLineCount !== 7 || detected.confidence < 0.55){
+  if(detected.source !== "FORM_GRID_RULE_SEQUENCE"
+    || !["TEMPLATE_A", "TEMPLATE_B"].includes(detected.templateId)
+    || ![7, 9].includes(detected.verticalLineCount)
+    || detected.confidence < 0.55){
     throw new Error("form_registration_failed");
   }
   const registration = htr.registerTemplate({
     imageWidth: width,
     imageHeight: height,
+    templateId: detected.templateId,
     quadrilateral: detected.corners,
     rowBoundaries: detected.canonicalRowBoundaries,
   });
   post("progress", sessionId, {status: "FORM_REGISTRATION_COMPLETE", progress: 0.12, detection: detected});
+  post("progress", sessionId, {status: "TEMPLATE_REGISTERED", progress: 0.14, detection: detected});
   const requests = htr.createRecognitionRequests(registration);
-  post("progress", sessionId, {status: "CELL_SEGMENTATION_COMPLETE", progress: 0.18, cellCount: 29 * 6});
-  post("progress", sessionId, {status: "HANDWRITING_RECOGNITION_RUNNING", progress: 0.2});
+  post("progress", sessionId, {status: "CELL_SEGMENTATION_COMPLETE", progress: 0.18, cellCount: 29 * registration.columnCount});
+  post("progress", sessionId, {status: "PRINT_OCR_RUNNING", progress: 0.19});
+  post("progress", sessionId, {status: "HANDWRITING_RECOGNITION_RUNNING", progress: 0.195});
+  post("progress", sessionId, {status: "HYBRID_PRINT_OCR_HTR_RUNNING", progress: 0.2});
   const runtime = await initializeRuntime();
+  const registrationRequiresReview = detected.horizontalLineCount !== 30 || detected.rowGeometryStable !== true;
   const cells = [];
   for(let index = 0; index < requests.length; index += 1){
     if(cancelledSessionId === sessionId || activeSessionId !== sessionId) throw new Error("htr_cancelled");
@@ -340,55 +469,67 @@ async function analyze(message){
     if(crop.blank){
       cells.push(emptyCellResult(request, crop.inkRatio));
     }else{
-      const passes = [];
-      const passTensors = ["notes", "signature", "ds"].includes(request.columnId) ? [crop.tensor] : crop.tensors;
-      for(const tensor of passTensors) passes.push(await recognizeCell(runtime, tensor, request.columnId));
-      const votes = new Map();
-      for(const pass of passes){
-        for(const candidate of pass.candidates){
-          const current = votes.get(candidate.text) || {text: candidate.text, confidence: 0, votes: 0};
-          current.confidence = Math.max(current.confidence, candidate.confidence);
-          current.votes += 1;
-          votes.set(candidate.text, current);
-        }
-      }
-      const consensusCandidates = [...votes.values()]
-        .map(candidate => ({
-          text: candidate.text,
-          confidence: candidate.votes >= 2 ? candidate.confidence : Math.min(candidate.confidence, 0.84),
-          votes: candidate.votes,
-        }))
-        .sort((left, right) => (right.votes - left.votes) || (right.confidence - left.confidence));
-      const raw = passes[0];
-      const normalized = htr.normalizeRecognition({
-        columnId: request.columnId,
-        candidates: consensusCandidates,
-      }, {
+      const minimumLayerRatio = request.rowIndex == null ? 0.0003 : 0.0015;
+      const printed = crop.printInkRatio >= minimumLayerRatio
+        ? await recognizeLayer(runtime, crop.printTensors, request.columnId)
+        : Object.freeze({recognizedText: "", candidates: Object.freeze([]), candidate: null});
+      const handwritten = crop.handwritingInkRatio >= minimumLayerRatio
+        ? await recognizeLayer(runtime, crop.handwritingTensors, request.columnId)
+        : Object.freeze({recognizedText: "", candidates: Object.freeze([]), candidate: null});
+      const context = {
         canonicalSlots: Array.isArray(message.canonicalSlots) ? message.canonicalSlots : [],
         vehicleCatalog: Array.isArray(message.vehicleCatalog) ? message.vehicleCatalog : [],
-      });
+      };
+      const reconciled = htr.reconcileLayerCandidates({
+        columnId: request.columnId,
+        printedCandidate: printed.candidate,
+        handwrittenCandidate: handwritten.candidate,
+        strikeThroughDetected: crop.strikeThroughDetected,
+      }, context);
+      const normalized = reconciled.normalized || htr.normalizeRecognition({
+        columnId: request.columnId,
+        candidates: reconciled.finalCandidate.text ? [reconciled.finalCandidate] : [],
+      }, context);
+      const rawCandidates = [...printed.candidates.map(candidate => ({...candidate, sourceLayer: "PRINT_OCR"})),
+        ...handwritten.candidates.map(candidate => ({...candidate, sourceLayer: "HANDWRITING_HTR"}))];
+      const recognitionFailed = !reconciled.finalCandidate.text;
       cells.push(Object.freeze({
         rowIndex: request.rowIndex,
         columnId: request.columnId,
         boundingBox: request.boundingBox,
-        recognizedText: raw.unrestricted.text,
-        rawCandidates: Object.freeze(consensusCandidates.map(candidate => Object.freeze({...candidate}))),
-        normalizedValue: normalized.normalizedValue,
-        selectedValue: normalized.selectedValue,
-        confidence: normalized.confidence,
+        recognizedText: [printed.recognizedText, handwritten.recognizedText].filter(Boolean).join(" | "),
+        rawCandidates: Object.freeze(rawCandidates.map(candidate => Object.freeze({...candidate}))),
+        printedCandidate: reconciled.printedCandidate,
+        handwrittenCandidate: reconciled.handwrittenCandidate,
+        finalCandidate: reconciled.finalCandidate,
+        normalizedValue: reconciled.finalCandidate.text,
+        selectedValue: reconciled.finalCandidate.text,
+        confidence: reconciled.finalCandidate.confidence,
         alternatives: normalized.alternatives,
-        needsReview: normalized.needsReview,
-        validationState: normalized.validationState,
+        needsReview: recognitionFailed || reconciled.needsReview || registrationRequiresReview,
+        validationState: recognitionFailed || reconciled.needsReview || registrationRequiresReview ? "REVIEW_REQUIRED" : normalized.validationState,
         recognizerVersion: htr.MODEL_SPEC.version,
+        recognitionMode: "HYBRID_PRINT_OCR_HTR",
         sourceBoundingBox: request.boundingBox,
-        normalizationReason: normalized.normalizationReason,
+        normalizationReason: registrationRequiresReview
+          ? "ROW_GRID_REQUIRES_REVIEW"
+          : recognitionFailed
+            ? "NONBLANK_CROP_UNREADABLE"
+            : reconciled.reason,
         groundTruthSource: "UNCONFIRMED_RECOGNIZER_OUTPUT",
         rawRecognizerIsGroundTruth: false,
-        imageEvidence: Object.freeze({inkRatio: crop.inkRatio, blank: false}),
+        imageEvidence: Object.freeze({
+          inkRatio: crop.inkRatio,
+          printInkRatio: crop.printInkRatio,
+          handwritingInkRatio: crop.handwritingInkRatio,
+          strikeThroughDetected: crop.strikeThroughDetected,
+          gridLineMask: crop.gridLineMask,
+          blank: false,
+        }),
       }));
     }
     post("progress", sessionId, {
-      status: "HANDWRITING_RECOGNITION_RUNNING",
+      status: "HYBRID_PRINT_OCR_HTR_RUNNING",
       progress: 0.2 + (0.72 * ((index + 1) / requests.length)),
       processedCellCount: index + 1,
       totalCellCount: requests.length,
@@ -397,22 +538,30 @@ async function analyze(message){
   const tableCells = cells.filter(cell => cell.rowIndex != null);
   const metadataCells = cells.filter(cell => cell.rowIndex == null);
   const report = htr.buildMappingReport({
+    templateId: registration.templateId,
     htrCompleted: true,
     registrationStatus: "CELL_SEGMENTATION_COMPLETE",
     cells: tableCells,
     metadataCells,
+  });
+  post("progress", sessionId, {
+    status: report.mappingStatus === "FORM_MAPPING_COMPLETE" ? "CELL_MAPPING_COMPLETE" : "CELL_MAPPING_REQUIRES_REVIEW",
+    progress: 0.98,
   });
   post("complete", sessionId, {
     result: {
       status: report.mappingStatus,
       registration: {
         status: "CELL_SEGMENTATION_COMPLETE",
+        templateId: registration.templateId,
         templateVersion: registration.templateVersion,
+        columnCount: registration.columnCount,
         perspectiveCorrectionApplied: true,
         detectionConfidence: detected.confidence,
         detectionSource: detected.source,
         verticalLineCount: detected.verticalLineCount,
         horizontalLineCount: detected.horizontalLineCount,
+        rowGeometryStable: detected.rowGeometryStable === true,
         quadrilateral: detected.corners,
       },
       cells: tableCells,

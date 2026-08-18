@@ -23,13 +23,19 @@ const ALLOWED_MAPPING_STATUSES = new Set([
   "NOT_RUN_HUMAN_ENTERED"
 ]);
 const ROW_FIELDS = Object.freeze([
+  "arrivalTime",
   "fromTrain",
   "toTrain",
   "vehicleId",
   "toTrack",
   "wcWater",
+  "info",
   "notes"
 ]);
+const TEMPLATE_COLUMNS = Object.freeze({
+  TEMPLATE_A: Object.freeze(["fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater", "notes"]),
+  TEMPLATE_B: ROW_FIELDS,
+});
 
 class NightPlanStorageError extends Error {
   constructor(code, message, status = 400, details = {}){
@@ -47,6 +53,7 @@ function ensureNightPlanSchema(db){
       plan_id TEXT PRIMARY KEY,
       revision INTEGER NOT NULL,
       plan_date TEXT NOT NULL,
+      clock TEXT NOT NULL DEFAULT '',
       signature TEXT NOT NULL,
       ds TEXT NOT NULL,
       rows_json TEXT NOT NULL,
@@ -127,6 +134,7 @@ function ensureNightPlanSchema(db){
       ON night_plan_learning_records(plan_id, plan_revision);
   `);
   ensureColumn(db, "night_plan_provenance", "mapping_status", "TEXT");
+  ensureColumn(db, "night_plans", "clock", "TEXT NOT NULL DEFAULT ''");
   ensureColumn(db, "night_plan_provenance", "mapping_report_json", "TEXT");
   ensureColumn(db, "night_plan_learning_records", "recognizer_result_json", "TEXT");
   ensureColumn(db, "night_plan_learning_records", "human_ground_truth_json", "TEXT");
@@ -335,6 +343,7 @@ function writePlanRow(db, input){
   const args = [
     input.revision,
     input.validated.form.planDate,
+    input.validated.form.clock,
     input.validated.form.signature,
     input.validated.form.ds,
     JSON.stringify(input.validated.form.rows),
@@ -350,7 +359,7 @@ function writePlanRow(db, input){
   ];
   const updated = db.prepare(`
     UPDATE night_plans SET
-      revision = ?, plan_date = ?, signature = ?, ds = ?, rows_json = ?,
+      revision = ?, plan_date = ?, clock = ?, signature = ?, ds = ?, rows_json = ?,
       source_type = ?, status = ?, created_at = ?, saved_at = ?, saved_by = ?,
       schema_version = ?, image_id = ?, final_form_sha256 = ?, operational_authority = 0
     WHERE plan_id = ?
@@ -358,10 +367,10 @@ function writePlanRow(db, input){
   if(Number(updated.changes) > 0) return;
   db.prepare(`
     INSERT INTO night_plans (
-      revision, plan_date, signature, ds, rows_json, source_type, status,
+      revision, plan_date, clock, signature, ds, rows_json, source_type, status,
       created_at, saved_at, saved_by, schema_version, image_id,
       final_form_sha256, plan_id, operational_authority
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
   `).run(...args);
 }
 
@@ -388,7 +397,7 @@ function listNightPlans(db, limit = 50){
   ensureNightPlanSchema(db);
   const safeLimit = Math.max(1, Math.min(100, Number(limit) || 50));
   return db.prepare(`
-    SELECT plan_id AS planId, revision, plan_date AS planDate, signature, ds,
+    SELECT plan_id AS planId, revision, plan_date AS planDate, clock, signature, ds,
       source_type AS sourceType, status, saved_at AS savedAt,
       saved_by AS savedBy, image_id AS storedImageId,
       final_form_sha256 AS finalFormSha256
@@ -522,7 +531,7 @@ function validateNightPlanSavePayload(payload){
 
 function validateForm(value){
   requirePlainObject(value, "invalid_form");
-  rejectUnexpectedFields(value, ["planDate", "signature", "ds", "rows"], "unexpected_form_field");
+  rejectUnexpectedFields(value, ["planDate", "clock", "signature", "ds", "rows"], "unexpected_form_field");
   const planDate = normalizeExactString(value.planDate, 10);
   if(!planDate || !/^\d{4}-\d{2}-\d{2}$/.test(planDate) || Number.isNaN(Date.parse(`${planDate}T00:00:00Z`))){
     throw invalid("invalid_plan_date", "planDate must be a valid ISO date.");
@@ -530,11 +539,12 @@ function validateForm(value){
   const signature = normalizeFormString(value.signature, 120, "signature");
   if(!signature) throw invalid("signature_required", "signature is required.");
   const ds = normalizeFormString(value.ds, 120, "ds");
+  const clock = normalizeFormString(value.clock, 20, "clock");
   if(!Array.isArray(value.rows) || value.rows.length !== ROW_COUNT){
     throw invalid("invalid_row_count", `Exactly ${ROW_COUNT} plan rows are required.`);
   }
   const rows = value.rows.map((row, index) => validateRow(row, index));
-  return Object.freeze({planDate, signature, ds, rows: Object.freeze(rows)});
+  return Object.freeze({planDate, clock, signature, ds, rows: Object.freeze(rows)});
 }
 
 function validateRow(value, index){
@@ -542,7 +552,7 @@ function validateRow(value, index){
   rejectUnexpectedFields(value, ROW_FIELDS, "unexpected_row_field");
   const normalized = {};
   for(const field of ROW_FIELDS){
-    const maximum = field === "notes" ? 500 : 120;
+    const maximum = ["info", "notes"].includes(field) ? 500 : 120;
     normalized[field] = normalizeFormString(value[field], maximum, `rows[${index}].${field}`);
   }
   return Object.freeze(normalized);
@@ -585,7 +595,7 @@ function validateSource(value){
 
 function validateMappingReport(value){
   requirePlainObject(value, "invalid_mapping_report");
-  if(value.schemaVersion === "sde-night-form-mapping-report-v2") return validateHtrMappingReport(value);
+  if(["sde-night-form-mapping-report-v2", "sde-night-form-mapping-report-v3"].includes(value.schemaVersion)) return validateHtrMappingReport(value);
   rejectUnexpectedFields(value, [
     "schemaVersion", "ocrTokenCount", "recognizedLineCount", "detectedHeaderCount",
     "detectedRowCount", "mappedCellCount", "unmappedTokenCount", "mappingConfidence",
@@ -633,12 +643,14 @@ function validateMappingReport(value){
 function validateHtrMappingReport(value){
   rejectUnexpectedFields(value, [
     "schemaVersion", "mappingStatus", "htrCompleted", "registrationStatus",
-    "templateVersion", "recognizerVersion", "modelSha256", "cellCount",
+    "templateId", "templateVersion", "columnCount", "recognitionMode",
+    "recognizerVersion", "modelSha256", "cellCount",
     "mappedCellCount", "reviewedCellCount", "requiresHumanReview",
     "mappingConfidence", "cells", "metadataCells", "humanGroundTruthSource",
     "rawRecognizerIsGroundTruth", "humanReviewCompleted"
   ], "unexpected_mapping_report_field");
-  const report = {schemaVersion: "sde-night-form-mapping-report-v2"};
+  const schemaVersion = normalizeExactString(value.schemaVersion, 100);
+  const report = {schemaVersion};
   report.mappingStatus = normalizeExactString(value.mappingStatus, 80);
   if(!ALLOWED_MAPPING_STATUSES.has(report.mappingStatus) || ["NOT_RUN_HUMAN_ENTERED", "OCR_FAILED"].includes(report.mappingStatus)){
     throw invalid("invalid_mapping_status", "The HTR mapping report has an invalid mappingStatus.");
@@ -646,7 +658,20 @@ function validateHtrMappingReport(value){
   if(value.htrCompleted !== true) throw invalid("htr_not_completed", "An HTR mapping report requires completed handwriting recognition.");
   report.htrCompleted = true;
   report.registrationStatus = normalizeExactString(value.registrationStatus, 80);
-  if(report.registrationStatus !== "CELLS_SEGMENTED") throw invalid("invalid_registration_status", "The 29 x 6 cell segmentation must be complete.");
+  if(!["CELLS_SEGMENTED", "CELL_SEGMENTATION_COMPLETE"].includes(report.registrationStatus)) throw invalid("invalid_registration_status", "The 29-row cell segmentation must be complete.");
+  report.templateId = schemaVersion === "sde-night-form-mapping-report-v3"
+    ? normalizeExactString(value.templateId, 40)
+    : "TEMPLATE_A";
+  const templateColumns = TEMPLATE_COLUMNS[report.templateId];
+  if(!templateColumns) throw invalid("invalid_htr_template", "The HTR form template is unsupported.");
+  report.columnCount = schemaVersion === "sde-night-form-mapping-report-v3" ? Number(value.columnCount) : templateColumns.length;
+  if(report.columnCount !== templateColumns.length) throw invalid("invalid_htr_column_count", "The HTR column count does not match the template.");
+  report.recognitionMode = schemaVersion === "sde-night-form-mapping-report-v3"
+    ? normalizeExactString(value.recognitionMode, 80)
+    : "HANDWRITING_HTR";
+  if(schemaVersion === "sde-night-form-mapping-report-v3" && report.recognitionMode !== "HYBRID_PRINT_OCR_HTR"){
+    throw invalid("invalid_htr_recognition_mode", "Template v3 requires hybrid print OCR and HTR provenance.");
+  }
   report.templateVersion = normalizeExactString(value.templateVersion, 120);
   report.recognizerVersion = normalizeExactString(value.recognizerVersion, 120);
   report.modelSha256 = normalizeExactString(value.modelSha256, 64);
@@ -655,20 +680,21 @@ function validateHtrMappingReport(value){
   }
   for(const field of ["cellCount", "mappedCellCount", "reviewedCellCount"]){
     const count = Number(value[field]);
-    if(!Number.isInteger(count) || count < 0 || count > 177) throw invalid("invalid_mapping_report_count", `${field} is invalid.`);
+    if(!Number.isInteger(count) || count < 0 || count > 235) throw invalid("invalid_mapping_report_count", `${field} is invalid.`);
     report[field] = count;
   }
-  if(!Array.isArray(value.cells) || value.cells.length !== ROW_COUNT * ROW_FIELDS.length || report.cellCount !== value.cells.length){
-    throw invalid("invalid_htr_cell_count", "Exactly 29 x 6 HTR table cells are required.");
+  if(!Array.isArray(value.cells) || value.cells.length !== ROW_COUNT * templateColumns.length || report.cellCount !== value.cells.length){
+    throw invalid("invalid_htr_cell_count", `Exactly 29 x ${templateColumns.length} HTR table cells are required.`);
   }
-  report.cells = Object.freeze(value.cells.map((cell, index) => validateHtrCell(cell, index, false)));
+  report.cells = Object.freeze(value.cells.map((cell, index) => validateHtrCell(cell, index, false, templateColumns)));
   if(!Array.isArray(value.metadataCells) || value.metadataCells.length !== 3){
     throw invalid("invalid_htr_metadata_cell_count", "Exactly the date, signature and ds HTR metadata cells are required.");
   }
-  report.metadataCells = Object.freeze(value.metadataCells.map((cell, index) => validateHtrCell(cell, index, true)));
+  const expectedMetadata = report.templateId === "TEMPLATE_B" ? ["clock", "date", "signature"] : ["date", "signature", "ds"];
+  report.metadataCells = Object.freeze(value.metadataCells.map((cell, index) => validateHtrCell(cell, index, true, expectedMetadata)));
   const metadataColumns = new Set(report.metadataCells.map(cell => cell.columnId));
-  if(metadataColumns.size !== 3 || !["date", "signature", "ds"].every(column => metadataColumns.has(column))){
-    throw invalid("invalid_htr_metadata_cells", "HTR metadata cells must be date, signature and ds.");
+  if(metadataColumns.size !== 3 || !expectedMetadata.every(column => metadataColumns.has(column))){
+    throw invalid("invalid_htr_metadata_cells", "HTR metadata cells do not match the detected template.");
   }
   const actualMapped = report.cells.filter(cell => cell.selectedValue).length;
   if(actualMapped !== report.mappedCellCount) throw invalid("mapped_cell_count_mismatch", "mappedCellCount does not match the HTR cells.");
@@ -688,22 +714,23 @@ function validateHtrMappingReport(value){
   return Object.freeze(report);
 }
 
-function validateHtrCell(value, index, metadata = false){
+function validateHtrCell(value, index, metadata = false, allowedColumns = []){
   requirePlainObject(value, "invalid_htr_cell");
   rejectUnexpectedFields(value, [
     "rowIndex", "columnId", "boundingBox", "recognizedText", "normalizedValue",
     "selectedValue", "confidence", "alternatives", "needsReview",
     "validationState", "recognizerVersion", "groundTruthSource",
-    "rawRecognizerIsGroundTruth", "imageEvidence", "humanFinalValue"
+    "rawRecognizerIsGroundTruth", "imageEvidence", "humanFinalValue",
+    "rawCandidates", "printedCandidate", "handwrittenCandidate", "finalCandidate",
+    "recognitionMode", "sourceBoundingBox", "normalizationReason"
   ], "unexpected_htr_cell_field");
   const rowIndex = metadata ? null : Number(value.rowIndex);
   if(metadata && value.rowIndex !== null) throw invalid("invalid_htr_row", `HTR metadata cell ${index} must not claim a table row.`);
   if(!metadata && (!Number.isInteger(rowIndex) || rowIndex < 0 || rowIndex >= ROW_COUNT)) throw invalid("invalid_htr_row", `HTR cell ${index} has an invalid row.`);
   const columnId = normalizeExactString(value.columnId, 40);
-  const allowedColumns = metadata ? ["date", "signature", "ds"] : ROW_FIELDS;
   if(!allowedColumns.includes(columnId)) throw invalid("invalid_htr_column", `HTR cell ${index} has an invalid column.`);
   const boundingBox = validateHtrBoundingBox(value.boundingBox);
-  const maximum = columnId === "notes" ? 500 : 120;
+  const maximum = ["info", "notes"].includes(columnId) ? 500 : 120;
   const recognizedText = normalizeFormString(value.recognizedText, maximum, `cells[${index}].recognizedText`);
   const normalizedValue = normalizeFormString(value.normalizedValue, maximum, `cells[${index}].normalizedValue`);
   const selectedValue = normalizeFormString(value.selectedValue, maximum, `cells[${index}].selectedValue`);
@@ -722,20 +749,75 @@ function validateHtrCell(value, index, metadata = false){
     ? null
     : normalizeFormString(value.humanFinalValue, maximum, `cells[${index}].humanFinalValue`);
   requirePlainObject(value.imageEvidence, "invalid_htr_image_evidence");
-  rejectUnexpectedFields(value.imageEvidence, ["inkRatio", "blank"], "unexpected_htr_image_evidence_field");
+  rejectUnexpectedFields(value.imageEvidence, [
+    "inkRatio", "printInkRatio", "handwritingInkRatio", "strikeThroughDetected", "gridLineMask", "blank"
+  ], "unexpected_htr_image_evidence_field");
   const inkRatio = Number(value.imageEvidence.inkRatio);
   if(!Number.isFinite(inkRatio) || inkRatio < 0 || inkRatio > 1 || typeof value.imageEvidence.blank !== "boolean"){
     throw invalid("invalid_htr_image_evidence", `HTR cell ${index} has invalid image evidence.`);
   }
+  const evidenceRatio = field => {
+    if(value.imageEvidence[field] == null) return 0;
+    const ratio = Number(value.imageEvidence[field]);
+    if(!Number.isFinite(ratio) || ratio < 0 || ratio > 1){
+      throw invalid("invalid_htr_image_evidence", `HTR cell ${index} has invalid ${field}.`);
+    }
+    return ratio;
+  };
+  if(value.imageEvidence.strikeThroughDetected != null && typeof value.imageEvidence.strikeThroughDetected !== "boolean"){
+    throw invalid("invalid_htr_image_evidence", `HTR cell ${index} has invalid strike-through evidence.`);
+  }
+  let gridLineMask = null;
+  if(value.imageEvidence.gridLineMask != null){
+    requirePlainObject(value.imageEvidence.gridLineMask, "invalid_htr_grid_line_mask");
+    rejectUnexpectedFields(value.imageEvidence.gridLineMask, [
+      "horizontalLineCount", "verticalLineCount", "gridPixelCount"
+    ], "unexpected_htr_grid_line_mask_field");
+    gridLineMask = {};
+    for(const field of ["horizontalLineCount", "verticalLineCount", "gridPixelCount"]){
+      const count = Number(value.imageEvidence.gridLineMask[field]);
+      if(!Number.isInteger(count) || count < 0 || count > 1000000){
+        throw invalid("invalid_htr_grid_line_mask", `HTR cell ${index} has invalid grid-mask evidence.`);
+      }
+      gridLineMask[field] = count;
+    }
+    gridLineMask = Object.freeze(gridLineMask);
+  }
+  const printedCandidate = validateLayerCandidate(value.printedCandidate, `cells[${index}].printedCandidate`);
+  const handwrittenCandidate = validateLayerCandidate(value.handwrittenCandidate, `cells[${index}].handwrittenCandidate`);
+  const finalCandidate = validateLayerCandidate(value.finalCandidate, `cells[${index}].finalCandidate`, true);
+  const recognitionMode = normalizeExactString(value.recognitionMode || "HANDWRITING_HTR", 80);
+  const normalizationReason = normalizeNullableString(value.normalizationReason, 120, "normalizationReason");
+  const sourceBoundingBox = value.sourceBoundingBox == null ? boundingBox : validateHtrBoundingBox(value.sourceBoundingBox);
   return Object.freeze({
     rowIndex, columnId, boundingBox, recognizedText, normalizedValue,
     selectedValue, confidence, alternatives: Object.freeze(alternatives),
     needsReview: value.needsReview === true,
     validationState: normalizeExactString(value.validationState, 80),
     recognizerVersion, groundTruthSource, rawRecognizerIsGroundTruth: false,
-    imageEvidence: Object.freeze({inkRatio, blank: value.imageEvidence.blank}),
-    humanFinalValue
+    imageEvidence: Object.freeze({
+      inkRatio,
+      printInkRatio: evidenceRatio("printInkRatio"),
+      handwritingInkRatio: evidenceRatio("handwritingInkRatio"),
+      strikeThroughDetected: value.imageEvidence.strikeThroughDetected === true,
+      gridLineMask,
+      blank: value.imageEvidence.blank,
+    }),
+    printedCandidate, handwrittenCandidate, finalCandidate, recognitionMode,
+    sourceBoundingBox, normalizationReason, humanFinalValue
   });
+}
+
+function validateLayerCandidate(value, label, allowBlank = false){
+  if(value == null) return null;
+  requirePlainObject(value, "invalid_htr_layer_candidate");
+  rejectUnexpectedFields(value, ["text", "confidence"], "unexpected_htr_layer_candidate_field");
+  const text = normalizeFormString(value.text, 500, `${label}.text`);
+  const confidence = Number(value.confidence);
+  if((!text && !allowBlank) || !Number.isFinite(confidence) || confidence < 0 || confidence > 1){
+    throw invalid("invalid_htr_layer_candidate", `${label} is invalid.`);
+  }
+  return Object.freeze({text, confidence});
 }
 
 function validateHtrBoundingBox(value){
@@ -949,6 +1031,7 @@ function projectStoredPlan(plan, image, provenance, learning){
     revision: Number(plan.revision),
     form: Object.freeze({
       planDate: plan.plan_date,
+      clock: plan.clock,
       signature: plan.signature,
       ds: plan.ds,
       rows: Object.freeze(JSON.parse(plan.rows_json))

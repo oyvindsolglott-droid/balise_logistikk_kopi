@@ -168,6 +168,10 @@
       alternatives: Array.isArray(cell.alternatives) ? [...cell.alternatives] : [],
       needsReview: cell.needsReview === true,
       recognizerVersion: String(cell.recognizerVersion || ""),
+      printedCandidate: cell.printedCandidate ? {...cell.printedCandidate} : null,
+      handwrittenCandidate: cell.handwrittenCandidate ? {...cell.handwrittenCandidate} : null,
+      finalCandidate: cell.finalCandidate ? {...cell.finalCandidate} : null,
+      recognitionMode: String(cell.recognitionMode || "HYBRID_PRINT_OCR_HTR"),
       groundTruthSource: "UNCONFIRMED_RECOGNIZER_OUTPUT",
       rawRecognizerIsGroundTruth: false,
     };
@@ -179,11 +183,13 @@
     if(!result || !Array.isArray(result.cells) || !result.mappingReport) throw new Error("invalid_htr_result");
     const entries = Array.from({length: 29}, () => ({}));
     const fieldNames = {
+      arrivalTime: "time",
       fromTrain: "arrivalOccurrence",
       toTrain: "departureOccurrence",
       vehicleId: "vehicleId",
       toTrack: "desiredSlot",
       wcWater: "taskContext",
+      info: "info",
       notes: "notes",
     };
     for(const cell of result.cells){
@@ -193,7 +199,7 @@
     }
     const metadata = {};
     for(const cell of Array.isArray(result.metadataCells) ? result.metadataCells : []){
-      if(["date", "signature", "ds"].includes(cell.columnId)) metadata[cell.columnId] = String(cell.selectedValue || "");
+      if(["clock", "date", "signature", "ds"].includes(cell.columnId)) metadata[cell.columnId] = String(cell.selectedValue || "");
     }
     return logic.createNightPlan({
       planId: options.planId,
@@ -202,6 +208,7 @@
       createdBy: "",
       sourceType: "HUMAN_IMPORTED_PLAN",
       sourceFingerprint: options.sourceFingerprint,
+      formTemplateId: String(result.registration?.templateId || result.mappingReport?.templateId || "TEMPLATE_A"),
       planStatus: "DRAFT",
       ocrMetadata: metadata,
       ocrMapping: result.mappingReport,

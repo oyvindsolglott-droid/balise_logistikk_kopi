@@ -69,9 +69,11 @@ function photographedFormWithEdgeShadow(){
   return {width, height, pixels};
 }
 
-invariant("INV-HTR-001", "all handwritten cells use the explicit HTR layer", () => {
+invariant("INV-HTR-001", "all value cells use explicit print-OCR and HTR layers", () => {
   const requests = htr.createRecognitionRequests(registration());
-  return requests.length === 177 && requests.every(request => request.recognizerKind === "HANDWRITING")
+  return requests.length === 177
+    && requests.every(request => request.recognizerKind === "HYBRID_PRINT_OCR_HTR")
+    && requests.every(request => JSON.stringify(request.recognizerKinds) === JSON.stringify(["PRINT_OCR", "HANDWRITING_HTR"]))
     && worker.includes('import * as ort from "./assets/vendor/onnxruntime-web/ort.wasm.min.mjs"');
 });
 
@@ -170,17 +172,18 @@ invariant("INV-HTR-016", "the complete seven-rule and thirty-row form grid wins 
 
 invariant("INV-HTR-017", "the worker refuses fallback registration and uses the image-derived row boundaries", () =>
   worker.includes('detected.source !== "FORM_GRID_RULE_SEQUENCE"')
-  && worker.includes("detected.verticalLineCount !== 7")
+  && worker.includes('!["TEMPLATE_A", "TEMPLATE_B"].includes(detected.templateId)')
+  && worker.includes("![7, 9].includes(detected.verticalLineCount)")
   && worker.includes("rowBoundaries: detected.canonicalRowBoundaries,")
 );
 
-invariant("INV-HTR-018", "cell crops preserve edge handwriting and run three structured-field preprocessing passes", () =>
+invariant("INV-HTR-018", "cell crops preserve edge content and run separate print and handwriting passes", () =>
   worker.includes("boxWidth * (cell.columnId === \"notes\" ? 0.012 : 0.02)")
   && worker.includes("boxHeight * 0.055")
-  && worker.includes("const tensors = Object.freeze([")
-  && worker.includes("binaryDark")
-  && worker.includes("binaryFaint")
-  && worker.includes("crop.tensors")
+  && worker.includes("const printTensors = Object.freeze(")
+  && worker.includes("const handwritingTensors = Object.freeze(")
+  && worker.includes("crop.printTensors")
+  && worker.includes("crop.handwritingTensors")
   && worker.includes("suppressGridLinePixels(grayscale, resizedWidth, 48)")
   && worker.includes("x1: box.x1 - xPadding")
 );
@@ -198,9 +201,15 @@ invariant("INV-HTR-020", "plausible but imperfect identifiers stay review-marked
 
 invariant("INV-HTR-021", "progress states distinguish preprocessing, registration, segmentation, and recognition", () =>
   worker.includes('status: "IMAGE_PREPROCESSING"')
+  && worker.includes('status: "TEMPLATE_DETECTION"')
   && worker.includes('status: "FORM_REGISTRATION_COMPLETE"')
+  && worker.includes('status: "TEMPLATE_REGISTERED"')
   && worker.includes('status: "CELL_SEGMENTATION_COMPLETE"')
+  && worker.includes('status: "PRINT_OCR_RUNNING"')
   && worker.includes('status: "HANDWRITING_RECOGNITION_RUNNING"')
+  && worker.includes('status: "HYBRID_PRINT_OCR_HTR_RUNNING"')
+  && worker.includes('"CELL_MAPPING_COMPLETE"')
+  && worker.includes('"CELL_MAPPING_REQUIRES_REVIEW"')
 );
 
 invariant("INV-HTR-022", "vehicle separators and canonical track suffixes survive normalization", () => {
@@ -238,6 +247,113 @@ invariant("INV-HTR-027", "catalogs and slot registers validate but never invent 
   return vehicle.selectedValue === "" && vehicle.needsReview === true
     && track.selectedValue === "" && track.needsReview === true;
 });
+
+function templateBRegistration(){
+  return htr.registerTemplate({imageWidth: 1200, imageHeight: 1500, templateId: "TEMPLATE_B"});
+}
+
+function separatedPixel(red, green, blue, masked = false){
+  return htr.separateInkLayers({
+    width: 1,
+    height: 1,
+    pixels: new Uint8ClampedArray([red, green, blue, 255]),
+    gridMask: new Uint8Array([masked ? 1 : 0]),
+  });
+}
+
+invariant("INV-HYBRID-001", "Template A and B are classified structurally before segmentation", () => {
+  const evidence = templateId => templateId === "TEMPLATE_A" ? {
+    title: "TOGPLASSERING SKIEN", verticalLineCount: 7,
+    printedHeaders: ["Fra Tog", "Til Tog", "Settnr", "Til spor", "Wc/vann", "Merknad"],
+    metadataLabels: ["Dato", "Signatur", "ds"],
+  } : {
+    title: "TOGPLASSERING SKIEN", verticalLineCount: 9,
+    printedHeaders: ["Inn kl", "Fra Tog", "Til Tog", "Settnr", "Til spor", "Wc/vann", "INFO", "Merknad"],
+    metadataLabels: ["Klokken", "Dato", "Signatur"],
+  };
+  return htr.detectTemplateVariant(evidence("TEMPLATE_A")).templateId === "TEMPLATE_A"
+    && htr.detectTemplateVariant(evidence("TEMPLATE_B")).templateId === "TEMPLATE_B";
+});
+
+invariant("INV-HYBRID-002", "Template B preserves Inn kl", () => {
+  const value = htr.toCanonicalRow("TEMPLATE_B", {arrivalTime: "06:11"});
+  return value.arrivalTime === "06:11" && templateBRegistration().cells.some(cell => cell.columnId === "arrivalTime");
+});
+
+invariant("INV-HYBRID-003", "Template B preserves INFO", () => {
+  const value = htr.toCanonicalRow("TEMPLATE_B", {info: "TEST INFO"});
+  return value.info === "TEST INFO" && templateBRegistration().cells.some(cell => cell.columnId === "info");
+});
+
+invariant("INV-HYBRID-004", "source date wins over the current date", () => {
+  const value = htr.resolveSourceMetadata({templateId: "TEMPLATE_B", candidates: {date: "31.12.2099", signature: "QA"}});
+  return value.date === "31.12.2099"
+    && ui.includes('else if (plan.formTemplateId === "TEMPLATE_B") plan.operationalDate = "";');
+});
+
+invariant("INV-HYBRID-005", "source initials remain complete", () => {
+  const value = htr.resolveSourceMetadata({templateId: "TEMPLATE_B", candidates: {date: "31.12.2099", signature: "QA"}});
+  return value.signature === "QA" && value.needsReview === false;
+});
+
+invariant("INV-HYBRID-006", "red print is routed only to PRINT_OCR", () => {
+  const value = separatedPixel(180, 40, 40);
+  return value.printInk[0] === 0 && value.handwritingInk[0] === 255;
+});
+
+invariant("INV-HYBRID-007", "black handwriting is routed only to HANDWRITING_HTR", () => {
+  const value = separatedPixel(20, 20, 20);
+  return value.printInk[0] === 255 && value.handwritingInk[0] === 0;
+});
+
+invariant("INV-HYBRID-008", "print and handwriting conflicts require review", () => {
+  const value = htr.reconcileLayerCandidates({
+    columnId: "toTrain",
+    printedCandidate: {text: "9901/1", confidence: 0.999},
+    handwrittenCandidate: {text: "9902/2", confidence: 0.999},
+  });
+  return value.needsReview === true && value.reason === "PRINT_HANDWRITING_CONFLICT";
+});
+
+invariant("INV-HYBRID-009", "grid pixels enter neither recognition layer", () => {
+  const value = separatedPixel(20, 20, 20, true);
+  return value.printInk[0] === 255 && value.handwritingInk[0] === 255 && value.combinedInk[0] === 255;
+});
+
+invariant("INV-HYBRID-010", "Template B has stable zero-based row mapping", () => {
+  const rows = [...new Set(templateBRegistration().cells.map(cell => cell.rowIndex))];
+  return JSON.stringify(rows) === JSON.stringify(Array.from({length: 29}, (_unused, index) => index));
+});
+
+invariant("INV-HYBRID-011", "Template B has exact canonical column mapping", () => {
+  const columns = [...new Set(templateBRegistration().cells.map(cell => cell.columnId))];
+  return JSON.stringify(columns) === JSON.stringify([
+    "arrivalTime", "fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater", "info", "notes",
+  ]);
+});
+
+invariant("INV-HYBRID-012", "Settnr is preserved", () =>
+  htr.toCanonicalRow("TEMPLATE_B", {vehicleId: "91-01"}).vehicleId === "91-01"
+);
+
+invariant("INV-HYBRID-013", "Til spor is preserved", () =>
+  htr.toCanonicalRow("TEMPLATE_B", {toTrack: "7N"}).toTrack === "7N"
+);
+
+invariant("INV-HYBRID-014", "orphan values cannot be created without image candidates", () =>
+  htr.normalizeRecognition({columnId: "notes", candidates: []}).selectedValue === ""
+  && htr.normalizeRecognition({columnId: "vehicleId", candidates: []}).selectedValue === ""
+);
+
+invariant("INV-HYBRID-015", "low-confidence values cannot be auto-accepted", () => {
+  const value = htr.normalizeRecognition({columnId: "notes", candidates: [{text: "mulig tekst", confidence: 0.5}]});
+  return value.selectedValue === "mulig tekst" && value.needsReview === true;
+});
+
+invariant("INV-HYBRID-016", "previous imports cannot supply fallback values", () =>
+  htr.normalizeRecognition({columnId: "notes", candidates: []}, {previousPlanValue: "forrige"}).selectedValue === ""
+  && !/(previousPlanValue|historicalValue|previous_plan_value|historical_value)/.test(recognition)
+);
 
 const failed = results.filter(result => result.status === "FAIL");
 process.stdout.write(`${JSON.stringify({

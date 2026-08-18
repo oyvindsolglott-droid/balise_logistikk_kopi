@@ -24,7 +24,10 @@ def load_ocr_fixture(name: str) -> dict[str, object]:
     return json.loads((FIXTURE_ROOT / name).read_text(encoding="utf-8"))
 
 
-HTR_COLUMNS = ["fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater", "notes"]
+HTR_COLUMNS_BY_TEMPLATE = {
+    "TEMPLATE_A": ["fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater", "notes"],
+    "TEMPLATE_B": ["arrivalTime", "fromTrain", "toTrain", "vehicleId", "toTrack", "wcWater", "info", "notes"],
+}
 MODEL_SHA256 = "7888113072263cb471b93f66dd5e2ad70548dc526fa1ace760d0d973dd121498"
 MODEL_VERSION = "latin-pp-ocrv5-mobile-rec-onnx@89d3a50e"
 
@@ -41,7 +44,9 @@ def htr_rows(fixture: dict[str, object]) -> list[dict[str, object]]:
 
 def htr_metadata(fixture: dict[str, object]) -> dict[str, str]:
     value = fixture.get("metadata") or fixture["expected"]["metadata"]
-    return {key: str(value.get(key, "")) for key in ["date", "signature", "ds"]}
+    template_id = str(fixture.get("templateId") or "TEMPLATE_A")
+    keys = ["clock", "date", "signature"] if template_id == "TEMPLATE_B" else ["date", "signature", "ds"]
+    return {key: str(value.get(key, "")) for key in keys}
 
 
 def htr_box(row_index: int | None, column_index: int) -> dict[str, object]:
@@ -80,28 +85,58 @@ def htr_cell(row_index: int | None, column_id: str, column_index: int, value: st
 
 
 def htr_result(fixture: dict[str, object], mapping_status: str | None = None) -> dict[str, object]:
-    values = {(int(row["rowIndex"]), column): str(row.get(column, "")) for row in htr_rows(fixture) for column in HTR_COLUMNS}
+    template_id = str(fixture.get("templateId") or "TEMPLATE_A")
+    columns = HTR_COLUMNS_BY_TEMPLATE[template_id]
+    values = {(int(row["rowIndex"]), column): str(row.get(column, "")) for row in htr_rows(fixture) for column in columns}
     cells = [
         htr_cell(row, column, column_index, values.get((row, column), ""))
         for row in range(29)
-        for column_index, column in enumerate(HTR_COLUMNS)
+        for column_index, column in enumerate(columns)
     ]
+    if template_id == "TEMPLATE_B":
+        review_cell = next(cell for cell in cells if cell["rowIndex"] == 0 and cell["columnId"] == "arrivalTime")
+        review_cell.update({
+            "confidence": 0.72,
+            "needsReview": True,
+            "validationState": "REVIEW_REQUIRED",
+            "printedCandidate": {"text": review_cell["selectedValue"], "confidence": 0.72},
+            "handwrittenCandidate": None,
+            "finalCandidate": {"text": review_cell["selectedValue"], "confidence": 0.72},
+            "recognitionMode": "HYBRID_PRINT_OCR_HTR",
+            "sourceBoundingBox": review_cell["boundingBox"],
+        })
     metadata = htr_metadata(fixture)
-    metadata_cells = [htr_cell(None, column, index, metadata[column]) for index, column in enumerate(["date", "signature", "ds"])]
+    metadata_cells = [htr_cell(None, column, index, value) for index, (column, value) in enumerate(metadata.items())]
+    if template_id == "TEMPLATE_B":
+        signature_cell = next(cell for cell in metadata_cells if cell["columnId"] == "signature")
+        signature_cell.update({
+            "confidence": 0.74,
+            "needsReview": True,
+            "validationState": "REVIEW_REQUIRED",
+            "printedCandidate": None,
+            "handwrittenCandidate": {"text": signature_cell["selectedValue"], "confidence": 0.74},
+            "finalCandidate": {"text": signature_cell["selectedValue"], "confidence": 0.74},
+            "recognitionMode": "HYBRID_PRINT_OCR_HTR",
+            "sourceBoundingBox": signature_cell["boundingBox"],
+        })
     mapped = sum(bool(cell["selectedValue"]) for cell in cells)
-    status = mapping_status or ("FORM_MAPPING_COMPLETE" if mapped > 1 else "MAPPING_FAILED")
+    reviewed = sum(bool(cell["needsReview"]) for cell in cells + metadata_cells)
+    status = mapping_status or ("MAPPING_FAILED" if mapped <= 1 else ("FORM_MAPPING_REQUIRES_REVIEW" if reviewed else "FORM_MAPPING_COMPLETE"))
+    template_version = "togplassering-skien-template-b-29x8-v1" if template_id == "TEMPLATE_B" else "togplassering-skien-29x6-v1"
     report = {
         "schemaVersion": "sde-night-form-mapping-report-v2",
         "mappingStatus": status,
         "htrCompleted": True,
         "registrationStatus": "CELLS_SEGMENTED",
-        "templateVersion": "togplassering-skien-29x6-v1",
+        "templateId": template_id,
+        "templateVersion": template_version,
+        "columnCount": len(columns),
         "recognizerVersion": MODEL_VERSION,
         "modelSha256": MODEL_SHA256,
         "cellCount": len(cells),
         "mappedCellCount": mapped,
-        "reviewedCellCount": 0,
-        "requiresHumanReview": status != "FORM_MAPPING_COMPLETE",
+        "reviewedCellCount": reviewed,
+        "requiresHumanReview": reviewed > 0 or status != "FORM_MAPPING_COMPLETE",
         "mappingConfidence": 0.98,
         "cells": cells,
         "metadataCells": metadata_cells,
@@ -110,7 +145,8 @@ def htr_result(fixture: dict[str, object], mapping_status: str | None = None) ->
         "status": status,
         "registration": {
             "status": "CELLS_SEGMENTED",
-            "templateVersion": "togplassering-skien-29x6-v1",
+            "templateId": template_id,
+            "templateVersion": template_version,
             "perspectiveCorrectionApplied": True,
             "detectionConfidence": 0.99,
             "detectionSource": "SYNTHETIC_TEST_DOUBLE",
@@ -291,6 +327,7 @@ class NightPlanningBrowserTests(unittest.TestCase):
             htr_fixture = load_ocr_fixture("synthetic-htr-neat.json")
             fixture_a = load_ocr_fixture("synthetic-fixture-a.json")
             fixture_b = load_ocr_fixture("synthetic-fixture-b.json")
+            hybrid_template_b = load_ocr_fixture("synthetic-template-b-hybrid-a.json")
             failed_fixture = {
                 "metadata": fixture_b["expected"]["metadata"],
                 "rows": [{"rowIndex": 0, "toTrack": "4M"}],
@@ -298,6 +335,7 @@ class NightPlanningBrowserTests(unittest.TestCase):
             htr_image = FIXTURE_ROOT / htr_fixture["images"][0]["file"]
             image_a = FIXTURE_ROOT / fixture_a["image"]["file"]
             image_b = FIXTURE_ROOT / fixture_b["image"]["file"]
+            hybrid_template_b_image = FIXTURE_ROOT / "synthetic-template-b-hybrid-a.png"
 
             def install_htr(target_page, fixture: dict[str, object], mapping_status: str | None = None) -> None:
                 target_page.evaluate(
@@ -419,6 +457,30 @@ class NightPlanningBrowserTests(unittest.TestCase):
             self.assertNotIn("TEST-A-01", visible_b)
             self.assertNotIn("8S", visible_b)
 
+            select_fixture(page, "#sdeNightImageInput", hybrid_template_b_image, hybrid_template_b)
+            page.locator("#sdeNightAnalyzeImageBtn").click()
+            page.wait_for_function("document.querySelector('[aria-label=\"Inn kl linje 1\"]')?.value === '06:11'")
+            page.get_by_label("Inn kl linje 1", exact=True).focus()
+            page.locator("#sdeNightCellEvidence:not([hidden])").wait_for()
+            self.assertIn("Trykt forslag: 06:11", page.locator("#sdeNightCellEvidenceCaption").inner_text())
+            self.assertGreater(page.locator("#sdeNightCellEvidenceCanvas").evaluate("canvas => canvas.width"), 0)
+            self.assertEqual(page.locator(".sde-night-editor th").count(), 8)
+            self.assertEqual(page.locator("#sdeNightPlanHead th").all_inner_texts(), [
+                "Inn kl", "Fra Tog", "Til Tog", "Settnr", "Til spor", "WC/vann", "INFO", "Merknad",
+            ])
+            self.assertEqual(page.get_by_label("Fra tog linje 1", exact=True).input_value(), "9901/1")
+            self.assertEqual(page.get_by_label("INFO linje 1", exact=True).input_value(), "TEST INFO A")
+            self.assertEqual(page.get_by_label("Merknad linje 1", exact=True).input_value(), "syntetisk rad A")
+            self.assertEqual(page.locator("#sdeNightOperationalDate").input_value(), "2099-12-31")
+            self.assertEqual(page.locator("#sdeNightConfirmedBy").input_value(), "QA")
+            self.assertTrue(page.locator("#sdeNightConfirmedBy").evaluate("input => input.classList.contains('sde-night-uncertain')"))
+            self.assertTrue(page.locator("#sdeNightClockLabel").is_visible())
+            self.assertFalse(page.locator("#sdeNightDsLabel").is_visible())
+            hybrid_report = page.evaluate("window.SdeNightPlanUiTestApi.getUnsavedState().mappingReport")
+            self.assertEqual(hybrid_report["templateId"], "TEMPLATE_B")
+            self.assertEqual(hybrid_report["cellCount"], 232)
+            self.assertEqual(hybrid_report["columnCount"], 8)
+
             page.reload(wait_until="domcontentloaded")
             page.wait_for_function("typeof window.renderSdeNightPlanningWorkspace === 'function'")
             page.evaluate(
@@ -483,7 +545,7 @@ class NightPlanningBrowserTests(unittest.TestCase):
             self.assertEqual(len(posted_payloads), 2)
             image_payload = posted_payloads[1]
             self.assertEqual(image_payload["source"]["sourceType"], "DEVICE_FILE")
-            self.assertEqual(image_payload["source"]["ocrEngine"], "paddleocr-local-htr-onnx-wasm")
+            self.assertEqual(image_payload["source"]["ocrEngine"], "paddleocr-local-hybrid-print-ocr-htr-onnx-wasm")
             self.assertEqual(image_payload["source"]["mappingStatus"], "FORM_MAPPING_COMPLETE")
             self.assertGreater(image_payload["source"]["mappingReport"]["mappedCellCount"], 1)
             self.assertEqual(image_payload["source"]["mappingReport"]["modelSha256"], MODEL_SHA256)
@@ -547,6 +609,32 @@ class NightPlanningBrowserTests(unittest.TestCase):
             self.assertEqual(page.evaluate("localStorage.getItem('sde_night_plans_v1')"), legacy_json)
 
             page.locator("#sdeNightNewManualBtn").click()
+            select_fixture(page, "#sdeNightImageInput", hybrid_template_b_image, hybrid_template_b)
+            page.locator("#sdeNightAnalyzeImageBtn").click()
+            page.wait_for_function("document.querySelector('[aria-label=\"Inn kl linje 1\"]')?.value === '06:11'")
+            page.locator("#sdeNightEditBtn").click()
+            page.locator("#sdeNightConfirmedBy").fill("QA")
+            page.locator("#sdeNightSaveBtn").click()
+            page.locator("#sdeNightPlanStatus").filter(has_text="lagret og verifisert fra server").wait_for()
+            hybrid_payload = posted_payloads[-1]
+            self.assertEqual(hybrid_payload["form"]["rows"][0]["arrivalTime"], "06:11")
+            self.assertEqual(hybrid_payload["form"]["rows"][0]["info"], "TEST INFO A")
+            self.assertEqual(hybrid_payload["source"]["mappingReport"]["templateId"], "TEMPLATE_B")
+            self.assertEqual(len(hybrid_payload["source"]["mappingReport"]["cells"]), 232)
+            hybrid_plan_id = next(
+                plan_id for plan_id, value in stored.items()
+                if value["readback"]["form"]["rows"][0].get("info") == "TEST INFO A"
+            )
+            page.locator(f"[data-sde-night-open-server='{hybrid_plan_id}']").click()
+            page.wait_for_function("document.querySelectorAll('#sdeNightPlanHead th').length === 8")
+            self.assertEqual(page.get_by_label("Inn kl linje 1", exact=True).input_value(), "06:11")
+            self.assertEqual(page.get_by_label("INFO linje 1", exact=True).input_value(), "TEST INFO A")
+            self.assertEqual(page.get_by_label("Merknad linje 1", exact=True).input_value(), "syntetisk rad A")
+            self.assertTrue(page.locator("#sdeNightClockLabel").is_visible())
+            self.assertFalse(page.locator("#sdeNightDsLabel").is_visible())
+            self.assertEqual(page.evaluate("window.SdeNightPlanUiTestApi.getUnsavedState().hasImage"), False)
+
+            page.locator("#sdeNightNewManualBtn").click()
             image_input.set_input_files(str(image_a))
             page.locator("#sdeNightEditBtn").click()
             page.get_by_label("Merknad linje 1", exact=True).fill("forsvinner ved fanelukking")
@@ -590,7 +678,7 @@ class NightPlanningBrowserTests(unittest.TestCase):
             self.assertEqual(mobile.evaluate("window.__nightStorageWrites"), [])
             mobile.close()
 
-            self.assertEqual(len([write for write in business_writes if "/api/night-plans" in write]), 6)
+            self.assertEqual(len([write for write in business_writes if "/api/night-plans" in write]), 7)
             self.assertEqual(page_errors, [])
             context.close()
             browser.close()

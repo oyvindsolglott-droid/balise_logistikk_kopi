@@ -29,6 +29,7 @@
     "vehicleId",
     "desiredSlot",
     "taskContext",
+    "info",
     "notes",
   ]);
   const FEATURE_ALLOWLIST = Object.freeze([
@@ -156,6 +157,7 @@
       arrivalOccurrence: makeField(entry && entry.arrivalOccurrence, normalizeTrainCell, defaults),
       departureOccurrence: makeField(entry && entry.departureOccurrence, normalizeTrainCell, defaults),
       taskContext: makeField(entry && entry.taskContext, cleanText, defaults),
+      info: makeField(entry && entry.info, cleanText, defaults),
       notes: makeField(entry && entry.notes, cleanText, defaults),
       time: makeField(entry && entry.time, normalizeTime, defaults),
       order: Number.isFinite(Number(entry && entry.order)) ? Number(entry.order) : index + 1,
@@ -182,6 +184,7 @@
       createdAt,
       createdBy: cleanText(source.createdBy),
       sourceType,
+      formTemplateId: ["TEMPLATE_A", "TEMPLATE_B"].includes(cleanText(source.formTemplateId)) ? cleanText(source.formTemplateId) : "TEMPLATE_A",
       sourceFingerprint: cleanText(source.sourceFingerprint),
       planStatus,
       dataRevision: cleanText(source.dataRevision),
@@ -591,6 +594,7 @@
       vehicleId: normalizeVehicle,
       desiredSlot: normalizeTrackCell,
       taskContext: cleanText,
+      info: cleanText,
       notes: cleanText,
     };
     const previous = entry[fieldName] && typeof entry[fieldName] === "object"
