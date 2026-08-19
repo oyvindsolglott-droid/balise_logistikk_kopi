@@ -124,6 +124,14 @@ async function main(){
     }
   });
 
+  await check("10c Input Sporplan delete is Admin/TXP only", () => {
+    for(const role of EXPECTED_ROLES){
+      const decision = decide(humanIdentity,role,CAPABILITY_IDS.INPUT_SPORPLAN_DELETE);
+      if([ROLE_KEYS.ADMIN_PILOT,ROLE_KEYS.TXP].includes(role)) assertAllowed(decision);
+      else assertDenied(decision,"role_not_allowed");
+    }
+  });
+
   await check("11 unverified identity is denied", () => {
     assertDenied(decide({ ...humanIdentity, identityVerified: false }, ROLE_KEYS.DROPS), "identity_unverified");
   });
@@ -301,12 +309,16 @@ async function main(){
         id !== CAPABILITY_IDS.READ &&
         id !== CAPABILITY_IDS.ANALYTICS_READ &&
         id !== CAPABILITY_IDS.NIGHT_PLAN_READ &&
-        id !== CAPABILITY_IDS.NIGHT_PLAN_SAVE
+        id !== CAPABILITY_IDS.NIGHT_PLAN_SAVE &&
+        id !== CAPABILITY_IDS.INPUT_SPORPLAN_DELETE
       )){
         assert.equal(response.body.capabilities[capability].allowed, false, capability);
       }
       assert.equal(response.body.capabilities[CAPABILITY_IDS.NIGHT_PLAN_READ].allowed, true);
       assert.equal(response.body.capabilities[CAPABILITY_IDS.NIGHT_PLAN_SAVE].allowed, true);
+      assert.equal(response.body.capabilities[CAPABILITY_IDS.INPUT_SPORPLAN_DELETE].allowed, true);
+      assert.equal(response.body.inputSporplanDeleteEnforcement, true);
+      assert.equal(response.body.inputSporplanDeleteWriteExecutionEnabled, true);
     });
 
     await check("30 no capability write method exists", async () => {
