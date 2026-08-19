@@ -1,4 +1,4 @@
-import "./sde_handwriting_recognition.js?v=e0056d403e318bb69e281b90ffce58e047e0f04f7267b97ba47681f913de082c";
+import "./sde_handwriting_recognition.js?v=22c43705f366b179af24ec2b8bcb1a8b19f109b8ebdacb2832dccd60ed55ce28";
 import * as ort from "./assets/vendor/onnxruntime-web/ort.wasm.min.mjs";
 
 const htr = globalThis.SdeHandwritingRecognition;
@@ -270,14 +270,21 @@ function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell
     gridMask: gridSuppression.pixelMask,
     handwritingLuminanceThreshold: cell.templateId === "TEMPLATE_B" ? 130 : 190,
   });
+  const adaptivePasses = preprocessingPasses(gridSuppression.image);
+  const adaptiveInkPixels = [...adaptivePasses[1]].filter(value => value === 0).length;
+  const templateAHandwritingOnly = cell.templateId === "TEMPLATE_A";
   const metadataField = cell.rowIndex == null;
-  const combinedInkPixels = [...separated.combinedInk].filter(value => value === 0).length;
+  const combinedInkPixels = templateAHandwritingOnly
+    ? adaptiveInkPixels
+    : [...separated.combinedInk].filter(value => value === 0).length;
   const inkRatio = combinedInkPixels / Math.max(1, separated.combinedInk.length);
   const blankThreshold = metadataField ? 0.0005 : 0.0035;
   const blank = combinedInkPixels < Math.max(metadataField ? 3 : 5, separated.combinedInk.length * blankThreshold) || inkRatio > 0.68;
-  const printPasses = layerPreprocessingPasses(separated.printInk, grayscale);
-  const handwritingPasses = cell.templateId === "TEMPLATE_A"
-    ? preprocessingPasses(gridSuppression.image)
+  const printPasses = templateAHandwritingOnly
+    ? []
+    : layerPreprocessingPasses(separated.printInk, grayscale);
+  const handwritingPasses = templateAHandwritingOnly
+    ? adaptivePasses
     : layerPreprocessingPasses(separated.handwritingInk, grayscale);
   const fitMetadata = metadataField && cell.templateId === "TEMPLATE_B";
   const tensorFor = image => fitMetadata
@@ -293,24 +300,20 @@ function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell
     originalCrop,
     cropWidth: resizedWidth,
     cropHeight: 48,
-    printInkRatio: separated.printInkRatio,
-    handwritingInkRatio: separated.handwritingInkRatio,
-    strikeThroughDetected: detectStrikeThrough(separated.handwritingInk, resizedWidth, 48),
+    printInkRatio: templateAHandwritingOnly ? 0 : separated.printInkRatio,
+    handwritingInkRatio: templateAHandwritingOnly ? inkRatio : separated.handwritingInkRatio,
+    strikeThroughDetected: htr.detectStrikeThrough(
+      templateAHandwritingOnly ? adaptivePasses[1] : separated.handwritingInk,
+      resizedWidth,
+      48,
+    ),
     gridLineMask: Object.freeze({
       horizontalLineCount: gridSuppression.horizontalLineCount,
       verticalLineCount: gridSuppression.verticalLineCount,
       gridPixelCount: separated.gridPixelCount,
+      adaptiveInkNormalizationApplied: templateAHandwritingOnly,
     }),
   });
-}
-
-function detectStrikeThrough(layer, width, height){
-  for(let y = Math.floor(height * 0.2); y < Math.ceil(height * 0.8); y += 1){
-    let dark = 0;
-    for(let x = 0; x < width; x += 1) if(layer[(y * width) + x] === 0) dark += 1;
-    if(dark >= width * 0.48) return true;
-  }
-  return false;
 }
 
 function decodeCtc(output, characters, allowedCharacters = null){

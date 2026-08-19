@@ -26,7 +26,7 @@ function run(command, args) {
 test("Quality Engine kjører permanente nattintelligenskontrakter", () => {
   const result = run(process.execPath, ["--test", "tests/sde/intelligent-night-planning.test.cjs", "tests/sde/handwriting-recognition.test.cjs"]);
   const output = `${result.stdout}\n${result.stderr}`;
-  assert.match(output, /tests 53/);
+  assert.match(output, /tests 56/);
   assert.match(output, /fail 0/);
 });
 

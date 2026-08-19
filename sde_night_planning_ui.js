@@ -751,7 +751,7 @@
     if (!htrLogic.supportsLocalRuntime(root)) throw new Error("local_htr_runtime_unavailable");
     ocrAnalyzer = htrRuntime.createLocalHandwritingAnalyzer({
       environment: root,
-      workerUrl: new URL("sde_handwriting_worker.js?v=8360a4689bf2887314c21e2de745e91b8b8e6c858a302c5f8f7abdd61e268336", document.baseURI).href,
+      workerUrl: new URL("sde_handwriting_worker.js?v=7d6f372efcee8e48e7ceaaff5b33afb4a3c44132b886fd17bc4b3bc3a23a78d4", document.baseURI).href,
       maximumDimension: 1800,
     });
     return ocrAnalyzer;

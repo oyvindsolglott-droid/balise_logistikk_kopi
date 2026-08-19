@@ -1986,9 +1986,9 @@ color:var(--muted);
 font-size:13px;
 }
 #oppstillingTable{
-min-width:756px;
+min-width:1120px;
 width:100%;
-table-layout:auto;
+table-layout:fixed;
 border-collapse:collapse;
 background:#fff;
 color:var(--text);
@@ -1996,7 +1996,7 @@ color:var(--text);
 #oppstillingTable th,
 #oppstillingTable td{
 border:1px solid var(--line);
-min-width:70px;
+min-width:0;
 padding:5px 6px;
 height:36px;
 font-size:15px;
@@ -2004,6 +2004,7 @@ white-space:nowrap;
 color:var(--text);
 background:#fff;
 vertical-align:middle;
+box-sizing:border-box;
 }
 #oppstillingTable th{
 position:static;
@@ -2085,9 +2086,9 @@ color:#94a3b8;
 }
 
 #oppstillingTable .opp-vehicle-cell{
-min-width:42px;
-width:42px;
-max-width:48px;
+min-width:0;
+width:auto;
+max-width:none;
 }
 
 #oppstillingTable .opp-vehicle-cell input{
@@ -2117,18 +2118,18 @@ opacity:1;
 }
 
 #oppstillingTable .opp-slot-cell{
-min-width:38px;
-width:38px;
-max-width:42px;
+min-width:0;
+width:auto;
+max-width:none;
 font-weight:800;
 color:#1e3a5f;
 background:#f8fbff;
 }
 
 #oppstillingTable .opp-swap-cell{
-min-width:34px;
-width:34px;
-max-width:38px;
+min-width:0;
+width:auto;
+max-width:none;
 padding-left:2px;
 padding-right:2px;
 }
@@ -2146,8 +2147,8 @@ text-align:center;
 background:#fff;
 }
 #oppstillingTable .opp-swap-cell{
-width:40px;
-min-width:40px;
+width:auto;
+min-width:0;
 padding:3px;
 }
 #oppstillingTable .opp-swap-btn{
@@ -2435,7 +2436,7 @@ font-size:13px;
 }
 .api-grid{grid-template-columns:1fr}
 #oppstillingTable{
-min-width:700px;
+min-width:980px;
 }
 #oppstillingTable th,
 #oppstillingTable td{
@@ -2450,65 +2451,26 @@ padding:4px 5px;
 max-height:none;
 }
 
-.zoom-wrap table thead th,
-#oppstillingTable thead tr:first-child th,
-#oppstillingTable thead tr:nth-child(2) th{
-position:static;
+#oppstillingTable thead{
+display:table-header-group;
+}
+
+#oppstillingTable thead tr:first-child th{
+position:sticky;
+top:0;
+z-index:17;
 box-shadow:none;
 }
 
-#oppstillingTable thead{
-display:table-header-group;
-position:static;
-top:auto;
-z-index:auto;
+#oppstillingTable thead tr:nth-child(2) th{
+position:sticky;
+top:var(--cell-h);
+z-index:18;
+box-shadow:0 2px 3px rgba(0,0,0,.10);
 }
 
 /* Tursatt mobil: behold samme tabelloppsett som desktop, men uten zoom-transform */
 #oppstilling .mobile-table-label{
-display:none;
-}
-
-#oppstilling .oppstilling-mobile-real-header{
-display:none;
-position:fixed;
-top:calc(var(--sticky-top) + var(--seg-height) + 62px);
-left:0;
-right:0;
-z-index:46;
-overflow:hidden;
-background:#fff;
-border-top:1px solid var(--line);
-border-bottom:1px solid var(--line);
-box-shadow:0 2px 3px rgba(0,0,0,.10);
-opacity:0;
-visibility:hidden;
-pointer-events:none;
-}
-
-#oppstilling .oppstilling-mobile-real-header.is-active{
-opacity:1;
-visibility:visible;
-}
-
-#oppstilling .oppstilling-mobile-real-header table{
-border-collapse:collapse;
-background:#fff;
-table-layout:fixed;
-}
-
-#oppstilling .oppstilling-mobile-real-header th{
-position:static !important;
-box-shadow:none !important;
-background:#f3f4f6;
-font-size:12px;
-padding:4px 5px;
-height:var(--cell-h);
-min-width:0;
-white-space:nowrap;
-}
-
-#oppstilling .oppstilling-mobile-real-header thead tr:first-child{
 display:none;
 }
 
@@ -2521,10 +2483,6 @@ overflow:auto;
 #oppstilling #apiCombinedZoom{
 transform:none !important;
 width:max-content;
-}
-
-#oppstilling .api-box:has(#apiCombinedZoom){
-padding-top:42px;
 }
 
 #turneringKveld .zoom-wrap{
@@ -2579,12 +2537,6 @@ box-shadow:0 2px 3px rgba(0,0,0,.10);
 #turneringNatt .view-tools,
 #turneringNatt .mobile-table-label{
 display:none;
-}
-
-#oppstillingTable thead tr:first-child th,
-#oppstillingTable thead tr:nth-child(2) th{
-position:static;
-box-shadow:none;
 }
 
 .file-input{max-width:none}
@@ -9764,7 +9716,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 18. august 2026</p>
+<p class="sub">Siste revisjon: 19. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -10206,9 +10158,6 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
     <span id="tursattFilterStatus" class="save-indicator">Skjuler ikke-tursatte rader</span>
   </div>
   <div class="mobile-table-label">Tursatt – Tognr. | Tid | Kjøretøy 1 | Spor | ⇄ | Kjøretøy 2 | Spor</div>
-  <div class="oppstilling-mobile-real-header" id="oppstillingMobileHeader" aria-hidden="true">
-    <table id="oppstillingMobileHeaderTable"></table>
-  </div>
   <div class="zoom-wrap">
     <div class="zoom-inner" id="apiCombinedZoom">
       <table id="oppstillingTable"></table>
@@ -10283,7 +10232,7 @@ Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for v
 
 
 <script src="sde_intelligent_night_planning.js?v=ae80afdb91c70b122aedf202bb7ffc1c78e865cf9bc20dece76652990416b386"></script>
-<script src="sde_handwriting_recognition.js?v=e0056d403e318bb69e281b90ffce58e047e0f04f7267b97ba47681f913de082c"></script>
+<script src="sde_handwriting_recognition.js?v=22c43705f366b179af24ec2b8bcb1a8b19f109b8ebdacb2832dccd60ed55ce28"></script>
 <script src="sde_handwriting_runtime.js?v=a4a5fceb24d5f16aa2d745f634e2961cdf6130185b0682130e6fe6c03368892f"></script>
 <script src="sde_tursatt_post_arrival.js?v=44f462a93a6a23348cdea2211d10b3ddecc6367da69dedec2fab21be89610795"></script>
 <script>
@@ -15386,108 +15335,39 @@ function toggleUntursattRows(){
   buildOppstilling();
 }
 
-function buildOppstillingMobileHeader(){
-  const sourceTable = document.getElementById("oppstillingTable");
-  const headerTable = document.getElementById("oppstillingMobileHeaderTable");
-  const headerWrap = document.getElementById("oppstillingMobileHeader");
-  const scrollWrap = document.querySelector("#oppstilling .zoom-wrap");
+const TURSATT_COLUMN_MODEL = Object.freeze([
+  Object.freeze({id:"arrivalTrain", group:"arrival", label:"Tognr.", track:"7%"}),
+  Object.freeze({id:"arrivalTime", group:"arrival", label:"Ankomsttid", track:"8%"}),
+  Object.freeze({id:"arrivalVehicle1", group:"arrival", label:"Kjøretøy 1 nr.", track:"11%"}),
+  Object.freeze({id:"arrivalTrack1", group:"arrival", label:"Spor", track:"5%"}),
+  Object.freeze({id:"arrivalSwap", group:"arrival", label:"", track:"3%"}),
+  Object.freeze({id:"arrivalVehicle2", group:"arrival", label:"Kjøretøy 2 nr.", track:"11%"}),
+  Object.freeze({id:"arrivalTrack2", group:"arrival", label:"Spor", track:"5%"}),
+  Object.freeze({id:"departureTrain", group:"departure", label:"Tognr.", track:"7%"}),
+  Object.freeze({id:"departureTime", group:"departure", label:"Avgangstid", track:"8%"}),
+  Object.freeze({id:"departureVehicle1", group:"departure", label:"Kjøretøy 1 nr.", track:"11%"}),
+  Object.freeze({id:"departureTrack1", group:"departure", label:"Spor", track:"5%"}),
+  Object.freeze({id:"departureSwap", group:"departure", label:"", track:"3%"}),
+  Object.freeze({id:"departureVehicle2", group:"departure", label:"Kjøretøy 2 nr.", track:"11%"}),
+  Object.freeze({id:"departureTrack2", group:"departure", label:"Spor", track:"5%"})
+]);
 
-  if(!sourceTable || !headerTable || !headerWrap || !scrollWrap) return;
-
-  const sourceThead = sourceTable.querySelector("thead");
-  const measureRow =
-    sourceTable.querySelector("tbody tr") ||
-    sourceTable.querySelector("thead tr:nth-child(2)");
-
-  if(!sourceThead || !measureRow) return;
-
-  const syncHeader = ()=>{
-    const cells = Array.from(measureRow.children);
-    if(!cells.length) return;
-
-    const widths = cells.map(cell => Math.ceil(cell.getBoundingClientRect().width));
-    const totalWidth = widths.reduce((sum, width)=>sum + width, 0);
-
-    headerTable.innerHTML = "";
-
-    const colgroup = document.createElement("colgroup");
-    widths.forEach(width=>{
-      const col = document.createElement("col");
-      col.style.width = `${width}px`;
-      colgroup.appendChild(col);
-    });
-
-    const clonedHead = sourceThead.cloneNode(true);
-    const clonedGroupRow = clonedHead.querySelector("tr:first-child");
-    if(clonedGroupRow) clonedGroupRow.remove();
-
-    headerTable.appendChild(colgroup);
-    headerTable.appendChild(clonedHead);
-
-    const sourceRect = sourceTable.getBoundingClientRect();
-    const headerWrapRect = headerWrap.getBoundingClientRect();
-    const tableWidth = Math.ceil(sourceRect.width);
-    const tableLeft = Math.round(sourceRect.left - headerWrapRect.left + scrollWrap.scrollLeft);
-
-    headerTable.style.width = `${tableWidth}px`;
-    headerTable.style.minWidth = `${tableWidth}px`;
-    headerTable.style.marginLeft = `${tableLeft}px`;
-    headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
-  };
-
-  const updateHeaderVisibility = ()=>{
-    const oppstillingPanel = document.getElementById("oppstilling");
-    const isOppstillingActive = oppstillingPanel?.classList.contains("active");
-    const tableTop = scrollWrap.getBoundingClientRect().top;
-    const headerTop = headerWrap.getBoundingClientRect().top;
-    const shouldShow = Boolean(isOppstillingActive && tableTop <= headerTop);
-
-    headerWrap.classList.toggle("is-active", shouldShow);
-
-    if(shouldShow){
-      headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
-    }
-  };
-
-  if(!scrollWrap.dataset.oppstillingMobileHeaderSync){
-    scrollWrap.addEventListener("scroll", ()=>{
-      headerTable.style.transform = `translateX(${-scrollWrap.scrollLeft}px)`;
-      updateHeaderVisibility();
-    }, {passive:true});
-
-    window.addEventListener("scroll", ()=>{
-      updateHeaderVisibility();
-    }, {passive:true});
-
-    window.addEventListener("resize", ()=>{
-      requestAnimationFrame(()=>{
-        syncHeader();
-        updateHeaderVisibility();
-      });
-    }, {passive:true});
-
-    document.querySelectorAll(".seg").forEach(btn=>{
-      btn.addEventListener("click", ()=>{
-        setTimeout(updateHeaderVisibility, 80);
-      });
-    });
-
-    scrollWrap.dataset.oppstillingMobileHeaderSync = "1";
-  }
-
-  requestAnimationFrame(()=>{
-    syncHeader();
-    updateHeaderVisibility();
+function appendTursattCanonicalColgroup(table){
+  const colgroup = document.createElement("colgroup");
+  TURSATT_COLUMN_MODEL.forEach(column=>{
+    const col = document.createElement("col");
+    col.dataset.tursattColumn = column.id;
+    col.style.width = column.track;
+    colgroup.appendChild(col);
   });
-  setTimeout(()=>{ syncHeader(); updateHeaderVisibility(); }, 120);
-  setTimeout(()=>{ syncHeader(); updateHeaderVisibility(); }, 400);
-  setTimeout(()=>{ syncHeader(); updateHeaderVisibility(); }, 900);
+  table.appendChild(colgroup);
 }
 
 function buildOppstilling(){
   tursattFlowAnalysisCache = null;
   const table=document.getElementById("oppstillingTable");
   table.innerHTML="";
+  appendTursattCanonicalColgroup(table);
   state.tursattBaliseDiagnostics = [];
   state.tursattBaliseDeviationList = [];
 
@@ -15495,23 +15375,27 @@ function buildOppstilling(){
   const trGroup=document.createElement("tr");
   const thArr=document.createElement("th");
   thArr.className="opp-group opp-arrival-cell";
+  thArr.scope="colgroup";
   thArr.colSpan=7;
   thArr.textContent="Ankomst";
   trGroup.appendChild(thArr);
   const thDep=document.createElement("th");
   thDep.className="opp-group opp-departure-cell opp-departure-start";
+  thDep.scope="colgroup";
   thDep.colSpan=7;
   thDep.textContent="Avgang";
   trGroup.appendChild(thDep);
   thead.appendChild(trGroup);
 
   const trHead=document.createElement("tr");
-  ["Tognr.","Ankomsttid","Kjøretøy 1 nr.","Spor","","Kjøretøy 2 nr.","Spor","Tognr.","Avgangstid","Kjøretøy 1 nr.","Spor","","Kjøretøy 2 nr.","Spor"].forEach((text,index)=>{
+  TURSATT_COLUMN_MODEL.forEach((column,index)=>{
     const th=document.createElement("th");
+    th.scope="col";
+    th.dataset.tursattColumn=column.id;
     if(index < 7) th.classList.add("opp-arrival-cell");
     if(index >= 7) th.classList.add("opp-departure-cell");
     if(index === 7) th.classList.add("opp-departure-start");
-    th.textContent=text;
+    th.textContent=column.label;
     trHead.appendChild(th);
   });
   thead.appendChild(trHead);
@@ -15540,7 +15424,6 @@ function buildOppstilling(){
   table.appendChild(body);
   updateTursattFilterUi(arrivalFilter.hidden, departureFilter.hidden);
   renderTursattFlowDiagnostics();
-  buildOppstillingMobileHeader();
 }
 
 
@@ -57259,7 +57142,7 @@ if(!isPublicGithubPagesApp()){
 if(isSdeCanonicalShadowAnalysisRequested()) runSdeCanonicalShadowAnalysis();
 </script>
 
-<script src="sde_night_planning_ui.js?v=d756bc3f16dd396afb14dc02a0662552caea7e7843bf1388bed074d8bbb43045"></script>
+<script src="sde_night_planning_ui.js?v=172e4c84c42925cbb07bfc649b38a39a64c8a7cda88d1dcdd25722674131285d"></script>
 
 <div class="rights-notice" id="rightsNotice">
   <div class="rights-title">© Øyvind Solgløtt. Alle rettigheter reservert.</div>
