@@ -89,6 +89,43 @@ function syntheticPhotographedTemplateB(){
   return {width, height, pixels};
 }
 
+function syntheticTemplateAWithInteriorRuleDistractors(){
+  const width = 1125;
+  const height = 1358;
+  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
+  const shade = (x, y, value = 26) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  const templateARules = [18, 153, 306, 454, 598, 726, 1110];
+  const narrowTemplateBLikeDistractors = [18, 66, 117, 182, 242, 305, 377, 545, 708];
+  for(const x of templateARules){
+    for(let y = 40; y <= 1320; y += 1){
+      shade(x - 1, y);
+      shade(x, y);
+      shade(x + 1, y);
+    }
+  }
+  for(const x of narrowTemplateBLikeDistractors){
+    if(templateARules.some(rule => Math.abs(rule - x) <= 2)) continue;
+    for(let y = 255; y <= 1320; y += 1) shade(x, y, 62);
+  }
+  for(let x = 18; x <= 1110; x += 1){
+    shade(x, 40);
+    shade(x, 1320);
+  }
+  for(let row = 0; row < 30; row += 1){
+    const y = 255 + ((row / 29) * (1320 - 255));
+    for(let x = 18; x <= 1110; x += 1) shade(x, y);
+  }
+  return {width, height, pixels};
+}
+
 test("HTR-pipelinen er eksplisitt, lokal og kjører før formmapping", () => {
   const subject = loadSubject();
   assert.deepEqual(subject.PIPELINE_STAGES, [
@@ -152,6 +189,15 @@ test("fotografert skjema registreres fra hele syvlinjers rutenett uten at kantsk
   assert.ok(Math.abs(detected.corners[3].x - 38) < 8, JSON.stringify(detected));
   assert.ok(Math.abs(detected.corners[1].x - 344) < 8, JSON.stringify(detected));
   assert.ok(Math.abs(detected.corners[2].x - 333) < 8, JSON.stringify(detected));
+});
+
+test("Template A med bred Merknad-kolonne kan ikke avkortes til en smal ni-reglers Template B", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticTemplateAWithInteriorRuleDistractors());
+  assert.equal(detected.templateId, "TEMPLATE_A", JSON.stringify(detected));
+  assert.equal(detected.verticalLineCount, 7);
+  assert.ok(detected.corners[1].x > 1000, JSON.stringify(detected));
+  assert.ok(detected.corners[2].x > 1000, JSON.stringify(detected));
 });
 
 test("malregistrering gir nøyaktig 29 x 6 stabile håndskriftceller", () => {
@@ -229,11 +275,11 @@ test("plausible identifierforslag forblir review-merket ved vanlig modellkonfide
   const subject = loadSubject();
   const train = subject.normalizeRecognition({
     columnId: "toTrain",
-    candidates: [{text: "765", confidence: 0.994}],
+    candidates: [{text: "765", confidence: 0.979}],
   });
   const vehicle = subject.normalizeRecognition({
     columnId: "vehicleId",
-    candidates: [{text: "73-26", confidence: 0.979}],
+    candidates: [{text: "73-26", confidence: 0.909}],
   });
   assert.equal(train.selectedValue, "765");
   assert.equal(train.needsReview, true);
@@ -354,6 +400,19 @@ test("HTR-modulen har ingen persistens-, sky-OCR- eller designverdi-fallback", (
   assert.equal(/previous(?:Plan|Value)|historical(?:Plan|Value)/.test(source), false);
 });
 
+test("HTR-cachekjeden er SHA-bundet fra hovedside til UI, worker og gjenkjenningsmodul", () => {
+  const index = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const uiPath = path.join(root, "sde_night_planning_ui.js");
+  const workerPath = path.join(root, "sde_handwriting_worker.js");
+  const recognitionHash = crypto.createHash("sha256").update(fs.readFileSync(modulePath)).digest("hex");
+  const workerHash = crypto.createHash("sha256").update(fs.readFileSync(workerPath)).digest("hex");
+  const uiHash = crypto.createHash("sha256").update(fs.readFileSync(uiPath)).digest("hex");
+  assert.match(index, new RegExp(`sde_handwriting_recognition\\.js\\?v=${recognitionHash}`));
+  assert.match(fs.readFileSync(workerPath, "utf8"), new RegExp(`sde_handwriting_recognition\\.js\\?v=${recognitionHash}`));
+  assert.match(fs.readFileSync(uiPath, "utf8"), new RegExp(`sde_handwriting_worker\\.js\\?v=${workerHash}`));
+  assert.match(index, new RegExp(`sde_night_planning_ui\\.js\\?v=${uiHash}`));
+});
+
 test("malvariant klassifiseres eksplisitt fra struktur og trykte skjemabevis", () => {
   const subject = loadSubject();
   assert.equal(subject.detectTemplateVariant({
@@ -452,6 +511,22 @@ test("lagkonflikt og overstrykning kan aldri autoaksepteres", () => {
   assert.equal(corrected.needsReview, true);
   assert.equal(corrected.finalCandidate.text, "rettet");
   assert.equal(corrected.reason, "STRIKETHROUGH_OR_CORRECTION");
+});
+
+test("vanlige håndskriftstreker er ikke overstrykning, men en sammenhengende rettelinje er det", () => {
+  const subject = loadSubject();
+  const width = 40;
+  const height = 20;
+  const handwriting = new Uint8Array(width * height).fill(255);
+  for(const x of [2, 3, 8, 9, 15, 16, 25, 26, 34, 35]) handwriting[(10 * width) + x] = 0;
+  assert.equal(subject.detectStrikeThrough(handwriting, width, height), false);
+
+  const corrected = handwriting.slice();
+  for(let x = 3; x <= 36; x += 1){
+    corrected[(9 * width) + x] = 0;
+    corrected[(10 * width) + x] = 0;
+  }
+  assert.equal(subject.detectStrikeThrough(corrected, width, height), true);
 });
 
 test("Template B-kildedato og initialer bevares uten current-date-fallback", () => {

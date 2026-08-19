@@ -295,6 +295,13 @@ const STRICT_INVARIANT_IDS = Object.freeze([
   "INV-INPUT-CLEANUP-026",
   "INV-INPUT-CLEANUP-027",
   "INV-INPUT-CLEANUP-028",
+  "INV-TURSATT-ALIGN-001",
+  "INV-TURSATT-ALIGN-002",
+  "INV-TURSATT-ALIGN-003",
+  "INV-TURSATT-ALIGN-004",
+  "INV-TURSATT-ALIGN-005",
+  "INV-TURSATT-ALIGN-006",
+  "INV-TURSATT-ALIGN-007",
 ]);
 const STRICT_TOTAL = STRICT_INVARIANT_IDS.length;
 const DETERMINISM_RUNS = 3;
@@ -302,8 +309,8 @@ const STRICT_REPLAY_TIMEOUT_MS = 120_000;
 const BASELINE_REPLAY_TIMEOUT_MS = 240_000;
 const CHILD_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
-if (STRICT_TOTAL !== 292 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
-  throw new Error("active strict invariant catalog must contain exactly 292 unique IDs");
+if (STRICT_TOTAL !== 299 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
+  throw new Error("active strict invariant catalog must contain exactly 299 unique IDs");
 }
 
 function canonical(value) {

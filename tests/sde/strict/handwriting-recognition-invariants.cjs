@@ -69,6 +69,44 @@ function photographedFormWithEdgeShadow(){
   return {width, height, pixels};
 }
 
+function photographedTemplateAWithInteriorRuleDistractors(){
+  const width = 1125;
+  const height = 1358;
+  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
+  const shade = (x, y, value = 26) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+    pixels[offset + 3] = 255;
+  };
+  const templateARules = [18, 153, 306, 454, 598, 726, 1110];
+  const narrowTemplateBLikeDistractors = [18, 66, 117, 182, 242, 305, 377, 545, 708];
+  for(const x of templateARules){
+    for(let y = 40; y <= 1320; y += 1){
+      shade(x - 1, y);
+      shade(x, y);
+      shade(x + 1, y);
+    }
+  }
+  for(const x of narrowTemplateBLikeDistractors){
+    if(templateARules.some(rule => Math.abs(rule - x) <= 2)) continue;
+    for(let y = 255; y <= 1320; y += 1) shade(x, y, 62);
+  }
+  for(let x = 18; x <= 1110; x += 1){
+    shade(x, 40);
+    shade(x, 1320);
+  }
+  for(let row = 0; row < 30; row += 1){
+    const y = 255 + ((row / 29) * (1320 - 255));
+    for(let x = 18; x <= 1110; x += 1) shade(x, y);
+  }
+  return {width, height, pixels};
+}
+
 invariant("INV-HTR-001", "all value cells use explicit print-OCR and HTR layers", () => {
   const requests = htr.createRecognitionRequests(registration());
   return requests.length === 177
@@ -193,10 +231,12 @@ invariant("INV-HTR-019", "a candidate seen in only one preprocessing pass cannot
 );
 
 invariant("INV-HTR-020", "plausible but imperfect identifiers stay review-marked", () => {
-  const train = htr.normalizeRecognition({columnId: "toTrain", candidates: [{text: "765", confidence: 0.994}]});
-  const vehicle = htr.normalizeRecognition({columnId: "vehicleId", candidates: [{text: "73-26", confidence: 0.979}]});
+  const train = htr.normalizeRecognition({columnId: "toTrain", candidates: [{text: "765", confidence: 0.979}]});
+  const vehicle = htr.normalizeRecognition({columnId: "vehicleId", candidates: [{text: "73-26", confidence: 0.909}]});
+  const slot = htr.normalizeRecognition({columnId: "toTrack", candidates: [{text: "11N", confidence: 0.744}]}, {canonicalSlots:["11N"]});
   return train.selectedValue === "765" && train.needsReview === true
-    && vehicle.selectedValue === "73-26" && vehicle.needsReview === true;
+    && vehicle.selectedValue === "73-26" && vehicle.needsReview === true
+    && slot.selectedValue === "11N" && slot.needsReview === true;
 });
 
 invariant("INV-HTR-021", "progress states distinguish preprocessing, registration, segmentation, and recognition", () =>
@@ -247,6 +287,34 @@ invariant("INV-HTR-027", "catalogs and slot registers validate but never invent 
   return vehicle.selectedValue === "" && vehicle.needsReview === true
     && track.selectedValue === "" && track.needsReview === true;
 });
+
+invariant("INV-HTR-028", "the full Template A span beats a narrower nine-rule interior subset", () => {
+  const detected = htr.detectFormRegistration(photographedTemplateAWithInteriorRuleDistractors());
+  return detected.templateId === "TEMPLATE_A"
+    && detected.verticalLineCount === 7
+    && detected.corners[1].x > 1000
+    && detected.corners[2].x > 1000;
+});
+
+invariant("INV-HTR-029", "ordinary separated handwriting is not mistaken for a strike-through correction", () => {
+  const width = 40;
+  const height = 20;
+  const ordinary = new Uint8Array(width * height).fill(255);
+  for(const x of [2, 3, 8, 9, 15, 16, 25, 26, 34, 35]) ordinary[(10 * width) + x] = 0;
+  const correction = ordinary.slice();
+  for(let x = 3; x <= 36; x += 1){
+    correction[(9 * width) + x] = 0;
+    correction[(10 * width) + x] = 0;
+  }
+  return htr.detectStrikeThrough(ordinary, width, height) === false
+    && htr.detectStrikeThrough(correction, width, height) === true;
+});
+
+invariant("INV-HTR-030", "Template A crop readability uses adaptive handwriting-only normalization", () =>
+  worker.includes('const templateAHandwritingOnly = cell.templateId === "TEMPLATE_A";')
+  && worker.includes("templateAHandwritingOnly ? adaptivePasses[1] : separated.handwritingInk")
+  && worker.includes("adaptiveInkNormalizationApplied: templateAHandwritingOnly")
+);
 
 function templateBRegistration(){
   return htr.registerTemplate({imageWidth: 1200, imageHeight: 1500, templateId: "TEMPLATE_B"});

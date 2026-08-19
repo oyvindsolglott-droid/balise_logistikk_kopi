@@ -507,12 +507,30 @@
     }
     const lines = bestVerticalLines(pixels, width, height);
     const gridCandidates = Object.values(TEMPLATES)
-      .map(template => ({template, grid: selectFormGrid(lines, width, template)}))
+      .map(template => {
+        const grid = selectFormGrid(lines, width, template);
+        if(!grid) return {template, grid};
+        const firstRule = grid.selected[0];
+        const lastRule = grid.selected.at(-1);
+        const formSpanRatio = (lastRule.xAtReference - firstRule.xAtReference) / width;
+        const sequenceFit = Math.max(0, 1 - (grid.deviation / Math.max(1, grid.selected.length - 2)));
+        const averageCoverage = grid.selected.reduce((sum, line) => (
+          sum + (line.score / Math.max(1, line.samples))
+        ), 0) / grid.selected.length;
+        return {template, grid, formSpanRatio, sequenceFit, averageCoverage};
+      })
       .filter(candidate => candidate.grid && candidate.grid.selected.length === candidate.template.columnBoundaries.length)
       .sort((left, right) => {
-        const leftAverage = left.grid.score / left.grid.selected.length;
-        const rightAverage = right.grid.score / right.grid.selected.length;
-        return (right.grid.selected.length - left.grid.selected.length) || (rightAverage - leftAverage);
+        // The outer rules must describe the whole form, not a visually dense
+        // interior subset. This prevents an interior Template-A column rule
+        // from being treated as the right edge of a shorter nine-rule form.
+        const materialSpanDifference = Math.abs(right.formSpanRatio - left.formSpanRatio) > 0.06;
+        if(materialSpanDifference) return right.formSpanRatio - left.formSpanRatio;
+        const fitDifference = right.sequenceFit - left.sequenceFit;
+        if(Math.abs(fitDifference) > 0.025) return fitDifference;
+        const coverageDifference = right.averageCoverage - left.averageCoverage;
+        if(Math.abs(coverageDifference) > 0.025) return coverageDifference;
+        return right.grid.selected.length - left.grid.selected.length;
       });
     const selectedCandidate = gridCandidates[0] || null;
     const grid = selectedCandidate?.grid || null;
@@ -571,6 +589,13 @@
           corners,
           confidence: clamp((averageLineCoverage * 0.55) + (sequenceFit * 0.25) + (horizontalCoverage * 0.2), 0, 1),
           source: "FORM_GRID_RULE_SEQUENCE",
+          formSpanRatio: selectedCandidate.formSpanRatio,
+          templateSelectionEvidence: Object.freeze({
+            formSpanRatio: selectedCandidate.formSpanRatio,
+            sequenceFit: selectedCandidate.sequenceFit,
+            averageCoverage: selectedCandidate.averageCoverage,
+            candidateCount: gridCandidates.length,
+          }),
           verticalLineCount: grid.selected.length,
           horizontalBoundaryCount: 2,
           horizontalLineCount: horizontalGrid.horizontalLineCount,
@@ -990,10 +1015,10 @@
     // it without review only at a precision-oriented confidence level.
     const reviewThresholds = Object.freeze({
       FREE_TEXT: 0.98,
-      VEHICLE_ID: 0.98,
-      CANONICAL_SLOT: 0.98,
+      VEHICLE_ID: 0.91,
+      CANONICAL_SLOT: 0.745,
       WC_WATER_SYMBOL: 0.98,
-      TRAIN_IDENTIFIER: 0.995,
+      TRAIN_IDENTIFIER: 0.98,
       DATE: 0.98,
       TIME: 0.98,
     });
@@ -1117,6 +1142,30 @@
       && typeof environment?.crypto?.subtle?.digest === "function";
   }
 
+  function detectStrikeThrough(layer, width, height){
+    if(!layer || width < 4 || height < 4 || layer.length < width * height) return false;
+    const longestRunAt = y => {
+      let longest = 0;
+      let current = 0;
+      for(let x = 0; x < width; x += 1){
+        if(layer[(y * width) + x] === 0){
+          current += 1;
+          longest = Math.max(longest, current);
+        }else{
+          current = 0;
+        }
+      }
+      return longest;
+    };
+    const firstRow = Math.max(1, Math.floor(height * 0.2));
+    const lastRow = Math.min(height - 2, Math.ceil(height * 0.8));
+    for(let y = firstRow; y <= lastRow; y += 1){
+      if(longestRunAt(y) < width * 0.72) continue;
+      if(Math.max(longestRunAt(y - 1), longestRunAt(y + 1)) >= width * 0.45) return true;
+    }
+    return false;
+  }
+
   function clamp(value, minimum, maximum){
     return Math.max(minimum, Math.min(maximum, value));
   }
@@ -1137,6 +1186,7 @@
     createPerspectiveTransform,
     createRecognitionRequests,
     createRecognitionSession,
+    detectStrikeThrough,
     detectFormRegistration,
     detectTemplateVariant,
     normalizeRecognition,

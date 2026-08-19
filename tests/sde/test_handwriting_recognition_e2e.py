@@ -179,7 +179,7 @@ class HandwritingRecognitionBrowserTests(unittest.TestCase):
                 f" free_text_note_exact={free_text_accuracy:.4f}"
             )
             self.assertGreaterEqual(structured_accuracy, 0.90)
-            self.assertGreaterEqual(non_empty_precision, 0.98)
+            self.assertGreaterEqual(non_empty_precision, 0.99)
             self.assertEqual(page_errors, [])
             self.assertEqual(external_requests, [])
             self.assertTrue(note_results, "free-text note accuracy must be measured separately")
@@ -315,10 +315,10 @@ class HandwritingRecognitionBrowserTests(unittest.TestCase):
                 f" printed_mismatches={len(printed_mismatches)}"
             )
             self.assertGreaterEqual(printed_accuracy, 0.98, str(printed_mismatches))
-            self.assertGreaterEqual(accepted_precision, 0.98)
+            self.assertGreaterEqual(accepted_precision, 0.99)
             self.assertGreaterEqual(correct_or_review_rate, 0.95)
             self.assertEqual(unsupported_accepted, [])
-            self.assertGreater(auto_accepted_coverage, 0)
+            self.assertGreaterEqual(auto_accepted_coverage, 0.80)
             self.assertLess(review_required_coverage, 1)
             self.assertEqual(page_errors, [])
             self.assertEqual(external_requests, [])
