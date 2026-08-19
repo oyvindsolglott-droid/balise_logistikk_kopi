@@ -55,6 +55,7 @@ const CAPABILITY_IDS = Object.freeze({
   REGISTER_RESOLUTIONS: "vehicle_status.register_resolutions",
   NIGHT_PLAN_READ: "night_plan.read",
   NIGHT_PLAN_SAVE: "night_plan.save",
+  INPUT_SPORPLAN_DELETE: "input_sporplan.delete",
   CLEAR_WORKSHOP_DISPOSITION_WITH_OPERATIONAL:
     "vehicle_status.clear_workshop_disposition_with_operational",
   ACKNOWLEDGE_DROPS_NOTIFICATION: "vehicle_status.acknowledge_drops_notification",
@@ -206,6 +207,12 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
   {
     capability: CAPABILITY_IDS.NIGHT_PLAN_SAVE,
     description: "Save private night-plan image, corrected form, provenance and learning record atomically.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.TXP]
+  },
+  {
+    capability: CAPABILITY_IDS.INPUT_SPORPLAN_DELETE,
+    description: "Delete the shared Input Sporplan draft through the revision-guarded reset contract.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.TXP]
   }
@@ -390,6 +397,8 @@ function capabilityResponse(fields){
     decisionSource: DECISION_SOURCE,
     globalRuntimeRoleEnforcement: false,
     writeExecutionEnabled: false,
+    inputSporplanDeleteEnforcement: true,
+    inputSporplanDeleteWriteExecutionEnabled: true,
     sourceMode: SOURCE_MODE
   };
 }
@@ -407,7 +416,7 @@ function normalizeCatalogEntry(entry, diagnostics){
     ? entry.allowedRoles.map((role) => normalizeExactString(role, 100))
     : null;
 
-  if(!capability || !/^(?:vehicle_status|night_plan)\./.test(capability)){
+  if(!capability || !/^(?:vehicle_status|night_plan|input_sporplan)\./.test(capability)){
     diagnostics.add("capability_catalog_invalid_id");
   }
   if(!description) diagnostics.add("capability_catalog_invalid_description");
@@ -426,7 +435,7 @@ function normalizeCatalogEntry(entry, diagnostics){
 
   if(
     !capability ||
-    !/^(?:vehicle_status|night_plan)\./.test(capability) ||
+    !/^(?:vehicle_status|night_plan|input_sporplan)\./.test(capability) ||
     !description ||
     !Object.values(CAPABILITY_STATUSES).includes(status) ||
     !allowedRoles ||

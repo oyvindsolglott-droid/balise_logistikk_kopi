@@ -78,6 +78,10 @@ const {
 } = require("./vehicleStatusReadModel");
 const {createApprovedStaticAssetHandler} = require("./staticAssetDelivery");
 const {createNightPlanApi} = require("./nightPlanRoutes");
+const {
+  buildAuthorizedSharedSporplanDeletePayload,
+  createSharedSporplanDeleteCapabilityGuard
+} = require("./sharedSporplanDeleteAuthority");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
@@ -340,6 +344,7 @@ try{
 
 const app = express();
 const sseClients = new Set();
+const sharedSporplanDeleteCapabilityGuard = createSharedSporplanDeleteCapabilityGuard();
 
 let nightPlanApi;
 try{
@@ -758,7 +763,7 @@ if(vehicleStatusRepository){
   }
 }
 
-app.post("/api/shared-sporplan-draft", (req, res) => {
+app.post("/api/shared-sporplan-draft", sharedSporplanDeleteCapabilityGuard, (req, res) => {
   if(!SHARED_SPORPLAN_DRAFT_WRITES_ENABLED){
     return res.status(403).json({
       ok: false,
@@ -769,7 +774,10 @@ app.post("/api/shared-sporplan-draft", (req, res) => {
 
   let result;
   try{
-    result = saveSharedSporplanDraft(db, req.body);
+    const authorizedPayload = req.sdeSharedSporplanDeleteIdentity
+      ? buildAuthorizedSharedSporplanDeletePayload(req.body,req.sdeSharedSporplanDeleteIdentity)
+      : req.body;
+    result = saveSharedSporplanDraft(db, authorizedPayload);
   }catch(error){
     console.error("shared sporplan draft save failed", error);
     return res.status(500).json({

@@ -1282,7 +1282,7 @@ margin-top:10px;
 display:none !important;
 }
 
-#resetBtn{
+#deleteSporplanBtn{
 background:#b91c1c;
 border:1px solid #7f1d1d;
 color:#fff;
@@ -1290,12 +1290,12 @@ font-weight:900;
 box-shadow:0 0 0 3px rgba(185,28,28,.14);
 }
 
-#resetBtn:hover{
+#deleteSporplanBtn:hover{
 background:#991b1b;
 border-color:#7f1d1d;
 }
 
-#resetBtn:active{
+#deleteSporplanBtn:active{
 transform:translateY(1px);
 }
 .zoom-wrap{
@@ -3009,64 +3009,6 @@ button{padding:12px 12px}
   box-sizing:border-box;
 }
 
-.shared-sporplan-draft-readback{
-  display:none;
-  grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
-  gap:6px;
-  margin:8px 0 10px;
-  padding:10px;
-  border:1px solid #bfdbfe;
-  border-radius:10px;
-  background:#f8fbff;
-  color:#0f172a;
-}
-
-.shared-sporplan-draft-readback.is-visible{
-  display:grid;
-}
-
-.shared-sporplan-draft-readback .shared-draft-row{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:8px;
-  min-height:28px;
-  padding:5px 7px;
-  border:1px solid #dbeafe;
-  border-radius:8px;
-  background:#fff;
-  font-size:13px;
-}
-
-.shared-sporplan-draft-readback .shared-draft-slot{
-  font-weight:900;
-  color:#1d4ed8;
-}
-
-.shared-sporplan-draft-readback .shared-draft-value{
-  font-weight:850;
-}
-
-.shared-sporplan-draft-readback .shared-draft-kind{
-  color:#64748b;
-  font-size:12px;
-}
-
-#sharedSporplanDraftSaveBtn.shared-draft-save-dirty{
-  background:#f59e0b;
-  border-color:#d97706;
-  color:#111827;
-  font-weight:900;
-  box-shadow:0 0 0 2px rgba(245,158,11,.22);
-}
-
-#sharedSporplanDraftSaveBtn.shared-draft-save-dirty:disabled{
-  background:#e5e7eb;
-  border-color:#cbd5e1;
-  color:#64748b;
-  box-shadow:none;
-}
-
 #grunnoppstillingTable td:nth-child(2) input{
   width:96px;
 }
@@ -3168,17 +3110,29 @@ button{padding:12px 12px}
 
 .txp-unavailable-panel{
   margin:12px 0 14px;
-  padding:12px;
   border:1px solid #fecaca;
   border-radius:14px;
   background:linear-gradient(180deg,#fff7ed 0%,#fee2e2 100%);
   box-shadow:0 8px 20px rgba(127,29,29,.08);
+  overflow:hidden;
 }
 
-.txp-unavailable-panel h3{
-  margin:0 0 6px;
+.txp-unavailable-disclosure summary{
+  padding:12px;
   font-size:16px;
+  font-weight:900;
   color:#7f1d1d;
+  cursor:pointer;
+  user-select:none;
+  list-style-position:inside;
+}
+
+.txp-unavailable-disclosure[open] summary{
+  border-bottom:1px solid #fecaca;
+}
+
+.txp-unavailable-content{
+  padding:12px;
 }
 
 .txp-unavailable-panel p{
@@ -9975,14 +9929,9 @@ button{padding:12px 12px}
 
 
 <section class="panel" id="grunnoppstilling">
-<div class="note"><strong>Grunnoppstilling</strong> er fysisk registrert tomtestatus. Gå rundt på tomta og registrer hvilket kjøretøy som faktisk står i hver slot. Dette er startstatus for Sporplan og videre SDE-arbeid.</div>
 <div data-sde-operational-message-host data-sde-operational-role="txp"></div>
-<div class="note" id="sharedSporplanDraftStatus">Ikke synkronisert — delt sporplan er ikke lest ennå. Lokal visning er ikke felles situasjonsbilde.</div>
-<div class="shared-sporplan-draft-readback" id="sharedSporplanDraftReadback" aria-live="polite"></div>
-<div class="view-tools" aria-label="Delt sporplan-draft">
-<span class="label" id="sharedSporplanDraftWriteState">Delt lagring er ikke åpnet på server. Ingen POST sendes.</span>
-<button class="compact" type="button" id="sharedSporplanDraftRefreshBtn">Les delt draft</button>
-<button class="compact" type="button" id="sharedSporplanDraftSaveBtn" disabled>Lagre delt parkert-hvor</button>
+<div class="reset-tools" hidden aria-hidden="true">
+<button id="deleteSporplanBtn" type="button">Slett Sporplan</button>
 </div>
 <div class="txp-unavailable-panel" id="txpUnavailableInfrastructurePanel"></div>
 <div class="mobile-table-label">Grunnoppstilling</div>
@@ -10011,9 +9960,6 @@ button{padding:12px 12px}
 </div>
 </div>
 <div class="stats" id="stats"></div>
-<div class="reset-tools">
-<button id="resetBtn" type="button">Reset</button>
-</div>
 </section>
 
 
@@ -13702,6 +13648,8 @@ function renderTxpUnavailableInfrastructureControls(){
   const el = document.getElementById("txpUnavailableInfrastructurePanel");
   if(!el) return;
 
+  const disclosure = el.querySelector(".txp-unavailable-disclosure");
+  const wasExpanded = disclosure?.open === true;
   const infra = ensureTxpUnavailableInfrastructure();
   const unavailableSlots = getTxpUnavailableSlotSet();
   const trackLabel = track => `Spor ${track} uvirksom`;
@@ -13726,17 +13674,27 @@ function renderTxpUnavailableInfrastructureControls(){
   }).join("");
 
   el.innerHTML = `
-    <h3>TXP driftsbegrensning / uvirksom infrastruktur</h3>
-    <p>Brukes for å registrere at konkrete spor eller slotter er uvirksomme. Vaskesporet VN/VS er fysiske slotter i Vaskesporet.</p>
-    <div class="txp-unavailable-groups">
-      <div class="txp-unavailable-group">
-        ${trackLabels}
+    <details class="txp-unavailable-disclosure" ${wasExpanded ? "open" : ""}>
+      <summary aria-expanded="${wasExpanded ? "true" : "false"}">TXP driftsbegrensning / uvirksom infrastruktur</summary>
+      <div class="txp-unavailable-content">
+        <p>Brukes for å registrere at konkrete spor eller slotter er uvirksomme. Vaskesporet VN/VS er fysiske slotter i Vaskesporet.</p>
+        <div class="txp-unavailable-groups">
+          <div class="txp-unavailable-group">
+            ${trackLabels}
+          </div>
+          <div class="txp-unavailable-group">
+            ${slotLabels}
+          </div>
+        </div>
       </div>
-      <div class="txp-unavailable-group">
-        ${slotLabels}
-      </div>
-    </div>
+    </details>
   `;
+
+  const nextDisclosure = el.querySelector(".txp-unavailable-disclosure");
+  const summary = nextDisclosure?.querySelector("summary");
+  nextDisclosure?.addEventListener("toggle", () => {
+    summary?.setAttribute("aria-expanded", nextDisclosure.open ? "true" : "false");
+  });
 
   el.querySelectorAll("[data-txp-unavailable-track]").forEach(input => {
     input.addEventListener("change", e => {
@@ -46934,16 +46892,29 @@ function getActiveAccessLevel(){
   return select ? String(select.value || "0") : "0";
 }
 
-function canUseSporplanResetInCurrentUi(){
+const SDE_SPORPLAN_DELETE_ALLOWED_LEVELS = Object.freeze(["0","2"]);
+
+function canUseSporplanDeleteInCurrentUi(){
   const activeTab = document.querySelector(".seg.active")?.dataset?.tab || "";
   const level = getActiveAccessLevel();
-  return activeTab === "sporplan" && (level === "0" || level === "2");
+  const roles = Array.isArray(dropsRuntimeCapabilities?.roles)
+    ? dropsRuntimeCapabilities.roles.map(role=>String(role || ""))
+    : [];
+  const capability = dropsRuntimeCapabilities
+    ?.capabilities?.["input_sporplan.delete"];
+  return activeTab === "grunnoppstilling"
+    && SDE_SPORPLAN_DELETE_ALLOWED_LEVELS.includes(level)
+    && dropsRuntimeCapabilities?.ok === true
+    && dropsRuntimeCapabilities?.roleResolved === true
+    && roles.some(role=>role === "txp" || role === "admin_pilot")
+    && capability?.allowed === true
+    && capability?.decision === "ALLOW";
 }
 
-function updateSporplanResetVisibility(){
-  const allowed = canUseSporplanResetInCurrentUi();
-  const tools = document.querySelector("#sporplan .reset-tools");
-  const button = document.getElementById("resetBtn");
+function updateSporplanDeleteVisibility(){
+  const allowed = canUseSporplanDeleteInCurrentUi();
+  const tools = document.querySelector("#grunnoppstilling .reset-tools");
+  const button = document.getElementById("deleteSporplanBtn");
 
   if(tools){
     tools.hidden = !allowed;
@@ -47509,7 +47480,7 @@ function applyAccessLevel(){
   renderDropsVehicleRegistry();
   renderSdeRoleGuide();
   renderOperationalMessageComposers();
-  updateSporplanResetVisibility();
+  updateSporplanDeleteVisibility();
   if(typeof renderVehicleStatusNotificationPopup === "function"){
     renderVehicleStatusNotificationPopup();
   }
@@ -47544,7 +47515,7 @@ function activateTab(name){
     renderSdeRoleGuide();
   }
 
-  updateSporplanResetVisibility();
+  updateSporplanDeleteVisibility();
   updateOperationalMessageComposerStatus();
   if(typeof renderVehicleStatusNotificationPopup === "function"){
     renderVehicleStatusNotificationPopup();
@@ -48528,13 +48499,13 @@ async function saveSharedSporplanDraftFromSdeCompletedMove(){
 }
 
 async function saveSharedSporplanDraftResetFromUi(){
-  if(sharedSporplanDraftSaveInFlight) return;
+  if(sharedSporplanDraftSaveInFlight) return {ok:false,error:"shared_sporplan_delete_in_flight"};
   clearSharedSporplanDraftAutosaveTimer();
 
   if(!shouldFetchSharedSporplanDraftReadback()){
     renderSharedSporplanDraftStatus("Reset ikke lagret til delt sporplan — mangler same-origin server. Lokal reset er ikke delt.", "warn");
     renderSharedSporplanDraftSaveState("Reset ikke lagret til delt sporplan: mangler same-origin server. Ingen POST sendt.");
-    return;
+    return {ok:false,error:"same_origin_server_required"};
   }
 
   sharedSporplanDraftSaveInFlight = true;
@@ -48543,6 +48514,7 @@ async function saveSharedSporplanDraftResetFromUi(){
   renderSharedSporplanDraftSaveState("Lagrer delt sporplan reset. Dette nullstiller bare shared parkert-hvor draft.");
 
   let finalMessage = "";
+  let outcome = {ok:false,error:"shared_sporplan_delete_failed"};
   try{
     const currentReadback = await fetchSharedSporplanDraftReadbackForSaveConfirmation({applyActive:false});
     const built = buildSharedSporplanDraftResetPayload(currentReadback?.revision);
@@ -48588,13 +48560,16 @@ async function saveSharedSporplanDraftResetFromUi(){
     sharedSporplanDraftHasUnsavedLocalChanges = false;
     renderSharedSporplanDraftStatus(`Delt sporplan reset lagret — server rev ${confirmedReadback.revision}. Draft/readback, ikke skifteordre og ikke operativ sannhetskilde.`, "ok");
     finalMessage = `Delt sporplan reset lagret — server rev ${confirmedReadback.revision}. Andre maskiner får blank Input Sporplan og Sporplan etter refresh.`;
+    outcome = {ok:true,readback:confirmedReadback};
   }catch(error){
     renderSharedSporplanDraftStatus(`Reset ikke lagret til delt sporplan — ${error?.message || "ukjent feil"}. Lokal reset er ikke delt.`, "warn");
     finalMessage = `Reset ikke lagret til delt sporplan: ${error?.message || "ukjent feil"}. Refresh kan hente gammel delt draft.`;
+    outcome = {ok:false,error:error?.message || "unknown_error"};
   }finally{
     sharedSporplanDraftSaveInFlight = false;
     renderSharedSporplanDraftSaveState(finalMessage);
   }
+  return outcome;
 }
 
 function sanitizeSdeStoredServerBaseForOrigin(value){
@@ -56997,39 +56972,23 @@ if(loadVyDemoBtn){
 }
 
 
-document.getElementById("resetBtn").addEventListener("click",()=>{
-  if(!canUseSporplanResetInCurrentUi()){
-    renderSharedSporplanDraftStatus("Reset sporplan er bare tilgjengelig i nivå 0 og nivå 2 TXP.", "warn");
-    return;
+document.getElementById("deleteSporplanBtn")?.addEventListener("click",async()=>{
+  if(!canUseSporplanDeleteInCurrentUi()) return;
+  if(!confirm("Slette gjeldende Sporplan? Dette sletter bare delt Input Sporplan-draft. Faktisk plassering og øvrig operativ tilstand endres ikke.")) return;
+
+  const button = document.getElementById("deleteSporplanBtn");
+  if(button){
+    button.disabled = true;
+    button.setAttribute("aria-busy","true");
   }
-
-  if(!confirm("Nullstille hele appen?")) return;
-
-
-  const activeTabBeforeReset = getActiveTabName() || getRememberedActiveTab();
-  localStorage.removeItem(STORAGE_KEY);
-  clearSdeShiftLastSnapshot();
-  state=makeDefaultState();
-
-
-  clearStalePersistedBaliseStaticData();
-  buildTurnering("turneringKveldTable","turneringKveld");
-  buildTurnering("turneringNattTable","turneringNatt");
-  buildGrunnoppstilling();
-  buildInndata();
-  buildSporplan();
-  buildOppstilling();
-  initViewControls();
-  updateBaliseStatus();
-  updateTopDataStatus();
-  updateBaliseViewState();
-  renderApiTables();
-  activateTab(activeTabBeforeReset || "sporplan");
-  markSaved("Reset");
-  void saveSharedSporplanDraftResetFromUi();
-  fetchBaliseApi();
-  ensureTodayStaticDataLoaded();
-  ensureTomorrowStaticDataLoaded();
+  const result = await saveSharedSporplanDraftResetFromUi();
+  if(button) button.removeAttribute("aria-busy");
+  updateSporplanDeleteVisibility();
+  if(result?.ok === true){
+    alert(`Sporplan slettet og bekreftet av server (rev ${result.readback.revision}).`);
+  }else{
+    alert(`Sporplan ble ikke slettet: ${result?.error || "ukjent feil"}.`);
+  }
 });
 
 
@@ -57247,8 +57206,6 @@ document.getElementById("serverStatusCheckBtn")?.addEventListener("click", fetch
 document.getElementById("serverDiagnosticsToggleBtn")?.addEventListener("click", () => {
   setServerDiagnosticsExpanded(document.body?.classList.contains("server-diagnostics-secondary") === true);
 });
-document.getElementById("sharedSporplanDraftRefreshBtn")?.addEventListener("click", fetchSharedSporplanDraftReadbackForRefresh);
-document.getElementById("sharedSporplanDraftSaveBtn")?.addEventListener("click", saveSharedSporplanDraftFromUi);
 document.getElementById("serverNoteSendBtn")?.addEventListener("click", submitServerNoteFromUi);
 document.getElementById("sdeRecommendationAckSendBtn")?.addEventListener("click", submitSdeRecommendationAckFromUi);
 initMenuHoverTooltips();
