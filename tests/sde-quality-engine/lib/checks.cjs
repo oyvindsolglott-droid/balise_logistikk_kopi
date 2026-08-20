@@ -493,15 +493,23 @@ function staticChecks(inventory = buildInventory(), options = {}) {
     "sde_handwriting_recognition.js",
     "sde_handwriting_runtime.js",
     "sde_handwriting_worker.js",
+    "assets/models/gigapdf-ocr-handwriting/manifest.json",
+    "assets/models/gigapdf-ocr-handwriting/model.onnx",
+    "assets/models/gigapdf-ocr-handwriting/dict.txt",
     "assets/models/latin-pp-ocrv5-mobile-rec-onnx/manifest.json",
     "assets/models/latin-pp-ocrv5-mobile-rec-onnx/inference.onnx",
     "assets/vendor/onnxruntime-web/ort.wasm.min.mjs",
     "config/sde-night-intelligence.json",
+    "config/sde-handwriting-model-registry.json",
+    "config/sde-handwriting-model-quality-attestation.json",
     "models/sde/production-model.json",
     "models/sde/model-registry.json",
     "tests/sde/intelligent-night-planning.test.cjs",
     "tests/sde/handwriting-recognition.test.cjs",
+    "tests/sde/handwriting-quality.test.cjs",
+    "tests/sde/handwriting-model-quality-gate.test.cjs",
     "tests/sde/test_handwriting_recognition_e2e.py",
+    "tests/sde/test_handwriting_learning_pipeline.py",
     "tests/sde/test_sde_night_model.py"
   ];
   const missingNightFiles = nightFiles.filter((file) => !fs.existsSync(path.join(root, file)));

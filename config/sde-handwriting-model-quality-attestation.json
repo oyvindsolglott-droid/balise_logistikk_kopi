@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "sde-handwriting-model-quality-attestation-v1",
+  "gateId": "SDE-HANDWRITING-MODEL-QUALITY",
+  "attestationId": "gigapdf-crnn-handwriting-9885c6b4-private-blind-20260820",
+  "attestedAt": "2026-08-20T00:00:00Z",
+  "model": {
+    "version": "gigapdf-crnn-handwriting@9885c6b4",
+    "sha256": "969d1899ed80afd51a1a37c888f0c239292738af9a1a08f6f4191f083565f5b3",
+    "manifestSha256": "5e87e3a06c79eb70395fa0b6194359a5c50c580338f8f274c39284fd0b356722",
+    "dictionarySha256": "36eaaae6413b7f38b406126634c4acb36f9adc420c3cc844a197d314304fb7b3",
+    "sizeBytes": 13148239,
+    "architecture": "CRNN_CTC_DYNAMIC_WIDTH",
+    "license": "PolyForm-Noncommercial-1.0.0",
+    "runtime": "onnxruntime-web@1.27.0",
+    "executionProvider": "wasm",
+    "webGpuRequired": false,
+    "sameOriginAssetsOnly": true
+  },
+  "datasetManifestHash": "88067426a47b677db6aa4dce89e3b06a19a623d73d10ff422ed3d15e9e379ea0",
+  "aggregateDatasetManifest": {
+    "schemaVersion": "sde-private-handwriting-dataset-manifest-v1",
+    "datasetId": "private-document-disjoint-acceptance-20260820",
+    "splitPolicy": "DOCUMENT_AND_WRITER_DISJOINT_WHEN_WRITER_KNOWN",
+    "classes": {
+      "PRIVATE_TRAIN": {"documents": 0, "usedByActiveCandidate": false},
+      "PRIVATE_VALIDATION": {"documents": 0, "usedByActiveCandidate": false},
+      "PRIVATE_BLIND_HOLDOUT": {"documents": 1, "usedByActiveCandidate": false, "cells": 174, "clearStructuredCells": 91}
+    },
+    "publishedContent": "AGGREGATE_COUNTS_ONLY"
+  },
+  "splits": {
+    "documentDisjoint": true,
+    "writerDisjointWhenKnown": true,
+    "holdoutUsedForTraining": false,
+    "holdoutUsedForThresholdSelection": false,
+    "holdoutUsedForManualModelAdaptation": false,
+    "activeCandidatePretrainedOnly": true
+  },
+  "quality": {
+    "clearStructuredCells": 91,
+    "autoAccepted": 78,
+    "autoAcceptedCorrect": 78,
+    "autoAcceptedIncorrect": 0,
+    "autoAcceptedStructuredPrecision": 1.0,
+    "autoAcceptedClearCellCoverage": 0.8571428571428571,
+    "manualCorrectionsRequired": 9,
+    "manualCorrectionRate": 0.0989010989010989,
+    "characterEditsRequired": 28,
+    "characterEditDistancePerNonEmptyCell": 0.3076923076923077,
+    "fieldsEnteredFromScratch": 6,
+    "reviewSuggestions": 7,
+    "blankCellFalsePositiveAccepted": 0,
+    "gibberishFormValues": 0,
+    "crossRowAcceptedErrors": 0,
+    "crossColumnAcceptedErrors": 0,
+    "unsupportedAutoAcceptedValues": 0,
+    "fieldMetrics": {
+      "fromTrain": {"clearNonEmpty": 17, "autoAccepted": 16, "autoAcceptedCorrect": 16, "autoAcceptedPrecision": 1.0, "autoAcceptedCoverage": 0.9411764705882353, "manualCorrectionsRequired": 0},
+      "toTrain": {"clearNonEmpty": 18, "autoAccepted": 14, "autoAcceptedCorrect": 14, "autoAcceptedPrecision": 1.0, "autoAcceptedCoverage": 0.7777777777777778, "manualCorrectionsRequired": 4},
+      "vehicleId": {"clearNonEmpty": 24, "autoAccepted": 24, "autoAcceptedCorrect": 24, "autoAcceptedPrecision": 1.0, "autoAcceptedCoverage": 1.0, "manualCorrectionsRequired": 0},
+      "toTrack": {"clearNonEmpty": 24, "autoAccepted": 16, "autoAcceptedCorrect": 16, "autoAcceptedPrecision": 1.0, "autoAcceptedCoverage": 0.6666666666666666, "manualCorrectionsRequired": 5},
+      "wcWater": {"clearNonEmpty": 8, "autoAccepted": 8, "autoAcceptedCorrect": 8, "autoAcceptedPrecision": 1.0, "autoAcceptedCoverage": 1.0, "manualCorrectionsRequired": 0}
+    },
+    "freeText": {
+      "reportedSeparately": true,
+      "autoAcceptedGibberish": 0,
+      "policy": "ABSTAIN_OR_REVIEW_UNLESS_HIGH_CONFIDENCE_CONSENSUS"
+    }
+  },
+  "runtimeQualification": {
+    "desktopChromium": "GREEN",
+    "mobile390Chromium": "GREEN",
+    "mobile390WebKitSafariEngine": "GREEN",
+    "maximumAllowedMillisecondsPerSyntheticPlan": 30000,
+    "observedMaximumMillisecondsPerSyntheticPlan": 3463,
+    "networkRequestsWithUserContentBeforeSave": 0,
+    "exactPeakMemoryMeasurement": "UNAVAILABLE_IN_BROWSER_RUNTIME",
+    "modelAssetBytes": 13148239
+  },
+  "benchmarks": [
+    {
+      "candidate": "legacy-paddle-print-only",
+      "architecture": "PP-OCRv5 mobile text recognizer",
+      "handwritingPurpose": false,
+      "outcome": "REJECTED_AS_ONLY_RECOGNIZER"
+    },
+    {
+      "candidate": "microsoft-trocr-base-handwritten",
+      "architecture": "Transformer encoder-decoder",
+      "handwritingPurpose": true,
+      "blindStructuredExact": 0,
+      "blindStructuredEvaluated": 83,
+      "outcome": "REJECTED_LOW_ACCURACY"
+    },
+    {
+      "candidate": "gigapdf-crnn-handwriting-plus-paddle-print",
+      "architecture": "CRNN/CTC handwriting plus print-layer ensemble",
+      "handwritingPurpose": true,
+      "outcome": "SELECTED"
+    }
+  ],
+  "privacy": {
+    "privateImagesCommitted": false,
+    "privateCropsCommitted": false,
+    "rawPrivateLabelsCommitted": false,
+    "privateDataInCiArtifacts": false,
+    "productionContentLogging": false,
+    "persistenceBeforeExplicitSave": false,
+    "publishedEvaluationContent": "AGGREGATE_METRICS_ONLY"
+  },
+  "promotion": {
+    "qualityGatePassed": true,
+    "humanApprovalRequired": true,
+    "automaticPromotion": false,
+    "rollbackAvailable": true
+  }
+}

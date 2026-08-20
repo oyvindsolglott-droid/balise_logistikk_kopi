@@ -161,11 +161,13 @@ const hybridMutations = [
   {id: "TRACK_DROPPED", kind: "recognition", expected: "INV-HYBRID-013", apply: source => replaceOnce(source,
     "return Object.freeze(row);", 'return Object.freeze({...row, toTrack: ""});', "drop track")},
   {id: "ORPHAN_TEXT_FRAGMENT_ACCEPTED", kind: "recognition", expected: "INV-HYBRID-014", apply: source => replaceOnce(source,
-    'let selectedValue = "";', 'let selectedValue = "39";', "invent orphan fragment")},
+    "const candidates = normalizedCandidates(recognition);",
+    'const candidates = normalizedCandidates(recognition); if(!candidates.length) candidates.push({text: "39", confidence: 1, votes: 2, sourceLayer: "HANDWRITING_HTR"});',
+    "invent orphan fragment")},
   {id: "LOW_CONFIDENCE_VALUE_AUTO_ACCEPTED", kind: "recognition", expected: "INV-HYBRID-015", apply: source => replaceOnce(source,
-    "FREE_TEXT: 0.98,", "FREE_TEXT: 0,", "accept low confidence")},
+    "FREE_TEXT: 0.9995,", "FREE_TEXT: 0,", "accept low confidence")},
   {id: "PREVIOUS_IMPORT_VALUE_USED_AS_FALLBACK", kind: "recognition", expected: "INV-HYBRID-016", apply: source => replaceOnce(source,
-    'let selectedValue = "";', 'let selectedValue = String(context.previousPlanValue || "");', "reuse previous import")},
+    'let proposedValue = "";', 'let proposedValue = String(context.previousPlanValue || "");', "reuse previous import")},
 ];
 
 const results = [];

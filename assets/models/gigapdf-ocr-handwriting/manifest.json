@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "sde-local-htr-model-manifest-v2",
+  "modelId": "ronylicha/gigapdf-ocr-handwriting",
+  "modelRevision": "9885c6b4022786860968e6f7be5ba50441cb395d",
+  "modelLicense": "PolyForm-Noncommercial-1.0.0",
+  "requiredNotice": "Copyright 2025 Rony Licha / QR Communication",
+  "modelSource": "https://huggingface.co/ronylicha/gigapdf-ocr-handwriting",
+  "architecture": "CRNN_CTC_DYNAMIC_WIDTH",
+  "handwritingCapable": true,
+  "languages": ["Norwegian", "Latin-script", "numeric"],
+  "runtime": {
+    "name": "onnxruntime-web",
+    "version": "1.27.0",
+    "license": "MIT",
+    "executionProvider": "wasm",
+    "requiresWebGpu": false
+  },
+  "input": {
+    "name": "x",
+    "shape": [1, 1, 32, "dynamic-width"],
+    "normalization": "ink=1-gray"
+  },
+  "output": {
+    "name": "logits",
+    "ctcBlank": "last-class"
+  },
+  "files": {
+    "model.onnx": "969d1899ed80afd51a1a37c888f0c239292738af9a1a08f6f4191f083565f5b3",
+    "dict.txt": "36eaaae6413b7f38b406126634c4acb36f9adc420c3cc844a197d314304fb7b3"
+  },
+  "networkPolicy": {
+    "modelAssetsSameOriginOnly": true,
+    "remoteModelFallback": false,
+    "userImageUploadBeforeExplicitSave": false
+  }
+}
