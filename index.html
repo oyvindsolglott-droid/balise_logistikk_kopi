@@ -57176,11 +57176,11 @@ if(!isPublicGithubPagesApp()){
 
 
   clearStalePersistedBaliseStaticData();
-  runCoreBootModule("TURSATT", buildOppstilling);
   runCoreBootModule("TURNERING_KVELD", ()=>buildTurnering("turneringKveldTable","turneringKveld"));
   runCoreBootModule("TURNERING_NATT", ()=>buildTurnering("turneringNattTable","turneringNatt"));
   runCoreBootModule("GRUNNOPPSTILLING", buildGrunnoppstilling);
   runCoreBootModule("INNDATA", buildInndata);
+  runCoreBootModule("TURSATT", buildOppstilling);
   runCoreBootModule("VIEW_CONTROLS", initViewControls);
   updateBaliseStatus();
   updateTopDataStatus();
