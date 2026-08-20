@@ -462,7 +462,7 @@ class NightPlanningBrowserTests(unittest.TestCase):
             page.wait_for_function("document.querySelector('[aria-label=\"Inn kl linje 1\"]')?.value === '06:11'")
             page.get_by_label("Inn kl linje 1", exact=True).focus()
             page.locator("#sdeNightCellEvidence:not([hidden])").wait_for()
-            self.assertIn("Trykt forslag: 06:11", page.locator("#sdeNightCellEvidenceCaption").inner_text())
+            self.assertIn("Trykt: 06:11", page.locator("#sdeNightCellEvidenceCaption").inner_text())
             self.assertGreater(page.locator("#sdeNightCellEvidenceCanvas").evaluate("canvas => canvas.width"), 0)
             self.assertEqual(page.locator(".sde-night-editor th").count(), 8)
             self.assertEqual(page.locator("#sdeNightPlanHead th").all_inner_texts(), [
@@ -545,7 +545,7 @@ class NightPlanningBrowserTests(unittest.TestCase):
             self.assertEqual(len(posted_payloads), 2)
             image_payload = posted_payloads[1]
             self.assertEqual(image_payload["source"]["sourceType"], "DEVICE_FILE")
-            self.assertEqual(image_payload["source"]["ocrEngine"], "paddleocr-local-hybrid-print-ocr-htr-onnx-wasm")
+            self.assertEqual(image_payload["source"]["ocrEngine"], "gigapdf-crnn-handwriting-paddle-print-ensemble-onnx-wasm")
             self.assertEqual(image_payload["source"]["mappingStatus"], "FORM_MAPPING_COMPLETE")
             self.assertGreater(image_payload["source"]["mappingReport"]["mappedCellCount"], 1)
             self.assertEqual(image_payload["source"]["mappingReport"]["modelSha256"], MODEL_SHA256)
