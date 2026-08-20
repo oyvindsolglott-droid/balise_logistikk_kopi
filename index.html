@@ -9716,7 +9716,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 19. august 2026</p>
+<p class="sub">Siste revisjon: 20. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -10237,8 +10237,6 @@ Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for v
 
 
 <script src="sde_intelligent_night_planning.js?v=ae80afdb91c70b122aedf202bb7ffc1c78e865cf9bc20dece76652990416b386"></script>
-<script src="sde_handwriting_recognition.js?v=e8f0178ccbbad3db57d008461d22fb1d217a700226a8f54227907ebbe1307dac"></script>
-<script src="sde_handwriting_runtime.js?v=5e6434f69fbc4dfcbd189ea0194adc4b2feb4db5fd44e56b38966c2d3e91d154"></script>
 <script src="sde_tursatt_post_arrival.js?v=44f462a93a6a23348cdea2211d10b3ddecc6367da69dedec2fab21be89610795"></script>
 <script>
 const STORAGE_KEY="skien_sporplan_iphone_v13";
@@ -15368,14 +15366,23 @@ function appendTursattCanonicalColgroup(table){
   table.appendChild(colgroup);
 }
 
-function buildOppstilling(){
-  tursattFlowAnalysisCache = null;
-  const table=document.getElementById("oppstillingTable");
-  table.innerHTML="";
-  appendTursattCanonicalColgroup(table);
-  state.tursattBaliseDiagnostics = [];
-  state.tursattBaliseDeviationList = [];
+function buildTursattViewModel(){
+  const departureFilter = filterTursattRowsForDisplay(buildDepartureRowsForOppstilling(), "departure");
+  const arrivalFilter = filterTursattRowsForDisplay(buildArrivalRowsForOppstilling(), "arrival");
+  const departureRows = departureFilter.rows;
+  const arrivalRows = arrivalFilter.rows;
+  return Object.freeze({
+    departureFilter,
+    arrivalFilter,
+    departureRows,
+    arrivalRows,
+    visibleRowCount:Math.max(departureRows.length, arrivalRows.length, 1)
+  });
+}
 
+function createTursattTableFragment(viewModel){
+  const fragment=document.createDocumentFragment();
+  appendTursattCanonicalColgroup(fragment);
   const thead=document.createElement("thead");
   const trGroup=document.createElement("tr");
   const thArr=document.createElement("th");
@@ -15404,20 +15411,14 @@ function buildOppstilling(){
     trHead.appendChild(th);
   });
   thead.appendChild(trHead);
-  table.appendChild(thead);
-
-  const departureFilter = filterTursattRowsForDisplay(buildDepartureRowsForOppstilling(), "departure");
-  const arrivalFilter = filterTursattRowsForDisplay(buildArrivalRowsForOppstilling(), "arrival");
-  const departureRows = departureFilter.rows;
-  const arrivalRows = arrivalFilter.rows;
-  const totalRows = Math.max(departureRows.length, arrivalRows.length, 1);
+  fragment.appendChild(thead);
 
   const body=document.createElement("tbody");
 
-  for(let i=0;i<totalRows;i++){
+  for(let i=0;i<viewModel.visibleRowCount;i++){
     const tr=document.createElement("tr");
-    appendOppstillingSideCells(tr, arrivalRows[i] || null, "arrival");
-    appendOppstillingSideCells(tr, departureRows[i] || null, "departure");
+    appendOppstillingSideCells(tr, viewModel.arrivalRows[i] || null, "arrival");
+    appendOppstillingSideCells(tr, viewModel.departureRows[i] || null, "departure");
     Array.from(tr.children).forEach((cell,index)=>{
       if(index < 7) cell.classList.add("opp-arrival-cell");
       if(index >= 7) cell.classList.add("opp-departure-cell");
@@ -15425,9 +15426,40 @@ function buildOppstilling(){
     });
     body.appendChild(tr);
   }
+  fragment.appendChild(body);
+  return fragment;
+}
 
-  table.appendChild(body);
-  updateTursattFilterUi(arrivalFilter.hidden, departureFilter.hidden);
+function assertTursattDomMatchesViewModel(rootNode, viewModel){
+  const leafHeaders=rootNode.querySelectorAll("thead tr:nth-child(2) th");
+  const rows=rootNode.querySelectorAll("tbody tr");
+  if(leafHeaders.length !== TURSATT_COLUMN_MODEL.length){
+    throw new Error(`tursatt_header_dom_mismatch:${leafHeaders.length}:${TURSATT_COLUMN_MODEL.length}`);
+  }
+  if(rows.length !== viewModel.visibleRowCount){
+    throw new Error(`tursatt_row_dom_mismatch:${rows.length}:${viewModel.visibleRowCount}`);
+  }
+  rows.forEach((row,index)=>{
+    if(row.children.length !== TURSATT_COLUMN_MODEL.length){
+      throw new Error(`tursatt_cell_dom_mismatch:${index}:${row.children.length}:${TURSATT_COLUMN_MODEL.length}`);
+    }
+  });
+  return true;
+}
+
+function buildOppstilling(){
+  tursattFlowAnalysisCache = null;
+  const table=document.getElementById("oppstillingTable");
+  if(!table) throw new Error("tursatt_table_mount_missing");
+  state.tursattBaliseDiagnostics = [];
+  state.tursattBaliseDeviationList = [];
+  const viewModel=buildTursattViewModel();
+  const fragment=createTursattTableFragment(viewModel);
+  assertTursattDomMatchesViewModel(fragment, viewModel);
+  table.replaceChildren(fragment);
+  assertTursattDomMatchesViewModel(table, viewModel);
+
+  updateTursattFilterUi(viewModel.arrivalFilter.hidden, viewModel.departureFilter.hidden);
   renderTursattFlowDiagnostics();
 }
 
@@ -57097,6 +57129,25 @@ document.getElementById("serverDiagnosticsToggleBtn")?.addEventListener("click",
 document.getElementById("serverNoteSendBtn")?.addEventListener("click", submitServerNoteFromUi);
 document.getElementById("sdeRecommendationAckSendBtn")?.addEventListener("click", submitSdeRecommendationAckFromUi);
 initMenuHoverTooltips();
+
+function runCoreBootModule(moduleId, initializer){
+  try{
+    initializer();
+    return true;
+  }catch(error){
+    console.error("SDE core module initialization failed", {
+      moduleId:String(moduleId || "UNKNOWN"),
+      name:String(error?.name || "Error"),
+      message:String(error?.message || error || "Initialization failed")
+    });
+    if(moduleId === "TURSATT"){
+      const status=document.getElementById("tursattFilterStatus");
+      if(status) status.textContent="Tursatt kunne ikke rendres. Sist gyldige tabell er beholdt.";
+    }
+    return false;
+  }
+}
+
 [
   "sdeRecommendationAckServiceDate",
   "sdeRecommendationAckRecommendationKey",
@@ -57125,12 +57176,12 @@ if(!isPublicGithubPagesApp()){
 
 
   clearStalePersistedBaliseStaticData();
-  buildTurnering("turneringKveldTable","turneringKveld");
-  buildTurnering("turneringNattTable","turneringNatt");
-  buildGrunnoppstilling();
-  buildInndata();
-  buildOppstilling();
-  initViewControls();
+  runCoreBootModule("TURSATT", buildOppstilling);
+  runCoreBootModule("TURNERING_KVELD", ()=>buildTurnering("turneringKveldTable","turneringKveld"));
+  runCoreBootModule("TURNERING_NATT", ()=>buildTurnering("turneringNattTable","turneringNatt"));
+  runCoreBootModule("GRUNNOPPSTILLING", buildGrunnoppstilling);
+  runCoreBootModule("INNDATA", buildInndata);
+  runCoreBootModule("VIEW_CONTROLS", initViewControls);
   updateBaliseStatus();
   updateTopDataStatus();
   updateBaliseViewState();
@@ -57147,7 +57198,7 @@ if(!isPublicGithubPagesApp()){
 if(isSdeCanonicalShadowAnalysisRequested()) runSdeCanonicalShadowAnalysis();
 </script>
 
-<script src="sde_night_planning_ui.js?v=ebdd056a3a5edfa4f6801b55a2708043546c4303be9e998dbeebeab10088d394"></script>
+<script src="sde_night_planning_ui.js?v=dedd3c765cc8b24c6168c099ff6518c9ccdfbfff340ac8488b9eeb9f6b70eb93"></script>
 
 <div class="rights-notice" id="rightsNotice">
   <div class="rights-title">© Øyvind Solgløtt. Alle rettigheter reservert.</div>

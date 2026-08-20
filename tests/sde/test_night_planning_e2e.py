@@ -343,7 +343,12 @@ class NightPlanningBrowserTests(unittest.TestCase):
                       window.__nextHtrResult=data;
                       window.__htrWorkerInputs=window.__htrWorkerInputs || [];
                       window.Worker=class FakeLocalHtrWorker {
-                        constructor(){ this.listeners={message:[],error:[]}; }
+                        constructor(){
+                          this.listeners={message:[],error:[]};
+                          queueMicrotask(()=>this.listeners.message.forEach(listener=>listener({
+                            data:{type:'ready',sessionId:'',status:'HTR_WORKER_READY'}
+                          })));
+                        }
                         addEventListener(type,listener){ this.listeners[type].push(listener); }
                         removeEventListener(type,listener){ this.listeners[type]=this.listeners[type].filter(item=>item!==listener); }
                         postMessage(message){

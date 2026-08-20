@@ -83,19 +83,56 @@
     const workerUrl = String(options.workerUrl || new URL("sde_handwriting_worker.js", environment.document.baseURI).href);
     const maximumDimension = Math.max(1200, Math.min(2400, Number(options.maximumDimension || 1800)));
     let worker = null;
+    let workerReadyPromise = null;
     let active = null;
 
     function ensureWorker(){
-      if(worker) return worker;
-      worker = new WorkerConstructor(workerUrl, {type: "module", name: "sde-local-handwriting-recognition"});
-      return worker;
+      if(workerReadyPromise) return workerReadyPromise;
+      const candidate = new WorkerConstructor(workerUrl, {type: "module", name: "sde-local-handwriting-recognition"});
+      worker = candidate;
+      workerReadyPromise = new Promise((resolve, reject) => {
+        const timeout = environment.setTimeout(() => {
+          cleanup();
+          reject(new Error("htr_worker_ready_timeout"));
+        }, 30_000);
+        const cleanup = () => {
+          environment.clearTimeout(timeout);
+          candidate.removeEventListener("message", onMessage);
+          candidate.removeEventListener("error", onError);
+        };
+        const onMessage = event => {
+          const message = event.data || {};
+          if(message.type !== "ready" || message.status !== "HTR_WORKER_READY") return;
+          cleanup();
+          resolve(candidate);
+        };
+        const onError = event => {
+          cleanup();
+          reject(new Error(String(event?.message || "htr_worker_failed")));
+        };
+        candidate.addEventListener("message", onMessage);
+        candidate.addEventListener("error", onError);
+      }).catch(error => {
+        candidate.terminate();
+        if(worker === candidate) worker = null;
+        workerReadyPromise = null;
+        throw error;
+      });
+      return workerReadyPromise;
     }
 
     function rejectActive(error){
       if(!active) return;
       const pending = active;
       active = null;
+      pending.cleanup?.();
       pending.reject(error);
+    }
+
+    function terminateWorker(){
+      if(worker) worker.terminate();
+      worker = null;
+      workerReadyPromise = null;
     }
 
     return Object.freeze({
@@ -104,9 +141,19 @@
         const sessionId = makeSessionId();
         if(typeof onProgress === "function") onProgress({status: "IMAGE_PREPROCESSING", progress: 0});
         const frame = await imageFrame(file, environment, maximumDimension);
-        const target = ensureWorker();
+        if(typeof onProgress === "function") onProgress({status: "SOURCE_DECODE_COMPLETE", progress: 0.01, width: frame.width, height: frame.height});
+        const target = await ensureWorker();
+        if(typeof onProgress === "function") onProgress({status: "HTR_WORKER_READY", progress: 0.02});
         return new Promise((resolve, reject) => {
-          active = {sessionId, resolve, reject};
+          const timeout = environment.setTimeout(() => {
+            rejectActive(new Error("htr_analysis_timeout"));
+            terminateWorker();
+          }, 180_000);
+          const cleanup = () => {
+            environment.clearTimeout(timeout);
+            target.removeEventListener("message", onMessage);
+            target.removeEventListener("error", onError);
+          };
           const onMessage = event => {
             const message = event.data || {};
             if(message.sessionId !== sessionId) return;
@@ -114,17 +161,16 @@
               if(typeof onProgress === "function") onProgress(message);
               return;
             }
-            target.removeEventListener("message", onMessage);
-            target.removeEventListener("error", onError);
+            cleanup();
             active = null;
             if(message.type === "complete") resolve(message.result);
             else reject(new Error(String(message.error || "htr_analysis_failed")));
           };
           const onError = event => {
-            target.removeEventListener("message", onMessage);
-            target.removeEventListener("error", onError);
             rejectActive(new Error(String(event?.message || "htr_worker_failed")));
+            terminateWorker();
           };
+          active = {sessionId, resolve, reject, cleanup};
           target.addEventListener("message", onMessage);
           target.addEventListener("error", onError);
           target.postMessage({
@@ -146,8 +192,7 @@
         return true;
       },
       dispose(){
-        if(worker) worker.terminate();
-        worker = null;
+        terminateWorker();
         rejectActive(new Error("htr_cancelled"));
       },
     });

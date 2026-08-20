@@ -410,11 +410,15 @@ test("HTR-modulen har ingen persistens-, sky-OCR- eller designverdi-fallback", (
 test("HTR-cachekjeden er SHA-bundet fra hovedside til UI, worker og gjenkjenningsmodul", () => {
   const index = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const uiPath = path.join(root, "sde_night_planning_ui.js");
+  const runtimePath = path.join(root, "sde_handwriting_runtime.js");
   const workerPath = path.join(root, "sde_handwriting_worker.js");
   const recognitionHash = crypto.createHash("sha256").update(fs.readFileSync(modulePath)).digest("hex");
+  const runtimeHash = crypto.createHash("sha256").update(fs.readFileSync(runtimePath)).digest("hex");
   const workerHash = crypto.createHash("sha256").update(fs.readFileSync(workerPath)).digest("hex");
   const uiHash = crypto.createHash("sha256").update(fs.readFileSync(uiPath)).digest("hex");
-  assert.match(index, new RegExp(`sde_handwriting_recognition\\.js\\?v=${recognitionHash}`));
+  assert.doesNotMatch(index, /<script[^>]+sde_handwriting_(?:recognition|runtime)\.js/);
+  assert.match(fs.readFileSync(uiPath, "utf8"), new RegExp(`sde_handwriting_recognition\\.js\\?v=${recognitionHash}`));
+  assert.match(fs.readFileSync(uiPath, "utf8"), new RegExp(`sde_handwriting_runtime\\.js\\?v=${runtimeHash}`));
   assert.match(fs.readFileSync(workerPath, "utf8"), new RegExp(`sde_handwriting_recognition\\.js\\?v=${recognitionHash}`));
   assert.match(fs.readFileSync(uiPath, "utf8"), new RegExp(`sde_handwriting_worker\\.js\\?v=${workerHash}`));
   assert.match(index, new RegExp(`sde_night_planning_ui\\.js\\?v=${uiHash}`));

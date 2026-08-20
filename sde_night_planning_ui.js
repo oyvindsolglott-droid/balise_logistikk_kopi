@@ -2,8 +2,12 @@
   "use strict";
 
   const logic = root.SdeNightIntelligence;
-  const htrLogic = root.SdeHandwritingRecognition;
-  const htrRuntime = root.SdeHandwritingRuntime;
+  let htrLogic = root.SdeHandwritingRecognition || null;
+  let htrRuntime = root.SdeHandwritingRuntime || null;
+  const HTR_MODULE_SOURCES = Object.freeze([
+    Object.freeze({globalName: "SdeHandwritingRecognition", source: "sde_handwriting_recognition.js?v=e8f0178ccbbad3db57d008461d22fb1d217a700226a8f54227907ebbe1307dac"}),
+    Object.freeze({globalName: "SdeHandwritingRuntime", source: "sde_handwriting_runtime.js?v=fec96bb8077c401ec73b64aaf75642fe53f4a7f010a9bd6632e90f424db29afe"}),
+  ]);
   const API_ROOT = "/api/night-plans";
   const PLAN_STORAGE_KEY = "sde_night_plans_v1";
   const PLAN_STORE_SCHEMA = "sde-night-plan-store-v1";
@@ -44,6 +48,7 @@
   let importState = {status: "NO_IMAGE", report: null};
   let imageObjectUrl = "";
   let ocrAnalyzer = null;
+  let htrModulePromise = null;
   let ocrGeneration = 0;
   let assetPromise = null;
   let editMode = true;
@@ -794,15 +799,71 @@
     return plan;
   }
 
-  function getOcrAnalyzer() {
+  function loadHtrScript(moduleDefinition) {
+    if (root[moduleDefinition.globalName]) return Promise.resolve(root[moduleDefinition.globalName]);
+    return new Promise(function load(resolve, reject) {
+      const script = document.createElement("script");
+      script.src = new URL(moduleDefinition.source, document.baseURI).href;
+      script.async = true;
+      script.dataset.sdeHtrModule = moduleDefinition.globalName;
+      script.addEventListener("load", function loaded() {
+        const loadedModule = root[moduleDefinition.globalName];
+        if (loadedModule) resolve(loadedModule);
+        else reject(new Error("htr_module_global_missing:" + moduleDefinition.globalName));
+      }, {once: true});
+      script.addEventListener("error", function failed() {
+        script.remove();
+        reject(new Error("htr_module_load_failed:" + moduleDefinition.globalName));
+      }, {once: true});
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensureHtrModules(onProgress) {
+    if (htrLogic && htrRuntime) return {htrLogic, htrRuntime};
+    if (!htrModulePromise) {
+      htrModulePromise = (async function loadModules() {
+        for (const moduleDefinition of HTR_MODULE_SOURCES) {
+          let loaded = false;
+          let lastError = null;
+          for (let attempt = 0; attempt <= 1 && !loaded; attempt += 1) {
+            try {
+              if (typeof onProgress === "function") onProgress({
+                status: "HTR_MODULE_LOAD",
+                progress: 0.01,
+                module: moduleDefinition.globalName,
+                attempt: attempt + 1,
+              });
+              await loadHtrScript(moduleDefinition);
+              loaded = true;
+            } catch (error) {
+              lastError = error;
+            }
+          }
+          if (!loaded) throw lastError || new Error("htr_module_load_failed");
+        }
+        htrLogic = root.SdeHandwritingRecognition || null;
+        htrRuntime = root.SdeHandwritingRuntime || null;
+        if (!htrLogic || !htrRuntime) throw new Error("local_htr_runtime_unavailable");
+        return {htrLogic, htrRuntime};
+      })().catch(function resetFailedModuleLoad(error) {
+        htrModulePromise = null;
+        throw error;
+      });
+    }
+    return htrModulePromise;
+  }
+
+  async function getOcrAnalyzer(onProgress) {
     if (ocrAnalyzer) return ocrAnalyzer;
+    await ensureHtrModules(onProgress);
     if (!htrLogic || !htrRuntime || typeof htrRuntime.createLocalHandwritingAnalyzer !== "function") {
       throw new Error("local_htr_runtime_unavailable");
     }
     if (!htrLogic.supportsLocalRuntime(root)) throw new Error("local_htr_runtime_unavailable");
     ocrAnalyzer = htrRuntime.createLocalHandwritingAnalyzer({
       environment: root,
-      workerUrl: new URL("sde_handwriting_worker.js?v=e25621d4acc1dce546115163f5ee380434cf0852182ed78a7429a774a80ef6b4", document.baseURI).href,
+      workerUrl: new URL("sde_handwriting_worker.js?v=15c6dc7fe7d7aab08680a45f6808d05e8205dadf3f59c894b629e6ae620a8eb8", document.baseURI).href,
       maximumDimension: 1800,
     });
     return ocrAnalyzer;
@@ -823,7 +884,11 @@
     setImportState("IMAGE_PREPROCESSING", null);
     setStatus("Bildet klargjøres lokalt før skjemaregistrering og håndskriftgjenkjenning. Ingen bildepiksler sendes til en ekstern tjeneste.", "warn");
     try {
-      const analyzer = getOcrAnalyzer();
+      const analyzer = await getOcrAnalyzer(function onLoaderProgress(message) {
+        if (generation !== ocrGeneration) return;
+        const target = el("sdeNightOcrProgress");
+        if (target) target.textContent = String(message && message.status || "HTR_MODULE_LOAD") + " · 1 %";
+      });
       const fingerprintPromise = fileFingerprint(selectedImage);
       const result = await analyzer.analyze(selectedImage, {
         canonicalSlots: logic.VALID_SLOTS,
