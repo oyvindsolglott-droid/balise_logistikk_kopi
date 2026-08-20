@@ -99,6 +99,9 @@ jobs:
         id: permanent_regression
         run: npm run test:sde:strict
 
+      - name: Run permanent handwriting model quality gate
+        run: npm run test:sde:htr-quality
+
       - name: Run Tursatt post-arrival shift-card gate
         run: npm run test:sde:tursatt-post-arrival
 

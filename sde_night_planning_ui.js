@@ -52,6 +52,7 @@
   let saveAttempt = null;
   let dirty = false;
   let lastInteractionAt = Date.now();
+  let activeEvidenceTarget = null;
   const inferenceAuditInMemory = [];
 
   function setImportState(status, report) {
@@ -73,7 +74,11 @@
 
   function fieldValue(entry, name) {
     const field = entry && entry[name];
-    return String(field && typeof field === "object" ? field.normalizedValue || "" : field || "");
+    if (field && typeof field === "object") {
+      if (field.validationState === "HUMAN_CONFIRMED") return String(field.normalizedValue || "");
+      return String(Object.hasOwn(field, "selectedValue") ? field.selectedValue || "" : field.normalizedValue || "");
+    }
+    return String(field || "");
   }
 
   function makeId(prefix) {
@@ -155,6 +160,14 @@
     } catch (_error) {
       return [];
     }
+  }
+
+  function knownTrainIdentifiers() {
+    try {
+      if (typeof getAllRelevantTursattTrains === "function") return Array.from(getAllRelevantTursattTrains()).map(String);
+    } catch (_error) {
+    }
+    return [];
   }
 
   function syncDraftDate() {
@@ -253,12 +266,14 @@
       const input = function input(name, label) {
         const descriptor = entry[name] || {};
         const original = String(descriptor.rawValue || "");
+        const suggestion = String(descriptor.suggestedValue || "");
         const uncertain = descriptor.validationState === "REVIEW_REQUIRED" || descriptor.needsReview === true;
         return [
           "<input type=\"text\" data-sde-night-index=\"", index,
           "\" data-sde-night-field=\"", html(name),
           "\" class=\"", uncertain ? "sde-night-uncertain" : "",
           "\" value=\"", html(fieldValue(entry, name)),
+          suggestion ? "\" placeholder=\"Forslag: " + html(suggestion) : "",
           "\" aria-label=\"", html(label + " linje " + (index + 1)),
           uncertain ? "\" data-sde-night-uncertain=\"true" : "",
           "\" title=\"", html(original ? "Opprinnelig OCR-verdi: " + original : "Manuell verdi"),
@@ -293,6 +308,7 @@
   }
 
   function hideCellEvidence() {
+    activeEvidenceTarget = null;
     const host = el("sdeNightCellEvidence");
     if (host) host.hidden = true;
   }
@@ -347,14 +363,43 @@
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(oriented, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
       const candidateText = candidate => String(candidate?.text || "ikke funnet");
+      activeEvidenceTarget = {input, cell, rowIndex, columnId, metadataColumn};
       const caption = el("sdeNightCellEvidenceCaption");
       const location = metadataColumn ? `Metadata ${columnId}` : `Rad ${rowIndex + 1}, ${columnId}`;
-      if (caption) caption.textContent = `${location}. Trykt forslag: ${candidateText(cell.printedCandidate)}. Håndskrevet forslag: ${candidateText(cell.handwrittenCandidate)}. Feltet krever menneskelig kontroll.`;
+      const suggestion = String(cell.suggestedValue || "");
+      if (caption) caption.textContent = `${location}. Forslag: ${suggestion || "ingen forsvarlig kandidat"}. Trykt: ${candidateText(cell.printedCandidate)}. Håndskrevet: ${candidateText(cell.handwrittenCandidate)}.`;
+      const accept = el("sdeNightAcceptSuggestionBtn");
+      if (accept) accept.disabled = !suggestion || Boolean(metadataColumn);
       const host = el("sdeNightCellEvidence");
       if (host) host.hidden = false;
     } catch (_error) {
       hideCellEvidence();
     }
+  }
+
+  function applyEvidenceAction(action) {
+    const target = activeEvidenceTarget;
+    if (!target || target.metadataColumn || !target.input) return;
+    editMode = true;
+    humanReviewActivated = true;
+    const fieldName = String(target.input.dataset.sdeNightField || "");
+    const rowIndex = Number(target.input.dataset.sdeNightIndex);
+    if (action === "ACCEPT_SUGGESTION") {
+      const suggestion = String(target.cell?.suggestedValue || "");
+      if (!suggestion) return;
+      updateDraftField(rowIndex, fieldName, suggestion, true);
+      setStatus("Forslaget er godkjent som menneskelig kontrollert skjemaverdi. Endringen lagres først med «Lagre».", "warn");
+    } else if (action === "LEAVE_BLANK") {
+      updateDraftField(rowIndex, fieldName, "", true);
+      setStatus("Feltet er eksplisitt beholdt tomt. Endringen lagres først med «Lagre».", "warn");
+    } else if (action === "EDIT_VALUE") {
+      renderDraftRows();
+      const replacement = el("sdeNightPlanRows")?.querySelector(`[data-sde-night-index="${rowIndex}"][data-sde-night-field="${fieldName}"]`);
+      replacement?.focus();
+      replacement?.select();
+      setStatus("Skriv den menneskelig kontrollerte verdien. Endringen lagres først med «Lagre».", "warn");
+    }
+    hideCellEvidence();
   }
 
   function updateDraftField(index, fieldName, value, shouldRender) {
@@ -400,11 +445,17 @@
       })
       : [];
     const mappedCellCount = cells.filter(cell => String(cell.selectedValue || "").trim()).length;
+    const suggestedCellCount = cells.filter(cell => String(cell.suggestedValue || "").trim()).length;
+    const recognizedCellCount = cells.filter(cell => String(cell.selectedValue || cell.suggestedValue || "").trim()).length;
+    const correctionBurden = htrLogic.computeCorrectionBurden([...cells, ...metadataCells]);
     return {
       ...importState.report,
       cells,
       metadataCells,
       mappedCellCount,
+      suggestedCellCount,
+      recognizedCellCount,
+      correctionBurden,
       reviewedCellCount: 0,
       requiresHumanReview: false,
       humanGroundTruthSource: "HUMAN_CORRECTED_FORM",
@@ -494,7 +545,7 @@
       form,
       source: {
         sourceType: draft.sdeLegacyLocal ? "LEGACY_LOCAL" : (selectedImageSource || "MANUAL"),
-        ocrEngine: selectedImageOcrCompleted ? "paddleocr-local-hybrid-print-ocr-htr-onnx-wasm" : null,
+        ocrEngine: selectedImageOcrCompleted ? "gigapdf-crnn-handwriting-paddle-print-ensemble-onnx-wasm" : null,
         ocrVersion: selectedImageOcrCompleted ? String(htrLogic?.MODEL_SPEC?.version || "") : null,
         importedAt: selectedImageSource ? String(draft.sdeImportedAt || new Date().toISOString()) : null,
         humanCorrected: true,
@@ -504,7 +555,7 @@
       image,
       pipeline: {
         modelVersion: selectedImageOcrCompleted ? String(htrLogic?.MODEL_SPEC?.version || "") : "not-run",
-        pipelineVersion: "sde-night-local-hybrid-print-htr-v2",
+        pipelineVersion: "sde-night-local-real-htr-ensemble-v3",
       },
     };
   }
@@ -751,7 +802,7 @@
     if (!htrLogic.supportsLocalRuntime(root)) throw new Error("local_htr_runtime_unavailable");
     ocrAnalyzer = htrRuntime.createLocalHandwritingAnalyzer({
       environment: root,
-      workerUrl: new URL("sde_handwriting_worker.js?v=7d6f372efcee8e48e7ceaaff5b33afb4a3c44132b886fd17bc4b3bc3a23a78d4", document.baseURI).href,
+      workerUrl: new URL("sde_handwriting_worker.js?v=e25621d4acc1dce546115163f5ee380434cf0852182ed78a7429a774a80ef6b4", document.baseURI).href,
       maximumDimension: 1800,
     });
     return ocrAnalyzer;
@@ -777,6 +828,7 @@
       const result = await analyzer.analyze(selectedImage, {
         canonicalSlots: logic.VALID_SLOTS,
         vehicleCatalog: knownVehicleIds(),
+        trainCatalog: knownTrainIdentifiers(),
       }, function onProgress(message) {
         if (generation !== ocrGeneration) return;
         const progress = Math.round(Number(message && message.progress || 0) * 100);
@@ -808,12 +860,15 @@
       markDirty();
       renderDraftRows();
       const report = draft.ocrMapping;
-      const summary = `${report.mappingStatus} · ${report.templateId} · 29 rader × ${report.columnCount} kolonner · ${report.mappedCellCount} utfylte celler · ${report.reviewedCellCount} trenger kontroll · lokal hybrid print-OCR/HTR ${result.model.hashVerified ? "hashverifisert" : "ikke verifisert"} · råbildet er ikke lagret`;
+      const summary = `${report.mappingStatus} · ${report.templateId} · 29 rader × ${report.columnCount} kolonner · ${report.mappedCellCount} autoakseptert · ${report.suggestedCellCount || 0} separate forslag · ${report.reviewedCellCount} trenger kontroll · lokal reell HTR/print-ensemble ${result.model.hashVerified ? "hashverifisert" : "ikke verifisert"} · råbildet er ikke lagret`;
       if (progressTarget) progressTarget.textContent = summary;
       if (report.mappingStatus === "FORM_MAPPING_COMPLETE") {
-        setStatus("Skjemaet er lest. Velg «Endre innhold» og kontroller verdiene før lagring.", "warn");
+        setStatus("Lokal analyse er fullført og kvalitetsporten er bestått. Kontroller verdiene før lagring.", "warn");
       } else if (report.mappingStatus === "FORM_MAPPING_REQUIRES_REVIEW") {
-        setStatus("Skjemaet er lest. Kontroller markerte felt før lagring.", "warn");
+        const reviewRate = report.cellCount ? report.reviewedCellCount / report.cellCount : 1;
+        setStatus(reviewRate > 0.25
+          ? "AI-en kunne ikke lese dette skjemaet godt nok. Ingen usikre verdier er fylt inn; bruk celleutsnitt og forslag eller registrer planen manuelt."
+          : "Lokal analyse er fullført med et begrenset antall separate forslag. Ingen usikre forslag er fylt inn automatisk.", reviewRate > 0.25 ? "error" : "warn");
       } else if (report.mappingStatus === "RECOGNITION_FAILED") {
         setStatus("Håndskriftgjenkjenningen ga ikke et forsvarlig resultat. Ingen vellykket skjemamapping er registrert.", "error");
       } else {
@@ -1197,6 +1252,9 @@
     });
     el("sdeNightValidateBtn") && el("sdeNightValidateBtn").addEventListener("click", analyzeDraftAgainstSde);
     el("sdeNightSaveBtn")?.addEventListener("click", saveDraft);
+    el("sdeNightAcceptSuggestionBtn")?.addEventListener("click", function acceptSuggestion() { applyEvidenceAction("ACCEPT_SUGGESTION"); });
+    el("sdeNightEditSuggestionBtn")?.addEventListener("click", function editSuggestion() { applyEvidenceAction("EDIT_VALUE"); });
+    el("sdeNightLeaveBlankBtn")?.addEventListener("click", function leaveBlank() { applyEvidenceAction("LEAVE_BLANK"); });
     el("sdeNightOperationalDate") && el("sdeNightOperationalDate").addEventListener("change", function dateChanged() {
       syncDraftDate();
       markDirty();

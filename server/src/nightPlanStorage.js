@@ -595,7 +595,7 @@ function validateSource(value){
 
 function validateMappingReport(value){
   requirePlainObject(value, "invalid_mapping_report");
-  if(["sde-night-form-mapping-report-v2", "sde-night-form-mapping-report-v3"].includes(value.schemaVersion)) return validateHtrMappingReport(value);
+  if(["sde-night-form-mapping-report-v2", "sde-night-form-mapping-report-v3", "sde-night-form-mapping-report-v4"].includes(value.schemaVersion)) return validateHtrMappingReport(value);
   rejectUnexpectedFields(value, [
     "schemaVersion", "ocrTokenCount", "recognizedLineCount", "detectedHeaderCount",
     "detectedRowCount", "mappedCellCount", "unmappedTokenCount", "mappingConfidence",
@@ -645,9 +645,9 @@ function validateHtrMappingReport(value){
     "schemaVersion", "mappingStatus", "htrCompleted", "registrationStatus",
     "templateId", "templateVersion", "columnCount", "recognitionMode",
     "recognizerVersion", "modelSha256", "cellCount",
-    "mappedCellCount", "reviewedCellCount", "requiresHumanReview",
+    "mappedCellCount", "suggestedCellCount", "recognizedCellCount", "reviewedCellCount", "requiresHumanReview",
     "mappingConfidence", "cells", "metadataCells", "humanGroundTruthSource",
-    "rawRecognizerIsGroundTruth", "humanReviewCompleted"
+    "rawRecognizerIsGroundTruth", "humanReviewCompleted", "correctionBurden"
   ], "unexpected_mapping_report_field");
   const schemaVersion = normalizeExactString(value.schemaVersion, 100);
   const report = {schemaVersion};
@@ -659,18 +659,21 @@ function validateHtrMappingReport(value){
   report.htrCompleted = true;
   report.registrationStatus = normalizeExactString(value.registrationStatus, 80);
   if(!["CELLS_SEGMENTED", "CELL_SEGMENTATION_COMPLETE"].includes(report.registrationStatus)) throw invalid("invalid_registration_status", "The 29-row cell segmentation must be complete.");
-  report.templateId = schemaVersion === "sde-night-form-mapping-report-v3"
+  report.templateId = ["sde-night-form-mapping-report-v3", "sde-night-form-mapping-report-v4"].includes(schemaVersion)
     ? normalizeExactString(value.templateId, 40)
     : "TEMPLATE_A";
   const templateColumns = TEMPLATE_COLUMNS[report.templateId];
   if(!templateColumns) throw invalid("invalid_htr_template", "The HTR form template is unsupported.");
-  report.columnCount = schemaVersion === "sde-night-form-mapping-report-v3" ? Number(value.columnCount) : templateColumns.length;
+  report.columnCount = ["sde-night-form-mapping-report-v3", "sde-night-form-mapping-report-v4"].includes(schemaVersion) ? Number(value.columnCount) : templateColumns.length;
   if(report.columnCount !== templateColumns.length) throw invalid("invalid_htr_column_count", "The HTR column count does not match the template.");
-  report.recognitionMode = schemaVersion === "sde-night-form-mapping-report-v3"
+  report.recognitionMode = ["sde-night-form-mapping-report-v3", "sde-night-form-mapping-report-v4"].includes(schemaVersion)
     ? normalizeExactString(value.recognitionMode, 80)
     : "HANDWRITING_HTR";
   if(schemaVersion === "sde-night-form-mapping-report-v3" && report.recognitionMode !== "HYBRID_PRINT_OCR_HTR"){
     throw invalid("invalid_htr_recognition_mode", "Template v3 requires hybrid print OCR and HTR provenance.");
+  }
+  if(schemaVersion === "sde-night-form-mapping-report-v4" && report.recognitionMode !== "LOCAL_REAL_HTR_ENSEMBLE"){
+    throw invalid("invalid_htr_recognition_mode", "Template v4 requires real local HTR ensemble provenance.");
   }
   report.templateVersion = normalizeExactString(value.templateVersion, 120);
   report.recognizerVersion = normalizeExactString(value.recognizerVersion, 120);
@@ -698,6 +701,19 @@ function validateHtrMappingReport(value){
   }
   const actualMapped = report.cells.filter(cell => cell.selectedValue).length;
   if(actualMapped !== report.mappedCellCount) throw invalid("mapped_cell_count_mismatch", "mappedCellCount does not match the HTR cells.");
+  if(schemaVersion === "sde-night-form-mapping-report-v4"){
+    report.suggestedCellCount = Number(value.suggestedCellCount);
+    report.recognizedCellCount = Number(value.recognizedCellCount);
+    const actualSuggested = report.cells.filter(cell => cell.suggestedValue).length;
+    const actualRecognized = report.cells.filter(cell => cell.selectedValue || cell.suggestedValue).length;
+    if(!Number.isInteger(report.suggestedCellCount) || report.suggestedCellCount !== actualSuggested){
+      throw invalid("suggested_cell_count_mismatch", "suggestedCellCount does not match the HTR cells.");
+    }
+    if(!Number.isInteger(report.recognizedCellCount) || report.recognizedCellCount !== actualRecognized){
+      throw invalid("recognized_cell_count_mismatch", "recognizedCellCount does not match the HTR cells.");
+    }
+    report.correctionBurden = value.correctionBurden == null ? null : validateCorrectionBurden(value.correctionBurden);
+  }
   const confidence = Number(value.mappingConfidence);
   if(!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw invalid("invalid_mapping_confidence", "mappingConfidence must be between zero and one.");
   report.mappingConfidence = confidence;
@@ -718,9 +734,10 @@ function validateHtrCell(value, index, metadata = false, allowedColumns = []){
   requirePlainObject(value, "invalid_htr_cell");
   rejectUnexpectedFields(value, [
     "rowIndex", "columnId", "boundingBox", "recognizedText", "normalizedValue",
-    "selectedValue", "confidence", "alternatives", "needsReview",
+    "selectedValue", "suggestedValue", "disposition", "humanDisposition", "confidence", "alternatives", "needsReview",
     "validationState", "recognizerVersion", "groundTruthSource",
     "rawRecognizerIsGroundTruth", "imageEvidence", "humanFinalValue",
+    "recognizerDisposition", "recognizerSelectedValue", "recognizerSuggestedValue", "learningOutcome",
     "rawCandidates", "printedCandidate", "handwrittenCandidate", "finalCandidate",
     "recognitionMode", "sourceBoundingBox", "normalizationReason"
   ], "unexpected_htr_cell_field");
@@ -734,6 +751,25 @@ function validateHtrCell(value, index, metadata = false, allowedColumns = []){
   const recognizedText = normalizeFormString(value.recognizedText, maximum, `cells[${index}].recognizedText`);
   const normalizedValue = normalizeFormString(value.normalizedValue, maximum, `cells[${index}].normalizedValue`);
   const selectedValue = normalizeFormString(value.selectedValue, maximum, `cells[${index}].selectedValue`);
+  const suggestedValue = normalizeFormString(value.suggestedValue, maximum, `cells[${index}].suggestedValue`);
+  const legacyDisposition = selectedValue
+    ? "AUTO_ACCEPTED"
+    : value.needsReview && suggestedValue
+      ? "REVIEW_SUGGESTION"
+      : value.needsReview
+        ? "REJECTED"
+        : "EMPTY";
+  const disposition = normalizeExactString(value.disposition || legacyDisposition, 80);
+  if(!["AUTO_ACCEPTED", "REVIEW_SUGGESTION", "REJECTED", "EMPTY", "HUMAN_CONFIRMED"].includes(disposition)){
+    throw invalid("invalid_htr_disposition", `HTR cell ${index} has an invalid disposition.`);
+  }
+  if(disposition === "AUTO_ACCEPTED" && (!selectedValue || suggestedValue)) throw invalid("invalid_htr_disposition", "AUTO_ACCEPTED requires only a canonical selected value.");
+  if(disposition === "REVIEW_SUGGESTION" && (selectedValue || !suggestedValue)) throw invalid("review_suggestion_as_form_value", "Review suggestions must remain separate from canonical form values.");
+  if(["REJECTED", "EMPTY"].includes(disposition) && (selectedValue || suggestedValue)) throw invalid("invalid_htr_disposition", "Rejected and empty cells cannot contain accepted or suggested values.");
+  const humanDisposition = value.humanDisposition == null ? null : normalizeExactString(value.humanDisposition, 80);
+  if(humanDisposition && !["ACCEPT_SUGGESTION", "EDIT_VALUE", "LEAVE_BLANK"].includes(humanDisposition)){
+    throw invalid("invalid_human_recognition_disposition", `HTR cell ${index} has an invalid human disposition.`);
+  }
   const confidence = Number(value.confidence);
   if(!Number.isFinite(confidence) || confidence < 0 || confidence > 1) throw invalid("invalid_htr_confidence", `HTR cell ${index} has invalid confidence.`);
   if(!Array.isArray(value.alternatives) || value.alternatives.length > 8) throw invalid("invalid_htr_alternatives", `HTR cell ${index} has invalid alternatives.`);
@@ -748,9 +784,21 @@ function validateHtrCell(value, index, metadata = false, allowedColumns = []){
   const humanFinalValue = value.humanFinalValue == null
     ? null
     : normalizeFormString(value.humanFinalValue, maximum, `cells[${index}].humanFinalValue`);
+  const recognizerDisposition = value.recognizerDisposition == null ? null : normalizeExactString(value.recognizerDisposition, 80);
+  if(recognizerDisposition && !["AUTO_ACCEPTED", "REVIEW_SUGGESTION", "REJECTED", "EMPTY"].includes(recognizerDisposition)){
+    throw invalid("invalid_recognizer_disposition", `HTR cell ${index} has invalid original recognizer disposition.`);
+  }
+  const recognizerSelectedValue = value.recognizerSelectedValue == null
+    ? null : normalizeFormString(value.recognizerSelectedValue, maximum, `cells[${index}].recognizerSelectedValue`);
+  const recognizerSuggestedValue = value.recognizerSuggestedValue == null
+    ? null : normalizeFormString(value.recognizerSuggestedValue, maximum, `cells[${index}].recognizerSuggestedValue`);
+  const learningOutcome = value.learningOutcome == null ? null : normalizeExactString(value.learningOutcome, 80);
+  if(learningOutcome && !["AUTO_ACCEPTED_UNCHANGED", "CORRECTED", "ENTERED_FROM_EMPTY", "REJECTED"].includes(learningOutcome)){
+    throw invalid("invalid_learning_outcome", `HTR cell ${index} has invalid learning outcome.`);
+  }
   requirePlainObject(value.imageEvidence, "invalid_htr_image_evidence");
   rejectUnexpectedFields(value.imageEvidence, [
-    "inkRatio", "printInkRatio", "handwritingInkRatio", "strikeThroughDetected", "gridLineMask", "blank"
+    "inkRatio", "printInkRatio", "handwritingInkRatio", "strikeThroughDetected", "gridLineMask", "blank", "blankClassification", "symbolClassification", "structuredGlyphClassification"
   ], "unexpected_htr_image_evidence_field");
   const inkRatio = Number(value.imageEvidence.inkRatio);
   if(!Number.isFinite(inkRatio) || inkRatio < 0 || inkRatio > 1 || typeof value.imageEvidence.blank !== "boolean"){
@@ -771,7 +819,7 @@ function validateHtrCell(value, index, metadata = false, allowedColumns = []){
   if(value.imageEvidence.gridLineMask != null){
     requirePlainObject(value.imageEvidence.gridLineMask, "invalid_htr_grid_line_mask");
     rejectUnexpectedFields(value.imageEvidence.gridLineMask, [
-      "horizontalLineCount", "verticalLineCount", "gridPixelCount"
+      "horizontalLineCount", "verticalLineCount", "gridPixelCount", "adaptiveInkNormalizationApplied"
     ], "unexpected_htr_grid_line_mask_field");
     gridLineMask = {};
     for(const field of ["horizontalLineCount", "verticalLineCount", "gridPixelCount"]){
@@ -783,15 +831,42 @@ function validateHtrCell(value, index, metadata = false, allowedColumns = []){
     }
     gridLineMask = Object.freeze(gridLineMask);
   }
+  let blankClassification = null;
+  if(value.imageEvidence.blankClassification != null){
+    requirePlainObject(value.imageEvidence.blankClassification, "invalid_htr_blank_classification");
+    rejectUnexpectedFields(value.imageEvidence.blankClassification, [
+      "blank", "inkPixelCount", "meaningfulPixels", "meaningfulInkRatio", "meaningfulComponentCount", "largestComponentPixels", "reason"
+    ], "unexpected_htr_blank_classification_field");
+    const ratio = Number(value.imageEvidence.blankClassification.meaningfulInkRatio);
+    if(typeof value.imageEvidence.blankClassification.blank !== "boolean" || !Number.isFinite(ratio) || ratio < 0 || ratio > 1){
+      throw invalid("invalid_htr_blank_classification", `HTR cell ${index} has invalid blank-classifier evidence.`);
+    }
+    blankClassification = Object.freeze({
+      blank: value.imageEvidence.blankClassification.blank,
+      inkPixelCount: boundedCount(value.imageEvidence.blankClassification.inkPixelCount, "invalid_htr_blank_classification"),
+      meaningfulPixels: boundedCount(value.imageEvidence.blankClassification.meaningfulPixels, "invalid_htr_blank_classification"),
+      meaningfulInkRatio: ratio,
+      meaningfulComponentCount: boundedCount(value.imageEvidence.blankClassification.meaningfulComponentCount, "invalid_htr_blank_classification"),
+      largestComponentPixels: boundedCount(value.imageEvidence.blankClassification.largestComponentPixels, "invalid_htr_blank_classification"),
+      reason: normalizeExactString(value.imageEvidence.blankClassification.reason, 120),
+    });
+  }
+  const symbolClassification = value.imageEvidence.symbolClassification == null
+    ? null : validateClassifierEvidence(value.imageEvidence.symbolClassification, ["symbol", "confidence", "reason", "aspect", "occupancy", "centerDensity", "quadrants"]);
+  const structuredGlyphClassification = value.imageEvidence.structuredGlyphClassification == null
+    ? null : validateClassifierEvidence(value.imageEvidence.structuredGlyphClassification, ["value", "confidence", "reason", "aspect", "heightRatio", "occupiedRows", "occupancy"]);
   const printedCandidate = validateLayerCandidate(value.printedCandidate, `cells[${index}].printedCandidate`);
   const handwrittenCandidate = validateLayerCandidate(value.handwrittenCandidate, `cells[${index}].handwrittenCandidate`);
   const finalCandidate = validateLayerCandidate(value.finalCandidate, `cells[${index}].finalCandidate`, true);
+  const rawCandidateValues = value.rawCandidates == null ? [] : value.rawCandidates;
+  if(!Array.isArray(rawCandidateValues) || rawCandidateValues.length > 32) throw invalid("invalid_htr_raw_candidates", `HTR cell ${index} has invalid raw candidates.`);
+  const rawCandidates = Object.freeze(rawCandidateValues.map((candidate, candidateIndex) => validateLayerCandidate(candidate, `cells[${index}].rawCandidates[${candidateIndex}]`, false, true)));
   const recognitionMode = normalizeExactString(value.recognitionMode || "HANDWRITING_HTR", 80);
   const normalizationReason = normalizeNullableString(value.normalizationReason, 120, "normalizationReason");
   const sourceBoundingBox = value.sourceBoundingBox == null ? boundingBox : validateHtrBoundingBox(value.sourceBoundingBox);
   return Object.freeze({
     rowIndex, columnId, boundingBox, recognizedText, normalizedValue,
-    selectedValue, confidence, alternatives: Object.freeze(alternatives),
+    selectedValue, suggestedValue, disposition, humanDisposition, confidence, alternatives: Object.freeze(alternatives),
     needsReview: value.needsReview === true,
     validationState: normalizeExactString(value.validationState, 80),
     recognizerVersion, groundTruthSource, rawRecognizerIsGroundTruth: false,
@@ -802,22 +877,79 @@ function validateHtrCell(value, index, metadata = false, allowedColumns = []){
       strikeThroughDetected: value.imageEvidence.strikeThroughDetected === true,
       gridLineMask,
       blank: value.imageEvidence.blank,
+      blankClassification,
+      symbolClassification,
+      structuredGlyphClassification,
     }),
-    printedCandidate, handwrittenCandidate, finalCandidate, recognitionMode,
-    sourceBoundingBox, normalizationReason, humanFinalValue
+    rawCandidates, printedCandidate, handwrittenCandidate, finalCandidate, recognitionMode,
+    sourceBoundingBox, normalizationReason, humanFinalValue,
+    recognizerDisposition, recognizerSelectedValue, recognizerSuggestedValue, learningOutcome
   });
 }
 
-function validateLayerCandidate(value, label, allowBlank = false){
+function validateCorrectionBurden(value){
+  requirePlainObject(value, "invalid_htr_correction_burden");
+  const countFields = [
+    "reviewedCellCount", "acceptedSuggestionCount", "editedCellCount", "leftBlankCount",
+    "nonEmptyGroundTruthCells", "autoAcceptedCorrect", "autoAcceptedIncorrect",
+    "reviewSuggestions", "emptyRejected", "manuallyChangedCells",
+    "characterEditsRequired", "fieldsEnteredFromScratch"
+  ];
+  const ratioFields = [
+    "manualCorrectionRate", "manualCellEditsRequiredRate", "characterEditDistancePerNonEmptyCell"
+  ];
+  rejectUnexpectedFields(value, [...countFields, ...ratioFields], "unexpected_htr_correction_burden_field");
+  const result = {};
+  for(const field of countFields) result[field] = boundedCount(value[field], "invalid_htr_correction_burden");
+  for(const field of ratioFields){
+    const ratio = Number(value[field]);
+    const maximum = field === "characterEditDistancePerNonEmptyCell" ? 500 : 1;
+    if(!Number.isFinite(ratio) || ratio < 0 || ratio > maximum){
+      throw invalid("invalid_htr_correction_burden", `${field} is invalid.`);
+    }
+    result[field] = ratio;
+  }
+  if(result.manualCorrectionRate !== result.manualCellEditsRequiredRate){
+    throw invalid("invalid_htr_correction_burden", "Correction-rate aliases disagree.");
+  }
+  return Object.freeze(result);
+}
+
+function validateLayerCandidate(value, label, allowBlank = false, allowSource = false){
   if(value == null) return null;
   requirePlainObject(value, "invalid_htr_layer_candidate");
-  rejectUnexpectedFields(value, ["text", "confidence"], "unexpected_htr_layer_candidate_field");
+  rejectUnexpectedFields(value, allowSource ? ["text", "confidence", "votes", "sourceLayer"] : ["text", "confidence", "votes"], "unexpected_htr_layer_candidate_field");
   const text = normalizeFormString(value.text, 500, `${label}.text`);
   const confidence = Number(value.confidence);
   if((!text && !allowBlank) || !Number.isFinite(confidence) || confidence < 0 || confidence > 1){
     throw invalid("invalid_htr_layer_candidate", `${label} is invalid.`);
   }
-  return Object.freeze({text, confidence});
+  const candidate = {text, confidence};
+  if(value.votes != null) candidate.votes = boundedCount(value.votes, "invalid_htr_layer_candidate");
+  if(allowSource) candidate.sourceLayer = normalizeExactString(value.sourceLayer, 40);
+  return Object.freeze(candidate);
+}
+
+function boundedCount(value, code){
+  const count = Number(value);
+  if(!Number.isInteger(count) || count < 0 || count > 1000000) throw invalid(code, "A bounded non-negative integer is required.");
+  return count;
+}
+
+function validateClassifierEvidence(value, allowedFields){
+  requirePlainObject(value, "invalid_htr_classifier_evidence");
+  rejectUnexpectedFields(value, allowedFields, "unexpected_htr_classifier_evidence_field");
+  const result = {};
+  for(const [key, raw] of Object.entries(value)){
+    if(["symbol", "value", "reason"].includes(key)) result[key] = normalizeExactString(raw, 120);
+    else if(key === "quadrants") result[key] = boundedCount(raw, "invalid_htr_classifier_evidence");
+    else {
+      const number = Number(raw);
+      if(!Number.isFinite(number) || number < 0 || number > 4) throw invalid("invalid_htr_classifier_evidence", "Classifier evidence is invalid.");
+      result[key] = number;
+    }
+  }
+  return Object.freeze(result);
 }
 
 function validateHtrBoundingBox(value){

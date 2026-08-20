@@ -8,8 +8,8 @@ const os = require("node:os");
 const path = require("node:path");
 
 const GATE_ID = "SDE-QE-MANDATORY-PRE-PUSH";
-const GATE_VERSION = "1.4.0";
-const PROFILE_VERSION = "sde-qe-prepush-profile-v6";
+const GATE_VERSION = "1.5.0";
+const PROFILE_VERSION = "sde-qe-prepush-profile-v7";
 const REPORT_SCHEMA = "sde-qe-prepush-report/v1";
 const MANIFEST_SCHEMA = "sde-qe-prepush-install/v1";
 const STATE_SCHEMA = "sde-qe-prepush-approval/v1";
@@ -1242,6 +1242,7 @@ function executeFullProfile(candidateRoot, identity, artifactDirectory, invocati
   const commands = [
     ["qe-unit", "npm", ["run", "test:sde:qe:unit"], 5 * 60 * 1000],
     ["qe-policy", "npm", ["run", "test:sde:qe:policy"], 5 * 60 * 1000],
+    ["handwriting-model-quality", "npm", ["run", "test:sde:htr-quality"], 10 * 60 * 1000],
     ["tursatt-post-arrival-shift-cards", "npm", ["run", "test:sde:tursatt-post-arrival"], 5 * 60 * 1000],
     ["input-sporplan-cleanup", "npm", ["run", "test:sde:input-sporplan-cleanup"], 8 * 60 * 1000],
     ["strict", "npm", ["run", "test:sde:strict"], 25 * 60 * 1000],

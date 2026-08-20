@@ -141,12 +141,13 @@ test("HTR-pipelinen er eksplisitt, lokal og kjører før formmapping", () => {
     "FIELD_NORMALIZATION",
     "FORM_MAPPING",
   ]);
-  assert.equal(subject.MODEL_SPEC.id, "PaddlePaddle/latin_PP-OCRv5_mobile_rec_onnx");
-  assert.equal(subject.MODEL_SPEC.revision, "89d3a50e2c27e2e7cceeab0e944c25c807d5db4f");
-  assert.equal(subject.MODEL_SPEC.modelSha256, "7888113072263cb471b93f66dd5e2ad70548dc526fa1ace760d0d973dd121498");
+  assert.equal(subject.MODEL_SPEC.id, "ronylicha/gigapdf-ocr-handwriting");
+  assert.equal(subject.MODEL_SPEC.revision, "9885c6b4022786860968e6f7be5ba50441cb395d");
+  assert.equal(subject.MODEL_SPEC.modelSha256, "969d1899ed80afd51a1a37c888f0c239292738af9a1a08f6f4191f083565f5b3");
   assert.equal(subject.MODEL_SPEC.runtime, "onnxruntime-web@1.27.0");
   assert.equal(subject.MODEL_SPEC.remoteModelsAllowed, false);
   assert.equal(subject.MODEL_SPEC.handwritingCapable, true);
+  assert.equal(subject.PRINT_MODEL_SPEC.id, "PaddlePaddle/latin_PP-OCRv5_mobile_rec_onnx");
 });
 
 test("perspektivtransformen registrerer fire hjørner og bevarer originalkoordinater", () => {
@@ -231,7 +232,7 @@ test("alle utfyllbare felt bruker separate print-OCR- og HTR-spor mens labels ik
   const registration = subject.registerTemplate({imageWidth: 1200, imageHeight: 1500});
   const requests = subject.createRecognitionRequests(registration);
   assert.equal(requests.length, (29 * 6) + 3);
-  assert.equal(requests.every(request => request.recognizerKind === "HYBRID_PRINT_OCR_HTR"), true);
+  assert.equal(requests.every(request => request.recognizerKind === "LOCAL_REAL_HTR_ENSEMBLE"), true);
   assert.equal(requests.every(request => request.recognizerKinds.includes("PRINT_OCR") && request.recognizerKinds.includes("HANDWRITING_HTR")), true);
   assert.equal(requests.some(request => request.columnId === "notes" && request.normalizer === "FREE_TEXT"), true);
   assert.equal(requests.some(request => request.columnId === "wcWater" && request.normalizer === "WC_WATER_SYMBOL"), true);
@@ -246,6 +247,7 @@ test("feltspesifikk normalisering rangerer bare bildebaserte kandidater", () => 
     candidates: [{text: "74-5l", confidence: 0.91}, {text: "74-51", confidence: 0.86}],
   }, {canonicalSlots: slots, vehicleCatalog: ["74-51", "74-57"]});
   assert.equal(vehicle.selectedValue, "74-51");
+  assert.equal(vehicle.suggestedValue, "");
   assert.equal(vehicle.alternatives.includes("74-57"), false, "catalog entries without image candidates cannot be invented");
 
   const slot = subject.normalizeRecognition({
@@ -253,11 +255,12 @@ test("feltspesifikk normalisering rangerer bare bildebaserte kandidater", () => 
     candidates: [{text: "11n", confidence: 0.93}, {text: "1ln", confidence: 0.72}],
   }, {canonicalSlots: slots});
   assert.equal(slot.selectedValue, "11N");
+  assert.equal(slot.suggestedValue, "");
   assert.equal(slot.validationState, "VALID");
 
   const imagedArrow = subject.normalizeRecognition({
     columnId: "toTrack",
-    candidates: [{text: "7O3N", confidence: 0.99}],
+    candidates: [{text: "7O3N", confidence: 0.99, votes: 2}],
   }, {canonicalSlots: ["3N", "4S"]});
   assert.equal(imagedArrow.selectedValue, "7→3N");
   assert.equal(imagedArrow.validationState, "VALID");
@@ -268,7 +271,7 @@ test("feltspesifikk normalisering rangerer bare bildebaserte kandidater", () => 
   }, {canonicalSlots: slots});
   assert.equal(unsupported.selectedValue, "");
   assert.equal(unsupported.needsReview, true);
-  assert.equal(unsupported.validationState, "UNSUPPORTED");
+  assert.equal(unsupported.validationState, "REVIEW_REQUIRED");
 });
 
 test("plausible identifierforslag forblir review-merket ved vanlig modellkonfidens", () => {
@@ -281,9 +284,11 @@ test("plausible identifierforslag forblir review-merket ved vanlig modellkonfide
     columnId: "vehicleId",
     candidates: [{text: "73-26", confidence: 0.909}],
   });
-  assert.equal(train.selectedValue, "765");
+  assert.equal(train.selectedValue, "");
+  assert.equal(train.suggestedValue, "765");
   assert.equal(train.needsReview, true);
-  assert.equal(vehicle.selectedValue, "73-26");
+  assert.equal(vehicle.selectedValue, "");
+  assert.equal(vehicle.suggestedValue, "73-26");
   assert.equal(vehicle.needsReview, true);
 });
 
@@ -293,14 +298,16 @@ test("fri merknad forblir fri, symbolfelt er symbolsk og uleselig innhold gjette
     columnId: "notes",
     candidates: [{text: "Kontrolleres i morgen", confidence: 0.88}],
   });
-  assert.equal(note.selectedValue, "Kontrolleres i morgen");
+  assert.equal(note.selectedValue, "");
+  assert.equal(note.suggestedValue, "Kontrolleres i morgen");
   assert.equal(note.normalizer, "FREE_TEXT");
 
   const symbol = subject.normalizeRecognition({
     columnId: "wcWater",
     candidates: [{text: "(*)", confidence: 0.87}],
   });
-  assert.equal(symbol.selectedValue, "*");
+  assert.equal(symbol.selectedValue, "");
+  assert.equal(symbol.suggestedValue, "*");
   assert.equal(symbol.normalizer, "WC_WATER_SYMBOL");
 
   const unreadable = subject.normalizeRecognition({
@@ -548,7 +555,7 @@ test("Template B-kildedato og initialer bevares uten current-date-fallback", () 
   assert.equal(missing.needsReview, true);
 });
 
-test("Template B mapping godtar bare komplett 29 x 8 og rapporterer hybrid proveniens", () => {
+test("Template B mapping godtar bare komplett 29 x 8 og rapporterer reell lokal ensembleproveniens", () => {
   const subject = loadSubject();
   const cells = Array.from({length: 29 * 8}, (_unused, index) => ({
     rowIndex: Math.floor(index / 8),
@@ -571,5 +578,5 @@ test("Template B mapping godtar bare komplett 29 x 8 og rapporterer hybrid prove
   assert.equal(report.templateId, "TEMPLATE_B");
   assert.equal(report.columnCount, 8);
   assert.equal(report.cellCount, 232);
-  assert.equal(report.recognitionMode, "HYBRID_PRINT_OCR_HTR");
+  assert.equal(report.recognitionMode, "LOCAL_REAL_HTR_ENSEMBLE");
 });

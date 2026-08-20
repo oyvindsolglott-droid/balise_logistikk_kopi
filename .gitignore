@@ -25,3 +25,10 @@ tests/sde-quality-engine/reports/*
 # Operative nattplanbilder skal bare brukes lokalt/read-only og aldri versjonsstyres.
 # De historisk navngitte, versjonsstyrte filene er syntetiske kompatibilitets-fixturer.
 tests/sde/fixtures/night-plan/local-operational-*
+
+# Private HTR images, labels, cell crops and learning examples never belong in Git.
+.sde-private-handwriting/
+private/sde-handwriting/
+tests/sde/fixtures/handwriting-private/
+*private-acceptance-image*
+*handwriting-learning-example*

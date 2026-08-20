@@ -135,6 +135,7 @@
             pixels: frame.pixels.buffer,
             canonicalSlots: Array.isArray(context.canonicalSlots) ? context.canonicalSlots : [],
             vehicleCatalog: Array.isArray(context.vehicleCatalog) ? context.vehicleCatalog : [],
+            trainCatalog: Array.isArray(context.trainCatalog) ? context.trainCatalog : [],
           }, [frame.pixels.buffer]);
         });
       },
@@ -157,6 +158,10 @@
     return {
       rawValue: String(cell.recognizedText || ""),
       normalizedValue: String(cell.selectedValue || ""),
+      selectedValue: String(cell.selectedValue || ""),
+      suggestedValue: String(cell.suggestedValue || ""),
+      recognizerProposal: String(cell.normalizedValue || ""),
+      disposition: String(cell.disposition || "REJECTED"),
       confidence: Number(cell.confidence || 0),
       sourceRegion: {
         row: cell.rowIndex == null ? null : cell.rowIndex + 1,
@@ -171,7 +176,7 @@
       printedCandidate: cell.printedCandidate ? {...cell.printedCandidate} : null,
       handwrittenCandidate: cell.handwrittenCandidate ? {...cell.handwrittenCandidate} : null,
       finalCandidate: cell.finalCandidate ? {...cell.finalCandidate} : null,
-      recognitionMode: String(cell.recognitionMode || "HYBRID_PRINT_OCR_HTR"),
+      recognitionMode: String(cell.recognitionMode || "LOCAL_REAL_HTR_ENSEMBLE"),
       groundTruthSource: "UNCONFIRMED_RECOGNIZER_OUTPUT",
       rawRecognizerIsGroundTruth: false,
     };

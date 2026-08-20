@@ -10114,6 +10114,11 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
     <figure class="sde-night-cell-evidence" id="sdeNightCellEvidence" hidden>
       <canvas id="sdeNightCellEvidenceCanvas" width="640" height="128" aria-label="Originalt celleutsnitt for felt som krever kontroll"></canvas>
       <figcaption id="sdeNightCellEvidenceCaption">Originalt celleutsnitt og separate kandidater vises her når et usikkert felt får fokus.</figcaption>
+      <div class="sde-night-controls" aria-label="Menneskelig avgjørelse for håndskriftforslag">
+        <button id="sdeNightAcceptSuggestionBtn" type="button">Godkjenn forslag</button>
+        <button id="sdeNightEditSuggestionBtn" type="button">Rediger</button>
+        <button id="sdeNightLeaveBlankBtn" type="button">La stå tomt</button>
+      </div>
     </figure>
     <div class="sde-night-row-count"><span id="sdeNightFormStructure">29 faste linjer · 6 kolonner · Template A</span><span>Wc/vann blir redigerbart først etter «Endre innhold».</span></div>
     <div class="sde-night-status" id="sdeNightPlanStatus" aria-live="polite">Opprett en manuell plan eller velg et bilde.</div>
@@ -10232,8 +10237,8 @@ Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for v
 
 
 <script src="sde_intelligent_night_planning.js?v=ae80afdb91c70b122aedf202bb7ffc1c78e865cf9bc20dece76652990416b386"></script>
-<script src="sde_handwriting_recognition.js?v=22c43705f366b179af24ec2b8bcb1a8b19f109b8ebdacb2832dccd60ed55ce28"></script>
-<script src="sde_handwriting_runtime.js?v=a4a5fceb24d5f16aa2d745f634e2961cdf6130185b0682130e6fe6c03368892f"></script>
+<script src="sde_handwriting_recognition.js?v=e8f0178ccbbad3db57d008461d22fb1d217a700226a8f54227907ebbe1307dac"></script>
+<script src="sde_handwriting_runtime.js?v=5e6434f69fbc4dfcbd189ea0194adc4b2feb4db5fd44e56b38966c2d3e91d154"></script>
 <script src="sde_tursatt_post_arrival.js?v=44f462a93a6a23348cdea2211d10b3ddecc6367da69dedec2fab21be89610795"></script>
 <script>
 const STORAGE_KEY="skien_sporplan_iphone_v13";
@@ -57142,7 +57147,7 @@ if(!isPublicGithubPagesApp()){
 if(isSdeCanonicalShadowAnalysisRequested()) runSdeCanonicalShadowAnalysis();
 </script>
 
-<script src="sde_night_planning_ui.js?v=172e4c84c42925cbb07bfc649b38a39a64c8a7cda88d1dcdd25722674131285d"></script>
+<script src="sde_night_planning_ui.js?v=ebdd056a3a5edfa4f6801b55a2708043546c4303be9e998dbeebeab10088d394"></script>
 
 <div class="rights-notice" id="rightsNotice">
   <div class="rights-title">© Øyvind Solgløtt. Alle rettigheter reservert.</div>

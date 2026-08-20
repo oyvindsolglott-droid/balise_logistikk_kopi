@@ -110,7 +110,7 @@ function photographedTemplateAWithInteriorRuleDistractors(){
 invariant("INV-HTR-001", "all value cells use explicit print-OCR and HTR layers", () => {
   const requests = htr.createRecognitionRequests(registration());
   return requests.length === 177
-    && requests.every(request => request.recognizerKind === "HYBRID_PRINT_OCR_HTR")
+    && requests.every(request => request.recognizerKind === "LOCAL_REAL_HTR_ENSEMBLE")
     && requests.every(request => JSON.stringify(request.recognizerKinds) === JSON.stringify(["PRINT_OCR", "HANDWRITING_HTR"]))
     && worker.includes('import * as ort from "./assets/vendor/onnxruntime-web/ort.wasm.min.mjs"');
 });
@@ -147,13 +147,13 @@ invariant("INV-HTR-006", "the six columns retain canonical order", () => {
 
 invariant("INV-HTR-007", "recognition processes and reports the complete 29 x 6 table", () =>
   worker.includes("for(let index = 0; index < requests.length; index += 1)")
-  && worker.includes("const tableCells = cells.filter(cell => cell.rowIndex != null);")
+  && worker.includes("const tableCellsBeforeOccurrenceReview = cells.filter(cell => cell.rowIndex != null);")
   && !worker.includes("cells.filter(cell => cell.rowIndex != null).slice(0, 1)")
 );
 
 invariant("INV-HTR-008", "uncertain free handwriting is review-marked rather than auto-accepted", () => {
   const value = htr.normalizeRecognition({columnId: "notes", candidates: [{text: "mulig tekst", confidence: 0.5}]});
-  return value.selectedValue === "mulig tekst" && value.needsReview === true;
+  return value.selectedValue === "" && value.suggestedValue === "mulig tekst" && value.needsReview === true;
 });
 
 invariant("INV-HTR-009", "recognition has no previous-plan or historical-value fallback", () =>
@@ -221,7 +221,7 @@ invariant("INV-HTR-018", "cell crops preserve edge content and run separate prin
   && worker.includes("const printTensors = Object.freeze(")
   && worker.includes("const handwritingTensors = Object.freeze(")
   && worker.includes("crop.printTensors")
-  && worker.includes("crop.handwritingTensors")
+  && worker.includes("crop.handwritingImages")
   && worker.includes("suppressGridLinePixels(grayscale, resizedWidth, 48)")
   && worker.includes("x1: box.x1 - xPadding")
 );
@@ -234,9 +234,9 @@ invariant("INV-HTR-020", "plausible but imperfect identifiers stay review-marked
   const train = htr.normalizeRecognition({columnId: "toTrain", candidates: [{text: "765", confidence: 0.979}]});
   const vehicle = htr.normalizeRecognition({columnId: "vehicleId", candidates: [{text: "73-26", confidence: 0.909}]});
   const slot = htr.normalizeRecognition({columnId: "toTrack", candidates: [{text: "11N", confidence: 0.744}]}, {canonicalSlots:["11N"]});
-  return train.selectedValue === "765" && train.needsReview === true
-    && vehicle.selectedValue === "73-26" && vehicle.needsReview === true
-    && slot.selectedValue === "11N" && slot.needsReview === true;
+  return train.selectedValue === "" && train.suggestedValue === "765" && train.needsReview === true
+    && vehicle.selectedValue === "" && vehicle.suggestedValue === "73-26" && vehicle.needsReview === true
+    && slot.selectedValue === "" && slot.suggestedValue === "11N" && slot.needsReview === true;
 });
 
 invariant("INV-HTR-021", "progress states distinguish preprocessing, registration, segmentation, and recognition", () =>
@@ -247,14 +247,14 @@ invariant("INV-HTR-021", "progress states distinguish preprocessing, registratio
   && worker.includes('status: "CELL_SEGMENTATION_COMPLETE"')
   && worker.includes('status: "PRINT_OCR_RUNNING"')
   && worker.includes('status: "HANDWRITING_RECOGNITION_RUNNING"')
-  && worker.includes('status: "HYBRID_PRINT_OCR_HTR_RUNNING"')
+  && worker.includes('status: "LOCAL_REAL_HTR_ENSEMBLE_RUNNING"')
   && worker.includes('"CELL_MAPPING_COMPLETE"')
   && worker.includes('"CELL_MAPPING_REQUIRES_REVIEW"')
 );
 
 invariant("INV-HTR-022", "vehicle separators and canonical track suffixes survive normalization", () => {
-  const vehicle = htr.normalizeRecognition({columnId: "vehicleId", candidates: [{text: "7326", confidence: 1}]});
-  const track = htr.normalizeRecognition({columnId: "toTrack", candidates: [{text: "11N", confidence: 1}]}, {canonicalSlots: ["11N"]});
+  const vehicle = htr.normalizeRecognition({columnId: "vehicleId", candidates: [{text: "7326", confidence: 1, votes: 2}]});
+  const track = htr.normalizeRecognition({columnId: "toTrack", candidates: [{text: "11N", confidence: 1, votes: 2}]}, {canonicalSlots: ["11N"]});
   return vehicle.selectedValue === "73-26" && track.selectedValue === "11N";
 });
 
@@ -312,7 +312,8 @@ invariant("INV-HTR-029", "ordinary separated handwriting is not mistaken for a s
 
 invariant("INV-HTR-030", "Template A crop readability uses adaptive handwriting-only normalization", () =>
   worker.includes('const templateAHandwritingOnly = cell.templateId === "TEMPLATE_A";')
-  && worker.includes("templateAHandwritingOnly ? adaptivePasses[1] : separated.handwritingInk")
+  && worker.includes("const handwritingPasses = templateAHandwritingOnly")
+  && worker.includes("? adaptivePasses")
   && worker.includes("adaptiveInkNormalizationApplied: templateAHandwritingOnly")
 );
 
@@ -415,7 +416,7 @@ invariant("INV-HYBRID-014", "orphan values cannot be created without image candi
 
 invariant("INV-HYBRID-015", "low-confidence values cannot be auto-accepted", () => {
   const value = htr.normalizeRecognition({columnId: "notes", candidates: [{text: "mulig tekst", confidence: 0.5}]});
-  return value.selectedValue === "mulig tekst" && value.needsReview === true;
+  return value.selectedValue === "" && value.suggestedValue === "mulig tekst" && value.needsReview === true;
 });
 
 invariant("INV-HYBRID-016", "previous imports cannot supply fallback values", () =>
