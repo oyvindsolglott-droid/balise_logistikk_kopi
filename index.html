@@ -40498,6 +40498,35 @@ function removeSdeStaleCanonicalGraphicOverridesForVehicle(vehicle, currentSourc
 }
 
 function inspectSdeCanonicalGraphicDragOrder(reader, expected={}){
+  function buildDiagnosticDetail(){
+    const candidateOutcomes = Array.isArray(reader?.canonicalPlan?.candidateOutcomes) ? reader.canonicalPlan.candidateOutcomes : [];
+    const candidates = candidateOutcomes.filter(candidate=>
+      sanitizeVehicleValue(candidate?.vehicleId) === vehicleId
+      && normalizeSlot(candidate?.canonicalSourceSlot) === sourceSlot
+      && normalizeSlot(candidate?.targetSlot) === targetSlot
+      && String(candidate?.producer || "").trim() === "graphic_drag_generated_move"
+      && (!actionKey || String(candidate?.actionKey || "").trim() === actionKey)
+    );
+    if(!candidates.length){
+      return [`candidateOutcome=0 (ingen kandidat ble generert for ${vehicleId} ${sourceSlot}->${targetSlot})`];
+    }
+    const candidateIds = new Set(candidates.map(item=>String(item?.candidateOutcomeId || "").trim()).filter(Boolean));
+    const handlerBlocked = (reader?.cardProjection?.handlerBlockedCards || []).filter(blockedCard=>
+      candidateIds.has(String(blockedCard?.activeOutcomeId || "").trim())
+    );
+    if(handlerBlocked.length){
+      const reasons = Array.from(new Set(handlerBlocked.flatMap(blockedCard=>
+        Array.isArray(blockedCard?.handlerBlockReasons) ? blockedCard.handlerBlockReasons : []
+      )));
+      if(reasons.length) return [`blockedReason=${reasons.join(" | ")}`];
+    }
+    const conflicts = (reader?.canonicalPlan?.conflicts || []).filter(conflict=>
+      candidateIds.has(String(conflict?.candidateOutcomeId || "").trim())
+      || (Array.isArray(conflict?.candidateOutcomeIds) && conflict.candidateOutcomeIds.some(id=>candidateIds.has(String(id || "").trim())))
+    );
+    if(conflicts.length) return [`canonicalConflict=${conflicts.map(item=>item.code).join(", ")}`];
+    return [`candidateOutcome=${candidates.length} (kandidat finnes, men ble ikke aktivert; ingen spesifikk blokkeringsårsak funnet i diagnostics)`];
+  }
   const vehicleId = sanitizeVehicleValue(expected.vehicle);
   const sourceSlot = normalizeSlot(expected.sourceSlot);
   const targetSlot = normalizeSlot(expected.targetSlot);
@@ -40538,7 +40567,8 @@ function inspectSdeCanonicalGraphicDragOrder(reader, expected={}){
     `reservation=${reservations.length}`,
     `overlay=${overlays.length}`,
     `identity=${identityMatches ? "ok" : "mismatch"}`,
-    `adapter=${adapter?.ready === true ? "ready" : (adapter?.reasons || ["missing"]).join(", ")}`
+    `adapter=${adapter?.ready === true ? "ready" : (adapter?.reasons || ["missing"]).join(", ")}`,
+    ...(activeOutcomes.length === 0 ? buildDiagnosticDetail() : [])
   ].join("; ");
   return {ok,reason,outcome,card,reservation:reservations[0] || null,overlay:overlays[0] || null,adapter};
 }

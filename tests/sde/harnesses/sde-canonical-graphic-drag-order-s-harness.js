@@ -230,6 +230,17 @@ assert.ok(script.includes("state.sdeActiveMoveOutcomes = previousAuthorities;"))
 assert.ok(script.includes("Bestilling avvist som operativ kjede, men plan-intent er beholdt diagnostic-only:"));
 assert.ok(script.includes("Bestilling opprettet:"));
 
+const noCandidateInspection = inspectSdeCanonicalGraphicDragOrder(twoReader,{
+  vehicle:"69-55",sourceSlot:"5M",targetSlot:"8S",actionKey:"night-placement-drag|69-55|5M|8S|no-such-request"
+});
+assert.equal(noCandidateInspection.ok,false);
+assert.match(noCandidateInspection.reason,/activeOutcome=0/);
+assert.match(
+  noCandidateInspection.reason,
+  /candidateOutcome=0 \(ingen kandidat ble generert for 69-55 5M->8S\)/,
+  noCandidateInspection.reason
+);
+
 console.log(JSON.stringify({
   ok:true,
   exactSafari:{
