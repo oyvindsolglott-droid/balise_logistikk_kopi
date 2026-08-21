@@ -21,3 +21,18 @@ test("Tursatt-layouten har ingen desktop-offset eller separat headerspor", () =>
   assert.equal(/oppstillingMobileHeader/.test(html), false);
   assert.match(html, /table-layout\s*:\s*fixed/);
 });
+
+test("Tursatt sin prosentbaserte colgroup har en bestemt zoom-containerbredde", () => {
+  assert.match(
+    html,
+    /#oppstilling #apiCombinedZoom\s*\{[^}]*width:100%;[^}]*min-width:1120px;/s,
+  );
+  assert.match(
+    html,
+    /@media \(max-width:700px\)[\s\S]*#oppstilling #apiCombinedZoom\s*\{[^}]*width:980px;[^}]*min-width:980px;/s,
+  );
+  assert.equal(
+    /#oppstilling #apiCombinedZoom\s*\{[^}]*width:max-content;/s.test(html),
+    false,
+  );
+});

@@ -46,6 +46,10 @@ const mutations = [
     '    appendOppstillingSideCells(tr, viewModel.arrivalRows[i] || null, "arrival");', "    // mutation: arrival body cells removed", "remove arrival cells")},
   {id:"TABLE_LAYOUT_BECOMES_AUTO", expected:"INV-TURSATT-ALIGN-006", apply:value=>replaceOnce(value,
     "#oppstillingTable{\nmin-width:1120px;\nwidth:100%;\ntable-layout:fixed;", "#oppstillingTable{\nmin-width:1120px;\nwidth:100%;\ntable-layout:auto;", "remove fixed layout")},
+  {id:"DESKTOP_ZOOM_WIDTH_BECOMES_MAX_CONTENT", expected:"INV-TURSATT-ALIGN-008", apply:value=>replaceOnce(value,
+    "#oppstilling #apiCombinedZoom{\nwidth:100%;\nmin-width:1120px;\n}", "#oppstilling #apiCombinedZoom{\nwidth:max-content;\nmin-width:1120px;\n}", "unbound desktop zoom width")},
+  {id:"MOBILE_ZOOM_WIDTH_BECOMES_MAX_CONTENT", expected:"INV-TURSATT-ALIGN-008", apply:value=>replaceOnce(value,
+    "#oppstilling #apiCombinedZoom{\ntransform:none !important;\nwidth:980px;\nmin-width:980px;\n}", "#oppstilling #apiCombinedZoom{\ntransform:none !important;\nwidth:max-content;\nmin-width:980px;\n}", "unbound mobile zoom width")},
 ];
 
 const results = [];

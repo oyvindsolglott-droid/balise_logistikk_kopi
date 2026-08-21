@@ -302,6 +302,7 @@ const STRICT_INVARIANT_IDS = Object.freeze([
   "INV-TURSATT-ALIGN-005",
   "INV-TURSATT-ALIGN-006",
   "INV-TURSATT-ALIGN-007",
+  "INV-TURSATT-ALIGN-008",
 ]);
 const STRICT_TOTAL = STRICT_INVARIANT_IDS.length;
 const DETERMINISM_RUNS = 3;
@@ -309,8 +310,8 @@ const STRICT_REPLAY_TIMEOUT_MS = 120_000;
 const BASELINE_REPLAY_TIMEOUT_MS = 240_000;
 const CHILD_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
-if (STRICT_TOTAL !== 299 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
-  throw new Error("active strict invariant catalog must contain exactly 299 unique IDs");
+if (STRICT_TOTAL !== 300 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
+  throw new Error("active strict invariant catalog must contain exactly 300 unique IDs");
 }
 
 function canonical(value) {

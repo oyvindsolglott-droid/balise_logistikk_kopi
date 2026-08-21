@@ -69,6 +69,12 @@ invariant("INV-TURSATT-ALIGN-007", "closure revision date is 20 August 2026", ()
   && !source.includes("Siste revisjon: 19. august 2026")
 );
 
+invariant("INV-TURSATT-ALIGN-008", "the percentage colgroup resolves against bounded desktop and mobile containers", () =>
+  source.includes("#oppstilling #apiCombinedZoom{\nwidth:100%;\nmin-width:1120px;\n}")
+  && source.includes("#oppstilling #apiCombinedZoom{\ntransform:none !important;\nwidth:980px;\nmin-width:980px;\n}")
+  && !source.includes("#oppstilling #apiCombinedZoom{\ntransform:none !important;\nwidth:max-content;")
+);
+
 const failed = results.filter(result => result.status === "FAIL");
 process.stdout.write(`${JSON.stringify({
   schemaVersion:"sde-tursatt-alignment-invariants-v1",
