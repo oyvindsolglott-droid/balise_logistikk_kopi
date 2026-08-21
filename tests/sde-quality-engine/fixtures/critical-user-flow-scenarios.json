@@ -1,0 +1,124 @@
+{
+  "schemaVersion": "sde-critical-user-flow-fixtures/v1",
+  "base": {
+    "schemaVersion": "sde-critical-user-flow/v1",
+    "scenarioId": "all-green",
+    "observations": {
+      "coreUi": {
+        "healthGreen": true,
+        "htrLazyAtBoot": true,
+        "htrLazyAfterSelection": true,
+        "mainMenuVisible": true,
+        "sporplanVisible": true,
+        "tursattSurvivesHtrFailure": true,
+        "globalBlankPage": false,
+        "unhandledRejection": false,
+        "manualPlanAvailable": true
+      },
+      "tursatt": {
+        "viewModelRowCount": 12,
+        "domHeaderCellCount": 14,
+        "expectedHeaderCellCount": 14,
+        "domRowCount": 12,
+        "fixtureValuesMatch": true,
+        "filterTextVisible": true,
+        "desktopGreen": true,
+        "mobile390Green": true,
+        "webkitGreen": true
+      },
+      "asset": {
+        "sourceResource": "/assets/models/gigapdf-ocr-handwriting/model.onnx",
+        "httpStatus": 200,
+        "contentType": "application/octet-stream",
+        "expectedContentType": "application/octet-stream",
+        "expectedBytes": 13148239,
+        "receivedBytes": 13148239,
+        "expectedSha256": "969d1899ed80afd51a1a37c888f0c239292738af9a1a08f6f4191f083565f5b3",
+        "receivedSha256": "969d1899ed80afd51a1a37c888f0c239292738af9a1a08f6f4191f083565f5b3",
+        "htmlFallback": false,
+        "downloadComplete": true,
+        "timeout": false,
+        "abort": false,
+        "retryCount": 0
+      },
+      "worker": {
+        "runtimeState": "READY",
+        "workerState": "READY",
+        "modelSessionState": "READY",
+        "controlledFailure": false
+      },
+      "syntheticImport": {
+        "fileSelected": true,
+        "imageDecoded": true,
+        "inferenceComplete": true,
+        "formMappingState": "FORM_MAPPING_COMPLETE",
+        "productionWrites": 0,
+        "userDataUsed": false
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "id": "all-green",
+      "mutations": {},
+      "expected": {
+        "CORE-UI-MODULE-ISOLATION": "GREEN",
+        "TURSATT-RENDER-E2E": "GREEN",
+        "HTR-ASSET-DELIVERY": "GREEN",
+        "HTR-WORKER-INITIALIZATION": "GREEN",
+        "HTR-SYNTHETIC-IMPORT-E2E": "GREEN",
+        "CRITICAL-USER-FLOW-AGGREGATE": "GREEN"
+      }
+    },
+    {
+      "id": "app-health-green-table-empty",
+      "mutations": { "observations": { "tursatt": { "domRowCount": 0 } } },
+      "expected": { "TURSATT-RENDER-E2E": "RED", "CRITICAL-USER-FLOW-AGGREGATE": "RED" }
+    },
+    {
+      "id": "view-model-rows-dom-zero",
+      "mutations": { "observations": { "tursatt": { "viewModelRowCount": 9, "domRowCount": 0 } } },
+      "expected": { "TURSATT-RENDER-E2E": "RED", "CRITICAL-USER-FLOW-AGGREGATE": "RED" }
+    },
+    {
+      "id": "filter-visible-header-missing",
+      "mutations": { "observations": { "tursatt": { "domHeaderCellCount": 0 } } },
+      "expected": { "TURSATT-RENDER-E2E": "RED", "CRITICAL-USER-FLOW-AGGREGATE": "RED" }
+    },
+    {
+      "id": "model-partial-download",
+      "mutations": { "observations": { "asset": { "receivedBytes": 1824000, "downloadComplete": false } } },
+      "expected": { "HTR-ASSET-DELIVERY": "RED", "CRITICAL-USER-FLOW-AGGREGATE": "RED" }
+    },
+    {
+      "id": "model-html-fallback-200",
+      "mutations": { "observations": { "asset": { "contentType": "text/html; charset=utf-8", "htmlFallback": true } } },
+      "expected": { "HTR-ASSET-DELIVERY": "RED", "CRITICAL-USER-FLOW-AGGREGATE": "RED" }
+    },
+    {
+      "id": "model-truncated-complete-response",
+      "mutations": { "observations": { "asset": { "receivedBytes": 13148000, "downloadComplete": true } } },
+      "expected": { "HTR-ASSET-DELIVERY": "RED", "CRITICAL-USER-FLOW-AGGREGATE": "RED" }
+    },
+    {
+      "id": "model-hash-mismatch",
+      "mutations": { "observations": { "asset": { "receivedSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" } } },
+      "expected": { "HTR-ASSET-DELIVERY": "RED", "CRITICAL-USER-FLOW-AGGREGATE": "RED" }
+    },
+    {
+      "id": "worker-does-not-start-but-tursatt-survives",
+      "mutations": { "observations": { "worker": { "workerState": "FAILED", "modelSessionState": "NOT_CREATED", "controlledFailure": true } } },
+      "expected": {
+        "CORE-UI-MODULE-ISOLATION": "GREEN",
+        "TURSATT-RENDER-E2E": "GREEN",
+        "HTR-WORKER-INITIALIZATION": "RED",
+        "CRITICAL-USER-FLOW-AGGREGATE": "RED"
+      }
+    },
+    {
+      "id": "htr-failure-blanks-tursatt",
+      "mutations": { "observations": { "coreUi": { "tursattSurvivesHtrFailure": false, "globalBlankPage": true } } },
+      "expected": { "CORE-UI-MODULE-ISOLATION": "RED", "CRITICAL-USER-FLOW-AGGREGATE": "RED" }
+    }
+  ]
+}

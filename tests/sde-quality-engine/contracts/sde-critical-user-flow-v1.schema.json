@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sde.oyvind-solglott.no/contracts/sde-critical-user-flow-v1.schema.json",
+  "title": "SDE critical user flow evidence",
+  "type": "object",
+  "required": ["schemaVersion", "scenarioId", "observations"],
+  "properties": {
+    "schemaVersion": { "const": "sde-critical-user-flow/v1" },
+    "scenarioId": { "type": "string", "minLength": 1 },
+    "observations": {
+      "type": "object",
+      "required": ["coreUi", "tursatt", "asset", "worker", "syntheticImport"],
+      "properties": {
+        "coreUi": {
+          "type": "object",
+          "required": ["healthGreen", "htrLazyAtBoot", "htrLazyAfterSelection", "mainMenuVisible", "sporplanVisible", "tursattSurvivesHtrFailure", "globalBlankPage", "unhandledRejection", "manualPlanAvailable"],
+          "properties": {
+            "healthGreen": { "type": "boolean" },
+            "htrLazyAtBoot": { "type": "boolean" },
+            "htrLazyAfterSelection": { "type": "boolean" },
+            "mainMenuVisible": { "type": "boolean" },
+            "sporplanVisible": { "type": "boolean" },
+            "tursattSurvivesHtrFailure": { "type": "boolean" },
+            "globalBlankPage": { "type": "boolean" },
+            "unhandledRejection": { "type": "boolean" },
+            "manualPlanAvailable": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "tursatt": {
+          "type": "object",
+          "required": ["viewModelRowCount", "domHeaderCellCount", "expectedHeaderCellCount", "domRowCount", "fixtureValuesMatch", "filterTextVisible", "desktopGreen", "mobile390Green", "webkitGreen"],
+          "properties": {
+            "viewModelRowCount": { "type": "integer", "minimum": 0 },
+            "domHeaderCellCount": { "type": "integer", "minimum": 0 },
+            "expectedHeaderCellCount": { "type": "integer", "minimum": 1 },
+            "domRowCount": { "type": "integer", "minimum": 0 },
+            "fixtureValuesMatch": { "type": "boolean" },
+            "filterTextVisible": { "type": "boolean" },
+            "desktopGreen": { "type": "boolean" },
+            "mobile390Green": { "type": "boolean" },
+            "webkitGreen": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "asset": {
+          "type": "object",
+          "required": ["sourceResource", "httpStatus", "contentType", "expectedContentType", "expectedBytes", "receivedBytes", "expectedSha256", "receivedSha256", "htmlFallback", "downloadComplete", "timeout", "abort", "retryCount"],
+          "properties": {
+            "sourceResource": { "type": "string", "pattern": "^/" },
+            "httpStatus": { "type": "integer" },
+            "contentType": { "type": "string" },
+            "expectedContentType": { "type": "string" },
+            "expectedBytes": { "type": "integer", "minimum": 0 },
+            "receivedBytes": { "type": "integer", "minimum": 0 },
+            "expectedSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "receivedSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+            "htmlFallback": { "type": "boolean" },
+            "downloadComplete": { "type": "boolean" },
+            "timeout": { "type": "boolean" },
+            "abort": { "type": "boolean" },
+            "retryCount": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "worker": {
+          "type": "object",
+          "required": ["runtimeState", "workerState", "modelSessionState", "controlledFailure"],
+          "properties": {
+            "runtimeState": { "type": "string" },
+            "workerState": { "type": "string" },
+            "modelSessionState": { "type": "string" },
+            "controlledFailure": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        },
+        "syntheticImport": {
+          "type": "object",
+          "required": ["fileSelected", "imageDecoded", "inferenceComplete", "formMappingState", "productionWrites", "userDataUsed"],
+          "properties": {
+            "fileSelected": { "type": "boolean" },
+            "imageDecoded": { "type": "boolean" },
+            "inferenceComplete": { "type": "boolean" },
+            "formMappingState": { "type": "string" },
+            "productionWrites": { "type": "integer", "minimum": 0 },
+            "userDataUsed": { "type": "boolean" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

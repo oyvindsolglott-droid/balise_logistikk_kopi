@@ -37,6 +37,7 @@
     "test:sde:tursatt-post-arrival": "node --test tests/sde/tursatt-post-arrival-shift.test.cjs tests/sde/shared-sporplan-empty-tombstone.test.cjs && node tests/sde/tursatt-post-arrival-gate.cjs",
     "test:sde:tursatt-post-arrival:mutations": "node tests/sde/strict/tursatt-post-arrival-mutation-audit.cjs",
     "test:sde:qe:ci": "node tests/sde-quality-engine/run.cjs --suite ci",
+    "test:sde:qe:critical-user-flow": "node tests/sde-quality-engine/critical-user-flow-qualification.cjs --disposable",
     "test:sde:prepush": "node --test --test-concurrency=1 tests/sde-quality-engine/prepush-gate.test.cjs",
     "sde:prepush:install": "node scripts/sde-prepush-gate.cjs install",
     "sde:prepush:doctor": "node scripts/sde-prepush-gate.cjs doctor",

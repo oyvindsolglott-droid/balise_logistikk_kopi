@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Check out Browserguard source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Browserguard Node.js
         uses: actions/setup-node@v4
@@ -75,6 +77,12 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
         run: xvfb-run -a npm run test:sde:htr-browser
+
+      - name: Run critical SDE user-flow black-box gate
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/sde-qe-browserguard-browsers
+          SDE_QE_PYTHON: python
+        run: xvfb-run -a npm run test:sde:qe:critical-user-flow
 
   permanent-regressions:
     name: permanent-regressions
