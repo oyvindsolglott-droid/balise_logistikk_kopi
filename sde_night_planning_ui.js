@@ -940,18 +940,26 @@
         setStatus("Skjemamappingen feilet. Resultatet er ikke klassifisert som en vellykket import; velg «Endre innhold» for manuell kontroll.", "error");
       }
     } catch (error) {
-      if (generation !== ocrGeneration || /(?:ocr|htr)_cancelled/i.test(String(error && error.message || error))) {
+      const errorDetail = String((error && (error.stack || error.message)) || error || "").trim();
+      const errorMessageOnly = String((error && error.message) || error || "").trim();
+      if (generation !== ocrGeneration || /(?:ocr|htr)_cancelled/i.test(errorMessageOnly)) {
         setImportState("IMPORT_FAILED", null);
         setStatus("Bildeanalysen ble avbrutt. Ingen plan ble lagret.", "warn");
-      } else if (/unsupported_image_type/i.test(String(error && error.message || error))) {
+      } else if (/unsupported_image_type/i.test(errorMessageOnly)) {
         setImportState("IMPORT_FAILED", null);
         setStatus("Ugyldig filtype. Bare JPG og PNG støttes.", "error");
       } else {
         setImportState("IMPORT_FAILED", null);
-        setStatus("Lokal bildeanalyse feilet. Ingen data ble lagret; bruk manuell registrering eller prøv et tydeligere bilde.", "error");
+        setStatus(
+          `Lokal bildeanalyse feilet. Ingen data ble lagret; bruk manuell registrering eller prøv et tydeligere bilde.${errorMessageOnly ? ` (${errorMessageOnly})` : ""}`,
+          "error",
+        );
+      }
+      if (typeof console !== "undefined" && typeof console.error === "function") {
+        console.error("sde_night_planning_ui.analyzeSelectedImage failed:", error);
       }
       const target = el("sdeNightOcrProgress");
-      if (target) target.textContent = "IMPORT_FAILED · råbildet er ikke lagret";
+      if (target) target.textContent = `IMPORT_FAILED · råbildet er ikke lagret${errorDetail ? ` · ${errorDetail}` : ""}`;
     } finally {
       if (generation === ocrGeneration) {
         if (analyzeButton) analyzeButton.disabled = false;
