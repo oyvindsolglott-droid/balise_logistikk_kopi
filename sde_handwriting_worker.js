@@ -14,6 +14,8 @@ ort.env.logLevel = "error";
 let runtimePromise = null;
 let activeSessionId = "";
 let cancelledSessionId = "";
+const activeAssetControllers = new Set();
+const HTR_ASSET_POLICY = Object.freeze({timeoutMs: 30_000, maxRetries: 1});
 
 function post(type, sessionId, payload = {}){
   self.postMessage({type, sessionId, ...payload});
@@ -25,14 +27,103 @@ function sameOriginUrl(relativePath){
   return url;
 }
 
-async function fetchBytes(relativePath, cache = "force-cache"){
-  const response = await fetch(sameOriginUrl(relativePath), {
-    credentials: "same-origin",
-    cache,
-    redirect: "error",
-  });
-  if(!response.ok) throw new Error(`htr_asset_http_${response.status}`);
-  return new Uint8Array(await response.arrayBuffer());
+async function sha256Hex(bytes){
+  const digest = await self.crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, "0")).join("");
+}
+
+function assetError(code, resource, details = {}){
+  const error = new Error(code);
+  error.diagnostic = Object.freeze({code, resource, ...details});
+  return error;
+}
+
+async function fetchBytes(relativePath, options = {}){
+  const resource = String(relativePath || "");
+  const cache = String(options.cache || "force-cache");
+  const expectedSha256 = String(options.expectedSha256 || "").toLowerCase();
+  const acceptedContentTypes = Array.isArray(options.acceptedContentTypes)
+    ? options.acceptedContentTypes.map(value => String(value).toLowerCase())
+    : [];
+  const timeoutMs = Math.max(10, Math.min(HTR_ASSET_POLICY.timeoutMs, Number(options.timeoutMs || HTR_ASSET_POLICY.timeoutMs)));
+  const startedAt = performance.now();
+  let lastError = null;
+
+  for(let attempt = 0; attempt <= HTR_ASSET_POLICY.maxRetries; attempt += 1){
+    if(cancelledSessionId && cancelledSessionId === activeSessionId) throw assetError("htr_cancelled", resource);
+    const controller = new AbortController();
+    activeAssetControllers.add(controller);
+    const timeout = setTimeout(() => controller.abort("htr_asset_timeout"), timeoutMs);
+    post("progress", activeSessionId, {
+      status: "HTR_ASSET_DOWNLOAD_STARTED",
+      progress: 0.2,
+      resource,
+      attempt: attempt + 1,
+      maxAttempts: HTR_ASSET_POLICY.maxRetries + 1,
+    });
+    try{
+      const response = await fetch(sameOriginUrl(resource), {
+        credentials: "same-origin",
+        cache,
+        redirect: "error",
+        signal: controller.signal,
+      });
+      if(!response.ok) throw assetError(`htr_asset_http_${response.status}`, resource, {status: response.status});
+      const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+      if(contentType.startsWith("text/html")
+        || (acceptedContentTypes.length && !acceptedContentTypes.some(value => contentType.startsWith(value)))){
+        throw assetError("htr_asset_content_type_mismatch", resource, {contentType});
+      }
+      const contentLengthValue = String(response.headers.get("content-length") || "").trim();
+      if(!/^\d+$/.test(contentLengthValue)) throw assetError("htr_asset_content_length_missing", resource);
+      const expectedBytes = Number(contentLengthValue);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if(bytes.byteLength !== expectedBytes){
+        throw assetError("htr_asset_content_length_mismatch", resource, {expectedBytes, receivedBytes: bytes.byteLength});
+      }
+      const actualSha256 = expectedSha256 ? await sha256Hex(bytes) : "";
+      if(expectedSha256 && actualSha256 !== expectedSha256){
+        throw assetError("htr_asset_hash_mismatch", resource, {expectedSha256, actualSha256, receivedBytes: bytes.byteLength});
+      }
+      post("progress", activeSessionId, {
+        status: "HTR_ASSET_DOWNLOAD_COMPLETE",
+        progress: 0.2,
+        resource,
+        attempt: attempt + 1,
+        contentType,
+        expectedBytes,
+        receivedBytes: bytes.byteLength,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+      if(expectedSha256){
+        post("progress", activeSessionId, {
+          status: "HTR_ASSET_HASH_VERIFIED",
+          progress: 0.2,
+          resource,
+          sha256: actualSha256,
+        });
+      }
+      return bytes;
+    }catch(error){
+      lastError = controller.signal.aborted
+        ? assetError("htr_asset_timeout", resource, {attempt: attempt + 1})
+        : error;
+      if(cancelledSessionId && cancelledSessionId === activeSessionId) throw assetError("htr_cancelled", resource);
+      if(attempt < HTR_ASSET_POLICY.maxRetries){
+        post("progress", activeSessionId, {
+          status: "HTR_ASSET_RETRY",
+          progress: 0.2,
+          resource,
+          attempt: attempt + 2,
+          reason: String(lastError?.message || lastError),
+        });
+      }
+    }finally{
+      clearTimeout(timeout);
+      activeAssetControllers.delete(controller);
+    }
+  }
+  throw lastError || assetError("htr_asset_download_failed", resource);
 }
 
 function parseCharacterDictionary(text){
@@ -59,13 +150,12 @@ function parseHtrDictionary(text){
 async function initializeRuntime(){
   if(runtimePromise) return runtimePromise;
   runtimePromise = (async () => {
-    const manifestResponse = await fetch(sameOriginUrl(`${HTR_MODEL_ROOT}manifest.json`), {
-      credentials: "same-origin",
+    const initializationStartedAt = performance.now();
+    const manifestBytes = await fetchBytes(`${HTR_MODEL_ROOT}manifest.json`, {
       cache: "no-store",
-      redirect: "error",
+      acceptedContentTypes: ["application/json"],
     });
-    if(!manifestResponse.ok) throw new Error(`htr_manifest_http_${manifestResponse.status}`);
-    const manifest = await manifestResponse.json();
+    const manifest = JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(manifestBytes));
     if(manifest.modelRevision !== htr.MODEL_SPEC.revision
       || manifest.files?.["model.onnx"] !== htr.MODEL_SPEC.modelSha256
       || manifest.runtime?.version !== "1.27.0"
@@ -73,21 +163,21 @@ async function initializeRuntime(){
       || manifest.networkPolicy?.remoteModelFallback !== false){
       throw new Error("htr_manifest_contract_mismatch");
     }
-    const printManifestResponse = await fetch(sameOriginUrl(`${PRINT_MODEL_ROOT}manifest.json`), {
-      credentials: "same-origin", cache: "no-store", redirect: "error",
+    const printManifestBytes = await fetchBytes(`${PRINT_MODEL_ROOT}manifest.json`, {
+      cache: "no-store",
+      acceptedContentTypes: ["application/json"],
     });
-    if(!printManifestResponse.ok) throw new Error(`print_manifest_http_${printManifestResponse.status}`);
-    const printManifest = await printManifestResponse.json();
+    const printManifest = JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(printManifestBytes));
     if(printManifest.modelRevision !== htr.PRINT_MODEL_SPEC.revision
       || printManifest.files?.["inference.onnx"] !== htr.PRINT_MODEL_SPEC.modelSha256
       || printManifest.networkPolicy?.remoteModelFallback !== false){
       throw new Error("print_manifest_contract_mismatch");
     }
     const [modelBytes, dictionaryBytes, printModelBytes, printDictionaryBytes] = await Promise.all([
-      fetchBytes(`${HTR_MODEL_ROOT}model.onnx`),
-      fetchBytes(`${HTR_MODEL_ROOT}dict.txt`),
-      fetchBytes(`${PRINT_MODEL_ROOT}inference.onnx`),
-      fetchBytes(`${PRINT_MODEL_ROOT}inference.yml`),
+      fetchBytes(`${HTR_MODEL_ROOT}model.onnx`, {expectedSha256: manifest.files["model.onnx"], acceptedContentTypes: ["application/octet-stream"]}),
+      fetchBytes(`${HTR_MODEL_ROOT}dict.txt`, {expectedSha256: manifest.files["dict.txt"], acceptedContentTypes: ["text/plain"]}),
+      fetchBytes(`${PRINT_MODEL_ROOT}inference.onnx`, {expectedSha256: printManifest.files["inference.onnx"], acceptedContentTypes: ["application/octet-stream"]}),
+      fetchBytes(`${PRINT_MODEL_ROOT}inference.yml`, {expectedSha256: printManifest.files["inference.yml"], acceptedContentTypes: ["text/yaml"]}),
     ]);
     await htr.verifyModelBytes(modelBytes, {modelSha256: manifest.files["model.onnx"]});
     await htr.verifyModelBytes(dictionaryBytes, {modelSha256: manifest.files["dict.txt"]});
@@ -101,10 +191,18 @@ async function initializeRuntime(){
       enableCpuMemArena: true,
       enableMemPattern: true,
     };
+    const sessionStartedAt = performance.now();
+    post("progress", activeSessionId, {status: "HTR_MODEL_SESSION_INITIALIZING", progress: 0.2});
     const [htrSession, printSession] = await Promise.all([
       ort.InferenceSession.create(modelBytes, sessionOptions),
       ort.InferenceSession.create(printModelBytes, sessionOptions),
     ]);
+    post("progress", activeSessionId, {
+      status: "HTR_MODEL_SESSION_READY",
+      progress: 0.2,
+      sessionDurationMs: Math.round(performance.now() - sessionStartedAt),
+      initializationDurationMs: Math.round(performance.now() - initializationStartedAt),
+    });
     return Object.freeze({manifest, printManifest, htrCharacters, printCharacters, htrSession, printSession});
   })().catch(error => {
     runtimePromise = null;
@@ -925,6 +1023,7 @@ self.addEventListener("message", event => {
   const message = event.data || {};
   if(message.type === "cancel"){
     cancelledSessionId = String(message.sessionId || activeSessionId || "");
+    activeAssetControllers.forEach(controller => controller.abort("htr_cancelled"));
     return;
   }
   if(message.type !== "analyze") return;
@@ -932,3 +1031,5 @@ self.addEventListener("message", event => {
     post("error", String(message.sessionId || ""), {error: String(error?.message || error)});
   });
 });
+
+post("ready", "", {status: "HTR_WORKER_READY", runtime: "onnxruntime-web@1.27.0", executionProvider: "wasm"});

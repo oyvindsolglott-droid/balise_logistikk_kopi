@@ -35,7 +35,7 @@ const mutations = [
   {id:"CLONED_HEADER_REINTRODUCED", expected:"INV-TURSATT-ALIGN-001", apply:value=>replaceOnce(value,
     '<table id="oppstillingTable"></table>', '<div id="oppstillingMobileHeader"><table id="oppstillingMobileHeaderTable"></table></div><table id="oppstillingTable"></table>', "duplicate header")},
   {id:"CANONICAL_COLGROUP_REMOVED", expected:"INV-TURSATT-ALIGN-003", apply:value=>replaceOnce(value,
-    "  appendTursattCanonicalColgroup(table);", "  // mutation: canonical colgroup removed", "remove colgroup")},
+    "  appendTursattCanonicalColgroup(fragment);", "  // mutation: canonical colgroup removed", "remove colgroup")},
   {id:"FIRST_COLUMN_WIDTH_DRIFTS", expected:"INV-TURSATT-ALIGN-002", apply:value=>replaceOnce(value,
     '{id:"arrivalTrain", group:"arrival", label:"Tognr.", track:"7%"}', '{id:"arrivalTrain", group:"arrival", label:"Tognr.", track:"9%"}', "change first track")},
   {id:"ARRIVAL_GROUP_SPAN_DRIFTS", expected:"INV-TURSATT-ALIGN-004", apply:value=>replaceOnce(value,
@@ -43,7 +43,7 @@ const mutations = [
   {id:"LEAF_HEADER_IDENTITY_REMOVED", expected:"INV-TURSATT-ALIGN-004", apply:value=>replaceOnce(value,
     "    th.dataset.tursattColumn=column.id;", "    th.dataset.tursattColumn='shifted';", "shift header identity")},
   {id:"ARRIVAL_BODY_HALF_REMOVED", expected:"INV-TURSATT-ALIGN-005", apply:value=>replaceOnce(value,
-    '    appendOppstillingSideCells(tr, arrivalRows[i] || null, "arrival");', "    // mutation: arrival body cells removed", "remove arrival cells")},
+    '    appendOppstillingSideCells(tr, viewModel.arrivalRows[i] || null, "arrival");', "    // mutation: arrival body cells removed", "remove arrival cells")},
   {id:"TABLE_LAYOUT_BECOMES_AUTO", expected:"INV-TURSATT-ALIGN-006", apply:value=>replaceOnce(value,
     "#oppstillingTable{\nmin-width:1120px;\nwidth:100%;\ntable-layout:fixed;", "#oppstillingTable{\nmin-width:1120px;\nwidth:100%;\ntable-layout:auto;", "remove fixed layout")},
 ];

@@ -18,6 +18,7 @@ function invariant(id, description, test){
 
 const model = source.match(/const TURSATT_COLUMN_MODEL = Object\.freeze\(\[([\s\S]*?)\n\]\);/)?.[1] || "";
 const build = source.match(/function buildOppstilling\(\)\{([\s\S]*?)\n\}\n\nfunction /)?.[1] || "";
+const fragmentBuild = source.match(/function createTursattTableFragment\(viewModel\)\{([\s\S]*?)\n\}\n\nfunction /)?.[1] || "";
 
 invariant("INV-TURSATT-ALIGN-001", "Tursatt has one semantic table and no cloned header tree", () =>
   (source.match(/id="oppstillingTable"/g) || []).length === 1
@@ -34,8 +35,8 @@ invariant("INV-TURSATT-ALIGN-002", "one immutable fourteen-column model owns des
 );
 
 invariant("INV-TURSATT-ALIGN-003", "the canonical colgroup is installed before the single thead", () =>
-  build.indexOf("appendTursattCanonicalColgroup(table);") >= 0
-  && build.indexOf("appendTursattCanonicalColgroup(table);") < build.indexOf('document.createElement("thead")')
+  fragmentBuild.indexOf("appendTursattCanonicalColgroup(fragment);") >= 0
+  && fragmentBuild.indexOf("appendTursattCanonicalColgroup(fragment);") < fragmentBuild.indexOf('document.createElement("thead")')
   && source.includes("col.dataset.tursattColumn = column.id;")
   && source.includes("col.style.width = column.track;")
 );
@@ -50,10 +51,10 @@ invariant("INV-TURSATT-ALIGN-004", "group and leaf headers retain exact semantic
 );
 
 invariant("INV-TURSATT-ALIGN-005", "body cells use the same seven-plus-seven column sequence", () =>
-  build.includes('appendOppstillingSideCells(tr, arrivalRows[i] || null, "arrival");')
-  && build.includes('appendOppstillingSideCells(tr, departureRows[i] || null, "departure");')
-  && build.includes("if(index < 7) cell.classList.add")
-  && build.includes("if(index >= 7) cell.classList.add")
+  fragmentBuild.includes('appendOppstillingSideCells(tr, viewModel.arrivalRows[i] || null, "arrival");')
+  && fragmentBuild.includes('appendOppstillingSideCells(tr, viewModel.departureRows[i] || null, "departure");')
+  && fragmentBuild.includes("if(index < 7) cell.classList.add")
+  && fragmentBuild.includes("if(index >= 7) cell.classList.add")
 );
 
 invariant("INV-TURSATT-ALIGN-006", "Tursatt table has fixed layout without a table-local horizontal offset", () => {
@@ -63,9 +64,9 @@ invariant("INV-TURSATT-ALIGN-006", "Tursatt table has fixed layout without a tab
     && !/#oppstillingTable[^\{]*\{[^\}]*transform\s*:/s.test(source);
 });
 
-invariant("INV-TURSATT-ALIGN-007", "closure revision date is 19 August 2026", () =>
-  source.includes("Siste revisjon: 19. august 2026")
-  && !source.includes("Siste revisjon: 18. august 2026")
+invariant("INV-TURSATT-ALIGN-007", "closure revision date is 20 August 2026", () =>
+  source.includes("Siste revisjon: 20. august 2026")
+  && !source.includes("Siste revisjon: 19. august 2026")
 );
 
 const failed = results.filter(result => result.status === "FAIL");

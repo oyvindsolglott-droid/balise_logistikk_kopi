@@ -23,6 +23,14 @@ jobs:
       - name: Check out Browserguard source
         uses: actions/checkout@v4
 
+      - name: Set up Browserguard Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install Browserguard appserver dependencies
+        run: npm ci --prefix server
+
       - name: Set up exact Browserguard Python
         uses: actions/setup-python@v5
         with:

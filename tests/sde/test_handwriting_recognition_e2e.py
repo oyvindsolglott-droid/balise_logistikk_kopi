@@ -19,6 +19,11 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, _format: str, *_args: object) -> None:
         return
 
+    def guess_type(self, path: str) -> str:
+        if path.endswith(".yml"):
+            return "text/yaml"
+        return super().guess_type(path)
+
 
 @contextlib.contextmanager
 def static_server():
