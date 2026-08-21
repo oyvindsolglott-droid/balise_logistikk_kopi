@@ -73,6 +73,43 @@ def geometry(page: Page) -> dict[str, object]:
     )
 
 
+def paint_geometry(page: Page) -> dict[str, object]:
+    return page.evaluate(
+        """
+        () => {
+          const wrap = document.querySelector('#oppstilling .zoom-wrap');
+          const zoom = document.querySelector('#apiCombinedZoom');
+          const table = document.querySelector('#oppstillingTable');
+          const samples = [
+            table.querySelector('thead tr:first-child th'),
+            table.querySelector('thead tr:nth-child(2) th'),
+            table.querySelector('tbody tr:first-child td:first-child'),
+          ];
+          const rect = element => {
+            const value = element.getBoundingClientRect();
+            return {left:value.left, right:value.right, width:value.width};
+          };
+          const textRect = element => {
+            const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+            let node = walker.nextNode();
+            while(node && !node.textContent.trim()) node = walker.nextNode();
+            if(!node) return null;
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            const value = range.getBoundingClientRect();
+            return {left:value.left, right:value.right, width:value.width};
+          };
+          return {
+            wrap: rect(wrap),
+            zoom: rect(zoom),
+            table: rect(table),
+            samples: samples.map(element => ({box:rect(element), text:textRect(element)})),
+          };
+        }
+        """
+    )
+
+
 def row_data(page: Page) -> list[list[str]]:
     return page.evaluate(
         """
@@ -104,6 +141,35 @@ class TursattAlignmentBrowserTests(unittest.TestCase):
         self.assertLessEqual(abs(float(measured["group"][0]["right"]) - float(arrivals[-1]["right"])), tolerance)
         self.assertLessEqual(abs(float(measured["group"][1]["left"]) - float(departures[0]["left"])), tolerance)
         self.assertLessEqual(abs(float(measured["group"][1]["right"]) - float(departures[-1]["right"])), tolerance)
+
+    def assert_painted_text_is_in_scroll_viewport(self, measured: dict[str, object], width: int) -> None:
+        wrap = measured["wrap"]
+        table = measured["table"]
+        expected_unscaled_width = max(980 if width <= 700 else 1120, float(wrap["width"]))
+        scale = float(measured["zoom"]["width"]) / float(table["width"])
+        self.assertLessEqual(
+            float(table["width"]),
+            expected_unscaled_width * scale + 2,
+            measured,
+        )
+        for sample in measured["samples"]:
+            text = sample["text"]
+            self.assertIsNotNone(text, sample)
+            self.assertGreater(float(text["width"]), 0, sample)
+            self.assertGreater(float(text["right"]), float(wrap["left"]), sample)
+            self.assertLess(float(text["left"]), float(wrap["right"]), sample)
+
+    def test_tursatt_width_is_bounded_and_representative_text_is_actually_painted(self) -> None:
+        with static_server() as base_url, sync_playwright() as playwright:
+            for browser_type, width, height in [
+                (playwright.chromium, 1280, 800),
+                (playwright.webkit, 1440, 900),
+                (playwright.chromium, 390, 844),
+            ]:
+                browser, context, page = open_tursatt(browser_type, base_url, width, height)
+                self.assert_painted_text_is_in_scroll_viewport(paint_geometry(page), width)
+                context.close()
+                browser.close()
 
     def test_desktop_header_body_share_exact_tracks_at_required_widths_and_dpr(self) -> None:
         with static_server() as base_url, sync_playwright() as playwright:
