@@ -241,6 +241,16 @@ assert.match(
   noCandidateInspection.reason
 );
 
+const looseMatchInspection = inspectSdeCanonicalGraphicDragOrder(twoReader,{
+  vehicle:"69-55",sourceSlot:"5M",targetSlot:"8S",actionKey:dragActionKey
+});
+assert.equal(looseMatchInspection.ok,false);
+assert.match(
+  looseMatchInspection.reason,
+  /candidateOutcome=1 men kilde\/mål samsvarer ikke med forespørselen \(forventet 5M->8S\): stated=5M, actual=5M, canonical=5M, target=10N, sourceValidation=canonical_actual/,
+  looseMatchInspection.reason,
+);
+
 console.log(JSON.stringify({
   ok:true,
   exactSafari:{
