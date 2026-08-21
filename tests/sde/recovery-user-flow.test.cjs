@@ -14,6 +14,9 @@ const delivery = fs.readFileSync(path.join(ROOT, "server/src/staticAssetDelivery
 
 test("HTR is absent from core boot and loaded only by Importer now", () => {
   assert.doesNotMatch(html, /<script[^>]+src="sde_handwriting_(?:recognition|runtime)\.js/);
+  assert.match(html, /<script type="application\/json" id="sdeLazyHtrModuleRegistry">/);
+  assert.match(html, /"trigger":"sdeNightAnalyzeImageBtn"/);
+  assert.match(html, /"modules":\["sde_handwriting_recognition\.js","sde_handwriting_runtime\.js"\]/);
   assert.match(ui, /async function ensureHtrModules/);
   assert.match(ui, /async function getOcrAnalyzer/);
   assert.match(ui, /await getOcrAnalyzer/);
