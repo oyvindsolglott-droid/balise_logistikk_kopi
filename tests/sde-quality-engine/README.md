@@ -1,5 +1,19 @@
 # SDE Quality Engine
 
+## Kritisk brukerflyt
+
+Releaseporten `CRITICAL-USER-FLOW-AGGREGATE` er GREEN bare når disse fem
+underportene er GREEN: `CORE-UI-MODULE-ISOLATION`, `TURSATT-RENDER-E2E`,
+`HTR-ASSET-DELIVERY`, `HTR-WORKER-INITIALIZATION` og
+`HTR-SYNTHETIC-IMPORT-E2E`.
+
+Kjør `npm run test:sde:qe:critical-user-flow` på en ren, committet kandidat.
+Kommandoen oppretter en disponibel detached worktree, binder evidensen til
+base-SHA, kandidat-SHA og tree, og bruker isolert appserver, tempdatabase,
+syntetisk bilde og testbrowser. Den sender ingen produksjonswrite og bruker
+ingen private brukerdata. Falsk-GREEN-, determinisme- og mutasjonsscenariene
+ligger i `fixtures/critical-user-flow-scenarios.json`.
+
 SDE Quality Engine er en selvstendig kvalitetsmotor som inventariserer hele
 SDE, kobler produktfunksjoner til maskinlesbare GREEN-kontrakter og
 orkestrerer de eksisterende permanente testene uten å kopiere

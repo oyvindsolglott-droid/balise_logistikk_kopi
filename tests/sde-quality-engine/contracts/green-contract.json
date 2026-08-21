@@ -267,6 +267,54 @@
       "evidence": ["tests/sde/handwriting-recognition.test.cjs", "tests/sde/test_handwriting_recognition_e2e.py", "tests/sde/test_night_planning_e2e.py", "server/scripts/test-night-plan-storage.js", "tests/sde/strict/handwriting-recognition-mutation-audit.cjs", "models/sde/model-registry.json"]
     },
     {
+      "id": "CORE-UI-MODULE-ISOLATION",
+      "area": "critical-user-flow",
+      "name": "Core UI er isolert fra HTR-feil",
+      "critical": true,
+      "expected": "HTR lastes bare på eksplisitt import; HTR-feil kan ikke blanke eller blokkere hovedmeny, Sporplan, Tursatt eller manuell plan.",
+      "evidence": ["critical-user-flow-black-box", "module-isolation-negative-fixtures"]
+    },
+    {
+      "id": "TURSATT-RENDER-E2E",
+      "area": "critical-user-flow",
+      "name": "Tursatt-rader og header materialiseres i DOM",
+      "critical": true,
+      "expected": "View-model har rader; 14 headerceller finnes; DOM-radtall og fixtureverdier matcher på desktop, 390 px og WebKit.",
+      "evidence": ["critical-user-flow-black-box", "tursatt-false-green-fixtures"]
+    },
+    {
+      "id": "HTR-ASSET-DELIVERY",
+      "area": "critical-user-flow",
+      "name": "HTR-asset leveres komplett og verifisert",
+      "critical": true,
+      "expected": "URL, status, Content-Type, Content-Length, byteantall og SHA-256 matcher; HTML-fallback, timeout og ukontrollert retry avvises.",
+      "evidence": ["critical-user-flow-black-box", "asset-delivery-negative-fixtures"]
+    },
+    {
+      "id": "HTR-WORKER-INITIALIZATION",
+      "area": "critical-user-flow",
+      "name": "HTR-runtime, worker og modellsesjon initialiseres",
+      "critical": true,
+      "expected": "Runtime, worker og modellsesjon når READY; feil er kontrollert og lokal.",
+      "evidence": ["critical-user-flow-black-box", "worker-failure-fixture"]
+    },
+    {
+      "id": "HTR-SYNTHETIC-IMPORT-E2E",
+      "area": "critical-user-flow",
+      "name": "Syntetisk HTR-import fullfører isolert",
+      "critical": true,
+      "expected": "Syntetisk filvalg, bilde-dekoding, inference og form mapping fullfører på ikke-produksjonsorigin uten business-write eller brukerdata.",
+      "evidence": ["critical-user-flow-black-box", "synthetic-htr-fixture"]
+    },
+    {
+      "id": "CRITICAL-USER-FLOW-AGGREGATE",
+      "area": "critical-user-flow",
+      "name": "Kritisk SDE-brukerflyt",
+      "critical": true,
+      "expected": "Aggregate kan bare bli GREEN når alle fem kritiske underporter er GREEN.",
+      "evidence": ["CORE-UI-MODULE-ISOLATION", "TURSATT-RENDER-E2E", "HTR-ASSET-DELIVERY", "HTR-WORKER-INITIALIZATION", "HTR-SYNTHETIC-IMPORT-E2E"]
+    },
+    {
       "id": "UX-001",
       "area": "ux",
       "name": "Desktop og 390 px er uten kritisk overflow",
