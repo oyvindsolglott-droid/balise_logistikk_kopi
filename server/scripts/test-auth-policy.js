@@ -27,6 +27,7 @@ const catalog = identityPolicy.ROLE_SCOPE_MATRIX;
 assertEndpoint("public health", "GET", "/api/health", ENDPOINT_CLASSES.PUBLIC_READ_ONLY);
 assertEndpoint("public revision", "GET", "/api/state/revision", ENDPOINT_CLASSES.PUBLIC_READ_ONLY);
 assertEndpoint("server status", "GET", "/api/server/status", ENDPOINT_CLASSES.PUBLIC_READ_ONLY);
+assertEndpoint("Tursatt live arrivals", "GET", "/api/tursatt/live-arrivals?date=2026-08-22", ENDPOINT_CLASSES.PUBLIC_READ_ONLY);
 assertEndpoint("state review-needed", "GET", "/api/state", ENDPOINT_CLASSES.REVIEW_NEEDED_READ_ONLY);
 assertEndpoint("events review-needed", "GET", "/api/events?sinceRevision=1", ENDPOINT_CLASSES.REVIEW_NEEDED_READ_ONLY);
 assertEndpoint("operational readback review-needed", "GET", "/api/operational-state", ENDPOINT_CLASSES.REVIEW_NEEDED_READ_ONLY);

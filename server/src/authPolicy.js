@@ -28,7 +28,8 @@ const HIGH_RISK_SCOPES = Object.freeze([
 const PUBLIC_READ_ONLY_ENDPOINTS = Object.freeze([
   ["GET", "/api/health"],
   ["GET", "/api/server/status"],
-  ["GET", "/api/state/revision"]
+  ["GET", "/api/state/revision"],
+  ["GET", "/api/tursatt/live-arrivals"]
 ]);
 
 const REVIEW_NEEDED_ENDPOINTS = Object.freeze([

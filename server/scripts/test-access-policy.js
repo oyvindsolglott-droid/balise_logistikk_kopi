@@ -77,6 +77,12 @@ expectPolicy("server status endpoint is read-only status", "GET", "/api/server/s
   readbackClass: READBACK_CLASSES.SHARED_NON_SENSITIVE_READBACK
 });
 
+expectPolicy("Tursatt live arrivals is public read-only status", "GET", "/api/tursatt/live-arrivals?date=2026-08-22", {
+  endpointCategory: ENDPOINT_CATEGORIES.PUBLIC_STATUS,
+  defaultRight: ACCESS_RIGHTS.READ_ONLY,
+  readbackClass: READBACK_CLASSES.PUBLIC_STATUS
+});
+
 expectPolicy("state endpoint is scope-risk readback", "GET", "/api/state", {
   endpointCategory: ENDPOINT_CATEGORIES.SHARED_READBACK,
   defaultRight: ACCESS_RIGHTS.READBACK_AUDIT,
@@ -146,6 +152,15 @@ expectPolicy("events preflight is CORS/preflight", "OPTIONS", "/api/events", {
   corsPreflight: true,
   corsIsAuth: false,
   readbackClass: READBACK_CLASSES.PRIVATE_AUDIT_READBACK
+});
+
+expectPolicy("Tursatt live arrivals preflight is transport-only", "OPTIONS", "/api/tursatt/live-arrivals", {
+  endpointCategory: ENDPOINT_CATEGORIES.CORS_PREFLIGHT,
+  defaultRight: ACCESS_RIGHTS.NO_ACCESS,
+  transportOnly: true,
+  corsPreflight: true,
+  corsIsAuth: false,
+  readbackClass: READBACK_CLASSES.PUBLIC_STATUS
 });
 
 expectDenied(
