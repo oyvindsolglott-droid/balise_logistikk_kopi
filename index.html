@@ -40508,6 +40508,17 @@ function inspectSdeCanonicalGraphicDragOrder(reader, expected={}){
       && (!actionKey || String(candidate?.actionKey || "").trim() === actionKey)
     );
     if(!candidates.length){
+      const looseMatches = candidateOutcomes.filter(candidate=>
+        sanitizeVehicleValue(candidate?.vehicleId || candidate?.raw?.vehicle) === vehicleId
+        && String(candidate?.producer || "").trim() === "graphic_drag_generated_move"
+        && (!actionKey || String(candidate?.actionKey || "").trim() === actionKey)
+      );
+      if(looseMatches.length){
+        const detail = looseMatches.map(candidate=>
+          `stated=${candidate?.statedSourceSlot || "?"}, actual=${candidate?.actualSourceSlot || "?"}, canonical=${candidate?.canonicalSourceSlot || "(tom)"}, target=${candidate?.targetSlot || "?"}, sourceValidation=${candidate?.sourceValidation?.mode || "ukjent"}`
+        ).join(" | ");
+        return [`candidateOutcome=${looseMatches.length} men kilde/mål samsvarer ikke med forespørselen (forventet ${sourceSlot}->${targetSlot}): ${detail}`];
+      }
       return [`candidateOutcome=0 (ingen kandidat ble generert for ${vehicleId} ${sourceSlot}->${targetSlot})`];
     }
     const candidateIds = new Set(candidates.map(item=>String(item?.candidateOutcomeId || "").trim()).filter(Boolean));
