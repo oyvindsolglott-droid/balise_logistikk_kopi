@@ -64,9 +64,9 @@ invariant("INV-TURSATT-ALIGN-006", "Tursatt table has fixed layout without a tab
     && !/#oppstillingTable[^\{]*\{[^\}]*transform\s*:/s.test(source);
 });
 
-invariant("INV-TURSATT-ALIGN-007", "closure revision date is 20 August 2026", () =>
-  source.includes("Siste revisjon: 20. august 2026")
-  && !source.includes("Siste revisjon: 19. august 2026")
+invariant("INV-TURSATT-ALIGN-007", "closure revision date is 22 August 2026", () =>
+  source.includes("Siste revisjon: 22. august 2026")
+  && !source.includes("Siste revisjon: 20. august 2026")
 );
 
 invariant("INV-TURSATT-ALIGN-008", "the percentage colgroup resolves against bounded desktop and mobile containers", () =>

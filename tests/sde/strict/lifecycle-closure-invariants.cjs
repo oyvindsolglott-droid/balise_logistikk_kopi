@@ -104,7 +104,7 @@ put("INV-LIFECYCLE-033",fixture.intents.some(item=>item.vehicleId==="75-76"&&ite
 put("INV-LIFECYCLE-034",fixture.emptySlots.includes("VN")&&fixture.emptySlots.includes("VS")&&fixture.emptySlots.length>20,"fixture supplies many empty slots with VN and VS available");
 put("INV-LIFECYCLE-035",/buildSdeCanonicalAutomaticReplanRows/.test(source)&&/originalRequestedTarget/.test(functionSource("buildSdeCanonicalAutomaticReplanRows")),"automatic replan preserves original intent");
 put("INV-LIFECYCLE-036",/rejectedTargets/.test(source),"candidate rejection is tracked without ending the search");
-put("INV-LIFECYCLE-037",/Siste revisjon:\s*20\. august 2026/.test(source),"visible revision date is 20 August 2026");
+put("INV-LIFECYCLE-037",/Siste revisjon:\s*22\. august 2026/.test(source),"visible revision date is 22 August 2026");
 put("INV-LIFECYCLE-038",/actionType === "deleted"/.test(functionSource("handleSdeCanonicalCardAction"))&&/deleteSdeLocalMoveCard/.test(functionSource("handleSdeCanonicalCardAction")),"separate canonical Fjern action reaches safe local deletion only");
 
 const failed = results.filter(item=>item.status==="FAIL");

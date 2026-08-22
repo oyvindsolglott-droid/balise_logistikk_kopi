@@ -235,6 +235,16 @@ const ENDPOINT_POLICY_CATALOG = Object.freeze([
     corsIsAuth: false
   }),
   endpointPolicy({
+    method: "OPTIONS",
+    path: "/api/tursatt/live-arrivals",
+    endpointCategory: ENDPOINT_CATEGORIES.CORS_PREFLIGHT,
+    defaultRight: ACCESS_RIGHTS.NO_ACCESS,
+    readbackClass: READBACK_CLASSES.PUBLIC_STATUS,
+    transportOnly: true,
+    corsPreflight: true,
+    corsIsAuth: false
+  }),
+  endpointPolicy({
     method: "GET",
     path: "/api/health",
     endpointCategory: ENDPOINT_CATEGORIES.PUBLIC_STATUS,
@@ -254,6 +264,13 @@ const ENDPOINT_POLICY_CATALOG = Object.freeze([
     endpointCategory: ENDPOINT_CATEGORIES.SERVER_STATUS_READ,
     defaultRight: ACCESS_RIGHTS.READ_ONLY,
     readbackClass: READBACK_CLASSES.SHARED_NON_SENSITIVE_READBACK
+  }),
+  endpointPolicy({
+    method: "GET",
+    path: "/api/tursatt/live-arrivals",
+    endpointCategory: ENDPOINT_CATEGORIES.PUBLIC_STATUS,
+    defaultRight: ACCESS_RIGHTS.READ_ONLY,
+    readbackClass: READBACK_CLASSES.PUBLIC_STATUS
   }),
   endpointPolicy({
     method: "GET",

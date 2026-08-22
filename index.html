@@ -2188,6 +2188,30 @@ color:#9a3412;
 text-align:center;
 }
 
+#oppstillingTable .tursatt-arrival-time-cell{
+min-width:92px;
+white-space:nowrap;
+}
+
+.tursatt-planned-arrival{
+font-variant-numeric:tabular-nums;
+}
+
+.tursatt-live-arrival-delay{
+display:inline-block;
+margin-left:4px;
+font-weight:900;
+font-variant-numeric:tabular-nums;
+}
+
+.tursatt-live-arrival-delay.short-delay{
+color:#15803d;
+}
+
+.tursatt-live-arrival-delay.long-delay{
+color:#b91c1c;
+}
+
 .tursatt-flow-diagnostics{
 display:none;
 margin-top:12px;
@@ -9721,7 +9745,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 20. august 2026</p>
+<p class="sub">Siste revisjon: 22. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -10244,6 +10268,7 @@ Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for v
 <script src="sde_intelligent_night_planning.js?v=ae80afdb91c70b122aedf202bb7ffc1c78e865cf9bc20dece76652990416b386"></script>
 <meta id="sdeLazyHtrModuleRegistry" data-trigger="sdeNightAnalyzeImageBtn" data-modules="sde_handwriting_recognition.js,sde_handwriting_runtime.js">
 <script src="sde_tursatt_post_arrival.js?v=44f462a93a6a23348cdea2211d10b3ddecc6367da69dedec2fab21be89610795"></script>
+<script src="sde_tursatt_live_arrival.js?v=9dc712fdcc03479ed038558616b31d1e3aa707bd6f88d15b3a0aac611123cb29"></script>
 <script>
 const STORAGE_KEY="skien_sporplan_iphone_v13";
 
@@ -11784,18 +11809,30 @@ function startBaliseFreshnessWatchdog(){
   baliseFreshnessWatchdog.started = true;
   baliseFreshnessWatchdog.intervalId = window.setInterval(() => {
     requestBaliseFreshnessCheck("timer");
+    requestTursattLiveArrivalRefresh("timer");
   }, BALISE_FRESHNESS_CHECK_INTERVAL_MS);
 
   document.addEventListener("visibilitychange", () => {
     if(document.visibilityState === "visible"){
       requestBaliseFreshnessCheck("visibility");
+      requestTursattLiveArrivalRefresh("visibility");
     }
   });
-  window.addEventListener("focus", () => requestBaliseFreshnessCheck("focus"));
-  window.addEventListener("online", () => requestBaliseFreshnessCheck("online", {forceNetwork:true}));
-  window.addEventListener("pageshow", () => requestBaliseFreshnessCheck("pageshow"));
+  window.addEventListener("focus", () => {
+    requestBaliseFreshnessCheck("focus");
+    requestTursattLiveArrivalRefresh("focus");
+  });
+  window.addEventListener("online", () => {
+    requestBaliseFreshnessCheck("online", {forceNetwork:true});
+    requestTursattLiveArrivalRefresh("online", {forceNetwork:true});
+  });
+  window.addEventListener("pageshow", () => {
+    requestBaliseFreshnessCheck("pageshow");
+    requestTursattLiveArrivalRefresh("pageshow");
+  });
 
   requestBaliseFreshnessCheck("startup", {forceNetwork:true});
+  requestTursattLiveArrivalRefresh("startup", {forceNetwork:true});
 }
 
 
@@ -14559,6 +14596,146 @@ function buildTursattCanonicalOccurrenceIdentity(rowData={}, side="departure", o
 }
 
 
+const TURSATT_LIVE_ARRIVAL_TIMEOUT_MS = 8000;
+const TURSATT_LIVE_ARRIVAL_TRIGGER_RATE_LIMIT_MS = 5000;
+const tursattLiveArrivalReadback = {
+  inFlight:false,
+  pending:false,
+  requestSeq:0,
+  lastTriggerAt:0,
+  triggerTimerId:null,
+  operationalDate:"",
+  lastSuccessAt:"",
+  lastError:"",
+  recordsByKey:new Map()
+};
+
+
+function buildTursattLiveArrivalIdentity(rowData={}){
+  const source = rowData?.movementContext || {};
+  const canonical = buildTursattCanonicalOccurrenceIdentity(rowData,"arrival",source);
+  return {
+    operationalDate:canonical.operationalDate,
+    trainNumber:canonical.train,
+    stationRef:canonical.stationRef,
+    direction:canonical.direction,
+    plannedArrival:String(source?.plannedArrival || "").trim(),
+    routeId:canonical.routeId,
+    stopId:canonical.stopId,
+    occurrenceId:canonical.sourceOccurrenceId,
+    sourceRevision:canonical.sourceRevision
+  };
+}
+
+
+function markTursattLiveArrivalRecordsStale(){
+  const stale = new Map();
+  tursattLiveArrivalReadback.recordsByKey.forEach((record,key)=>{
+    stale.set(key,{...record,freshness:"stale",status:"client_refresh_failed"});
+  });
+  tursattLiveArrivalReadback.recordsByKey = stale;
+}
+
+
+function applyTursattLiveArrivalPayload(payload, operationalDate){
+  const engine = window.SdeTursattLiveArrival;
+  if(!engine || typeof engine.buildLiveArrivalKey !== "function") throw new Error("Tursatt live-arrival-modul mangler");
+  if(payload?.contract !== "sde-tursatt-live-arrivals-v1") throw new Error("Ukjent live-arrival-kontrakt");
+  if(String(payload?.operationalDate || "") !== operationalDate) throw new Error("Live-arrival-dato samsvarer ikke");
+  if(!Array.isArray(payload?.records)) throw new Error("Live-arrival-records mangler");
+
+  const next = new Map();
+  payload.records.forEach(record=>{
+    const key = engine.buildLiveArrivalKey(record);
+    if(key && !next.has(key)) next.set(key,record);
+  });
+  tursattLiveArrivalReadback.recordsByKey = next;
+  tursattLiveArrivalReadback.operationalDate = operationalDate;
+  tursattLiveArrivalReadback.lastSuccessAt = new Date().toISOString();
+  tursattLiveArrivalReadback.lastError = "";
+}
+
+
+async function refreshTursattLiveArrivals(reason="timer"){
+  if(tursattLiveArrivalReadback.inFlight){
+    tursattLiveArrivalReadback.pending = true;
+    return;
+  }
+  const operationalDate = String(state.baliseMetaToday?.date || "").trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(operationalDate)) return;
+
+  tursattLiveArrivalReadback.inFlight = true;
+  tursattLiveArrivalReadback.pending = false;
+  const requestSeq = ++tursattLiveArrivalReadback.requestSeq;
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeoutId = controller
+    ? window.setTimeout(()=>controller.abort(),TURSATT_LIVE_ARRIVAL_TIMEOUT_MS)
+    : null;
+  try{
+    const response = await fetch(`/api/tursatt/live-arrivals?date=${encodeURIComponent(operationalDate)}`,{
+      method:"GET",
+      cache:"no-store",
+      signal:controller ? controller.signal : undefined,
+      headers:{"Accept":"application/json"}
+    });
+    if(!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if(requestSeq !== tursattLiveArrivalReadback.requestSeq) return;
+    applyTursattLiveArrivalPayload(payload,operationalDate);
+    buildOppstilling();
+  }catch(error){
+    if(requestSeq !== tursattLiveArrivalReadback.requestSeq) return;
+    markTursattLiveArrivalRecordsStale();
+    tursattLiveArrivalReadback.lastError = `${reason}: ${error?.name === "AbortError" ? "timeout" : error?.message || "ukjent feil"}`;
+    buildOppstilling();
+  }finally{
+    if(timeoutId) window.clearTimeout(timeoutId);
+    tursattLiveArrivalReadback.inFlight = false;
+    if(tursattLiveArrivalReadback.pending){
+      tursattLiveArrivalReadback.pending = false;
+      window.setTimeout(()=>requestTursattLiveArrivalRefresh("pending",{forceNetwork:true}),0);
+    }
+  }
+}
+
+
+function requestTursattLiveArrivalRefresh(reason="manual",options={}){
+  if(tursattLiveArrivalReadback.inFlight){
+    tursattLiveArrivalReadback.pending = true;
+    return;
+  }
+  const now = Date.now();
+  if(!options.forceNetwork && now - tursattLiveArrivalReadback.lastTriggerAt < TURSATT_LIVE_ARRIVAL_TRIGGER_RATE_LIMIT_MS){
+    if(tursattLiveArrivalReadback.triggerTimerId) window.clearTimeout(tursattLiveArrivalReadback.triggerTimerId);
+    const delay = Math.max(250,TURSATT_LIVE_ARRIVAL_TRIGGER_RATE_LIMIT_MS - (now - tursattLiveArrivalReadback.lastTriggerAt));
+    tursattLiveArrivalReadback.triggerTimerId = window.setTimeout(()=>{
+      tursattLiveArrivalReadback.triggerTimerId = null;
+      requestTursattLiveArrivalRefresh(reason,options);
+    },delay);
+    return;
+  }
+  tursattLiveArrivalReadback.lastTriggerAt = now;
+  refreshTursattLiveArrivals(reason);
+}
+
+
+function getTursattLiveArrivalPresentation(rowData={}){
+  const engine = window.SdeTursattLiveArrival;
+  const identity = buildTursattLiveArrivalIdentity(rowData);
+  if(!engine || typeof engine.buildLiveArrivalKey !== "function" || typeof engine.resolveLiveArrivalPresentation !== "function"){
+    return {plannedText:String(rowData?.displayTime || rowData?.time || ""),suffixText:"",tone:"planned-only",status:"MODULE_UNAVAILABLE",ariaLabel:""};
+  }
+  const key = engine.buildLiveArrivalKey(identity);
+  const record = key ? tursattLiveArrivalReadback.recordsByKey.get(key) : null;
+  const presentation = engine.resolveLiveArrivalPresentation(identity,record,{now:new Date().toISOString()});
+  return {
+    ...presentation,
+    key,
+    plannedText:String(rowData?.displayTime || rowData?.time || presentation.plannedText || "")
+  };
+}
+
+
 function getTursattCanonicalOccurrencePartKey(identity={}, part="1"){
   const cleanPart = String(part || "").replace(/^\//, "").trim();
   if(
@@ -15054,6 +15231,54 @@ function buildSdeTursattPostArrivalShiftNeeds(bindings=[]){
   };
 }
 
+let tursattPostArrivalParkingMarkers = new Map();
+
+function getTursattPostArrivalParkingMarkerLookupKey(sourceOccurrenceId,part,vehicle){
+  const occurrence = String(sourceOccurrenceId || "").trim();
+  const cleanPart = String(part || "").replace(/^\//,"").trim();
+  const cleanVehicle = sanitizeVehicleValue(vehicle);
+  return occurrence && cleanPart && cleanVehicle
+    ? JSON.stringify([occurrence,cleanPart,cleanVehicle])
+    : "";
+}
+
+function refreshTursattPostArrivalParkingMarkers(){
+  const bindings = buildSdeTursattVehicleBindings();
+  const plan = buildSdeTursattPostArrivalShiftNeeds(bindings);
+  const canonicalBindingByNeed = new Map();
+  bindings.filter(binding=>binding?.role === "arrival").forEach(binding=>{
+    const key = getTursattPostArrivalParkingMarkerLookupKey(binding?.occurrenceId,binding?.part,binding?.vehicle);
+    if(key && binding?.canonicalOccurrencePartKey) canonicalBindingByNeed.set(key,binding);
+  });
+
+  const next = new Map();
+  (Array.isArray(plan?.needs) ? plan.needs : []).forEach(need=>{
+    if(!need?.requiresPostArrivalShunt || !need?.forcedTrainRule) return;
+    const lookupKey = getTursattPostArrivalParkingMarkerLookupKey(need?.sourceOccurrenceId,need?.part,need?.vehicleId);
+    const binding = canonicalBindingByNeed.get(lookupKey);
+    if(!binding?.canonicalOccurrencePartKey) return;
+    next.set(binding.canonicalOccurrencePartKey,{
+      lifecycleKey:String(need?.lifecycleKey || "").trim(),
+      vehicleId:sanitizeVehicleValue(need?.vehicleId),
+      sourceOccurrenceId:String(need?.sourceOccurrenceId || "").trim(),
+      requiresPostArrivalShunt:Boolean(need?.requiresPostArrivalShunt),
+      forcedTrainRule:Boolean(need?.forcedTrainRule)
+    });
+  });
+  tursattPostArrivalParkingMarkers = next;
+  return next;
+}
+
+function getTursattPostArrivalParkingMark(train,side,modeOverride,fieldKey,value,rowData={}){
+  if(side !== "arrival" || !isTursattVehicleValue(value)) return null;
+  const binding = getTursattOccurrenceBinding({train,mode:modeOverride,...rowData},side);
+  if(!binding?.valid || !binding?.identity) return null;
+  const part = fieldKey === "vehicle2" ? "2" : "1";
+  const occurrencePartKey = getTursattCanonicalOccurrencePartKey(binding.identity,part);
+  const mark = occurrencePartKey ? tursattPostArrivalParkingMarkers.get(occurrencePartKey) : null;
+  return mark && sanitizeVehicleValue(mark.vehicleId) === sanitizeVehicleValue(value) ? mark : null;
+}
+
 function handleOppstillingVehicleChange(train, side, fieldKey, value, rebuild=true, modeOverride="", rowData={}){
   const current = createOppstillingVehicleCells(train, side, modeOverride, rowData);
   const next1 = fieldKey === "vehicle1" ? value : current.vehicle1;
@@ -15114,12 +15339,21 @@ function appendOppstillingVehicleInput(td, train, side, fieldKey, value, isSecon
   appendOppstillingTurneringTarget(td, train, fieldKey);
 
   const splitRemovalMark = getTursattSplitRemovalMark(train, side, modeOverride, fieldKey, value);
-  if(splitRemovalMark){
+  const postArrivalParkingMark = getTursattPostArrivalParkingMark(train,side,modeOverride,fieldKey,value,rowData);
+  if(splitRemovalMark || postArrivalParkingMark){
     td.classList.add("opp-split-remove-cell");
-    input.title = "Deling: kjøretøyet går ikke videre med neste avgang og må skiftes/parkeres.";
+    input.title = postArrivalParkingMark
+      ? "PARKERES: canonical post-arrival MAIN-forpliktelse finnes for denne eksakte ankomstforekomsten."
+      : "Deling: kjøretøyet går ikke videre med neste avgang og må skiftes/parkeres.";
     const hint = document.createElement("div");
     hint.className = "opp-split-remove-hint";
-    hint.textContent = "deling";
+    if(postArrivalParkingMark){
+      hint.textContent = "PARKERES";
+      td.dataset.tursattPostArrivalLifecycleKey = postArrivalParkingMark.lifecycleKey;
+      td.dataset.tursattPostArrivalParking = "true";
+    }else{
+      hint.textContent = "deling";
+    }
     td.appendChild(hint);
   }
 
@@ -15236,7 +15470,27 @@ function appendOppstillingSideCells(tr, rowData, side){
   tr.appendChild(tdTrain);
 
   const tdTime = document.createElement("td");
-  tdTime.textContent = time;
+  if(side === "arrival" && train){
+    const livePresentation = getTursattLiveArrivalPresentation(rowData);
+    tdTime.classList.add("tursatt-arrival-time-cell");
+    tdTime.dataset.liveArrivalStatus = livePresentation.status || "PLANNED_ONLY";
+    if(livePresentation.key) tdTime.dataset.liveArrivalKey = livePresentation.key;
+    const planned = document.createElement("span");
+    planned.className = "tursatt-planned-arrival";
+    planned.textContent = livePresentation.plannedText || time;
+    tdTime.appendChild(planned);
+    if(livePresentation.suffixText){
+      const suffix = document.createElement("span");
+      suffix.className = `tursatt-live-arrival-delay ${livePresentation.tone}`;
+      suffix.textContent = livePresentation.suffixText;
+      suffix.setAttribute("aria-hidden","true");
+      tdTime.appendChild(suffix);
+      tdTime.title = livePresentation.detail || "Live ankomststatus fra Balise";
+    }
+    if(livePresentation.ariaLabel) tdTime.setAttribute("aria-label",livePresentation.ariaLabel);
+  }else{
+    tdTime.textContent = time;
+  }
   if(vehicleError) tdTime.title = vehicleError;
   tr.appendChild(tdTime);
 
@@ -15459,6 +15713,7 @@ function buildOppstilling(){
   if(!table) throw new Error("tursatt_table_mount_missing");
   state.tursattBaliseDiagnostics = [];
   state.tursattBaliseDeviationList = [];
+  refreshTursattPostArrivalParkingMarkers();
   const viewModel=buildTursattViewModel();
   const fragment=createTursattTableFragment(viewModel);
   assertTursattDomMatchesViewModel(fragment, viewModel);

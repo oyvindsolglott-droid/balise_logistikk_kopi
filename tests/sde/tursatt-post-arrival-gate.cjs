@@ -89,7 +89,7 @@ const permutationPlans = [
 const permutationSignatures = permutationPlans.map(engine.planStructureSignature);
 
 const integrationAssertions = {
-  moduleLoadedBeforeInlineApp: /<script src="sde_tursatt_post_arrival\.js\?v=[a-f0-9]{64}"><\/script>\s*<script>/.test(indexSource),
+  moduleLoadedBeforeInlineApp: /<script src="sde_tursatt_post_arrival\.js\?v=[a-f0-9]{64}"><\/script>\s*<script src="sde_tursatt_live_arrival\.js\?v=[a-f0-9]{64}"><\/script>\s*<script>/.test(indexSource),
   productBuildsOccurrenceNeeds: /function buildSdeTursattPostArrivalShiftNeeds\(/.test(indexSource),
   productUsesCanonicalCandidateEngine: /getSdeArrivalParkingRecommendation\(need, reservedForNeed\)/.test(indexSource),
   productUsesCanonicalTopologyCompiler: /buildSdePhysicalBlockerGuardMoves\(/.test(indexSource),

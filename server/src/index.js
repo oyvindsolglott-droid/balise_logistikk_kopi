@@ -82,6 +82,10 @@ const {
   buildAuthorizedSharedSporplanDeletePayload,
   createSharedSporplanDeleteCapabilityGuard
 } = require("./sharedSporplanDeleteAuthority");
+const {
+  createTursattLiveArrivalHandler,
+  createTursattLiveArrivalService
+} = require("./tursattLiveArrivals");
 
 const PORT = Number.parseInt(process.env.PORT || "8787", 10);
 const HEARTBEAT_MS = 15000;
@@ -130,7 +134,8 @@ const READ_ONLY_CORS_PATHS = new Set([
   "/api/health",
   "/api/server/status",
   "/api/state/revision",
-  "/api/events"
+  "/api/events",
+  "/api/tursatt/live-arrivals"
 ]);
 const CLIENT_READ_CONTRACT = Object.freeze({
   mode: "read_only_status",
@@ -144,7 +149,8 @@ const CLIENT_READ_CONTRACT = Object.freeze({
     "/api/state/revision",
     "/api/events",
     "/api/shared-sporplan-draft",
-    "/api/night-plans"
+    "/api/night-plans",
+    "/api/tursatt/live-arrivals"
   ],
   allowedDocumentationWriteEndpoints: [
     "POST /api/night-plans"
@@ -171,6 +177,7 @@ const OPERATIONAL_DATA_CONTRACT = Object.freeze({
   statusAndDiagnosticsOnly: true
 });
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const tursattLiveArrivalService = createTursattLiveArrivalService({repositoryRoot: REPO_ROOT});
 const FRONTEND_INDEX_FILE = path.join(REPO_ROOT, "index.html");
 const FRONTEND_DATA_FILES = new Map([
   ["api_idag.json", path.join(REPO_ROOT, "data", "api_idag.json")],
@@ -387,6 +394,11 @@ app.use((req, res, next) => {
 });
 
 app.use(createApprovedStaticAssetHandler({repositoryRoot: REPO_ROOT}));
+
+app.get(
+  "/api/tursatt/live-arrivals",
+  createTursattLiveArrivalHandler(tursattLiveArrivalService)
+);
 
 app.get("/api/health", (_req, res) => {
   const revision = getCurrentRevision(db);
