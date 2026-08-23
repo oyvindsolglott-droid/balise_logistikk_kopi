@@ -5,6 +5,10 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const html = fs.readFileSync(process.argv[2], "utf8");
+if(html.includes('migrationMode:"CANONICAL_ONLY"')){
+  require("./sde-phase-a-canonical-contract-helper.cjs").runScenario("graphic-order",process.argv[2]);
+  process.exit(0);
+}
 const script = Array.from(html.matchAll(/<script>([\s\S]*?)<\/script>/g))
   .map(match=>match[1])
   .find(source=>source.includes("function normalizeSdeCanonicalToken")) || "";

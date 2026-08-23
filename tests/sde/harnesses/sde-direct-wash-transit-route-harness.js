@@ -3,6 +3,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
+const source = fs.readFileSync(process.argv[2],"utf8");
+if(source.includes('migrationMode:"CANONICAL_ONLY"')){
+  require("./sde-phase-a-canonical-contract-helper.cjs").runScenario("direct-wash",process.argv[2]);
+  process.exit(0);
+}
+
 const baseHarness = fs.readFileSync(path.join(__dirname,"sde-canonical-buttspor-vn-chain-t-harness.js"),"utf8");
 const prefix = baseHarness.slice(0,baseHarness.indexOf("const chain10"));
 

@@ -895,7 +895,7 @@ test("N — post-arrival schedule retains guarded 21:xx refresh attempts", () =>
 
 registerHarnessTest({
   phase: "O",
-  name: "canonical reader is default with explicit and automatic legacy fallback",
+  name: "canonical reader is the sole product reader with a local rollback-drill exception",
   harness: "sde-canonical-production-reader-switch-o-harness.js",
   baseline: "f646736a308703965086b46ab59a419e2f43d1b6",
 });
@@ -909,7 +909,7 @@ registerHarnessTest({
 
 registerHarnessTest({
   phase: "Q",
-  name: "replacement cards retain one unambiguous existing handler adapter",
+  name: "replacement cards retain one unambiguous canonical execution descriptor",
   harness: "sde-canonical-replacement-handler-adapter-q-harness.js",
   baseline: "67b45e4575acfb12831591d34eedffbee2840e46",
 });
@@ -963,7 +963,7 @@ registerHarnessTest({
 
 registerHarnessTest({
   phase: "W",
-  name: "execution remains stable across rerenders and valid 4M relief prefers safe local holding",
+  name: "execution remains stable across rerenders while VN competes with ordinary safe relief",
   harness: "sde-canonical-stable-execution-vn-preference-w-harness.js",
   baseline: "6711cb06cea777234fc6e5179550b0525ddb0599",
 });
