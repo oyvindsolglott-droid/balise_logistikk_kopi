@@ -495,7 +495,7 @@
     const direct = [];
     displaced.forEach(item => {
       const assessment = evaluateMove(node.occupancy, item.vehicleId, item.currentSlot, item.originalSlot, { ...context, sourceEnds: null, targetEnds: null, timeWindow: null });
-      if (assessment.hardSafe) direct.push(makeMove(item.vehicleId, item.currentSlot, item.originalSlot, 'RECOVERY', '', assessment, 'RESTORE_DISPLACED_VEHICLE'));
+      if (assessment.hardSafe) direct.push(makeMove(item.vehicleId, item.currentSlot, item.originalSlot, 'RECOVERY', intents[0]?.intentId || '', assessment, 'RESTORE_DISPLACED_VEHICLE'));
     });
     if (direct.length) return direct.sort((left, right) => left.vehicleId.localeCompare(right.vehicleId, 'en'));
     const blockers = [];
@@ -610,8 +610,8 @@
     for (const rawStep of steps) {
       if (rawStep.status === 'COMPLETED') {
         scheduled.push(deepFreeze({ ...rawStep, sequenceIndex: scheduled.length, status: 'COMPLETED' }));
-        const completedWindowEnd = Number(rawStep.plannedWindowEnd);
-        if (Number.isFinite(completedWindowEnd)) cursor = Math.max(cursor, completedWindowEnd);
+        // UTFORT is authoritative evidence that the predecessor has already ended.
+        // Its historical planned window must not keep the next suffix step waiting.
         continue;
       }
       const intent = intents.find(item => item.intentId === rawStep.intentId) || intents[0] || null;
@@ -916,7 +916,7 @@
         if (search.status !== 'FOUND') {
           return blockedResult('No complete physically safe plan exists inside the frozen search boundary.', intents, diagnostics, 'NO_SAFE_PLAN');
         }
-        const planId = `shift-plan-v1|${stableHash(intents.map(intent => intent.idempotencyKey))}`;
+        const planId = `shift-plan-v1|${stableHash(intents.map(intent => intent.intentId))}`;
         const compiledSteps = compileSteps(search.path, initialOccupancy, completedPrefix, planId);
         const schedule = scheduleSteps(compiledSteps, intents, state);
         if (!schedule.ok) {

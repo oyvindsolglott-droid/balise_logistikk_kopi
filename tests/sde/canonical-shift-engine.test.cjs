@@ -229,6 +229,24 @@ test('actual revision alone does not change relevant input hash', () => {
   assert.equal(second.status, 'NO_OP');
 });
 
+test('immutable intent identity keeps plan identity stable when actual source advances', () => {
+  const intentId = 'manual|UNIT-A|operator-target-8S';
+  const first = engine().plan({
+    state: state({ '10S': 'UNIT-A' }),
+    intents: [manual('UNIT-A', '10S', '8S', { intentId })],
+  });
+  const advanced = engine().plan({
+    state: state({ '11S': 'UNIT-A' }),
+    intents: [manual('UNIT-A', '11S', '8S', { intentId })],
+    previousPlan: first.plan,
+    events: [{ type: 'ACTUAL_SOURCE_ADVANCED', intentId }],
+  });
+  assert.equal(advanced.status, 'REPLANNED');
+  assert.equal(advanced.plan.planId, first.plan.planId);
+  assert.notEqual(advanced.plan.planRevision, first.plan.planRevision);
+  assert.ok(advanced.plan.steps.every(step => step.intentId === intentId));
+});
+
 test('changed occupancy causes a new atomic suffix revision', () => {
   const first = engine().plan({ state: state({ '10S': '70-11' }), intents: [manual('70-11', '10S', '8S')] });
   const second = engine().plan({
@@ -252,6 +270,9 @@ test('completed prefix is preserved across suffix replan', () => {
   const second = engine().plan({ state: afterRelease, intents: [manual('70-11', '10S', '8S', { preferredSourceEnd: 'north' })], previousPlan: first.plan, events: [{ type: 'STEP_COMPLETED', stepId: release.stepId }] });
   assert.equal(second.plan.steps[0].stepId, release.stepId);
   assert.equal(second.plan.steps[0].status, 'COMPLETED');
+  const projection = projectCanonicalPlan(second.plan);
+  assert.equal(projection.cards[0].status, 'READY');
+  assert.equal(projection.reservations.length, 1);
 });
 
 test('unchanged conflict-free plan fragments retain stable identity across an affected replan', () => {

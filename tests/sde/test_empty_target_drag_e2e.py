@@ -28,7 +28,20 @@ class SdeEmptyDropHandler(http.server.SimpleHTTPRequestHandler):
                     "ok": True,
                     "roleResolved": True,
                     "roles": ["drops", "txp", "sde_skiftere", "verksted", "agila"],
-                    "capabilities": {},
+                    "capabilities": {
+                        "sde_shift.manual_intent": {
+                            "allowed": True,
+                            "decision": "ALLOW",
+                        },
+                        "sde_shift.complete": {
+                            "allowed": True,
+                            "decision": "ALLOW",
+                        },
+                        "sde_shift.cancel": {
+                            "allowed": True,
+                            "decision": "ALLOW",
+                        },
+                    },
                 }
             ).encode("utf-8")
             self.send_response(200)
@@ -65,6 +78,7 @@ def reset_graphic_fixture(page: Page, placements: list[list[str]]) -> None:
           state.sdePhysicalReleaseReplans={};
           state.sdeVnRecoveryObligations={};
           state.sdeCanonicalRetargetIntents={};
+          state.sdeCanonicalShiftActivePlan=null;
           state.planSkifteRows=[];
           state.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
           state.txpUnavailableSlots=[];
@@ -82,6 +96,9 @@ def reset_graphic_fixture(page: Page, placements: list[list[str]]) -> None:
           sdeNightPlacementDropMessage=null;
           sdeNightPlacementBlockedMoveRequest=null;
           sdeNightPlacementSelectedSlot='';
+          sdeCanonicalUnifiedAllProducerPreviousPlan=null;
+          sdeCanonicalUnifiedAllProducerShadowPreviousPlan=null;
+          sdeCanonicalUnifiedAllProducerProduct=null;
           sdeShiftLastRenderedData={moves:[],limitedPlanningMode:false,score:0};
           sdeShiftViewMode=SDE_SHIFT_VIEW_MODE_GRAPHIC_PLAN;
           activateTab('sdeSkiftebevegelser');
@@ -166,7 +183,8 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                             """target => {
                               const reader=buildSdeCanonicalProductionReader();
                               const cards=[...(reader.cardProjection.actionableCards||[]),...(reader.cardProjection.blockedChainCards||[])];
-                              const card=cards.find(item=>item.vehicleId==='movingVehicle'&&item.sourceSlot==='VN'&&item.targetSlot===target)||null;
+                              const card=cards.find(item=>normalizeVehicleToken(item.vehicleId)===normalizeVehicleToken('movingVehicle')
+                                && normalizeSlot(item.sourceSlot)==='VN'&&normalizeSlot(item.targetSlot)===normalizeSlot(target))||null;
                               const adapter=card?reader.handlerAdapters?.[card.canonicalCardId]||null:null;
                               const controlsHtml=card&&adapter?buildSdeCanonicalCardActionControlsHtml(card,adapter,reader):'';
                               const controls=['Utført','Annullert'].filter(label=>controlsHtml.includes(`>${label}<`));
@@ -231,6 +249,7 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                                 statuses:cards.map(card=>card.status),
                                 outcomes:reader.canonicalPlan.candidateOutcomes.filter(item=>item.status!=='completed').length,
                                 cards:cards.length,reservations:reader.reservationProjection.reservations.length,
+                                plannedResourceClaims:reader.reservationProjection.plannedResourceClaims.length,
                                 overlays:reader.graphicProjection.activeOverlays.length+reader.graphicProjection.deferredOverlays.length,
                                 adapters:Object.keys(reader.handlerAdapters||{}).length,
                                 integrity:reader.integrityReport.status,
@@ -244,7 +263,7 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                         self.assertNotIn("forhåndsstages komplett", result["message"].lower())
                         self.assertEqual(result["path"], scenario["path"], result)
                         self.assertEqual(result["statuses"], ["actionable", "blocked_chain_step", "blocked_chain_step"], result)
-                        self.assertEqual([result["outcomes"], result["cards"], result["reservations"], result["overlays"], result["adapters"]], [3, 3, 3, 3, 3], result)
+                        self.assertEqual([result["outcomes"], result["cards"], result["reservations"], result["plannedResourceClaims"], result["overlays"], result["adapters"]], [3, 3, 1, 2, 3, 3], result)
                         self.assertEqual(result["integrity"], "PASS", result)
                         self.assertEqual(result["actual"], scenario["source"], result)
                         self.assertEqual(result["ghosts"], 0, result)
@@ -398,7 +417,12 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                                 postMain:recovery?.sdeRecoveryUsesPostMainTopology===true,
                                 complete:reader.canonicalPlan.candidateOutcomes.length===3
                                   && cards.length===3
-                                  && reader.reservationProjection.reservations.length===3
+                                  && reader.reservationProjection.reservations.length===1
+                                  && reader.reservationProjection.plannedResourceClaims.length===2
+                                  && new Set([
+                                    ...reader.reservationProjection.reservations.map(item=>item.stepId),
+                                    ...reader.reservationProjection.plannedResourceClaims.map(item=>item.stepId)
+                                  ]).size===3
                                   && (reader.graphicProjection.activeOverlays.length+reader.graphicProjection.deferredOverlays.length)===3
                                   && Object.keys(reader.handlerAdapters||{}).length===3
                                   && reader.integrityReport.status==='PASS',
@@ -406,6 +430,7 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                                   outcomes:reader.canonicalPlan.candidateOutcomes.length,
                                   cards:cards.length,
                                   reservations:reader.reservationProjection.reservations.length,
+                                  plannedResourceClaims:reader.reservationProjection.plannedResourceClaims.length,
                                   overlays:reader.graphicProjection.activeOverlays.length+reader.graphicProjection.deferredOverlays.length,
                                   adapters:Object.keys(reader.handlerAdapters||{}).length,
                                   integrity:reader.integrityReport.status
@@ -542,7 +567,12 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                             statuses:cards.map(card=>card.status),
                             complete:rows.length===3&&cards.length===3
                               && reader.canonicalPlan.candidateOutcomes.length===3
-                              && reader.reservationProjection.reservations.length===3
+                              && reader.reservationProjection.reservations.length===1
+                              && reader.reservationProjection.plannedResourceClaims.length===2
+                              && new Set([
+                                ...reader.reservationProjection.reservations.map(item=>item.stepId),
+                                ...reader.reservationProjection.plannedResourceClaims.map(item=>item.stepId)
+                              ]).size===3
                               && (reader.graphicProjection.activeOverlays.length+reader.graphicProjection.deferredOverlays.length)===3
                               && Object.keys(reader.handlerAdapters||{}).length===3
                               && reader.integrityReport.status==='PASS',
@@ -594,50 +624,57 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                         """async () => {
                           getSdeMoveLearningReason=async()=>getSdeNoMoveLearningReason('');
                           saveSharedSporplanDraftFromSdeCompletedMove=async()=>{};
+                          refreshGlobalAuthoritativeData=async()=>{};
                           persist=()=>{};
                           window.__suffixAlerts=[];
                           alert=message=>window.__suffixAlerts.push(String(message));
-                          const beforeRows=buildSdeShiftCardMoveCandidates({moves:[]},{reconcileActive:false})
-                            .filter(row=>row?.sdePhysicalChainId);
-                          const release=beforeRows.find(row=>row.sdePhysicalDependencyRole==='prerequisite');
-                          const main=beforeRows.find(row=>row.sdePhysicalDependencyRole==='dependent');
-                          const recovery=beforeRows.find(row=>row.sdePhysicalDependencyRole==='return');
                           const beforeReader=buildSdeCanonicalProductionReader();
-                          const releaseKey=getSdeMoveActionKey(release);
-                          const initialChainId=release?.sdePhysicalChainId||'';
-                          const initialIntentId=main?.sdeNightPlacementDragIdentity||'';
-                          await handleSdeShiftMoveAction(encodeURIComponent(releaseKey),'completed');
+                          const beforeSteps=(beforeReader.canonicalPlan.steps||[]).filter(step=>step.status!=='COMPLETED');
+                          const release=beforeSteps.find(step=>step.role==='RELEASE');
+                          const main=beforeSteps.find(step=>step.role==='MAIN');
+                          const recovery=beforeSteps.find(step=>step.role==='RECOVERY');
+                          const releaseCard=(beforeReader.cardProjection.actionableCards||[])[0]||null;
+                          const releaseAdapter=releaseCard
+                            ? beforeReader.handlerAdapters?.[releaseCard.canonicalCardId]||null
+                            : null;
+                          const releaseKey=releaseAdapter?.actionKey||'';
+                          const initialChainId=beforeReader.canonicalPlan.planId||'';
+                          const initialIntentId=releaseCard?.canonicalIdentity?.intentId||'';
+                          await handleSdeCanonicalCardAction(
+                            encodeURIComponent(releaseCard?.canonicalCardId||''),
+                            'completed',
+                            encodeURIComponent(JSON.stringify(releaseAdapter?.executionDescriptor||{}))
+                          );
                           localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
-                          const afterRows=buildSdeShiftCardMoveCandidates({moves:[]},{reconcileActive:false})
-                            .filter(row=>row?.sdePhysicalChainId);
                           const afterReader=buildSdeCanonicalProductionReader();
                           const cards=[...(afterReader.cardProjection.actionableCards||[]),
                             ...(afterReader.cardProjection.blockedChainCards||[]),
                             ...(afterReader.cardProjection.handlerBlockedCards||[])];
-                          const chain=afterReader.cardProjection.chains?.find(item=>item.chainId===initialChainId)||null;
+                          const afterSteps=afterReader.canonicalPlan.steps||[];
                           return {
                             initial:{
                               chainId:initialChainId,
                               intentId:initialIntentId,
                               releaseKey,
-                              roles:beforeRows.map(row=>row.sdePhysicalDependencyRole),
+                              roles:beforeSteps.map(step=>step.role),
                               statuses:[...(beforeReader.cardProjection.actionableCards||[]),
                                 ...(beforeReader.cardProjection.blockedChainCards||[])].map(card=>card.status),
-                              path:[[release?.fromSlot,release?.toSlot],[main?.fromSlot,main?.toSlot],[recovery?.fromSlot,recovery?.toSlot]]
+                              path:[[release?.sourceSlot,release?.targetSlot],[main?.sourceSlot,main?.targetSlot],[recovery?.sourceSlot,recovery?.targetSlot]],
+                              reliefTarget:release?.targetSlot||''
                             },
                             after:{
-                              chainIds:[...new Set(afterRows.map(row=>row.sdePhysicalChainId))],
-                              roles:afterRows.map(row=>row.sdePhysicalDependencyRole),
+                              chainIds:[afterReader.canonicalPlan.planId||''].filter(Boolean),
+                              roles:cards.map(card=>card.role),
                               statuses:cards.map(card=>card.status),
                               targets:cards.map(card=>card.targetSlot),
-                              mainIntentIds:afterRows.filter(row=>row.sdePhysicalDependencyRole==='dependent')
-                                .map(row=>row.sdeNightPlacementDragIdentity||''),
+                              mainIntentIds:cards.filter(card=>card.role==='MAIN')
+                                .map(card=>card.canonicalIdentity?.intentId||''),
                               action:state.sdeMoveActions?.[releaseKey]?.action||'',
-                              releaseActual:getSdeVehicleInSlot('VN'),
+                              releaseActual:getSdeVehicleInSlot(release?.targetSlot||''),
                               mainActual:getSdeVehicleInSlot('6S'),
                               actionCount:Object.keys(state.sdeMoveActions||{}).length,
-                              chainStepCount:chain?.stepCount||0,
-                              completedSteps:(chain?.steps||[]).filter(step=>step.status==='completed').length,
+                              chainStepCount:afterSteps.length,
+                              completedSteps:afterSteps.filter(step=>step.status==='COMPLETED').length,
                               integrity:afterReader.integrityReport.status,
                               integrityConflicts:(afterReader.integrityReport.conflicts||[]).map(item=>({
                                 code:item.code||item.diagnosticType||'',message:item.message||'',
@@ -660,6 +697,14 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                               planConflicts:(afterReader.canonicalPlan?.conflicts||[]).map(item=>item.code),
                               planDiagnostics:(afterReader.canonicalPlan?.diagnostics||[]).map(item=>item.code||item.diagnosticType),
                               cardDiagnostics:(afterReader.cardProjection?.diagnostics||[]).map(item=>item.diagnosticType),
+                              runtimeStatus:sdeCanonicalUnifiedAllProducerProduct?.status||'',
+                              batchStatus:sdeCanonicalUnifiedAllProducerProduct?.batchResult?.status||'',
+                              runtimeReason:sdeCanonicalUnifiedAllProducerProduct?.reason||'',
+                              overrideCount:Object.keys(state.sdeNightPlacementManualOverrides||{}).length,
+                              actionRecords:Object.values(state.sdeMoveActions||{}).map(record=>({
+                                action:record.action||'',canonicalProduct:record.canonicalProduct===true,
+                                stepId:record.stepId||'',role:record.role||''
+                              })),
                               alerts:window.__suffixAlerts,
                               selection:sdeNightPlacementSelectedSlot,
                               ghosts:document.querySelectorAll('.dragging,.drop-rejected').length
@@ -667,12 +712,18 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                           };
                         }"""
                     )
-                    self.assertEqual(transition["initial"]["roles"], ["prerequisite", "dependent", "return"])
+                    self.assertEqual(transition["initial"]["roles"], ["RELEASE", "MAIN", "RECOVERY"])
                     self.assertEqual(transition["initial"]["statuses"], ["actionable", "blocked_chain_step", "blocked_chain_step"])
-                    self.assertEqual(transition["initial"]["path"], [["6N", "VN"], ["6S", "11S"], ["VN", "6S"]])
-                    self.assertEqual(transition["after"]["roles"], ["dependent", "return"])
+                    self.assertEqual(transition["initial"]["path"][0][0], "6N")
+                    self.assertEqual(transition["initial"]["path"][1], ["6S", "11S"])
+                    self.assertEqual(
+                        transition["initial"]["path"][2],
+                        [transition["initial"]["reliefTarget"], "6N"],
+                    )
+                    self.assertNotEqual(transition["initial"]["reliefTarget"], "1N")
+                    self.assertEqual(transition["after"]["roles"], ["MAIN", "RECOVERY"], transition)
                     self.assertEqual(transition["after"]["statuses"], ["actionable", "blocked_chain_step"], transition)
-                    self.assertEqual(transition["after"]["targets"], ["11S", "6S"])
+                    self.assertEqual(transition["after"]["targets"], ["11S", "6N"])
                     self.assertEqual(transition["after"]["chainIds"], [transition["initial"]["chainId"]])
                     self.assertEqual(transition["after"]["mainIntentIds"], [transition["initial"]["intentId"]])
                     self.assertEqual(transition["after"]["action"], "completed")
@@ -714,13 +765,14 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                         }"""
                     )
                     self.assertEqual(hydrated["statuses"], ["actionable", "blocked_chain_step"], hydrated)
-                    self.assertEqual(hydrated["targets"], ["11S", "6S"])
+                    self.assertEqual(hydrated["targets"], ["11S", "6N"])
                     self.assertEqual(hydrated["integrity"], "PASS")
 
                     unexpected = page.evaluate(
                         """async () => {
                           getSdeMoveLearningReason=async()=>getSdeNoMoveLearningReason('');
                           saveSharedSporplanDraftFromSdeCompletedMove=async()=>{};
+                          refreshGlobalAuthoritativeData=async()=>{};
                           persist=()=>{};
                           window.__suffixAlerts=[];
                           alert=message=>window.__suffixAlerts.push(String(message));
@@ -728,32 +780,20 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                           const beforeCards=[...(beforeReader.cardProjection.actionableCards||[]),
                             ...(beforeReader.cardProjection.blockedChainCards||[])];
                           const originalChainId=beforeCards.find(card=>card.vehicleId==='SUFFIX-MAIN')?.chainId||'';
-                          const beforeRows=(beforeReader.runtimeSnapshot?.legacy?.finalCards||[])
-                            .filter(row=>row?.sdePhysicalChainId===originalChainId);
-                          const beforeRevision=beforeRows.find(row=>row.sdePhysicalDependencyRole==='dependent')
-                            ?.sdePhysicalPlanRevision||'';
-
-                          state.grunnoppstilling={...state.grunnoppstilling,VN:'UNEXPECTED-THIRD-PARTY','4M':'SUFFIX-BLOCKER'};
+                          const beforeRevision=beforeReader.canonicalPlan?.planRevision||'';
+                          const previousReliefSlot=getSdePhysicalSlotForVehicle('SUFFIX-BLOCKER');
+                          const changedActual={...state.grunnoppstilling};
+                          if(previousReliefSlot) delete changedActual[previousReliefSlot];
+                          state.grunnoppstilling={...changedActual,VN:'UNEXPECTED-THIRD-PARTY','4M':'SUFFIX-BLOCKER'};
                           const actualBeforePlanning=JSON.stringify(state.grunnoppstilling);
-                          const generated=buildSdeNightPlacementGeneratedMoves([]);
-                          const replannedRows=buildSdePhysicalBlockerGuardMoves(generated,{reconcileActive:false});
-                          const debugSnapshot=captureSdeCanonicalShadowRuntimeSnapshot();
-                          const debugChainRows=(debugSnapshot.legacy?.finalCards||[])
-                            .filter(row=>row?.sdePhysicalChainId===originalChainId);
-                          const debugStructure=inspectSdePassiveBlockedSlotStructure(debugChainRows,debugSnapshot);
-                          const sourceReader=buildSdeCanonicalProductionReaderSource(debugSnapshot);
-                          const sourceCards=[...(sourceReader.cardProjection.actionableCards||[]),
-                            ...(sourceReader.cardProjection.blockedChainCards||[]),
-                            ...(sourceReader.cardProjection.handlerBlockedCards||[])]
-                            .filter(card=>card.chainId===originalChainId);
-                          const sourceAdapters=Object.fromEntries(sourceCards.map(card=>[
-                            card.canonicalCardId,buildSdeCanonicalHandlerAdapter(card,sourceReader)
-                          ]));
-                          const replannedReader=buildSdeCanonicalProductionReader();
+                          const replannedRuntime=buildSdeCanonicalUnifiedAllProducerProduct([]);
+                          const replannedReader=buildSdeCanonicalProductionReader(replannedRuntime);
                           const replannedCards=[...(replannedReader.cardProjection.actionableCards||[]),
                             ...(replannedReader.cardProjection.blockedChainCards||[])]
                             .filter(card=>card.chainId===originalChainId);
-                          const chainRows=replannedRows.filter(row=>row?.sdePhysicalChainId===originalChainId);
+                          const chainRows=(replannedReader.canonicalPlan.candidateOutcomes||[])
+                            .filter(outcome=>outcome.chainId===originalChainId&&outcome.active)
+                            .map(outcome=>outcome.raw);
                           const main=chainRows.find(row=>row.sdePhysicalDependencyRole==='dependent');
                           const recovery=chainRows.find(row=>row.sdePhysicalDependencyRole==='return');
                           const replanSnapshot={
@@ -764,58 +804,59 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                             mainIntent:main?.sdeNightPlacementDragIdentity||'',
                             planRevision:main?.sdePhysicalPlanRevision||'',
                             beforeRevision,
-                            completedPrefix:(replannedReader.canonicalPlan.candidateOutcomes||[])
-                              .filter(outcome=>outcome.chainId===originalChainId&&outcome.status==='completed').length,
+                            completedPrefix:(replannedReader.canonicalPlan.steps||[])
+                              .filter(step=>step.status==='COMPLETED').length,
                             integrity:replannedReader.integrityReport.status,
                             actualUnchanged:actualBeforePlanning===JSON.stringify(state.grunnoppstilling),
                             actionTypes:Object.values(state.sdeMoveActions||{}).map(record=>record?.action),
-                            diagnostics:(replannedReader.canonicalPlan.diagnostics||[]).map(item=>item.code||item.diagnosticType)
-                            ,structure:{complete:debugStructure.complete,missing:debugStructure.missingPlanParts,
-                              completedProofs:debugStructure.completedReleaseProofs,
-                              actual:getSdePassiveBlockedSlotActualPlacements(debugSnapshot),
-                              roles:debugChainRows.map(row=>[row.sdePhysicalDependencyRole,row.fromSlot,row.toSlot,row.sdePhysicalChainId]),
-                              sourceOutcomes:(sourceReader.canonicalPlan.candidateOutcomes||[])
-                                .filter(outcome=>outcome.chainId===originalChainId)
-                                .map(outcome=>[outcome.raw?.sdePhysicalDependencyRole,outcome.status,outcome.targetSlot]),
-                              sourceCards:sourceCards.map(card=>[card.status,card.targetSlot]),
-                              sourceReservations:(sourceReader.reservationProjection.reservations||[])
-                                .filter(item=>item.chainId===originalChainId).map(item=>item.targetSlot),
-                              sourceOverlays:[...(sourceReader.graphicProjection.activeOverlays||[]),
-                                ...(sourceReader.graphicProjection.deferredOverlays||[])]
-                                .filter(item=>item.chainId===originalChainId).map(item=>item.targetSlot),
-                              sourceAdapters:Object.values(sourceAdapters).map(adapter=>({ready:adapter.ready,reasons:adapter.reasons}))}
+                            diagnostics:(replannedReader.canonicalPlan.diagnostics||[]).map(item=>item.code||item.diagnosticType),
+                            structure:{
+                              cards:replannedCards.length,
+                              reservations:(replannedReader.reservationProjection.reservations||[]).length,
+                              plannedResourceClaims:(replannedReader.reservationProjection.plannedResourceClaims||[]).length,
+                              overlays:(replannedReader.graphicProjection.activeOverlays||[]).length
+                                +(replannedReader.graphicProjection.deferredOverlays||[]).length,
+                              adapters:Object.keys(replannedReader.handlerAdapters||{}).length,
+                              stepIntents:(replannedReader.canonicalPlan.steps||[])
+                                .map(step=>[step.role,step.intentId,step.status])
+                            }
                           };
 
-                          await handleSdeShiftMoveAction(encodeURIComponent(getSdeMoveActionKey(main)),'completed');
+                          const mainCard=replannedCards.find(card=>card.role==='MAIN')||null;
+                          const mainAdapter=mainCard
+                            ? replannedReader.handlerAdapters?.[mainCard.canonicalCardId]||null
+                            : null;
+                          await handleSdeCanonicalCardAction(
+                            encodeURIComponent(mainCard?.canonicalCardId||''),
+                            'completed',
+                            encodeURIComponent(JSON.stringify(mainAdapter?.executionDescriptor||{}))
+                          );
                           localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
                           const postMainReader=buildSdeCanonicalProductionReader();
-                          const postSnapshot=captureSdeCanonicalShadowRuntimeSnapshot();
-                          const postChainRows=(postSnapshot.legacy?.finalCards||[])
-                            .filter(row=>row?.sdePhysicalChainId===originalChainId);
-                          const postStructure=inspectSdePassiveBlockedSlotStructure(postChainRows,postSnapshot);
                           const postMainCards=[...(postMainReader.cardProjection.actionableCards||[]),
                             ...(postMainReader.cardProjection.blockedChainCards||[])]
                             .filter(card=>card.chainId===originalChainId);
-                          const postMainChain=postMainReader.cardProjection.chains?.find(item=>item.chainId===originalChainId)||null;
                           return {
                             replan:replanSnapshot,
                             postMain:{
                               statuses:postMainCards.map(card=>card.status),
                               targets:postMainCards.map(card=>card.targetSlot),
-                              completedSteps:(postMainChain?.steps||[]).filter(step=>step.status==='completed').length,
+                              completedSteps:(postMainReader.canonicalPlan.steps||[])
+                                .filter(step=>step.status==='COMPLETED').length,
                               integrity:postMainReader.integrityReport.status,
-                              mainActual:sanitizeVehicleValue(state.grunnoppstilling?.['11S']),
-                              blockerActual:sanitizeVehicleValue(state.grunnoppstilling?.['4M']),
+                              mainActual:getSdeVehicleInSlot('11S'),
+                              blockerActual:getSdeNightPlacementCanonicalActualStateSnapshot({fresh:true})
+                                .placementsBySlot?.['4M']?.vehicleId||'',
                               rawPlacement:{...state.grunnoppstilling},
-                              roles:(postMainReader.runtimeSnapshot?.legacy?.finalCards||[]).map(row=>[
-                                row.sdePhysicalDependencyRole||'',row.fromSlot||'',row.toSlot||row.recommendedSlot||'',
-                                row.sdePhysicalChainId||'',row.sdeTrappedEgressDiagnosticOnly||false
-                              ]),
+                              roles:postMainCards.map(card=>card.role),
                               diagnostics:(postMainReader.canonicalPlan.diagnostics||[]).map(item=>item.code||item.diagnosticType),
-                              actionTypes:Object.values(state.sdeMoveActions||{}).map(record=>[record.action,record.vehicle,record.fromSlot,record.toSlot])
-                              ,structure:{complete:postStructure.complete,missing:postStructure.missingPlanParts,
-                                releases:postStructure.completedReleaseProofs,mains:postStructure.completedMainProofs,
-                                roles:postChainRows.map(row=>[row.sdePhysicalDependencyRole,row.fromSlot,row.toSlot,row.sdePhysicalDependsOn])}
+                              planId:postMainReader.canonicalPlan.planId||'',
+                              steps:(postMainReader.canonicalPlan.steps||[])
+                                .map(step=>[step.role,step.planId,step.intentId,step.status]),
+                              producers:(postMainReader.productRuntime?.requests||[])
+                                .map(request=>[request.producerId,request.payload?.intentId||request.payload?.planRowId||'']),
+                              actionTypes:Object.values(state.sdeMoveActions||{})
+                                .map(record=>[record.action,record.vehicle,record.fromSlot,record.toSlot])
                             },
                             alerts:window.__suffixAlerts,
                             selection:sdeNightPlacementSelectedSlot,
@@ -825,7 +866,7 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                     )
                     self.assertEqual(unexpected["replan"]["roles"], ["dependent", "return"], unexpected)
                     self.assertEqual(unexpected["replan"]["statuses"], ["actionable", "blocked_chain_step"], unexpected)
-                    self.assertEqual(unexpected["replan"]["path"], [["6S", "11S"], ["4M", "6S"]], unexpected)
+                    self.assertEqual(unexpected["replan"]["path"], [["6S", "11S"], ["4M", "6N"]], unexpected)
                     self.assertEqual(unexpected["replan"]["mainIntent"], transition["initial"]["intentId"])
                     self.assertNotEqual(unexpected["replan"]["planRevision"], unexpected["replan"]["beforeRevision"])
                     self.assertEqual(unexpected["replan"]["completedPrefix"], 1)
@@ -833,7 +874,7 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                     self.assertTrue(unexpected["replan"]["actualUnchanged"])
                     self.assertNotIn("cancelled", unexpected["replan"]["actionTypes"])
                     self.assertEqual(unexpected["postMain"]["statuses"], ["actionable"], unexpected)
-                    self.assertEqual(unexpected["postMain"]["targets"], ["6S"])
+                    self.assertEqual(unexpected["postMain"]["targets"], ["6N"])
                     self.assertEqual(unexpected["postMain"]["completedSteps"], 2)
                     self.assertEqual(unexpected["postMain"]["integrity"], "PASS")
                     self.assertEqual(unexpected["postMain"]["mainActual"], "SUFFIX-MAIN")
@@ -855,18 +896,16 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
                           state.sharedSporplanDraftAppliedRevision=1;
                           activateTab('sdeSkiftebevegelser');
                           const reader=buildSdeCanonicalProductionReader();
-                          const mainChain=(reader.cardProjection.chains||[]).find(chain=>(chain.steps||[])
-                            .some(step=>step.vehicleId==='SUFFIX-MAIN'))||null;
                           const cards=[...(reader.cardProjection.actionableCards||[]),
-                            ...(reader.cardProjection.blockedChainCards||[])]
-                            .filter(card=>card.chainId===mainChain?.chainId);
+                            ...(reader.cardProjection.blockedChainCards||[])];
                           return {statuses:cards.map(card=>card.status),targets:cards.map(card=>card.targetSlot),
-                            completedSteps:(mainChain?.steps||[]).filter(step=>step.status==='completed').length,
+                            completedSteps:(reader.canonicalPlan.steps||[])
+                              .filter(step=>step.status==='COMPLETED').length,
                             integrity:reader.integrityReport.status};
                         }"""
                     )
                     self.assertEqual(post_main_hydrated["statuses"], ["actionable"], post_main_hydrated)
-                    self.assertEqual(post_main_hydrated["targets"], ["6S"])
+                    self.assertEqual(post_main_hydrated["targets"], ["6N"])
                     self.assertEqual(post_main_hydrated["completedSteps"], 2)
                     self.assertEqual(post_main_hydrated["integrity"], "PASS")
                     self.assertEqual(page_errors, [])

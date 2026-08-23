@@ -10265,7 +10265,7 @@ Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for v
 </div>
 
 
-<script src="sde_canonical_shift_engine.js?v=6a7c2a2ceebf5149f9ba52aeb8eb77e8cb06611fe7d5fd6413cde4f54fb5dce7"></script>
+<script src="sde_canonical_shift_engine.js?v=0ed56c5619546f6af50b6e8c8ab460455a3abbbf87394e9ea17602734361dd62"></script>
 <script src="sde_canonical_shift_adapter.js?v=584270079e612e9400bddd7b9619201056702c60431b05adc74d16176a5dc973"></script>
 <script src="sde_intelligent_night_planning.js?v=ae80afdb91c70b122aedf202bb7ffc1c78e865cf9bc20dece76652990416b386"></script>
 <meta id="sdeLazyHtrModuleRegistry" data-trigger="sdeNightAnalyzeImageBtn" data-modules="sde_handwriting_recognition.js,sde_handwriting_runtime.js">
@@ -10549,6 +10549,7 @@ function makeDefaultState(){
     sdeNightPlacementManualOverrides:{},
     sdeMoveActionDragOffsets:{},
     sdeExpandedMoveActionKey:"",
+    sdeCanonicalShiftActivePlan:null,
     migrationClearKveldColE_v1:false,
     sharedSporplanDraftAppliedRevision:null,
     sharedSporplanDraftAppliedAt:null,
@@ -10607,6 +10608,16 @@ if(!state.sdeVnRecoveryObligations || typeof state.sdeVnRecoveryObligations !== 
 if(!Array.isArray(state.sdeMoveLearningLog)) state.sdeMoveLearningLog=[];
 if(!state.sdeManualMoveOverrides || typeof state.sdeManualMoveOverrides !== "object" || Array.isArray(state.sdeManualMoveOverrides)) state.sdeManualMoveOverrides = {};
 if(!state.sdeNightPlacementManualOverrides || typeof state.sdeNightPlacementManualOverrides !== "object" || Array.isArray(state.sdeNightPlacementManualOverrides)) state.sdeNightPlacementManualOverrides = {};
+if(
+  !state.sdeCanonicalShiftActivePlan
+  || typeof state.sdeCanonicalShiftActivePlan !== "object"
+  || Array.isArray(state.sdeCanonicalShiftActivePlan)
+  || state.sdeCanonicalShiftActivePlan.schemaVersion !== "sde-shift-plan-graph-v1"
+  || !Array.isArray(state.sdeCanonicalShiftActivePlan.steps)
+  || !Array.isArray(state.sdeCanonicalShiftActivePlan.obligations)
+){
+  state.sdeCanonicalShiftActivePlan = null;
+}
 if(!("sharedSporplanDraftAppliedRevision" in state)) state.sharedSporplanDraftAppliedRevision=null;
 if(!("sharedSporplanDraftAppliedAt" in state)) state.sharedSporplanDraftAppliedAt=null;
 
@@ -38816,6 +38827,26 @@ function pruneSdeNightPlacementNoOpOverrides(){
   return changed;
 }
 
+function hasSdeCanonicalPendingSuffixForGraphicOverride(override){
+  const rawIntentId = String(
+    override?.dragRequestId
+    || override?.intentIdentity
+    || override?.id
+    || ""
+  ).trim();
+  if(!rawIntentId) return false;
+  const canonicalIntentId = `shift-producer-v1|MANUAL_DRAG|${rawIntentId}`;
+  const plan = state.sdeCanonicalShiftActivePlan;
+  return Boolean(
+    plan?.schemaVersion === "sde-shift-plan-graph-v1"
+    && Array.isArray(plan.steps)
+    && plan.steps.some(step=>(
+      String(step?.intentId || "").trim() === canonicalIntentId
+      && String(step?.status || "").trim() !== "COMPLETED"
+    ))
+  );
+}
+
 function pruneSdeNightPlacementStaleCanonicalGraphicOverrides(){
   const overrides = getSdeNightPlacementManualOverrides();
   const overrideEntries = Object.entries(overrides).filter(([,override])=>Boolean(override));
@@ -38846,6 +38877,7 @@ function pruneSdeNightPlacementStaleCanonicalGraphicOverrides(){
     const sourceSlot = getSdeNightPlacementOverrideFromSlot(override);
     const physicalSlot = getSdePhysicalSlotForVehicle(vehicle);
     if(!vehicle || !sourceSlot || !physicalSlot || physicalSlot === sourceSlot) return;
+    if(hasSdeCanonicalPendingSuffixForGraphicOverride(override)) return;
 
     const completedLocked = completedLockedSlots[sourceSlot];
     if(
@@ -41790,7 +41822,8 @@ function buildSdeCanonicalShiftEvents(){
   }).sort((left,right)=>left.timestamp.localeCompare(right.timestamp) || left.stepId.localeCompare(right.stepId));
 }
 
-let sdeCanonicalUnifiedAllProducerPreviousPlan = null;
+let sdeCanonicalUnifiedAllProducerPreviousPlan = state.sdeCanonicalShiftActivePlan || null;
+let sdeCanonicalUnifiedAllProducerShadowPreviousPlan = null;
 
 function buildSdeCanonicalUnifiedAllProducerShadow(rows=[]){
   const engine = getSdeCanonicalUnifiedShiftEngine();
@@ -41803,11 +41836,11 @@ function buildSdeCanonicalUnifiedAllProducerShadow(rows=[]){
       engine,
       needs:requests,
       actualState,
-      previousPlan:sdeCanonicalUnifiedAllProducerPreviousPlan,
+      previousPlan:sdeCanonicalUnifiedAllProducerShadowPreviousPlan,
       humanExperienceEvidence:getSdeCanonicalUnifiedHumanExperienceEvidence(),
       authorizeManualIntent:(_actorId,payload)=>payload?.serverAuthorizedManualIntent === true
     });
-    if(result?.plan) sdeCanonicalUnifiedAllProducerPreviousPlan = result.plan;
+    if(result?.plan) sdeCanonicalUnifiedAllProducerShadowPreviousPlan = result.plan;
     const productProjection = window.SdeCanonicalShiftAdapter.buildCanonicalShadowProjection(result);
     const shadow = {
       ...result,
@@ -41881,12 +41914,18 @@ function buildSdeCanonicalUnifiedAllProducerProduct(rows=[]){
       engine,
       needs:requests,
       actualState,
-      previousPlan:sdeCanonicalUnifiedAllProducerPreviousPlan,
+      previousPlan:sdeCanonicalUnifiedAllProducerPreviousPlan || state.sdeCanonicalShiftActivePlan || null,
       humanExperienceEvidence:getSdeCanonicalUnifiedHumanExperienceEvidence(),
       events:buildSdeCanonicalShiftEvents(),
       authorizeManualIntent:()=>capability.canCreateManualIntent === true
     });
-    if(batchResult?.plan) sdeCanonicalUnifiedAllProducerPreviousPlan = batchResult.plan;
+    if(batchResult?.plan){
+      sdeCanonicalUnifiedAllProducerPreviousPlan = batchResult.plan;
+      state.sdeCanonicalShiftActivePlan = batchResult.plan;
+    }else if(batchResult?.status === "NO_ACTIVE_INTENTS"){
+      sdeCanonicalUnifiedAllProducerPreviousPlan = null;
+      state.sdeCanonicalShiftActivePlan = null;
+    }
     const product = window.SdeCanonicalShiftAdapter.buildCanonicalProductProjection(batchResult,{
       actionRecords:state.sdeMoveActions || {},
       capability
@@ -42217,6 +42256,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     }
     const previousOverrides = cloneSdeCanonicalValue(getSdeNightPlacementManualOverrides()) || {};
     const previousPlan = sdeCanonicalUnifiedAllProducerPreviousPlan;
+    const previousPersistedPlan = state.sdeCanonicalShiftActivePlan;
     const previousProduct = sdeCanonicalUnifiedAllProducerProduct;
     try{
       removeSdeNightPlacementOverridesForVehicle(assessment.vehicle);
@@ -42262,6 +42302,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     }catch(error){
       state.sdeNightPlacementManualOverrides = previousOverrides;
       sdeCanonicalUnifiedAllProducerPreviousPlan = previousPlan;
+      state.sdeCanonicalShiftActivePlan = previousPersistedPlan;
       sdeCanonicalUnifiedAllProducerProduct = previousProduct;
       sdeNightPlacementBlockedMoveRequest = {
         ...(assessment.blockedMoveRequest || buildSdeNightPlacementBlockedMoveRequest(
@@ -45287,6 +45328,13 @@ function buildSdeCanonicalProductReader(productRuntime=null){
     ).trim();
     return {
       ...card,
+      route:cloneSdeCanonicalValue(
+        card?.producerPayload?.sdeCanonicalRouteTopology
+        || card?.producerPayload?.sdeCanonicalRoute
+        || null
+      ),
+      chainId:String(plan?.planId || ""),
+      totalStepCount:Number(plan?.steps?.length || 0),
       canonicalCardId:String(card.canonicalCardId || card.cardId || "").trim(),
       activeOutcomeId:String(card.stepId || "").trim(),
       status:actionable ? "actionable" : "blocked_chain_step",
@@ -46525,8 +46573,8 @@ async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action, enco
         removeSdeNightPlacementOverridesForVehicle(vehicle);
       }
       recordSdeMoveLearningEvent(actionKey,"completed",row,actionTime,learningReason);
-      persist(true);
       buildSdeCanonicalUnifiedAllProducerProduct(sdeShiftLastRenderedData?.needs || []);
+      persist(true);
       refreshSdeAfterMoveAction();
       await saveSharedSporplanDraftFromSdeCompletedMove();
       return;
@@ -46534,8 +46582,8 @@ async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action, enco
 
     state.sdeMoveActions[actionKey] = canonicalRecord;
     recordSdeMoveLearningEvent(actionKey,"cancelled",row,actionTime,learningReason);
-    persist(true);
     buildSdeCanonicalUnifiedAllProducerProduct(sdeShiftLastRenderedData?.needs || []);
+    persist(true);
     renderSdeSkiftebevegelser();
   }finally{
     window.sdeMoveActionPendingKey = "";
