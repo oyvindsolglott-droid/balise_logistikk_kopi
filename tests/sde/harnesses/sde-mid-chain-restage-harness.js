@@ -4,6 +4,12 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
+const source = fs.readFileSync(process.argv[2],"utf8");
+if(source.includes('migrationMode:"CANONICAL_ONLY"')){
+  require("./sde-phase-a-canonical-contract-helper.cjs").runScenario("mid-chain",process.argv[2]);
+  process.exit(0);
+}
+
 const base = fs.readFileSync(path.join(__dirname, "sde-canonical-buttspor-vn-chain-t-harness.js"), "utf8");
 const prefix = base.slice(0, base.indexOf("const chain10"));
 

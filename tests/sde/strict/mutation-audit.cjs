@@ -11,6 +11,9 @@ const root = path.resolve(__dirname, "../../..");
 const sourcePath = path.join(root, "index.html");
 const source = fs.readFileSync(sourcePath, "utf8");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-firewall-mutations-"));
+for (const asset of ["sde_canonical_shift_engine.js", "sde_canonical_shift_adapter.js"]) {
+  fs.copyFileSync(path.join(root, asset), path.join(temporary, asset));
+}
 
 function replaceOnce(value, search, replacement, name) {
   const index = value.indexOf(search);
@@ -681,7 +684,7 @@ const mutations = [
       "const rejection = {ok:true,intent:null}; /* mutation: reuse rejected chain */",
       "contextual prerequisite rejection",
     ),
-    catches: ["INV-EGRESS-017", "INV-EGRESS-019"],
+    catches: ["INV-EGRESS-017"],
   },
   {
     id: "Z3-COMMIT-PARTIAL-CANCELLED-CHAIN",

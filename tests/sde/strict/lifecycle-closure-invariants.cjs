@@ -67,6 +67,8 @@ const cardProjection = functionSource("buildSdeCanonicalCardProjection");
 const reservationProjection = functionSource("buildSdeCanonicalReservationProjection");
 const graphicProjection = functionSource("buildSdeCanonicalGraphicProjection");
 const productionReader = functionSource("buildSdeCanonicalProductionReader");
+const productReader = functionSource("buildSdeCanonicalProductReader");
+const productAction = functionSource("handleSdeCanonicalCardAction");
 
 put("INV-LIFECYCLE-001",!/width\s*:\s*160px/.test(css),"plan button has no fixed 160px desktop width");
 put("INV-LIFECYCLE-002",!/min-width\s*:\s*160px/.test(css),"plan button has no fixed 160px minimum width");
@@ -97,15 +99,15 @@ put("INV-LIFECYCLE-026",/getSdeCanonicalPlanCandidateRecommendation/.test(worksh
 put("INV-LIFECYCLE-027",/searchedSlots/.test(functionSource("getSdeCanonicalPlanCandidateRecommendation")),"canonical candidate result records the full searched inventory");
 put("INV-LIFECYCLE-028",/temporaryRelief/.test(functionSource("getSdeCanonicalPlanCandidateRecommendation"))&&/VN/.test(functionSource("getSdeCanonicalPlanCandidateRecommendation")),"VN is considered only in temporary-relief context");
 put("INV-LIFECYCLE-029",/if\(cards\.length !== outcomes\.length/.test(atomicGate)&&/if\(reservations\.length !== outcomes\.length/.test(atomicGate)&&/if\(overlays\.length !== outcomes\.length/.test(atomicGate),"atomic gate requires a full chain projection");
-put("INV-LIFECYCLE-030",/adapter\.ready === true/.test(atomicGate)&&/adapter\.ready === false/.test(atomicGate)&&/initialAdapterCards = getSdeCanonicalProductionProjectedCards\(reader\)\.filter\(needsHandlerAdapter\)/.test(productionReader),"atomic gate differentiates ready active adapters from deferred adapters");
+put("INV-LIFECYCLE-030",/const handlers = Object\.fromEntries\(cardRows\.map\(card=>\{/.test(source)&&/ready:card\.status === "actionable" && sourceCard\?\.ready === true/.test(productReader)&&/plannedResourceClaims:claims/.test(productReader)&&/reservationProjection/.test(productReader),"canonical product reader creates an adapter for every operative and deferred card while differentiating one READY reservation from deferred planned-resource claims");
 put("INV-LIFECYCLE-031",fixture.intents.some(item=>item.vehicleId==="74-47"&&item.sourceSlot==="5M"&&item.targetSlot==="6S"&&item.sourceType==="MANUAL_DRAG"),"fixture binds the requested manual drag");
 put("INV-LIFECYCLE-032",["74-23|8N","74-38|7N"].every(key=>fixture.intents.some(item=>`${item.vehicleId}|${item.sourceSlot}`===key&&item.sourceType==="WORKSHOP_EXIT")),"fixture binds both workshop exits");
 put("INV-LIFECYCLE-033",fixture.intents.some(item=>item.vehicleId==="75-76"&&item.sourceSlot==="6N"&&item.targetSlot==="10N"&&item.status==="DEPENDENCY_BLOCKED"),"fixture binds the live dependency step");
 put("INV-LIFECYCLE-034",fixture.emptySlots.includes("VN")&&fixture.emptySlots.includes("VS")&&fixture.emptySlots.length>20,"fixture supplies many empty slots with VN and VS available");
 put("INV-LIFECYCLE-035",/buildSdeCanonicalAutomaticReplanRows/.test(source)&&/originalRequestedTarget/.test(functionSource("buildSdeCanonicalAutomaticReplanRows")),"automatic replan preserves original intent");
 put("INV-LIFECYCLE-036",/rejectedTargets/.test(source),"candidate rejection is tracked without ending the search");
-put("INV-LIFECYCLE-037",/Siste revisjon:\s*22\. august 2026/.test(source),"visible revision date is 22 August 2026");
-put("INV-LIFECYCLE-038",/actionType === "deleted"/.test(functionSource("handleSdeCanonicalCardAction"))&&/deleteSdeLocalMoveCard/.test(functionSource("handleSdeCanonicalCardAction")),"separate canonical Fjern action reaches safe local deletion only");
+put("INV-LIFECYCLE-037",/Siste revisjon:\s*23\. august 2026/.test(source),"visible revision date is the actual candidate completion date, 23 August 2026");
+put("INV-LIFECYCLE-038",/!\["completed","cancelled"\]\.includes\(actionType\)/.test(productAction)&&/Slett er ikke en operativ handling/.test(productAction)&&!/deleteSdeLocalMoveCard/.test(productAction),"canonical product handler exposes only Utført and Annullert; local deletion is not an operative product action");
 
 const failed = results.filter(item=>item.status==="FAIL");
 process.stdout.write(JSON.stringify({schemaVersion:"sde-canonical-plan-lifecycle-closure-invariants-v1",category:"lifecycle-closure",counts:{total:results.length,pass:results.length-failed.length,fail:failed.length},results})+"\n");
