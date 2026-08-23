@@ -9,9 +9,6 @@ const root = path.resolve(__dirname, "../../..");
 const source = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const harness = path.join(root, "tests/sde/harnesses/sde-route-12n-via-vs-to-6s-harness.js");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-multileg-route-mutations-"));
-for (const asset of ["sde_canonical_shift_engine.js", "sde_canonical_shift_adapter.js"]) {
-  fs.copyFileSync(path.join(root, asset), path.join(temporary, asset));
-}
 
 function replaceOnce(input, before, after, label) {
   const index = input.indexOf(before);
@@ -93,7 +90,7 @@ const mutations = [
   },
   {
     id:"DEFERRED_VS_ROUTE_TREATED_AS_ACTIVE_CONFLICT",
-    expected:["INV-MULTILEG-020","INV-MULTILEG-021"],
+    expected:["INV-MULTILEG-015","INV-MULTILEG-018"],
     apply:input=>mutateFunction(input,"buildSdeCanonicalReservationProjection",
       "if(sharedResources.length && (!left.chainId || !right.chainId || left.chainId !== right.chainId || !resourceOrdered)){",
       "if(sharedResources.length){ // mutation: deferred resources conflict as active",
@@ -141,7 +138,7 @@ const mutations = [
   },
   {
     id:"PRESTAGE_FAILURE_RETURNS_DIAGNOSTIC_WITH_SAFE_PLAN",
-    expected:["INV-MULTILEG-003","INV-MULTILEG-026"],
+    expected:["INV-MULTILEG-002","INV-MULTILEG-017"],
     apply:input=>mutateFunction(input,"buildSdeTemporaryAccessReliefChainPlan",
       "  return {\n    context:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,",
       "  return null; // mutation: safe complete plan downgraded\n  return {\n    context:SDE_TARGET_ACCESS_TEMPORARY_RELIEF_CONTEXT,",

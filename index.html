@@ -9745,7 +9745,7 @@ button{padding:12px 12px}
 </main>
 <div class="app">
 <h1>Skien sporplan</h1>
-<p class="sub">Siste revisjon: 23. august 2026</p>
+<p class="sub">Siste revisjon: 22. august 2026</p>
 <div class="top-status-row">
 <p class="top-data-status" id="topDataStatus">Data: ikke lest ennå</p>
 <button class="refresh-top-btn" id="refreshTopBtn" type="button" onclick="refreshPageKeepingActiveTab()" title="Last siden på nytt og behold valgt ark">Oppdater</button>
@@ -10265,8 +10265,6 @@ Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for v
 </div>
 
 
-<script src="sde_canonical_shift_engine.js?v=0ed56c5619546f6af50b6e8c8ab460455a3abbbf87394e9ea17602734361dd62"></script>
-<script src="sde_canonical_shift_adapter.js?v=584270079e612e9400bddd7b9619201056702c60431b05adc74d16176a5dc973"></script>
 <script src="sde_intelligent_night_planning.js?v=ae80afdb91c70b122aedf202bb7ffc1c78e865cf9bc20dece76652990416b386"></script>
 <meta id="sdeLazyHtrModuleRegistry" data-trigger="sdeNightAnalyzeImageBtn" data-modules="sde_handwriting_recognition.js,sde_handwriting_runtime.js">
 <script src="sde_tursatt_post_arrival.js?v=44f462a93a6a23348cdea2211d10b3ddecc6367da69dedec2fab21be89610795"></script>
@@ -10549,7 +10547,6 @@ function makeDefaultState(){
     sdeNightPlacementManualOverrides:{},
     sdeMoveActionDragOffsets:{},
     sdeExpandedMoveActionKey:"",
-    sdeCanonicalShiftActivePlan:null,
     migrationClearKveldColE_v1:false,
     sharedSporplanDraftAppliedRevision:null,
     sharedSporplanDraftAppliedAt:null,
@@ -10608,16 +10605,6 @@ if(!state.sdeVnRecoveryObligations || typeof state.sdeVnRecoveryObligations !== 
 if(!Array.isArray(state.sdeMoveLearningLog)) state.sdeMoveLearningLog=[];
 if(!state.sdeManualMoveOverrides || typeof state.sdeManualMoveOverrides !== "object" || Array.isArray(state.sdeManualMoveOverrides)) state.sdeManualMoveOverrides = {};
 if(!state.sdeNightPlacementManualOverrides || typeof state.sdeNightPlacementManualOverrides !== "object" || Array.isArray(state.sdeNightPlacementManualOverrides)) state.sdeNightPlacementManualOverrides = {};
-if(
-  !state.sdeCanonicalShiftActivePlan
-  || typeof state.sdeCanonicalShiftActivePlan !== "object"
-  || Array.isArray(state.sdeCanonicalShiftActivePlan)
-  || state.sdeCanonicalShiftActivePlan.schemaVersion !== "sde-shift-plan-graph-v1"
-  || !Array.isArray(state.sdeCanonicalShiftActivePlan.steps)
-  || !Array.isArray(state.sdeCanonicalShiftActivePlan.obligations)
-){
-  state.sdeCanonicalShiftActivePlan = null;
-}
 if(!("sharedSporplanDraftAppliedRevision" in state)) state.sharedSporplanDraftAppliedRevision=null;
 if(!("sharedSporplanDraftAppliedAt" in state)) state.sharedSporplanDraftAppliedAt=null;
 
@@ -13448,12 +13435,12 @@ function buildTurnering(tableId,key){
 
 function isPlanSkifteUtfort(value){
   const s = String(value || "").trim().toLowerCase();
-  return s === "j" || s === "ja" || s === "utført" || s === "utfort";
+  return s === "j" || s === "ja";
 }
 
 function isPlanSkifteFerdig(value){
   const s = String(value || "").trim().toLowerCase();
-  return s === "f" || s === "ferdig" || s === "j" || s === "ja" || s === "utført" || s === "utfort";
+  return s === "f" || s === "ferdig" || s === "j" || s === "ja";
 }
 
 function normalizePlanSkifteCrew(value){
@@ -36413,7 +36400,8 @@ function getSdeShiftShowcaseData(){
       };
     })
     .sort(compareSdeShiftMoveDisplayRows);
-  const adaptiveMoves = [];
+  const adaptiveMoves = buildSdeCancelledReplacementMoves(baseMoves);
+  const moves = sortSdeShiftMovesForDisplay([...adaptiveMoves, ...baseMoves]);
 
   const unresolvedCandidates = needs.filter(row =>
     !row?.recommendedSlot ||
@@ -36439,17 +36427,6 @@ function getSdeShiftShowcaseData(){
     physicalState:getSdeWashTrackPhysicalState()
   });
   const score = Math.max(0, Math.min(100, baseScore - (washTrackTxpRobustnessAssessment.totalPenalty || 0)));
-  const canonicalUnifiedAllProducerProduct = buildSdeCanonicalUnifiedAllProducerProduct(needs);
-  const moves = sortSdeShiftMovesForDisplay((canonicalUnifiedAllProducerProduct?.batchResult?.rows || []).map(row=>({
-    ...row,
-    arrivalTrainText:String(row?.arrivalTrainText || row?.arrivalTrain || row?.source || "Canonical").trim(),
-    departureTrainText:String(row?.departureTrainText || row?.nextDepartureText || "Ikke registrert").trim(),
-    fromSlot:normalizeSlot(row?.fromSlot || row?.arrivalSlot),
-    toSlot:normalizeSlot(row?.toSlot || row?.recommendedSlot),
-    recommendedSlot:normalizeSlot(row?.recommendedSlot || row?.toSlot),
-    canonicalProductProjection:true,
-    canMutateActualPlacement:false
-  })));
 
   return {
     score,
@@ -36468,8 +36445,7 @@ function getSdeShiftShowcaseData(){
     totalDepartures:uniqueDepartures.size,
     securedDepartures:securedDepartures.size,
     unresolvedCount:unresolved.length,
-    flexibleUnknownCount:flexibleUnknownParking.length,
-    canonicalUnifiedAllProducerProduct
+    flexibleUnknownCount:flexibleUnknownParking.length
   };
 }
 
@@ -38827,26 +38803,6 @@ function pruneSdeNightPlacementNoOpOverrides(){
   return changed;
 }
 
-function hasSdeCanonicalPendingSuffixForGraphicOverride(override){
-  const rawIntentId = String(
-    override?.dragRequestId
-    || override?.intentIdentity
-    || override?.id
-    || ""
-  ).trim();
-  if(!rawIntentId) return false;
-  const canonicalIntentId = `shift-producer-v1|MANUAL_DRAG|${rawIntentId}`;
-  const plan = state.sdeCanonicalShiftActivePlan;
-  return Boolean(
-    plan?.schemaVersion === "sde-shift-plan-graph-v1"
-    && Array.isArray(plan.steps)
-    && plan.steps.some(step=>(
-      String(step?.intentId || "").trim() === canonicalIntentId
-      && String(step?.status || "").trim() !== "COMPLETED"
-    ))
-  );
-}
-
 function pruneSdeNightPlacementStaleCanonicalGraphicOverrides(){
   const overrides = getSdeNightPlacementManualOverrides();
   const overrideEntries = Object.entries(overrides).filter(([,override])=>Boolean(override));
@@ -38877,7 +38833,6 @@ function pruneSdeNightPlacementStaleCanonicalGraphicOverrides(){
     const sourceSlot = getSdeNightPlacementOverrideFromSlot(override);
     const physicalSlot = getSdePhysicalSlotForVehicle(vehicle);
     if(!vehicle || !sourceSlot || !physicalSlot || physicalSlot === sourceSlot) return;
-    if(hasSdeCanonicalPendingSuffixForGraphicOverride(override)) return;
 
     const completedLocked = completedLockedSlots[sourceSlot];
     if(
@@ -41601,438 +41556,6 @@ function stageSdeCanonicalGraphicDragOrder(override){
   return committed;
 }
 
-let sdeCanonicalUnifiedShiftEngine = null;
-
-function getSdeCanonicalUnifiedShiftEngine(){
-  if(sdeCanonicalUnifiedShiftEngine) return sdeCanonicalUnifiedShiftEngine;
-  if(!window.SdeCanonicalShiftEngine || !window.SdeCanonicalShiftAdapter) return null;
-  const slotCatalog = window.SdeCanonicalShiftAdapter.buildCanonicalSlotCatalog({
-    slotIds:getSdeCanonicalSlotInventory(),
-    getTrack:getSdeSlotTrack,
-    getTrackOrder:getSdeSameTrackSlotOrder,
-    getOpenEnds:getSdeSameTrackOpenEnds,
-    getRole:getSdeCanonicalSlotRole
-  });
-  sdeCanonicalUnifiedShiftEngine = window.SdeCanonicalShiftEngine.createShiftEngine({
-    slotCatalog,
-    boundary:window.SdeCanonicalShiftEngine.SEARCH_BOUNDARY_CONTRACT
-  });
-  return sdeCanonicalUnifiedShiftEngine;
-}
-
-function getSdeCanonicalUnifiedHumanExperienceEvidence(){
-  return (Array.isArray(state.sdeMoveLearningLog) ? state.sdeMoveLearningLog : []).flatMap(event=>{
-    const snapshot = event?.snapshot || {};
-    const vehicleId = sanitizeVehicleValue(event?.vehicle || snapshot?.vehicle);
-    const targetSlot = normalizeSlot(event?.overrideSlot || snapshot?.toSlot);
-    const vehicleType = getVehicleTypeToken(vehicleId);
-    if(!vehicleId || !targetSlot) return [];
-    if(event?.action === "completed"){
-      return [{
-        vehicleId,
-        vehicleType,
-        targetSlot,
-        desiredSlot:targetSlot,
-        actualFinalSlot:targetSlot,
-        actualOutcome:"COMPLETED",
-        replanOccurred:false,
-        occurredAt:String(event?.time || ""),
-        operationalDate:String(event?.time || "").slice(0,10),
-        provenance:"AUTHORITATIVE_EXECUTED_RESULT"
-      }];
-    }
-    if(event?.action === "overridden"){
-      return [{
-        vehicleId,
-        vehicleType,
-        targetSlot,
-        desiredSlot:targetSlot,
-        planStatus:"CONFIRMED",
-        occurredAt:String(event?.time || event?.timestamp || ""),
-        operationalDate:String(event?.time || event?.timestamp || "").slice(0,10),
-        provenance:"HUMAN_MANUAL_PLAN"
-      }];
-    }
-    return [];
-  });
-}
-
-function buildSdeCanonicalUnifiedActualState(rows=[]){
-  const snapshot = getSdeNightPlacementCanonicalActualStateSnapshot({fresh:true});
-  const occupancy = {};
-  const vehicleTypesByVehicle = {};
-  (snapshot?.placements || []).forEach(placement=>{
-    const slot = normalizeSlot(placement?.slot);
-    const vehicleId = sanitizeVehicleValue(placement?.vehicleId);
-    if(slot && vehicleId){
-      occupancy[slot] = vehicleId;
-      vehicleTypesByVehicle[vehicleId] = getVehicleTypeToken(vehicleId);
-    }
-  });
-  const arrivalReadiness = {};
-  const anticipatedArrivals = {};
-  (Array.isArray(rows) ? rows : []).forEach(row=>{
-    const vehicleId = sanitizeVehicleValue(row?.vehicleId || row?.vehicle);
-    if(!vehicleId) return;
-    vehicleTypesByVehicle[vehicleId] = getVehicleTypeToken(vehicleId);
-    const physicallyPresent = Object.values(occupancy).some(vehicle=>
-      normalizeVehicleToken(vehicle) === normalizeVehicleToken(vehicleId)
-    );
-    const expectedAt = Number(row?.arrivalSequenceMinutes ?? row?.earliestStart);
-    const sourceSlot = normalizeSlot(row?.sourceSlot || row?.fromSlot || row?.arrivalSlot || row?.requestedSource);
-    arrivalReadiness[vehicleId] = {
-      ready:physicallyPresent,
-      expectedAt:Number.isFinite(expectedAt) ? expectedAt : null,
-      authority:physicallyPresent ? "FRESH_CANONICAL_ACTUAL" : "EXPECTED_ARRIVAL_ONLY"
-    };
-    if(!physicallyPresent && sourceSlot){
-      anticipatedArrivals[vehicleId] = {
-        sourceSlot,
-        expectedAt:Number.isFinite(expectedAt) ? expectedAt : null,
-        occurrenceId:String(row?.sourceOccurrence || row?.occurrenceId || row?.arrivalOccurrenceId || ""),
-        authority:"EXPECTED_ARRIVAL_ONLY_NOT_ACTUAL_PLACEMENT"
-      };
-    }
-  });
-  return {
-    actualStateRevision:String(snapshot?.actualRevision || ""),
-    actualStateFresh:snapshot?.valid === true,
-    occupancy,
-    unavailableSlots:getSdeCanonicalSlotInventory().filter(slot=>typeof isTxpUnavailableSlot === "function" && isTxpUnavailableSlot(slot)),
-    infrastructureState:cloneSdeCanonicalValue(state.txpUnavailableInfrastructure || {}),
-    routeReservations:cloneSdeCanonicalValue(state.sdeCanonicalRouteReservations || []),
-    plannedResourceClaims:cloneSdeCanonicalValue(state.sdeCanonicalPlannedResourceClaims || []),
-    completedStepIds:Object.values(state.sdeMoveActions || {}).flatMap(record=>
-      record?.action === "completed" && record?.canonicalProduct === true && String(record?.stepId || "").trim()
-        ? [String(record.stepId).trim()]
-        : []
-    ),
-    arrivalReadiness,
-    anticipatedArrivals,
-    vehicleTypesByVehicle,
-    writtenPlanConstraints:cloneSdeCanonicalValue(state.planSkifteRows || []),
-    statusAndDispositionConstraints:cloneSdeCanonicalValue({
-      grunnoppstillingRep:state.grunnoppstillingRep || {},
-      dropsVehicleStatusReadback:typeof dropsVehicleStatusReadback === "object" ? dropsVehicleStatusReadback : null
-    }),
-    currentOperationalTime:getSdeCanonicalRuntimeSnapshotSequenceMinutes(),
-    liveDataFresh:snapshot?.valid === true
-  };
-}
-
-const SDE_CANONICAL_SHIFT_CAPABILITIES = Object.freeze({
-  manualIntent:"sde_shift.manual_intent",
-  complete:"sde_shift.complete",
-  cancel:"sde_shift.cancel"
-});
-
-function getSdeCanonicalShiftCapabilityModel(readback=dropsRuntimeCapabilities){
-  const decisionAllowed = capabilityId=>{
-    const decision = readback?.capabilities?.[capabilityId];
-    return decision?.allowed === true && decision?.decision === "ALLOW";
-  };
-  const roles = Array.isArray(readback?.roles)
-    ? readback.roles.map(role=>String(role || "").trim()).filter(Boolean)
-    : [];
-  const identityReady = readback?.ok === true && readback?.roleResolved === true;
-  return Object.freeze({
-    identityReady,
-    actorId:identityReady ? `server-role:${roles.slice().sort().join("+")}` : "",
-    roles:Object.freeze(roles.slice().sort()),
-    canCreateManualIntent:identityReady && decisionAllowed(SDE_CANONICAL_SHIFT_CAPABILITIES.manualIntent),
-    canComplete:identityReady && decisionAllowed(SDE_CANONICAL_SHIFT_CAPABILITIES.complete),
-    canCancel:identityReady && decisionAllowed(SDE_CANONICAL_SHIFT_CAPABILITIES.cancel)
-  });
-}
-
-function buildSdeCanonicalManualIntentProducerRows(){
-  const capability = getSdeCanonicalShiftCapabilityModel();
-  const dragRows = getSdeNightPlacementActiveManualOverrides().map(override=>({
-    ...cloneSdeCanonicalValue(override),
-    canonicalProducerId:"MANUAL_DRAG",
-    sdeCanonicalGraphicDragOrder:true,
-    sdeNightPlacementDragOverrideActive:true,
-    intentId:String(override?.dragRequestId || override?.intentIdentity || override?.id || getSdeNightPlacementOverrideActionKey(override) || "").trim(),
-    vehicleId:sanitizeVehicleValue(override?.vehicle),
-    sourceSlot:getSdeNightPlacementOverrideFromSlot(override),
-    requestedTarget:normalizeSlot(override?.toSlot),
-    targetSlot:normalizeSlot(override?.toSlot),
-    actorId:capability.actorId,
-    serverAuthorizedManualIntent:capability.canCreateManualIntent,
-    sourceRevision:String(override?.actualStateRevision || getSdeNightPlacementActualStateRevision() || "").trim(),
-    reason:String(override?.reason || "Grafisk manuell skiftebestilling").trim()
-  }));
-  const planRows = (Array.isArray(state.planSkifteRows) ? state.planSkifteRows : [])
-    .map((row,index)=>({row,index}))
-    .filter(({row})=>row && !isSdeGeneratedPlanSkifteRow(row) && !isPlanSkifteUtfort(row.utfort) && !isPlanSkifteFerdig(row.utfort))
-    .map(({row,index})=>({
-      ...cloneSdeCanonicalValue(row),
-      canonicalProducerId:"MANUAL_ORDER",
-      manualPlanOverrideActive:true,
-      planRowId:`manual-plan-row-${index}`,
-      vehicleId:sanitizeVehicleValue(row.vehicle),
-      sourceSlot:normalizeSlot(row.fromSpor),
-      requestedTarget:normalizeSlot(row.toSpor),
-      targetSlot:normalizeSlot(row.toSpor),
-      actorId:capability.actorId,
-      serverAuthorizedManualIntent:capability.canCreateManualIntent,
-      sourceRevision:getSdeNightPlacementActualStateRevision(),
-      reason:String(row.operationType || "Manuell skiftebestilling").trim()
-    }))
-    .filter(row=>row.vehicleId && row.sourceSlot && row.targetSlot);
-  return [...dragRows,...planRows];
-}
-
-function buildSdeCanonicalWorkshopExitProducerRows(){
-  return getSdeActiveWorkshopExitRequests().map(request=>({
-    ...cloneSdeCanonicalValue(request),
-    canonicalProducerId:"WORKSHOP_EXIT",
-    isWorkshopExitRequestNeed:true,
-    needId:String(request?.exitRequestId || "").trim(),
-    vehicleId:sanitizeVehicleValue(request?.vehicleId),
-    sourceSlot:normalizeSlot(request?.sourceSlot),
-    requestedTarget:normalizeSlot(request?.requestedTarget || request?.targetSlot),
-    sourceRevision:String(request?.revision || request?.requestedAt || "").trim(),
-    reason:String(request?.reason || "Bestilt utkjøring fra Verksted").trim()
-  })).filter(row=>row.needId && row.vehicleId);
-}
-
-function buildSdeCanonicalShiftEvents(){
-  return Object.values(state.sdeMoveActions || {}).flatMap(record=>{
-    if(record?.canonicalProduct !== true) return [];
-    const type = record.action === "completed"
-      ? "UTFORT"
-      : record.action === "cancelled"
-        ? "ANNULLERT"
-        : "";
-    if(!type) return [];
-    return [{
-      type,
-      timestamp:String(record.time || ""),
-      planRevision:String(record.planRevision || ""),
-      stepId:String(record.stepId || ""),
-      intentId:String(record.intentId || ""),
-      obligationId:String(record.obligationId || ""),
-      role:String(record.role || ""),
-      vehicleId:sanitizeVehicleValue(record.vehicle),
-      sourceSlot:normalizeSlot(record.fromSlot),
-      targetSlot:normalizeSlot(record.toSlot),
-      reason:String(record.reason || "")
-    }];
-  }).sort((left,right)=>left.timestamp.localeCompare(right.timestamp) || left.stepId.localeCompare(right.stepId));
-}
-
-let sdeCanonicalUnifiedAllProducerPreviousPlan = state.sdeCanonicalShiftActivePlan || null;
-let sdeCanonicalUnifiedAllProducerShadowPreviousPlan = null;
-
-function buildSdeCanonicalUnifiedAllProducerShadow(rows=[]){
-  const engine = getSdeCanonicalUnifiedShiftEngine();
-  if(!engine || !window.SdeCanonicalShiftAdapter) return null;
-  const sourceRows = Array.isArray(rows) ? rows.filter(Boolean) : [];
-  try{
-    const actualState = buildSdeCanonicalUnifiedActualState(sourceRows);
-    const requests = window.SdeCanonicalShiftAdapter.buildCanonicalProducerRequests(sourceRows,actualState);
-    const result = window.SdeCanonicalShiftAdapter.planCanonicalShiftNeeds({
-      engine,
-      needs:requests,
-      actualState,
-      previousPlan:sdeCanonicalUnifiedAllProducerShadowPreviousPlan,
-      humanExperienceEvidence:getSdeCanonicalUnifiedHumanExperienceEvidence(),
-      authorizeManualIntent:(_actorId,payload)=>payload?.serverAuthorizedManualIntent === true
-    });
-    if(result?.plan) sdeCanonicalUnifiedAllProducerShadowPreviousPlan = result.plan;
-    const productProjection = window.SdeCanonicalShiftAdapter.buildCanonicalShadowProjection(result);
-    const shadow = {
-      ...result,
-      projection:productProjection,
-      migrationMode:"SHADOW_READ_ONLY",
-      canMutateActualPlacement:false,
-      operationalWriteOwner:"LEGACY_UNCHANGED_PENDING_ROLLBACK_GATE",
-      producerCount:requests.length,
-      producerIds:[...new Set(requests.map(request=>request.producerId))].sort()
-    };
-    window.sdeLastUnifiedAllProducerShadow = shadow;
-    return shadow;
-  }catch(error){
-    const shadow = {
-      schemaVersion:"sde-canonical-shift-batch-shadow-v1",
-      status:"DIAGNOSTIC_ONLY",
-      diagnosticCode:"CANONICAL_BATCH_SHADOW_ERROR",
-      reason:String(error?.message || error || "Canonical batch shadow feilet."),
-      migrationMode:"SHADOW_READ_ONLY",
-      canMutateActualPlacement:false,
-      operationalWriteOwner:"LEGACY_UNCHANGED_PENDING_ROLLBACK_GATE",
-      producerCount:sourceRows.length
-    };
-    window.sdeLastUnifiedAllProducerShadow = shadow;
-    return shadow;
-  }
-}
-
-let sdeCanonicalUnifiedAllProducerProduct = null;
-
-function buildSdeCanonicalUnifiedAllProducerProduct(rows=[]){
-  const engine = getSdeCanonicalUnifiedShiftEngine();
-  const capability = getSdeCanonicalShiftCapabilityModel();
-  if(!engine || !window.SdeCanonicalShiftAdapter){
-    return {
-      schemaVersion:"sde-canonical-shift-product-runtime-v1",
-      status:"DIAGNOSTIC_ONLY",
-      diagnosticCode:"CANONICAL_ENGINE_UNAVAILABLE",
-      reason:"Canonical shift engine eller adapter er ikke lastet.",
-      migrationMode:"CANONICAL_ONLY",
-      operationalWriteOwner:"SDE_CANONICAL_SHIFT_ENGINE",
-      legacyOperationalWritesEnabled:false,
-      product:null,
-      batchResult:null,
-      capability
-    };
-  }
-  const sourceRows = [
-    ...(Array.isArray(rows) ? rows.filter(Boolean) : []),
-    ...buildSdeCanonicalManualIntentProducerRows(),
-    ...buildSdeCanonicalWorkshopExitProducerRows()
-  ];
-  const topologyBoundSourceRows = sourceRows.map(row=>{
-    const sourceSlot = normalizeSlot(row?.sourceSlot || row?.fromSlot || row?.arrivalSlot || row?.requestedSource);
-    const targetSlot = normalizeSlot(row?.requestedTarget || row?.targetSlot || row?.toSlot || row?.recommendedSlot);
-    const topology = sourceSlot && targetSlot
-      ? getSdeCanonicalManualRouteTopology(sourceSlot,targetSlot)
-      : null;
-    return topology ? {
-      ...row,
-      preferredSourceEnd:String(row?.preferredSourceEnd || (topology.sourceEnds?.length === 1 ? topology.sourceEnds[0] : "")).trim(),
-      preferredTargetEnd:String(row?.preferredTargetEnd || (topology.targetEnds?.length === 1 ? topology.targetEnds[0] : "")).trim(),
-      sdeCanonicalRouteTopology:cloneSdeCanonicalValue(topology),
-      sdeCanonicalTransitRouteResources:sortSdeCanonicalStrings(topology.routeResources || [])
-    } : row;
-  });
-  try{
-    const actualState = buildSdeCanonicalUnifiedActualState(topologyBoundSourceRows);
-    const requests = window.SdeCanonicalShiftAdapter.buildCanonicalProducerRequests(topologyBoundSourceRows,actualState);
-    const batchResult = window.SdeCanonicalShiftAdapter.planCanonicalShiftNeeds({
-      engine,
-      needs:requests,
-      actualState,
-      previousPlan:sdeCanonicalUnifiedAllProducerPreviousPlan || state.sdeCanonicalShiftActivePlan || null,
-      humanExperienceEvidence:getSdeCanonicalUnifiedHumanExperienceEvidence(),
-      events:buildSdeCanonicalShiftEvents(),
-      authorizeManualIntent:()=>capability.canCreateManualIntent === true
-    });
-    if(batchResult?.plan){
-      sdeCanonicalUnifiedAllProducerPreviousPlan = batchResult.plan;
-      state.sdeCanonicalShiftActivePlan = batchResult.plan;
-    }else if(batchResult?.status === "NO_ACTIVE_INTENTS"){
-      sdeCanonicalUnifiedAllProducerPreviousPlan = null;
-      state.sdeCanonicalShiftActivePlan = null;
-    }
-    const product = window.SdeCanonicalShiftAdapter.buildCanonicalProductProjection(batchResult,{
-      actionRecords:state.sdeMoveActions || {},
-      capability
-    });
-    const runtime = {
-      schemaVersion:"sde-canonical-shift-product-runtime-v1",
-      status:product?.status || batchResult?.status || "DIAGNOSTIC_ONLY",
-      diagnosticCode:String(batchResult?.diagnosticCode || ""),
-      reason:String(product?.reason || batchResult?.reason || ""),
-      migrationMode:"CANONICAL_ONLY",
-      operationalWriteOwner:"SDE_CANONICAL_SHIFT_ENGINE",
-      legacyOperationalWritesEnabled:false,
-      machineLearningScoreActive:false,
-      actualState,
-      requests,
-      batchResult,
-      product,
-      capability,
-      producerCount:requests.length,
-      producerIds:[...new Set(requests.map(request=>request.producerId))].sort()
-    };
-    sdeCanonicalUnifiedAllProducerProduct = runtime;
-    window.sdeLastUnifiedAllProducerProduct = runtime;
-    return runtime;
-  }catch(error){
-    const runtime = {
-      schemaVersion:"sde-canonical-shift-product-runtime-v1",
-      status:"DIAGNOSTIC_ONLY",
-      diagnosticCode:"CANONICAL_PRODUCT_RUNTIME_ERROR",
-      reason:String(error?.message || error || "Canonical produktplanlegging feilet."),
-      migrationMode:"CANONICAL_ONLY",
-      operationalWriteOwner:"SDE_CANONICAL_SHIFT_ENGINE",
-      legacyOperationalWritesEnabled:false,
-      machineLearningScoreActive:false,
-      actualState:null,
-      requests:[],
-      batchResult:null,
-      product:null,
-      capability,
-      producerCount:sourceRows.length,
-      producerIds:[]
-    };
-    sdeCanonicalUnifiedAllProducerProduct = runtime;
-    window.sdeLastUnifiedAllProducerProduct = runtime;
-    return runtime;
-  }
-}
-
-function buildSdeCanonicalUnifiedGraphicDragShadowPreview(assessment, payload, intentId){
-  const engine = getSdeCanonicalUnifiedShiftEngine();
-  if(!engine || !assessment?.vehicle || !assessment?.toSlot) return null;
-  try{
-    const adapted = window.SdeCanonicalShiftAdapter.adaptShiftNeed("MANUAL_DRAG",{
-      intentId,
-      vehicleId:assessment.vehicle,
-      sourceSlot:normalizeSlot(assessment.fromSlot || payload?.fromSlot || payload?.slot),
-      targetSlot:normalizeSlot(assessment.toSlot),
-      actorId:"server-authorized-existing-manual-drag",
-      sourceRevision:String(assessment.actualStateRevision || ""),
-      createdAt:String(assessment.createdAt || ""),
-      reason:"Grafisk manuell skiftebestilling",
-      preferredSourceEnd:String(assessment?.physicalBlockState?.selectedSourceEnd || "")
-    });
-    if(!adapted?.intent) return {status:"DIAGNOSTIC_ONLY",diagnosticCode:adapted?.diagnosticCode || "INTENT_ADAPTER_REJECTED"};
-    const result = engine.plan({
-      state:buildSdeCanonicalUnifiedActualState(),
-      intents:[adapted.intent],
-      humanExperienceEvidence:getSdeCanonicalUnifiedHumanExperienceEvidence()
-    });
-    const projection = result.plan ? window.SdeCanonicalShiftEngine.projectCanonicalPlan(result.plan) : null;
-    const ledger = result.plan && projection
-      ? window.SdeCanonicalShiftEngine.buildMissingCardLedger(result.plan,projection)
-      : null;
-    const preview = {
-      schemaVersion:"sde-unified-shift-shadow-preview-v1",
-      status:result.status,
-      diagnosticCode:String(result.diagnosticCode || ""),
-      reason:String(result.reason || ""),
-      intentId:adapted.intent.intentId,
-      inputHash:String(result.plan?.inputHash || ""),
-      planId:String(result.plan?.planId || ""),
-      planRevision:String(result.plan?.planRevision || ""),
-      moveCount:Number(result.plan?.moveCount || 0),
-      stepIds:(result.plan?.steps || []).map(step=>step.stepId),
-      stepRoles:(result.plan?.steps || []).map(step=>step.role),
-      evaluatedSlotCount:Number(result.diagnostics?.evaluatedSlotCount || 0),
-      searchedStates:Number(result.diagnostics?.expandedStates || 0),
-      projectionStatus:String(projection?.status || ""),
-      missingCardWithSafePlan:Number(ledger?.aggregates?.missingCardWithSafePlan || 0),
-      machineLearningScoreActive:false
-    };
-    window.sdeLastUnifiedShiftShadowPreview = preview;
-    return preview;
-  }catch(error){
-    const preview = {
-      schemaVersion:"sde-unified-shift-shadow-preview-v1",
-      status:"DIAGNOSTIC_ONLY",
-      diagnosticCode:"UNIFIED_SHADOW_TECHNICAL_ERROR",
-      reason:error instanceof Error ? error.message : String(error || "unified shadow error"),
-      intentId:String(intentId || ""),
-      machineLearningScoreActive:false
-    };
-    window.sdeLastUnifiedShiftShadowPreview = preview;
-    return preview;
-  }
-}
-
 function applySdeNightPlacementDragOverride(payload, toSlot){
   const data = sdeShiftLastRenderedData || getSdeShiftShowcaseData();
   sdeNightPlacementBlockedMoveRequest = null;
@@ -42156,7 +41679,6 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   const generatedId = String(
     assessment.intentId || payload?.intentId || `night-drag-${Date.now()}`
   ).trim();
-  const unifiedShiftShadowPreview = buildSdeCanonicalUnifiedGraphicDragShadowPreview(assessment,payload,generatedId);
   let generatedActionKey = canonicalReaderMode
     ? `night-placement-drag|${normalizeVehicleToken(assessment.vehicle)}|${originalFromSlot}|${assessment.toSlot}|${generatedId}`
     : existingOverride?.stableActionKey || "";
@@ -42224,7 +41746,6 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     sdePreferDedicatedVnRelief:shouldSdePreferDedicatedVnForGlobalRelief(originalFromSlot,assessment.toSlot),
     sdeTrappedEgressRouteResources:sortSdeCanonicalStrings(assessment.routeResources || []),
     note:"simulert ønsket sluttplassering",
-    sdeCanonicalUnifiedShadowPreview:unifiedShiftShadowPreview,
     ...(canonicalReaderMode ? {
       canonicalProducer:"graphic_drag_generated_move",
       canonicalPurpose:"vehicle-relocation",
@@ -42239,77 +41760,47 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
   };
 
   if(canonicalReaderMode){
-    const capability = getSdeCanonicalShiftCapabilityModel();
-    if(!capability.canCreateManualIntent){
-      sdeNightPlacementBlockedMoveRequest = null;
-      sdeNightPlacementSelectedSlot = "";
-      sdeNightPlacementDropMessage = {
-        type:"warning",
-        slot:assessment.toSlot,
-        text:"Manuell skiftebestilling ble ikke opprettet: fersk serverauthority mangler capability sde_shift.manual_intent.",
-        timeStatus:"AUTHORITY_REJECTED",
-        targetAvailabilityState:assessment.targetAvailabilityState || "UNKNOWN",
-        physicalTargetUnavailable:false
-      };
-      renderSdeSkiftebevegelser();
-      return false;
-    }
     const previousOverrides = cloneSdeCanonicalValue(getSdeNightPlacementManualOverrides()) || {};
-    const previousPlan = sdeCanonicalUnifiedAllProducerPreviousPlan;
-    const previousPersistedPlan = state.sdeCanonicalShiftActivePlan;
-    const previousProduct = sdeCanonicalUnifiedAllProducerProduct;
+    const previousAuthorities = cloneSdeCanonicalValue(getSdeActiveMoveOutcomes()) || {};
     try{
-      removeSdeNightPlacementOverridesForVehicle(assessment.vehicle);
+      supersedeSdeNightPlacementPlanningStateForVehicle(assessment.vehicle);
+      const physicalSourceSlot = getSdePhysicalSlotForVehicle(assessment.vehicle);
+      if(
+        !assessment.isProjectedSource
+        && physicalSourceSlot
+        && physicalSourceSlot === originalFromSlot
+      ){
+        removeSdeStaleCanonicalGraphicOverridesForVehicle(assessment.vehicle, physicalSourceSlot);
+        removeSdeStaleCanonicalGraphicAuthoritiesForVehicle(assessment.vehicle, physicalSourceSlot);
+      }
+      removeSdeNightPlacementOverridesForVehicleStep(assessment.vehicle, originalFromSlot);
       getSdeNightPlacementManualOverrides()[key] = override;
-      const runtime = buildSdeCanonicalUnifiedAllProducerProduct(sdeShiftLastRenderedData?.needs || []);
-      const expectedIntentId = `shift-producer-v1|MANUAL_DRAG|${generatedId}`;
-      const acceptedRequest = (runtime?.requests || []).some(request=>(
-        String(request?.producerId || "").trim() === "MANUAL_DRAG"
-        && String(request?.payload?.intentId || request?.payload?.needId || "").trim() === generatedId
-      ));
-      const retainedIntent = (runtime?.batchResult?.sources || []).some(source=>(
-        String(source?.intentId || "").trim() === expectedIntentId
-      ));
-      if(!acceptedRequest || !retainedIntent){
-        throw new Error("Canonical manual-intent ble ikke beholdt av den autoriserte produsentadapteren.");
-      }
-      if(runtime?.batchResult?.plan && runtime?.product?.integrity?.status !== "PASS"){
-        throw new Error(runtime?.product?.reason || "Canonical atomisk produktprojeksjon feilet.");
-      }
-      override.planRevision = String(runtime?.batchResult?.plan?.planRevision || "").trim();
-      const activeCards = (runtime?.product?.cards || []).filter(card=>(
-        String(card?.intentId || "").trim() === expectedIntentId
-        && !["COMPLETED","CANCELLED","SUPERSEDED","DIAGNOSTIC_ONLY"].includes(String(card?.status || ""))
-      ));
-      const diagnosticOnly = !runtime?.batchResult?.plan;
+      const order = stageSdeCanonicalGraphicDragOrder(override);
+      override.planRevision = String(order?.reader?.planRevision || override.planRevision || "").trim();
       sdeNightPlacementBlockedMoveRequest = null;
       sdeNightPlacementSelectedSlot = "";
       sdeNightPlacementDropMessage = {
-        type:diagnosticOnly ? "warning" : "info",
+        type:"info",
         slot:assessment.toSlot,
-        text:diagnosticOnly
-          ? `Bestilling beholdt som canonical intent: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Ingen komplett fysisk sikker plan finnes nå; ingen kort, reservasjon eller overlay er materialisert.`
-          : activeCards.length
-            ? `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Hele canonical kjeden er atomisk materialisert; bare READY-steg kan utføres.`
-            : `Bestilling beholdt: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Canonical plan finnes uten et nytt aktivt kort for denne intenten.`,
-        timeStatus:diagnosticOnly ? "DIAGNOSTIC_ONLY_NO_SAFE_PLAN" : assessment.timeStatus,
+        text:assessment.hardPhysicalBlocked
+          ? `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Fysisk frigjøringskjede med obligatorisk retur er validert; bare første steg er handlingsklart.`
+          : `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Canonical kort, reservasjon, planoverlay og handleradapter er entydige.`,
+        timeStatus:assessment.timeStatus,
         targetAvailabilityState:assessment.targetAvailabilityState,
         physicalTargetUnavailable:false
       };
       persist(true);
       renderSdeSkiftebevegelser();
-      return true;
+      return Boolean(order?.adapter?.ready);
     }catch(error){
       state.sdeNightPlacementManualOverrides = previousOverrides;
-      sdeCanonicalUnifiedAllProducerPreviousPlan = previousPlan;
-      state.sdeCanonicalShiftActivePlan = previousPersistedPlan;
-      sdeCanonicalUnifiedAllProducerProduct = previousProduct;
+      state.sdeActiveMoveOutcomes = previousAuthorities;
       sdeNightPlacementBlockedMoveRequest = {
         ...(assessment.blockedMoveRequest || buildSdeNightPlacementBlockedMoveRequest(
           assessment.vehicle,originalFromSlot,assessment.toSlot,assessment.row
         )),
         diagnosticOnly:true,
-        dragIntentAccepted:false,
+        dragIntentAccepted:true,
         canonicalPlannerInvoked:true,
         intentIdentity:generatedId,
         actualStateRevision:String(assessment.actualStateRevision || ""),
@@ -42320,14 +41811,14 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
       sdeNightPlacementDropMessage = {
         type:"warning",
         slot:assessment.toSlot,
-        text:`Bestilling ble ikke opprettet fordi canonical produsent- eller atomisitetskontrakten feilet: ${error instanceof Error ? error.message : String(error || "canonical bestillingskjede kunne ikke opprettes")}`,
-        timeStatus:"CANONICAL_PRODUCT_REJECTED",
+        text:`Bestilling avvist som operativ kjede, men plan-intent er beholdt diagnostic-only: ${error instanceof Error ? error.message : String(error || "canonical bestillingskjede kunne ikke opprettes")}`,
+        timeStatus:"DIAGNOSTIC_ONLY_NO_SAFE_PLAN",
         targetAvailabilityState:assessment.targetAvailabilityState || "AVAILABLE_WITH_RELIEF_PLANNING",
         physicalTargetUnavailable:false
       };
       persist(true);
       renderSdeSkiftebevegelser();
-      return false;
+      return true;
     }
   }
 
@@ -43656,12 +43147,9 @@ function getSdeProductionReaderMode(
   locationLike=typeof window !== "undefined" ? window.location : {search:""},
   options={}
 ){
-  const params = new URLSearchParams(String(locationLike?.search || ""));
-  const requestedReader = params.get("sdeReader");
-  const hostname = String(locationLike?.hostname || "").toLowerCase();
-  const disposableRollbackDrill = ["localhost","127.0.0.1","::1"].includes(hostname)
-    && params.get("sdeRollbackDrill") === "1";
-  if(requestedReader === "legacy" && disposableRollbackDrill) return "legacy_rollback_drill";
+  const requestedReader = new URLSearchParams(String(locationLike?.search || "")).get("sdeReader");
+  if(requestedReader === "legacy") return "legacy_forced";
+  if(options?.technicalFailure) return "legacy_fallback";
   return "canonical";
 }
 
@@ -43674,9 +43162,11 @@ function isSdeCanonicalReaderTechnicalFailureTestRequested(
 }
 
 function buildSdeProductionReaderStatusHtml(mode){
-  const status = mode === "legacy_rollback_drill"
-    ? {label:"Legacy – disponibel rollbackøvelse", className:"legacy-forced", detail:"Legacy er bare tilgjengelig lokalt med eksplisitt rollback-drill-parameter."}
-    : {label:"Canonical", className:"canonical", detail:"Canonical N-stegsmotor er eneste aktive produksjonsleser og operative kortgenerator."};
+  const status = mode === "legacy_forced"
+    ? {label:"Legacy – manuelt valgt", className:"legacy-forced", detail:"Legacy gjelder bare denne sideinnlastingen."}
+    : mode === "legacy_fallback"
+      ? {label:"Legacy – automatisk fallback", className:"legacy-fallback", detail:"Canonical kunne ikke fullføre teknisk; legacy vises fail-safe."}
+      : {label:"Canonical", className:"canonical", detail:"Canonical er aktiv produksjonsleser."};
   return `<div class="sde-reader-status ${status.className}" data-sde-reader-status="${escapeHtml(mode)}" title="${escapeHtml(status.detail)}">${escapeHtml(status.label)}</div>`;
 }
 
@@ -45260,7 +44750,7 @@ function applySdeCanonicalHandlerActionableGate(reader, initialAdapters){
   return reader;
 }
 
-function buildSdeLegacyRollbackProductionReader(runtimeSnapshot=null){
+function buildSdeCanonicalProductionReader(runtimeSnapshot=null){
   const reader = buildSdeCanonicalProductionReaderSource(runtimeSnapshot);
   const needsHandlerAdapter = card=>{
     if(card?.status !== "exiting") return true;
@@ -45284,291 +44774,6 @@ function buildSdeLegacyRollbackProductionReader(runtimeSnapshot=null){
     buildSdeCanonicalHandlerAdapter(card, reader)
   ]));
   return assertSdeCanonicalProductionReaderContract(reader);
-}
-
-function buildSdeCanonicalProductReader(productRuntime=null){
-  const runtime = productRuntime || sdeCanonicalUnifiedAllProducerProduct || buildSdeCanonicalUnifiedAllProducerProduct([]);
-  const batch = runtime?.batchResult || null;
-  const plan = batch?.plan || null;
-  const product = runtime?.product || null;
-  const productCards = Array.isArray(product?.cards) ? product.cards : [];
-  const actualPlacements = Object.entries(runtime?.actualState?.occupancy || {}).map(([slot,vehicleId])=>({
-    slot:normalizeSlot(slot),
-    vehicleId:sanitizeVehicleValue(vehicleId),
-    source:"FRESH_CANONICAL_ACTUAL"
-  })).filter(item=>item.slot && item.vehicleId);
-  const diagnosticRows = [
-    ...(batch?.adapterDiagnostics || []).map(item=>({
-      diagnosticType:String(item?.diagnosticCode || "SHIFT_NEED_ADAPTER_DIAGNOSTIC"),
-      severity:item?.status === "AUTHORITY_REJECTED" ? "error" : "warning",
-      explanation:String(item?.reason || "Canonical produceradapter avviste behovet."),
-      sourceType:String(item?.producerId || "")
-    })),
-    ...(product?.diagnostics || []).map(item=>({
-      diagnosticType:String(item?.diagnosticCode || "CANONICAL_PRODUCT_DIAGNOSTIC"),
-      severity:"error",
-      explanation:String(item?.reason || product?.reason || "Canonical produktprojeksjon er fail-closed.")
-    }))
-  ];
-  if(runtime?.reason && !diagnosticRows.length){
-    diagnosticRows.push({
-      diagnosticType:String(runtime?.diagnosticCode || "CANONICAL_PRODUCT_DIAGNOSTIC"),
-      severity:"warning",
-      explanation:String(runtime.reason)
-    });
-  }
-  const cardRows = productCards.filter(card=>!["COMPLETED","CANCELLED","SUPERSEDED","DIAGNOSTIC_ONLY"].includes(String(card?.status || ""))).map(card=>{
-    const actionable = card.status === "READY" && card.ready === true;
-    const preservedIntentId = String(
-      card?.producerPayload?.intentId
-      || card?.producerPayload?.needId
-      || card?.producerPayload?.dragRequestId
-      || card?.intentId
-      || ""
-    ).trim();
-    return {
-      ...card,
-      route:cloneSdeCanonicalValue(
-        card?.producerPayload?.sdeCanonicalRouteTopology
-        || card?.producerPayload?.sdeCanonicalRoute
-        || null
-      ),
-      chainId:String(plan?.planId || ""),
-      totalStepCount:Number(plan?.steps?.length || 0),
-      canonicalCardId:String(card.canonicalCardId || card.cardId || "").trim(),
-      activeOutcomeId:String(card.stepId || "").trim(),
-      status:actionable ? "actionable" : "blocked_chain_step",
-      active:true,
-      sequenceStep:Number(card.sequenceIndex || 0) + 1,
-      recoveryRequired:card.role === "RECOVERY",
-      blockedBy:[...(card.dependencyIds || [])],
-      explanation:actionable
-        ? String(card.rankingExplanation || card.intentReason || "Canonical steg er READY etter fersk P0-validering.")
-        : String(card.blockingReason || card.lifecycleStatus || card.status || "Steget venter på dependency."),
-      producerProvenance:{
-        producer:String(card.producerId || card.sourceType || "CANONICAL_PREREQUISITE"),
-        provenance:"sde-canonical-shift-product-v1"
-      },
-      canonicalIdentity:{
-        schemaVersion:"sde-canonical-plan-identity-v1",
-        chainId:String(plan?.planId || ""),
-        intentId:preservedIntentId,
-        canonicalIntentId:String(card?.intentId || ""),
-        obligationId:String(card?.obligationId || ""),
-        stepId:String(card?.stepId || ""),
-        candidateOutcomeId:String(card?.stepId || ""),
-        activeOutcomeId:String(card?.stepId || ""),
-        canonicalCardId:String(card?.canonicalCardId || card?.cardId || ""),
-        reservationId:String(card?.reservationId || ""),
-        overlayId:String(card?.overlay?.overlayId || ""),
-        executionKey:String(card?.executionDescriptor?.executionKey || ""),
-        actionKey:String(card?.actionKey || ""),
-        planRevision:String(plan?.planRevision || ""),
-        vehicleId:sanitizeVehicleValue(card?.vehicleId),
-        sourceSlot:normalizeSlot(card?.sourceSlot),
-        targetSlot:normalizeSlot(card?.targetSlot)
-      },
-      canComplete:card.canComplete === true,
-      canCancel:card.canCancel === true,
-      canDelete:false,
-      canRetarget:card.canRetarget === true
-    };
-  });
-  const cardByStepId = new Map(cardRows.map(card=>[card.stepId,card]));
-  const projectionCardByStepId = new Map(productCards.map(card=>[card.stepId,card]));
-  const outcomeRows = (plan?.steps || []).map(step=>{
-    const card = projectionCardByStepId.get(step.stepId) || null;
-    const row = {
-      ...(card?.producerPayload || {}),
-      vehicle:step.vehicleId,
-      vehicleId:step.vehicleId,
-      fromSlot:step.sourceSlot,
-      arrivalSlot:step.sourceSlot,
-      recommendedSlot:step.targetSlot,
-      toSlot:step.targetSlot,
-      plannedWindowStart:step.plannedWindowStart,
-      plannedWindowEnd:step.plannedWindowEnd,
-      sdePhysicalDependencyRole:step.role === "RELEASE" ? "prerequisite" : step.role === "RECOVERY" ? "return" : "dependent",
-      sdePhysicalChainId:plan?.planId || "",
-      sdePhysicalPlanRevision:plan?.planRevision || "",
-      sdePhysicalStepId:step.stepId,
-      stableActionKey:step.stepId,
-      sdePhysicalChainStep:Number(step.sequenceIndex || 0) + 1,
-      sdePhysicalChainStepCount:Number(plan?.steps?.length || 0),
-      sdePhysicalDependsOn:[...(step.dependencyIds || [])],
-      sdeRecoveryUsesPostMainTopology:step.role === "RECOVERY",
-      canonicalProducer:String(card?.producerId || "CANONICAL_PREREQUISITE"),
-      sourceType:String(card?.producerId || card?.sourceType || "CANONICAL_PREREQUISITE"),
-      canonicalProductProjection:true,
-      canMutateActualPlacement:false
-    };
-    return {
-      candidateOutcomeId:step.stepId,
-      candidateId:step.stepId,
-      actionKey:String(card?.actionKey || ""),
-      chainId:plan?.planId || "",
-      chainScope:plan?.planId || "",
-      obligationId:String(card?.obligationId || ""),
-      stepId:step.stepId,
-      vehicleId:step.vehicleId,
-      sourceSlot:step.sourceSlot,
-      canonicalSourceSlot:step.sourceSlot,
-      targetSlot:step.targetSlot,
-      sequenceStep:Number(step.sequenceIndex || 0) + 1,
-      role:step.role,
-      active:Boolean(cardRows.find(item=>item.stepId === step.stepId)),
-      identitySafe:true,
-      sourceValidation:{valid:true},
-      physicalValidation:{valid:true},
-      unmetDependencies:card?.status === "READY" ? [] : [...(step.dependencyIds || [])],
-      raw:row
-    };
-  });
-  const activeOutcomeIds = new Set(cardRows.map(card=>card.activeOutcomeId));
-  const candidateOutcomes = outcomeRows;
-  const activeOutcomes = outcomeRows.filter(outcome=>activeOutcomeIds.has(outcome.candidateOutcomeId));
-  const actionableCards = cardRows.filter(card=>card.status === "actionable");
-  const blockedChainCards = cardRows.filter(card=>card.status === "blocked_chain_step");
-  const cardByOutcomeId = Object.fromEntries(cardRows.map(card=>[card.activeOutcomeId,card]));
-  const reservations = (product?.reservations || []).map(item=>({
-    ...item,
-    activeOutcomeId:String(item.stepId || ""),
-    candidateOutcomeId:String(item.stepId || "")
-  }));
-  const reservationByStepId = new Map(reservations.map(item=>[item.stepId,item]));
-  const claims = (product?.plannedResourceClaims || []).map(item=>({
-    ...item,
-    activeOutcomeId:String(item.stepId || ""),
-    candidateOutcomeId:String(item.stepId || "")
-  }));
-  const overlays = (product?.overlays || []).map(item=>({
-    ...item,
-    activeOutcomeId:String(item.stepId || ""),
-    candidateOutcomeId:String(item.stepId || ""),
-    reservationId:String(reservationByStepId.get(item.stepId)?.reservationId || "")
-  }));
-  const readyStepIds = new Set(actionableCards.map(card=>card.stepId));
-  const activeOverlays = overlays.filter(item=>readyStepIds.has(item.stepId));
-  const deferredOverlays = overlays.filter(item=>!readyStepIds.has(item.stepId));
-  const handlers = Object.fromEntries(cardRows.map(card=>{
-    const sourceCard = projectionCardByStepId.get(card.stepId);
-    const outcome = candidateOutcomes.find(item=>item.stepId === card.stepId) || null;
-    const row = outcome?.raw || {};
-    const adapter = {
-      planRevision:String(plan?.planRevision || ""),
-      canonicalCardId:card.canonicalCardId,
-      activeOutcomeId:card.activeOutcomeId,
-      ready:card.status === "actionable" && sourceCard?.ready === true,
-      baseReady:card.status === "actionable" && sourceCard?.ready === true,
-      row,
-      outcome,
-      actionKey:String(sourceCard?.actionKey || ""),
-      reservation:reservationByStepId.get(card.stepId) || null,
-      overlay:overlays.find(item=>item.stepId === card.stepId) || null,
-      blockingConflicts:[],
-      reasons:card.status === "actionable" ? [] : [card.explanation],
-      retargetReasons:[],
-      baseCanComplete:sourceCard?.canComplete === true,
-      baseCanCancel:sourceCard?.canCancel === true,
-      baseCanDelete:false,
-      baseCanRetarget:sourceCard?.canRetarget === true,
-      canComplete:sourceCard?.canComplete === true,
-      canCancel:sourceCard?.canCancel === true,
-      canDelete:false,
-      canRetarget:sourceCard?.canRetarget === true,
-      executionDescriptor:sourceCard?.executionDescriptor || null,
-      executionKey:String(sourceCard?.executionDescriptor?.executionKey || ""),
-      relevantRevision:String(plan?.planRevision || "")
-    };
-    return [card.canonicalCardId,adapter];
-  }));
-  const canonicalPlan = {
-    metadata:{schemaVersion:"sde-canonical-shift-product-plan-reader-v1",engineVersion:"sde-canonical-shift-engine-v1"},
-    planId:String(plan?.planId || ""),
-    planRevision:String(plan?.planRevision || ""),
-    actualStateRevision:String(runtime?.actualState?.actualStateRevision || ""),
-    candidateOutcomes,
-    activeOutcomes,
-    diagnostics:diagnosticRows,
-    conflicts:[],
-    actualPlacements,
-    outcomesByObligationStep:outcomeRows.map(outcome=>({obligationId:outcome.obligationId,stepId:outcome.stepId,activeOutcome:outcome})),
-    activeChains:plan ? [{chainId:plan.planId,steps:activeOutcomes}] : [],
-    reservationsPreview:reservations,
-    overlaysPreview:overlays,
-    obligations:[...(plan?.obligations || [])],
-    steps:[...(plan?.steps || [])],
-    missingCardLedger:batch?.ledger || null,
-    status:String(plan?.status || runtime?.status || "DIAGNOSTIC_ONLY")
-  };
-  const cardProjection = {
-    metadata:{schemaVersion:"sde-canonical-shift-product-card-reader-v1"},
-    actionableCards,
-    blockedChainCards,
-    handlerBlockedCards:[],
-    exitingCards:[],
-    diagnostics:diagnosticRows,
-    chains:plan ? [{chainId:plan.planId,steps:cardRows}] : [],
-    activeProposalCount:cardRows.length,
-    cardByOutcomeId
-  };
-  const reservationProjection = {
-    metadata:{schemaVersion:"sde-canonical-shift-product-reservation-reader-v1"},
-    actualOccupancies:actualPlacements,
-    reservations,
-    plannedResourceClaims:claims,
-    conflicts:[],
-    diagnostics:diagnosticRows,
-    reservationsByOutcomeId:Object.fromEntries(reservations.map(item=>[item.activeOutcomeId,item]))
-  };
-  const graphicProjection = {
-    metadata:{schemaVersion:"sde-canonical-shift-product-graphic-reader-v1"},
-    actualSlots:actualPlacements,
-    activeOverlays,
-    deferredOverlays,
-    unresolvedDiagnostics:diagnosticRows,
-    slotRenderModels:[],
-    conflicts:[],
-    overlaysByOutcomeId:Object.fromEntries(overlays.map(item=>[item.activeOutcomeId,item]))
-  };
-  const integrityStatus = product?.integrity?.status === "PASS" || (!plan && !productCards.length && !diagnosticRows.length)
-    ? "PASS"
-    : "FAIL_CLOSED";
-  const integrityReport = {
-    metadata:{schemaVersion:"sde-canonical-shift-product-integrity-v1"},
-    status:integrityStatus,
-    invariantResults:[{id:"ONE_OPERATIONAL_OWNER",pass:runtime?.operationalWriteOwner === "SDE_CANONICAL_SHIFT_ENGINE" && runtime?.legacyOperationalWritesEnabled === false}],
-    obligationResults:[...(batch?.ledger?.entries || [])],
-    conflicts:integrityStatus === "PASS" ? [] : diagnosticRows
-  };
-  return assertSdeCanonicalProductionReaderContract({
-    schemaVersion:"sde-canonical-shift-product-reader-v1",
-    migrationMode:"CANONICAL_ONLY",
-    operationalWriteOwner:"SDE_CANONICAL_SHIFT_ENGINE",
-    legacyOperationalWritesEnabled:false,
-    machineLearningScoreActive:false,
-    planRevision:String(plan?.planRevision || ""),
-    runtimeSnapshot:{legacy:{finalCards:[],activeCards:[],visibleCards:[]},runtimeState:{actions:state.sdeMoveActions || {}}},
-    productRuntime:runtime,
-    canonicalPlan,
-    cardProjection,
-    reservationProjection,
-    graphicProjection,
-    integrityReport,
-    handlerAdapters:handlers
-  });
-}
-
-function buildSdeCanonicalProductionReader(productRuntime=null){
-  const explicitRollbackSnapshot = Boolean(
-    productRuntime
-    && productRuntime?.schemaVersion === "sde-canonical-shadow-runtime-v1"
-    && productRuntime?.legacy
-    && productRuntime?.runtimeState
-  );
-  return explicitRollbackSnapshot
-    ? buildSdeLegacyRollbackProductionReader(productRuntime)
-    : buildSdeCanonicalProductReader(productRuntime);
 }
 
 function getSdeCanonicalUnifiedCardSourceType(row={}){
@@ -46360,11 +45565,6 @@ async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action, enco
   const canonicalCardId = decodeURIComponent(String(encodedCanonicalCardId || ""));
   const decodedExecutionDescriptor = decodeURIComponent(String(encodedExecutionDescriptor || ""));
   const actionType = String(action || "").trim();
-  if(!["completed","cancelled"].includes(actionType)){
-    renderSdeSkiftebevegelser();
-    alert("Canonical-produktkort støtter bare Utført eller Annullert. Slett er ikke en operativ handling.");
-    return;
-  }
   let renderedDescriptor = null;
   let legacyRenderedPlanRevision = "";
   try{
@@ -46412,182 +45612,57 @@ async function handleSdeCanonicalCardAction(encodedCanonicalCardId, action, enco
   }
   const card = selectedPair?.card || null;
   const adapter = selectedPair?.adapter || null;
-  const currentDescriptor = adapter?.executionDescriptor || null;
-  const exactRenderedProduct = Boolean(
-    reader?.migrationMode === "CANONICAL_ONLY"
-    && card
-    && adapter
-    && currentDescriptor
-    && renderedDescriptor?.schemaVersion === "sde-canonical-product-execution-v1"
-    && renderedDescriptor.executionKey === currentDescriptor.executionKey
-    && renderedDescriptor.planRevision === currentDescriptor.planRevision
-    && renderedDescriptor.actualStateRevision === currentDescriptor.actualStateRevision
-    && renderedDescriptor.stepId === currentDescriptor.stepId
-    && renderedDescriptor.obligationId === currentDescriptor.obligationId
-    && normalizeSlot(renderedDescriptor.sourceSlot) === normalizeSlot(currentDescriptor.sourceSlot)
-    && normalizeSlot(renderedDescriptor.targetSlot) === normalizeSlot(currentDescriptor.targetSlot)
-    && card.status === "actionable"
-    && adapter.ready === true
-    && adapter.reservation
-    && adapter.overlay
-  );
-  if(!exactRenderedProduct){
+  const resolution = resolveSdeCanonicalExecutableAction({
+    renderedDescriptor,
+    currentDescriptor:adapter?.executionDescriptor || null,
+    currentCard:card,
+    currentHandlerDescriptor:adapter,
+    currentCanonicalPlan:reader.canonicalPlan,
+    currentCardProjection:reader.cardProjection,
+    currentReservationProjection:reader.reservationProjection,
+    currentGraphicProjection:reader.graphicProjection,
+    actionType
+  });
+  if(!resolution.executable){
     renderSdeSkiftebevegelser();
-    alert("Canonical-kortet er semantisk erstattet eller mangler en komplett operativ projeksjon. Gjeldende plan er rendret på nytt uten handling.");
+    alert(getSdeCanonicalExecutionResolutionMessage(resolution));
     return;
   }
   const allowed = actionType === "completed"
     ? adapter?.canComplete
-    : adapter?.canCancel;
+    : actionType === "cancelled"
+      ? adapter?.canCancel
+      : actionType === "deleted"
+        ? adapter?.canDelete
+        : false;
   if(!allowed){
     renderSdeSkiftebevegelser();
-    alert(`Canonical-kortet er ikke handlingsklart: ${actionType === "completed" ? "Utført" : "Annullert"} er sperret for gjeldende steg.`);
+    alert(`Canonical-kortet er ikke handlingsklart: ${actionType === "completed" ? "Utført" : actionType === "deleted" ? "Fjern" : "Annullert"} er sperret for gjeldende steg.`);
     return;
   }
-  if(window.sdeMoveActionPendingKey) return;
-  window.sdeMoveActionPendingKey = `${adapter?.actionKey || canonicalCardId}|${actionType}`;
-  try{
-    try{
-      await refreshGlobalAuthoritativeData();
-    }catch(error){
+  if(actionType === "deleted"){
+    const activeRows = Array.isArray(reader?.runtimeSnapshot?.legacy?.activeCards)
+      ? reader.runtimeSnapshot.legacy.activeCards
+      : [];
+    if(deleteSdeLocalMoveCard(adapter?.row, activeRows) !== true){
       renderSdeSkiftebevegelser();
-      alert(`Canonical-kortet ble ikke behandlet: fersk autoritativ readback feilet (${error?.message || "ukjent feil"}).`);
-      return;
     }
-
-    const freshRuntime = buildSdeCanonicalUnifiedAllProducerProduct(sdeShiftLastRenderedData?.needs || []);
-    const freshReader = buildSdeCanonicalProductionReader(freshRuntime);
-    const freshPairs = getSdeCanonicalProductionVisibleCards(freshReader).map(currentCard=>({
-      card:currentCard,
-      adapter:freshReader.handlerAdapters?.[currentCard.canonicalCardId] || null
-    }));
-    const freshPair = freshPairs.find(item=>
-      item.adapter?.executionKey === String(renderedDescriptor?.executionKey || "").trim()
-    ) || null;
-    const freshCapability = getSdeCanonicalShiftCapabilityModel();
-    const capabilityAllowed = actionType === "completed"
-      ? freshCapability.canComplete
-      : freshCapability.canCancel;
-    if(!capabilityAllowed){
-      renderSdeSkiftebevegelser();
-      alert(`Canonical-kortet ble ikke behandlet: fersk serverauthority mangler capability ${actionType === "completed" ? SDE_CANONICAL_SHIFT_CAPABILITIES.complete : SDE_CANONICAL_SHIFT_CAPABILITIES.cancel}.`);
-      return;
-    }
-    if(!freshPair){
-      renderSdeSkiftebevegelser();
-      alert("Canonical-kortet er superseded eller endret etter fersk readback. Ingen operativ handling ble utført.");
-      return;
-    }
-    const freshDescriptor = freshPair.adapter?.executionDescriptor || null;
-    if(
-      !freshDescriptor
-      || freshDescriptor.executionKey !== renderedDescriptor?.executionKey
-      || freshDescriptor.planRevision !== renderedDescriptor?.planRevision
-      || freshDescriptor.actualStateRevision !== renderedDescriptor?.actualStateRevision
-    ){
-      renderSdeSkiftebevegelser();
-      alert("Canonical-kortets plan- eller actual-state-revisjon er endret. Replan er vist uten operativ handling.");
-      return;
-    }
-    const freshValidation = window.SdeCanonicalShiftAdapter.revalidateCanonicalProductAction({
-      batchResult:freshRuntime.batchResult,
-      descriptor:renderedDescriptor,
-      freshActualState:freshRuntime.actualState,
-      actionType:actionType === "completed" ? "UTFORT" : "ANNULLERT"
-    });
-    if(!freshValidation?.ok){
-      renderSdeSkiftebevegelser();
-      alert(`Canonical-kortet krever replan: ${freshValidation?.code || "REPLAN_REQUIRED"} · ${freshValidation?.reason || "fersk revalidering feilet"}`);
-      return;
-    }
-
-    const freshCard = freshPair.card;
-    const freshAdapter = freshPair.adapter;
-    const row = freshAdapter?.row || {};
-    const vehicle = sanitizeVehicleValue(freshCard?.vehicleId || row?.vehicle);
-    const sourceSlot = normalizeSlot(freshCard?.sourceSlot || row?.fromSlot || row?.arrivalSlot);
-    const targetSlot = normalizeSlot(freshCard?.targetSlot || row?.recommendedSlot || row?.toSlot);
-    const actionKey = String(freshDescriptor.actionKey || freshAdapter?.actionKey || "").trim();
-    if(!vehicle || !sourceSlot || !targetSlot || !actionKey){
-      renderSdeSkiftebevegelser();
-      alert("Canonical-kortet mangler entydig kjøretøy-, spor- eller handlingsidentitet. Ingen operativ handling ble utført.");
-      return;
-    }
-    if(!state.sdeMoveActions || typeof state.sdeMoveActions !== "object" || Array.isArray(state.sdeMoveActions)){
-      state.sdeMoveActions = {};
-    }
-    if(state.sdeMoveActions[actionKey]?.action){
-      renderSdeSkiftebevegelser();
-      alert("Canonical-kortet er allerede behandlet.");
-      return;
-    }
-
-    const learningReason = await getSdeMoveLearningReason(actionType, {
-      row,
-      activeRows:freshRuntime?.batchResult?.rows || [],
-      canonicalCanDelete:false
-    });
-    if(learningReason === null) return;
-    const actionTime = new Date().toISOString();
-    const reasonText = String(
-      learningReason?.reasonText
-      || learningReason?.commentText
-      || learningReason?.reasonLabels?.join(", ")
-      || learningReason?.reasonLabel
-      || ""
-    ).trim();
-    const canonicalRecord = {
-      canonicalProduct:true,
-      action:actionType,
-      planRevision:String(freshDescriptor.planRevision || ""),
-      actualStateRevision:String(freshDescriptor.actualStateRevision || ""),
-      stepId:String(freshDescriptor.stepId || ""),
-      intentId:String(freshDescriptor.intentId || ""),
-      obligationId:String(freshDescriptor.obligationId || ""),
-      role:String(freshValidation?.step?.role || freshCard?.role || ""),
-      vehicle,
-      fromSlot:sourceSlot,
-      toSlot:targetSlot,
-      time:actionTime,
-      reason:reasonText,
-      executionKey:String(freshDescriptor.executionKey || ""),
-      snapshot:getSdeMoveActionSnapshot(row)
-    };
-
-    if(actionType === "completed"){
-      ensureSdeResetSnapshot();
-      if(!addSdeCompletedMoveToPlanSkifte(row)){
-        alert("SDE klarte ikke å registrere Utført for canonical-steget. Ingen kvittering ble lagret.");
-        return;
-      }
-      state.sdeMoveActions[actionKey] = canonicalRecord;
-      const remainingIntentSteps = (freshRuntime?.batchResult?.plan?.steps || []).filter(step=>(
-        String(step?.intentId || "") === String(freshDescriptor.intentId || "")
-        && String(step?.stepId || "") !== String(freshDescriptor.stepId || "")
-        && step?.status !== "COMPLETED"
-      ));
-      const producerSource = (freshRuntime?.batchResult?.sources || []).find(source=>(
-        String(source?.intentId || "") === String(freshDescriptor.intentId || "")
-      ));
-      if(!remainingIntentSteps.length && producerSource?.producerId === "MANUAL_DRAG"){
-        removeSdeNightPlacementOverridesForVehicle(vehicle);
-      }
-      recordSdeMoveLearningEvent(actionKey,"completed",row,actionTime,learningReason);
-      buildSdeCanonicalUnifiedAllProducerProduct(sdeShiftLastRenderedData?.needs || []);
-      persist(true);
-      refreshSdeAfterMoveAction();
-      await saveSharedSporplanDraftFromSdeCompletedMove();
-      return;
-    }
-
-    state.sdeMoveActions[actionKey] = canonicalRecord;
-    recordSdeMoveLearningEvent(actionKey,"cancelled",row,actionTime,learningReason);
-    buildSdeCanonicalUnifiedAllProducerProduct(sdeShiftLastRenderedData?.needs || []);
-    persist(true);
-    renderSdeSkiftebevegelser();
-  }finally{
-    window.sdeMoveActionPendingKey = "";
+    return;
   }
+  await handleSdeShiftMoveAction(encodeURIComponent(adapter.actionKey), actionType, {
+    canonicalCardId:card.canonicalCardId,
+    planRevision:reader.planRevision,
+    executionKey:adapter.executionKey,
+    relevantRevision:adapter.relevantRevision,
+    activeOutcomeId:card.activeOutcomeId,
+    obligationId:card.obligationId,
+    stepId:card.stepId,
+    vehicleId:card.vehicleId,
+    sourceSlot:card.sourceSlot,
+    targetSlot:card.targetSlot,
+    actionKey:adapter.actionKey,
+    canonicalCanDelete:adapter.canDelete === true
+  });
 }
 
 function buildSdeCanonicalUnresolvedFollowupCardHtml(card, index=0){
@@ -46693,39 +45768,24 @@ function renderSdeCanonicalProductionReader(){
 
 function renderSdeLegacyProductionReader(mode, error=null){
   const result = renderSdeSkiftebevegelserInner();
-  applySdeProductionReaderStatus(mode || "legacy_rollback_drill");
+  applySdeProductionReaderStatus(mode || (error ? "legacy_fallback" : "legacy_forced"));
   return result;
-}
-
-function renderSdeCanonicalProductionFailure(error){
-  const root = document.getElementById("sdeSkiftebevegelserDashboard");
-  if(!root) return null;
-  const reason = String(error?.message || error || "Canonical produktleser feilet.");
-  root.innerHTML = `
-    ${buildSdeProductionReaderStatusHtml("canonical")}
-    <div class="sde-shift-hero">
-      <div class="sde-shift-score warn"><div class="sde-shift-eyebrow">SDE-resultat</div><div class="sde-shift-title">Skiftebevegelser</div><div class="sde-shift-score-number unavailable"><strong>Fail-closed</strong><span>Ingen operative kort materialisert</span></div></div>
-    </div>
-    <div class="sde-shift-unresolved-item" data-sde-canonical-diagnostic="CANONICAL_PRODUCT_RUNTIME_ERROR"><strong>Canonical produktmotor er ikke tilgjengelig</strong><br>${escapeHtml(reason)}<br>Legacy-motoren aktiveres ikke automatisk, og ingen operativ write er mulig.</div>
-  `;
-  root.dataset.sdeReaderMode = "canonical_fail_closed";
-  return {mode:"canonical_fail_closed",error:reason,legacyOperationalWritesEnabled:false};
 }
 
 function renderSdeSkiftebevegelser(){
   if(isSdeCanonicalCardPreviewRequested()) return renderSdeCanonicalCardPreview();
   return withComputeInndataCache(()=>{
     const requestedMode = getSdeProductionReaderMode(window.location, {technicalFailure:Boolean(sdeProductionReaderFallbackError)});
-    if(requestedMode === "legacy_rollback_drill") return renderSdeLegacyProductionReader("legacy_rollback_drill");
+    if(requestedMode === "legacy_forced") return renderSdeLegacyProductionReader("legacy_forced");
+    if(requestedMode === "legacy_fallback") return renderSdeLegacyProductionReader("legacy_fallback", sdeProductionReaderFallbackError);
     try{
       if(isSdeCanonicalReaderTechnicalFailureTestRequested()){
         throw new Error("Isolert teknisk canonical reader-test.");
       }
-      sdeProductionReaderFallbackError = null;
       return renderSdeCanonicalProductionReader();
     }catch(error){
       sdeProductionReaderFallbackError = error instanceof Error ? error : new Error(String(error || "Canonical reader feilet."));
-      return renderSdeCanonicalProductionFailure(sdeProductionReaderFallbackError);
+      return renderSdeLegacyProductionReader("legacy_fallback", sdeProductionReaderFallbackError);
     }
   });
 }

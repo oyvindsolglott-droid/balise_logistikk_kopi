@@ -106,7 +106,6 @@ eval(prefix + String.raw`
   const projectionCounts={
     cards:cards.length,
     reservations:reader?.reservationProjection?.reservations?.length||0,
-    plannedResourceClaims:reader?.reservationProjection?.plannedResourceClaims?.length||0,
     overlays:(reader?.graphicProjection?.activeOverlays?.length||0)+(reader?.graphicProjection?.deferredOverlays?.length||0),
     adapters:Object.keys(reader?.handlerAdapters||{}).length
   };
@@ -152,7 +151,7 @@ eval(prefix + String.raw`
     invariant("INV-MULTILEG-015","DEPENDENCY_SEQUENCED_STEPS_MAY_REUSE_ROUTE_RESOURCE",chainRows.every(row=>routeOf(row).viaSlots?.includes("VS"))&&!reader?.reservationProjection?.conflicts?.some(item=>String(item.classification||"").includes("VS_RESOURCE_OVERLAP")),{claims:routeClaims,conflicts:reader?.reservationProjection?.conflicts}),
     invariant("INV-MULTILEG-016","DEFERRED_ROUTE_RESOURCE_IS_NOT_ACTIVE_CONFLICT",routeClaims[0]?.some(item=>item.resource==="VS"&&item.state==="ACTIVE_ROUTE_RESOURCE")&&routeClaims.slice(1).every(claims=>claims.some(item=>item.resource==="VS"&&item.state==="DEFERRED_ROUTE_RESOURCE")),routeClaims),
     invariant("INV-MULTILEG-017","NO_PRESTAGE_INCOMPLETE_OR_DIAGNOSTIC_ONLY",message?.type==="info"&&!/forhåndsstages komplett|diagnostic-only/i.test(message?.text||"")&&!chainRows.some(row=>row.sdeTrappedEgressDiagnosticOnly)&&!diagnostics.some(item=>/prestage|diagnostic.only/i.test(String(item.code||item.diagnosticType||""))),{message,diagnostics:diagnostics.map(item=>item.code||item.diagnosticType)}),
-    invariant("INV-MULTILEG-018","NO_PARTIAL_OPERATIVE_PROJECTION",projectionCounts.cards===3&&projectionCounts.reservations===1&&projectionCounts.plannedResourceClaims===2&&projectionCounts.reservations+projectionCounts.plannedResourceClaims===3&&projectionCounts.overlays===3&&projectionCounts.adapters===3,projectionCounts),
+    invariant("INV-MULTILEG-018","NO_PARTIAL_OPERATIVE_PROJECTION",projectionCounts.cards===3&&projectionCounts.reservations===3&&projectionCounts.overlays===3&&projectionCounts.adapters===3,projectionCounts),
     invariant("INV-MULTILEG-019","ACTUAL_PLACEMENT_ONLY_CHANGES_AFTER_AUTHORIZED_COMPLETION",initialActual===initialActualAfter,{before:initialActual,after:initialActualAfter}),
     invariant("INV-MULTILEG-020","CARD_2_AND_CARD_3_SURVIVE_CARD_1",afterReleaseCards.length===2&&afterReleaseCards.some(card=>card.vehicleId==="70-11"&&card.status==="actionable")&&afterReleaseCards.some(card=>card.vehicleId==="75-76"&&card.status==="blocked_chain_step"),afterReleaseCards.map(card=>[card.vehicleId,card.status,card.sourceSlot,card.targetSlot])),
     invariant("INV-MULTILEG-021","COMPLETED_PREDECESSOR_PROMOTES_MAIN_AND_ROUTE_RESOURCE",afterReleaseCards.some(card=>card.vehicleId==="70-11"&&card.status==="actionable"&&(card.routeResourceClaims||[]).some(item=>item.resource==="VS"&&item.state==="ACTIVE_ROUTE_RESOURCE")),afterReleaseCards),

@@ -19,7 +19,7 @@ eval(prefix + String.raw`
     {target:"11S",source:"9",blockers:["11N"]},
     {target:"12S",source:"9",blockers:["12N"]}
   ];
-  vm.runInContext("globalThis.__emptyTargetPlannerCalls=0; globalThis.__emptyTargetOriginalPlanner=buildSdeCanonicalUnifiedAllProducerProduct; buildSdeCanonicalUnifiedAllProducerProduct=(...args)=>{globalThis.__emptyTargetPlannerCalls+=1; return globalThis.__emptyTargetOriginalPlanner(...args);};",ctx);
+  vm.runInContext("globalThis.__emptyTargetPlannerCalls=0; globalThis.__emptyTargetOriginalStage=stageSdeCanonicalGraphicDragOrder; stageSdeCanonicalGraphicDragOrder=override=>{globalThis.__emptyTargetPlannerCalls+=1; return globalThis.__emptyTargetOriginalStage(override);};",ctx);
   const runScenario=scenario=>{
     const vehicle="DRAG-MAIN-"+scenario.target;
     const placements=[[scenario.source,vehicle],...scenario.blockers.map((slot,index)=>[slot,"DRAG-BLOCKER-"+scenario.target+"-"+(index+1)])];
@@ -38,9 +38,7 @@ eval(prefix + String.raw`
     const reader=ctx.buildSdeCanonicalProductionReader();
     const cards=[...(reader.cardProjection?.actionableCards||[]),...(reader.cardProjection?.blockedChainCards||[])];
     const statuses=cards.map(card=>card.status);
-    const rows=(reader.canonicalPlan?.candidateOutcomes||[])
-      .filter(outcome=>outcome?.active!==false&&outcome?.raw?.sdePhysicalChainId)
-      .map(outcome=>outcome.raw);
+    const rows=ctx.buildSdeShiftCardMoveCandidates({moves:[]},{reconcileActive:false}).filter(row=>row?.sdePhysicalChainId);
     const release=rows.find(row=>row.sdePhysicalDependencyRole==="prerequisite");
     const main=rows.find(row=>row.sdePhysicalDependencyRole==="dependent");
     const recovery=rows.find(row=>row.sdePhysicalDependencyRole==="return");
@@ -49,7 +47,7 @@ eval(prefix + String.raw`
     const completeProjection=Boolean(
       reader.canonicalPlan?.candidateOutcomes?.length===3
       && cards.length===3
-      && (reader.reservationProjection?.reservations?.length||0)+(reader.reservationProjection?.plannedResourceClaims?.length||0)===3
+      && reader.reservationProjection?.reservations?.length===3
       && (reader.graphicProjection?.activeOverlays?.length||0)+(reader.graphicProjection?.deferredOverlays?.length||0)===3
       && Object.keys(reader.handlerAdapters||{}).length===3
       && reader.integrityReport?.status==="PASS"
@@ -135,7 +133,7 @@ eval(prefix + String.raw`
     invariant("INV-EMPTY-DROP-003","EMPTY-SLOT-DOES-NOT-RENDER-RED-BECAUSE-RELIEF-IS-REQUIRED",all(item=>item.rejectedSlot===""&&!item.eligibility.renderRedUnavailable)&&availabilityCases.occupied.state==="PHYSICALLY_OCCUPIED"&&availabilityCases.occupied.red===true&&availabilityCases.outOfService.state==="INFRASTRUCTURE_OUT_OF_SERVICE"&&availabilityCases.outOfService.red===true&&availabilityCases.reservation.state==="RESERVATION_CONFLICT"&&availabilityCases.reservation.red===false,JSON.stringify({relief:reports.map(item=>[item.target,item.rejectedSlot]),availabilityCases})),
     invariant("INV-EMPTY-DROP-004","DROP-INTENT-REACHES-CANONICAL-PLANNER",all(item=>item.assessment.plannerInvoked&&item.plannerCalls===1),JSON.stringify(reports.map(item=>[item.target,item.plannerCalls]))),
     invariant("INV-EMPTY-DROP-005","RELIEF-PLAN-SEARCHES-BOTH-DIRECTIONS",reports.slice(0,3).every(item=>item.assessment.accessOptions===2),JSON.stringify(reports.slice(0,3).map(item=>[item.target,item.assessment.accessOptions]))),
-    invariant("INV-EMPTY-DROP-006","VALID-RELIEF-PRODUCES-COMPLETE-THREE-CARD-PRODUCT-CHAIN",all(item=>item.rows.length===3&&item.cards.length===3&&item.completeProjection),JSON.stringify(reports.map(item=>[item.target,item.rows.length,item.cards.length,item.completeProjection]))),
+    invariant("INV-EMPTY-DROP-006","VALID-RELIEF-PRODUCES-THREE-CARD-CHAIN",all(item=>item.rows.length===3&&item.cards.length===3),JSON.stringify(reports.map(item=>[item.target,item.rows.length,item.cards.length]))),
     invariant("INV-EMPTY-DROP-007","RECOVERY-USES-POST-MAIN-TOPOLOGY",all(item=>item.rows.some(row=>row.role==="return"&&row.postMain)),JSON.stringify(reports.map(item=>[item.target,item.rows.find(row=>row.role==="return")?.to]))),
     invariant("INV-EMPTY-DROP-008","RECOVERY-DOES-NOT-CREATE-TRAPPED-EMPTY-SLOT",all(item=>item.rows.filter(row=>row.role==="return").length===1&&item.completeProjection),JSON.stringify(reports.map(item=>[item.target,item.completeProjection]))),
     invariant("INV-EMPTY-DROP-009","NO-PARTIAL-OPERATIVE-PROJECTION",all(item=>item.completeProjection&&item.actualUnchanged),JSON.stringify(reports.map(item=>[item.target,item.completeProjection,item.actualUnchanged])))

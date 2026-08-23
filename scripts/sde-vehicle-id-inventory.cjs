@@ -33,8 +33,6 @@ function isBinary(buffer){
 function isTestFixture(file){
   const name = path.basename(file);
   return file.startsWith("tests/") || file.startsWith("server/scripts/test-") ||
-    ["config/sde-shift-acceptance-scenarios-v1.json", "config/sde-shift-acceptance-coverage-v1.json"].includes(file) ||
-    /^config\/sde-regression-[a-z0-9-]+\.json$/.test(file) ||
     /^test_.*\.(?:py|js|cjs)$/.test(name) || /_test(?:_|\.)/.test(name) ||
     ["decision_test.html","sde_scenarios.py"].includes(name);
 }

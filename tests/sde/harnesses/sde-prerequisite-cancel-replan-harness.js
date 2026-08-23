@@ -157,7 +157,6 @@ eval(prefix + String.raw`
     const recoveries=role(rows,"return");
     const outcomes=(projection.reader?.canonicalPlan?.candidateOutcomes||[]).filter(outcome=>outcome.status!=="exiting"&&outcome.status!=="cancelled");
     const reservations=projection.reader?.reservationProjection?.reservations||[];
-    const plannedClaims=projection.reader?.reservationProjection?.plannedResourceClaims||[];
     const cards=projection.cards||[];
     const overlays=projection.overlays||[];
     const adapters=projection.reader?.handlerAdapters||{};
@@ -168,7 +167,7 @@ eval(prefix + String.raw`
       && recoveries.length===releases.length
       && outcomes.length===rows.length
       && cards.length===rows.length
-      && reservations.length+plannedClaims.length===rows.length
+      && reservations.length===rows.length
       && overlays.length===rows.length
       && Object.keys(adapters).length===rows.length+(projection.reader?.cardProjection?.exitingCards||[]).length
       && outcomes.every(outcome=>Array.isArray(outcome.routeResources)&&outcome.routeResources.length)
@@ -391,39 +390,12 @@ eval(prefix + String.raw`
     actionType:"completed"
   });
   const parentOverrideA=Object.values(appState.sdeNightPlacementManualOverrides||{}).find(item=>item?.vehicle===fixtureCatalog.A.main.vehicle)||null;
-  const contextualRejectionA=Object.values(appState.sdeCanonicalRetargetIntents||{}).some(intent=>
-    Array.isArray(intent?.rejectedTargets)
-    && intent.rejectedTargets.map(normalizeSlot).includes(normalizeSlot(oldReleaseTarget))
-  );
-  const requiredStaleOutcomeIdsA=[
-    ctx.getSdeMoveActionKey(initialA.release),
-    ctx.getSdeMoveActionKey(initialA.main)
-  ].map(value=>String(value||"").trim()).filter(Boolean);
-  const staleOutcomeIdsA=Array.isArray(savedA.actionRecord?.staleOutcomeIds)
-    ? savedA.actionRecord.staleOutcomeIds.map(value=>String(value||"").trim()).filter(Boolean)
-    : [];
   const actionUiA=ctx.getSdePhysicalReleaseCancelledUiState({...initialA.release,sdeCancellationDismissalCard:true},Date.parse(savedA.actionRecord.cancelledAt||savedA.actionRecord.time||""));
   reports.A={
     initial:{applied:initialA.applied,assessmentOk:initialA.assessment?.ok===true,releaseVehicle:initialA.release?.vehicle,releaseTarget:oldReleaseTarget,mainTarget:initialA.main?.toSlot,complete:completeProjection({rows:initialA.rows,reader:initialA.reader,cards:allCards(initialA.reader),overlays:allOverlays(initialA.reader)})},
     after:projectionSummary(savedA.projection),
     replacement:{releaseTarget:replacementReleaseA?.toSlot||"",mainTarget:replacementMainA?.toSlot||"",mainObligation:replacementOutcomeA?.obligationId||"",complete:completeProjection(savedA.projection)},
     parentIntent:Boolean(parentOverrideA),
-    parentCancellationMetadata:Boolean(
-      savedA.actionRecord?.prerequisiteCancellation===true
-      && savedA.actionRecord?.mainIntentId
-      && savedA.actionRecord?.mainVehicleId===fixtureCatalog.A.main.vehicle
-      && normalizeSlot(savedA.actionRecord?.mainSourceSlot)===normalizeSlot(fixtureCatalog.A.main.sourceSlot)
-      && normalizeSlot(savedA.actionRecord?.originalRequestedTarget)===normalizeSlot(fixtureCatalog.A.main.requestedTarget)
-    ),
-    contextualRejection:contextualRejectionA,
-    atomicCancellationCommit:Boolean(
-      savedA.actionRecord?.prerequisiteCancellation===true
-      && savedA.structuredSafetyAlerts.length===0
-    ),
-    staleOutcomeLedgerComplete:Boolean(
-      requiredStaleOutcomeIdsA.length===2
-      && requiredStaleOutcomeIdsA.every(id=>staleOutcomeIdsA.includes(id))
-    ),
     oldMainObligation,
     staleHandler:staleResolution?.executable===false,
     lifecycle:{managed:actionUiA.managed,holdMs:actionUiA.holdMs,exitMs:actionUiA.exitMs,totalMs:actionUiA.totalMs},
@@ -624,146 +596,47 @@ eval(prefix + String.raw`
   await pendingI;
   reports.I={deleted:Object.keys(appState.sdeDeletedMoveCards||{}).length>0,noCancellation:!ctx.getSdeMoveActionRecord(deleteKey),noRejection:beforeReplanI===stable(appState.sdePhysicalReleaseReplans||{})};
 
-  function buildModernCancellationEvidence(){
-    const api=ctx.SdeCanonicalShiftEngine;
-    const adapterApi=ctx.SdeCanonicalShiftAdapter;
-    const planner=ctx.getSdeCanonicalUnifiedShiftEngine();
-    const actual={
-      actualStateRevision:"product-cancel-actual-r1",
-      actualStateFresh:true,
-      liveDataFresh:true,
-      occupancy:{"10S":"70-11","10N":"74-99"},
-      unavailableSlots:[],
-      routeReservations:[],
-      plannedResourceClaims:[],
-      completedStepIds:[],
-      arrivalReadiness:{"70-11":{ready:true},"74-99":{ready:true}},
-      anticipatedArrivals:{},
-      vehicleTypesByVehicle:{"70-11":"type-70","74-99":"type-74"},
-      currentOperationalTime:0
-    };
-    const intent=api.createShiftIntent({
-      intentId:"product-cancel-parent-intent",
-      sourceType:"MANUAL",
-      authority:"SERVER_AUTHORIZED_HUMAN",
-      priorityClass:"P1_MANUAL",
-      vehicle:"70-11",
-      fromSlot:"10S",
-      targetSlot:"8S",
-      originalTargetSlot:"8S",
-      preferredSourceEnd:"north",
-      requestedAt:"2026-08-23T08:00:00.000Z"
-    });
-    const project=result=>{
-      const projection=api.projectCanonicalPlan(result.plan,{activePlanRevision:result.plan.planRevision});
-      const ledger=api.buildMissingCardLedger(result.plan,projection);
-      const batch={...result,projection,ledger,sources:[{intentId:intent.intentId,producerId:"MANUAL_DRAG",payload:{}}]};
-      const product=adapterApi.buildCanonicalProductProjection(batch,{
-        actionRecords:{},
-        capability:{canComplete:true,canCancel:true,canCreateManualIntent:true}
-      });
-      return {projection,ledger,batch,product};
-    };
-    const first=planner.plan({state:actual,intents:[intent]});
-    const firstMaterialized=project(first);
-    const cancelledSupport=first.plan?.steps?.find(step=>step.role==="RELEASE")||null;
-    const cancelledCard=firstMaterialized.product?.cards?.find(card=>card.stepId===cancelledSupport?.stepId)||null;
-    const event=cancelledSupport?{
-      type:"ANNULLERT",
-      timestamp:"2026-08-23T08:01:00.000Z",
-      planRevision:first.plan.planRevision,
-      stepId:cancelledSupport.stepId,
-      intentId:cancelledSupport.intentId,
-      vehicleId:cancelledSupport.vehicleId,
-      sourceSlot:cancelledSupport.sourceSlot,
-      targetSlot:cancelledSupport.targetSlot,
-      role:cancelledSupport.role,
-      reason:"operator-rejected-support-target"
-    }:null;
-    const replanned=event?planner.plan({state:actual,intents:[intent],previousPlan:first.plan,events:[event]}):null;
-    const replannedMaterialized=replanned?.plan?project(replanned):null;
-    const replacementSupport=replanned?.plan?.steps?.find(step=>step.role==="RELEASE")||null;
-    const replacementMain=replanned?.plan?.steps?.find(step=>step.role==="MAIN")||null;
-    const replacementRecovery=replanned?.plan?.steps?.find(step=>step.role==="RECOVERY")||null;
-    const staleDescriptorResult=cancelledCard?.executionDescriptor&&replanned?.plan
-      ? adapterApi.revalidateCanonicalProductAction({
-          batchResult:replannedMaterialized.batch,
-          descriptor:cancelledCard.executionDescriptor,
-          freshActualState:actual,
-          actionType:"UTFORT"
-        })
-      : null;
-    const replacementProjection=replannedMaterialized?.projection||{};
-    const replacementProduct=replannedMaterialized?.product||{};
-    const stepCount=replanned?.plan?.steps?.filter(step=>step.status!=="COMPLETED").length||0;
-    const atomic=Boolean(
-      replacementProduct.integrity?.status==="PASS"
-      && replacementProduct.cards?.length===stepCount
-      && (replacementProduct.reservations?.length||0)+(replacementProduct.plannedResourceClaims?.length||0)===stepCount
-      && replacementProduct.overlays?.length===stepCount
-      && replacementProjection.routeResources?.length===stepCount
-      && replacementProduct.cards?.filter(card=>card.ready===true).length===1
-      && replacementProduct.cards?.filter(card=>card.ready!==true).every(card=>Boolean(card.plannedResourceClaim))
-    );
-    let repeated=null;
-    if(replacementSupport){
-      repeated=planner.plan({
-        state:actual,
-        intents:[intent],
-        previousPlan:replanned.plan,
-        events:[event,{
-          type:"ANNULLERT",
-          timestamp:"2026-08-23T08:02:00.000Z",
-          planRevision:replanned.plan.planRevision,
-          stepId:replacementSupport.stepId,
-          intentId:replacementSupport.intentId,
-          vehicleId:replacementSupport.vehicleId,
-          sourceSlot:replacementSupport.sourceSlot,
-          targetSlot:replacementSupport.targetSlot,
-          role:replacementSupport.role,
-          reason:"operator-rejected-second-support-target"
-        }]
-      });
-    }
-    const repeatedSupport=repeated?.plan?.steps?.find(step=>step.role==="RELEASE")||null;
-    const report={
-      parentIntentPreserved:replanned?.plan?.originalIntents?.some(item=>item.intentId===intent.intentId&&item.originalTargetSlot==="8S")===true,
-      sameMainTarget:replacementMain?.targetSlot==="8S",
-      replacementSupportChanged:Boolean(replacementSupport&&cancelledSupport&&replacementSupport.targetSlot!==cancelledSupport.targetSlot),
-      completeSequence:Boolean(replacementSupport&&replacementMain&&replacementRecovery),
-      atomic,
-      supersededRevision:Boolean(first.plan?.planRevision&&replanned?.plan?.planRevision&&first.plan.planRevision!==replanned.plan.planRevision),
-      staleDescriptorRejected:staleDescriptorResult?.ok===false&&staleDescriptorResult?.code==="PLAN_SUPERSEDED",
-      noOldProjection:Boolean(
-        !(replacementProduct.cards||[]).some(card=>card.stepId===cancelledSupport?.stepId)
-        && !(replacementProduct.reservations||[]).some(item=>item.stepId===cancelledSupport?.stepId)
-        && !(replacementProduct.plannedResourceClaims||[]).some(item=>item.stepId===cancelledSupport?.stepId)
-        && !(replacementProduct.overlays||[]).some(item=>item.stepId===cancelledSupport?.stepId)
-      ),
-      repeatedCancellationContinues:Boolean(repeated?.plan&&repeatedSupport&&![cancelledSupport?.targetSlot,replacementSupport?.targetSlot].includes(repeatedSupport.targetSlot)),
-      first:{status:first.status,revision:first.plan?.planRevision,supportTarget:cancelledSupport?.targetSlot,stepCount:first.plan?.steps?.length},
-      replacement:{status:replanned?.status,revision:replanned?.plan?.planRevision,supportTarget:replacementSupport?.targetSlot,mainTarget:replacementMain?.targetSlot,stepCount,integrity:replacementProduct.integrity?.status,reservations:replacementProduct.reservations?.length||0,plannedResourceClaims:replacementProduct.plannedResourceClaims?.length||0,overlays:replacementProduct.overlays?.length||0},
-      repeated:{status:repeated?.status||"",supportTarget:repeatedSupport?.targetSlot||""},
-      staleDescriptorCode:staleDescriptorResult?.code||""
-    };
-    report.pass016=report.parentIntentPreserved;
-    report.pass017=report.sameMainTarget&&report.replacementSupportChanged&&report.completeSequence;
-    report.pass018=report.atomic;
-    report.pass019=report.supersededRevision&&report.staleDescriptorRejected&&report.noOldProjection;
-    report.pass021=report.repeatedCancellationContinues;
-    return report;
-  }
-  const modernCancellation=buildModernCancellationEvidence();
-  reports.PRODUCT_CANCEL=modernCancellation;
-
-  const sameTargetComplete=modernCancellation.pass017;
-  const parentPreserved=modernCancellation.pass016;
-  const atomic=modernCancellation.pass018;
-  const stale=modernCancellation.pass019;
-  const legacyParentPreserved=reports.A.parentIntent&&reports.A.parentCancellationMetadata;
-  const legacyContextualRejection=reports.A.contextualRejection;
-  const legacyAtomic=reports.A.atomicCancellationCommit;
-  const legacyStale=reports.A.staleOutcomeLedgerComplete;
+  const sameTargetComplete=Boolean(
+    reports.A.initial.applied
+    && reports.A.initial.releaseVehicle===fixtureCatalog.A.expectedInitialBlocker.vehicle
+    && reports.A.replacement.complete
+    && reports.A.replacement.mainTarget===fixtureCatalog.A.main.requestedTarget
+    && reports.A.replacement.releaseTarget
+    && reports.A.replacement.releaseTarget!==oldReleaseTarget
+  );
+  const parentPreserved=Boolean(
+    reports.A.parentIntent
+    && reports.A.replacement.mainObligation===reports.A.oldMainObligation
+    && reports.A.actionRecord?.prerequisiteCancellation===true
+    && reports.A.actionRecord?.mainCancellation!==true
+    && reports.B.historicalTarget===fixtureCatalog.A.main.requestedTarget
+  );
+  const atomic=Boolean(
+    reports.A.replacement.complete
+    && reports.A.structuredSafetyAlerts.length===0
+    && reports.A.after.integrity==="PASS"
+    && reports.A.after.operativeOutcomes===3
+    && reports.A.after.reservations===3
+    && reports.A.after.overlays===3
+    && reports.A.after.adapters>=3
+    && !reports.A.after.diagnostics.some(item=>String(item?.explanation||item?.message||"").includes("release=0"))
+  );
+  const stale=Boolean(
+    reports.A.staleHandler
+    && reports.A.after.exiting.length===1
+    && reports.A.lifecycle.managed
+    && reports.A.lifecycle.holdMs===5000
+    && reports.A.lifecycle.exitMs===2000
+    && reports.A.replacement.complete
+    && Boolean(reports.A.replacement.releaseTarget)
+    && reports.A.replacement.releaseTarget!==oldReleaseTarget
+    && reports.A.actionRecord?.replacementTargetSlot===reports.A.replacement.releaseTarget
+    && reports.A.actionRecord?.replacementTargetSlot!==reports.A.actionRecord?.rejectedTargetSlot
+    && reports.A.actionRecord?.rejectedChainFingerprint
+    && reports.A.actionRecord?.cancelledPlanRevision
+    && Array.isArray(reports.A.actionRecord?.staleOutcomeIds)
+    && reports.A.actionRecord.staleOutcomeIds.length>=3
+  );
   const noSolutionScoped=Boolean(
     reports.C.scoped
     && reports.C.structuredSafetyAlerts.length===0
@@ -779,22 +652,22 @@ eval(prefix + String.raw`
     && reports.E.positivePhysicalPrecondition.valid
     && reports.E.assessmentOk&&!reports.E.assessmentHardBlocked&&reports.E.applied&&reports.E.override&&reports.E.complete&&reports.E.canonicalMode&&!reports.E.fallbackError
     && reports.E.negativePhysicalConflict.safetyPass
-    && modernCancellation.pass021
+    && reports.F.unique&&reports.F.terminated
     && reports.G.fresh
   );
 
-  put("INV-EGRESS-016",parentPreserved&&legacyParentPreserved&&reports.A_ABORT.unchanged&&reports.H.mainCancelled&&!reports.H.prerequisiteReplan,"prerequisite cancellation preserves parent intent/obligation while Abort, main cancellation and Delete retain their separate contracts");
-  put("INV-EGRESS-017",sameTargetComplete&&legacyContextualRejection,"original main target remains binding while the cancelled support transition is contextually rejected and deterministically replaced");
-  put("INV-EGRESS-018",atomic&&legacyAtomic,"cancelled prerequisite replacement is committed as one complete integrity-PASS revision with one READY reservation and future resource claims");
-  put("INV-EGRESS-019",stale&&legacyStale,"superseded product revision, descriptor and complete stale-outcome ledger are removed atomically and cannot be acted on");
+  put("INV-EGRESS-016",parentPreserved&&reports.A_ABORT.unchanged&&reports.H.mainCancelled&&!reports.H.prerequisiteReplan,"prerequisite cancellation preserves parent intent/obligation while Abort, main cancellation and Delete retain their separate contracts");
+  put("INV-EGRESS-017",sameTargetComplete&&reports.B.complete&&reports.B.visible&&reports.B.replacementTarget!==reports.B.originalTarget&&reports.B.targetSelectionSource==="prerequisite_cancel_fallback"&&Boolean(reports.B.supersedes)&&reports.B.deterministic,"same target is tried first; deterministic alternate main target is explicit and historically linked when required");
+  put("INV-EGRESS-018",atomic,"cancelled prerequisite replacement is one complete integrity-PASS revision with cards, reservations, overlays, resources and adapters");
+  put("INV-EGRESS-019",stale,"cancelled revision exits on the 5+2 lifecycle, old handlers/resources are stale, and rejected target/chain cannot return");
   put("INV-EGRESS-020",noSolutionScoped,"no safe replacement is a main-intent-scoped diagnostic with zero operative projection and no orphan recovery");
   put("INV-EGRESS-021",continuity,"replacement and diagnostic remain drag-local: independent orders, repeated cancellation and fresh-actual replanning stay usable");
 
   reports.contracts={
-    "PREREQUISITE-CANCEL-REPLANS-CHAIN":reports.A_ABORT.unchanged&&parentPreserved&&legacyParentPreserved&&sameTargetComplete&&legacyContextualRejection&&atomic&&legacyAtomic&&stale&&legacyStale,
-    "PREREQUISITE-CANCEL-ALTERNATE-MAIN-TARGET":modernCancellation.replacementSupportChanged&&modernCancellation.sameMainTarget,
+    "PREREQUISITE-CANCEL-REPLANS-CHAIN":reports.A_ABORT.unchanged&&parentPreserved&&sameTargetComplete&&atomic&&stale,
+    "PREREQUISITE-CANCEL-ALTERNATE-MAIN-TARGET":reports.B.complete&&reports.B.visible&&reports.B.historicalTarget===reports.B.originalTarget&&reports.B.targetSelectionSource==="prerequisite_cancel_fallback"&&Boolean(reports.B.supersedes),
     "PREREQUISITE-CANCEL-NO-SOLUTION-IS-SCOPED":noSolutionScoped,
-    "POST-CANCEL-GRAPHICAL-DRAG-CONTINUITY":continuity&&modernCancellation.staleDescriptorRejected
+    "POST-CANCEL-GRAPHICAL-DRAG-CONTINUITY":continuity&&reports.A.staleHandler
   };
 })().then(()=>{
   const failed=globalThis.__prerequisiteResults.filter(item=>item.status!=="PASS");

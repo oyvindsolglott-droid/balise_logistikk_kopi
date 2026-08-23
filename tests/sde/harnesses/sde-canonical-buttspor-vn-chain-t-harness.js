@@ -2,15 +2,12 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const path = require("node:path");
 const vm = require("node:vm");
 
 const html = fs.readFileSync(process.argv[2], "utf8");
-const externalScripts = ["sde_canonical_shift_engine.js","sde_canonical_shift_adapter.js"]
-  .map(file=>fs.readFileSync(path.join(path.dirname(process.argv[2]),file),"utf8"));
-const scripts = [...externalScripts,...Array.from(html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi))
+const scripts = Array.from(html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi))
   .filter(match=>!/\bsrc\s*=/.test(match[1]) && !/type=["'](?:application\/json|application\/ld\+json|text\/plain)["']/i.test(match[1]))
-  .map(match=>match[2])];
+  .map(match=>match[2]);
 
 const storage = () => ({getItem(){return null;},setItem(){},removeItem(){},clear(){}});
 const fakeElement = () => ({
@@ -23,7 +20,7 @@ const fakeElement = () => ({
   innerHTML:"",textContent:"",value:"",checked:false
 });
 const document = {
-  addEventListener(){},removeEventListener(){},createElement(){return fakeElement();},createDocumentFragment(){return fakeElement();},getElementById(){return fakeElement();},
+  addEventListener(){},removeEventListener(){},createElement(){return fakeElement();},getElementById(){return fakeElement();},
   querySelector(){return null;},querySelectorAll(){return [];},body:fakeElement(),documentElement:fakeElement()
 };
 const ctx = {
@@ -55,21 +52,8 @@ function resetState(placements, extra={}){
     state.sdeVnRecoveryObligations = {};
     state.planSkifteRows = [];
     state.txpUnavailableSlots = [];
-    dropsRuntimeCapabilities = {
-      ok:true,
-      roleResolved:true,
-      roles:["sde_skiftere"],
-      capabilities:{
-        "sde_shift.manual_intent":{allowed:true,decision:"ALLOW"},
-        "sde_shift.complete":{allowed:true,decision:"ALLOW"},
-        "sde_shift.cancel":{allowed:true,decision:"ALLOW"}
-      }
-    };
     computeInndataCachedRows = null;
     computeInndataCacheDepth = 0;
-    sdeCanonicalUnifiedAllProducerPreviousPlan = null;
-    sdeCanonicalUnifiedAllProducerProduct = null;
-    window.sdeLastUnifiedAllProducerProduct = null;
   `,ctx);
   Object.assign(appState,extra);
 }

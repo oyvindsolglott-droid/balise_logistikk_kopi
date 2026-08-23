@@ -56,9 +56,6 @@ const CAPABILITY_IDS = Object.freeze({
   NIGHT_PLAN_READ: "night_plan.read",
   NIGHT_PLAN_SAVE: "night_plan.save",
   INPUT_SPORPLAN_DELETE: "input_sporplan.delete",
-  SDE_SHIFT_MANUAL_INTENT: "sde_shift.manual_intent",
-  SDE_SHIFT_COMPLETE: "sde_shift.complete",
-  SDE_SHIFT_CANCEL: "sde_shift.cancel",
   CLEAR_WORKSHOP_DISPOSITION_WITH_OPERATIONAL:
     "vehicle_status.clear_workshop_disposition_with_operational",
   ACKNOWLEDGE_DROPS_NOTIFICATION: "vehicle_status.acknowledge_drops_notification",
@@ -218,24 +215,6 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
     description: "Delete the shared Input Sporplan draft through the revision-guarded reset contract.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: [ROLE_KEYS.ADMIN_PILOT, ROLE_KEYS.TXP]
-  },
-  {
-    capability: CAPABILITY_IDS.SDE_SHIFT_MANUAL_INTENT,
-    description: "Create one server-authorized manual SDE shift intent without changing actual placement.",
-    status: CAPABILITY_STATUSES.ACTIVE,
-    allowedRoles: [ROLE_KEYS.SDE_SKIFTERE, ROLE_KEYS.TXP]
-  },
-  {
-    capability: CAPABILITY_IDS.SDE_SHIFT_COMPLETE,
-    description: "Authorize Utført for one fresh, canonical and actionable SDE shift step.",
-    status: CAPABILITY_STATUSES.ACTIVE,
-    allowedRoles: [ROLE_KEYS.SDE_SKIFTERE, ROLE_KEYS.TXP]
-  },
-  {
-    capability: CAPABILITY_IDS.SDE_SHIFT_CANCEL,
-    description: "Authorize Annullert for one canonical SDE shift step while retaining its parent intent.",
-    status: CAPABILITY_STATUSES.ACTIVE,
-    allowedRoles: [ROLE_KEYS.SDE_SKIFTERE, ROLE_KEYS.TXP]
   }
 ]);
 
@@ -437,7 +416,7 @@ function normalizeCatalogEntry(entry, diagnostics){
     ? entry.allowedRoles.map((role) => normalizeExactString(role, 100))
     : null;
 
-  if(!capability || !/^(?:vehicle_status|night_plan|input_sporplan|sde_shift)\./.test(capability)){
+  if(!capability || !/^(?:vehicle_status|night_plan|input_sporplan)\./.test(capability)){
     diagnostics.add("capability_catalog_invalid_id");
   }
   if(!description) diagnostics.add("capability_catalog_invalid_description");
@@ -456,7 +435,7 @@ function normalizeCatalogEntry(entry, diagnostics){
 
   if(
     !capability ||
-    !/^(?:vehicle_status|night_plan|input_sporplan|sde_shift)\./.test(capability) ||
+    !/^(?:vehicle_status|night_plan|input_sporplan)\./.test(capability) ||
     !description ||
     !Object.values(CAPABILITY_STATUSES).includes(status) ||
     !allowedRoles ||

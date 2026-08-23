@@ -132,20 +132,6 @@ async function main(){
     }
   });
 
-  await check("10d canonical SDE shift authority is SDE-skiftere/TXP only", () => {
-    for(const capability of [
-      CAPABILITY_IDS.SDE_SHIFT_MANUAL_INTENT,
-      CAPABILITY_IDS.SDE_SHIFT_COMPLETE,
-      CAPABILITY_IDS.SDE_SHIFT_CANCEL
-    ]){
-      for(const role of EXPECTED_ROLES){
-        const decision = decide(humanIdentity,role,capability);
-        if([ROLE_KEYS.SDE_SKIFTERE,ROLE_KEYS.TXP].includes(role)) assertAllowed(decision);
-        else assertDenied(decision,"role_not_allowed");
-      }
-    }
-  });
-
   await check("11 unverified identity is denied", () => {
     assertDenied(decide({ ...humanIdentity, identityVerified: false }, ROLE_KEYS.DROPS), "identity_unverified");
   });

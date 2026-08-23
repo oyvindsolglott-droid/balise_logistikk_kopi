@@ -7,10 +7,6 @@ const vm = require("node:vm");
 
 const sourcePath = process.argv[2] || "index.html";
 const source = fs.readFileSync(sourcePath, "utf8");
-if(source.includes('migrationMode:"CANONICAL_ONLY"')){
-  require("./sde-phase-a-canonical-contract-helper.cjs").runScenario("workshop-direct",sourcePath);
-  process.exit(0);
-}
 
 function extractFunction(name){
   const marker = `function ${name}(`;

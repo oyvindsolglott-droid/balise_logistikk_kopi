@@ -24,9 +24,6 @@ fs.copyFileSync(
   path.join(root,"assets","registrer-plan-i-sde-button.png"),
   path.join(temporary,"assets","registrer-plan-i-sde-button.png")
 );
-for (const asset of ["sde_canonical_shift_engine.js", "sde_canonical_shift_adapter.js"]) {
-  fs.copyFileSync(path.join(root, asset), path.join(temporary, asset));
-}
 
 function replaceOnce(source, before, after, label) {
   const index = source.indexOf(before);
@@ -220,9 +217,9 @@ const mutations = [
     expectedInvariant:"INV-LIFECYCLE-030",
     apply:source=>mutateFunction(
       source,
-      "buildSdeCanonicalProductReader",
-      "const handlers = Object.fromEntries(cardRows.map(card=>{",
-      'const handlers = Object.fromEntries(cardRows.filter(card=>card.status === "actionable").map(card=>{ // focused mutation: deferred adapters omitted',
+      "buildSdeCanonicalProductionReader",
+      "const initialAdapterCards = getSdeCanonicalProductionProjectedCards(reader).filter(needsHandlerAdapter);",
+      'const initialAdapterCards = getSdeCanonicalProductionProjectedCards(reader).filter(card=>card.status === "actionable").filter(needsHandlerAdapter); // focused mutation',
       "deferred adapters omitted",
     ),
   },
@@ -230,13 +227,22 @@ const mutations = [
     id:"DEFERRED_STEP_MISSING_PROJECTION",
     kind:"emptyDrop",
     expectedInvariant:"INV-EMPTY-DROP-006",
-    apply:source=>mutateFunction(
-      source,
-      "buildSdeCanonicalProductReader",
-      "const deferredOverlays = overlays.filter(item=>!readyStepIds.has(item.stepId));",
-      "const deferredOverlays = []; // focused mutation: deferred product step missing projection",
-      "deferred product overlay omitted",
-    ),
+    apply:source=>{
+      const omitted = mutateFunction(
+        source,
+        "buildSdeCanonicalGraphicProjection",
+        'const deferredCandidates = (cards.blockedChainCards || []).map(card=>buildOverlay(card,"deferred")).filter(Boolean);',
+        'const deferredCandidates = []; // focused mutation: deferred step missing projection',
+        "deferred overlay omitted",
+      );
+      return mutateFunction(
+        omitted,
+        "applySdePassiveBlockedSlotAtomicProjectionGate",
+        'if(overlays.length !== outcomes.length) missingPlanParts.push("overlays");',
+        'if(false && overlays.length !== outcomes.length) missingPlanParts.push("overlays"); // focused mutation: bypass projection gate',
+        "deferred overlay gate bypassed",
+      );
+    },
   },
   {
     id:"WORKSHOP_EXIT_BYPASSES_RELIEF_PLANNER",
@@ -533,8 +539,8 @@ const mutations = [
     apply: source => mutateFunction(
       source,
       "applySdeNightPlacementDragOverride",
-      "const runtime = buildSdeCanonicalUnifiedAllProducerProduct(sdeShiftLastRenderedData?.needs || []);",
-      "const runtime = null; throw new Error('focused mutation: planner bypassed');",
+      "const order = stageSdeCanonicalGraphicDragOrder(override);",
+      "const order = null; throw new Error('focused mutation: planner bypassed');",
       "drop intent planner bypass",
     ),
   },
@@ -851,25 +857,6 @@ const mutations = [
     ),
   },
 ];
-
-const mutationPreflightFailures = [];
-for (const mutation of mutations) {
-  const source = mutation.kind === "balise" ? generatorSource : indexSource;
-  try {
-    const mutated = mutation.apply(source);
-    if (mutated === source) mutationPreflightFailures.push(`${mutation.id}: mutation changed no source`);
-  } catch (error) {
-    mutationPreflightFailures.push(`${mutation.id}: ${error?.message || error}`);
-  }
-}
-if (mutationPreflightFailures.length) {
-  throw new Error(`focused mutation preflight failed:\n${mutationPreflightFailures.join("\n")}`);
-}
-if (process.env.SDE_MUTATION_PREFLIGHT_ONLY === "1") {
-  fs.rmSync(temporary, {recursive:true, force:true});
-  process.stdout.write(`${JSON.stringify({schemaVersion:"sde-final-focused-mutation-preflight-v1",counts:{total:mutations.length,pass:mutations.length,fail:0}})}\n`);
-  process.exit(0);
-}
 
 const reports = [];
 try {

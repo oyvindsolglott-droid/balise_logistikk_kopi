@@ -9,9 +9,6 @@ const root = path.resolve(__dirname, "../../..");
 const source = fs.readFileSync(path.join(root, "index.html"), "utf8");
 const harness = path.join(root, "tests/sde/harnesses/sde-false-already-at-target-12n-11n-harness.js");
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), "sde-actual-drag-source-mutations-"));
-for (const asset of ["sde_canonical_shift_engine.js", "sde_canonical_shift_adapter.js"]) {
-  fs.copyFileSync(path.join(root, asset), path.join(temporary, asset));
-}
 
 function replaceOnce(input, before, after, label) {
   const index = input.indexOf(before);

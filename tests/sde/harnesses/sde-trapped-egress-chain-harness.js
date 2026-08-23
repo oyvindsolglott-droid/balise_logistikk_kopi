@@ -271,44 +271,46 @@ eval(prefix + String.raw`
   try{
     resetState(f.F.placements);
     appState.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
-    vm.runInContext("sdeShiftLastRenderedData={moves:[],limitedPlanningMode:false}; sdeNightPlacementDropMessage=null; sdeNightPlacementBlockedMoveRequest=null; renderSdeSkiftebevegelser=()=>{};",ctx);
-    const payload={
+    const assessment=ctx.buildSdeNightPlacementDropAssessment({
       vehicle:f.F.main.vehicle,
       slot:f.F.main.sourceSlot,
       fromSlot:f.F.main.sourceSlot,
-      renderedSourceSlot:f.F.main.sourceSlot,
-      actualRevision:ctx.getSdeNightPlacementActualStateRevision(),
-      intentId:"invariant-recursive-"+f.F.main.requestId,
-      sourceKind:"standing"
+      sourceKind:"actual"
+    },f.F.main.requestedTarget,{moves:[]});
+    const override={
+      id:"invariant-recursive-"+f.F.main.requestId,
+      vehicle:f.F.main.vehicle,
+      fromSlot:f.F.main.sourceSlot,
+      originalFromSlot:f.F.main.sourceSlot,
+      currentFromSlot:f.F.main.sourceSlot,
+      toSlot:f.F.main.requestedTarget,
+      createdAt:"2026-07-15T12:00:00.000Z",
+      updatedAt:"2026-07-15T12:00:00.000Z",
+      hardPhysicalBlocked:Boolean(assessment?.hardPhysicalBlocked),
+      canonicalProducer:"graphic_drag_generated_move",
+      canonicalPurpose:"vehicle-relocation",
+      sdeCanonicalGraphicDragOrder:true,
+      dragRequestId:"invariant-recursive-"+f.F.main.requestId,
+      sdeNightPlacementDragIdentity:"invariant-recursive-"+f.F.main.requestId,
+      manualPlanId:"manual-graphic-order|invariant-recursive-"+f.F.main.requestId
     };
-    const assessment=ctx.buildSdeNightPlacementDropAssessment(payload,f.F.main.requestedTarget,{moves:[]});
-    const accepted=ctx.applySdeNightPlacementDragOverride(payload,f.F.main.requestedTarget);
-    const reader=ctx.buildSdeCanonicalProductionReader();
-    const outcomes=reader?.canonicalPlan?.candidateOutcomes||[];
-    const cards=allCards(reader);
-    const reservations=reader?.reservationProjection?.reservations||[];
-    const claims=reader?.reservationProjection?.plannedResourceClaims||[];
-    const overlays=allOverlays(reader);
-    const adapters=Object.values(reader?.handlerAdapters||{});
+    appState.sdeNightPlacementManualOverrides={[override.id]:override};
+    const staged=ctx.stageSdeCanonicalGraphicDragOrder(override);
+    const inspected=staged?.chain;
     recursiveGraphicPath=Boolean(
       assessment?.ok===true
       && assessment?.hardPhysicalBlocked===true
-      && accepted===true
-      && reader?.migrationMode==="CANONICAL_ONLY"
-      && reader?.integrityReport?.status==="PASS"
-      && outcomes.length===5
-      && cards.length===5
-      && reservations.length+claims.length===5
-      && overlays.length===5
-      && adapters.length===5
-      && cards.filter(card=>card.status==="actionable").length===1
-      && cards.filter(card=>card.status==="blocked_chain_step").length===4
-      && outcomes.filter(outcome=>outcome?.raw?.sdePhysicalDependencyRole==="prerequisite").length===2
-      && outcomes.filter(outcome=>outcome?.raw?.sdePhysicalDependencyRole==="dependent").length===1
-      && outcomes.filter(outcome=>outcome?.raw?.sdePhysicalDependencyRole==="return").length===2
-      && outcomes.find(outcome=>outcome?.raw?.sdePhysicalDependencyRole==="dependent")?.targetSlot===f.F.main.requestedTarget
+      && staged?.adapter?.ready===true
+      && inspected?.ok===true
+      && inspected?.reliefKind==="trapped_egress"
+      && inspected?.outcomes?.all?.length===5
+      && inspected?.cards?.all?.length===5
+      && inspected?.reservations?.length===5
+      && inspected?.overlays?.active?.length===1
+      && inspected?.overlays?.deferred?.length===4
+      && inspected?.adapters?.all?.length===5
     );
-    reports.M={name:"recursive graphical staging",hardPhysicalBlocked:assessment?.hardPhysicalBlocked===true,accepted,integrity:reader?.integrityReport?.status||"",steps:outcomes.length,cards:cards.length,reservations:reservations.length,plannedClaims:claims.length,overlays:overlays.length,adapters:adapters.length};
+    reports.M={name:"recursive graphical staging",hardPhysicalBlocked:assessment?.hardPhysicalBlocked===true,reason:inspected?.reason||"",steps:inspected?.outcomes?.all?.length||0};
   }catch(error){ reports.M={name:"recursive graphical staging",error:String(error?.stack||error)}; }
   put("INV-EGRESS-013",recursiveGraphicPath,"recursive graphical drag enters the physical-chain branch and materializes the complete five-step canonical projection");
 
@@ -389,70 +391,70 @@ eval(prefix + String.raw`
     resetState(f.B.placements);
     appState.sdeCanonicalRetargetIntents={};
     appState.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
-    vm.runInContext("sdeShiftLastRenderedData={moves:[],limitedPlanningMode:false}; sdeNightPlacementDropMessage=null; sdeNightPlacementBlockedMoveRequest=null; renderSdeSkiftebevegelser=()=>{};",ctx);
-    const payload={
+    const assessment=ctx.buildSdeNightPlacementDropAssessment({
       vehicle:f.B.main.vehicle,
       slot:f.B.main.sourceSlot,
       fromSlot:f.B.main.sourceSlot,
-      renderedSourceSlot:f.B.main.sourceSlot,
-      actualRevision:ctx.getSdeNightPlacementActualStateRevision(),
-      intentId:"invariant-stale-release-"+f.B.main.requestId,
-      sourceKind:"standing"
+      sourceKind:"actual"
+    },f.B.main.requestedTarget,{moves:[]});
+    const override={
+      id:"invariant-stale-release-"+f.B.main.requestId,
+      vehicle:f.B.main.vehicle,
+      fromSlot:f.B.main.sourceSlot,
+      originalFromSlot:f.B.main.sourceSlot,
+      currentFromSlot:f.B.main.sourceSlot,
+      toSlot:f.B.main.requestedTarget,
+      createdAt:"2026-07-16T20:11:00.000Z",
+      updatedAt:"2026-07-16T20:11:00.000Z",
+      hardPhysicalBlocked:Boolean(assessment?.hardPhysicalBlocked),
+      canonicalProducer:"graphic_drag_generated_move",
+      canonicalPurpose:"vehicle-relocation",
+      sdeCanonicalGraphicDragOrder:true,
+      dragRequestId:"invariant-stale-release-"+f.B.main.requestId,
+      sdeNightPlacementDragIdentity:"invariant-stale-release-"+f.B.main.requestId,
+      manualPlanId:"manual-graphic-order|invariant-stale-release-"+f.B.main.requestId
     };
-    const assessment=ctx.buildSdeNightPlacementDropAssessment(payload,f.B.main.requestedTarget,{moves:[]});
-    const accepted=ctx.applySdeNightPlacementDragOverride(payload,f.B.main.requestedTarget);
-    const initialReader=ctx.buildSdeCanonicalProductionReader();
-    const staleRelease=allCards(initialReader).find(card=>card.role==="RELEASE")||null;
-    const staleAdapter=staleRelease?initialReader?.handlerAdapters?.[staleRelease.canonicalCardId]:null;
-    const staleReleaseKey=String(staleAdapter?.actionKey||"");
-    if(staleReleaseKey&&staleAdapter?.executionDescriptor){
+    appState.sdeNightPlacementManualOverrides={[override.id]:override};
+    const generated=ctx.buildSdeNightPlacementGeneratedMove(override);
+    const initialRows=ctx.buildSdePhysicalBlockerGuardMoves([generated]);
+    const staleRelease=initialRows.find(row=>row.sdePhysicalDependencyRole==="prerequisite");
+    const staleReleaseKey=staleRelease ? ctx.getSdeMoveActionKey(staleRelease) : "";
+    if(staleReleaseKey){
       appState.sdeMoveActions[staleReleaseKey]={
-        canonicalProduct:true,
         action:"cancelled",
-        time:"2026-07-16T20:11:00.000Z",
-        planRevision:staleAdapter.executionDescriptor.planRevision,
-        actualStateRevision:staleAdapter.executionDescriptor.actualStateRevision,
-        stepId:staleAdapter.executionDescriptor.stepId,
-        intentId:staleAdapter.executionDescriptor.intentId,
-        obligationId:staleAdapter.executionDescriptor.obligationId,
-        role:"RELEASE",
-        vehicle:staleRelease.vehicleId,
-        fromSlot:staleRelease.sourceSlot,
-        toSlot:staleRelease.targetSlot,
-        executionKey:staleAdapter.executionDescriptor.executionKey,
-        reason:"test-bound canonical cancellation event"
+        cancelledAt:"2026-07-16T20:11:00.000Z",
+        vehicle:staleRelease.vehicle,
+        fromSlot:staleRelease.fromSlot,
+        toSlot:staleRelease.toSlot,
+        snapshot:JSON.parse(JSON.stringify(staleRelease))
       };
     }
-    const replannedRuntime=ctx.buildSdeCanonicalUnifiedAllProducerProduct([]);
-    const replannedReader=ctx.buildSdeCanonicalProductionReader(replannedRuntime);
-    const replacementRelease=allCards(replannedReader).find(card=>card.role==="RELEASE")||null;
-    const replacementAdapter=replacementRelease?replannedReader?.handlerAdapters?.[replacementRelease.canonicalCardId]:null;
-    const replacementOutcomes=replannedReader?.canonicalPlan?.candidateOutcomes||[];
-    const replacementMain=replacementOutcomes.find(outcome=>outcome?.raw?.sdePhysicalDependencyRole==="dependent")||null;
+    const staged=ctx.stageSdeCanonicalGraphicDragOrder(override);
+    const chain=staged?.chain;
+    const replacementRelease=chain?.outcomes?.releases?.[0] || null;
     staleReleaseIdentityReplanned=Boolean(
       assessment?.ok===true
       && assessment?.hardPhysicalBlocked===true
-      && accepted===true
       && staleReleaseKey
+      && chain?.ok===true
+      && chain?.reliefKind==="trapped_egress"
+      && chain?.outcomes?.all?.length===3
       && replacementRelease
-      && replacementAdapter?.actionKey!==staleReleaseKey
-      && ctx.normalizeSlot(replacementRelease.targetSlot)!==ctx.normalizeSlot(staleRelease?.targetSlot)
-      && ctx.normalizeSlot(replacementMain?.targetSlot)===ctx.normalizeSlot(f.B.main.requestedTarget)
-      && replannedRuntime?.batchResult?.status==="REPLANNED"
-      && replannedReader?.canonicalPlan?.candidateOutcomes?.length===3
-      && replannedReader?.integrityReport?.status==="PASS"
-      && allCards(replannedReader).length===3
+      && replacementRelease.actionKey!==staleReleaseKey
+      && ctx.normalizeSlot(replacementRelease.targetSlot)!==ctx.normalizeSlot(staleRelease?.toSlot)
+      && ctx.normalizeSlot(chain?.outcomes?.main?.targetSlot)===ctx.normalizeSlot(f.B.main.requestedTarget)
+      && staged?.reader?.integrityReport?.status==="PASS"
+      && staged?.adapter?.ready===true
     );
     reports.P={
       name:"stale cancelled release identity is replanned",
       staleReleaseKey,
-      staleTarget:staleRelease?.targetSlot||"",
-      replacementReleaseKey:replacementAdapter?.actionKey||"",
+      staleTarget:staleRelease?.toSlot||"",
+      replacementReleaseKey:replacementRelease?.actionKey||"",
       replacementTarget:replacementRelease?.targetSlot||"",
-      requestedTarget:replacementMain?.targetSlot||"",
-      steps:replacementOutcomes.length,
-      status:replannedRuntime?.batchResult?.status||"",
-      integrity:replannedReader?.integrityReport?.status||""
+      requestedTarget:chain?.outcomes?.main?.targetSlot||"",
+      steps:chain?.outcomes?.all?.length||0,
+      reason:chain?.reason||""
     };
   }catch(error){ reports.P={name:"stale cancelled release identity is replanned",error:String(error?.stack||error)}; }
   put("INV-EGRESS-022",staleReleaseIdentityReplanned,"74-10 5M→6S rejects a stale cancelled 74-12 release identity and materializes one complete replacement chain");
