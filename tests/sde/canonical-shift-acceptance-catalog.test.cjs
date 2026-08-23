@@ -15,9 +15,10 @@ test('the permanent Phase A acceptance catalog contains exactly scenarios 1 thro
   assert.equal(new Set(catalog.scenarios.map(item => item.id)).size, 87);
 });
 
-test('only the named 70-11 evidence-dependent scenarios declare the exact historical fixture gate', () => {
-  const gated = catalog.scenarios.filter(item => item.requiresExactHistoricalFixture).map(item => item.number);
+test('only the named 70-11 evidence-dependent scenarios declare the split fixture evidence model', () => {
+  const gated = catalog.scenarios.filter(item => item.fixtureEvidenceModel === 'PARTIAL_HISTORICAL_CORE_WITH_EXPLICIT_SYNTHETIC_SCENARIO_COMPLETION').map(item => item.number);
   assert.deepEqual(gated, [33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43]);
+  assert.deepEqual(catalog.scenarios.filter(item => item.requiresExactHistoricalFixture).map(item => item.number), []);
 });
 
 test('every acceptance scenario has exactly one explicit coverage state and evidence anchor', () => {
@@ -34,7 +35,7 @@ test('every acceptance scenario has exactly one explicit coverage state and evid
   }
 });
 
-test('the exact historical fixture is automated while runtime rollback evidence remains an explicit gate', () => {
+test('the split historical and synthetic fixture is automated while runtime rollback evidence remains an explicit gate', () => {
   assert.deepEqual(coverage.entries.filter(item => item.status === 'HOLD_EXACT_FIXTURE_REQUIRED'), []);
   assert.ok(coverage.entries.filter(item => item.number >= 33 && item.number <= 43).every(item =>
     item.status === 'AUTOMATED' && item.file === 'tests/sde/canonical-shift-70-11-regression.test.cjs'
@@ -45,7 +46,7 @@ test('the exact historical fixture is automated while runtime rollback evidence 
   );
 });
 
-test('named regression identities in catalog, exact fixture and harness remain isolated test-only evidence', () => {
+test('named regression identities in catalog, split fixture and harness remain isolated test-only evidence', () => {
   const fixtureFiles = new Set([
     'config/sde-shift-acceptance-scenarios-v1.json',
     'config/sde-regression-70-11-10s-to-8s-silent-candidate-drop-20260821-v1.json',

@@ -1,7 +1,15 @@
 {
   "schemaVersion": "sde-canonical-shift-regression-fixture-v1",
   "contractId": "SDE-REGRESSION-70-11-10S-TO-8S-SILENT-CANDIDATE-DROP-20260821-V1",
-  "fixtureAuthority": "EXACT_HISTORICAL_PRODUCTION_STATE_RECONSTRUCTED_FROM_SERVER_WAL_AND_SCREENSHOT_READBACK",
+  "fixtureAuthority": "PARTIAL_HISTORICAL_CORE_WITH_EXPLICIT_SYNTHETIC_SCENARIO_COMPLETION",
+  "evidenceModel": {
+    "historicalCoreAuthority": "HISTORICAL_CORE_DIRECT_EVIDENCE",
+    "scenarioCompletionAuthority": "EXPLICIT_SYNTHETIC_SCENARIO_COMPLETION",
+    "exactHistoricalFullStateClaim": false,
+    "directReadOnlyCopyUsed": false,
+    "directReadOnlyInspectionUsed": true,
+    "historicalActualStateRevisionAvailable": false
+  },
   "operationalDate": "2026-08-21",
   "timezone": "Europe/Oslo",
   "incidentWindow": {
@@ -17,18 +25,49 @@
     "reason": "Grafisk drag",
     "intentId": "regression-70-11-10s-to-8s-20260821"
   },
-  "sourceReadback": {
-    "storageKey": "shared_sporplan_draft",
-    "previousRevision": 371,
-    "revision": 372,
-    "updatedAt": "2026-08-21T09:23:16.865Z",
-    "unchangedThrough": "2026-08-21T13:52:21.188Z",
-    "nextWriteAt": "2026-08-21T13:52:21.189Z",
-    "auditAction": "sde-completed-move-shared-parked-location",
-    "auditPhase": "SDE-SYNC-R",
-    "readbackOnly": true,
-    "draft": {
-      "grunnoppstilling": {
+  "historicalCoreDirectEvidence": {
+    "authority": "HISTORICAL_CORE_DIRECT_EVIDENCE",
+    "sourceReadback": {
+      "storageKey": "shared_sporplan_draft",
+      "previousRevision": 371,
+      "revision": 372,
+      "updatedAt": "2026-08-21T09:23:16.865Z",
+      "nextRevision": 373,
+      "nextWriteAt": "2026-08-21T13:52:21.189Z",
+      "auditAction": "sde-completed-move-shared-parked-location",
+      "auditPhase": "SDE-SYNC-R",
+      "readbackOnly": true,
+      "draft": {
+        "grunnoppstilling": {
+          "10S": "70-11",
+          "4S": "74-21",
+          "5S": "74-43",
+          "7S": "74-22",
+          "8N": "74-44",
+          "8SS": "74-52"
+        },
+        "grunnoppstillingRep": {}
+      }
+    },
+    "notDirectlyProven": [
+      "unavailableSlots",
+      "unavailableTracks",
+      "infrastructureState",
+      "routeReservations",
+      "plannedResourceClaims",
+      "routeResourceState",
+      "actualStateFresh",
+      "historicalActualStateRevision"
+    ]
+  },
+  "syntheticScenarioCompletion": {
+    "authority": "EXPLICIT_SYNTHETIC_SCENARIO_COMPLETION",
+    "fixtureStateHash": "h7a15d93e",
+    "engineState": {
+      "actualStateRevision": "synthetic:h7a15d93e",
+      "actualStateFresh": true,
+      "sharedDraftAppliedRevision": 372,
+      "occupancy": {
         "10S": "70-11",
         "4S": "74-21",
         "5S": "74-43",
@@ -36,36 +75,22 @@
         "8N": "74-44",
         "8SS": "74-52"
       },
-      "grunnoppstillingRep": {}
-    }
-  },
-  "actualState": {
-    "actualStateRevision": "h7a15d93e",
-    "actualStateFresh": true,
-    "sharedDraftAppliedRevision": 372,
-    "occupancy": {
-      "10S": "70-11",
-      "4S": "74-21",
-      "5S": "74-43",
-      "7S": "74-22",
-      "8N": "74-44",
-      "8SS": "74-52"
-    },
-    "unavailableSlots": [],
-    "unavailableTracks": [],
-    "infrastructureState": {
-      "slots": [],
-      "tracks": [],
-      "washRouteUnavailable": false
-    },
-    "routeReservations": [],
-    "plannedResourceClaims": [],
-    "activeMoveOutcomes": {},
-    "overlays": [],
-    "routeResourceState": {
-      "VN": "EMPTY_AVAILABLE_AS_CONTEXTUAL_TEMPORARY_RELIEF",
-      "VS": "EMPTY_AVAILABLE_AS_ROUTE_RESOURCE",
-      "activeClaimCount": 0
+      "unavailableSlots": [],
+      "unavailableTracks": [],
+      "infrastructureState": {
+        "slots": [],
+        "tracks": [],
+        "washRouteUnavailable": false
+      },
+      "routeReservations": [],
+      "plannedResourceClaims": [],
+      "activeMoveOutcomes": {},
+      "overlays": [],
+      "routeResourceState": {
+        "VN": "SYNTHETIC_EMPTY_CONTEXTUAL_RELIEF",
+        "VS": "SYNTHETIC_EMPTY_ROUTE_RESOURCE",
+        "activeClaimCount": 0
+      }
     },
     "targetEligibility": {
       "slot": "8S",
@@ -80,10 +105,18 @@
       "placedCount": 6,
       "emptyCount": 23,
       "separateRouteResourceSlots": ["VN", "VS"]
-    }
+    },
+    "syntheticAssumptions": [
+      "empty-unavailable-infrastructure",
+      "empty-route-reservations",
+      "empty-planned-resource-claims",
+      "empty-vn-vs-resource-state",
+      "actual-state-fresh"
+    ]
   },
-  "historicalActualRevisionProof": {
+  "syntheticFixtureStateHash": {
     "algorithm": "SDE_JAVA_STYLE_HASH31_OVER_STABLE_RECURSIVE_JSON_V1",
+    "meaning": "CONSTRUCTED_TEST_STATE_HASH_NOT_HISTORICAL_SERVER_REVISION",
     "stablePayload": {
       "placements": [
         {"slot": "10S", "vehicleId": "70-11", "vehicleTokens": ["70-11"]},
@@ -163,9 +196,53 @@
       "recordUpdatedAt": "2026-08-21T09:23:16.865Z",
       "nextRecordRevision": 373,
       "nextRecordUpdatedAt": "2026-08-21T13:52:21.189Z",
-      "method": "READ_ONLY_LOCAL_WAL_COPY_FORENSIC_EXTRACTION"
+      "method": "DIRECT_READ_ONLY_INSPECTION_OF_ACTIVE_LOCAL_WAL",
+      "copyCreated": false,
+      "provesOnly": ["revision", "updatedAt", "draftOccupancy", "nextRevision", "nextWriteAt"]
     }
   },
+  "sensitivityMatrix": [
+    {
+      "id": "synthetic-baseline-safe-plan",
+      "variedSyntheticFields": ["none"],
+      "statePatch": {},
+      "expected": {"terminal": "PLAN", "status": "PLANNED", "diagnosticCode": "", "visibleCardCount": 1}
+    },
+    {
+      "id": "target-slot-unavailable",
+      "variedSyntheticFields": ["unavailableSlots"],
+      "statePatch": {"unavailableSlots": ["8S"]},
+      "expected": {"terminal": "DIAGNOSTIC", "status": "BLOCKED_UNRESOLVED", "diagnosticCode": "MANUAL_INTENT_CONFLICTS_WITH_HARD_CONSTRAINT", "visibleCardCount": 0}
+    },
+    {
+      "id": "target-route-reserved",
+      "variedSyntheticFields": ["routeReservations"],
+      "statePatch": {
+        "routeReservations": [
+          {"resource": "route|10S|north|8S|workshop", "timeWindow": {"start": -1, "end": 6}}
+        ]
+      },
+      "expected": {"terminal": "DIAGNOSTIC", "status": "BLOCKED_UNRESOLVED", "diagnosticCode": "NO_SAFE_PLAN", "visibleCardCount": 0}
+    },
+    {
+      "id": "vn-occupied-context-resource",
+      "variedSyntheticFields": ["VN-state"],
+      "statePatch": {"occupancyAdd": {"VN": "UNIT-VN-CONTEXT"}},
+      "expected": {"terminal": "PLAN", "status": "PLANNED", "diagnosticCode": "", "visibleCardCount": 1}
+    },
+    {
+      "id": "vs-occupied-route-resource",
+      "variedSyntheticFields": ["VS-state"],
+      "statePatch": {"occupancyAdd": {"VS": "UNIT-VS-CONTEXT"}},
+      "expected": {"terminal": "PLAN", "status": "PLANNED", "diagnosticCode": "", "visibleCardCount": 1}
+    },
+    {
+      "id": "actual-state-stale",
+      "variedSyntheticFields": ["actualStateFresh"],
+      "statePatch": {"actualStateFresh": false},
+      "expected": {"terminal": "DIAGNOSTIC", "status": "REPLAN_REQUIRED", "diagnosticCode": "STALE_ACTUAL_STATE", "visibleCardCount": 0}
+    }
+  ],
   "expectedCanonicalOutcome": {
     "status": "PLANNED",
     "candidateCount": 31,
