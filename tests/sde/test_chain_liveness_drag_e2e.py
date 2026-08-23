@@ -64,6 +64,7 @@ class SdeChainLivenessDragBrowserTests(unittest.TestCase):
                             cards:cards.map(card=>card.status),
                             outcomes:reader.canonicalPlan.candidateOutcomes.length,
                             reservations:reader.reservationProjection.reservations.length,
+                            plannedResourceClaims:reader.reservationProjection.plannedResourceClaims.length,
                             overlays:reader.graphicProjection.activeOverlays.length+reader.graphicProjection.deferredOverlays.length,
                             adapters:Object.keys(reader.handlerAdapters||{}).length,
                             integrity:reader.integrityReport.status,
@@ -83,8 +84,8 @@ class SdeChainLivenessDragBrowserTests(unittest.TestCase):
                     self.assertEqual(result["roles"], ["prerequisite", "dependent", "return"], result)
                     self.assertEqual(result["cards"], ["actionable", "blocked_chain_step", "blocked_chain_step"], result)
                     self.assertEqual(
-                        [result["outcomes"], result["reservations"], result["overlays"], result["adapters"]],
-                        [3, 3, 3, 3],
+                        [result["outcomes"], result["reservations"], result["plannedResourceClaims"], result["overlays"], result["adapters"]],
+                        [3, 1, 2, 3, 3],
                         result,
                     )
                     self.assertEqual(result["integrity"], "PASS", result)
