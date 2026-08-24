@@ -121,6 +121,7 @@ const ACTIONS_TABLE_TESTS_ENABLED = process.env.SDE_ENABLE_ACTIONS_TABLE_TEST_WR
 const SERVER_NOTE_ACTIONS_ENABLED = process.env.SDE_ENABLE_SERVER_NOTE_ACTIONS === "1";
 const SDE_RECOMMENDATION_ACK_ACTIONS_ENABLED = process.env.SDE_ENABLE_SDE_RECOMMENDATION_ACK_ACTIONS === "1";
 const SHARED_SPORPLAN_DRAFT_WRITES_ENABLED = process.env.SDE_ENABLE_SHARED_SPORPLAN_DRAFT_WRITES === "1";
+const CANONICAL_SHIFT_PRODUCTION_ENABLED = process.env.SDE_CANONICAL_SHIFT_PRODUCTION_ENABLED === "1";
 const SERVER_NOTE_STATUS = getServerNoteStatus(process.env);
 const SDE_RECOMMENDATION_ACK_STATUS = getSdeRecommendationAckStatus(process.env);
 const STARTED_AT = new Date();
@@ -175,6 +176,17 @@ const OPERATIONAL_DATA_CONTRACT = Object.freeze({
   operationalWritesAllowed: false,
   dataSourceForOperations: "local_frontend_data",
   statusAndDiagnosticsOnly: true
+});
+const CANONICAL_SHIFT_RUNTIME_CONFIG = Object.freeze({
+  schemaVersion: "sde-canonical-shift-runtime-gate-v1",
+  activationSource: "SERVER_ENVIRONMENT",
+  canonicalShiftProductionEnabled: CANONICAL_SHIFT_PRODUCTION_ENABLED,
+  canonicalOperationalAuthority: CANONICAL_SHIFT_PRODUCTION_ENABLED,
+  migrationMode: CANONICAL_SHIFT_PRODUCTION_ENABLED ? "CANONICAL_ONLY" : "SHADOW_READ_ONLY",
+  operationalWriteOwner: CANONICAL_SHIFT_PRODUCTION_ENABLED
+    ? "SDE_CANONICAL_SHIFT_ENGINE"
+    : "LEGACY_SHIFT_ENGINE",
+  legacyOperationalWritesEnabled: !CANONICAL_SHIFT_PRODUCTION_ENABLED
 });
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const tursattLiveArrivalService = createTursattLiveArrivalService({repositoryRoot: REPO_ROOT});
@@ -451,6 +463,7 @@ app.get("/api/server/status", (_req, res) => {
     vehicleStatusAllowedVehicleCount: vehicleStatusLifecycleAllowedVehicleIds.size,
     vehicleStatusRegisteredScopeReady,
     vehicleStatusPersistenceReady: Boolean(vehicleStatusRepository),
+    canonicalShiftRuntime: CANONICAL_SHIFT_RUNTIME_CONFIG,
     ...schemaStatus,
     clientReadContract: CLIENT_READ_CONTRACT,
     operationalDataContract: OPERATIONAL_DATA_CONTRACT,
@@ -1354,7 +1367,7 @@ app.get("/api/stream", (req, res) => {
 });
 
 app.get(["/", "/app"], (_req, res) => {
-  sendStaticFile(res, FRONTEND_INDEX_FILE, "text/html; charset=utf-8");
+  sendFrontendIndex(res);
 });
 
 app.get("/data/:filename", (req, res) => {
@@ -1544,6 +1557,26 @@ function sendStaticFile(res, filePath, contentType){
     res.set("Cache-Control", "no-store");
     res.type(contentType);
     return res.send(data);
+  });
+}
+
+function sendFrontendIndex(res){
+  fs.readFile(FRONTEND_INDEX_FILE, "utf8", (error, html) => {
+    if(error){
+      return res.status(404).json({
+        ok: false,
+        error: "not_found"
+      });
+    }
+
+    const serializedConfig = JSON.stringify(CANONICAL_SHIFT_RUNTIME_CONFIG).replace(/</g, "\\u003c");
+    const runtimeConfigScript = `<script id="sde-server-runtime-config">Object.defineProperty(window,"__SDE_SERVER_RUNTIME_CONFIG__",{value:Object.freeze(${serializedConfig}),writable:false,configurable:false,enumerable:false});</script>`;
+    const responseHtml = html.includes("</head>")
+      ? html.replace("</head>", `${runtimeConfigScript}\n</head>`)
+      : html;
+    res.set("Cache-Control", "no-store");
+    res.type("text/html; charset=utf-8");
+    return res.send(responseHtml);
   });
 }
 

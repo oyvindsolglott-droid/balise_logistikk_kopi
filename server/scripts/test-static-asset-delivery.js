@@ -95,6 +95,21 @@ async function main(){
     await waitForHealth(port);
     await new Promise(resolve => setTimeout(resolve, 150));
 
+    const defaultPage = await request(port, "GET", "/app");
+    assert.equal(defaultPage.status, 200, "default /app");
+    const defaultRuntime = readInjectedRuntimeConfig(defaultPage.body);
+    assert.deepEqual(defaultRuntime, {
+      schemaVersion: "sde-canonical-shift-runtime-gate-v1",
+      activationSource: "SERVER_ENVIRONMENT",
+      canonicalShiftProductionEnabled: false,
+      canonicalOperationalAuthority: false,
+      migrationMode: "SHADOW_READ_ONLY",
+      operationalWriteOwner: "LEGACY_SHIFT_ENGINE",
+      legacyOperationalWritesEnabled: true,
+    });
+    const defaultStatus = await requestJson(port, "/api/server/status");
+    assert.deepEqual(defaultStatus.canonicalShiftRuntime, defaultRuntime, "status must expose the safe default runtime gate");
+
     const before = await operationalSnapshot(port);
     const db = new DatabaseSync(DATABASE_PATH, {readOnly: true});
     const dataVersionBefore = Number(db.prepare("PRAGMA data_version").get().data_version);
@@ -149,6 +164,26 @@ async function main(){
     assert.equal(dataVersionAfter, dataVersionBefore, "asset GET/HEAD must not change SQLite data_version");
     assert.equal(databaseHashAfter, databaseHashBefore, "asset GET/HEAD must not change database bytes");
 
+    await stopServer();
+    const canonicalPort = await getFreePort();
+    serverProcess = startServer(canonicalPort, {canonicalShiftProductionEnabled: true});
+    await waitForHealth(canonicalPort);
+    const canonicalPage = await request(canonicalPort, "GET", "/");
+    assert.equal(canonicalPage.status, 200, "explicitly enabled /");
+    const canonicalRuntime = readInjectedRuntimeConfig(canonicalPage.body);
+    assert.deepEqual(canonicalRuntime, {
+      schemaVersion: "sde-canonical-shift-runtime-gate-v1",
+      activationSource: "SERVER_ENVIRONMENT",
+      canonicalShiftProductionEnabled: true,
+      canonicalOperationalAuthority: true,
+      migrationMode: "CANONICAL_ONLY",
+      operationalWriteOwner: "SDE_CANONICAL_SHIFT_ENGINE",
+      legacyOperationalWritesEnabled: false,
+    });
+    const canonicalStatus = await requestJson(canonicalPort, "/api/server/status");
+    assert.deepEqual(canonicalStatus.canonicalShiftRuntime, canonicalRuntime, "status must expose explicit canonical activation");
+    assert.equal(sha256(fs.readFileSync(DATABASE_PATH)), databaseHashBefore, "runtime gate reads must not change database bytes");
+
     process.stdout.write(JSON.stringify({
       status: "PASS",
       positiveAssets: ASSETS.length,
@@ -158,6 +193,8 @@ async function main(){
       negativeMethods: 4,
       businessWrite: false,
       databaseHash: databaseHashAfter,
+      defaultRuntime,
+      canonicalRuntime,
     }, null, 2) + "\n");
   }finally{
     await stopServer();
@@ -225,11 +262,15 @@ function getFreePort(){
   });
 }
 
-function startServer(port){
+function startServer(port, options = {}){
   const output = fs.openSync(LOG_PATH, "w");
   const env = {...process.env};
   for(const key of Object.keys(env)){
     if(key.startsWith("SDE_ENABLE_")) delete env[key];
+  }
+  delete env.SDE_CANONICAL_SHIFT_PRODUCTION_ENABLED;
+  if(options.canonicalShiftProductionEnabled === true){
+    env.SDE_CANONICAL_SHIFT_PRODUCTION_ENABLED = "1";
   }
   env.PORT = String(port);
   env.SDE_SERVER_DB_PATH = DATABASE_PATH;
@@ -240,6 +281,19 @@ function startServer(port){
   });
   fs.closeSync(output);
   return child;
+}
+
+function readInjectedRuntimeConfig(body){
+  const html = body.toString("utf8");
+  const match = html.match(/Object\.freeze\((\{"schemaVersion":"sde-canonical-shift-runtime-gate-v1"[^)]*\})\)/);
+  assert.ok(match, "server runtime config must be injected into HTML");
+  return JSON.parse(match[1]);
+}
+
+async function requestJson(port, requestPath){
+  const response = await request(port, "GET", requestPath);
+  assert.equal(response.status, 200, `GET ${requestPath}`);
+  return JSON.parse(response.body.toString("utf8"));
 }
 
 async function waitForHealth(port){

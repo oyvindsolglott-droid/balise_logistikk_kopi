@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "sde-shift-search-boundary-contract-v1",
+  "searchBoundaryVersion": "SDE-SHIFT-SEARCH-BOUNDARY-20260822-V1",
+  "maxSearchedStates": 250000,
+  "maxWallClockMs": 1800,
+  "maxConnectedVehicles": 16,
+  "maxConnectedSlots": 31,
+  "maxPlanStepsIfAHardLimitIsUsed": null,
+  "maxBranchingFactor": 31,
+  "exhaustiveOracleFixtureScope": {
+    "maxVehicles": 8,
+    "maxSlots": 12,
+    "maxIntents": 4,
+    "maxOptimalMoves": 8,
+    "claim": "Minimum move count is proven only inside this finite fixture boundary."
+  },
+  "performanceFixtureScope": {
+    "maxVehicles": 16,
+    "maxSlots": 31,
+    "maxIntents": 8,
+    "concurrentReplans": 1,
+    "samplesPerFixture": 40,
+    "warmupSamples": 5,
+    "p95BudgetMs": 2000
+  },
+  "hardwareProfile": {
+    "machine": "Apple M4",
+    "architecture": "arm64",
+    "physicalCpuCount": 10,
+    "memoryBytes": 17179869184
+  },
+  "runtimeProfile": {
+    "operatingSystem": "macOS",
+    "node": "v26.3.1",
+    "npm": "11.16.0",
+    "execution": "single process, single active replan"
+  },
+  "baseline": {
+    "canonicalSlotRegisterSize": 31,
+    "legacyHarnessMeasurementsSeconds": {
+      "buttTrackVnChain": 2.76,
+      "trappedEgressMatrix": 6.89,
+      "graphicDragOrder": 0.08
+    },
+    "note": "Legacy harness values include parsing and evaluating the monolithic index.html and are evidence for isolation of the new pure planner, not the new planner's acceptance result."
+  },
+  "termination": {
+    "distinctOutcome": "SEARCH_LIMIT_REACHED",
+    "mustNotAlias": "NO_SAFE_PLAN",
+    "limits": [
+      "maxSearchedStates",
+      "maxWallClockMs",
+      "maxConnectedVehicles",
+      "maxConnectedSlots",
+      "maxBranchingFactor"
+    ]
+  },
+  "lockedBeforeProductionCode": true
+}
