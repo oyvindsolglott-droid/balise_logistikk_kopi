@@ -326,6 +326,13 @@ test("GLOBAL instantmelding — immutable send-snapshot, versjonert draft-clear 
   );
 });
 
+test("GLOBAL direktemeldingsboks — én kollapsbar rolleautorisert flate, trygg autoåpning og lazy historikk", () => {
+  assertPassed(
+    runHarness("sde-global-operational-message-inbox-harness.js"),
+    "global operational-message inbox contract",
+  );
+});
+
 registerHarnessTest({
   phase:"SDE statusparitet",
   name:"Sporplan, Verksted og DROPS følger samme ferske statusmodell ved polling",
@@ -1140,7 +1147,7 @@ test("GRAPHIC MENU TYPOGRAPHY — DROPS retains its responsive label contract", 
 test("GRAPHIC MENU DIMENSIONS — six TXP controls stay ordered on one equal-height row", () => {
   const uniformDesktopRule = currentHtml.match(/@media \(min-width:701px\)\{([\s\S]*?)\n\}\n@media \(max-width:700px\)/)?.[1] || "";
   const mobileRule = currentHtml.match(/@media \(max-width:700px\)\{([\s\S]*?)\.view-tools\{/)?.[1] || "";
-  const menuMarkup = currentHtml.match(/<div class="segmented" aria-label="Hovedmeny">([\s\S]*?)<\/div>\n\n\n<section class="panel" id="grunnoppstilling">/)?.[1] || "";
+  const menuMarkup = currentHtml.match(/<div class="segmented" aria-label="Hovedmeny">([\s\S]*?)<\/div>\s*<section class="global-operational-message-box"/)?.[1] || "";
   const menuOrder = [...menuMarkup.matchAll(/data-tab="([^"]+)"/g)].map((match) => match[1]);
 
   assert.match(uniformDesktopRule, /\.segmented\{[\s\S]*?grid-template-columns:repeat\(10,minmax\(0,1fr\)\);/, "the menu must use ten equal grid units without a narrow final column");

@@ -32,6 +32,8 @@ const OPERATIONAL_MESSAGE_TABLE = "vehicle_status_operational_messages";
 const OPERATIONAL_MESSAGE_EVENT_TABLE = "vehicle_status_operational_message_events";
 const OPERATIONAL_MESSAGE_ACK_TABLE =
   "vehicle_status_operational_message_acknowledgements";
+const OPERATIONAL_MESSAGE_DISMISSAL_TABLE =
+  "vehicle_status_operational_message_auto_dismissals";
 const CLEANING_TRACK_REQUEST_TABLE = "vehicle_status_cleaning_track_space_requests";
 const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
 const CLEANING_TRACK_SLOTS = new Set(["5S", "5M", "10S", "10N"]);
@@ -76,6 +78,8 @@ function createVehicleStatusRepository(options = {}){
       [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: executeSendOperationalMessage,
       [LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE]:
         executeAcknowledgeOperationalMessage,
+      [LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION]:
+        executeDismissOperationalMessageAfterAutoPresentation,
       [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: executeMarkForTurning,
       [LIFECYCLE_COMMANDS.REPORT_OPERATIONAL]: executeReportOperational,
       [LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED]: executeNotificationPresented,
@@ -995,6 +999,103 @@ function createVehicleStatusRepository(options = {}){
     });
   }
 
+  function executeDismissOperationalMessageAfterAutoPresentation(command, authority){
+    const message = db.prepare(`
+      SELECT * FROM ${OPERATIONAL_MESSAGE_TABLE} WHERE message_id=?
+    `).get(command.messageId);
+    if(!message){
+      throw conflict("operational_message_not_found",
+        "The operational message was not found.", {}, 404);
+    }
+    if(
+      command.sourceRole !== message.target_role ||
+      authority.effectiveRole !== message.target_role ||
+      !(authority.roles || []).includes(message.target_role)
+    ){
+      throw conflict("message_target_role_mismatch",
+        "The message does not target the authenticated role.", {}, 403);
+    }
+    const presented = db.prepare(`
+      SELECT operational_message_event_id, server_timestamp
+      FROM ${OPERATIONAL_MESSAGE_EVENT_TABLE}
+      WHERE message_id=? AND event_type='OPERATIONAL_MESSAGE_PRESENTED'
+      ORDER BY server_timestamp, operational_message_event_id
+      LIMIT 1
+    `).get(message.message_id);
+    if(!presented){
+      throw conflict("message_auto_presentation_not_recorded",
+        "Auto-presentation must be recorded before dismissal.", {}, 409);
+    }
+    const existing = db.prepare(`
+      SELECT * FROM ${OPERATIONAL_MESSAGE_DISMISSAL_TABLE}
+      WHERE message_id=? AND recipient_session_id=?
+    `).get(message.message_id, command.recipientSessionId);
+    const eventCommand = {...command, vehicleId:"OPERATIONAL_MESSAGE"};
+    if(existing){
+      return semanticNoOp(semanticNoOpResult(
+        LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION,
+        eventCommand,
+        existing.dismissal_id,
+        {
+          eventType:"MESSAGE_DISMISSED_AFTER_AUTO_PRESENTATION",
+          messageId:existing.message_id,
+          recipientSessionId:existing.recipient_session_id,
+          serverOccurredAt:existing.dismissed_at,
+          alreadyRecorded:true,
+          caseRevision:0
+        }
+      ));
+    }
+    const timestamp = now();
+    const eventId = randomUUID();
+    const dismissalId = randomUUID();
+    db.prepare(`
+      INSERT INTO ${OPERATIONAL_MESSAGE_DISMISSAL_TABLE} (
+        dismissal_id, message_id, recipient_session_id, target_role,
+        dismissed_at, actor_subject, action_id, idempotency_key
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      dismissalId,
+      message.message_id,
+      command.recipientSessionId,
+      message.target_role,
+      timestamp,
+      authority.subject,
+      command.actionId,
+      `message-dismissed-after-auto-presentation:${message.message_id}:${command.recipientSessionId}`
+    );
+    insertEvent({
+      eventId,
+      command:eventCommand,
+      commandName:
+        LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION,
+      authority,
+      timestamp,
+      caseBefore:0,
+      caseAfter:0,
+      statusBefore:0,
+      statusAfter:0,
+      previousState:{},
+      resultingState:{
+        eventType:"MESSAGE_DISMISSED_AFTER_AUTO_PRESENTATION",
+        dismissalId,
+        messageId:message.message_id,
+        recipientSessionId:command.recipientSessionId,
+        serverOccurredAt:timestamp
+      }
+    });
+    incrementGlobalRevision();
+    return resultBase(eventCommand, eventId, {
+      eventType:"MESSAGE_DISMISSED_AFTER_AUTO_PRESENTATION",
+      dismissalId,
+      messageId:message.message_id,
+      recipientSessionId:command.recipientSessionId,
+      serverOccurredAt:timestamp,
+      alreadyRecorded:false,
+      caseRevision:0
+    });
+  }
+
   function executeWorkshopSheetOpened(command, authority){
     const processCase = command.caseId
       ? findProcessCase(command.caseId, command.vehicleId)
@@ -1723,13 +1824,23 @@ function createVehicleStatusRepository(options = {}){
         `).all().map(mapCleaningTrackSpaceRequest)
       : [];
     const allOperationalMessages = selectOperationalMessages();
-    const operationalMessages = roles.length
+    const roleOperationalMessages = roles.length
       ? allOperationalMessages.filter((message) =>
           roles.includes(message.targetRole) || roles.includes(message.sourceRole)
         )
       : [];
+    const operationalMessageSelection = selectOperationalMessageWindow(
+      roleOperationalMessages,
+      roles,
+      options.operationalMessageWindow,
+      now()
+    );
+    const operationalMessages = operationalMessageSelection.messages;
+    const visibleOperationalMessageIds = new Set(
+      operationalMessages.map(message=>message.messageId)
+    );
     const operationalMessageReceipts = roles.length
-      ? allOperationalMessages
+      ? operationalMessages
           .filter((message) => roles.includes(message.sourceRole))
           .map((message) => ({
             messageId:message.messageId,
@@ -1748,7 +1859,10 @@ function createVehicleStatusRepository(options = {}){
           SELECT * FROM ${OPERATIONAL_MESSAGE_ACK_TABLE}
           ORDER BY acknowledged_at, acknowledgement_id
         `).all()
-          .filter((acknowledgement) => roles.includes(acknowledgement.target_role))
+          .filter((acknowledgement) =>
+            roles.includes(acknowledgement.target_role) &&
+            visibleOperationalMessageIds.has(acknowledgement.message_id)
+          )
           .map(mapOperationalMessageAcknowledgement)
       : [];
     const events = db.prepare(`SELECT * FROM ${EVENT_TABLE} ORDER BY server_timestamp, event_id`).all()
@@ -1777,7 +1891,13 @@ function createVehicleStatusRepository(options = {}){
       ORDER BY n.created_at, n.notification_id
     `).all().map(mapNotification);
     const notifications = roles.length
-      ? allNotifications.filter((notification) => roles.includes(notification.targetRole))
+      ? allNotifications.filter((notification) =>
+          roles.includes(notification.targetRole) &&
+          (
+            !["OPERATIONAL_MESSAGE","WORKSHOP_MESSAGE"].includes(notification.kind) ||
+            visibleOperationalMessageIds.has(String(notification.payload?.messageId || ""))
+          )
+        )
       : [];
     const records = db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all();
     const itemVehicleIds = [...new Set([
@@ -1843,6 +1963,7 @@ function createVehicleStatusRepository(options = {}){
       workshopIngressQueueEvents,
       cleaningTrackSpaceRequests,
       operationalMessages,
+      operationalMessageWindow:operationalMessageSelection.metadata,
       operationalMessageReceipts,
       operationalMessageAcknowledgements,
       workshopMessages:operationalMessages,
@@ -1857,6 +1978,55 @@ function createVehicleStatusRepository(options = {}){
         text: "Authoritative vehicle-status lifecycle persistence is active."
       },
       openPolicyDecisions: []
+    };
+  }
+
+  function getOperationalMessagePage(options = {}){
+    const roles = Array.isArray(options.roles) ? options.roles : [];
+    const date = String(options.date || "").trim();
+    const threadId = String(options.threadId || "").trim().toLowerCase();
+    const limit = Math.min(100, Math.max(1, Number.parseInt(options.limit,10) || 50));
+    if(!roles.length){
+      return {ok:true,messages:[],nextCursor:null,date:date || null,threadId:threadId || null};
+    }
+    if(date && !isCalendarDate(date)){
+      return {ok:false,status:400,error:"invalid_history_date",
+        message:"date must be a valid YYYY-MM-DD calendar date."};
+    }
+    if(threadId && !isUuid(threadId)){
+      return {ok:false,status:400,error:"invalid_history_thread",
+        message:"threadId must be a UUID."};
+    }
+    if(!date && !threadId){
+      return {ok:false,status:400,error:"history_scope_required",
+        message:"date or threadId is required."};
+    }
+    const cursor = decodeOperationalMessageCursor(String(options.cursor || ""));
+    if(options.cursor && !cursor){
+      return {ok:false,status:400,error:"invalid_history_cursor",
+        message:"cursor is invalid."};
+    }
+    let messages = selectOperationalMessages()
+      .filter(message=>roles.includes(message.sourceRole) || roles.includes(message.targetRole))
+      .filter(message=>!date || calendarDateInTimeZone(message.sentAt) === date)
+      .filter(message=>!threadId || message.threadId === threadId)
+      .sort(compareOperationalMessagesDescending);
+    if(cursor){
+      messages = messages.filter(message=>
+        compareOperationalMessagesDescending(message,cursor) > 0
+      );
+    }
+    const pageMessages = messages.slice(0,limit);
+    const nextCursor = messages.length > limit
+      ? encodeOperationalMessageCursor(pageMessages.at(-1))
+      : null;
+    return {
+      messages:pageMessages,
+      nextCursor,
+      date:date || null,
+      threadId:threadId || null,
+      timeZone:"Europe/Oslo",
+      order:"newest_first"
     };
   }
 
@@ -2086,6 +2256,7 @@ function createVehicleStatusRepository(options = {}){
         operationalMessages: countRows(OPERATIONAL_MESSAGE_TABLE),
         operationalMessageEvents: countRows(OPERATIONAL_MESSAGE_EVENT_TABLE),
         operationalMessageAcknowledgements: countRows(OPERATIONAL_MESSAGE_ACK_TABLE),
+        operationalMessageAutoDismissals: countRows(OPERATIONAL_MESSAGE_DISMISSAL_TABLE),
         cleaningTrackSpaceRequests: countRows(CLEANING_TRACK_REQUEST_TABLE)
       },
       records: db.prepare(`SELECT * FROM ${RECORD_TABLE} ORDER BY vehicle_id`).all(),
@@ -2115,6 +2286,10 @@ function createVehicleStatusRepository(options = {}){
       operationalMessageAcknowledgements: db.prepare(`
         SELECT * FROM ${OPERATIONAL_MESSAGE_ACK_TABLE}
         ORDER BY acknowledged_at, acknowledgement_id
+      `).all(),
+      operationalMessageAutoDismissals: db.prepare(`
+        SELECT * FROM ${OPERATIONAL_MESSAGE_DISMISSAL_TABLE}
+        ORDER BY dismissed_at, dismissal_id
       `).all(),
       cleaningTrackSpaceRequests: db.prepare(`
         SELECT * FROM ${CLEANING_TRACK_REQUEST_TABLE}
@@ -2829,6 +3004,7 @@ function createVehicleStatusRepository(options = {}){
     executeCommand,
     executeReportNotOperational,
     getAnalytics,
+    getOperationalMessagePage,
     getReadModel,
     getStorageSnapshot,
     observeCanonicalPlacements,
@@ -2838,6 +3014,95 @@ function createVehicleStatusRepository(options = {}){
 
 function createVehicleStatusTestRepository(options = {}){
   return createVehicleStatusRepository({ ...options, mode: "test", writeEnabled: true });
+}
+
+function selectOperationalMessageWindow(messages, roles, windowOptions, currentTimestamp){
+  const all = Array.isArray(messages) ? messages : [];
+  if(windowOptions?.mode !== "today_and_carryover"){
+    return {
+      messages:all,
+      metadata:{mode:"all",timeZone:"Europe/Oslo",olderAvailable:false}
+    };
+  }
+  const date = calendarDateInTimeZone(currentTimestamp);
+  const currentTime = Date.parse(currentTimestamp);
+  const recentBoundary = Number.isFinite(currentTime)
+    ? currentTime - (24 * 60 * 60 * 1000)
+    : Number.NEGATIVE_INFINITY;
+  const selected = all.filter(message=>
+    calendarDateInTimeZone(message.sentAt) === date ||
+    Date.parse(message.sentAt) >= recentBoundary ||
+    (
+      roles.includes(message.targetRole) &&
+      !message.acknowledgedAt
+    )
+  );
+  return {
+    messages:selected,
+    metadata:{
+      mode:"today_and_carryover",
+      date,
+      timeZone:"Europe/Oslo",
+      immediateCount:selected.length,
+      olderAvailable:selected.length < all.length
+    }
+  };
+}
+
+function calendarDateInTimeZone(timestamp){
+  const date = new Date(timestamp);
+  if(!Number.isFinite(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-GB",{
+    timeZone:"Europe/Oslo",
+    year:"numeric",
+    month:"2-digit",
+    day:"2-digit"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part=>[part.type,part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function isCalendarDate(value){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year,month,day] = value.split("-").map(Number);
+  const candidate = new Date(Date.UTC(year,month-1,day));
+  return candidate.getUTCFullYear() === year &&
+    candidate.getUTCMonth() === month-1 &&
+    candidate.getUTCDate() === day;
+}
+
+function isUuid(value){
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(String(value || ""));
+}
+
+function compareOperationalMessagesDescending(left,right){
+  return String(right?.sentAt || "").localeCompare(String(left?.sentAt || "")) ||
+    String(right?.messageId || "").localeCompare(String(left?.messageId || ""));
+}
+
+function encodeOperationalMessageCursor(message){
+  if(!message?.messageId || !message?.sentAt) return null;
+  return Buffer.from(JSON.stringify({
+    sentAt:String(message.sentAt),
+    messageId:String(message.messageId)
+  }),"utf8").toString("base64url");
+}
+
+function decodeOperationalMessageCursor(value){
+  if(!value) return null;
+  try{
+    const parsed = JSON.parse(Buffer.from(value,"base64url").toString("utf8"));
+    if(
+      !parsed ||
+      typeof parsed.sentAt !== "string" ||
+      !Number.isFinite(Date.parse(parsed.sentAt)) ||
+      !isUuid(parsed.messageId)
+    ) return null;
+    return {sentAt:parsed.sentAt,messageId:parsed.messageId};
+  }catch(_error){
+    return null;
+  }
 }
 
 function initializeSchema(db){
@@ -2859,7 +3124,7 @@ function initializeSchema(db){
       DROP TABLE IF EXISTS ${RECORD_TABLE};
       DROP TABLE IF EXISTS ${META_TABLE};
     `);
-  }else if(userVersion > 10){
+  }else if(userVersion > 11){
     throw new Error("vehicle_status_schema_version_unsupported");
   }
 
@@ -3288,6 +3553,26 @@ function initializeSchema(db){
     CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_ack_immutable_delete
     BEFORE DELETE ON ${OPERATIONAL_MESSAGE_ACK_TABLE}
     BEGIN SELECT RAISE(ABORT, 'operational message acknowledgements are immutable'); END;
+
+    CREATE TABLE IF NOT EXISTS ${OPERATIONAL_MESSAGE_DISMISSAL_TABLE} (
+      dismissal_id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      recipient_session_id TEXT NOT NULL,
+      target_role TEXT NOT NULL
+        CHECK(target_role IN ('drops','txp','sde_skiftere','verksted','agila')),
+      dismissed_at TEXT NOT NULL,
+      actor_subject TEXT NOT NULL,
+      action_id TEXT NOT NULL UNIQUE,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      UNIQUE(message_id,recipient_session_id),
+      FOREIGN KEY(message_id) REFERENCES ${OPERATIONAL_MESSAGE_TABLE}(message_id)
+    );
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_dismissal_immutable_update
+    BEFORE UPDATE ON ${OPERATIONAL_MESSAGE_DISMISSAL_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'operational message auto-dismissals are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_dismissal_immutable_delete
+    BEFORE DELETE ON ${OPERATIONAL_MESSAGE_DISMISSAL_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'operational message auto-dismissals are immutable'); END;
   `);
   if(userVersion < 6){
     migrateWorkshopMessagesToOperationalMessages(db);
@@ -3307,7 +3592,7 @@ function initializeSchema(db){
       WHERE status IN ('ACTIVATING','CARD_CREATED');
   `);
   if(userVersion < 3) backfillProcessHistory(db);
-  db.exec("PRAGMA user_version = 10;");
+  db.exec("PRAGMA user_version = 11;");
 }
 
 function migrateOperationalMessageThreads(db){

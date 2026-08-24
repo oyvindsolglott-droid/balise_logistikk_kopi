@@ -121,8 +121,8 @@ function main(){
   const fixture = createFixture();
   try{
     const { repository, db } = fixture;
-    check("01 schema migrates through v10 without resetting lifecycle tables", () => {
-      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 10);
+    check("01 schema migrates through v11 without resetting lifecycle tables", () => {
+      assert.equal(db.prepare("PRAGMA user_version").get().user_version, 11);
       assert.ok(db.prepare(
         "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?"
       ).get(PROCESS_EVENT_TABLE));
