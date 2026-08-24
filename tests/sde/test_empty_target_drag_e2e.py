@@ -22,7 +22,33 @@ class SdeEmptyDropHandler(http.server.SimpleHTTPRequestHandler):
         return
 
     def do_GET(self) -> None:
-        if urlsplit(self.path).path == "/api/auth/capabilities":
+        request_path = urlsplit(self.path).path
+        if request_path in ("/", "/index.html"):
+            html = (ROOT / "index.html").read_text(encoding="utf-8")
+            runtime_config = {
+                "schemaVersion": "sde-canonical-shift-runtime-gate-v1",
+                "activationSource": "SERVER_ENVIRONMENT",
+                "canonicalShiftProductionEnabled": True,
+                "canonicalOperationalAuthority": True,
+                "migrationMode": "CANONICAL_ONLY",
+                "operationalWriteOwner": "SDE_CANONICAL_SHIFT_ENGINE",
+                "legacyOperationalWritesEnabled": False,
+            }
+            injected = (
+                '<script id="sde-server-runtime-config">'
+                'Object.defineProperty(window,"__SDE_SERVER_RUNTIME_CONFIG__",'
+                f'{{value:Object.freeze({json.dumps(runtime_config, separators=(",", ":"))}),'
+                'writable:false,configurable:false,enumerable:false});'
+                '</script>'
+            )
+            payload = html.replace("</head>", f"{injected}\n</head>").encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+        if request_path == "/api/auth/capabilities":
             payload = json.dumps(
                 {
                     "ok": True,

@@ -39,6 +39,15 @@ const ctx = {
 };
 ctx.window = ctx;
 ctx.globalThis = ctx;
+ctx.__SDE_SERVER_RUNTIME_CONFIG__ = Object.freeze({
+  schemaVersion:"sde-canonical-shift-runtime-gate-v1",
+  activationSource:"SERVER_ENVIRONMENT",
+  canonicalShiftProductionEnabled:true,
+  canonicalOperationalAuthority:true,
+  migrationMode:"CANONICAL_ONLY",
+  operationalWriteOwner:"SDE_CANONICAL_SHIFT_ENGINE",
+  legacyOperationalWritesEnabled:false
+});
 vm.createContext(ctx);
 vm.runInContext(scripts.join("\n;\n"),ctx,{filename:"index-inline.js"});
 const appState = vm.runInContext("state",ctx);

@@ -3,6 +3,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const root = path.resolve(__dirname, "../../..");
 const {
@@ -96,15 +97,55 @@ function product(result) {
 }
 
 function assertCanonicalOnlySource(source) {
+  const serverSource = fs.readFileSync(path.join(root, "server/src/index.js"), "utf8");
   assert.match(source, /migrationMode:\s*"CANONICAL_ONLY"/);
   assert.match(source, /operationalWriteOwner:\s*"SDE_CANONICAL_SHIFT_ENGINE"/);
   assert.match(source, /legacyOperationalWritesEnabled:\s*false/);
+  assert.match(source, /migrationMode:\s*"SHADOW_READ_ONLY"/);
+  assert.match(source, /operationalWriteOwner:\s*"LEGACY_SHIFT_ENGINE"/);
+  assert.match(source, /legacyOperationalWritesEnabled:\s*true/);
   assert.match(source, /machineLearningScoreActive:\s*false/);
   assert.match(source, /function buildSdeCanonicalUnifiedAllProducerProduct\s*\(/);
   assert.match(source, /async function handleSdeCanonicalCardAction\s*\(/);
   assert.match(source, /return \{mode:"canonical_fail_closed",error:reason,legacyOperationalWritesEnabled:false\}/);
   assert.match(source, /if\(requestedReader === "legacy" && disposableRollbackDrill\) return "legacy_rollback_drill";/);
-  assert.match(source, /return "canonical";/);
+  assert.match(source, /getSdeProductionRuntimeContract\(options\)\.canonicalOperationalAuthority === true/);
+  assert.match(source, /:\s*"legacy_shadow";/);
+  assert.match(source, /CANONICAL_PRODUCTION_GATE_DISABLED/);
+  assert.match(source, /if\(requestedMode !== "canonical"\) return renderSdeLegacyProductionReader\(requestedMode\);/);
+  assert.doesNotMatch(source, /requestedReader === "canonical"/);
+  assert.match(serverSource, /process\.env\.SDE_CANONICAL_SHIFT_PRODUCTION_ENABLED === "1"/);
+  assert.match(serverSource, /canonicalShiftRuntime:\s*CANONICAL_SHIFT_RUNTIME_CONFIG/);
+  assert.match(serverSource, /Object\.defineProperty\(window,"__SDE_SERVER_RUNTIME_CONFIG__"/);
+
+  const modeStart = source.indexOf("function getSdeProductionReaderMode(");
+  const modeEnd = source.indexOf("function isSdeCanonicalReaderTechnicalFailureTestRequested", modeStart);
+  assert.ok(modeStart >= 0 && modeEnd > modeStart, "production reader gate source must be extractable");
+  const context = vm.createContext({URLSearchParams, Object});
+  vm.runInContext(source.slice(modeStart, modeEnd), context, {filename:"sde-production-reader-gate.js"});
+  const validServerConfig = {
+    schemaVersion:"sde-canonical-shift-runtime-gate-v1",
+    activationSource:"SERVER_ENVIRONMENT",
+    canonicalShiftProductionEnabled:true,
+    canonicalOperationalAuthority:true,
+    migrationMode:"CANONICAL_ONLY",
+    operationalWriteOwner:"SDE_CANONICAL_SHIFT_ENGINE",
+    legacyOperationalWritesEnabled:false
+  };
+  assert.equal(context.getSdeProductionReaderMode({hostname:"sde.oyvind-solglott.no",search:""}), "legacy_shadow");
+  assert.equal(context.getSdeProductionReaderMode({hostname:"sde.oyvind-solglott.no",search:"?sdeReader=canonical"}), "legacy_shadow");
+  assert.equal(context.getSdeProductionReaderMode(
+    {hostname:"sde.oyvind-solglott.no",search:""},
+    {runtimeConfig:{...validServerConfig,legacyOperationalWritesEnabled:true}}
+  ), "legacy_shadow");
+  assert.equal(context.getSdeProductionReaderMode(
+    {hostname:"sde.oyvind-solglott.no",search:""},
+    {runtimeConfig:validServerConfig}
+  ), "canonical");
+  assert.equal(context.getSdeProductionReaderMode(
+    {hostname:"localhost",search:"?sdeReader=legacy&sdeRollbackDrill=1"},
+    {runtimeConfig:validServerConfig}
+  ), "legacy_rollback_drill");
 }
 
 function directProduct(vehicleId, sourceSlot, targetSlot, id, occupancy = null) {

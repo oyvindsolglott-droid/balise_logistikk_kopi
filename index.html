@@ -21637,7 +21637,11 @@ function finalizeSdePrerequisiteCancellationTransientDragState(){
   sdeNightPlacementSelectedSlot = "";
   if(sdeNightPlacementDropMessage?.type === "error") sdeNightPlacementDropMessage = null;
   try{
-    buildSdeCanonicalProductionReader();
+    if(getSdeProductionReaderMode(window.location) === "canonical"){
+      buildSdeCanonicalProductionReader();
+    }else{
+      buildSdeCanonicalUnifiedAllProducerShadow(sdeShiftLastRenderedData?.needs || []);
+    }
     sdeProductionReaderFallbackError = null;
   }catch(error){
     sdeProductionReaderFallbackError = error instanceof Error
@@ -36413,7 +36417,11 @@ function getSdeShiftShowcaseData(){
       };
     })
     .sort(compareSdeShiftMoveDisplayRows);
-  const adaptiveMoves = [];
+  const productionReaderMode = getSdeProductionReaderMode(window.location);
+  const canonicalProductionEnabled = productionReaderMode === "canonical";
+  const adaptiveMoves = canonicalProductionEnabled
+    ? []
+    : buildSdeCancelledReplacementMoves(baseMoves);
 
   const unresolvedCandidates = needs.filter(row =>
     !row?.recommendedSlot ||
@@ -36439,17 +36447,22 @@ function getSdeShiftShowcaseData(){
     physicalState:getSdeWashTrackPhysicalState()
   });
   const score = Math.max(0, Math.min(100, baseScore - (washTrackTxpRobustnessAssessment.totalPenalty || 0)));
-  const canonicalUnifiedAllProducerProduct = buildSdeCanonicalUnifiedAllProducerProduct(needs);
-  const moves = sortSdeShiftMovesForDisplay((canonicalUnifiedAllProducerProduct?.batchResult?.rows || []).map(row=>({
-    ...row,
-    arrivalTrainText:String(row?.arrivalTrainText || row?.arrivalTrain || row?.source || "Canonical").trim(),
-    departureTrainText:String(row?.departureTrainText || row?.nextDepartureText || "Ikke registrert").trim(),
-    fromSlot:normalizeSlot(row?.fromSlot || row?.arrivalSlot),
-    toSlot:normalizeSlot(row?.toSlot || row?.recommendedSlot),
-    recommendedSlot:normalizeSlot(row?.recommendedSlot || row?.toSlot),
-    canonicalProductProjection:true,
-    canMutateActualPlacement:false
-  })));
+  const canonicalUnifiedAllProducerShadow = buildSdeCanonicalUnifiedAllProducerShadow(needs);
+  const canonicalUnifiedAllProducerProduct = canonicalProductionEnabled
+    ? buildSdeCanonicalUnifiedAllProducerProduct(needs)
+    : null;
+  const moves = canonicalProductionEnabled
+    ? sortSdeShiftMovesForDisplay((canonicalUnifiedAllProducerProduct?.batchResult?.rows || []).map(row=>({
+        ...row,
+        arrivalTrainText:String(row?.arrivalTrainText || row?.arrivalTrain || row?.source || "Canonical").trim(),
+        departureTrainText:String(row?.departureTrainText || row?.nextDepartureText || "Ikke registrert").trim(),
+        fromSlot:normalizeSlot(row?.fromSlot || row?.arrivalSlot),
+        toSlot:normalizeSlot(row?.toSlot || row?.recommendedSlot),
+        recommendedSlot:normalizeSlot(row?.recommendedSlot || row?.toSlot),
+        canonicalProductProjection:true,
+        canMutateActualPlacement:false
+      })))
+    : sortSdeShiftMovesForDisplay([...adaptiveMoves, ...baseMoves]);
 
   return {
     score,
@@ -36469,7 +36482,9 @@ function getSdeShiftShowcaseData(){
     securedDepartures:securedDepartures.size,
     unresolvedCount:unresolved.length,
     flexibleUnknownCount:flexibleUnknownParking.length,
-    canonicalUnifiedAllProducerProduct
+    canonicalUnifiedAllProducerProduct,
+    canonicalUnifiedAllProducerShadow,
+    productionRuntimeContract:getSdeProductionRuntimeContract()
   };
 }
 
@@ -41872,6 +41887,20 @@ function buildSdeCanonicalUnifiedAllProducerShadow(rows=[]){
 let sdeCanonicalUnifiedAllProducerProduct = null;
 
 function buildSdeCanonicalUnifiedAllProducerProduct(rows=[]){
+  const runtimeContract = getSdeProductionRuntimeContract();
+  if(runtimeContract.canonicalOperationalAuthority !== true){
+    return {
+      schemaVersion:"sde-canonical-shift-gated-shadow-runtime-v1",
+      status:"SHADOW_READ_ONLY",
+      diagnosticCode:"CANONICAL_PRODUCTION_GATE_DISABLED",
+      reason:"Canonical produktmotor mangler eksplisitt servermiljøaktivering og har ingen operativ autoritet.",
+      ...runtimeContract,
+      product:null,
+      batchResult:null,
+      capability:getSdeCanonicalShiftCapabilityModel(),
+      shadow:buildSdeCanonicalUnifiedAllProducerShadow(rows)
+    };
+  }
   const engine = getSdeCanonicalUnifiedShiftEngine();
   const capability = getSdeCanonicalShiftCapabilityModel();
   if(!engine || !window.SdeCanonicalShiftAdapter){
@@ -43662,7 +43691,47 @@ function getSdeProductionReaderMode(
   const disposableRollbackDrill = ["localhost","127.0.0.1","::1"].includes(hostname)
     && params.get("sdeRollbackDrill") === "1";
   if(requestedReader === "legacy" && disposableRollbackDrill) return "legacy_rollback_drill";
-  return "canonical";
+  return getSdeProductionRuntimeContract(options).canonicalOperationalAuthority === true
+    ? "canonical"
+    : "legacy_shadow";
+}
+
+function getSdeProductionRuntimeContract(options={}){
+  const safeDefault = {
+    schemaVersion:"sde-canonical-shift-runtime-gate-v1",
+    activationSource:"SAFE_DEFAULT",
+    canonicalShiftProductionEnabled:false,
+    canonicalOperationalAuthority:false,
+    migrationMode:"SHADOW_READ_ONLY",
+    operationalWriteOwner:"LEGACY_SHIFT_ENGINE",
+    legacyOperationalWritesEnabled:true
+  };
+  const config = options?.runtimeConfig || (
+    typeof window !== "undefined" ? window.__SDE_SERVER_RUNTIME_CONFIG__ : null
+  );
+  const serverEnabled = Boolean(
+    config?.schemaVersion === "sde-canonical-shift-runtime-gate-v1"
+    && config?.activationSource === "SERVER_ENVIRONMENT"
+    && config?.canonicalShiftProductionEnabled === true
+    && config?.canonicalOperationalAuthority === true
+    && config?.migrationMode === "CANONICAL_ONLY"
+    && config?.operationalWriteOwner === "SDE_CANONICAL_SHIFT_ENGINE"
+    && config?.legacyOperationalWritesEnabled === false
+  );
+  return Object.freeze(serverEnabled ? {
+    schemaVersion:"sde-canonical-shift-runtime-gate-v1",
+    activationSource:"SERVER_ENVIRONMENT",
+    canonicalShiftProductionEnabled:true,
+    canonicalOperationalAuthority:true,
+    migrationMode:"CANONICAL_ONLY",
+    operationalWriteOwner:"SDE_CANONICAL_SHIFT_ENGINE",
+    legacyOperationalWritesEnabled:false
+  } : {
+    ...safeDefault,
+    activationSource:config?.activationSource === "SERVER_ENVIRONMENT"
+      ? "SERVER_ENVIRONMENT"
+      : "SAFE_DEFAULT"
+  });
 }
 
 function isSdeCanonicalReaderTechnicalFailureTestRequested(
@@ -43674,9 +43743,11 @@ function isSdeCanonicalReaderTechnicalFailureTestRequested(
 }
 
 function buildSdeProductionReaderStatusHtml(mode){
-  const status = mode === "legacy_rollback_drill"
-    ? {label:"Legacy – disponibel rollbackøvelse", className:"legacy-forced", detail:"Legacy er bare tilgjengelig lokalt med eksplisitt rollback-drill-parameter."}
-    : {label:"Canonical", className:"canonical", detail:"Canonical N-stegsmotor er eneste aktive produksjonsleser og operative kortgenerator."};
+  const status = mode === "canonical"
+    ? {label:"Canonical – eksplisitt aktivert", className:"canonical", detail:"Canonical N-stegsmotor har operativ autoritet via eksplisitt servermiljøflagg."}
+    : mode === "legacy_rollback_drill"
+      ? {label:"Legacy – disponibel rollbackøvelse", className:"legacy-forced", detail:"Legacy er eksplisitt valgt i en lokal, disponibel rollbackøvelse."}
+      : {label:"Legacy – canonical shadow", className:"legacy-forced", detail:"Legacy beholder operativ autoritet. Canonical analyse er read-only shadow uten operative writes."};
   return `<div class="sde-reader-status ${status.className}" data-sde-reader-status="${escapeHtml(mode)}" title="${escapeHtml(status.detail)}">${escapeHtml(status.label)}</div>`;
 }
 
@@ -45287,6 +45358,10 @@ function buildSdeLegacyRollbackProductionReader(runtimeSnapshot=null){
 }
 
 function buildSdeCanonicalProductReader(productRuntime=null){
+  const runtimeContract = getSdeProductionRuntimeContract();
+  if(runtimeContract.canonicalOperationalAuthority !== true){
+    throw new Error("Canonical produktleser er sperret: eksplisitt servermiljøaktivering mangler.");
+  }
   const runtime = productRuntime || sdeCanonicalUnifiedAllProducerProduct || buildSdeCanonicalUnifiedAllProducerProduct([]);
   const batch = runtime?.batchResult || null;
   const plan = batch?.plan || null;
@@ -46692,8 +46767,11 @@ function renderSdeCanonicalProductionReader(){
 }
 
 function renderSdeLegacyProductionReader(mode, error=null){
+  if(typeof window !== "undefined"){
+    window.__sdeProductionRuntimeContract = getSdeProductionRuntimeContract();
+  }
   const result = renderSdeSkiftebevegelserInner();
-  applySdeProductionReaderStatus(mode || "legacy_rollback_drill");
+  applySdeProductionReaderStatus(mode || "legacy_shadow");
   return result;
 }
 
@@ -46716,7 +46794,7 @@ function renderSdeSkiftebevegelser(){
   if(isSdeCanonicalCardPreviewRequested()) return renderSdeCanonicalCardPreview();
   return withComputeInndataCache(()=>{
     const requestedMode = getSdeProductionReaderMode(window.location, {technicalFailure:Boolean(sdeProductionReaderFallbackError)});
-    if(requestedMode === "legacy_rollback_drill") return renderSdeLegacyProductionReader("legacy_rollback_drill");
+    if(requestedMode !== "canonical") return renderSdeLegacyProductionReader(requestedMode);
     try{
       if(isSdeCanonicalReaderTechnicalFailureTestRequested()){
         throw new Error("Isolert teknisk canonical reader-test.");
