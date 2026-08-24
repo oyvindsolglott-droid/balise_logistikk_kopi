@@ -104,28 +104,35 @@ const override = evaluateRuntimeAuthorization({
 assert.equal(override.allowed, false);
 
 const activeRoleFunction = extractFunction("getActiveOperationalMessageRole");
-const getActiveRole = new Function(
-  "OPERATIONAL_MESSAGE_LEVEL_ROLES",
-  "getActiveAccessLevel",
-  `return (${activeRoleFunction});`
-)({
-  "1":"drops",
-  "2":"txp",
-  "3":"sde_skiftere",
-  "4":"verksted",
-  "5":"agila",
-}, () => activeLevel);
-let activeLevel = "1";
-for(const [level,role] of Object.entries({
-  "1":"drops",
-  "2":"txp",
-  "3":"sde_skiftere",
-  "4":"verksted",
-  "5":"agila",
-})){
-  activeLevel = level;
-  assert.equal(getActiveRole(), role);
+const getActiveRole = capabilities => new Function(
+  "OPERATIONAL_MESSAGE_ROLES",
+  "dropsRuntimeCapabilities",
+  `return (${activeRoleFunction})();`
+)(["drops","txp","sde_skiftere","verksted","agila"],capabilities);
+for(const role of ["drops","txp","sde_skiftere","verksted","agila"]){
+  assert.equal(getActiveRole({
+    ok:true,
+    roleResolved:true,
+    role,
+    roles:[role]
+  }), role);
 }
+for(const capabilities of [
+  null,
+  {ok:false,roleResolved:true,role:"drops",roles:["drops"]},
+  {ok:true,roleResolved:false,role:"drops",roles:["drops"]},
+  {ok:true,roleResolved:true,role:null,roles:[...exactRoles]},
+  {ok:true,roleResolved:true,role:"drops",roles:["txp"]},
+  {ok:true,roleResolved:true,role:"admin_pilot",roles:["admin_pilot"]},
+]){
+  assert.equal(
+    getActiveRole(capabilities),
+    "",
+    "only one exact server-confirmed operational role may activate messaging"
+  );
+}
+
+let activeLevel = "1";
 
 const visibilityFunction = extractFunction(
   "isVehicleStatusNotificationVisibleInCurrentSurface"

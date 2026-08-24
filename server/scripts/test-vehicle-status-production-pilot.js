@@ -162,6 +162,7 @@ async function main(){
         "vehicle_status_command_records",
         "vehicle_status_faults",
         "vehicle_status_operational_message_acknowledgements",
+        "vehicle_status_operational_message_auto_dismissals",
         "vehicle_status_operational_message_events",
         "vehicle_status_operational_messages",
         "vehicle_status_process_cases",
@@ -464,6 +465,7 @@ function emptyCounts(){
     operationalMessages: 0,
     operationalMessageEvents: 0,
     operationalMessageAcknowledgements: 0,
+    operationalMessageAutoDismissals: 0,
     cleaningTrackSpaceRequests: 0
   };
 }
@@ -485,6 +487,7 @@ function legacyCounts(faults){
     operationalMessages: 0,
     operationalMessageEvents: 0,
     operationalMessageAcknowledgements: 0,
+    operationalMessageAutoDismissals: 0,
     cleaningTrackSpaceRequests: 0
   };
 }

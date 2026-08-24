@@ -8178,6 +8178,107 @@ button{padding:12px 12px}
 }
 .operational-message-reply [data-sde-operational-message-status].is-success{color:#087b3a}
 .operational-message-reply [data-sde-operational-message-status].is-error{color:#a41d26}
+.global-operational-message-box{
+  position:relative;
+  z-index:110;
+  display:grid;
+  gap:0;
+  margin:14px 0 18px;
+  border:1px solid #a8bed9;
+  border-radius:18px;
+  background:linear-gradient(145deg,rgba(255,255,255,.98),rgba(232,241,252,.96));
+  box-shadow:0 12px 28px rgba(20,48,84,.12),inset 0 1px 0 #fff;
+  overflow:visible;
+}
+.global-operational-message-box[hidden]{display:none}
+.global-operational-message-box__header{
+  display:flex;
+  min-height:54px;
+  align-items:center;
+  gap:12px;
+  padding:9px 12px 9px 16px;
+}
+.global-operational-message-box__summary{
+  display:grid;
+  min-width:0;
+  flex:1;
+  gap:2px;
+}
+.global-operational-message-box__summary strong{color:#10233f;font-size:.95rem}
+.global-operational-message-box__meta{
+  overflow:hidden;
+  color:#536b89;
+  font-size:.78rem;
+  font-weight:750;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.global-operational-message-box__badge{
+  display:inline-grid;
+  min-width:24px;
+  min-height:24px;
+  place-items:center;
+  padding:0 7px;
+  border-radius:999px;
+  background:#c62828;
+  color:#fff;
+  font-size:.76rem;
+  font-weight:900;
+}
+.global-operational-message-box__badge[hidden]{display:none}
+.global-operational-message-box__toggle{
+  min-height:40px;
+  padding:8px 13px;
+  border:1px solid #31577f;
+  border-radius:12px;
+  background:#fff;
+  color:#173b69;
+  font:inherit;
+  font-weight:900;
+  cursor:pointer;
+}
+.global-operational-message-box__toggle:focus-visible{
+  outline:3px solid rgba(35,113,255,.38);
+  outline-offset:2px;
+}
+.global-operational-message-box__body{
+  position:absolute;
+  z-index:120;
+  top:calc(100% + 6px);
+  right:0;
+  left:0;
+  height:min(58vh,620px);
+  overflow:auto;
+  overscroll-behavior:contain;
+  padding:0 12px 14px;
+  border:1px solid #c9d8ea;
+  border-radius:0 0 18px 18px;
+  background:linear-gradient(145deg,rgba(255,255,255,.99),rgba(232,241,252,.98));
+  box-shadow:0 18px 34px rgba(20,48,84,.18);
+}
+.global-operational-message-box__body[hidden]{display:none}
+.operational-message-history-tools{
+  grid-column:1/-1;
+  display:flex;
+  flex-wrap:wrap;
+  align-items:end;
+  gap:8px;
+  padding:9px;
+  border:1px solid #d1deee;
+  border-radius:12px;
+  background:#f8fbff;
+}
+.operational-message-history-tools label{min-width:150px;flex:1}
+.operational-message-history-tools button{
+  min-height:38px;
+  border:1px solid #31577f;
+  border-radius:10px;
+  background:#fff;
+  color:#173b69;
+  font-weight:850;
+}
+.operational-message-history-status{margin:0;color:#536b89;font-size:.78rem;font-weight:750}
+.operational-message-thread__message.is-withdrawn{font-style:italic;color:#64748b}
 .sde-role-guide{
   min-width:0;
   display:grid;
@@ -9908,9 +10009,22 @@ button{padding:12px 12px}
 <button class="seg" type="button" data-tab="inndata" data-levels="0" style="display:none">Planlegge Skiftebevegelser</button>
 </div>
 
+<section class="global-operational-message-box" id="globalOperationalMessageBox" hidden aria-label="Direktemeldinger">
+  <div class="global-operational-message-box__header">
+    <div class="global-operational-message-box__summary">
+      <strong id="globalOperationalMessageTitle"><span aria-hidden="true">✉</span> Direktemeldinger</strong>
+      <span class="global-operational-message-box__meta" id="globalOperationalMessageMeta" aria-live="polite">Ingen serverbekreftet rolle.</span>
+    </div>
+    <span class="global-operational-message-box__badge" id="globalOperationalMessageBadge" hidden aria-label="0 nye meldinger">0</span>
+    <button class="global-operational-message-box__toggle" id="globalOperationalMessageToggle" type="button" aria-expanded="false" aria-controls="globalOperationalMessageBody">Åpne</button>
+  </div>
+  <div class="global-operational-message-box__body" id="globalOperationalMessageBody" hidden>
+    <div data-sde-operational-message-host></div>
+  </div>
+</section>
+
 
 <section class="panel" id="grunnoppstilling">
-<div data-sde-operational-message-host data-sde-operational-role="txp"></div>
 <div class="reset-tools" hidden aria-hidden="true">
 <button id="deleteSporplanBtn" type="button">Slett Sporplan</button>
 </div>
@@ -9952,7 +10066,6 @@ button{padding:12px 12px}
     <p class="drops-sub">Verksted ser registrerte feil og utbedringsbestillinger fra serveren, og kan sette et kontrollert kjøretøy Driftsklart.</p>
     <div class="drops-warning">Adgangsmerking: Verkstedside – alle statuser bekreftes med fersk server-readback</div>
   </div>
-  <div data-sde-operational-message-host data-sde-operational-role="verksted"></div>
   <div id="workshopVehicleRegistry" class="drops-vehicle-registry workshop-vehicle-registry" data-sde-workshop-vehicle-registry></div>
 </div>
 </section>
@@ -9967,7 +10080,6 @@ button{padding:12px 12px}
     <div class="drops-warning">Operativt kontrollark – ikke SDE-motor</div>
     <div id="dropsHeroModeBar"></div>
   </div>
-  <div data-sde-operational-message-host data-sde-operational-role="drops"></div>
 
   <div id="dropsVehicleRegistry" class="drops-vehicle-registry" data-sde-drops-vehicle-registry data-sde-access-level="1" hidden></div>
 
@@ -9991,7 +10103,6 @@ button{padding:12px 12px}
   </div>
   <div class="agilia-workspace" data-sde-agilia-workspace>
     <section aria-label="Direktemeldinger fra Agilia">
-      <div data-sde-operational-message-host data-sde-operational-role="agila"></div>
     </section>
     <section class="agilia-cleaning-request" data-sde-agilia-cleaning-request aria-labelledby="agiliaCleaningTitle">
       <h3 id="agiliaCleaningTitle">Bestilling av sporplass til hovedrenhold</h3>
@@ -10173,7 +10284,6 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
 <section class="panel" id="sdeSkiftebevegelser">
 <div class="sde-shift-showcase">
 <div class="sde-shift-content">
-<div data-sde-operational-message-host data-sde-operational-role="sde_skiftere"></div>
 <div id="sdeSkiftebevegelserDashboard">
 <div class="sde-shift-empty">SDE Skiftebevegelser bygges når SDE-motoren har beregnet forslag.</div>
 </div>
@@ -54439,6 +54549,36 @@ const operationalMessageCommandsInFlight = new Set();
 const operationalMessagePendingConfirmations = new Map();
 const operationalMessageRetrySnapshots = new Map();
 const OPERATIONAL_MESSAGE_NEW_THREAD_KEY = "__new__";
+const OPERATIONAL_MESSAGE_BOX_STATES = Object.freeze({
+  COLLAPSED_DEFAULT:"COLLAPSED_DEFAULT",
+  USER_EXPANDED:"USER_EXPANDED",
+  AUTO_EXPANDED:"AUTO_EXPANDED",
+  USER_COLLAPSED:"USER_COLLAPSED",
+  DEFERRED_AUTO_EXPAND:"DEFERRED_AUTO_EXPAND"
+});
+const globalOperationalMessageBoxState = {
+  state:OPERATIONAL_MESSAGE_BOX_STATES.COLLAPSED_DEFAULT,
+  role:"",
+  triggerMessageIds:new Set(),
+  presentedMessageIds:new Set(),
+  pendingMessageIds:new Set(),
+  knownMessageIds:new Set(),
+  baselineInitialized:false,
+  lastAction:"INITIALIZED",
+  lastUserActionAt:null,
+  pendingCount:0,
+  pendingIncomingCount:0
+};
+const operationalMessageHistoryById = new Map();
+const operationalMessageHistoryPages = new Map();
+const operationalMessageThreadHistoryLoaded = new Set();
+const operationalMessageAutoPresentationPromises = new Map();
+const operationalMessageDismissalAttempts = new Set();
+const operationalMessageInteractionState = {
+  activePointerIds:new Set(),
+  composing:false
+};
+let operationalMessageRecipientSessionId = "";
 const AGILIA_CLEANING_SLOTS = Object.freeze(["5S","5M","10S","10N"]);
 const agiliaCleaningDraft = {
   requestedSlots:new Set(),
@@ -54450,7 +54590,208 @@ let agiliaCleaningRequestInFlight = false;
 let agiliaCleaningLastResult = null;
 
 function getActiveOperationalMessageRole(){
-  return OPERATIONAL_MESSAGE_LEVEL_ROLES[getActiveAccessLevel()] || "";
+  const role = String(dropsRuntimeCapabilities?.role || "").trim().toLowerCase();
+  const roles = Array.isArray(dropsRuntimeCapabilities?.roles)
+    ? dropsRuntimeCapabilities.roles
+    : [];
+  return (
+    dropsRuntimeCapabilities?.ok === true &&
+    dropsRuntimeCapabilities?.roleResolved === true &&
+    OPERATIONAL_MESSAGE_ROLES.includes(role) &&
+    roles.includes(role)
+  ) ? role : "";
+}
+
+function getOperationalMessageRecipientSessionId(){
+  if(operationalMessageRecipientSessionId) return operationalMessageRecipientSessionId;
+  const storageKey = "sde_operational_message_recipient_session_v1";
+  const stored = String(sessionStorage.getItem(storageKey) || "").trim().toLowerCase();
+  if(/^[0-9a-f-]{36}$/.test(stored)){
+    operationalMessageRecipientSessionId = stored;
+    return stored;
+  }
+  operationalMessageRecipientSessionId = crypto.randomUUID();
+  sessionStorage.setItem(storageKey,operationalMessageRecipientSessionId);
+  return operationalMessageRecipientSessionId;
+}
+
+function getOperationalMessageDismissalActionId(messageId){
+  const sessionId = getOperationalMessageRecipientSessionId();
+  const key = `sde_operational_message_dismiss_action_v1:${sessionId}:${messageId}`;
+  const stored = String(sessionStorage.getItem(key) || "").trim().toLowerCase();
+  if(/^[0-9a-f-]{36}$/.test(stored)) return stored;
+  const actionId = crypto.randomUUID();
+  sessionStorage.setItem(key,actionId);
+  return actionId;
+}
+
+function isOperationalMessageInteractionBlockingAutoExpand(){
+  let modalOpen=false;
+  try{ modalOpen=Boolean(document.querySelector(":modal,dialog[open]")); }
+  catch(_error){ modalOpen=Boolean(document.querySelector("dialog[open]")); }
+  return operationalMessageInteractionState.activePointerIds.size > 0 ||
+    operationalMessageInteractionState.composing ||
+    modalOpen;
+}
+
+function transitionGlobalOperationalMessageBox(nextState,details={}){
+  if(!Object.values(OPERATIONAL_MESSAGE_BOX_STATES).includes(nextState)) return false;
+  globalOperationalMessageBoxState.state=nextState;
+  globalOperationalMessageBoxState.lastAction=String(details.action || nextState);
+  if(String(details.action || "").startsWith("USER_")){
+    globalOperationalMessageBoxState.lastUserActionAt=new Date().toISOString();
+  }
+  if(Array.isArray(details.triggerMessageIds)){
+    globalOperationalMessageBoxState.triggerMessageIds =
+      new Set(details.triggerMessageIds.map(String).filter(Boolean));
+  }
+  renderGlobalOperationalMessageBox();
+  return true;
+}
+
+function syncGlobalOperationalMessageRole(){
+  const role=getActiveOperationalMessageRole();
+  if(globalOperationalMessageBoxState.role === role) return role;
+  globalOperationalMessageBoxState.role=role;
+  globalOperationalMessageBoxState.state=
+    OPERATIONAL_MESSAGE_BOX_STATES.COLLAPSED_DEFAULT;
+  globalOperationalMessageBoxState.triggerMessageIds.clear();
+  globalOperationalMessageBoxState.presentedMessageIds.clear();
+  globalOperationalMessageBoxState.pendingMessageIds.clear();
+  globalOperationalMessageBoxState.knownMessageIds.clear();
+  globalOperationalMessageBoxState.baselineInitialized=false;
+  globalOperationalMessageBoxState.pendingCount=0;
+  globalOperationalMessageBoxState.pendingIncomingCount=0;
+  globalOperationalMessageBoxState.lastUserActionAt=null;
+  globalOperationalMessageBoxState.lastAction="ROLE_CHANGED";
+  const host=document.querySelector("#globalOperationalMessageBody [data-sde-operational-message-host]");
+  if(host){
+    host.replaceChildren();
+    delete host.dataset.sdeOperationalMessageInitialized;
+    if(role) host.dataset.sdeOperationalRole=role;
+    else delete host.dataset.sdeOperationalRole;
+  }
+  return role;
+}
+
+function getOperationalMessagesForRole(role){
+  const combined=new Map();
+  (Array.isArray(dropsVehicleStatusReadback?.operationalMessages)
+    ? dropsVehicleStatusReadback.operationalMessages
+    : []
+  ).forEach(message=>combined.set(String(message?.messageId || ""),message));
+  operationalMessageHistoryById.forEach((message,messageId)=>combined.set(messageId,message));
+  return Array.from(combined.values()).filter(message=>
+    message?.sourceRole === role || message?.targetRole === role
+  );
+}
+
+function renderGlobalOperationalMessageBox(){
+  const role=syncGlobalOperationalMessageRole();
+  const box=document.getElementById("globalOperationalMessageBox");
+  const body=document.getElementById("globalOperationalMessageBody");
+  const toggle=document.getElementById("globalOperationalMessageToggle");
+  const title=document.getElementById("globalOperationalMessageTitle");
+  const meta=document.getElementById("globalOperationalMessageMeta");
+  const badge=document.getElementById("globalOperationalMessageBadge");
+  if(!box || !body || !toggle || !title || !meta || !badge) return;
+  box.hidden=!role;
+  if(!role) return;
+  const expanded=[
+    OPERATIONAL_MESSAGE_BOX_STATES.USER_EXPANDED,
+    OPERATIONAL_MESSAGE_BOX_STATES.AUTO_EXPANDED
+  ].includes(globalOperationalMessageBoxState.state);
+  body.hidden=!expanded;
+  toggle.setAttribute("aria-expanded",expanded ? "true" : "false");
+  toggle.textContent=expanded ? "Kollaps" : "Åpne";
+  title.innerHTML=`<span aria-hidden="true">✉</span> Direktemeldinger – ${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[role])}`;
+  const messages=getOperationalMessagesForRole(role);
+  const newestIncoming=messages
+    .filter(message=>message?.targetRole === role)
+    .sort((left,right)=>String(right?.sentAt || "").localeCompare(String(left?.sentAt || "")))[0];
+  meta.textContent=newestIncoming
+    ? `Sist fra ${OPERATIONAL_MESSAGE_ROLE_LABELS[newestIncoming.sourceRole] || newestIncoming.sourceRole} · ${formatDropsVehicleStatusTimestamp(newestIncoming.sentAt)}`
+    : "Ingen innkommende meldinger i dagens serverreadback.";
+  const pending=Number(globalOperationalMessageBoxState.pendingCount || 0);
+  badge.hidden=pending < 1;
+  badge.textContent=String(pending);
+  badge.setAttribute("aria-label",`${pending} nye meldinger`);
+}
+
+function reconcileGlobalOperationalMessageInbox(readback){
+  const role=syncGlobalOperationalMessageRole();
+  if(!role || readback?.ok !== true) return [];
+  const messages=(Array.isArray(readback.operationalMessages)
+    ? readback.operationalMessages
+    : []
+  ).filter(message=>String(message?.messageId || ""));
+  if(!globalOperationalMessageBoxState.baselineInitialized){
+    messages.forEach(message=>
+      globalOperationalMessageBoxState.knownMessageIds.add(String(message.messageId))
+    );
+    globalOperationalMessageBoxState.baselineInitialized=true;
+    globalOperationalMessageBoxState.pendingCount=messages.filter(message=>
+      message.targetRole === role && !message.acknowledgedAt
+    ).length;
+    globalOperationalMessageBoxState.pendingIncomingCount=
+      globalOperationalMessageBoxState.pendingCount;
+    renderGlobalOperationalMessageBox();
+    return [];
+  }
+  const incoming=[];
+  messages.forEach(message=>{
+    const messageId=String(message.messageId);
+    if(globalOperationalMessageBoxState.knownMessageIds.has(messageId)) return;
+    globalOperationalMessageBoxState.knownMessageIds.add(messageId);
+    const withdrawn=Boolean(message.withdrawnAt || message.withdrawn === true ||
+      message.deliveryState === "withdrawn");
+    if(message.targetRole === role && message.sourceRole !== role && !withdrawn){
+      incoming.push(message);
+      globalOperationalMessageBoxState.pendingMessageIds.add(messageId);
+    }
+  });
+  globalOperationalMessageBoxState.pendingCount=messages.filter(message=>
+    message.targetRole === role && !message.acknowledgedAt
+  ).length;
+  globalOperationalMessageBoxState.pendingIncomingCount=
+    globalOperationalMessageBoxState.pendingCount;
+  if(!incoming.length){
+    renderGlobalOperationalMessageBox();
+    return [];
+  }
+  const triggerMessageIds=incoming.map(message=>String(message.messageId));
+  if(isOperationalMessageInteractionBlockingAutoExpand()){
+    transitionGlobalOperationalMessageBox(
+      OPERATIONAL_MESSAGE_BOX_STATES.DEFERRED_AUTO_EXPAND,
+      {action:"NEW_INCOMING_DEFERRED",triggerMessageIds}
+    );
+  }else{
+    transitionGlobalOperationalMessageBox(
+      OPERATIONAL_MESSAGE_BOX_STATES.AUTO_EXPANDED,
+      {action:"NEW_INCOMING_AUTO_EXPANDED",triggerMessageIds}
+    );
+    incoming.forEach(recordOperationalMessageAutoPresentation);
+  }
+  return incoming;
+}
+
+function flushDeferredOperationalMessageAutoExpand(){
+  if(
+    globalOperationalMessageBoxState.state !==
+      OPERATIONAL_MESSAGE_BOX_STATES.DEFERRED_AUTO_EXPAND ||
+    isOperationalMessageInteractionBlockingAutoExpand()
+  ) return false;
+  const ids=[...globalOperationalMessageBoxState.triggerMessageIds];
+  transitionGlobalOperationalMessageBox(
+    OPERATIONAL_MESSAGE_BOX_STATES.AUTO_EXPANDED,
+    {action:"DEFERRED_AUTO_EXPAND_FLUSHED",triggerMessageIds:ids}
+  );
+  const byId=new Map(getOperationalMessagesForRole(
+    globalOperationalMessageBoxState.role
+  ).map(message=>[String(message.messageId),message]));
+  ids.map(messageId=>byId.get(messageId)).filter(Boolean)
+    .forEach(recordOperationalMessageAutoPresentation);
+  return true;
 }
 
 function getOperationalMessageContext(role){
@@ -54737,10 +55078,13 @@ function getOperationalMessageAvailability(role,draftKey="root"){
 }
 
 function renderOperationalMessageComposers(){
+  const activeRole=syncGlobalOperationalMessageRole();
+  renderGlobalOperationalMessageBox();
   document.querySelectorAll("[data-sde-operational-message-host]").forEach(host=>{
-    const role = String(host.dataset.sdeOperationalRole || "");
+    const role = String(activeRole || host.dataset.sdeOperationalRole || "");
     if(!OPERATIONAL_MESSAGE_ROLES.includes(role)) return;
-    host.hidden = getActiveOperationalMessageRole() !== role;
+    host.dataset.sdeOperationalRole=role;
+    host.hidden = false;
     if(host.dataset.sdeOperationalMessageInitialized === "true") return;
     const targets = OPERATIONAL_MESSAGE_ROLES
       .filter(candidate=>candidate !== role)
@@ -54764,6 +55108,14 @@ function renderOperationalMessageComposers(){
         <select data-sde-operational-message-target data-sde-operational-role="${role}">${targets}</select>
       </label>
       <p class="operational-message-active-target" data-sde-operational-message-active-target hidden></p>
+      <section class="operational-message-history-tools" aria-label="Eldre meldingshistorikk">
+        <label>Historikkdato (Europe/Oslo)
+          <input type="date" data-sde-operational-message-history-date aria-label="Velg historikkdato i Europe/Oslo">
+        </label>
+        <button type="button" data-sde-operational-message-history-load>Last valgt dato</button>
+        <button type="button" data-sde-operational-message-history-more hidden>Last flere</button>
+        <p class="operational-message-history-status" data-sde-operational-message-history-status role="status">Eldre historikk lastes bare på forespørsel.</p>
+      </section>
       <label><span data-sde-operational-message-editor-label>Beskjed</span>
         <textarea data-sde-operational-message-text data-sde-operational-message-reply data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root" data-sde-operational-message-id="" maxlength="250" rows="3" placeholder="Skriv din beskjed her …"></textarea>
         <span class="operational-message-composer__meta">
@@ -54793,9 +55145,7 @@ function renderOperationalMessageThreads(){
     if(!OPERATIONAL_MESSAGE_ROLES.includes(role)) return;
     const groups = getOperationalMessageThreadGroupsForRole(
       role,
-      Array.isArray(dropsVehicleStatusReadback?.operationalMessages)
-      ? dropsVehicleStatusReadback.operationalMessages
-      : []
+      getOperationalMessagesForRole(role)
     );
     const host = list.closest("[data-sde-operational-message-host]");
     const selector = host?.querySelector("[data-sde-operational-message-thread-selector]");
@@ -54855,15 +55205,17 @@ function renderOperationalMessageThreads(){
         const direction=message.sourceRole === role ? "is-sent" : "is-received";
         if(!article){
           const sourceLabel=OPERATIONAL_MESSAGE_ROLE_LABELS[message.sourceRole] || message.sourceRole;
+          const withdrawn=Boolean(message.withdrawnAt || message.withdrawn === true ||
+            message.deliveryState === "withdrawn");
           items.insertAdjacentHTML(
             "beforeend",
-            `<article class="operational-message-thread__message ${direction}" data-sde-operational-message-id="${escapeHtml(messageId)}">
+            `<article class="operational-message-thread__message ${direction}${withdrawn ? " is-withdrawn" : ""}" data-sde-operational-message-id="${escapeHtml(messageId)}">
               <div class="operational-message-thread__meta">
                 <strong>${escapeHtml(sourceLabel)}</strong>
                 <time datetime="${escapeHtml(String(message.sentAt || ""))}">${escapeHtml(formatDropsVehicleStatusTimestamp(message.sentAt))}</time>
                 <span data-sde-operational-message-delivery>${escapeHtml(getOperationalMessageDeliveryLabel(message))}</span>
               </div>
-              <p>${escapeHtml(String(message.message || ""))}</p>
+              <p>${withdrawn ? "Meldingen er trukket tilbake." : escapeHtml(String(message.message || ""))}</p>
             </article>`
           );
           appended=true;
@@ -55154,9 +55506,7 @@ function handleOperationalMessageComposerChange(event){
         threadId !== OPERATIONAL_MESSAGE_NEW_THREAD_KEY &&
         !getOperationalMessageThreadGroupsForRole(
           role,
-          Array.isArray(dropsVehicleStatusReadback?.operationalMessages)
-            ? dropsVehicleStatusReadback.operationalMessages
-            : []
+          getOperationalMessagesForRole(role)
         ).some(group=>group.threadId === threadId)
       )
     ){
@@ -55165,6 +55515,12 @@ function handleOperationalMessageComposerChange(event){
     operationalMessageActiveThreadByRole.set(role,threadId);
     renderOperationalMessageThreads();
     updateOperationalMessageComposerStatus();
+    if(
+      threadId !== OPERATIONAL_MESSAGE_NEW_THREAD_KEY &&
+      !operationalMessageThreadHistoryLoaded.has(threadId)
+    ){
+      loadOperationalMessageHistory({threadId,role}).catch(()=>{});
+    }
     return true;
   }
   const select = event.target.closest?.("[data-sde-operational-message-target]");
@@ -55693,7 +56049,7 @@ const workshopSheetOpenAttempts = new Set();
 let vehicleStatusNotificationAudioContext = null;
 let vehicleStatusNotificationAudioEnabled = false;
 let vehicleStatusNotificationReturnFocusElement = null;
-const vehicleStatusVisiblePolling = {timer:0,intervalMs:5000};
+const vehicleStatusVisiblePolling = {timer:0,intervalMs:3000};
 
 function buildVehicleStatusAudioControlHtml(){
   const active = vehicleStatusNotificationAudioEnabled === true;
@@ -55772,6 +56128,7 @@ function getDropsVehicleStatusViewModel(){
 function acceptVehicleStatusReadback(readback){
   if(readback?.ok === true) reconcileVehicleStatusNotifications(readback);
   dropsVehicleStatusReadback = readback;
+  if(readback?.ok === true) reconcileGlobalOperationalMessageInbox(readback);
   if(typeof updateOperationalMessageComposerStatus === "function"){
     updateOperationalMessageComposerStatus();
   }
@@ -55807,6 +56164,7 @@ function ensureDropsVehicleStatusContext(){
       dropsRuntimeCapabilities = context.capabilities;
       dropsAccessIdentitySession = context.identity;
       dropsVehicleStatusAnalytics = context.analytics;
+      reconcileGlobalOperationalMessageInbox(context.readback);
       dropsVehicleStatusContextLoaded = true;
       if(typeof updateAgiliaCleaningRequestUi === "function"){
         updateAgiliaCleaningRequestUi();
@@ -55822,6 +56180,7 @@ function ensureDropsVehicleStatusContext(){
     .finally(()=>{
       dropsVehicleStatusContextLoadPromise = null;
       applyAccessLevel();
+      renderGlobalOperationalMessageBox();
       renderDropsVehicleRegistry();
       renderWorkshopVehicleRegistry();
       renderSporplanVehicleStatusBadges();
@@ -55987,8 +56346,6 @@ function reconcileVehicleStatusNotifications(readback){
       notification?.kind === "REPAIR_REQUESTED" ||
       notification?.kind === "WORKSHOP_EXIT_REQUESTED" ||
       notification?.kind === "WORKSHOP_INGRESS_REQUESTED" ||
-      notification?.kind === "OPERATIONAL_MESSAGE" ||
-      notification?.kind === "WORKSHOP_MESSAGE" ||
       notification?.kind === "CLEANING_TRACK_SPACE_REQUESTED"
     )
     .filter(notification=>String(notification?.notificationId || "") !== "");
@@ -56498,6 +56855,142 @@ async function acknowledgeOperationalMessageFromUi(notification){
   }
 }
 
+function recordOperationalMessageAutoPresentation(message){
+  const messageId=String(message?.messageId || "");
+  if(!messageId) return Promise.resolve(false);
+  if(operationalMessageAutoPresentationPromises.has(messageId)){
+    return operationalMessageAutoPresentationPromises.get(messageId);
+  }
+  const notification=(Array.isArray(dropsVehicleStatusReadback?.notifications)
+    ? dropsVehicleStatusReadback.notifications
+    : []
+  ).find(candidate=>String(candidate?.payload?.messageId || "") === messageId);
+  const notificationId=String(notification?.notificationId || message?.notificationId || "");
+  const role=getActiveOperationalMessageRole();
+  const capability=
+    dropsRuntimeCapabilities?.capabilities?.["vehicle_status.notification_presented"];
+  if(
+    !notificationId ||
+    !role ||
+    dropsVehicleStatusReadback?.notificationPresentedCommandAvailable !== true ||
+    capability?.allowed !== true
+  ) return Promise.resolve(false);
+  const promise=postVehicleStatusTechnicalCommand(
+    `notification-presented/${encodeURIComponent(role)}`,
+    {notificationId}
+  ).then(result=>{
+    if(!result.ok) return false;
+    globalOperationalMessageBoxState.presentedMessageIds.add(messageId);
+    renderGlobalOperationalMessageBox();
+    return true;
+  }).catch(()=>false);
+  operationalMessageAutoPresentationPromises.set(messageId,promise);
+  return promise;
+}
+
+async function recordOperationalMessageDismissedAfterAutoPresentation(messageId){
+  messageId=String(messageId || "");
+  const role=getActiveOperationalMessageRole();
+  const sessionId=getOperationalMessageRecipientSessionId();
+  const attemptKey=`${messageId}|${sessionId}`;
+  if(
+    !messageId ||
+    !role ||
+    operationalMessageDismissalAttempts.has(attemptKey) ||
+    dropsVehicleStatusReadback
+      ?.dismissOperationalMessageAfterAutoPresentationCommandAvailable !== true
+  ) return false;
+  const presentation=operationalMessageAutoPresentationPromises.get(messageId);
+  if(presentation && await presentation !== true) return false;
+  if(!globalOperationalMessageBoxState.presentedMessageIds.has(messageId)) return false;
+  operationalMessageDismissalAttempts.add(attemptKey);
+  try{
+    const result=await postVehicleStatusTechnicalCommand(
+      `dismiss-operational-message-after-auto-presentation/${encodeURIComponent(role)}`,
+      {
+        actionId:getOperationalMessageDismissalActionId(messageId),
+        messageId,
+        recipientSessionId:sessionId
+      }
+    );
+    if(!result.ok) operationalMessageDismissalAttempts.delete(attemptKey);
+    return result.ok;
+  }catch(_error){
+    operationalMessageDismissalAttempts.delete(attemptKey);
+    return false;
+  }
+}
+
+async function toggleGlobalOperationalMessageBox(){
+  const current=globalOperationalMessageBoxState.state;
+  if([
+    OPERATIONAL_MESSAGE_BOX_STATES.USER_EXPANDED,
+    OPERATIONAL_MESSAGE_BOX_STATES.AUTO_EXPANDED
+  ].includes(current)){
+    const autoPresentedIds=current === OPERATIONAL_MESSAGE_BOX_STATES.AUTO_EXPANDED
+      ? [...globalOperationalMessageBoxState.triggerMessageIds]
+      : [];
+    transitionGlobalOperationalMessageBox(
+      OPERATIONAL_MESSAGE_BOX_STATES.USER_COLLAPSED,
+      {action:"USER_COLLAPSE"}
+    );
+    await Promise.all(autoPresentedIds.map(
+      recordOperationalMessageDismissedAfterAutoPresentation
+    ));
+    return;
+  }
+  transitionGlobalOperationalMessageBox(
+    OPERATIONAL_MESSAGE_BOX_STATES.USER_EXPANDED,
+    {action:"USER_EXPAND",triggerMessageIds:[]}
+  );
+}
+
+async function loadOperationalMessageHistory({date="",threadId="",role="",more=false}={}){
+  role=String(role || getActiveOperationalMessageRole());
+  date=String(date || "");
+  threadId=String(threadId || "");
+  if(!role || (!date && !threadId)) return false;
+  const scope=threadId ? `thread:${threadId}` : `date:${date}`;
+  const previous=operationalMessageHistoryPages.get(scope) || {};
+  if(threadId && operationalMessageThreadHistoryLoaded.has(threadId) && !more) return true;
+  const params=new URLSearchParams({limit:"50"});
+  if(date) params.set("date",date);
+  if(threadId) params.set("threadId",threadId);
+  if(more && previous.nextCursor) params.set("cursor",previous.nextCursor);
+  const status=document.querySelector("[data-sde-operational-message-history-status]");
+  if(status) status.textContent="Laster historikk …";
+  try{
+    const response=await window.fetch(
+      `/api/vehicle-status/operational-messages?${params.toString()}`,
+      {method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}
+    );
+    const result=await response.json().catch(()=>null);
+    if(!response.ok || result?.ok !== true) throw new Error(result?.error || "history_failed");
+    (Array.isArray(result.messages) ? result.messages : []).forEach(message=>{
+      const messageId=String(message?.messageId || "");
+      if(messageId) operationalMessageHistoryById.set(messageId,message);
+    });
+    operationalMessageHistoryPages.set(scope,{
+      nextCursor:String(result.nextCursor || ""),
+      loadedAt:new Date().toISOString()
+    });
+    if(threadId) operationalMessageThreadHistoryLoaded.add(threadId);
+    renderOperationalMessageThreads();
+    const moreButton=document.querySelector("[data-sde-operational-message-history-more]");
+    if(moreButton){
+      moreButton.hidden=!result.nextCursor;
+      moreButton.dataset.sdeOperationalMessageHistoryScope=scope;
+    }
+    if(status){
+      status.textContent=`${Number(result.messages?.length || 0)} meldinger lastet fra serveren.`;
+    }
+    return true;
+  }catch(error){
+    if(status) status.textContent=`Historikk kunne ikke lastes: ${String(error?.message || "ukjent feil")}.`;
+    return false;
+  }
+}
+
 async function postVehicleStatusTechnicalCommand(commandName,payload){
   const response = await window.fetch(`/api/vehicle-status/commands/${commandName}`,{
     method:"POST",
@@ -56660,6 +57153,7 @@ async function refreshVehicleStatusReadback(fetchImpl=window.fetch.bind(window))
       if(typeof buildSporplan === "function") buildSporplan();
     }
     renderOperationalMessageThreads();
+    renderGlobalOperationalMessageBox();
     updateOperationalMessageComposerStatus();
     renderVehicleStatusNotificationPopup();
   }catch(unusedError){ /* fail closed on last confirmed GET */ }
@@ -58147,6 +58641,36 @@ function renderDropsPanels(){
 function initDropsPanels(){
   startVehicleStatusVisiblePolling();
   document.addEventListener("click", event=>{
+    if(event.target.closest("#globalOperationalMessageToggle")){
+      event.preventDefault();
+      toggleGlobalOperationalMessageBox();
+      return;
+    }
+    const historyLoad=event.target.closest(
+      "[data-sde-operational-message-history-load]"
+    );
+    if(historyLoad){
+      event.preventDefault();
+      const host=historyLoad.closest("[data-sde-operational-message-host]");
+      const date=String(host?.querySelector(
+        "[data-sde-operational-message-history-date]"
+      )?.value || "");
+      if(date) loadOperationalMessageHistory({date}).catch(()=>{});
+      return;
+    }
+    const historyMore=event.target.closest(
+      "[data-sde-operational-message-history-more]"
+    );
+    if(historyMore){
+      event.preventDefault();
+      const scope=String(historyMore.dataset.sdeOperationalMessageHistoryScope || "");
+      if(scope.startsWith("date:")){
+        loadOperationalMessageHistory({date:scope.slice(5),more:true}).catch(()=>{});
+      }else if(scope.startsWith("thread:")){
+        loadOperationalMessageHistory({threadId:scope.slice(7),more:true}).catch(()=>{});
+      }
+      return;
+    }
     const operationalMessageNewer = event.target.closest(
       "[data-sde-operational-message-newer]"
     );
@@ -58191,6 +58715,25 @@ function initDropsPanels(){
     if(!workshopRegistryRenderDeferred) return;
     window.setTimeout(()=>renderWorkshopVehicleRegistry(),0);
   });
+  document.addEventListener("pointerdown",event=>{
+    operationalMessageInteractionState.activePointerIds.add(event.pointerId);
+  },true);
+  const finishOperationalMessagePointer=event=>{
+    operationalMessageInteractionState.activePointerIds.delete(event.pointerId);
+    window.requestAnimationFrame?.(()=>flushDeferredOperationalMessageAutoExpand());
+  };
+  document.addEventListener("pointerup",finishOperationalMessagePointer,true);
+  document.addEventListener("pointercancel",finishOperationalMessagePointer,true);
+  document.addEventListener("compositionstart",()=>{
+    operationalMessageInteractionState.composing=true;
+  },true);
+  document.addEventListener("compositionend",()=>{
+    operationalMessageInteractionState.composing=false;
+    window.requestAnimationFrame?.(()=>flushDeferredOperationalMessageAutoExpand());
+  },true);
+  document.addEventListener("close",()=>{
+    window.requestAnimationFrame?.(()=>flushDeferredOperationalMessageAutoExpand());
+  },true);
   document.addEventListener("keydown",event=>{
     const dialog = document.querySelector(
       "#vehicleStatusNotificationHost .vehicle-status-notification-popup"

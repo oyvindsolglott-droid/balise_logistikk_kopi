@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v10";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v11";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -61,6 +61,8 @@ const LIFECYCLE_COMMANDS = Object.freeze({
   SEND_OPERATIONAL_MESSAGE: "send_operational_message",
   SEND_WORKSHOP_MESSAGE: "send_workshop_message",
   ACKNOWLEDGE_OPERATIONAL_MESSAGE: "acknowledge_operational_message",
+  DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION:
+    "dismiss_operational_message_after_auto_presentation",
   MARK_FOR_TURNING: "mark_for_turning",
   REPORT_OPERATIONAL: "report_operational",
   NOTIFICATION_PRESENTED: "notification_presented",
@@ -106,6 +108,12 @@ const COMMAND_DEFINITIONS = Object.freeze({
     route: "/api/vehicle-status/commands/acknowledge-operational-message/:sourceRole",
     capability: CAPABILITY_IDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE
   }),
+  [LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION]:
+    Object.freeze({
+      route:
+        "/api/vehicle-status/commands/dismiss-operational-message-after-auto-presentation/:sourceRole",
+      capability: CAPABILITY_IDS.PRESENT_NOTIFICATION
+    }),
   [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: Object.freeze({
     route: "/api/vehicle-status/commands/mark-for-turning",
     capability: CAPABILITY_IDS.MARK_FOR_TURNING
@@ -163,6 +171,9 @@ const FIELDS = Object.freeze({
   [LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE]: new Set([
     "actionId", "messageId", "notificationId"
   ]),
+  [LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION]: new Set([
+    "actionId", "messageId", "recipientSessionId"
+  ]),
   [LIFECYCLE_COMMANDS.MARK_FOR_TURNING]: new Set([
     "actionId", "expectedStatusRevision", "vehicleId"
   ]),
@@ -204,6 +215,8 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
   const isNonVehicleCommand = (
     commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED ||
     commandName === LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE ||
+    commandName ===
+      LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION ||
     commandName === LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE ||
     isMessageCommand
   );
@@ -474,6 +487,30 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
       messageId,
       notificationId
     };
+  }else if(
+    commandName ===
+      LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION
+  ){
+    const sourceRole = String(options.sourceRole || "").trim().toLowerCase();
+    const messageId = normalizeUuid(input.messageId);
+    const recipientSessionId = normalizeUuid(input.recipientSessionId);
+    if(!OPERATIONAL_MESSAGE_ROLES.has(sourceRole)){
+      return invalid(403, "message_target_role_forbidden", "target role is not allowed.");
+    }
+    if(!messageId){
+      return invalid(400, "invalid_message_id", "messageId must be a UUID.");
+    }
+    if(!recipientSessionId){
+      return invalid(400, "invalid_recipient_session_id",
+        "recipientSessionId must be a UUID.");
+    }
+    normalized = {
+      actionId,
+      vehicleId:"OPERATIONAL_MESSAGE",
+      sourceRole,
+      messageId,
+      recipientSessionId
+    };
   }else if(commandName === LIFECYCLE_COMMANDS.MARK_FOR_TURNING){
     const expectedStatusRevision = revision(input.expectedStatusRevision);
     if(expectedStatusRevision === null) return invalidRevision("expectedStatusRevision");
@@ -577,6 +614,8 @@ function createVehicleStatusLifecycleHandler(options = {}){
         : (
           commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE ||
           commandName === LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE ||
+          commandName ===
+            LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION ||
           commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED
         )
           ? String(options.fixedSourceRole || req.params?.sourceRole || "").trim().toLowerCase()
@@ -664,7 +703,13 @@ function createVehicleStatusReadHandler(options = {}){
         : (options.responseMetadata || {});
       return res.json({
         ok: true,
-        ...repository.getReadModel({ roles }),
+        ...repository.getReadModel({
+          roles,
+          operationalMessageWindow:{
+            mode:"today_and_carryover",
+            timeZone:"Europe/Oslo"
+          }
+        }),
         ...responseMetadata,
         roles,
         trustedRequestAuthority: null
@@ -676,6 +721,67 @@ function createVehicleStatusReadHandler(options = {}){
       });
       return sendError(res, 500, "vehicle_status_readback_failed",
         "Vehicle-status readback is unavailable.");
+    }
+  };
+}
+
+function createOperationalMessageHistoryHandler(options = {}){
+  const repository = options.repository;
+  if(!repository || typeof repository.getOperationalMessagePage !== "function"){
+    throw new TypeError("An operational-message history repository is required.");
+  }
+  const env = options.env || process.env;
+  const verifyIdentityRequest = options.verifyIdentityRequest || verifyAccessIdentityRequest;
+  const hasInjectedVerifier = Object.hasOwn(options, "verifyIdentityRequest");
+  const roleBindingsCatalog = Object.hasOwn(options, "roleBindingsCatalog")
+    ? validateIdentityRoleBindingsCatalog(options.roleBindingsCatalog)
+    : loadIdentityRoleBindingsCatalog({ env, readFileSync: options.readRoleBindingsFile });
+
+  return async function operationalMessageHistoryHandler(req, res){
+    noStore(res);
+    try{
+      if(!hasInjectedVerifier && !accessAssertionPresent(req.headers)){
+        return sendError(res, 401, "authentication_required", "Verified identity is required.");
+      }
+      const identityResult = await verifyIdentityRequest({
+        headers:req.headers,
+        env,
+        jwks:options.jwks,
+        verifier:options.verifier
+      });
+      if(identityResult?.ok !== true){
+        return sendError(res, identityResult?.status || 401,
+          identityResult?.publicError || "authentication_required",
+          "Verified identity is required.");
+      }
+      if(roleBindingsCatalog.valid !== true){
+        return sendError(res, 503, "role_binding_unavailable",
+          "Role binding is unavailable.");
+      }
+      const roleResult = resolveIdentityRoleBinding(identityResult.identity, roleBindingsCatalog);
+      if(roleResult.roleResolved !== true || roleResult.roles.length === 0){
+        return sendError(res, 403, "role_binding_required",
+          "A resolved role binding is required.");
+      }
+      const page = repository.getOperationalMessagePage({
+        roles:[...roleResult.roles],
+        date:String(req.query?.date || ""),
+        cursor:String(req.query?.cursor || ""),
+        threadId:String(req.query?.threadId || ""),
+        limit:req.query?.limit
+      });
+      if(page?.ok === false){
+        return sendError(res, page.status || 400, page.error || "invalid_history_query",
+          page.message || "The history query is invalid.");
+      }
+      return res.status(200).json({ok:true,...page,roles:[...roleResult.roles]});
+    }catch(error){
+      console.error("operational-message history failed", {
+        name:error?.name || "Error",
+        message:error?.message || "Operational-message history failed."
+      });
+      return sendError(res, 500, "operational_message_history_failed",
+        "Operational-message history is unavailable.");
     }
   };
 }
@@ -922,6 +1028,7 @@ module.exports = {
   WAIT_REASONS,
   createVehicleStatusAnalyticsHandler,
   createVehicleStatusLifecycleHandler,
+  createOperationalMessageHistoryHandler,
   createVehicleStatusReadHandler,
   getPilotAllowedVehicleIds,
   normalizeLifecycleCommand

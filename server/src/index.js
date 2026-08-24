@@ -23,6 +23,7 @@ const {
   LIFECYCLE_COMMANDS: VEHICLE_STATUS_LIFECYCLE_COMMANDS,
   PRODUCTION_ALLOWED_SCOPE_ENV,
   REGISTERED_VEHICLES_SCOPE,
+  createOperationalMessageHistoryHandler,
   createVehicleStatusAnalyticsHandler,
   createVehicleStatusLifecycleHandler,
   createVehicleStatusReadHandler,
@@ -558,6 +559,8 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           capabilityAvailable(CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE);
         const acknowledgeOperationalMessageCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE);
+        const dismissOperationalMessageAfterAutoPresentationCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.PRESENT_NOTIFICATION);
         const sendWorkshopMessageCommandAvailable =
           sendOperationalMessageCommandAvailable;
         const markForTurningCommandAvailable =
@@ -583,6 +586,7 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestCleaningTrackSpaceCommandAvailable,
           sendOperationalMessageCommandAvailable,
           acknowledgeOperationalMessageCommandAvailable,
+          dismissOperationalMessageAfterAutoPresentationCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
           notificationPresentedCommandAvailable,
@@ -745,6 +749,10 @@ app.get("/api/vehicle-status", async (req, res) => {
 });
 
 if(vehicleStatusRepository){
+  app.get(
+    "/api/vehicle-status/operational-messages",
+    createOperationalMessageHistoryHandler({ repository: vehicleStatusRepository })
+  );
   app.get(
     "/api/vehicle-status/analytics",
     createVehicleStatusAnalyticsHandler({ repository: vehicleStatusRepository })

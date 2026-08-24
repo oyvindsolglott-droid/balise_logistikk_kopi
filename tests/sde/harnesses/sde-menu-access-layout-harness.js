@@ -35,7 +35,7 @@ function functionSource(name){
   throw new Error(`unterminated function ${name}`);
 }
 
-const menuMarkup = source.match(/<div class="segmented" aria-label="Hovedmeny">([\s\S]*?)<\/div>\s*<section class="panel" id="grunnoppstilling">/)?.[1] || "";
+const menuMarkup = source.match(/<div class="segmented" aria-label="Hovedmeny">([\s\S]*?)<\/div>\s*<section class="global-operational-message-box"/)?.[1] || "";
 const stadlerMarkup = menuMarkup.match(/<button[^>]*data-tab="verkstedBestillinger"[^>]*>/)?.[0] || "";
 const stadlerRule = source.match(/\.segmented button\.seg-stadler-graphic\{([^}]*)\}/)?.[1] || "";
 const planRule = source.match(/\.segmented button\.seg-sde-plan-graphic\{([^}]*)\}/)?.[1] || "";

@@ -68,7 +68,7 @@ for(const token of [
 ]){
   assert.ok(repositorySource.includes(token), `repository misses ${token}`);
 }
-assert.match(repositorySource, /PRAGMA user_version = 10/);
+assert.match(repositorySource, /PRAGMA user_version = 11/);
 
 const {
   createVehicleStatusTestRepository,

@@ -125,6 +125,8 @@ async function main() {
   let workshopRenders = 0;
   let sporplanRenders = 0;
   let notificationRenders = 0;
+  let globalInboxReconciliations = 0;
+  let globalInboxRenders = 0;
   let focusoutCount = 0;
   const document = {
     visibilityState: "visible",
@@ -176,6 +178,8 @@ async function main() {
     function renderSporplanVehicleStatusBadges(){ sporplanRenders += 1; }
     function renderOperationalMessageThreads(){}
     function updateOperationalMessageComposerStatus(){}
+    function reconcileGlobalOperationalMessageInbox(){ globalInboxReconciliations += 1; }
+    function renderGlobalOperationalMessageBox(){ globalInboxRenders += 1; }
     function renderVehicleStatusNotificationPopup(){ notificationRenders += 1; }
     ${optionalFunctions.join("\n")}
     ${refreshFunction}
@@ -184,6 +188,8 @@ async function main() {
       getReadback:()=>dropsVehicleStatusReadback,
       getRenderCounts:()=>({
         notificationRenders,
+        globalInboxReconciliations,
+        globalInboxRenders,
         workshopRenders,
         sporplanRenders
       }),
@@ -198,6 +204,8 @@ async function main() {
     workshopRenders,
     sporplanRenders,
     notificationRenders,
+    globalInboxReconciliations,
+    globalInboxRenders,
     focusoutCount,
   });
 
@@ -229,6 +237,8 @@ async function main() {
   assert.equal(context.fullRegistryRenders, 0, "other-vehicle readback and notifications must not replace the selected editor");
   const renderCounts = context.api.getRenderCounts();
   assert.equal(renderCounts.notificationRenders, 4, "notification readback must still update independently");
+  assert.equal(renderCounts.globalInboxReconciliations, 4, "the single global inbox must reconcile on every confirmed readback");
+  assert.equal(renderCounts.globalInboxRenders, 4, "the single global inbox must render without replacing the focused editor");
   assert.equal(renderCounts.workshopRenders, 4, "workshop readback must still update independently");
   assert.equal(renderCounts.sporplanRenders, 4, "Sporplan badges must still update independently");
 

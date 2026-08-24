@@ -644,6 +644,7 @@ function emptyCounts(){
     operationalMessages: 0,
     operationalMessageEvents: 0,
     operationalMessageAcknowledgements: 0,
+    operationalMessageAutoDismissals: 0,
     cleaningTrackSpaceRequests: 0
   };
 }
@@ -665,6 +666,7 @@ function legacyCounts(faults){
     operationalMessages: 0,
     operationalMessageEvents: 0,
     operationalMessageAcknowledgements: 0,
+    operationalMessageAutoDismissals: 0,
     cleaningTrackSpaceRequests: 0
   };
 }
