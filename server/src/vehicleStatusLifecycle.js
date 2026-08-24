@@ -154,7 +154,7 @@ const FIELDS = Object.freeze({
     "shortNoticeAcknowledged"
   ]),
   [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: new Set([
-    "actionId", "targetRole", "message", "context",
+    "actionId", "messageId", "targetRole", "message", "context",
     "threadId", "rootMessageId", "parentMessageId"
   ]),
   [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: new Set([
@@ -383,11 +383,19 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
     };
   }else if(commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE){
     const sourceRole = String(options.sourceRole || "").trim().toLowerCase();
+    const messageId = normalizeUuid(input.messageId ?? actionId);
     const targetRole = String(input.targetRole || "").trim().toLowerCase();
     const message = normalizedMessageText(input.message, 250);
     const contextResult = normalizeOperationalMessageContext(input.context, allowedVehicleIds);
     if(!OPERATIONAL_MESSAGE_ROLES.has(sourceRole)){
       return invalid(403, "message_source_role_forbidden", "source role is not allowed.");
+    }
+    if(!messageId){
+      return invalid(400, "invalid_message_id", "messageId must be a UUID value.");
+    }
+    if(messageId !== actionId){
+      return invalid(409, "message_id_action_id_mismatch",
+        "messageId must equal actionId so retries use one idempotency identity.");
     }
     if(!OPERATIONAL_MESSAGE_ROLES.has(targetRole)){
       return invalid(400, "invalid_message_target", "targetRole is not allowed.");
@@ -417,6 +425,7 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
     }
     normalized = {
       actionId,
+      messageId,
       vehicleId:"OPERATIONAL_MESSAGE",
       sourceRole,
       targetRole,
@@ -429,6 +438,7 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
       LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
       {
         actionId,
+        messageId:actionId,
         targetRole:input.targetRole,
         message:input.message,
         context:{
