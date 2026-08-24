@@ -1511,7 +1511,7 @@ function createVehicleStatusRepository(options = {}){
     };
     const timestamp = now();
     const eventId = randomUUID();
-    const messageId = randomUUID();
+    const messageId = command.messageId || command.actionId;
     const notificationId = randomUUID();
     let threadId = messageId;
     let rootMessageId = messageId;
@@ -1586,6 +1586,7 @@ function createVehicleStatusRepository(options = {}){
       authority.effectiveRole,
       JSON.stringify({
         message:command.message,
+        sourceActorSubject:authority.subject,
         context:command.context || {},
         threadId,
         rootMessageId,
@@ -1608,6 +1609,7 @@ function createVehicleStatusRepository(options = {}){
         messageId,
         message:command.message,
         sourceRole:command.sourceRole,
+        sourceActorSubject:authority.subject,
         targetRole:command.targetRole,
         context:command.context || {},
         threadId,
@@ -1630,6 +1632,7 @@ function createVehicleStatusRepository(options = {}){
         messageId,
         notificationId,
         sourceRole:command.sourceRole,
+        sourceActorSubject:authority.subject,
         targetRole:command.targetRole,
         context:command.context || {},
         threadId,
@@ -1644,6 +1647,7 @@ function createVehicleStatusRepository(options = {}){
       notificationId,
       messageRevision:eventId,
       sourceRole:command.sourceRole,
+      sourceActorSubject:authority.subject,
       targetRole: command.targetRole,
       threadId,
       rootMessageId,
@@ -1731,6 +1735,7 @@ function createVehicleStatusRepository(options = {}){
             messageId:message.messageId,
             notificationId:message.notificationId,
             sourceRole:message.sourceRole,
+            sourceActorSubject:message.sourceActorSubject,
             targetRole:message.targetRole,
             sentAt:message.sentAt,
             messageRevision:message.eventId,
@@ -3757,6 +3762,7 @@ function mapOperationalMessage(row){
   return {
     messageId: row.message_id,
     sourceRole: row.source_role,
+    sourceActorSubject:row.created_by,
     targetRole: row.target_role,
     message: row.message_text,
     sentAt: row.created_at,

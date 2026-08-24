@@ -3,10 +3,21 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const http = require("node:http");
 const path = require("node:path");
 const {DatabaseSync} = require("node:sqlite");
 
 const root = path.resolve(__dirname, "../../..");
+const serverNodeModules = process.env.SDE_SERVER_NODE_MODULES
+  ? path.resolve(process.env.SDE_SERVER_NODE_MODULES)
+  : path.join(root,"server/node_modules");
+let express;
+try{
+  express = require(path.join(serverNodeModules,"express"));
+}catch(error){
+  if(error?.code !== "MODULE_NOT_FOUND") throw error;
+  express = require("express");
+}
 const authorizationSource = fs.readFileSync(
   path.join(root, "server/src/runtimeAuthorization.js"),
   "utf8"
@@ -90,9 +101,13 @@ assert.doesNotMatch(
 );
 
 const {
+  COMMAND_DEFINITIONS,
   LIFECYCLE_COMMANDS,
+  createVehicleStatusLifecycleHandler,
+  createVehicleStatusReadHandler,
   normalizeLifecycleCommand,
 } = require(path.join(root, "server/src/vehicleStatusLifecycle.js"));
+const {ROLE_KEYS} = require(path.join(root,"server/src/identityPolicy.js"));
 const {
   createVehicleStatusTestRepository,
 } = require(path.join(root, "server/src/vehicleStatusTestRepository.js"));
@@ -105,11 +120,13 @@ const normalize = (
   targetRole,
   message = "  Sikker <b>tekst</b>  ",
   threading = {},
-) =>
-  normalizeLifecycleCommand(
+) => {
+  const messageId = validAction(normalizedAction++);
+  return normalizeLifecycleCommand(
     LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
     {
-      actionId: validAction(normalizedAction++),
+      actionId:messageId,
+      messageId,
       targetRole,
       message,
       context: {surface: sourceRole, vehicleId: "74-10", slotId: "7N"},
@@ -117,6 +134,7 @@ const normalize = (
     },
     {sourceRole}
   );
+};
 
 for(const sourceRole of roles){
   for(const targetRole of roles){
@@ -127,6 +145,7 @@ for(const sourceRole of roles){
     }else{
       assert.equal(result.ok, true, `${sourceRole} -> ${targetRole} must normalize`);
       assert.equal(result.value.sourceRole, sourceRole);
+      assert.equal(result.value.messageId,result.value.actionId);
       assert.equal(result.value.targetRole, targetRole);
       assert.equal(result.value.message, "Sikker <b>tekst</b>");
       assert.deepEqual(
@@ -145,6 +164,20 @@ assert.equal(controlsRemoved.ok, true);
 assert.equal(controlsRemoved.value.message, "ABCD");
 assert.equal(normalize("drops", "txp", " \u0000 ").ok, false);
 assert.equal(normalize("drops", "txp", "x".repeat(251)).ok, false);
+assert.equal(
+  normalizeLifecycleCommand(
+    LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
+    {
+      actionId:validAction(999996),
+      messageId:validAction(999997),
+      targetRole:"txp",
+      message:"mismatch",
+      context:{surface:"drops"},
+    },
+    {sourceRole:"drops"}
+  ).error,
+  "message_id_action_id_mismatch"
+);
 assert.equal(
   normalizeLifecycleCommand(
     LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
@@ -169,12 +202,15 @@ const repository = createVehicleStatusTestRepository({
 });
 
 let action = 1;
+const repositoryVerifiedPairs = [];
 for(const sourceRole of roles){
   for(const targetRole of roles.filter(role => role !== sourceRole)){
+    const messageId = validAction(action++);
     const normalized = normalizeLifecycleCommand(
       LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
       {
-        actionId: validAction(action++),
+        actionId:messageId,
+        messageId,
         targetRole,
         message: `${sourceRole} til ${targetRole}`,
         context: {surface: sourceRole},
@@ -195,18 +231,21 @@ for(const sourceRole of roles){
     );
     assert.equal(result.ok, true, `${sourceRole} -> ${targetRole} must persist`);
     assert.equal(result.result.sourceRole, sourceRole);
-    assert.ok(result.result.messageId);
+    assert.equal(result.result.messageId,messageId);
+    assert.equal(result.result.sourceActorSubject,`${sourceRole}-subject`);
     assert.ok(result.result.notificationId);
     assert.ok(result.result.messageRevision);
     const targetReadback = repository.getReadModel({roles: [targetRole]});
     const saved = targetReadback.operationalMessages.at(-1);
     assert.equal(saved.sourceRole, sourceRole);
+    assert.equal(saved.sourceActorSubject,`${sourceRole}-subject`);
     assert.equal(saved.targetRole, targetRole);
     assert.equal(saved.message, `${sourceRole} til ${targetRole}`);
     assert.ok(targetReadback.notifications.some(notification =>
       notification.notificationId === result.result.notificationId &&
       notification.targetRole === targetRole &&
-      notification.kind === "OPERATIONAL_MESSAGE"
+      notification.kind === "OPERATIONAL_MESSAGE" &&
+      notification.payload?.sourceActorSubject === `${sourceRole}-subject`
     ));
     const senderReadback = repository.getReadModel({roles: [sourceRole]});
     const receipt = senderReadback.operationalMessageReceipts.find(candidate =>
@@ -217,6 +256,7 @@ for(const sourceRole of roles){
       notificationId: result.result.notificationId,
       messageRevision: result.result.messageRevision,
       sourceRole,
+      sourceActorSubject:`${sourceRole}-subject`,
       targetRole,
       sentAt: result.result.createdAt,
     });
@@ -230,6 +270,7 @@ for(const sourceRole of roles){
         `${otherRole} must not read a message for ${targetRole}`
       );
     }
+    const persistedBeforeRetry = repository.getReadModel({roles}).operationalMessages.length;
     const replay = repository.executeCommand(
       LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
       normalized.value,
@@ -237,8 +278,16 @@ for(const sourceRole of roles){
     );
     assert.equal(replay.ok, true);
     assert.equal(replay.result.idempotentReplay, true);
+    assert.equal(replay.result.messageId,messageId);
+    assert.equal(
+      repository.getReadModel({roles}).operationalMessages.length,
+      persistedBeforeRetry,
+      `${sourceRole} -> ${targetRole} retry must not duplicate`
+    );
+    repositoryVerifiedPairs.push(`${sourceRole}->${targetRole}`);
   }
 }
+assert.equal(repositoryVerifiedPairs.length,20);
 
 // One root plus twenty alternating replies prove that deep threads never flatten.
 const rootNormalized = normalize("drops","txp","Rotmelding");
@@ -315,10 +364,188 @@ assert.match(
   /submitOperationalMessageFromUi[\s\S]*postWorkshopActionCenterCommand[\s\S]*waitForOperationalMessageReceipt/
 );
 
-console.log(JSON.stringify({
-  schemaVersion: "sde-global-operational-messaging-harness-v1",
-  directions: 20,
-  threadDepth:20,
-  roles: roles.length,
-  persisted: full.operationalMessages.length,
-}));
+async function verifyServerAuthoritativeHttpDirections(){
+  let httpTick = 0;
+  let httpUuid = 500000;
+  const httpRepository = createVehicleStatusTestRepository({
+    db:new DatabaseSync(":memory:"),
+    now:()=>`2026-08-24T10:${String(Math.floor(httpTick / 60)).padStart(2,"0")}:${String(httpTick++ % 60).padStart(2,"0")}.000Z`,
+    randomUUID:()=>`00000000-0000-4000-8000-${String(httpUuid++).padStart(12,"0")}`,
+  });
+  const roleKeyByRole = {
+    drops:ROLE_KEYS.DROPS,
+    txp:ROLE_KEYS.TXP,
+    sde_skiftere:ROLE_KEYS.SDE_SKIFTERE,
+    verksted:ROLE_KEYS.VERKSTED,
+    agila:ROLE_KEYS.AGILA,
+  };
+  const roleBindingsCatalog = {
+    bindings:roles.map(role=>({
+      bindingId:`${role}-http-test`,
+      subject:`cf-access|${role}`,
+      role:roleKeyByRole[role],
+      enabled:true,
+    })),
+  };
+  const verifyIdentityRequest = async ({headers})=>{
+    const role = String(headers.authorization || "").replace(/^Bearer\s+/i,"");
+    if(!roles.includes(role)){
+      return {ok:false,status:401,publicError:"authentication_required"};
+    }
+    return {
+      ok:true,
+      identity:{
+        authenticated:true,
+        identityVerified:true,
+        identityKind:"human",
+        subject:`cf-access|${role}`,
+        identitySource:"cloudflare_access_jwt",
+      },
+    };
+  };
+  const app = express();
+  app.use(express.json({limit:"64kb"}));
+  app.post(
+    COMMAND_DEFINITIONS[LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE].route,
+    createVehicleStatusLifecycleHandler({
+      repository:httpRepository,
+      commandName:LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE,
+      roleBindingsCatalog,
+      verifyIdentityRequest,
+      isCommandAvailable:()=>true,
+      allowedVehicleIds:new Set(["74-10"]),
+    })
+  );
+  app.get("/api/vehicle-status",createVehicleStatusReadHandler({
+    repository:httpRepository,
+    roleBindingsCatalog,
+    verifyIdentityRequest,
+  }));
+  const server = http.createServer(app);
+  await new Promise((resolve,reject)=>{
+    server.once("error",reject);
+    server.listen(0,"127.0.0.1",resolve);
+  });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const verifiedPairs = [];
+  let actionId = 700000;
+  try{
+    for(const sourceRole of roles){
+      for(const targetRole of roles.filter(role=>role !== sourceRole)){
+        const messageId = validAction(actionId++);
+        const message = `HTTP ${sourceRole} til ${targetRole}`;
+        const request = {
+          method:"POST",
+          headers:{
+            Authorization:`Bearer ${sourceRole}`,
+            "Content-Type":"application/json",
+            Accept:"application/json",
+          },
+          body:JSON.stringify({
+            actionId:messageId,
+            messageId,
+            targetRole,
+            message,
+            context:{surface:sourceRole},
+          }),
+        };
+        const response = await fetch(
+          `${origin}/api/vehicle-status/commands/send-operational-message/${sourceRole}`,
+          request
+        );
+        const body = await response.json();
+        assert.equal(response.status,201,`${sourceRole} -> ${targetRole} HTTP send`);
+        assert.equal(body.messageId,messageId);
+        assert.equal(body.sourceRole,sourceRole);
+        assert.equal(body.targetRole,targetRole);
+        assert.equal(body.sourceActorSubject,`cf-access|${sourceRole}`);
+        assert.equal(body.threadId,messageId);
+        assert.equal(body.rootMessageId,messageId);
+        assert.equal(body.parentMessageId,null);
+
+        const retryResponse = await fetch(
+          `${origin}/api/vehicle-status/commands/send-operational-message/${sourceRole}`,
+          request
+        );
+        const retryBody = await retryResponse.json();
+        assert.equal(retryResponse.status,200);
+        assert.equal(retryBody.messageId,messageId);
+        assert.equal(retryBody.idempotentReplay,true);
+
+        const receiverResponse = await fetch(`${origin}/api/vehicle-status`,{
+          headers:{Authorization:`Bearer ${targetRole}`,Accept:"application/json"},
+        });
+        const receiver = await receiverResponse.json();
+        assert.equal(receiverResponse.status,200);
+        const delivered = receiver.operationalMessages.filter(candidate=>
+          candidate.messageId === messageId
+        );
+        assert.equal(delivered.length,1,`${sourceRole} -> ${targetRole} single delivery`);
+        assert.deepEqual(
+          {
+            sourceRole:delivered[0].sourceRole,
+            sourceActorSubject:delivered[0].sourceActorSubject,
+            targetRole:delivered[0].targetRole,
+            message:delivered[0].message,
+            threadId:delivered[0].threadId,
+            rootMessageId:delivered[0].rootMessageId,
+            parentMessageId:delivered[0].parentMessageId,
+          },
+          {
+            sourceRole,
+            sourceActorSubject:`cf-access|${sourceRole}`,
+            targetRole,
+            message,
+            threadId:messageId,
+            rootMessageId:messageId,
+            parentMessageId:null,
+          }
+        );
+        assert.ok(receiver.notifications.some(notification=>
+          notification.kind === "OPERATIONAL_MESSAGE" &&
+          notification.targetRole === targetRole &&
+          notification.payload?.messageId === messageId &&
+          notification.payload?.sourceActorSubject === `cf-access|${sourceRole}`
+        ));
+
+        const senderResponse = await fetch(`${origin}/api/vehicle-status`,{
+          headers:{Authorization:`Bearer ${sourceRole}`,Accept:"application/json"},
+        });
+        const sender = await senderResponse.json();
+        assert.equal(senderResponse.status,200);
+        const receipts = sender.operationalMessageReceipts.filter(receipt=>
+          receipt.messageId === messageId
+        );
+        assert.equal(receipts.length,1);
+        assert.equal(receipts[0].sourceRole,sourceRole);
+        assert.equal(receipts[0].sourceActorSubject,`cf-access|${sourceRole}`);
+        assert.equal(receipts[0].targetRole,targetRole);
+        verifiedPairs.push(`${sourceRole}->${targetRole}`);
+      }
+    }
+  }finally{
+    await new Promise(resolve=>server.close(resolve));
+  }
+  assert.equal(verifiedPairs.length,20);
+  assert.equal(new Set(verifiedPairs).size,20);
+  return verifiedPairs;
+}
+
+verifyServerAuthoritativeHttpDirections().then(verifiedPairs=>{
+  console.log(JSON.stringify({
+    schemaVersion:"sde-global-operational-messaging-harness-v2",
+    directions:20,
+    repositoryDirections:repositoryVerifiedPairs.length,
+    httpDirections:verifiedPairs.length,
+    verifiedPairs,
+    capability:"vehicle_status.send_operational_message",
+    messageIdDeduplication:true,
+    sourceActorSubject:true,
+    threadDepth:20,
+    roles:roles.length,
+    persisted:full.operationalMessages.length,
+  }));
+}).catch(error=>{
+  console.error(error.stack || error);
+  process.exitCode=1;
+});

@@ -48898,7 +48898,10 @@ function restoreGlobalUpdateContext(context={}){
         : OPERATIONAL_MESSAGE_ROLES.find(candidate=>candidate !== role);
       operationalMessageDrafts.set(role,{
         targetRole,
-        message:String(draft?.message || "").slice(0,250)
+        message:String(draft?.message || "").slice(0,250),
+        revision:Number.isSafeInteger(draft?.revision) && draft.revision >= 0
+          ? draft.revision
+          : 0
       });
     });
   operationalMessageReplyDrafts.clear();
@@ -48911,6 +48914,9 @@ function restoreGlobalUpdateContext(context={}){
       operationalMessageReplyDrafts.set(String(key),{
         targetRole:String(draft?.targetRole || ""),
         message:String(draft?.message || "").slice(0,250),
+        revision:Number.isSafeInteger(draft?.revision) && draft.revision >= 0
+          ? draft.revision
+          : 0,
         threadId:String(draft?.threadId || ""),
         rootMessageId:String(draft?.rootMessageId || ""),
         parentMessageId:String(draft?.parentMessageId || "")
@@ -48986,6 +48992,7 @@ async function refreshGlobalAuthoritativeData(){
   if(results[2].status === "fulfilled"){
     acceptVehicleStatusReadback(results[2].value.readback);
     dropsRuntimeCapabilities = results[2].value.capabilities;
+    dropsAccessIdentitySession = results[2].value.identity;
     dropsVehicleStatusAnalytics = results[2].value.analytics;
     dropsVehicleStatusContextLoaded = true;
     applyAccessLevel();
@@ -54363,6 +54370,7 @@ let dropsNotOperationalEditorState = null;
 const dropsVehicleDraftsByVehicle = new Map();
 let dropsVehicleStatusReadback = null;
 let dropsRuntimeCapabilities = null;
+let dropsAccessIdentitySession = null;
 let dropsVehicleStatusAnalytics = null;
 let dropsVehicleStatusContextLoaded = false;
 let dropsVehicleStatusContextLoadPromise = null;
@@ -54419,7 +54427,8 @@ const operationalMessageDrafts = new Map(
     role,
     {
       targetRole:OPERATIONAL_MESSAGE_ROLES.filter(candidate=>candidate !== role)[index % 4],
-      message:""
+      message:"",
+      revision:0
     }
   ])
 );
@@ -54427,6 +54436,8 @@ const operationalMessageReplyDrafts = new Map();
 const operationalMessageActiveThreadByRole = new Map();
 const operationalMessageLastResults = new Map();
 const operationalMessageCommandsInFlight = new Set();
+const operationalMessagePendingConfirmations = new Map();
+const operationalMessageRetrySnapshots = new Map();
 const OPERATIONAL_MESSAGE_NEW_THREAD_KEY = "__new__";
 const AGILIA_CLEANING_SLOTS = Object.freeze(["5S","5M","10S","10N"]);
 const agiliaCleaningDraft = {
@@ -54473,6 +54484,7 @@ function getOperationalMessageDraft(role,draftKey="root",messageRecord=null){
     operationalMessageReplyDrafts.set(mapKey,{
       targetRole,
       message:"",
+      revision:0,
       threadId:String(messageRecord.threadId || messageRecord.messageId || ""),
       rootMessageId:String(messageRecord.rootMessageId || messageRecord.messageId || ""),
       parentMessageId:String(messageRecord.messageId || "")
@@ -54515,6 +54527,7 @@ function getOperationalMessageNotificationRecord(notification){
     rootMessageId,
     parentMessageId:String(payload.parentMessageId || ""),
     sourceRole,
+    sourceActorSubject:String(payload.sourceActorSubject || ""),
     targetRole,
     message:String(payload.message || ""),
     context:payload.context || {
@@ -54680,7 +54693,11 @@ function getOperationalMessageAvailability(role,draftKey="root"){
     correctSurface:getActiveOperationalMessageRole() === role,
     identityVerified:
       dropsRuntimeCapabilities?.ok === true &&
-      dropsRuntimeCapabilities?.roleResolved === true,
+      dropsRuntimeCapabilities?.roleResolved === true &&
+      dropsAccessIdentitySession?.ok === true &&
+      dropsAccessIdentitySession?.identityVerified === true &&
+      typeof dropsAccessIdentitySession?.subject === "string" &&
+      dropsAccessIdentitySession.subject.trim().length > 0,
     roleAllowed:roles.includes(role),
     capabilityAllowed:
       capability?.allowed === true &&
@@ -54695,7 +54712,9 @@ function getOperationalMessageAvailability(role,draftKey="root"){
     messageValid:
       String(draft.message || "").trim().length > 0 &&
       String(draft.message || "").length <= 250,
-    requestIdle:!operationalMessageCommandsInFlight.has(`${role}|${draftKey}`)
+    requestIdle:
+      !operationalMessageCommandsInFlight.has(`${role}|${draftKey}`) &&
+      !operationalMessagePendingConfirmations.has(`${role}|${draftKey}`)
   };
   const failed = Object.entries(checks).find(([,value])=>!value)?.[0] || "";
   const reasons = {
@@ -54930,9 +54949,13 @@ function syncOperationalMessagePopupReplyUi(){
   const reason = popupReply.querySelector("[data-sde-operational-message-reason]");
   const button = popupReply.querySelector("[data-sde-operational-message-send]");
   const status = popupReply.querySelector("[data-sde-operational-message-status]");
+  const requestInFlight =
+    operationalMessageCommandsInFlight.has(`${role}|${draftKey}`) ||
+    operationalMessagePendingConfirmations.has(`${role}|${draftKey}`);
   if(textarea && document.activeElement !== textarea){
     textarea.value = String(draft.message || "");
   }
+  if(textarea) textarea.disabled = requestInFlight;
   if(counter) counter.textContent = `${String(draft.message || "").length} / 250`;
   const availability = getOperationalMessageAvailability(role,draftKey);
   if(reason) reason.textContent = availability.reason;
@@ -54981,6 +55004,15 @@ function updateOperationalMessageComposerStatus(){
     host.hidden = getActiveOperationalMessageRole() !== role;
     const target = host.querySelector("[data-sde-operational-message-target]");
     const rootDraft = getOperationalMessageDraft(role,"root");
+    const requestInFlight =
+      operationalMessageCommandsInFlight.has(`${role}|root`) ||
+      operationalMessagePendingConfirmations.has(`${role}|root`);
+    if(target){
+      target.disabled = requestInFlight;
+      if(target.closest("[data-sde-operational-message-target-field]")?.hidden){
+        target.disabled = true;
+      }
+    }
     if(target && rootDraft && document.activeElement !== target && target.value !== rootDraft.targetRole){
       target.value = rootDraft.targetRole;
     }
@@ -54993,6 +55025,11 @@ function updateOperationalMessageComposerStatus(){
       const reason = scope.querySelector("[data-sde-operational-message-reason]");
       const button = scope.querySelector("[data-sde-operational-message-send]");
       const status = scope.querySelector("[data-sde-operational-message-status]");
+      const requestInFlight =
+        operationalMessageCommandsInFlight.has(`${role}|${draftKey}`) ||
+        operationalMessagePendingConfirmations.has(`${role}|${draftKey}`);
+      textarea.disabled = requestInFlight;
+      scope.setAttribute("aria-busy",requestInFlight ? "true" : "false");
       if(document.activeElement !== textarea && textarea.value !== draft.message){
         textarea.value = draft.message;
       }
@@ -55096,6 +55133,9 @@ function handleOperationalMessageComposerInput(event){
   const draft = getOperationalMessageDraft(role,draftKey);
   if(!draft) return false;
   draft.message = String(textarea.value || "").slice(0,250);
+  if(!Number.isSafeInteger(draft.revision) || draft.revision < 0) draft.revision = 0;
+  draft.revision += 1;
+  operationalMessageRetrySnapshots.delete(`${role}|${draftKey}`);
   operationalMessageLastResults.delete(`${role}|${draftKey}`);
   updateOperationalMessageComposerStatus();
   return true;
@@ -55136,9 +55176,60 @@ function handleOperationalMessageComposerChange(event){
     return false;
   }
   draft.targetRole = targetRole;
+  operationalMessageRetrySnapshots.delete(`${role}|root`);
   operationalMessageLastResults.delete(`${role}|root`);
   updateOperationalMessageComposerStatus();
   return true;
+}
+
+async function continueOperationalMessageReceiptConfirmationInBackground(
+  sendSnapshot,
+  initialReadback=null
+){
+  const commandKey = `${sendSnapshot.sourceRole}|${sendSnapshot.draftKey}`;
+  try{
+    const confirmation = await waitForOperationalMessageReceipt({
+      messageId:sendSnapshot.messageId,
+      sourceRole:sendSnapshot.sourceRole,
+      targetRole:sendSnapshot.targetRole,
+      initialReadback,
+      attempts:24,
+      delayMs:1000
+    });
+    const receipt = confirmation.receipt;
+    if(
+      !receipt ||
+      String(receipt.sourceActorSubject || "") !== sendSnapshot.sourceActorSubject
+    ){
+      operationalMessageRetrySnapshots.set(commandKey,sendSnapshot);
+      return;
+    }
+    const confirmedThreadId = String(
+      receipt.threadId || receipt.rootMessageId || sendSnapshot.threadId || sendSnapshot.messageId
+    );
+    if(confirmedThreadId){
+      operationalMessageActiveThreadByRole.set(sendSnapshot.sourceRole,confirmedThreadId);
+    }
+    const currentDraft = getOperationalMessageDraft(
+      sendSnapshot.sourceRole,
+      sendSnapshot.draftKey
+    );
+    if(Number(currentDraft?.revision) === sendSnapshot.draftRevision){
+      currentDraft.message = "";
+    }
+    operationalMessageRetrySnapshots.delete(commandKey);
+    operationalMessageLastResults.set(commandKey,{
+      kind:"success",
+      state:"DELIVERED",
+      message:sendSnapshot.draftKey === "root" ? "Beskjed sendt" : "Svar sendt"
+    });
+  }catch(unusedError){
+    operationalMessageRetrySnapshots.set(commandKey,sendSnapshot);
+  }finally{
+    operationalMessagePendingConfirmations.delete(commandKey);
+    renderOperationalMessageThreads();
+    updateOperationalMessageComposerStatus();
+  }
 }
 
 async function submitOperationalMessageFromUi(role,draftKey="root"){
@@ -55148,75 +55239,134 @@ async function submitOperationalMessageFromUi(role,draftKey="root"){
   if(!availability.available) return;
   const draft = getOperationalMessageDraft(role,draftKey);
   const commandKey = `${role}|${draftKey}`;
+  const retrySnapshot = operationalMessageRetrySnapshots.get(commandKey) || null;
+  const retryMatchesCurrentDraft = Boolean(
+    retrySnapshot &&
+    retrySnapshot.sourceRole === role &&
+    retrySnapshot.draftKey === draftKey &&
+    retrySnapshot.targetRole === String(draft.targetRole || "") &&
+    retrySnapshot.message === String(draft.message || "") &&
+    retrySnapshot.draftRevision === Number(draft.revision || 0)
+  );
+  const sendSnapshot = Object.freeze(retryMatchesCurrentDraft
+    ? {...retrySnapshot}
+    : {
+        messageId:createDropsNotOperationalActionId(),
+        sourceRole:role,
+        sourceActorSubject:String(dropsAccessIdentitySession?.subject || ""),
+        targetRole:String(draft.targetRole || ""),
+        message:String(draft.message || ""),
+        draftKey,
+        draftRevision:Number(draft.revision || 0),
+        threadId:String(draft.threadId || ""),
+        rootMessageId:String(draft.rootMessageId || ""),
+        parentMessageId:String(draft.parentMessageId || ""),
+        context:Object.freeze({...getOperationalMessageContext(role)})
+      }
+  );
   operationalMessageCommandsInFlight.add(commandKey);
-  operationalMessageLastResults.set(commandKey,{kind:"",message:"Beskjeden sendes …"});
+  operationalMessageLastResults.set(commandKey,{
+    kind:"",
+    state:"SENDING",
+    message:"Beskjeden sendes …"
+  });
   updateOperationalMessageComposerStatus();
   try{
     const result = await postWorkshopActionCenterCommand(
-      `/api/vehicle-status/commands/send-operational-message/${encodeURIComponent(role)}`,
+      `/api/vehicle-status/commands/send-operational-message/${encodeURIComponent(sendSnapshot.sourceRole)}`,
       {
-        targetRole:draft.targetRole,
-        message:draft.message,
-        context:getOperationalMessageContext(role),
-        ...(draft.parentMessageId ? {
-          threadId:draft.threadId,
-          rootMessageId:draft.rootMessageId,
-          parentMessageId:draft.parentMessageId
+        actionId:sendSnapshot.messageId,
+        messageId:sendSnapshot.messageId,
+        targetRole:sendSnapshot.targetRole,
+        message:sendSnapshot.message,
+        context:sendSnapshot.context,
+        ...(sendSnapshot.parentMessageId ? {
+          threadId:sendSnapshot.threadId,
+          rootMessageId:sendSnapshot.rootMessageId,
+          parentMessageId:sendSnapshot.parentMessageId
         } : {})
       }
     );
     const messageId = String(result?.body?.messageId || "");
-    if(result?.commandAccepted !== true || !messageId){
+    if(
+      result?.commandAccepted !== true ||
+      messageId !== sendSnapshot.messageId
+    ){
       throw new Error(
         String(result?.body?.message || result?.body?.error || "message_server_rejected")
       );
     }
     let confirmedReceipt = findOperationalMessageReceipt(
       result.readback,
-      messageId,
-      role,
-      draft.targetRole
+      sendSnapshot.messageId,
+      sendSnapshot.sourceRole,
+      sendSnapshot.targetRole
     );
     if(!confirmedReceipt){
       operationalMessageLastResults.set(commandKey,{
         kind:"",
+        state:"AWAITING_RECEIPT",
         message:"Beskjeden er mottatt av serveren. Venter på autoritativ bekreftelse"
       });
       updateOperationalMessageComposerStatus();
       const confirmation = await waitForOperationalMessageReceipt({
-        messageId,
-        sourceRole:role,
-        targetRole:draft.targetRole,
+        messageId:sendSnapshot.messageId,
+        sourceRole:sendSnapshot.sourceRole,
+        targetRole:sendSnapshot.targetRole,
         initialReadback:result.readback
       });
       confirmedReceipt = confirmation.receipt;
     }
     if(!confirmedReceipt){
-      const confirmationError = new Error("message_readback_not_confirmed");
-      confirmationError.messageId = messageId;
-      throw confirmationError;
+      operationalMessagePendingConfirmations.set(commandKey,sendSnapshot);
+      operationalMessageLastResults.set(commandKey,{
+        kind:"warning",
+        state:"DELIVERY_UNCONFIRMED",
+        message:"Beskjeden er trolig levert, men bekreftelse mangler. Prøver å bekrefte i bakgrunnen."
+      });
+      continueOperationalMessageReceiptConfirmationInBackground(
+        sendSnapshot,
+        result.readback
+      );
+      return;
+    }
+    if(
+      String(confirmedReceipt.sourceActorSubject || "") !==
+      sendSnapshot.sourceActorSubject
+    ){
+      throw new Error("message_actor_receipt_mismatch");
     }
     const confirmedThreadId = String(
-      confirmedReceipt?.threadId ||
+      confirmedReceipt.threadId ||
       result?.body?.threadId ||
-      confirmedReceipt?.rootMessageId ||
-      messageId
+      confirmedReceipt.rootMessageId ||
+      sendSnapshot.threadId ||
+      sendSnapshot.messageId
     );
     if(confirmedThreadId){
-      operationalMessageActiveThreadByRole.set(role,confirmedThreadId);
+      operationalMessageActiveThreadByRole.set(
+        sendSnapshot.sourceRole,
+        confirmedThreadId
+      );
     }
-    draft.message = "";
+    const currentDraft = getOperationalMessageDraft(
+      sendSnapshot.sourceRole,
+      sendSnapshot.draftKey
+    );
+    if(Number(currentDraft?.revision) === sendSnapshot.draftRevision){
+      currentDraft.message = "";
+    }
+    operationalMessageRetrySnapshots.delete(commandKey);
     operationalMessageLastResults.set(commandKey,{
       kind:"success",
-      message:draftKey === "root" ? "Beskjed sendt" : "Svar sendt"
+      state:"DELIVERED",
+      message:sendSnapshot.draftKey === "root" ? "Beskjed sendt" : "Svar sendt"
     });
   }catch(error){
-    const acceptedMessageId = String(error?.messageId || "");
     operationalMessageLastResults.set(commandKey,{
       kind:"error",
-      message:acceptedMessageId
-        ? `Serveren mottok beskjed ${acceptedMessageId}, men autoritativ sender-readback ble ikke bekreftet innen kontrollvinduet. Utkastet er beholdt.`
-        : `Beskjeden ble avvist før serverkvittering: ${String(error?.message || "ukjent feil")}. Utkastet er beholdt.`
+      state:"REJECTED",
+      message:`Beskjeden ble avvist før serverkvittering: ${String(error?.message || "ukjent feil")}. Utkastet er beholdt.`
     });
   }finally{
     operationalMessageCommandsInFlight.delete(commandKey);
@@ -55631,18 +55781,21 @@ function acceptVehicleStatusReadback(readback){
 }
 
 async function loadDropsVehicleStatusContext(fetchImpl=window.fetch.bind(window)){
-  const [readbackResponse,capabilitiesResponse,analyticsResponse] = await Promise.all([
+  const [readbackResponse,capabilitiesResponse,analyticsResponse,identityResponse] = await Promise.all([
     fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
     fetchImpl("/api/auth/capabilities",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
-    fetchImpl("/api/vehicle-status/analytics",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"})
+    fetchImpl("/api/vehicle-status/analytics",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
+    fetchImpl("/api/auth/session",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"})
   ]);
   const readback = await readbackResponse.json().catch(()=>null);
   const capabilities = await capabilitiesResponse.json().catch(()=>null);
   const analytics = await analyticsResponse.json().catch(()=>null);
+  const identity = await identityResponse.json().catch(()=>null);
   return {
     readback:readbackResponse.ok && readback?.ok === true ? readback : null,
     capabilities:capabilitiesResponse.ok && capabilities?.ok === true ? capabilities : null,
-    analytics:analyticsResponse.ok && analytics?.ok === true ? analytics : null
+    analytics:analyticsResponse.ok && analytics?.ok === true ? analytics : null,
+    identity:identityResponse.ok && identity?.ok === true ? identity : null
   };
 }
 
@@ -55652,6 +55805,7 @@ function ensureDropsVehicleStatusContext(){
     .then(context=>{
       acceptVehicleStatusReadback(context.readback);
       dropsRuntimeCapabilities = context.capabilities;
+      dropsAccessIdentitySession = context.identity;
       dropsVehicleStatusAnalytics = context.analytics;
       dropsVehicleStatusContextLoaded = true;
       if(typeof updateAgiliaCleaningRequestUi === "function"){
@@ -55661,6 +55815,7 @@ function ensureDropsVehicleStatusContext(){
     .catch(()=>{
       acceptVehicleStatusReadback(null);
       dropsRuntimeCapabilities = null;
+      dropsAccessIdentitySession = null;
       dropsVehicleStatusAnalytics = null;
       dropsVehicleStatusContextLoaded = true;
     })

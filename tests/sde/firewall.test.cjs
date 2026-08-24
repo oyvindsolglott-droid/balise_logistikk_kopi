@@ -319,6 +319,13 @@ test("GLOBAL instantmelding — alle 20 rolle-retninger er serverautoritative, m
   );
 });
 
+test("GLOBAL instantmelding — immutable send-snapshot, versjonert draft-clear og serialisert composer", () => {
+  assertPassed(
+    runHarness("sde-operational-message-send-correctness-harness.js"),
+    "operational message send correctness contract",
+  );
+});
+
 registerHarnessTest({
   phase:"SDE statusparitet",
   name:"Sporplan, Verksted og DROPS følger samme ferske statusmodell ved polling",
