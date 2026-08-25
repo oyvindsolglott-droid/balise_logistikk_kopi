@@ -73,7 +73,7 @@ for(const token of [
   "MESSAGE_DISMISSED_AFTER_AUTO_PRESENTATION",
   "recipientSessionId","serverOccurredAt",
   "operationalMessageWindow","today_and_carryover","Europe/Oslo",
-  "operational-messages?","nextCursor","Meldingen er trukket tilbake.",
+  "operational-messages?","nextCursor","Melding trukket tilbake kl.",
   'aria-controls="globalOperationalMessageBody"','aria-expanded="false"'
 ]){
   assert.ok(`${frontend}\n${lifecycleSource}\n${repositorySource}`.includes(token),

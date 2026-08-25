@@ -44,6 +44,8 @@ const CAPABILITY_IDS = Object.freeze({
   REQUEST_CLEANING_TRACK_SPACE: "vehicle_status.request_cleaning_track_space",
   SEND_OPERATIONAL_MESSAGE: "vehicle_status.send_operational_message",
   SEND_WORKSHOP_MESSAGE: "vehicle_status.send_operational_message",
+  START_OPERATIONAL_MESSAGE_REPLY: "vehicle_status.start_operational_message_reply",
+  WITHDRAW_OPERATIONAL_MESSAGE: "vehicle_status.withdraw_operational_message",
   ACKNOWLEDGE_OPERATIONAL_MESSAGE: "vehicle_status.acknowledge_operational_message",
   MARK_FOR_TURNING: "vehicle_status.mark_for_turning",
   REPORT_OPERATIONAL: "vehicle_status.report_operational",
@@ -126,6 +128,18 @@ const RAW_CAPABILITY_CATALOG = Object.freeze([
   {
     capability: CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE,
     description: "Send an authoritative message to one other operational role.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: OPERATIONAL_MESSAGE_ROLES
+  },
+  {
+    capability: CAPABILITY_IDS.START_OPERATIONAL_MESSAGE_REPLY,
+    description: "Record the first non-whitespace reply draft transition without its text.",
+    status: CAPABILITY_STATUSES.ACTIVE,
+    allowedRoles: OPERATIONAL_MESSAGE_ROLES
+  },
+  {
+    capability: CAPABILITY_IDS.WITHDRAW_OPERATIONAL_MESSAGE,
+    description: "Withdraw an own operational message inside the server-authoritative deadline.",
     status: CAPABILITY_STATUSES.ACTIVE,
     allowedRoles: OPERATIONAL_MESSAGE_ROLES
   },

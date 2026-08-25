@@ -417,6 +417,13 @@ test("GLOBAL direktemelding — eksplisitt serverkvittering er idempotent og dyp
   );
 });
 
+test("GLOBAL direktemelding — serverautoritativ Angre er atomisk, tidsavgrenset og tombstone-basert", () => {
+  assertPassed(
+    runHarness("sde-operational-message-withdrawal-harness.js"),
+    "operational message withdrawal lifecycle",
+  );
+});
+
 test("NIVÅ 4/TURSATT/STATUS — enkeltkontekst, kollaps og felles presentasjon er permanente kontrakter", () => {
   assertPassed(
     runHarness("sde-single-context-collapse-status-harness.js"),

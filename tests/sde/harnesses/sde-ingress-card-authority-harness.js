@@ -19,7 +19,7 @@ const {
   LIFECYCLE_COMMANDS,
 } = require(path.join(root, "server/src/vehicleStatusLifecycle.js"));
 
-assert.match(repositorySource, /PRAGMA user_version = 11/);
+assert.match(repositorySource, /PRAGMA user_version = 12/);
 assert.match(
   repositorySource,
   /CREATE UNIQUE INDEX IF NOT EXISTS vehicle_status_one_active_ingress_card_per_target[\s\S]*ON[\s\S]*\(target_slot\)[\s\S]*ACTIVATING[\s\S]*CARD_CREATED/

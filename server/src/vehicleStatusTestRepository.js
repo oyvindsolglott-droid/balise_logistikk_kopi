@@ -34,7 +34,10 @@ const OPERATIONAL_MESSAGE_ACK_TABLE =
   "vehicle_status_operational_message_acknowledgements";
 const OPERATIONAL_MESSAGE_DISMISSAL_TABLE =
   "vehicle_status_operational_message_auto_dismissals";
+const OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE =
+  "vehicle_status_operational_message_lifecycle_events";
 const CLEANING_TRACK_REQUEST_TABLE = "vehicle_status_cleaning_track_space_requests";
+const OPERATIONAL_MESSAGE_WITHDRAWAL_WINDOW_MS = 60_000;
 const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
 const CLEANING_TRACK_SLOTS = new Set(["5S", "5M", "10S", "10N"]);
 const SEMANTIC_NOOP = Symbol("vehicle_status_semantic_noop");
@@ -76,6 +79,10 @@ function createVehicleStatusRepository(options = {}){
       [LIFECYCLE_COMMANDS.REQUEST_CLEANING_TRACK_SPACE]: executeRequestCleaningTrackSpace,
       [LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE]: executeSendOperationalMessage,
       [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: executeSendOperationalMessage,
+      [LIFECYCLE_COMMANDS.START_OPERATIONAL_MESSAGE_REPLY]:
+        executeStartOperationalMessageReply,
+      [LIFECYCLE_COMMANDS.WITHDRAW_OPERATIONAL_MESSAGE]:
+        executeWithdrawOperationalMessage,
       [LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE]:
         executeAcknowledgeOperationalMessage,
       [LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION]:
@@ -759,6 +766,10 @@ function createVehicleStatusRepository(options = {}){
         throw conflict("operational_message_not_found",
           "The operational message was not found.", {}, 404);
       }
+      if(findOperationalMessageWithdrawal(message.message_id)){
+        throw conflict("message_already_withdrawn",
+          "A withdrawn message cannot be presented.", {}, 409);
+      }
       const alreadyPresented = db.prepare(`
         SELECT operational_message_event_id, server_timestamp
         FROM ${OPERATIONAL_MESSAGE_EVENT_TABLE}
@@ -925,6 +936,10 @@ function createVehicleStatusRepository(options = {}){
       throw conflict("operational_message_not_found",
         "The operational message was not found.", {}, 404);
     }
+    if(findOperationalMessageWithdrawal(message.message_id)){
+      throw conflict("message_already_withdrawn",
+        "A withdrawn message cannot be acknowledged.", {}, 409);
+    }
     const existing = db.prepare(`
       SELECT * FROM ${OPERATIONAL_MESSAGE_ACK_TABLE}
       WHERE notification_id=?
@@ -1006,6 +1021,10 @@ function createVehicleStatusRepository(options = {}){
     if(!message){
       throw conflict("operational_message_not_found",
         "The operational message was not found.", {}, 404);
+    }
+    if(findOperationalMessageWithdrawal(message.message_id)){
+      throw conflict("message_already_withdrawn",
+        "A withdrawn message cannot be dismissed.", {}, 409);
     }
     if(
       command.sourceRole !== message.target_role ||
@@ -1626,6 +1645,10 @@ function createVehicleStatusRepository(options = {}){
         throw conflict("message_parent_not_found",
           "The parent message does not exist.", {}, 404);
       }
+      if(findOperationalMessageWithdrawal(parent.message_id)){
+        throw conflict("message_parent_withdrawn",
+          "A withdrawn message cannot receive a reply.", {}, 409);
+      }
       const sameParticipants = new Set([
         parent.source_role,
         parent.target_role
@@ -1761,6 +1784,267 @@ function createVehicleStatusRepository(options = {}){
     });
   }
 
+  function executeStartOperationalMessageReply(command, authority){
+    const message = findOperationalMessage(command.messageId);
+    if(!message){
+      throw conflict("operational_message_not_found",
+        "The operational message was not found.", {}, 404);
+    }
+    requireOperationalMessageTargetAuthority(message, command, authority);
+    const withdrawal = findOperationalMessageWithdrawal(message.message_id);
+    if(withdrawal){
+      throw conflict("message_already_withdrawn",
+        "A withdrawn message cannot receive a reply.", {
+          withdrawnAt:withdrawal.server_timestamp
+        });
+    }
+    const existing = db.prepare(`
+      SELECT * FROM ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE}
+      WHERE event_type='MESSAGE_REPLY_STARTED'
+        AND message_id=? AND recipient_session_id=?
+      ORDER BY server_timestamp, lifecycle_event_id
+      LIMIT 1
+    `).get(message.message_id, command.recipientSessionId);
+    const eventCommand = {...command, vehicleId:"OPERATIONAL_MESSAGE"};
+    if(existing){
+      return semanticNoOp(semanticNoOpResult(
+        LIFECYCLE_COMMANDS.START_OPERATIONAL_MESSAGE_REPLY,
+        eventCommand,
+        existing.lifecycle_event_id,
+        {
+          lifecycleEventId:existing.lifecycle_event_id,
+          eventType:existing.event_type,
+          messageId:existing.message_id,
+          recipientSessionId:existing.recipient_session_id,
+          serverOccurredAt:existing.server_timestamp,
+          alreadyRecorded:true,
+          caseRevision:0
+        }
+      ));
+    }
+    const timestamp = now();
+    const eventId = randomUUID();
+    const lifecycleEventId = randomUUID();
+    db.prepare(`
+      INSERT INTO ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE} (
+        lifecycle_event_id, event_type, message_id, recipient_session_id,
+        source_role, target_role, server_timestamp, actor_subject, actor_role,
+        action_id, idempotency_key, payload_json
+      ) VALUES (?, 'MESSAGE_REPLY_STARTED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      lifecycleEventId,
+      message.message_id,
+      command.recipientSessionId,
+      message.source_role,
+      message.target_role,
+      timestamp,
+      authority.subject,
+      authority.effectiveRole,
+      command.actionId,
+      `operational-message-reply-started:${message.message_id}:${command.recipientSessionId}`,
+      JSON.stringify({draftTextPersisted:false})
+    );
+    insertEvent({
+      eventId,
+      command:eventCommand,
+      commandName:LIFECYCLE_COMMANDS.START_OPERATIONAL_MESSAGE_REPLY,
+      authority,
+      timestamp,
+      caseBefore:0,
+      caseAfter:0,
+      statusBefore:0,
+      statusAfter:0,
+      previousState:{},
+      resultingState:{
+        eventType:"MESSAGE_REPLY_STARTED",
+        messageId:message.message_id,
+        recipientSessionId:command.recipientSessionId,
+        draftTextPersisted:false
+      }
+    });
+    incrementGlobalRevision();
+    return resultBase(eventCommand, eventId, {
+      lifecycleEventId,
+      eventType:"MESSAGE_REPLY_STARTED",
+      messageId:message.message_id,
+      recipientSessionId:command.recipientSessionId,
+      serverOccurredAt:timestamp,
+      draftTextPersisted:false,
+      alreadyRecorded:false,
+      caseRevision:0
+    });
+  }
+
+  function executeWithdrawOperationalMessage(command, authority){
+    const message = findOperationalMessage(command.messageId);
+    if(!message){
+      throw conflict("operational_message_not_found",
+        "The operational message was not found.", {}, 404);
+    }
+    if(
+      command.sourceRole !== message.source_role ||
+      authority.effectiveRole !== message.source_role ||
+      !(authority.roles || []).includes(message.source_role)
+    ){
+      throw conflict("message_source_role_mismatch",
+        "The message does not belong to the authenticated effective role.", {}, 403);
+    }
+    if(authority.subject !== message.created_by){
+      throw conflict("message_source_actor_mismatch",
+        "Only the original authenticated sender may withdraw the message.", {}, 403);
+    }
+    const existing = findOperationalMessageWithdrawal(message.message_id);
+    if(existing){
+      throw conflict("message_already_withdrawn",
+        "The message is already withdrawn.", {
+          withdrawnAt:existing.server_timestamp
+        });
+    }
+    const serverNow = now();
+    const withdrawalDeadline = new Date(
+      Date.parse(message.created_at) + OPERATIONAL_MESSAGE_WITHDRAWAL_WINDOW_MS
+    ).toISOString();
+    if(Date.parse(serverNow) >= Date.parse(withdrawalDeadline)){
+      throw conflict("message_undo_deadline_expired",
+        "The server-authoritative withdrawal deadline has expired.", {
+          sentAt:message.created_at,
+          withdrawalDeadline,
+          serverNow
+        });
+    }
+    const replyStarted = db.prepare(`
+      SELECT lifecycle_event_id, server_timestamp, recipient_session_id
+      FROM ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE}
+      WHERE event_type='MESSAGE_REPLY_STARTED' AND message_id=?
+      ORDER BY server_timestamp, lifecycle_event_id
+      LIMIT 1
+    `).get(message.message_id);
+    if(replyStarted){
+      throw conflict("message_reply_already_started",
+        "A recipient has started a reply.", {
+          replyStartedAt:replyStarted.server_timestamp
+        });
+    }
+    const replySent = db.prepare(`
+      SELECT message_id, created_at FROM ${OPERATIONAL_MESSAGE_TABLE}
+      WHERE parent_message_id=?
+      ORDER BY created_at, message_id
+      LIMIT 1
+    `).get(message.message_id);
+    if(replySent){
+      throw conflict("message_reply_already_sent",
+        "A reply has already been sent.", {
+          replyMessageId:replySent.message_id,
+          replySentAt:replySent.created_at
+        });
+    }
+    const acknowledgement = db.prepare(`
+      SELECT acknowledgement_id, acknowledged_at
+      FROM ${OPERATIONAL_MESSAGE_ACK_TABLE}
+      WHERE message_id=?
+      ORDER BY acknowledged_at, acknowledgement_id
+      LIMIT 1
+    `).get(message.message_id);
+    if(acknowledgement){
+      throw conflict("message_already_acknowledged",
+        "The recipient has already acknowledged the message.", {
+          acknowledgedAt:acknowledgement.acknowledged_at
+        });
+    }
+    const dismissal = db.prepare(`
+      SELECT dismissal_id, dismissed_at
+      FROM ${OPERATIONAL_MESSAGE_DISMISSAL_TABLE}
+      WHERE message_id=?
+      ORDER BY dismissed_at, dismissal_id
+      LIMIT 1
+    `).get(message.message_id);
+    if(dismissal){
+      throw conflict("message_already_dismissed_after_auto_presentation",
+        "A recipient has dismissed the automatically presented message.", {
+          dismissedAt:dismissal.dismissed_at
+        });
+    }
+    const eventCommand = {...command, vehicleId:"OPERATIONAL_MESSAGE"};
+    const eventId = randomUUID();
+    const lifecycleEventId = randomUUID();
+    db.prepare(`
+      INSERT INTO ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE} (
+        lifecycle_event_id, event_type, message_id, recipient_session_id,
+        source_role, target_role, server_timestamp, actor_subject, actor_role,
+        action_id, idempotency_key, payload_json
+      ) VALUES (?, 'MESSAGE_WITHDRAWN', ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      lifecycleEventId,
+      message.message_id,
+      message.source_role,
+      message.target_role,
+      serverNow,
+      authority.subject,
+      authority.effectiveRole,
+      command.actionId,
+      `operational-message-withdrawn:${message.message_id}`,
+      JSON.stringify({
+        sentAt:message.created_at,
+        withdrawalDeadline,
+        originalMessagePreservedInAuthoritativeStore:true
+      })
+    );
+    insertEvent({
+      eventId,
+      command:eventCommand,
+      commandName:LIFECYCLE_COMMANDS.WITHDRAW_OPERATIONAL_MESSAGE,
+      authority,
+      timestamp:serverNow,
+      caseBefore:0,
+      caseAfter:0,
+      statusBefore:0,
+      statusAfter:0,
+      previousState:{withdrawn:false},
+      resultingState:{
+        withdrawn:true,
+        messageId:message.message_id,
+        withdrawnAt:serverNow,
+        withdrawalDeadline
+      }
+    });
+    incrementGlobalRevision();
+    return resultBase(eventCommand, eventId, {
+      lifecycleEventId,
+      eventType:"MESSAGE_WITHDRAWN",
+      messageId:message.message_id,
+      withdrawnAt:serverNow,
+      withdrawalDeadline,
+      originalMessageIdPreserved:true,
+      caseRevision:0
+    });
+  }
+
+  function findOperationalMessage(messageId){
+    return db.prepare(`
+      SELECT * FROM ${OPERATIONAL_MESSAGE_TABLE} WHERE message_id=?
+    `).get(messageId);
+  }
+
+  function findOperationalMessageWithdrawal(messageId){
+    return db.prepare(`
+      SELECT * FROM ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE}
+      WHERE event_type='MESSAGE_WITHDRAWN' AND message_id=?
+      ORDER BY server_timestamp, lifecycle_event_id
+      LIMIT 1
+    `).get(messageId);
+  }
+
+  function requireOperationalMessageTargetAuthority(message, command, authority){
+    if(
+      command.sourceRole !== message.target_role ||
+      authority.effectiveRole !== message.target_role ||
+      !(authority.roles || []).includes(message.target_role)
+    ){
+      throw conflict("message_target_role_mismatch",
+        "The message does not target the authenticated role.", {}, 403);
+    }
+  }
+
   function executeReportNotOperational(command, authority){
     if(!writeEnabled) return unavailable();
     const legacy = command.faults.some((fault) => !fault.faultId);
@@ -1851,7 +2135,8 @@ function createVehicleStatusRepository(options = {}){
             sentAt:message.sentAt,
             messageRevision:message.eventId,
             ...(message.presentedAt ? {presentedAt:message.presentedAt} : {}),
-            ...(message.acknowledgedAt ? {acknowledgedAt:message.acknowledgedAt} : {})
+            ...(message.acknowledgedAt ? {acknowledgedAt:message.acknowledgedAt} : {}),
+            ...(message.withdrawnAt ? {withdrawnAt:message.withdrawnAt} : {})
           }))
       : [];
     const operationalMessageAcknowledgements = roles.length
@@ -1887,6 +2172,16 @@ function createVehicleStatusRepository(options = {}){
         WHERE a.notification_id=n.notification_id
         LIMIT 1
       ) AS acknowledged_at
+      , (
+        SELECT l.server_timestamp
+        FROM ${OPERATIONAL_MESSAGE_TABLE} m
+        JOIN ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE} l
+          ON l.message_id=m.message_id
+        WHERE m.notification_id=n.notification_id
+          AND l.event_type='MESSAGE_WITHDRAWN'
+        ORDER BY l.server_timestamp, l.lifecycle_event_id
+        LIMIT 1
+      ) AS withdrawn_at
       FROM ${NOTIFICATION_TABLE} n
       ORDER BY n.created_at, n.notification_id
     `).all().map(mapNotification);
@@ -2255,6 +2550,8 @@ function createVehicleStatusRepository(options = {}){
         workshopExitEvents: countRows(WORKSHOP_EXIT_EVENT_TABLE),
         operationalMessages: countRows(OPERATIONAL_MESSAGE_TABLE),
         operationalMessageEvents: countRows(OPERATIONAL_MESSAGE_EVENT_TABLE),
+        operationalMessageLifecycleEvents:
+          countRows(OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE),
         operationalMessageAcknowledgements: countRows(OPERATIONAL_MESSAGE_ACK_TABLE),
         operationalMessageAutoDismissals: countRows(OPERATIONAL_MESSAGE_DISMISSAL_TABLE),
         cleaningTrackSpaceRequests: countRows(CLEANING_TRACK_REQUEST_TABLE)
@@ -2282,6 +2579,10 @@ function createVehicleStatusRepository(options = {}){
       operationalMessageEvents: db.prepare(`
         SELECT * FROM ${OPERATIONAL_MESSAGE_EVENT_TABLE}
         ORDER BY server_timestamp, operational_message_event_id
+      `).all(),
+      operationalMessageLifecycleEvents: db.prepare(`
+        SELECT * FROM ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE}
+        ORDER BY server_timestamp, lifecycle_event_id
       `).all(),
       operationalMessageAcknowledgements: db.prepare(`
         SELECT * FROM ${OPERATIONAL_MESSAGE_ACK_TABLE}
@@ -2860,6 +3161,13 @@ function createVehicleStatusRepository(options = {}){
         ORDER BY a.acknowledged_at, a.acknowledgement_id
         LIMIT 1
       ) AS acknowledged_at
+      , (
+        SELECT l.server_timestamp
+        FROM ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE} l
+        WHERE l.message_id=m.message_id AND l.event_type='MESSAGE_WITHDRAWN'
+        ORDER BY l.server_timestamp, l.lifecycle_event_id
+        LIMIT 1
+      ) AS withdrawn_at
       FROM ${OPERATIONAL_MESSAGE_TABLE} m
       ORDER BY m.created_at, m.message_id
     `).all().map(mapOperationalMessage);
@@ -3124,7 +3432,7 @@ function initializeSchema(db){
       DROP TABLE IF EXISTS ${RECORD_TABLE};
       DROP TABLE IF EXISTS ${META_TABLE};
     `);
-  }else if(userVersion > 11){
+  }else if(userVersion > 12){
     throw new Error("vehicle_status_schema_version_unsupported");
   }
 
@@ -3573,6 +3881,43 @@ function initializeSchema(db){
     CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_dismissal_immutable_delete
     BEFORE DELETE ON ${OPERATIONAL_MESSAGE_DISMISSAL_TABLE}
     BEGIN SELECT RAISE(ABORT, 'operational message auto-dismissals are immutable'); END;
+
+    CREATE TABLE IF NOT EXISTS ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE} (
+      lifecycle_event_id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL CHECK(event_type IN (
+        'MESSAGE_REPLY_STARTED','MESSAGE_WITHDRAWN'
+      )),
+      message_id TEXT NOT NULL,
+      recipient_session_id TEXT,
+      source_role TEXT NOT NULL
+        CHECK(source_role IN ('drops','txp','sde_skiftere','verksted','agila')),
+      target_role TEXT NOT NULL
+        CHECK(target_role IN ('drops','txp','sde_skiftere','verksted','agila')),
+      server_timestamp TEXT NOT NULL,
+      actor_subject TEXT NOT NULL,
+      actor_role TEXT NOT NULL,
+      action_id TEXT NOT NULL UNIQUE,
+      idempotency_key TEXT NOT NULL UNIQUE,
+      payload_json TEXT NOT NULL,
+      CHECK(
+        (event_type='MESSAGE_REPLY_STARTED' AND recipient_session_id IS NOT NULL) OR
+        (event_type='MESSAGE_WITHDRAWN' AND recipient_session_id IS NULL)
+      ),
+      FOREIGN KEY(message_id) REFERENCES ${OPERATIONAL_MESSAGE_TABLE}(message_id)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS
+      vehicle_status_one_reply_start_per_message_recipient_session
+      ON ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE}(message_id, recipient_session_id)
+      WHERE event_type='MESSAGE_REPLY_STARTED';
+    CREATE UNIQUE INDEX IF NOT EXISTS vehicle_status_one_withdrawal_per_message
+      ON ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE}(message_id)
+      WHERE event_type='MESSAGE_WITHDRAWN';
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_lifecycle_immutable_update
+    BEFORE UPDATE ON ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'operational message lifecycle events are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS vehicle_status_operational_message_lifecycle_immutable_delete
+    BEFORE DELETE ON ${OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE}
+    BEGIN SELECT RAISE(ABORT, 'operational message lifecycle events are immutable'); END;
   `);
   if(userVersion < 6){
     migrateWorkshopMessagesToOperationalMessages(db);
@@ -3592,7 +3937,7 @@ function initializeSchema(db){
       WHERE status IN ('ACTIVATING','CARD_CREATED');
   `);
   if(userVersion < 3) backfillProcessHistory(db);
-  db.exec("PRAGMA user_version = 11;");
+  db.exec("PRAGMA user_version = 12;");
 }
 
 function migrateOperationalMessageThreads(db){
@@ -4044,12 +4389,16 @@ function mapCleaningTrackSpaceRequest(row){
 
 function mapOperationalMessage(row){
   const context = safeJson(row.context_json, {});
+  const withdrawnAt = row.withdrawn_at || null;
+  const withdrawalDeadline = new Date(
+    Date.parse(row.created_at) + OPERATIONAL_MESSAGE_WITHDRAWAL_WINDOW_MS
+  ).toISOString();
   return {
     messageId: row.message_id,
     sourceRole: row.source_role,
     sourceActorSubject:row.created_by,
     targetRole: row.target_role,
-    message: row.message_text,
+    message: withdrawnAt ? "" : row.message_text,
     sentAt: row.created_at,
     createdAt: row.created_at,
     notificationId: row.notification_id,
@@ -4060,7 +4409,11 @@ function mapOperationalMessage(row){
     depth:Number(row.depth || 0),
     presentedAt:row.presented_at || null,
     acknowledgedAt:row.acknowledged_at || null,
-    deliveryState:row.acknowledged_at
+    withdrawnAt,
+    withdrawalDeadline,
+    deliveryState:withdrawnAt
+      ? "withdrawn"
+      : row.acknowledged_at
       ? "acknowledged"
       : (row.presented_at ? "presented" : "sent"),
     context,
@@ -4090,6 +4443,11 @@ function publicWorkshopIngressStatus(row){
 }
 
 function mapNotification(row){
+  const payload = JSON.parse(row.payload_json);
+  if(row.withdrawn_at && ["OPERATIONAL_MESSAGE","WORKSHOP_MESSAGE"].includes(row.kind)){
+    payload.message = "";
+    payload.withdrawnAt = row.withdrawn_at;
+  }
   return {
     notificationId: row.notification_id,
     eventId: row.event_id,
@@ -4103,7 +4461,8 @@ function mapNotification(row){
     createdAt: row.created_at,
     presentedAt: row.presented_at || null,
     acknowledgedAt: row.acknowledged_at || null,
-    payload: JSON.parse(row.payload_json)
+    withdrawnAt:row.withdrawn_at || null,
+    payload
   };
 }
 
@@ -4224,6 +4583,7 @@ module.exports = {
   META_TABLE,
   NOTIFICATION_TABLE,
   OPERATIONAL_MESSAGE_EVENT_TABLE,
+  OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE,
   OPERATIONAL_MESSAGE_ACK_TABLE,
   OPERATIONAL_MESSAGE_TABLE,
   PROCESS_CASE_TABLE,
