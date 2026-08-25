@@ -14,7 +14,7 @@ const {
   normalizeRegisteredVehicleId
 } = require("./vehicleRegistry");
 
-const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v11";
+const LIFECYCLE_SCHEMA_VERSION = "vehicle-status-command-v12";
 const CONFIRM_OPERATIONAL_TEXT =
   "Bekreft at registrerte feil er kontrollert og kjøretøyet kan settes Driftsklart";
 const MAX_FAULT_DESCRIPTION_LENGTH = 500;
@@ -60,6 +60,8 @@ const LIFECYCLE_COMMANDS = Object.freeze({
   REQUEST_CLEANING_TRACK_SPACE: "request_cleaning_track_space",
   SEND_OPERATIONAL_MESSAGE: "send_operational_message",
   SEND_WORKSHOP_MESSAGE: "send_workshop_message",
+  START_OPERATIONAL_MESSAGE_REPLY: "start_operational_message_reply",
+  WITHDRAW_OPERATIONAL_MESSAGE: "withdraw_operational_message",
   ACKNOWLEDGE_OPERATIONAL_MESSAGE: "acknowledge_operational_message",
   DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION:
     "dismiss_operational_message_after_auto_presentation",
@@ -103,6 +105,14 @@ const COMMAND_DEFINITIONS = Object.freeze({
   [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: Object.freeze({
     route: "/api/vehicle-status/commands/send-workshop-message",
     capability: CAPABILITY_IDS.SEND_WORKSHOP_MESSAGE
+  }),
+  [LIFECYCLE_COMMANDS.START_OPERATIONAL_MESSAGE_REPLY]: Object.freeze({
+    route: "/api/vehicle-status/commands/start-operational-message-reply/:sourceRole",
+    capability: CAPABILITY_IDS.START_OPERATIONAL_MESSAGE_REPLY
+  }),
+  [LIFECYCLE_COMMANDS.WITHDRAW_OPERATIONAL_MESSAGE]: Object.freeze({
+    route: "/api/vehicle-status/commands/withdraw-operational-message/:sourceRole",
+    capability: CAPABILITY_IDS.WITHDRAW_OPERATIONAL_MESSAGE
   }),
   [LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE]: Object.freeze({
     route: "/api/vehicle-status/commands/acknowledge-operational-message/:sourceRole",
@@ -168,6 +178,12 @@ const FIELDS = Object.freeze({
   [LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE]: new Set([
     "actionId", "targetRole", "message", "selectedSlotId", "selectedVehicleId"
   ]),
+  [LIFECYCLE_COMMANDS.START_OPERATIONAL_MESSAGE_REPLY]: new Set([
+    "actionId", "messageId", "recipientSessionId"
+  ]),
+  [LIFECYCLE_COMMANDS.WITHDRAW_OPERATIONAL_MESSAGE]: new Set([
+    "actionId", "messageId"
+  ]),
   [LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE]: new Set([
     "actionId", "messageId", "notificationId"
   ]),
@@ -214,6 +230,8 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
   );
   const isNonVehicleCommand = (
     commandName === LIFECYCLE_COMMANDS.NOTIFICATION_PRESENTED ||
+    commandName === LIFECYCLE_COMMANDS.START_OPERATIONAL_MESSAGE_REPLY ||
+    commandName === LIFECYCLE_COMMANDS.WITHDRAW_OPERATIONAL_MESSAGE ||
     commandName === LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE ||
     commandName ===
       LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION ||
@@ -467,6 +485,42 @@ function normalizeLifecycleCommand(commandName, input, options = {}){
       ...compatibility.value,
       legacyCommandName:LIFECYCLE_COMMANDS.SEND_WORKSHOP_MESSAGE
     };
+  }else if(commandName === LIFECYCLE_COMMANDS.START_OPERATIONAL_MESSAGE_REPLY){
+    const sourceRole = String(options.sourceRole || "").trim().toLowerCase();
+    const messageId = normalizeUuid(input.messageId);
+    const recipientSessionId = normalizeUuid(input.recipientSessionId);
+    if(!OPERATIONAL_MESSAGE_ROLES.has(sourceRole)){
+      return invalid(403, "message_target_role_forbidden", "target role is not allowed.");
+    }
+    if(!messageId){
+      return invalid(400, "invalid_message_id", "messageId must be a UUID.");
+    }
+    if(!recipientSessionId){
+      return invalid(400, "invalid_recipient_session_id",
+        "recipientSessionId must be a UUID.");
+    }
+    normalized = {
+      actionId,
+      vehicleId:"OPERATIONAL_MESSAGE",
+      sourceRole,
+      messageId,
+      recipientSessionId
+    };
+  }else if(commandName === LIFECYCLE_COMMANDS.WITHDRAW_OPERATIONAL_MESSAGE){
+    const sourceRole = String(options.sourceRole || "").trim().toLowerCase();
+    const messageId = normalizeUuid(input.messageId);
+    if(!OPERATIONAL_MESSAGE_ROLES.has(sourceRole)){
+      return invalid(403, "message_source_role_forbidden", "source role is not allowed.");
+    }
+    if(!messageId){
+      return invalid(400, "invalid_message_id", "messageId must be a UUID.");
+    }
+    normalized = {
+      actionId,
+      vehicleId:"OPERATIONAL_MESSAGE",
+      sourceRole,
+      messageId
+    };
   }else if(commandName === LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE){
     const sourceRole = String(options.sourceRole || "").trim().toLowerCase();
     const messageId = normalizeUuid(input.messageId);
@@ -613,6 +667,8 @@ function createVehicleStatusLifecycleHandler(options = {}){
         ? "verksted"
         : (
           commandName === LIFECYCLE_COMMANDS.SEND_OPERATIONAL_MESSAGE ||
+          commandName === LIFECYCLE_COMMANDS.START_OPERATIONAL_MESSAGE_REPLY ||
+          commandName === LIFECYCLE_COMMANDS.WITHDRAW_OPERATIONAL_MESSAGE ||
           commandName === LIFECYCLE_COMMANDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE ||
           commandName ===
             LIFECYCLE_COMMANDS.DISMISS_OPERATIONAL_MESSAGE_AFTER_AUTO_PRESENTATION ||

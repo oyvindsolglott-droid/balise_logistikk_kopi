@@ -66,7 +66,7 @@ const repository = createVehicleStatusTestRepository({
   randomUUID: () =>
     `00000000-0000-4000-8000-${String(uuid++).padStart(12, "0")}`,
 });
-assert.equal(db.prepare("PRAGMA user_version").get().user_version, 11);
+assert.equal(db.prepare("PRAGMA user_version").get().user_version, 12);
 
 const agiliaAuthority = {
   subject: "agilia-authority-test",

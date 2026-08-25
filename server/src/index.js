@@ -559,6 +559,10 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           capabilityAvailable(CAPABILITY_IDS.SEND_OPERATIONAL_MESSAGE);
         const acknowledgeOperationalMessageCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.ACKNOWLEDGE_OPERATIONAL_MESSAGE);
+        const startOperationalMessageReplyCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.START_OPERATIONAL_MESSAGE_REPLY);
+        const withdrawOperationalMessageCommandAvailable =
+          capabilityAvailable(CAPABILITY_IDS.WITHDRAW_OPERATIONAL_MESSAGE);
         const dismissOperationalMessageAfterAutoPresentationCommandAvailable =
           capabilityAvailable(CAPABILITY_IDS.PRESENT_NOTIFICATION);
         const sendWorkshopMessageCommandAvailable =
@@ -586,6 +590,8 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestCleaningTrackSpaceCommandAvailable,
           sendOperationalMessageCommandAvailable,
           acknowledgeOperationalMessageCommandAvailable,
+          startOperationalMessageReplyCommandAvailable,
+          withdrawOperationalMessageCommandAvailable,
           dismissOperationalMessageAfterAutoPresentationCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
@@ -626,6 +632,8 @@ const vehicleStatusReadHandler = vehicleStatusRepository
           requestCleaningTrackSpaceCommandAvailable,
           sendOperationalMessageCommandAvailable,
           acknowledgeOperationalMessageCommandAvailable,
+          startOperationalMessageReplyCommandAvailable,
+          withdrawOperationalMessageCommandAvailable,
           sendWorkshopMessageCommandAvailable,
           markForTurningCommandAvailable,
           reportOperationalCommandAvailable,
@@ -668,6 +676,8 @@ app.get("/api/vehicle-status", async (req, res) => {
       vehicleWriteScope: "NONE",
       allowedVehicleCount: 0,
       sendOperationalMessageCommandAvailable: false,
+      startOperationalMessageReplyCommandAvailable: false,
+      withdrawOperationalMessageCommandAvailable: false,
       sendWorkshopMessageCommandAvailable: false,
       reportNotOperationalCommandAvailable: false,
       requestWorkshopExitCommandAvailable: false,
@@ -718,6 +728,8 @@ app.get("/api/vehicle-status", async (req, res) => {
       vehicleWriteScope: vehicleStatusLifecycleWriteScope,
       allowedVehicleCount: vehicleStatusLifecycleAllowedVehicleIds.size,
       sendOperationalMessageCommandAvailable: false,
+      startOperationalMessageReplyCommandAvailable: false,
+      withdrawOperationalMessageCommandAvailable: false,
       sendWorkshopMessageCommandAvailable: false,
       reportNotOperationalCommandAvailable: false,
       requestWorkshopExitCommandAvailable: false,

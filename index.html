@@ -8279,6 +8279,40 @@ button{padding:12px 12px}
 }
 .operational-message-history-status{margin:0;color:#536b89;font-size:.78rem;font-weight:750}
 .operational-message-thread__message.is-withdrawn{font-style:italic;color:#64748b}
+.operational-message-thread__actions{
+  display:flex;
+  justify-content:flex-end;
+  margin-top:7px;
+}
+.operational-message-thread__undo-wrap{
+  display:inline-flex;
+  align-items:center;
+  gap:7px;
+  color:#536b89;
+  font-size:.75rem;
+  font-style:normal;
+  font-weight:800;
+}
+.operational-message-thread__undo-wrap button{
+  min-height:30px;
+  padding:4px 10px;
+  border:1px solid #9a3412;
+  border-radius:9px;
+  background:#fff7ed;
+  color:#9a3412;
+  font:inherit;
+  font-weight:900;
+  cursor:pointer;
+}
+.operational-message-thread__action-status{
+  min-height:1.1em;
+  margin:5px 0 0!important;
+  color:#087b3a;
+  font-size:.75rem;
+  font-style:normal;
+  font-weight:800;
+}
+.operational-message-thread__action-status.is-error{color:#a41d26}
 .sde-role-guide{
   min-width:0;
   display:grid;
@@ -54574,11 +54608,16 @@ const operationalMessageHistoryPages = new Map();
 const operationalMessageThreadHistoryLoaded = new Set();
 const operationalMessageAutoPresentationPromises = new Map();
 const operationalMessageDismissalAttempts = new Set();
+const operationalMessageReplyStartAttempts = new Set();
+const operationalMessageReplyStartResults = new Map();
+const operationalMessageWithdrawalAttempts = new Set();
+const operationalMessageWithdrawalResults = new Map();
 const operationalMessageInteractionState = {
   activePointerIds:new Set(),
   composing:false
 };
 let operationalMessageRecipientSessionId = "";
+let operationalMessageWithdrawalClockTimer = 0;
 const AGILIA_CLEANING_SLOTS = Object.freeze(["5S","5M","10S","10N"]);
 const agiliaCleaningDraft = {
   requestedSlots:new Set(),
@@ -54624,6 +54663,16 @@ function getOperationalMessageRecipientSessionId(){
 function getOperationalMessageDismissalActionId(messageId){
   const sessionId = getOperationalMessageRecipientSessionId();
   const key = `sde_operational_message_dismiss_action_v1:${sessionId}:${messageId}`;
+  const stored = String(sessionStorage.getItem(key) || "").trim().toLowerCase();
+  if(/^[0-9a-f-]{36}$/.test(stored)) return stored;
+  const actionId = crypto.randomUUID();
+  sessionStorage.setItem(key,actionId);
+  return actionId;
+}
+
+function getOperationalMessageLifecycleActionId(kind,messageId){
+  const sessionId = getOperationalMessageRecipientSessionId();
+  const key = `sde_operational_message_${kind}_action_v1:${sessionId}:${messageId}`;
   const stored = String(sessionStorage.getItem(key) || "").trim().toLowerCase();
   if(/^[0-9a-f-]{36}$/.test(stored)) return stored;
   const actionId = crypto.randomUUID();
@@ -54737,7 +54786,10 @@ function reconcileGlobalOperationalMessageInbox(readback){
     );
     globalOperationalMessageBoxState.baselineInitialized=true;
     globalOperationalMessageBoxState.pendingCount=messages.filter(message=>
-      message.targetRole === role && !message.acknowledgedAt
+      message.targetRole === role &&
+      !message.acknowledgedAt &&
+      !String(message.withdrawnAt || "").trim() &&
+      message.deliveryState !== "withdrawn"
     ).length;
     globalOperationalMessageBoxState.pendingIncomingCount=
       globalOperationalMessageBoxState.pendingCount;
@@ -54757,7 +54809,10 @@ function reconcileGlobalOperationalMessageInbox(readback){
     }
   });
   globalOperationalMessageBoxState.pendingCount=messages.filter(message=>
-    message.targetRole === role && !message.acknowledgedAt
+    message.targetRole === role &&
+    !message.acknowledgedAt &&
+    !String(message.withdrawnAt || "").trim() &&
+    message.deliveryState !== "withdrawn"
   ).length;
   globalOperationalMessageBoxState.pendingIncomingCount=
     globalOperationalMessageBoxState.pendingCount;
@@ -54860,6 +54915,7 @@ function getOperationalMessageNotificationRecord(notification){
   const rootMessageId = String(payload.rootMessageId || messageId);
   const sourceRole = String(payload.sourceRole || "");
   const targetRole = String(notification?.targetRole || payload.targetRole || "");
+  const withdrawnAt = String(notification?.withdrawnAt || payload.withdrawnAt || "");
   if(
     !messageId ||
     !threadId ||
@@ -54876,14 +54932,18 @@ function getOperationalMessageNotificationRecord(notification){
     sourceRole,
     sourceActorSubject:String(payload.sourceActorSubject || ""),
     targetRole,
-    message:String(payload.message || ""),
+    message:withdrawnAt ? "" : String(payload.message || ""),
     context:payload.context || {
       vehicleId:String(payload.selectedVehicleId || ""),
       slotId:String(payload.selectedSlotId || "")
     },
     sentAt:String(payload.sentAt || notification?.createdAt || ""),
+    withdrawnAt,
+    withdrawalDeadline:String(payload.withdrawalDeadline || ""),
     depth:Number(payload.depth || 0),
-    deliveryState:notification?.acknowledgedAt
+    deliveryState:withdrawnAt
+      ? "withdrawn"
+      : notification?.acknowledgedAt
       ? "acknowledged"
       : (notification?.presentedAt ? "presented" : "sent")
   };
@@ -54891,7 +54951,7 @@ function getOperationalMessageNotificationRecord(notification){
 
 function getOperationalMessagePopupReplyContext(notification){
   const messageRecord = getOperationalMessageNotificationRecord(notification);
-  if(!messageRecord) return null;
+  if(!messageRecord || isOperationalMessageWithdrawn(messageRecord)) return null;
   const role = messageRecord.targetRole;
   if(!hasOperationalMessageReplyCapability(role)) return null;
   const draftKey = `thread:${messageRecord.threadId}`;
@@ -55001,7 +55061,8 @@ function getOperationalMessageThreadGroupsForRole(role,messages){
       hasUnread:
         latest.targetRole === role &&
         latest.deliveryState !== "acknowledged" &&
-        !latest.acknowledgedAt,
+        !latest.acknowledgedAt &&
+        !String(latest.withdrawnAt || "").trim(),
       messages:threadMessages
     };
   }).sort((left,right)=>
@@ -55036,6 +55097,22 @@ function getOperationalMessageAvailability(role,draftKey="root"){
   const roles = Array.isArray(dropsRuntimeCapabilities?.roles)
     ? dropsRuntimeCapabilities.roles
     : [];
+  const parentMessageId=String(draft.parentMessageId || "");
+  const parentMessage=parentMessageId
+    ? getOperationalMessagesForRole(role)
+        .find(message=>String(message?.messageId || "") === parentMessageId)
+    : null;
+  const recipientReply=Boolean(
+    parentMessage &&
+    parentMessage.sourceRole !== role &&
+    parentMessage.targetRole === role
+  );
+  const replyStartKey=recipientReply
+    ? `${parentMessageId}|${getOperationalMessageRecipientSessionId()}`
+    : "";
+  const replyStartState=replyStartKey
+    ? String(operationalMessageReplyStartResults.get(replyStartKey)?.state || "")
+    : "";
   const checks = {
     correctSurface:getActiveOperationalMessageRole() === role,
     identityVerified:
@@ -55059,6 +55136,8 @@ function getOperationalMessageAvailability(role,draftKey="root"){
     messageValid:
       String(draft.message || "").trim().length > 0 &&
       String(draft.message || "").length <= 250,
+    replyStartRecorded:
+      !recipientReply || replyStartState === "MESSAGE_REPLY_STARTED",
     requestIdle:
       !operationalMessageCommandsInFlight.has(`${role}|${draftKey}`) &&
       !operationalMessagePendingConfirmations.has(`${role}|${draftKey}`)
@@ -55074,6 +55153,9 @@ function getOperationalMessageAvailability(role,draftKey="root"){
     commandReady:"Meldingskommandoen er ikke klar på serveren.",
     targetValid:"Velg et annet mottakernivå.",
     messageValid:"Skriv en beskjed på 1–250 tegn.",
+    replyStartRecorded:replyStartState === "FAILED"
+      ? "Svarstart kunne ikke registreres autoritativt. Last siden på nytt før du sender."
+      : "Registrerer autoritativ svarstart …",
     requestIdle:"Beskjeden sendes."
   };
   return {
@@ -55140,9 +55222,221 @@ function renderOperationalMessageComposers(){
 }
 
 function getOperationalMessageDeliveryLabel(message){
+  if(isOperationalMessageWithdrawn(message)) return "Trukket tilbake";
   if(message?.deliveryState === "acknowledged") return "Kvittert mottatt";
   if(message?.deliveryState === "presented") return "Presentert";
   return "Sendt";
+}
+
+function isOperationalMessageWithdrawn(message){
+  return Boolean(
+    message?.withdrawnAt ||
+    message?.withdrawn === true ||
+    message?.deliveryState === "withdrawn"
+  );
+}
+
+function formatOperationalMessageWithdrawalTime(value){
+  const date=new Date(String(value || ""));
+  if(!Number.isFinite(date.getTime())) return "ukjent tid";
+  return date.toLocaleTimeString("nb-NO",{
+    timeZone:"Europe/Oslo",
+    hour:"2-digit",
+    minute:"2-digit",
+    hour12:false
+  });
+}
+
+function getOperationalMessageWithdrawalDeadline(message){
+  const explicit=Date.parse(String(message?.withdrawalDeadline || ""));
+  if(Number.isFinite(explicit)) return explicit;
+  const sentAt=Date.parse(String(message?.sentAt || ""));
+  return Number.isFinite(sentAt) ? sentAt + 60000 : NaN;
+}
+
+function canOfferOperationalMessageWithdrawal(message,role,nowMs=Date.now()){
+  const deadline=getOperationalMessageWithdrawalDeadline(message);
+  const roles=Array.isArray(dropsRuntimeCapabilities?.roles)
+    ? dropsRuntimeCapabilities.roles
+    : [];
+  const capability=dropsRuntimeCapabilities
+    ?.capabilities?.["vehicle_status.withdraw_operational_message"];
+  return Boolean(
+    message &&
+    !isOperationalMessageWithdrawn(message) &&
+    message.sourceRole === role &&
+    String(message.sourceActorSubject || "") ===
+      String(dropsAccessIdentitySession?.subject || "") &&
+    dropsRuntimeCapabilities?.ok === true &&
+    dropsRuntimeCapabilities?.roleResolved === true &&
+    roles.includes(role) &&
+    dropsVehicleStatusReadback?.withdrawOperationalMessageCommandAvailable === true &&
+    capability?.allowed === true &&
+    capability?.decision === "ALLOW" &&
+    Number.isFinite(deadline) &&
+    nowMs < deadline
+  );
+}
+
+function getOperationalMessageWithdrawalErrorMessage(errorCode){
+  return ({
+    message_reply_already_started:"Kan ikke angres: mottakeren har begynt å svare.",
+    message_reply_already_sent:"Kan ikke angres: et svar er allerede sendt.",
+    message_already_acknowledged:"Kan ikke angres: meldingen er kvittert mottatt.",
+    message_already_dismissed_after_auto_presentation:
+      "Kan ikke angres: mottakeren har lukket den automatisk viste meldingen.",
+    message_already_withdrawn:"Meldingen er allerede trukket tilbake.",
+    message_undo_deadline_expired:"Angrefristen på 60 sekunder er utløpt.",
+    message_source_actor_mismatch:"Bare den opprinnelige avsenderen kan angre meldingen.",
+    message_source_role_mismatch:"Meldingen tilhører ikke den aktive avsenderrollen."
+  })[String(errorCode || "")] || "Meldingen kunne ikke trekkes tilbake.";
+}
+
+function renderOperationalMessageWithdrawalControls(message,role){
+  if(!canOfferOperationalMessageWithdrawal(message,role)) return "";
+  const deadline=getOperationalMessageWithdrawalDeadline(message);
+  const seconds=Math.max(0,Math.ceil((deadline-Date.now())/1000));
+  const messageId=String(message?.messageId || "");
+  return `<span class="operational-message-thread__undo-wrap">
+    <button type="button" data-sde-operational-message-undo data-sde-operational-message-id="${escapeHtml(messageId)}" data-sde-operational-role="${escapeHtml(role)}">Angre</button>
+    <span data-sde-operational-message-undo-countdown data-sde-operational-message-deadline="${escapeHtml(new Date(deadline).toISOString())}">${seconds} s</span>
+  </span>`;
+}
+
+function updateOperationalMessageWithdrawalCountdowns(){
+  const nowMs=Date.now();
+  document.querySelectorAll("[data-sde-operational-message-undo-countdown]").forEach(counter=>{
+    const deadline=Date.parse(String(counter.dataset.sdeOperationalMessageDeadline || ""));
+    const wrap=counter.closest(".operational-message-thread__undo-wrap");
+    if(!Number.isFinite(deadline) || nowMs >= deadline){
+      wrap?.remove();
+      return;
+    }
+    counter.textContent=`${Math.max(0,Math.ceil((deadline-nowMs)/1000))} s`;
+  });
+}
+
+async function recordOperationalMessageReplyStarted(messageId,role){
+  messageId=String(messageId || "");
+  role=String(role || "");
+  const sessionId=getOperationalMessageRecipientSessionId();
+  const attemptKey=`${messageId}|${sessionId}`;
+  const message=getOperationalMessagesForRole(role)
+    .find(item=>String(item?.messageId || "") === messageId);
+  const roles=Array.isArray(dropsRuntimeCapabilities?.roles)
+    ? dropsRuntimeCapabilities.roles
+    : [];
+  const capability=dropsRuntimeCapabilities
+    ?.capabilities?.["vehicle_status.start_operational_message_reply"];
+  if(
+    !messageId ||
+    !message ||
+    isOperationalMessageWithdrawn(message) ||
+    message.sourceRole === role ||
+    message.targetRole !== role ||
+    getActiveOperationalMessageRole() !== role ||
+    dropsRuntimeCapabilities?.ok !== true ||
+    dropsRuntimeCapabilities?.roleResolved !== true ||
+    !roles.includes(role) ||
+    capability?.allowed !== true ||
+    capability?.decision !== "ALLOW" ||
+    dropsVehicleStatusReadback?.startOperationalMessageReplyCommandAvailable !== true
+  ) return false;
+  if(operationalMessageReplyStartAttempts.has(attemptKey)){
+    return operationalMessageReplyStartResults.get(attemptKey)?.state ===
+      "MESSAGE_REPLY_STARTED";
+  }
+  operationalMessageReplyStartAttempts.add(attemptKey);
+  operationalMessageReplyStartResults.set(attemptKey,{state:"PENDING"});
+  updateOperationalMessageComposerStatus();
+  try{
+    const result=await postVehicleStatusTechnicalCommand(
+      `start-operational-message-reply/${encodeURIComponent(role)}`,
+      {
+        actionId:getOperationalMessageLifecycleActionId("reply_start",messageId),
+        messageId,
+        recipientSessionId:sessionId
+      }
+    );
+    if(
+      result.ok !== true ||
+      result.body?.eventType !== "MESSAGE_REPLY_STARTED" ||
+      String(result.body?.messageId || "") !== messageId ||
+      String(result.body?.recipientSessionId || "") !== sessionId
+    ){
+      throw new Error(String(result.body?.error || "reply_start_rejected"));
+    }
+    operationalMessageReplyStartResults.set(attemptKey,{
+      state:"MESSAGE_REPLY_STARTED",
+      serverOccurredAt:String(result.body?.serverOccurredAt || "")
+    });
+    await refreshVehicleStatusReadback();
+    return true;
+  }catch(error){
+    operationalMessageReplyStartResults.set(attemptKey,{
+      state:"FAILED",
+      error:String(error?.message || "reply_start_failed")
+    });
+    return false;
+  }finally{
+    updateOperationalMessageComposerStatus();
+  }
+}
+
+async function submitOperationalMessageWithdrawal(messageId,role){
+  messageId=String(messageId || "");
+  role=String(role || "");
+  const message=getOperationalMessagesForRole(role)
+    .find(item=>String(item?.messageId || "") === messageId);
+  if(
+    !messageId ||
+    operationalMessageWithdrawalAttempts.has(messageId) ||
+    !canOfferOperationalMessageWithdrawal(message,role)
+  ) return false;
+  operationalMessageWithdrawalAttempts.add(messageId);
+  operationalMessageWithdrawalResults.set(messageId,{
+    kind:"",
+    state:"WITHDRAWING",
+    message:"Trekker tilbake meldingen …"
+  });
+  renderOperationalMessageThreads();
+  try{
+    const result=await postVehicleStatusTechnicalCommand(
+      `withdraw-operational-message/${encodeURIComponent(role)}`,
+      {
+        actionId:getOperationalMessageLifecycleActionId("withdraw",messageId),
+        messageId
+      }
+    );
+    if(
+      result.ok !== true ||
+      result.body?.eventType !== "MESSAGE_WITHDRAWN" ||
+      String(result.body?.messageId || "") !== messageId
+    ){
+      const errorCode=String(result.body?.error || "withdrawal_rejected");
+      throw Object.assign(new Error(errorCode),{errorCode});
+    }
+    operationalMessageWithdrawalResults.set(messageId,{
+      kind:"success",
+      state:"MESSAGE_WITHDRAWN",
+      message:`Meldingen ble trukket tilbake kl. ${formatOperationalMessageWithdrawalTime(result.body?.withdrawnAt)}`
+    });
+    await refreshVehicleStatusReadback();
+    renderOperationalMessageThreads();
+    renderGlobalOperationalMessageBox();
+    return true;
+  }catch(error){
+    const errorCode=String(error?.errorCode || error?.message || "withdrawal_rejected");
+    operationalMessageWithdrawalResults.set(messageId,{
+      kind:"error",
+      state:"REJECTED",
+      message:getOperationalMessageWithdrawalErrorMessage(errorCode)
+    });
+    renderOperationalMessageThreads();
+    return false;
+  }finally{
+    operationalMessageWithdrawalAttempts.delete(messageId);
+  }
 }
 
 function renderOperationalMessageThreads(){
@@ -55209,10 +55503,12 @@ function renderOperationalMessageThreads(){
         let article=Array.from(items.querySelectorAll("[data-sde-operational-message-id]"))
           .find(candidate=>candidate.dataset.sdeOperationalMessageId === messageId);
         const direction=message.sourceRole === role ? "is-sent" : "is-received";
+        const withdrawn=isOperationalMessageWithdrawn(message);
+        const bodyText=withdrawn
+          ? `Melding trukket tilbake kl. ${formatOperationalMessageWithdrawalTime(message.withdrawnAt)}`
+          : String(message.message || "");
         if(!article){
           const sourceLabel=OPERATIONAL_MESSAGE_ROLE_LABELS[message.sourceRole] || message.sourceRole;
-          const withdrawn=Boolean(message.withdrawnAt || message.withdrawn === true ||
-            message.deliveryState === "withdrawn");
           items.insertAdjacentHTML(
             "beforeend",
             `<article class="operational-message-thread__message ${direction}${withdrawn ? " is-withdrawn" : ""}" data-sde-operational-message-id="${escapeHtml(messageId)}">
@@ -55221,7 +55517,9 @@ function renderOperationalMessageThreads(){
                 <time datetime="${escapeHtml(String(message.sentAt || ""))}">${escapeHtml(formatDropsVehicleStatusTimestamp(message.sentAt))}</time>
                 <span data-sde-operational-message-delivery>${escapeHtml(getOperationalMessageDeliveryLabel(message))}</span>
               </div>
-              <p>${withdrawn ? "Meldingen er trukket tilbake." : escapeHtml(String(message.message || ""))}</p>
+              <p data-sde-operational-message-body>${escapeHtml(bodyText)}</p>
+              <div class="operational-message-thread__actions" data-sde-operational-message-actions>${renderOperationalMessageWithdrawalControls(message,role)}</div>
+              <p class="operational-message-thread__action-status" data-sde-operational-message-action-status role="status"></p>
             </article>`
           );
           appended=true;
@@ -55230,8 +55528,19 @@ function renderOperationalMessageThreads(){
         }
         article?.classList.toggle("is-sent",direction === "is-sent");
         article?.classList.toggle("is-received",direction === "is-received");
+        article?.classList.toggle("is-withdrawn",withdrawn);
         const delivery=article?.querySelector("[data-sde-operational-message-delivery]");
         if(delivery) delivery.textContent=getOperationalMessageDeliveryLabel(message);
+        const body=article?.querySelector("[data-sde-operational-message-body]");
+        if(body) body.textContent=bodyText;
+        const actions=article?.querySelector("[data-sde-operational-message-actions]");
+        if(actions) actions.innerHTML=renderOperationalMessageWithdrawalControls(message,role);
+        const actionStatus=article?.querySelector("[data-sde-operational-message-action-status]");
+        const withdrawalResult=operationalMessageWithdrawalResults.get(messageId);
+        if(actionStatus){
+          actionStatus.textContent=String(withdrawalResult?.message || "");
+          actionStatus.classList.toggle("is-error",withdrawalResult?.kind === "error");
+        }
       });
       if(threadChanged || (appended && wasNearBottom)){
         window.requestAnimationFrame?.(()=>{ list.scrollTop=list.scrollHeight; });
@@ -55246,14 +55555,19 @@ function renderOperationalMessageThreads(){
     const targetSelect=host.querySelector("[data-sde-operational-message-target]");
     const activeTarget=host.querySelector("[data-sde-operational-message-active-target]");
     const editorLabel=host.querySelector("[data-sde-operational-message-editor-label]");
-    const latestMessage=activeGroup?.messages?.at(-1) || null;
-    const draftKey=activeGroup ? `thread:${activeGroup.threadId}` : "root";
+    const latestMessage=activeGroup?.messages
+      ?.filter(message=>!isOperationalMessageWithdrawn(message))
+      ?.at(-1) || null;
+    const replyActive=Boolean(activeGroup && latestMessage);
+    const draftKey=replyActive ? `thread:${activeGroup.threadId}` : "root";
     const draft=getOperationalMessageDraft(role,draftKey,latestMessage);
     if(textarea){
       const previousDraftKey=String(textarea.dataset.sdeOperationalMessageDraftKey || "root");
       textarea.dataset.sdeOperationalMessageDraftKey=draftKey;
       textarea.dataset.sdeOperationalMessageId=String(latestMessage?.messageId || "");
-      textarea.placeholder=activeGroup ? "Skriv et svar …" : "Skriv din beskjed her …";
+      textarea.placeholder=replyActive
+        ? "Skriv et svar …"
+        : "Skriv din beskjed her …";
       if(
         document.activeElement !== textarea ||
         previousDraftKey !== draftKey
@@ -55263,13 +55577,13 @@ function renderOperationalMessageThreads(){
     }
     if(sendButton){
       sendButton.dataset.sdeOperationalMessageDraftKey=draftKey;
-      sendButton.textContent=activeGroup ? "Send svar" : "Send beskjed";
+      sendButton.textContent=replyActive ? "Send svar" : "Send beskjed";
     }
-    if(targetField) targetField.hidden=Boolean(activeGroup);
-    if(targetSelect) targetSelect.disabled=Boolean(activeGroup);
+    if(targetField) targetField.hidden=replyActive;
+    if(targetSelect) targetSelect.disabled=replyActive;
     if(activeTarget){
-      activeTarget.hidden=!activeGroup;
-      activeTarget.textContent=activeGroup
+      activeTarget.hidden=!replyActive;
+      activeTarget.textContent=replyActive
         ? `Svar til ${OPERATIONAL_MESSAGE_ROLE_LABELS[activeGroup.counterpartRole] || activeGroup.counterpartRole}`
         : "";
     }
@@ -55490,11 +55804,19 @@ function handleOperationalMessageComposerInput(event){
   const draftKey = String(textarea.dataset.sdeOperationalMessageDraftKey || "root");
   const draft = getOperationalMessageDraft(role,draftKey);
   if(!draft) return false;
+  const wasBlank = String(draft.message || "").trim().length === 0;
   draft.message = String(textarea.value || "").slice(0,250);
   if(!Number.isSafeInteger(draft.revision) || draft.revision < 0) draft.revision = 0;
   draft.revision += 1;
   operationalMessageRetrySnapshots.delete(`${role}|${draftKey}`);
   operationalMessageLastResults.delete(`${role}|${draftKey}`);
+  if(
+    wasBlank &&
+    draft.message.trim().length > 0 &&
+    String(draft.parentMessageId || "")
+  ){
+    recordOperationalMessageReplyStarted(draft.parentMessageId,role).catch(()=>{});
+  }
   updateOperationalMessageComposerStatus();
   return true;
 }
@@ -58646,6 +58968,14 @@ function renderDropsPanels(){
 
 function initDropsPanels(){
   startVehicleStatusVisiblePolling();
+  if(operationalMessageWithdrawalClockTimer){
+    window.clearInterval(operationalMessageWithdrawalClockTimer);
+  }
+  operationalMessageWithdrawalClockTimer=window.setInterval(
+    updateOperationalMessageWithdrawalCountdowns,
+    1000
+  );
+  updateOperationalMessageWithdrawalCountdowns();
   document.addEventListener("click", event=>{
     if(event.target.closest("#globalOperationalMessageToggle")){
       event.preventDefault();
@@ -58687,6 +59017,17 @@ function initDropsPanels(){
       );
       if(list) list.scrollTop = list.scrollHeight;
       operationalMessageNewer.hidden = true;
+      return;
+    }
+    const operationalMessageUndo = event.target.closest(
+      "[data-sde-operational-message-undo]"
+    );
+    if(operationalMessageUndo){
+      event.preventDefault();
+      submitOperationalMessageWithdrawal(
+        operationalMessageUndo.dataset.sdeOperationalMessageId,
+        operationalMessageUndo.dataset.sdeOperationalRole
+      ).catch(()=>{});
       return;
     }
     const agiliaCleaningSubmit = event.target.closest("[data-sde-agilia-cleaning-submit]");
