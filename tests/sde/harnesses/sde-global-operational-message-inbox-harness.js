@@ -84,24 +84,123 @@ assert.doesNotMatch(frontend,/new\s+EventSource\s*\(/,
 assert.match(frontend,/vehicleStatusVisiblePolling\s*=\s*\{timer:0,intervalMs:3000\}/);
 
 const getRoleSource=extractFunction(frontend,"getActiveOperationalMessageRole");
-const roleContext={OPERATIONAL_MESSAGE_ROLES:roles,dropsRuntimeCapabilities:null};
+const levelRoles=Object.freeze({
+  "1":"drops","2":"txp","3":"sde_skiftere","4":"verksted","5":"agila"
+});
+const roleContext={
+  OPERATIONAL_MESSAGE_ROLES:roles,
+  OPERATIONAL_MESSAGE_LEVEL_ROLES:levelRoles,
+  activeAccessLevel:"1",
+  getActiveAccessLevel:()=>roleContext.activeAccessLevel,
+  dropsRuntimeCapabilities:null
+};
 vm.createContext(roleContext);
 const getRole=vm.runInContext(`(${getRoleSource})`,roleContext);
-for(const role of roles){
+for(const [level,role] of Object.entries(levelRoles)){
+  roleContext.activeAccessLevel=level;
   roleContext.dropsRuntimeCapabilities={ok:true,roleResolved:true,role,roles:[role]};
-  assert.equal(getRole(),role);
+  assert.equal(getRole(),role,"single-role identities must remain supported unchanged");
 }
+
+const multiRoleCapabilities={
+  ok:true,
+  roleResolved:true,
+  role:null,
+  roles:[...roles],
+  capabilities:{
+    "vehicle_status.send_operational_message":{allowed:true,decision:"ALLOW"}
+  }
+};
+for(const [level,role] of Object.entries(levelRoles)){
+  roleContext.activeAccessLevel=level;
+  roleContext.dropsRuntimeCapabilities=multiRoleCapabilities;
+  assert.equal(
+    getRole(),role,
+    `multi-role identity with role=null must activate selected level ${level} (${role})`
+  );
+}
+roleContext.activeAccessLevel="2";
+roleContext.dropsRuntimeCapabilities={...multiRoleCapabilities,role:"drops"};
+assert.equal(getRole(),"txp",
+  "a singular role hint must not override the server-assigned role for the selected level");
+
 for(const capabilities of [
   null,
   {ok:false,roleResolved:true,role:"drops",roles:["drops"]},
   {ok:true,roleResolved:false,role:"drops",roles:["drops"]},
-  {ok:true,roleResolved:true,role:null,roles:[...roles]},
   {ok:true,roleResolved:true,role:"drops",roles:["txp"]},
   {ok:true,roleResolved:true,role:"admin_pilot",roles:["admin_pilot"]}
 ]){
+  roleContext.activeAccessLevel="1";
   roleContext.dropsRuntimeCapabilities=capabilities;
-  assert.equal(getRole(),"","unresolved or ambiguous role must hide the composer");
+  assert.equal(getRole(),"","unresolved or unauthorized selected role must hide the composer");
 }
+
+const updateComposerSource=extractFunction(frontend,"updateOperationalMessageComposerStatus");
+function proveComposerVisibility(role,expectedHidden){
+  const host={
+    hidden:false,
+    dataset:{sdeOperationalRole:role},
+    querySelector:()=>null,
+    querySelectorAll:()=>[]
+  };
+  const context={
+    document:{querySelectorAll:()=>[host],activeElement:null},
+    getActiveOperationalMessageRole:getRole,
+    getOperationalMessageDraft:()=>null,
+    operationalMessageCommandsInFlight:new Set(),
+    operationalMessagePendingConfirmations:new Map(),
+    syncOperationalMessagePopupReplyUi(){}
+  };
+  vm.createContext(context);
+  vm.runInContext(`(${updateComposerSource})`,context)();
+  assert.equal(host.hidden,expectedHidden);
+}
+
+const availabilitySource=extractFunction(frontend,"getOperationalMessageAvailability");
+let availabilityTargetRole="txp";
+const availabilityContext={
+  OPERATIONAL_MESSAGE_ROLES:roles,
+  dropsRuntimeCapabilities:multiRoleCapabilities,
+  dropsAccessIdentitySession:{ok:true,identityVerified:true,subject:"multi-role-subject"},
+  dropsVehicleStatusReadback:{
+    ok:true,
+    writeEnabled:true,
+    sendOperationalMessageCommandAvailable:true
+  },
+  operationalMessageCommandsInFlight:new Set(),
+  operationalMessagePendingConfirmations:new Map(),
+  getActiveOperationalMessageRole:getRole,
+  getOperationalMessageDraft:()=>({targetRole:availabilityTargetRole,message:"testmelding"})
+};
+vm.createContext(availabilityContext);
+const getAvailability=vm.runInContext(`(${availabilitySource})`,availabilityContext);
+for(const [level,role] of Object.entries(levelRoles)){
+  roleContext.activeAccessLevel=level;
+  roleContext.dropsRuntimeCapabilities=multiRoleCapabilities;
+  availabilityContext.dropsRuntimeCapabilities=multiRoleCapabilities;
+  availabilityTargetRole=roles.find(candidate=>candidate !== role);
+  proveComposerVisibility(role,false);
+  assert.equal(getAvailability(role).available,true,
+    `multi-role identity must retain the send gate for selected level ${level} (${role})`);
+}
+
+const unauthorizedCapabilities={
+  ...multiRoleCapabilities,
+  role:null,
+  roles:["drops","txp"]
+};
+roleContext.activeAccessLevel="3";
+roleContext.dropsRuntimeCapabilities=unauthorizedCapabilities;
+availabilityContext.dropsRuntimeCapabilities=unauthorizedCapabilities;
+availabilityTargetRole="drops";
+assert.equal(getRole(),"","an unassigned selected level must not activate a role");
+proveComposerVisibility("sde_skiftere",true);
+const unauthorizedAvailability=getAvailability("sde_skiftere");
+assert.equal(unauthorizedAvailability.available,false);
+assert.equal(unauthorizedAvailability.checks.correctSurface,false);
+assert.equal(unauthorizedAvailability.checks.roleAllowed,false,
+  "the send gate must revalidate the selected role against server-assigned roles");
 
 const reconcileSource=extractFunction(frontend,"reconcileGlobalOperationalMessageInbox");
 let clientPairCount=0;

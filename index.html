@@ -54590,7 +54590,13 @@ let agiliaCleaningRequestInFlight = false;
 let agiliaCleaningLastResult = null;
 
 function getActiveOperationalMessageRole(){
-  const role = String(dropsRuntimeCapabilities?.role || "").trim().toLowerCase();
+  const selectedRole = String(
+    OPERATIONAL_MESSAGE_LEVEL_ROLES[getActiveAccessLevel()] || ""
+  ).trim().toLowerCase();
+  const singularRole = String(
+    dropsRuntimeCapabilities?.role || ""
+  ).trim().toLowerCase();
+  const role = singularRole === selectedRole ? singularRole : selectedRole;
   const roles = Array.isArray(dropsRuntimeCapabilities?.roles)
     ? dropsRuntimeCapabilities.roles
     : [];
