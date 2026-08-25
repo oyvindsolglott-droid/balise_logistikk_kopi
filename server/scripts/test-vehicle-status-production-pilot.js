@@ -164,6 +164,7 @@ async function main(){
         "vehicle_status_operational_message_acknowledgements",
         "vehicle_status_operational_message_auto_dismissals",
         "vehicle_status_operational_message_events",
+        "vehicle_status_operational_message_lifecycle_events",
         "vehicle_status_operational_messages",
         "vehicle_status_process_cases",
         "vehicle_status_process_events",
@@ -466,6 +467,7 @@ function emptyCounts(){
     operationalMessageEvents: 0,
     operationalMessageAcknowledgements: 0,
     operationalMessageAutoDismissals: 0,
+    operationalMessageLifecycleEvents: 0,
     cleaningTrackSpaceRequests: 0
   };
 }
@@ -488,6 +490,7 @@ function legacyCounts(faults){
     operationalMessageEvents: 0,
     operationalMessageAcknowledgements: 0,
     operationalMessageAutoDismissals: 0,
+    operationalMessageLifecycleEvents: 0,
     cleaningTrackSpaceRequests: 0
   };
 }
