@@ -104,33 +104,51 @@ const override = evaluateRuntimeAuthorization({
 assert.equal(override.allowed, false);
 
 const activeRoleFunction = extractFunction("getActiveOperationalMessageRole");
-const getActiveRole = capabilities => new Function(
+const messageLevelRoles = Object.freeze({
+  "1":"drops",
+  "2":"txp",
+  "3":"sde_skiftere",
+  "4":"verksted",
+  "5":"agila",
+});
+const getActiveRole = (capabilities,level="1") => new Function(
   "OPERATIONAL_MESSAGE_ROLES",
+  "OPERATIONAL_MESSAGE_LEVEL_ROLES",
+  "getActiveAccessLevel",
   "dropsRuntimeCapabilities",
   `return (${activeRoleFunction})();`
-)(["drops","txp","sde_skiftere","verksted","agila"],capabilities);
-for(const role of ["drops","txp","sde_skiftere","verksted","agila"]){
+)(
+  ["drops","txp","sde_skiftere","verksted","agila"],
+  messageLevelRoles,
+  () => level,
+  capabilities
+);
+for(const [level,role] of Object.entries(messageLevelRoles)){
   assert.equal(getActiveRole({
     ok:true,
     roleResolved:true,
     role,
     roles:[role]
-  }), role);
+  },level), role);
 }
 for(const capabilities of [
   null,
   {ok:false,roleResolved:true,role:"drops",roles:["drops"]},
   {ok:true,roleResolved:false,role:"drops",roles:["drops"]},
-  {ok:true,roleResolved:true,role:null,roles:[...exactRoles]},
   {ok:true,roleResolved:true,role:"drops",roles:["txp"]},
   {ok:true,roleResolved:true,role:"admin_pilot",roles:["admin_pilot"]},
 ]){
   assert.equal(
     getActiveRole(capabilities),
     "",
-    "only one exact server-confirmed operational role may activate messaging"
+    "only the selected server-confirmed operational role may activate messaging"
   );
 }
+assert.equal(
+  getActiveRole({ok:true,roleResolved:true,role:null,roles:[...exactRoles]},"1"),
+  "drops",
+  "a multi-role identity must activate its selected server-confirmed role"
+);
 
 let activeLevel = "1";
 
