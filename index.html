@@ -57687,12 +57687,30 @@ async function refreshVehicleStatusReadback(fetchImpl=window.fetch.bind(window))
   }catch(unusedError){ /* fail closed on last confirmed GET */ }
 }
 
+function requestVehicleStatusVisibleRefresh(){
+  if(document.visibilityState !== "visible") return null;
+  if(vehicleStatusVisiblePolling.refreshPromise){
+    return vehicleStatusVisiblePolling.refreshPromise;
+  }
+  const refreshPromise = Promise.resolve(refreshVehicleStatusReadback()).finally(()=>{
+    if(vehicleStatusVisiblePolling.refreshPromise === refreshPromise){
+      vehicleStatusVisiblePolling.refreshPromise = null;
+    }
+  });
+  vehicleStatusVisiblePolling.refreshPromise = refreshPromise;
+  return refreshPromise;
+}
+
 function startVehicleStatusVisiblePolling(){
   if(vehicleStatusVisiblePolling.timer) return;
   vehicleStatusVisiblePolling.timer = window.setInterval(()=>{
-    if(document.visibilityState !== "visible") return;
-    refreshVehicleStatusReadback();
+    requestVehicleStatusVisibleRefresh();
   },vehicleStatusVisiblePolling.intervalMs);
+  document.addEventListener("visibilitychange",()=>{
+    if(document.visibilityState === "visible") requestVehicleStatusVisibleRefresh();
+  });
+  window.addEventListener("focus",requestVehicleStatusVisibleRefresh);
+  window.addEventListener("pageshow",requestVehicleStatusVisibleRefresh);
 }
 
 function confirmDropsDraftDiscard(nextVehicle){

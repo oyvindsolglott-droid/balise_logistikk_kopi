@@ -333,6 +333,13 @@ test("GLOBAL direktemeldingsboks — én kollapsbar rolleautorisert flate, trygg
   );
 });
 
+test("GLOBAL direktemeldingsboks — ny melding hentes og autoåpnes straks fanen blir aktiv", () => {
+  assertPassed(
+    runHarness("sde-operational-message-auto-expand-catchup-harness.js"),
+    "operational-message auto-expand catch-up contract",
+  );
+});
+
 registerHarnessTest({
   phase:"SDE statusparitet",
   name:"Sporplan, Verksted og DROPS følger samme ferske statusmodell ved polling",
