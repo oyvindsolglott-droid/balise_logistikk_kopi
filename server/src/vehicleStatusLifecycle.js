@@ -819,8 +819,34 @@ function createOperationalMessageHistoryHandler(options = {}){
         return sendError(res, 403, "role_binding_required",
           "A resolved role binding is required.");
       }
+      const requestedRole = String(req.query?.role || "").trim().toLowerCase();
+      const peerRole = String(req.query?.peerRole || "").trim().toLowerCase();
+      const summary = String(req.query?.summary || "").trim().toLowerCase();
+      if(requestedRole && !OPERATIONAL_MESSAGE_ROLES.has(requestedRole)){
+        return sendError(res, 400, "invalid_history_role",
+          "role must be a known operational-message role.");
+      }
+      if(requestedRole && !roleResult.roles.includes(requestedRole)){
+        return sendError(res, 403, "history_role_not_assigned",
+          "The requested history role is not assigned to this identity.");
+      }
+      if(peerRole && (!OPERATIONAL_MESSAGE_ROLES.has(peerRole) || peerRole === requestedRole)){
+        return sendError(res, 400, "invalid_history_peer_role",
+          "peerRole must be another known operational-message role.");
+      }
+      if(summary && summary !== "dates"){
+        return sendError(res, 400, "invalid_history_summary",
+          "summary must be dates when specified.");
+      }
+      if((peerRole || summary) && !requestedRole){
+        return sendError(res, 400, "history_role_required",
+          "role is required for peer and summary history queries.");
+      }
       const page = repository.getOperationalMessagePage({
         roles:[...roleResult.roles],
+        role:requestedRole,
+        peerRole,
+        summary,
         date:String(req.query?.date || ""),
         cursor:String(req.query?.cursor || ""),
         threadId:String(req.query?.threadId || ""),

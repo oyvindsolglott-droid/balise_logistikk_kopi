@@ -72,7 +72,8 @@ assert.equal(
   "each role surface owns exactly one send button"
 );
 assert.match(composer,/data-sde-operational-message-thread-selector/);
-assert.match(composer,/>Send svar<\/button>/);
+assert.match(composer,/>Send beskjed<\/button>/);
+assert.match(threads,/replyActive \? "Send svar" : "Send beskjed"/);
 assert.doesNotMatch(threads,/data-sde-operational-message-text/);
 assert.doesNotMatch(threads,/operational-message-reply/);
 assert.match(threads,/is-sent/);
