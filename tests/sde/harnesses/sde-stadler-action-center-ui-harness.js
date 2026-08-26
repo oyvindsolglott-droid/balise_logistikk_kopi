@@ -220,7 +220,9 @@ for(const role of ["drops", "txp", "sde_skiftere", "verksted", "agila"]){
 const globalComposer = extractFunction("renderOperationalMessageComposers");
 for(const token of [
   "data-sde-operational-message-host",
-  "data-sde-operational-message-target",
+  "data-sde-operational-message-new-toggle",
+  "data-sde-operational-message-target-choice",
+  "data-sde-operational-message-log-toggle",
   "data-sde-operational-message-text",
   "data-sde-operational-message-send",
   "maxlength=\"250\"",
@@ -229,7 +231,9 @@ for(const token of [
 }
 assert.ok((source.match(/data-sde-operational-message-host/g) || []).length >= 5);
 assert.ok(source.includes("operationalMessageReceipts"));
-assert.ok(source.includes("Direktemeldinger fra Agilia"));
+assert.ok(source.includes("Serverautoritativ"));
+assert.ok(source.includes("Nyere melding ↓"));
+assert.ok(!globalComposer.includes("Direktemeldinger fra Agilia"));
 assert.ok(source.includes("Bestilling av sporplass til hovedrenhold"));
 assert.doesNotMatch(actionCenter, /data-sde-operational-message-(?:target|text|send)/);
 assert.ok(source.includes("@media (max-width: 520px)"));

@@ -65,7 +65,9 @@ for(const token of [
 }
 for(const token of [
   "data-sde-operational-message-host",
-  "data-sde-operational-message-target",
+  "data-sde-operational-message-new-toggle",
+  "data-sde-operational-message-target-choice",
+  "data-sde-operational-message-log-toggle",
   "data-sde-operational-message-text",
   "getActiveOperationalMessageRole",
   "submitOperationalMessageFromUi",

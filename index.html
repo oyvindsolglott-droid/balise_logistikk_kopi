@@ -8002,6 +8002,89 @@ button{padding:12px 12px}
   color:#0b2a55;
   font-weight:900;
 }
+.operational-message-composer__title-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.operational-message-composer__utility,
+.operational-message-target-choice,
+.operational-message-log__close,
+.operational-message-log__choice{
+  min-height:38px;
+  padding:8px 13px;
+  border:1px solid #31577f;
+  border-radius:10px;
+  background:#fff;
+  color:#173b69;
+  font:inherit;
+  font-weight:850;
+  cursor:pointer;
+}
+.operational-message-composer__utility[aria-expanded="true"]{
+  border-color:#0755d7;
+  background:#e9f2ff;
+  color:#0755d7;
+}
+.operational-message-target-chooser,
+.operational-message-log{
+  grid-column:1/-1;
+  display:grid;
+  gap:10px;
+  padding:11px;
+  border:1px solid #bfd4ee;
+  border-radius:14px;
+  background:#f8fbff;
+}
+.operational-message-target-chooser[hidden],
+.operational-message-log[hidden],
+.operational-message-composer__editor[hidden]{display:none}
+.operational-message-target-chooser__list,
+.operational-message-log__choices{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+.operational-message-composer__editor{
+  grid-column:1/-1;
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:end;
+}
+.operational-message-composer__editor label{min-width:0}
+.operational-message-composer__editor .operational-message-active-target,
+.operational-message-composer__editor .operational-message-composer__status{
+  grid-column:1/-1;
+}
+.operational-message-log__header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.operational-message-log__header h4{margin:0;color:#10233f}
+.operational-message-log__close{
+  min-width:38px;
+  padding:6px 10px;
+  font-size:1.15rem;
+  line-height:1;
+}
+.operational-message-log__status{
+  margin:0;
+  color:#536b89;
+  font-size:.8rem;
+  font-weight:750;
+}
+.operational-message-log__dialog{
+  display:grid;
+  max-height:340px;
+  overflow:auto;
+  padding:7px;
+  border:1px solid #d1deee;
+  border-radius:12px;
+  background:#fff;
+}
 .operational-message-thread-picker{
   grid-column:1/-1;
   display:grid;
@@ -8257,27 +8340,6 @@ button{padding:12px 12px}
   box-shadow:0 18px 34px rgba(20,48,84,.18);
 }
 .global-operational-message-box__body[hidden]{display:none}
-.operational-message-history-tools{
-  grid-column:1/-1;
-  display:flex;
-  flex-wrap:wrap;
-  align-items:end;
-  gap:8px;
-  padding:9px;
-  border:1px solid #d1deee;
-  border-radius:12px;
-  background:#f8fbff;
-}
-.operational-message-history-tools label{min-width:150px;flex:1}
-.operational-message-history-tools button{
-  min-height:38px;
-  border:1px solid #31577f;
-  border-radius:10px;
-  background:#fff;
-  color:#173b69;
-  font-weight:850;
-}
-.operational-message-history-status{margin:0;color:#536b89;font-size:.78rem;font-weight:750}
 .operational-message-thread__message.is-withdrawn{font-style:italic;color:#64748b}
 .operational-message-thread__actions{
   display:flex;
@@ -10136,8 +10198,6 @@ button{padding:12px 12px}
     <div class="drops-warning">Agilia-autoritet – alle bestillinger bekreftes med fersk server-readback</div>
   </div>
   <div class="agilia-workspace" data-sde-agilia-workspace>
-    <section aria-label="Direktemeldinger fra Agilia">
-    </section>
     <section class="agilia-cleaning-request" data-sde-agilia-cleaning-request aria-labelledby="agiliaCleaningTitle">
       <h3 id="agiliaCleaningTitle">Bestilling av sporplass til hovedrenhold</h3>
       <p class="agilia-cleaning-request__info">Bestillingen bør foreligge senest 1 døgn før hovedrenholdet skal påbegynnes.</p>
@@ -54606,6 +54666,13 @@ const globalOperationalMessageBoxState = {
 const operationalMessageHistoryById = new Map();
 const operationalMessageHistoryPages = new Map();
 const operationalMessageThreadHistoryLoaded = new Set();
+const operationalMessageTargetChooserOpenRoles = new Set();
+const operationalMessageRootComposerOpenRoles = new Set();
+const operationalMessageLogLayersByRole = new Map();
+const operationalMessageLogDateSummariesByRole = new Map();
+const operationalMessageLogMessagesByScope = new Map();
+const operationalMessageLogLoadingScopes = new Set();
+const operationalMessageLogErrorsByScope = new Map();
 const operationalMessageAutoPresentationPromises = new Map();
 const operationalMessageDismissalAttempts = new Set();
 const operationalMessageReplyStartAttempts = new Set();
@@ -55078,6 +55145,8 @@ function getActiveOperationalMessageThreadId(role,groups){
   if(
     active === OPERATIONAL_MESSAGE_NEW_THREAD_KEY &&
     newestThreadId &&
+    !operationalMessageTargetChooserOpenRoles.has(role) &&
+    !operationalMessageRootComposerOpenRoles.has(role) &&
     !hasProtectedOperationalMessageActivity(role,newestThreadId)
   ){
     active = newestThreadId;
@@ -55165,6 +55234,163 @@ function getOperationalMessageAvailability(role,draftKey="root"){
   };
 }
 
+function getOperationalMessageLogLayers(role){
+  if(!operationalMessageLogLayersByRole.has(role)){
+    operationalMessageLogLayersByRole.set(role,[]);
+  }
+  return operationalMessageLogLayersByRole.get(role);
+}
+
+function formatOperationalMessageLogDate(date){
+  const value=new Date(`${String(date || "")}T12:00:00Z`);
+  if(!Number.isFinite(value.getTime())) return String(date || "");
+  return value.toLocaleDateString("nb-NO",{
+    timeZone:"Europe/Oslo",
+    day:"2-digit",
+    month:"2-digit",
+    year:"numeric"
+  });
+}
+
+function getOperationalMessageLogScope(role,date,peerRole){
+  return `${role}|${date}|${peerRole}`;
+}
+
+function renderOperationalMessageLogLayerForHost(host,role){
+  const container=host.querySelector("[data-sde-operational-message-log-layer]");
+  const toggle=host.querySelector("[data-sde-operational-message-log-toggle]");
+  if(!container || !toggle) return;
+  const layers=getOperationalMessageLogLayers(role);
+  const layer=layers.at(-1) || null;
+  toggle.setAttribute("aria-expanded",layer ? "true" : "false");
+  container.hidden=!layer;
+  if(!layer){
+    container.innerHTML="";
+    return;
+  }
+  const close=`<button class="operational-message-log__close" type="button" data-sde-operational-message-log-close aria-label="Lukk dette Logg-laget">×</button>`;
+  if(layer.kind === "dates"){
+    const state=operationalMessageLogDateSummariesByRole.get(role) || null;
+    const scope=`dates:${role}`;
+    const loading=operationalMessageLogLoadingScopes.has(scope);
+    const error=operationalMessageLogErrorsByScope.get(scope) || "";
+    const dates=Array.isArray(state?.dates) ? state.dates : [];
+    container.innerHTML=`<div class="operational-message-log__header"><h4>Logg — datoer</h4>${close}</div>
+      <div class="operational-message-log__choices">${dates.map(entry=>
+        `<button class="operational-message-log__choice" type="button" data-sde-operational-message-log-date="${escapeHtml(String(entry.date || ""))}">${escapeHtml(formatOperationalMessageLogDate(entry.date))} · ${Number(entry.messageCount || 0)}</button>`
+      ).join("")}</div>
+      <p class="operational-message-log__status" role="status">${escapeHtml(error || (loading ? "Laster Logg …" : dates.length ? "Nyeste dato vises først." : "Ingen meldingsdatoer funnet."))}</p>`;
+    return;
+  }
+  if(layer.kind === "peers"){
+    container.innerHTML=`<div class="operational-message-log__header"><h4>Logg — ${escapeHtml(formatOperationalMessageLogDate(layer.date))}</h4>${close}</div>
+      <p class="operational-message-log__status">Velg samtalepart.</p>
+      <div class="operational-message-log__choices">${(layer.peerRoles || []).map(peerRole=>
+        `<button class="operational-message-log__choice" type="button" data-sde-operational-message-log-peer="${escapeHtml(peerRole)}">${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[peerRole] || peerRole)}</button>`
+      ).join("")}</div>`;
+    return;
+  }
+  const scope=getOperationalMessageLogScope(role,layer.date,layer.peerRole);
+  const loading=operationalMessageLogLoadingScopes.has(scope);
+  const error=operationalMessageLogErrorsByScope.get(scope) || "";
+  const messages=operationalMessageLogMessagesByScope.get(scope) || [];
+  container.innerHTML=`<div class="operational-message-log__header"><h4>${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[layer.peerRole] || layer.peerRole)} · ${escapeHtml(formatOperationalMessageLogDate(layer.date))}</h4>${close}</div>
+    <div class="operational-message-log__dialog" aria-label="Full meldingsdialog for valgt dato">${messages.length ? messages.map(message=>{
+      const direction=message.sourceRole === role ? "is-sent" : "is-received";
+      const withdrawn=isOperationalMessageWithdrawn(message);
+      const sourceLabel=OPERATIONAL_MESSAGE_ROLE_LABELS[message.sourceRole] || message.sourceRole;
+      const bodyText=withdrawn
+        ? `Melding trukket tilbake kl. ${formatOperationalMessageWithdrawalTime(message.withdrawnAt)}`
+        : String(message.message || "");
+      return `<article class="operational-message-thread__message ${direction}${withdrawn ? " is-withdrawn" : ""}">
+        <div class="operational-message-thread__meta"><strong>${escapeHtml(sourceLabel)}</strong><time datetime="${escapeHtml(String(message.sentAt || ""))}">${escapeHtml(formatDropsVehicleStatusTimestamp(message.sentAt))}</time><span data-sde-operational-message-delivery>${escapeHtml(getOperationalMessageDeliveryLabel(message))}</span></div>
+        <p>${escapeHtml(bodyText)}</p>
+      </article>`;
+    }).join("") : `<p class="operational-message-thread__empty">${escapeHtml(loading ? "Laster full dialog …" : error || "Ingen meldinger funnet.")}</p>`}</div>
+    <p class="operational-message-log__status" role="status">${escapeHtml(error || (loading ? "Laster full dialog …" : `${messages.length} meldinger lastet fra serveren.`))}</p>`;
+}
+
+function renderOperationalMessageLogLayers(){
+  document.querySelectorAll("[data-sde-operational-message-host]").forEach(host=>{
+    const role=String(host.dataset.sdeOperationalRole || "");
+    if(OPERATIONAL_MESSAGE_ROLES.includes(role)){
+      renderOperationalMessageLogLayerForHost(host,role);
+    }
+  });
+}
+
+async function loadOperationalMessageLogDates(role){
+  role=String(role || "");
+  if(!OPERATIONAL_MESSAGE_ROLES.includes(role)) return false;
+  const scope=`dates:${role}`;
+  operationalMessageLogLoadingScopes.add(scope);
+  operationalMessageLogErrorsByScope.delete(scope);
+  renderOperationalMessageLogLayers();
+  try{
+    const params=new URLSearchParams({summary:"dates",role});
+    const response=await window.fetch(
+      `/api/vehicle-status/operational-messages?${params.toString()}`,
+      {method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}
+    );
+    const result=await response.json().catch(()=>null);
+    if(!response.ok || result?.ok !== true) throw new Error(result?.error || "log_dates_failed");
+    operationalMessageLogDateSummariesByRole.set(role,{
+      dates:Array.isArray(result.dates) ? result.dates : [],
+      loadedAt:new Date().toISOString()
+    });
+    return true;
+  }catch(error){
+    operationalMessageLogErrorsByScope.set(scope,`Logg kunne ikke lastes: ${String(error?.message || "ukjent feil")}.`);
+    return false;
+  }finally{
+    operationalMessageLogLoadingScopes.delete(scope);
+    renderOperationalMessageLogLayers();
+  }
+}
+
+async function loadOperationalMessageLogDialog(role,date,peerRole){
+  const scope=getOperationalMessageLogScope(role,date,peerRole);
+  if(operationalMessageLogMessagesByScope.has(scope)){
+    renderOperationalMessageLogLayers();
+    return true;
+  }
+  operationalMessageLogLoadingScopes.add(scope);
+  operationalMessageLogErrorsByScope.delete(scope);
+  renderOperationalMessageLogLayers();
+  try{
+    const messages=[];
+    const seenCursors=new Set();
+    let cursor="";
+    do{
+      const params=new URLSearchParams({date,role,peerRole,limit:"100"});
+      if(cursor) params.set("cursor",cursor);
+      const response=await window.fetch(
+        `/api/vehicle-status/operational-messages?${params.toString()}`,
+        {method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}
+      );
+      const result=await response.json().catch(()=>null);
+      if(!response.ok || result?.ok !== true) throw new Error(result?.error || "log_dialog_failed");
+      messages.push(...(Array.isArray(result.messages) ? result.messages : []));
+      const nextCursor=String(result.nextCursor || "");
+      if(!nextCursor || seenCursors.has(nextCursor)){
+        cursor="";
+      }else{
+        seenCursors.add(nextCursor);
+        cursor=nextCursor;
+      }
+    }while(cursor);
+    messages.sort((left,right)=>Date.parse(left.sentAt || 0)-Date.parse(right.sentAt || 0));
+    operationalMessageLogMessagesByScope.set(scope,messages);
+    return true;
+  }catch(error){
+    operationalMessageLogErrorsByScope.set(scope,`Dialogen kunne ikke lastes: ${String(error?.message || "ukjent feil")}.`);
+    return false;
+  }finally{
+    operationalMessageLogLoadingScopes.delete(scope);
+    renderOperationalMessageLogLayers();
+  }
+}
+
 function renderOperationalMessageComposers(){
   const activeRole=syncGlobalOperationalMessageRole();
   renderGlobalOperationalMessageBox();
@@ -55176,46 +55402,44 @@ function renderOperationalMessageComposers(){
     if(host.dataset.sdeOperationalMessageInitialized === "true") return;
     const targets = OPERATIONAL_MESSAGE_ROLES
       .filter(candidate=>candidate !== role)
-      .map(candidate=>`<option value="${candidate}">${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[candidate])}</option>`)
+      .map(candidate=>`<button class="operational-message-target-choice" type="button" data-sde-operational-message-target-choice="${candidate}">${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[candidate])}</button>`)
       .join("");
     host.innerHTML = `<section class="operational-message-composer" data-sde-operational-message-composer>
       <div class="operational-message-composer__title">
-        <span>${role === "agila"
-          ? "Direktemeldinger fra Agilia"
-          : `Direktemelding fra ${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[role])}`}</span>
+        <div class="operational-message-composer__title-actions">
+          <button class="operational-message-composer__utility" type="button" data-sde-operational-message-new-toggle aria-expanded="false">Ny melding</button>
+          <button class="operational-message-composer__utility" type="button" data-sde-operational-message-log-toggle aria-expanded="false">Logg</button>
+        </div>
         <span>Serverautoritativ</span>
       </div>
+      <section class="operational-message-target-chooser" data-sde-operational-message-target-chooser hidden aria-label="Velg mottaker for ny melding">
+        <strong>Velg mottaker</strong>
+        <div class="operational-message-target-chooser__list">${targets}</div>
+      </section>
+      <section class="operational-message-log" data-sde-operational-message-log-layer hidden></section>
       <label class="operational-message-thread-picker">Samtale
         <select data-sde-operational-message-thread-selector data-sde-operational-role="${role}" aria-label="Velg meldingstråd"></select>
       </label>
       <section class="operational-message-threads" data-sde-operational-message-thread-list data-sde-operational-role="${role}" aria-label="Aktiv meldingstråd">
         <div class="operational-message-thread" data-sde-operational-message-thread-items></div>
-        <button class="operational-message-newer" type="button" data-sde-operational-message-newer hidden>Ny melding ↓</button>
+        <button class="operational-message-newer" type="button" data-sde-operational-message-newer hidden>Nyere melding ↓</button>
       </section>
-      <label data-sde-operational-message-target-field>Mottaker
-        <select data-sde-operational-message-target data-sde-operational-role="${role}">${targets}</select>
-      </label>
-      <p class="operational-message-active-target" data-sde-operational-message-active-target hidden></p>
-      <section class="operational-message-history-tools" aria-label="Eldre meldingshistorikk">
-        <label>Historikkdato (Europe/Oslo)
-          <input type="date" data-sde-operational-message-history-date aria-label="Velg historikkdato i Europe/Oslo">
+      <div class="operational-message-composer__editor" data-sde-operational-message-editor hidden>
+        <p class="operational-message-active-target" data-sde-operational-message-active-target></p>
+        <label><span data-sde-operational-message-editor-label>Beskjed</span>
+          <textarea data-sde-operational-message-text data-sde-operational-message-reply data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root" data-sde-operational-message-id="" maxlength="250" rows="3" placeholder="Skriv din beskjed her …"></textarea>
+          <span class="operational-message-composer__meta">
+            <span data-sde-operational-message-reason></span>
+            <span data-sde-operational-message-count>0 / 250</span>
+          </span>
         </label>
-        <button type="button" data-sde-operational-message-history-load>Last valgt dato</button>
-        <button type="button" data-sde-operational-message-history-more hidden>Last flere</button>
-        <p class="operational-message-history-status" data-sde-operational-message-history-status role="status">Eldre historikk lastes bare på forespørsel.</p>
-      </section>
-      <label><span data-sde-operational-message-editor-label>Beskjed</span>
-        <textarea data-sde-operational-message-text data-sde-operational-message-reply data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root" data-sde-operational-message-id="" maxlength="250" rows="3" placeholder="Skriv din beskjed her …"></textarea>
-        <span class="operational-message-composer__meta">
-          <span data-sde-operational-message-reason></span>
-          <span data-sde-operational-message-count>0 / 250</span>
-        </span>
-      </label>
-      <button class="operational-message-composer__send" type="button" data-sde-operational-message-send data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root">Send svar</button>
-      <p class="operational-message-composer__status" data-sde-operational-message-status role="status"></p>
+        <button class="operational-message-composer__send" type="button" data-sde-operational-message-send data-sde-operational-role="${role}" data-sde-operational-message-draft-key="root">Send beskjed</button>
+        <p class="operational-message-composer__status" data-sde-operational-message-status role="status"></p>
+      </div>
     </section>`;
     host.dataset.sdeOperationalMessageInitialized = "true";
   });
+  renderOperationalMessageLogLayers();
   renderOperationalMessageThreads();
   updateOperationalMessageComposerStatus();
   updateAgiliaCleaningRequestUi();
@@ -55551,14 +55775,17 @@ function renderOperationalMessageThreads(){
 
     const textarea=host.querySelector("textarea");
     const sendButton=host.querySelector("[data-sde-operational-message-send]");
-    const targetField=host.querySelector("[data-sde-operational-message-target-field]");
-    const targetSelect=host.querySelector("[data-sde-operational-message-target]");
+    const editor=host.querySelector("[data-sde-operational-message-editor]");
+    const targetChooser=host.querySelector("[data-sde-operational-message-target-chooser]");
+    const newToggle=host.querySelector("[data-sde-operational-message-new-toggle]");
     const activeTarget=host.querySelector("[data-sde-operational-message-active-target]");
     const editorLabel=host.querySelector("[data-sde-operational-message-editor-label]");
     const latestMessage=activeGroup?.messages
       ?.filter(message=>!isOperationalMessageWithdrawn(message))
       ?.at(-1) || null;
     const replyActive=Boolean(activeGroup && latestMessage);
+    const rootActive=!replyActive && operationalMessageRootComposerOpenRoles.has(role);
+    const chooserOpen=operationalMessageTargetChooserOpenRoles.has(role);
     const draftKey=replyActive ? `thread:${activeGroup.threadId}` : "root";
     const draft=getOperationalMessageDraft(role,draftKey,latestMessage);
     if(textarea){
@@ -55579,15 +55806,18 @@ function renderOperationalMessageThreads(){
       sendButton.dataset.sdeOperationalMessageDraftKey=draftKey;
       sendButton.textContent=replyActive ? "Send svar" : "Send beskjed";
     }
-    if(targetField) targetField.hidden=replyActive;
-    if(targetSelect) targetSelect.disabled=replyActive;
+    if(editor) editor.hidden=!(replyActive || rootActive);
+    if(targetChooser) targetChooser.hidden=!chooserOpen;
+    if(newToggle) newToggle.setAttribute("aria-expanded",chooserOpen ? "true" : "false");
     if(activeTarget){
-      activeTarget.hidden=!replyActive;
+      activeTarget.hidden=!(replyActive || rootActive);
       activeTarget.textContent=replyActive
         ? `Svar til ${OPERATIONAL_MESSAGE_ROLE_LABELS[activeGroup.counterpartRole] || activeGroup.counterpartRole}`
-        : "";
+        : rootActive
+          ? `Til ${OPERATIONAL_MESSAGE_ROLE_LABELS[draft?.targetRole] || draft?.targetRole || ""}`
+          : "";
     }
-    if(editorLabel) editorLabel.textContent=activeGroup ? "Svar" : "Beskjed";
+    if(editorLabel) editorLabel.textContent=replyActive ? "Svar" : "Beskjed";
   });
 }
 
@@ -55674,20 +55904,6 @@ function updateOperationalMessageComposerStatus(){
   document.querySelectorAll("[data-sde-operational-message-host]").forEach(host=>{
     const role = String(host.dataset.sdeOperationalRole || "");
     host.hidden = getActiveOperationalMessageRole() !== role;
-    const target = host.querySelector("[data-sde-operational-message-target]");
-    const rootDraft = getOperationalMessageDraft(role,"root");
-    const requestInFlight =
-      operationalMessageCommandsInFlight.has(`${role}|root`) ||
-      operationalMessagePendingConfirmations.has(`${role}|root`);
-    if(target){
-      target.disabled = requestInFlight;
-      if(target.closest("[data-sde-operational-message-target-field]")?.hidden){
-        target.disabled = true;
-      }
-    }
-    if(target && rootDraft && document.activeElement !== target && target.value !== rootDraft.targetRole){
-      target.value = rootDraft.targetRole;
-    }
     host.querySelectorAll("[data-sde-operational-message-text]").forEach(textarea=>{
       const draftKey = String(textarea.dataset.sdeOperationalMessageDraftKey || "root");
       const draft = getOperationalMessageDraft(role,draftKey);
@@ -55701,6 +55917,12 @@ function updateOperationalMessageComposerStatus(){
         operationalMessageCommandsInFlight.has(`${role}|${draftKey}`) ||
         operationalMessagePendingConfirmations.has(`${role}|${draftKey}`);
       textarea.disabled = requestInFlight;
+      if(draftKey === "root"){
+        host.querySelectorAll("[data-sde-operational-message-target-choice]").forEach(target=>{
+          target.disabled = requestInFlight;
+          target.setAttribute("aria-disabled",requestInFlight ? "true" : "false");
+        });
+      }
       scope.setAttribute("aria-busy",requestInFlight ? "true" : "false");
       if(document.activeElement !== textarea && textarea.value !== draft.message){
         textarea.value = draft.message;
@@ -55841,6 +56063,13 @@ function handleOperationalMessageComposerChange(event){
       return false;
     }
     operationalMessageActiveThreadByRole.set(role,threadId);
+    if(threadId === OPERATIONAL_MESSAGE_NEW_THREAD_KEY){
+      operationalMessageTargetChooserOpenRoles.add(role);
+      operationalMessageRootComposerOpenRoles.delete(role);
+    }else{
+      operationalMessageTargetChooserOpenRoles.delete(role);
+      operationalMessageRootComposerOpenRoles.delete(role);
+    }
     renderOperationalMessageThreads();
     updateOperationalMessageComposerStatus();
     if(
@@ -55851,19 +56080,7 @@ function handleOperationalMessageComposerChange(event){
     }
     return true;
   }
-  const select = event.target.closest?.("[data-sde-operational-message-target]");
-  if(!select) return false;
-  const role = String(select.dataset.sdeOperationalRole || "");
-  const draft = getOperationalMessageDraft(role,"root");
-  const targetRole = String(select.value || "");
-  if(!draft || !OPERATIONAL_MESSAGE_ROLES.includes(targetRole) || targetRole === role){
-    return false;
-  }
-  draft.targetRole = targetRole;
-  operationalMessageRetrySnapshots.delete(`${role}|root`);
-  operationalMessageLastResults.delete(`${role}|root`);
-  updateOperationalMessageComposerStatus();
-  return true;
+  return false;
 }
 
 async function continueOperationalMessageReceiptConfirmationInBackground(
@@ -57273,20 +57490,12 @@ async function toggleGlobalOperationalMessageBox(){
   );
 }
 
-async function loadOperationalMessageHistory({date="",threadId="",role="",more=false}={}){
+async function loadOperationalMessageHistory({threadId="",role=""}={}){
   role=String(role || getActiveOperationalMessageRole());
-  date=String(date || "");
   threadId=String(threadId || "");
-  if(!role || (!date && !threadId)) return false;
-  const scope=threadId ? `thread:${threadId}` : `date:${date}`;
-  const previous=operationalMessageHistoryPages.get(scope) || {};
-  if(threadId && operationalMessageThreadHistoryLoaded.has(threadId) && !more) return true;
-  const params=new URLSearchParams({limit:"50"});
-  if(date) params.set("date",date);
-  if(threadId) params.set("threadId",threadId);
-  if(more && previous.nextCursor) params.set("cursor",previous.nextCursor);
-  const status=document.querySelector("[data-sde-operational-message-history-status]");
-  if(status) status.textContent="Laster historikk …";
+  if(!role || !threadId) return false;
+  if(operationalMessageThreadHistoryLoaded.has(threadId)) return true;
+  const params=new URLSearchParams({limit:"100",threadId,role});
   try{
     const response=await window.fetch(
       `/api/vehicle-status/operational-messages?${params.toString()}`,
@@ -57298,23 +57507,14 @@ async function loadOperationalMessageHistory({date="",threadId="",role="",more=f
       const messageId=String(message?.messageId || "");
       if(messageId) operationalMessageHistoryById.set(messageId,message);
     });
-    operationalMessageHistoryPages.set(scope,{
+    operationalMessageHistoryPages.set(`thread:${threadId}`,{
       nextCursor:String(result.nextCursor || ""),
       loadedAt:new Date().toISOString()
     });
-    if(threadId) operationalMessageThreadHistoryLoaded.add(threadId);
+    operationalMessageThreadHistoryLoaded.add(threadId);
     renderOperationalMessageThreads();
-    const moreButton=document.querySelector("[data-sde-operational-message-history-more]");
-    if(moreButton){
-      moreButton.hidden=!result.nextCursor;
-      moreButton.dataset.sdeOperationalMessageHistoryScope=scope;
-    }
-    if(status){
-      status.textContent=`${Number(result.messages?.length || 0)} meldinger lastet fra serveren.`;
-    }
     return true;
-  }catch(error){
-    if(status) status.textContent=`Historikk kunne ikke lastes: ${String(error?.message || "ukjent feil")}.`;
+  }catch(_error){
     return false;
   }
 }
@@ -58982,29 +59182,149 @@ function initDropsPanels(){
       toggleGlobalOperationalMessageBox();
       return;
     }
-    const historyLoad=event.target.closest(
-      "[data-sde-operational-message-history-load]"
+    const newMessageToggle=event.target.closest(
+      "[data-sde-operational-message-new-toggle]"
     );
-    if(historyLoad){
+    if(newMessageToggle){
       event.preventDefault();
-      const host=historyLoad.closest("[data-sde-operational-message-host]");
-      const date=String(host?.querySelector(
-        "[data-sde-operational-message-history-date]"
-      )?.value || "");
-      if(date) loadOperationalMessageHistory({date}).catch(()=>{});
+      const host=newMessageToggle.closest("[data-sde-operational-message-host]");
+      const role=String(host?.dataset.sdeOperationalRole || "");
+      if(!OPERATIONAL_MESSAGE_ROLES.includes(role)) return;
+      if(operationalMessageTargetChooserOpenRoles.has(role)){
+        operationalMessageTargetChooserOpenRoles.delete(role);
+      }else{
+        operationalMessageTargetChooserOpenRoles.add(role);
+        operationalMessageRootComposerOpenRoles.delete(role);
+        operationalMessageActiveThreadByRole.set(
+          role,
+          OPERATIONAL_MESSAGE_NEW_THREAD_KEY
+        );
+      }
+      renderOperationalMessageThreads();
+      updateOperationalMessageComposerStatus();
       return;
     }
-    const historyMore=event.target.closest(
-      "[data-sde-operational-message-history-more]"
+    const targetChoice=event.target.closest(
+      "[data-sde-operational-message-target-choice]"
     );
-    if(historyMore){
+    if(targetChoice){
       event.preventDefault();
-      const scope=String(historyMore.dataset.sdeOperationalMessageHistoryScope || "");
-      if(scope.startsWith("date:")){
-        loadOperationalMessageHistory({date:scope.slice(5),more:true}).catch(()=>{});
-      }else if(scope.startsWith("thread:")){
-        loadOperationalMessageHistory({threadId:scope.slice(7),more:true}).catch(()=>{});
+      const host=targetChoice.closest("[data-sde-operational-message-host]");
+      const role=String(host?.dataset.sdeOperationalRole || "");
+      const targetRole=String(
+        targetChoice.dataset.sdeOperationalMessageTargetChoice || ""
+      );
+      const draft=getOperationalMessageDraft(role,"root");
+      if(
+        !draft ||
+        !OPERATIONAL_MESSAGE_ROLES.includes(role) ||
+        !OPERATIONAL_MESSAGE_ROLES.includes(targetRole) ||
+        targetRole === role
+      ) return;
+      if(draft.targetRole !== targetRole){
+        draft.message="";
+        draft.revision=Number.isSafeInteger(draft.revision)
+          ? draft.revision + 1
+          : 1;
       }
+      draft.targetRole=targetRole;
+      operationalMessageRetrySnapshots.delete(`${role}|root`);
+      operationalMessageLastResults.delete(`${role}|root`);
+      operationalMessageActiveThreadByRole.set(
+        role,
+        OPERATIONAL_MESSAGE_NEW_THREAD_KEY
+      );
+      operationalMessageTargetChooserOpenRoles.delete(role);
+      operationalMessageRootComposerOpenRoles.add(role);
+      renderOperationalMessageThreads();
+      updateOperationalMessageComposerStatus();
+      window.requestAnimationFrame?.(()=>{
+        host?.querySelector(
+          '[data-sde-operational-message-text][data-sde-operational-message-draft-key="root"]'
+        )?.focus();
+      });
+      return;
+    }
+    const logToggle=event.target.closest(
+      "[data-sde-operational-message-log-toggle]"
+    );
+    if(logToggle){
+      event.preventDefault();
+      const host=logToggle.closest("[data-sde-operational-message-host]");
+      const role=String(host?.dataset.sdeOperationalRole || "");
+      if(!OPERATIONAL_MESSAGE_ROLES.includes(role)) return;
+      const layers=getOperationalMessageLogLayers(role);
+      if(layers.length){
+        layers.length=0;
+        renderOperationalMessageLogLayers();
+      }else{
+        layers.push({kind:"dates"});
+        loadOperationalMessageLogDates(role).catch(()=>{});
+      }
+      return;
+    }
+    const logClose=event.target.closest(
+      "[data-sde-operational-message-log-close]"
+    );
+    if(logClose){
+      event.preventDefault();
+      const host=logClose.closest("[data-sde-operational-message-host]");
+      const role=String(host?.dataset.sdeOperationalRole || "");
+      getOperationalMessageLogLayers(role).pop();
+      renderOperationalMessageLogLayers();
+      return;
+    }
+    const logDate=event.target.closest(
+      "[data-sde-operational-message-log-date]"
+    );
+    if(logDate){
+      event.preventDefault();
+      const host=logDate.closest("[data-sde-operational-message-host]");
+      const role=String(host?.dataset.sdeOperationalRole || "");
+      const date=String(logDate.dataset.sdeOperationalMessageLogDate || "");
+      const summary=(operationalMessageLogDateSummariesByRole.get(role)?.dates || [])
+        .find(entry=>String(entry?.date || "") === date);
+      const peerRoles=(Array.isArray(summary?.peerRoles) ? summary.peerRoles : [])
+        .filter(peerRole=>
+          OPERATIONAL_MESSAGE_ROLES.includes(peerRole) && peerRole !== role
+        );
+      if(peerRoles.length === 1){
+        getOperationalMessageLogLayers(role).push({
+          kind:"dialog",
+          date,
+          peerRole:peerRoles[0]
+        });
+        loadOperationalMessageLogDialog(role,date,peerRoles[0]).catch(()=>{});
+      }else if(peerRoles.length > 1){
+        getOperationalMessageLogLayers(role).push({
+          kind:"peers",
+          date,
+          peerRoles
+        });
+        renderOperationalMessageLogLayers();
+      }
+      return;
+    }
+    const logPeer=event.target.closest(
+      "[data-sde-operational-message-log-peer]"
+    );
+    if(logPeer){
+      event.preventDefault();
+      const host=logPeer.closest("[data-sde-operational-message-host]");
+      const role=String(host?.dataset.sdeOperationalRole || "");
+      const peerRole=String(logPeer.dataset.sdeOperationalMessageLogPeer || "");
+      const peerLayer=getOperationalMessageLogLayers(role).at(-1);
+      const date=String(peerLayer?.date || "");
+      if(
+        peerLayer?.kind !== "peers" ||
+        !peerLayer.peerRoles?.includes(peerRole)
+      ) return;
+      getOperationalMessageLogLayers(role).push({
+        kind:"dialog",
+        date,
+        peerRole
+      });
+      loadOperationalMessageLogDialog(role,date,peerRole).catch(()=>{});
       return;
     }
     const operationalMessageNewer = event.target.closest(

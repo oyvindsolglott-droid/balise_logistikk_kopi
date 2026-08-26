@@ -46,7 +46,8 @@ for(const token of [
   assert.ok(repositorySource.includes(token), `repository misses ${token}`);
 }
 for(const token of [
-  "Direktemeldinger fra Agilia",
+  "data-sde-operational-message-new-toggle",
+  "data-sde-operational-message-log-toggle",
   "Bestilling av sporplass til hovedrenhold",
   "Bestill sporplass",
   "data-sde-agilia-cleaning-slot",

@@ -83,6 +83,45 @@ assert.doesNotMatch(frontend,/new\s+EventSource\s*\(/,
   "PR2 must not introduce a parallel SSE channel");
 assert.match(frontend,/vehicleStatusVisiblePolling\s*=\s*\{timer:0,intervalMs:3000\}/);
 
+const composerSource=extractFunction(frontend,"renderOperationalMessageComposers");
+const logLayerSource=extractFunction(frontend,"renderOperationalMessageLogLayerForHost");
+const historyClickStart=frontend.indexOf("const newMessageToggle=event.target.closest(");
+const historyClickEnd=frontend.indexOf(
+  "const operationalMessageNewer = event.target.closest(",historyClickStart
+);
+assert.ok(historyClickStart >= 0 && historyClickEnd > historyClickStart,
+  "missing delegated composer/log click handlers");
+const historyClickSource=frontend.slice(historyClickStart,historyClickEnd);
+for(const token of [
+  "data-sde-operational-message-new-toggle",
+  "data-sde-operational-message-target-chooser",
+  "data-sde-operational-message-target-choice",
+  "data-sde-operational-message-log-toggle",
+  "data-sde-operational-message-log-layer",
+  "Serverautoritativ",
+  "Ny melding",
+  "Logg",
+  "Nyere melding ↓"
+]){
+  assert.ok(composerSource.includes(token),`composer rebuild misses ${token}`);
+}
+assert.doesNotMatch(composerSource,/Direktemeldinger fra Agilia/,
+  "the redundant composer heading must be removed");
+assert.doesNotMatch(composerSource,/<select[^>]+data-sde-operational-message-target/,
+  "the recipient selector must not be permanently visible");
+assert.doesNotMatch(frontend,
+  /<section aria-label="Direktemeldinger fra Agilia"><\/section>/,
+  "the dead Agilia message section must be removed");
+assert.match(logLayerSource,/data-sde-operational-message-log-close/);
+assert.match(historyClickSource,/getOperationalMessageLogLayers\(role\)\.pop\(\)/,
+  "each Logg close action must pop only the active layer");
+assert.match(historyClickSource,/operationalMessageTargetChooserOpenRoles\.delete\(role\)/,
+  "choosing a recipient must collapse the recipient list");
+assert.match(historyClickSource,/operationalMessageRootComposerOpenRoles\.add\(role\)/,
+  "choosing a recipient must open the root composer");
+assert.match(historyClickSource,/draft\.targetRole=targetRole/,
+  "the server-valid target choice must populate the root draft");
+
 const getRoleSource=extractFunction(frontend,"getActiveOperationalMessageRole");
 const levelRoles=Object.freeze({
   "1":"drops","2":"txp","3":"sde_skiftere","4":"verksted","5":"agila"
@@ -387,6 +426,42 @@ const oldPage2=repository.getOperationalMessagePage({
 assert.equal(oldPage2.messages.length,1);
 assert.notEqual(oldPage2.messages[0].messageId,oldPage.messages[0].messageId);
 
+const dateSummary=repository.getOperationalMessagePage({
+  roles:["txp"],role:"txp",summary:"dates"
+});
+assert.deepEqual(dateSummary.dates,[
+  {date:"2026-08-24",messageCount:1,peerRoles:["verksted"]},
+  {date:"2026-08-23",messageCount:2,peerRoles:["agila","drops"]}
+],"Logg dates must be server-derived, newest first, with exact peer roles");
+assert.equal(dateSummary.timeZone,"Europe/Oslo");
+assert.equal(dateSummary.order,"newest_first");
+const singlePeerDialog=repository.getOperationalMessagePage({
+  roles:["txp"],role:"txp",peerRole:"verksted",date:"2026-08-24",limit:100
+});
+assert.deepEqual(
+  singlePeerDialog.messages.map(message=>message.messageId),
+  [today.result.messageId],
+  "a one-peer date must resolve directly to that full dialog"
+);
+const multiPeerDialog=repository.getOperationalMessagePage({
+  roles:["txp"],role:"txp",peerRole:"drops",date:"2026-08-23",limit:100
+});
+assert.deepEqual(
+  multiPeerDialog.messages.map(message=>message.messageId),
+  [oldAcknowledged.result.messageId],
+  "a multi-peer date must remain filterable to the chosen peer"
+);
+assert.equal(repository.getOperationalMessagePage({
+  roles:["txp"],role:"agila",summary:"dates"
+}).error,"history_role_not_assigned");
+assert.equal(repository.getOperationalMessagePage({
+  roles:["txp"],role:"txp",peerRole:"txp",date:"2026-08-23"
+}).error,"invalid_history_peer_role");
+assert.equal(repository.getOperationalMessagePage({
+  roles:["txp"],role:"admin_pilot",summary:"dates"
+}).error,"invalid_history_role",
+"level zero must never become an operational-message history role");
+
 const dismissalAction=uuid();
 const sessionId=uuid();
 const unpresented=send("agila","txp","not yet presented");
@@ -452,7 +527,7 @@ Promise.all([
   assert.deepEqual(autoCalls,["m1","m2"]);
   assert.deepEqual(userCalls,[]);
   console.log(JSON.stringify({
-    schemaVersion:"sde-global-operational-message-inbox-harness-v1",
+    schemaVersion:"sde-global-operational-message-inbox-harness-v2",
     canonicalHosts:1,
     clientRoleDirections:clientPairCount,
     stateMachineStates:5,
@@ -461,6 +536,9 @@ Promise.all([
     measuredP95Ms:p95Ms,
     historyTimeZone:"Europe/Oslo",
     historyCursorPagination:true,
+    historyDateSummary:true,
+    historyPeerFiltering:true,
+    logStackCloseSemantics:true,
     dismissalEventIdempotent:true,
     tombstoneReady:true
   }));

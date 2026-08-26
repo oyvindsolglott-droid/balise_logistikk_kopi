@@ -38,6 +38,13 @@ const OPERATIONAL_MESSAGE_LIFECYCLE_EVENT_TABLE =
   "vehicle_status_operational_message_lifecycle_events";
 const CLEANING_TRACK_REQUEST_TABLE = "vehicle_status_cleaning_track_space_requests";
 const OPERATIONAL_MESSAGE_WITHDRAWAL_WINDOW_MS = 60_000;
+const OPERATIONAL_MESSAGE_ROLES = new Set([
+  "agila",
+  "drops",
+  "sde_skiftere",
+  "txp",
+  "verksted"
+]);
 const WORKSHOP_SLOTS = new Set(["7N", "7S", "8N", "8S"]);
 const CLEANING_TRACK_SLOTS = new Set(["5S", "5M", "10S", "10N"]);
 const SEMANTIC_NOOP = Symbol("vehicle_status_semantic_noop");
@@ -2278,11 +2285,34 @@ function createVehicleStatusRepository(options = {}){
 
   function getOperationalMessagePage(options = {}){
     const roles = Array.isArray(options.roles) ? options.roles : [];
+    const role = String(options.role || "").trim().toLowerCase();
+    const peerRole = String(options.peerRole || "").trim().toLowerCase();
+    const summary = String(options.summary || "").trim().toLowerCase();
     const date = String(options.date || "").trim();
     const threadId = String(options.threadId || "").trim().toLowerCase();
     const limit = Math.min(100, Math.max(1, Number.parseInt(options.limit,10) || 50));
     if(!roles.length){
       return {ok:true,messages:[],nextCursor:null,date:date || null,threadId:threadId || null};
+    }
+    if(role && !OPERATIONAL_MESSAGE_ROLES.has(role)){
+      return {ok:false,status:400,error:"invalid_history_role",
+        message:"role must be a known operational-message role."};
+    }
+    if(role && !roles.includes(role)){
+      return {ok:false,status:403,error:"history_role_not_assigned",
+        message:"The requested history role is not assigned to this identity."};
+    }
+    if(peerRole && (!OPERATIONAL_MESSAGE_ROLES.has(peerRole) || peerRole === role)){
+      return {ok:false,status:400,error:"invalid_history_peer_role",
+        message:"peerRole must be another known operational-message role."};
+    }
+    if(summary && summary !== "dates"){
+      return {ok:false,status:400,error:"invalid_history_summary",
+        message:"summary must be dates when specified."};
+    }
+    if((peerRole || summary) && !role){
+      return {ok:false,status:400,error:"history_role_required",
+        message:"role is required for peer and summary history queries."};
     }
     if(date && !isCalendarDate(date)){
       return {ok:false,status:400,error:"invalid_history_date",
@@ -2292,7 +2322,7 @@ function createVehicleStatusRepository(options = {}){
       return {ok:false,status:400,error:"invalid_history_thread",
         message:"threadId must be a UUID."};
     }
-    if(!date && !threadId){
+    if(!date && !threadId && summary !== "dates"){
       return {ok:false,status:400,error:"history_scope_required",
         message:"date or threadId is required."};
     }
@@ -2302,10 +2332,42 @@ function createVehicleStatusRepository(options = {}){
         message:"cursor is invalid."};
     }
     let messages = selectOperationalMessages()
-      .filter(message=>roles.includes(message.sourceRole) || roles.includes(message.targetRole))
+      .filter(message=>role
+        ? message.sourceRole === role || message.targetRole === role
+        : roles.includes(message.sourceRole) || roles.includes(message.targetRole))
+      .filter(message=>!peerRole || (
+        (message.sourceRole === role && message.targetRole === peerRole) ||
+        (message.sourceRole === peerRole && message.targetRole === role)
+      ))
       .filter(message=>!date || calendarDateInTimeZone(message.sentAt) === date)
       .filter(message=>!threadId || message.threadId === threadId)
       .sort(compareOperationalMessagesDescending);
+    if(summary === "dates"){
+      const byDate = new Map();
+      messages.forEach(message=>{
+        const messageDate=calendarDateInTimeZone(message.sentAt);
+        const counterpart=message.sourceRole === role
+          ? message.targetRole
+          : message.sourceRole;
+        if(!byDate.has(messageDate)){
+          byDate.set(messageDate,{date:messageDate,messageCount:0,peerRoles:new Set()});
+        }
+        const entry=byDate.get(messageDate);
+        entry.messageCount += 1;
+        if(counterpart && counterpart !== role) entry.peerRoles.add(counterpart);
+      });
+      return {
+        dates:[...byDate.values()]
+          .map(entry=>({
+            date:entry.date,
+            messageCount:entry.messageCount,
+            peerRoles:[...entry.peerRoles].sort()
+          }))
+          .sort((left,right)=>right.date.localeCompare(left.date)),
+        timeZone:"Europe/Oslo",
+        order:"newest_first"
+      };
+    }
     if(cursor){
       messages = messages.filter(message=>
         compareOperationalMessagesDescending(message,cursor) > 0
