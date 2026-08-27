@@ -54578,6 +54578,8 @@ let dropsAccessIdentitySession = null;
 let dropsVehicleStatusAnalytics = null;
 let dropsVehicleStatusContextLoaded = false;
 let dropsVehicleStatusContextLoadPromise = null;
+let dropsVehicleStatusAuthorizationRetryPending = false;
+let dropsVehicleStatusAuthorizationRefreshPromise = null;
 let dropsReportNotOperationalInFlight = false;
 let dropsLifecycleCommandInFlight = false;
 let workshopVehicleRegistrySelectedSeries = "";
@@ -54823,7 +54825,33 @@ function renderGlobalOperationalMessageBox(){
   const meta=document.getElementById("globalOperationalMessageMeta");
   const badge=document.getElementById("globalOperationalMessageBadge");
   if(!box || !body || !toggle || !title || !meta || !badge) return;
-  box.hidden=!role;
+  const activeAccessLevel=getActiveAccessLevel();
+  const reconnectSurfaceRole=activeAccessLevel === "0"
+    ? OPERATIONAL_MESSAGE_ROLES.find(candidate=>{
+      return OPERATIONAL_MESSAGE_ROLE_SURFACES[candidate]?.tab === getActiveTabName();
+    }) || ""
+    : "";
+  const reconnectRole=String(
+    OPERATIONAL_MESSAGE_LEVEL_ROLES[activeAccessLevel] || reconnectSurfaceRole
+  ).trim().toLowerCase();
+  const reconnecting=(
+    dropsVehicleStatusAuthorizationRetryPending === true &&
+    dropsVehicleStatusContextLoaded !== true &&
+    OPERATIONAL_MESSAGE_ROLES.includes(reconnectRole)
+  );
+  box.hidden=!(role || reconnecting);
+  if(reconnecting){
+    body.hidden=true;
+    toggle.hidden=true;
+    toggle.setAttribute("aria-expanded","false");
+    title.innerHTML=`<span aria-hidden="true">✉</span> Direktemeldinger – ${escapeHtml(OPERATIONAL_MESSAGE_ROLE_LABELS[reconnectRole])}`;
+    meta.textContent="Kobler til …";
+    badge.hidden=true;
+    badge.textContent="0";
+    badge.setAttribute("aria-label","0 nye meldinger");
+    return;
+  }
+  toggle.hidden=false;
   if(!role) return;
   const expanded=[
     OPERATIONAL_MESSAGE_BOX_STATES.USER_EXPANDED,
@@ -56688,23 +56716,45 @@ function acceptVehicleStatusReadback(readback){
   }
 }
 
+async function readSettledVehicleStatusContextResponse(settledResult){
+  if(settledResult?.status !== "fulfilled") return null;
+  const response=settledResult.value;
+  if(typeof response?.json !== "function") return null;
+  const payload=await response.json().catch(()=>null);
+  return response?.ok && payload?.ok === true ? payload : null;
+}
+
 async function loadDropsVehicleStatusContext(fetchImpl=window.fetch.bind(window)){
-  const [readbackResponse,capabilitiesResponse,analyticsResponse,identityResponse] = await Promise.all([
+  const settledResponses=await Promise.allSettled([
     fetchImpl("/api/vehicle-status",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
     fetchImpl("/api/auth/capabilities",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
     fetchImpl("/api/vehicle-status/analytics",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
     fetchImpl("/api/auth/session",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"})
   ]);
-  const readback = await readbackResponse.json().catch(()=>null);
-  const capabilities = await capabilitiesResponse.json().catch(()=>null);
-  const analytics = await analyticsResponse.json().catch(()=>null);
-  const identity = await identityResponse.json().catch(()=>null);
+  const [readback,capabilities,analytics,identity]=await Promise.all(
+    settledResponses.map(readSettledVehicleStatusContextResponse)
+  );
   return {
-    readback:readbackResponse.ok && readback?.ok === true ? readback : null,
-    capabilities:capabilitiesResponse.ok && capabilities?.ok === true ? capabilities : null,
-    analytics:analyticsResponse.ok && analytics?.ok === true ? analytics : null,
-    identity:identityResponse.ok && identity?.ok === true ? identity : null
+    readback,
+    capabilities,
+    analytics,
+    identity
   };
+}
+
+function applyDropsVehicleStatusAuthorizationContext(context={}){
+  if(context.capabilities?.ok === true){
+    dropsRuntimeCapabilities=context.capabilities;
+  }
+  if(context.identity?.ok === true){
+    dropsAccessIdentitySession=context.identity;
+  }
+  dropsVehicleStatusContextLoaded=(
+    dropsRuntimeCapabilities?.ok === true &&
+    dropsAccessIdentitySession?.ok === true
+  );
+  dropsVehicleStatusAuthorizationRetryPending=!dropsVehicleStatusContextLoaded;
+  return dropsVehicleStatusContextLoaded;
 }
 
 function ensureDropsVehicleStatusContext(){
@@ -56712,24 +56762,18 @@ function ensureDropsVehicleStatusContext(){
   dropsVehicleStatusContextLoadPromise = loadDropsVehicleStatusContext()
     .then(context=>{
       acceptVehicleStatusReadback(context.readback);
-      dropsRuntimeCapabilities = context.capabilities;
-      dropsAccessIdentitySession = context.identity;
       dropsVehicleStatusAnalytics = context.analytics;
+      applyDropsVehicleStatusAuthorizationContext(context);
       reconcileGlobalOperationalMessageInbox(context.readback);
-      dropsVehicleStatusContextLoaded = true;
       if(typeof updateAgiliaCleaningRequestUi === "function"){
         updateAgiliaCleaningRequestUi();
       }
     })
     .catch(()=>{
-      acceptVehicleStatusReadback(null);
-      dropsRuntimeCapabilities = null;
-      dropsAccessIdentitySession = null;
-      dropsVehicleStatusAnalytics = null;
-      dropsVehicleStatusContextLoaded = true;
+      dropsVehicleStatusContextLoaded = false;
+      dropsVehicleStatusAuthorizationRetryPending = true;
     })
     .finally(()=>{
-      dropsVehicleStatusContextLoadPromise = null;
       applyAccessLevel();
       renderGlobalOperationalMessageBox();
       renderDropsVehicleRegistry();
@@ -56745,6 +56789,7 @@ function ensureDropsVehicleStatusContext(){
         renderSdeSkiftebevegelser();
       }
       renderVehicleStatusNotificationPopup();
+      dropsVehicleStatusContextLoadPromise = null;
     });
   return dropsVehicleStatusContextLoadPromise;
 }
@@ -57707,16 +57752,82 @@ function requestVehicleStatusVisibleRefresh(){
   return refreshPromise;
 }
 
+async function refreshDropsVehicleStatusAuthorizationContext(
+  fetchImpl=window.fetch.bind(window)
+){
+  const settledResponses=await Promise.allSettled([
+    fetchImpl("/api/auth/capabilities",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"}),
+    fetchImpl("/api/auth/session",{method:"GET",headers:{Accept:"application/json"},cache:"no-store",credentials:"same-origin"})
+  ]);
+  const [capabilities,identity]=await Promise.all(
+    settledResponses.map(readSettledVehicleStatusContextResponse)
+  );
+  return applyDropsVehicleStatusAuthorizationContext({capabilities,identity});
+}
+
+function requestVehicleStatusAuthorizationVisibleRefresh(){
+  if(document.visibilityState !== "visible" || dropsVehicleStatusContextLoaded) return null;
+  if(dropsVehicleStatusAuthorizationRefreshPromise){
+    return dropsVehicleStatusAuthorizationRefreshPromise;
+  }
+  dropsVehicleStatusAuthorizationRetryPending=true;
+  renderGlobalOperationalMessageBox();
+  const initialLoadPromise=dropsVehicleStatusContextLoadPromise;
+  const refreshPromise=Promise.resolve(initialLoadPromise)
+    .catch(()=>null)
+    .then(()=>{
+      if(dropsVehicleStatusContextLoaded) return true;
+      return refreshDropsVehicleStatusAuthorizationContext();
+    })
+    .then(loaded=>{
+      if(!loaded) return false;
+      applyAccessLevel();
+      renderGlobalOperationalMessageBox();
+      renderDropsVehicleRegistry();
+      renderWorkshopVehicleRegistry();
+      renderSporplanVehicleStatusBadges();
+      return true;
+    })
+    .catch(()=>{
+      dropsVehicleStatusContextLoaded=false;
+      dropsVehicleStatusAuthorizationRetryPending=true;
+      return false;
+    })
+    .finally(()=>{
+      if(dropsVehicleStatusAuthorizationRefreshPromise === refreshPromise){
+        dropsVehicleStatusAuthorizationRefreshPromise=null;
+      }
+      renderGlobalOperationalMessageBox();
+    });
+  dropsVehicleStatusAuthorizationRefreshPromise=refreshPromise;
+  return refreshPromise;
+}
+
 function startVehicleStatusVisiblePolling(){
   if(vehicleStatusVisiblePolling.timer) return;
   vehicleStatusVisiblePolling.timer = window.setInterval(()=>{
     requestVehicleStatusVisibleRefresh();
   },vehicleStatusVisiblePolling.intervalMs);
   document.addEventListener("visibilitychange",()=>{
-    if(document.visibilityState === "visible") requestVehicleStatusVisibleRefresh();
+    if(document.visibilityState === "visible"){
+      requestVehicleStatusVisibleRefresh();
+      if(typeof requestVehicleStatusAuthorizationVisibleRefresh === "function"){
+        requestVehicleStatusAuthorizationVisibleRefresh();
+      }
+    }
   });
-  window.addEventListener("focus",requestVehicleStatusVisibleRefresh);
-  window.addEventListener("pageshow",requestVehicleStatusVisibleRefresh);
+  window.addEventListener("focus",()=>{
+    requestVehicleStatusVisibleRefresh();
+    if(typeof requestVehicleStatusAuthorizationVisibleRefresh === "function"){
+      requestVehicleStatusAuthorizationVisibleRefresh();
+    }
+  });
+  window.addEventListener("pageshow",()=>{
+    requestVehicleStatusVisibleRefresh();
+    if(typeof requestVehicleStatusAuthorizationVisibleRefresh === "function"){
+      requestVehicleStatusAuthorizationVisibleRefresh();
+    }
+  });
 }
 
 function confirmDropsDraftDiscard(nextVehicle){
