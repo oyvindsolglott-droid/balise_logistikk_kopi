@@ -54696,8 +54696,14 @@ let agiliaCleaningRequestInFlight = false;
 let agiliaCleaningLastResult = null;
 
 function getActiveOperationalMessageRole(){
+  const activeAccessLevel = getActiveAccessLevel();
+  const activeSurfaceRole = activeAccessLevel === "0"
+    ? OPERATIONAL_MESSAGE_ROLES.find(candidate=>{
+      return OPERATIONAL_MESSAGE_ROLE_SURFACES[candidate]?.tab === getActiveTabName();
+    }) || ""
+    : "";
   const selectedRole = String(
-    OPERATIONAL_MESSAGE_LEVEL_ROLES[getActiveAccessLevel()] || ""
+    OPERATIONAL_MESSAGE_LEVEL_ROLES[activeAccessLevel] || activeSurfaceRole
   ).trim().toLowerCase();
   const singularRole = String(
     dropsRuntimeCapabilities?.role || ""

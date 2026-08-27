@@ -129,8 +129,17 @@ const levelRoles=Object.freeze({
 const roleContext={
   OPERATIONAL_MESSAGE_ROLES:roles,
   OPERATIONAL_MESSAGE_LEVEL_ROLES:levelRoles,
+  OPERATIONAL_MESSAGE_ROLE_SURFACES:Object.freeze({
+    drops:{level:"1",tab:"dropsMateriellstyrer"},
+    txp:{level:"2",tab:"grunnoppstilling"},
+    sde_skiftere:{level:"3",tab:"sdeSkiftebevegelser"},
+    verksted:{level:"4",tab:"verkstedBestillinger"},
+    agila:{level:"5",tab:"agilia"}
+  }),
   activeAccessLevel:"1",
+  activeTabName:"dropsMateriellstyrer",
   getActiveAccessLevel:()=>roleContext.activeAccessLevel,
+  getActiveTabName:()=>roleContext.activeTabName,
   dropsRuntimeCapabilities:null
 };
 vm.createContext(roleContext);
@@ -162,6 +171,22 @@ roleContext.activeAccessLevel="2";
 roleContext.dropsRuntimeCapabilities={...multiRoleCapabilities,role:"drops"};
 assert.equal(getRole(),"txp",
   "a singular role hint must not override the server-assigned role for the selected level");
+
+roleContext.activeAccessLevel="0";
+roleContext.activeTabName="dropsMateriellstyrer";
+roleContext.dropsRuntimeCapabilities=multiRoleCapabilities;
+assert.equal(getRole(),"drops",
+  "a fresh external multi-role session at level 0 must resolve the role of its active authorized surface");
+roleContext.activeTabName="grunnoppstilling";
+assert.equal(getRole(),"txp",
+  "level 0 must resolve each active operational surface from the server-assigned plural roles");
+roleContext.activeTabName="sporplan";
+assert.equal(getRole(),"",
+  "level 0 must remain fail-closed on neutral surfaces instead of inventing a sixth role");
+roleContext.activeTabName="dropsMateriellstyrer";
+roleContext.dropsRuntimeCapabilities={...multiRoleCapabilities,roles:["txp"]};
+assert.equal(getRole(),"",
+  "level 0 must never expose a surface role absent from the server-assigned plural roles");
 
 for(const capabilities of [
   null,
