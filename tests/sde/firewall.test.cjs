@@ -340,6 +340,13 @@ test("GLOBAL direktemeldingsboks — ny melding hentes og autoåpnes straks fane
   );
 });
 
+test("GLOBAL direktemeldingsboks — avbrutt autorisasjonskall retryes uten permanent tom rolle", () => {
+  assertPassed(
+    runHarness("sde-authorization-context-retry-harness.js"),
+    "authorization-context retry contract",
+  );
+});
+
 registerHarnessTest({
   phase:"SDE statusparitet",
   name:"Sporplan, Verksted og DROPS følger samme ferske statusmodell ved polling",
