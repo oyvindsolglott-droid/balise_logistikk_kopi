@@ -15,7 +15,11 @@ let runtimePromise = null;
 let activeSessionId = "";
 let cancelledSessionId = "";
 const activeAssetControllers = new Set();
-const HTR_ASSET_POLICY = Object.freeze({timeoutMs: 30_000, maxRetries: 1});
+const HTR_ASSET_POLICY = Object.freeze({
+  timeoutMs: 30_000,
+  maxRetries: 1,
+  maxBytes: 32 * 1024 * 1024,
+});
 
 function post(type, sessionId, payload = {}){
   self.postMessage({type, sessionId, ...payload});
@@ -45,6 +49,10 @@ async function fetchBytes(relativePath, options = {}){
   const acceptedContentTypes = Array.isArray(options.acceptedContentTypes)
     ? options.acceptedContentTypes.map(value => String(value).toLowerCase())
     : [];
+  const requestedMaxBytes = Number(options.maxBytes);
+  const maxBytes = Number.isFinite(requestedMaxBytes) && requestedMaxBytes > 0
+    ? Math.min(HTR_ASSET_POLICY.maxBytes, Math.floor(requestedMaxBytes))
+    : HTR_ASSET_POLICY.maxBytes;
   const timeoutMs = Math.max(10, Math.min(HTR_ASSET_POLICY.timeoutMs, Number(options.timeoutMs || HTR_ASSET_POLICY.timeoutMs)));
   const startedAt = performance.now();
   let lastError = null;
@@ -75,10 +83,19 @@ async function fetchBytes(relativePath, options = {}){
         throw assetError("htr_asset_content_type_mismatch", resource, {contentType});
       }
       const contentLengthValue = String(response.headers.get("content-length") || "").trim();
-      if(!/^\d+$/.test(contentLengthValue)) throw assetError("htr_asset_content_length_missing", resource);
-      const expectedBytes = Number(contentLengthValue);
+      const contentLengthPresent = contentLengthValue !== "";
+      if(contentLengthPresent && !/^\d+$/.test(contentLengthValue)){
+        throw assetError("htr_asset_content_length_invalid", resource, {contentLength: contentLengthValue});
+      }
+      const expectedBytes = contentLengthPresent ? Number(contentLengthValue) : null;
+      if(expectedBytes !== null && expectedBytes > maxBytes){
+        throw assetError("htr_asset_size_limit_exceeded", resource, {expectedBytes, maxBytes});
+      }
       const bytes = new Uint8Array(await response.arrayBuffer());
-      if(bytes.byteLength !== expectedBytes){
+      if(bytes.byteLength > maxBytes){
+        throw assetError("htr_asset_size_limit_exceeded", resource, {receivedBytes: bytes.byteLength, maxBytes});
+      }
+      if(expectedBytes !== null && bytes.byteLength !== expectedBytes){
         throw assetError("htr_asset_content_length_mismatch", resource, {expectedBytes, receivedBytes: bytes.byteLength});
       }
       const actualSha256 = expectedSha256 ? await sha256Hex(bytes) : "";
@@ -93,6 +110,8 @@ async function fetchBytes(relativePath, options = {}){
         contentType,
         expectedBytes,
         receivedBytes: bytes.byteLength,
+        contentLengthPresent,
+        maxBytes,
         durationMs: Math.round(performance.now() - startedAt),
       });
       if(expectedSha256){
@@ -154,6 +173,7 @@ async function initializeRuntime(){
     const manifestBytes = await fetchBytes(`${HTR_MODEL_ROOT}manifest.json`, {
       cache: "no-store",
       acceptedContentTypes: ["application/json"],
+      maxBytes: 64 * 1024,
     });
     const manifest = JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(manifestBytes));
     if(manifest.modelRevision !== htr.MODEL_SPEC.revision
@@ -166,6 +186,7 @@ async function initializeRuntime(){
     const printManifestBytes = await fetchBytes(`${PRINT_MODEL_ROOT}manifest.json`, {
       cache: "no-store",
       acceptedContentTypes: ["application/json"],
+      maxBytes: 64 * 1024,
     });
     const printManifest = JSON.parse(new TextDecoder("utf-8", {fatal: true}).decode(printManifestBytes));
     if(printManifest.modelRevision !== htr.PRINT_MODEL_SPEC.revision
@@ -174,10 +195,10 @@ async function initializeRuntime(){
       throw new Error("print_manifest_contract_mismatch");
     }
     const [modelBytes, dictionaryBytes, printModelBytes, printDictionaryBytes] = await Promise.all([
-      fetchBytes(`${HTR_MODEL_ROOT}model.onnx`, {expectedSha256: manifest.files["model.onnx"], acceptedContentTypes: ["application/octet-stream"]}),
-      fetchBytes(`${HTR_MODEL_ROOT}dict.txt`, {expectedSha256: manifest.files["dict.txt"], acceptedContentTypes: ["text/plain"]}),
-      fetchBytes(`${PRINT_MODEL_ROOT}inference.onnx`, {expectedSha256: printManifest.files["inference.onnx"], acceptedContentTypes: ["application/octet-stream"]}),
-      fetchBytes(`${PRINT_MODEL_ROOT}inference.yml`, {expectedSha256: printManifest.files["inference.yml"], acceptedContentTypes: ["text/yaml"]}),
+      fetchBytes(`${HTR_MODEL_ROOT}model.onnx`, {expectedSha256: manifest.files["model.onnx"], acceptedContentTypes: ["application/octet-stream"], maxBytes: 16 * 1024 * 1024}),
+      fetchBytes(`${HTR_MODEL_ROOT}dict.txt`, {expectedSha256: manifest.files["dict.txt"], acceptedContentTypes: ["text/plain"], maxBytes: 64 * 1024}),
+      fetchBytes(`${PRINT_MODEL_ROOT}inference.onnx`, {expectedSha256: printManifest.files["inference.onnx"], acceptedContentTypes: ["application/octet-stream"], maxBytes: 16 * 1024 * 1024}),
+      fetchBytes(`${PRINT_MODEL_ROOT}inference.yml`, {expectedSha256: printManifest.files["inference.yml"], acceptedContentTypes: ["text/yaml"], maxBytes: 64 * 1024}),
     ]);
     await htr.verifyModelBytes(modelBytes, {modelSha256: manifest.files["model.onnx"]});
     await htr.verifyModelBytes(dictionaryBytes, {modelSha256: manifest.files["dict.txt"]});

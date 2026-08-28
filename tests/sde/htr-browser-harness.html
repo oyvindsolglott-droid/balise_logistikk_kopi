@@ -26,7 +26,12 @@
         const result = await analyzer.analyze(file, {
           canonicalSlots: ["1", "1N", "1S", "3M", "4N", "4S", "5M", "6N", "6S", "7N", "7S", "8N", "8S", "9", "10S", "10N", "11N", "11S", "12N", "12S", "VN", "VS"],
           vehicleCatalog: [],
-        }, update => progress.push({status: update.status, progress: update.progress}));
+        }, update => progress.push({
+          status: update.status,
+          progress: update.progress,
+          resource: update.resource || "",
+          contentLengthPresent: update.contentLengthPresent,
+        }));
         return {
           result,
           elapsedMs: performance.now() - startedAt,

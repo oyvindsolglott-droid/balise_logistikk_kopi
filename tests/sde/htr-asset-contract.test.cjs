@@ -18,13 +18,16 @@ function headers(values) {
 
 function response(body, options = {}) {
   const bytes = Buffer.from(body);
+  const headerValues = {
+    "content-type": options.contentType || "application/octet-stream",
+  };
+  if (!options.omitContentLength) {
+    headerValues["content-length"] = options.contentLength == null ? bytes.length : options.contentLength;
+  }
   return {
     ok: options.ok !== false,
     status: options.status || 200,
-    headers: headers({
-      "content-type": options.contentType || "application/octet-stream",
-      "content-length": options.contentLength == null ? bytes.length : options.contentLength,
-    }),
+    headers: headers(headerValues),
     async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); },
   };
 }
@@ -69,6 +72,37 @@ test("complete model response verifies length, content type and SHA", async () =
   assert.equal(bytes.byteLength, body.length);
   assert.ok(messages.some(message => message.status === "HTR_ASSET_DOWNLOAD_COMPLETE" && message.receivedBytes === body.length));
   assert.ok(messages.some(message => message.status === "HTR_ASSET_HASH_VERIFIED" && message.sha256 === sha256(body)));
+});
+
+test("HTTP/2 manifest without Content-Length remains bounded and readable", async () => {
+  const body = Buffer.from('{"schemaVersion":"sde-local-htr-model-manifest-v2"}');
+  const {context, messages} = loadWorker(async () => response(body, {
+    contentType: "application/json",
+    omitContentLength: true,
+  }));
+  const bytes = await context.fetchBytes("assets/models/gigapdf-ocr-handwriting/manifest.json", {
+    acceptedContentTypes: ["application/json"],
+    maxBytes: 64 * 1024,
+  });
+  assert.equal(bytes.byteLength, body.length);
+  assert.ok(messages.some(message => message.status === "HTR_ASSET_DOWNLOAD_COMPLETE"
+    && message.contentLengthPresent === false
+    && message.expectedBytes === null
+    && message.receivedBytes === body.length));
+});
+
+test("headerless response still fails closed above its explicit byte limit", async () => {
+  const body = Buffer.alloc(65, 1);
+  let calls = 0;
+  const {context} = loadWorker(async () => {
+    calls += 1;
+    return response(body, {omitContentLength: true});
+  });
+  await assert.rejects(
+    context.fetchBytes("assets/oversized.bin", {maxBytes: 64}),
+    /htr_asset_size_limit_exceeded/,
+  );
+  assert.equal(calls, 2, "one clean retry and no third request");
 });
 
 for (const scenario of [
