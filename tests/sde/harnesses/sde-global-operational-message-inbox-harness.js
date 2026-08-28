@@ -323,6 +323,144 @@ for(const targetRole of roles){
 assert.equal(clientPairCount,20);
 
 {
+  const baselineStartedAtMs=Date.parse("2026-08-24T10:00:00.000Z");
+  const state={
+    state:"COLLAPSED_DEFAULT",role:"txp",triggerMessageIds:new Set(),
+    presentedMessageIds:new Set(),pendingMessageIds:new Set(),knownMessageIds:new Set(),
+    baselineInitialized:false,baselineStartedAtMs,pendingCount:0,lastAction:""
+  };
+  const transitions=[];
+  const presentations=[];
+  const context={
+    globalOperationalMessageBoxState:state,
+    syncGlobalOperationalMessageRole:()=>"txp",
+    renderGlobalOperationalMessageBox(){},
+    isOperationalMessageInteractionBlockingAutoExpand:()=>false,
+    transitionGlobalOperationalMessageBox(next,details){
+      transitions.push({next,details});
+      state.state=next;
+    },
+    recordOperationalMessageAutoPresentation:message=>presentations.push(message.messageId),
+    OPERATIONAL_MESSAGE_BOX_STATES:{
+      DEFERRED_AUTO_EXPAND:"DEFERRED_AUTO_EXPAND",AUTO_EXPANDED:"AUTO_EXPANDED"
+    }
+  };
+  vm.createContext(context);
+  const reconcile=vm.runInContext(`(${reconcileSource})`,context);
+  const oldHistory={
+    messageId:"baseline-old",threadId:"baseline-old",rootMessageId:"baseline-old",
+    sourceRole:"drops",targetRole:"txp",sentAt:"2026-08-24T09:59:00.000Z",
+    deliveryState:"sent"
+  };
+  const racedRoot={
+    messageId:"baseline-raced-root",threadId:"baseline-raced-root",
+    rootMessageId:"baseline-raced-root",sourceRole:"drops",targetRole:"txp",
+    sentAt:"2026-08-24T10:00:01.000Z",deliveryState:"sent"
+  };
+  const incoming=reconcile({ok:true,operationalMessages:[oldHistory,racedRoot]});
+  assert.deepEqual(incoming.map(message=>message.messageId),["baseline-raced-root"],
+    "a new root arriving during the first-readback window must not be swallowed as history");
+  assert.equal(transitions.at(-1)?.next,"AUTO_EXPANDED");
+  assert.deepEqual(presentations,["baseline-raced-root"]);
+}
+
+{
+  const messages=[
+    {
+      messageId:"unread-1",sourceRole:"drops",targetRole:"txp",
+      sentAt:"2026-08-24T10:01:00.000Z",deliveryState:"sent"
+    },
+    {
+      messageId:"presented-1",sourceRole:"drops",targetRole:"txp",
+      sentAt:"2026-08-24T10:02:00.000Z",presentedAt:"2026-08-24T10:02:01.000Z",
+      deliveryState:"presented"
+    },
+    {
+      messageId:"acknowledged-1",sourceRole:"drops",targetRole:"txp",
+      sentAt:"2026-08-24T10:03:00.000Z",acknowledgedAt:"2026-08-24T10:03:01.000Z",
+      deliveryState:"acknowledged"
+    }
+  ];
+  const state={
+    state:"COLLAPSED_DEFAULT",role:"txp",triggerMessageIds:new Set(),
+    presentedMessageIds:new Set(),pendingMessageIds:new Set(),
+    knownMessageIds:new Set(messages.map(message=>message.messageId)),
+    baselineInitialized:true,baselineStartedAtMs:Date.parse("2026-08-24T10:00:00.000Z"),
+    pendingCount:0,lastAction:""
+  };
+  const context={
+    globalOperationalMessageBoxState:state,
+    syncGlobalOperationalMessageRole:()=>"txp",
+    renderGlobalOperationalMessageBox(){},
+    isOperationalMessageInteractionBlockingAutoExpand:()=>false,
+    transitionGlobalOperationalMessageBox(){throw new Error("known messages must not reopen");},
+    recordOperationalMessageAutoPresentation(){throw new Error("known messages must not present again");},
+    OPERATIONAL_MESSAGE_BOX_STATES:{
+      DEFERRED_AUTO_EXPAND:"DEFERRED_AUTO_EXPAND",AUTO_EXPANDED:"AUTO_EXPANDED"
+    }
+  };
+  vm.createContext(context);
+  const reconcile=vm.runInContext(`(${reconcileSource})`,context);
+  reconcile({ok:true,operationalMessages:messages});
+  assert.equal(state.pendingCount,1,
+    "the badge must count only unread/unpresented incoming messages");
+  assert.deepEqual([...state.pendingMessageIds],["unread-1"]);
+}
+
+{
+  const previouslyRead=[
+    {
+      messageId:"read-1",sourceRole:"drops",targetRole:"txp",
+      sentAt:"2026-08-24T10:01:00.000Z",presentedAt:"2026-08-24T10:01:01.000Z",
+      deliveryState:"presented"
+    },
+    {
+      messageId:"read-2",sourceRole:"agila",targetRole:"txp",
+      sentAt:"2026-08-24T10:02:00.000Z",acknowledgedAt:"2026-08-24T10:02:01.000Z",
+      deliveryState:"acknowledged"
+    }
+  ];
+  const newlyUnread={
+    messageId:"unread-after-collapse",sourceRole:"drops",targetRole:"txp",
+    sentAt:"2026-08-24T10:04:00.000Z",deliveryState:"sent"
+  };
+  const state={
+    state:"USER_COLLAPSED",role:"txp",triggerMessageIds:new Set(),
+    presentedMessageIds:new Set(previouslyRead.map(message=>message.messageId)),
+    pendingMessageIds:new Set(),
+    knownMessageIds:new Set(previouslyRead.map(message=>message.messageId)),
+    baselineInitialized:true,baselineStartedAtMs:Date.parse("2026-08-24T10:00:00.000Z"),
+    pendingCount:0,lastAction:""
+  };
+  const transitions=[];
+  const context={
+    globalOperationalMessageBoxState:state,
+    syncGlobalOperationalMessageRole:()=>"txp",
+    renderGlobalOperationalMessageBox(){},
+    isOperationalMessageInteractionBlockingAutoExpand:()=>false,
+    transitionGlobalOperationalMessageBox(next,details){
+      transitions.push({next,details});
+      state.state=next;
+    },
+    recordOperationalMessageAutoPresentation(){},
+    OPERATIONAL_MESSAGE_BOX_STATES:{
+      DEFERRED_AUTO_EXPAND:"DEFERRED_AUTO_EXPAND",AUTO_EXPANDED:"AUTO_EXPANDED"
+    }
+  };
+  vm.createContext(context);
+  const reconcile=vm.runInContext(`(${reconcileSource})`,context);
+  const incoming=reconcile({
+    ok:true,
+    operationalMessages:[...previouslyRead,newlyUnread]
+  });
+  assert.deepEqual(Array.from(incoming,message=>message.messageId),["unread-after-collapse"]);
+  assert.equal(state.pendingCount,1,
+    "a genuinely new unread message after collapse must increment the badge");
+  assert.deepEqual([...state.pendingMessageIds],["unread-after-collapse"]);
+  assert.equal(transitions.at(-1)?.next,"AUTO_EXPANDED");
+}
+
+{
   const state={
     state:"COLLAPSED_DEFAULT",role:"txp",triggerMessageIds:new Set(),
     presentedMessageIds:new Set(),pendingMessageIds:new Set(),knownMessageIds:new Set(),
@@ -351,8 +489,16 @@ assert.equal(clientPairCount,20);
 
 const toggleSource=extractFunction(frontend,"toggleGlobalOperationalMessageBox");
 async function proveManualCollapseEvent(startState){
-  const calls=[];
-  const state={state:startState,triggerMessageIds:new Set(["m1","m2"])};
+  const presentations=[];
+  const dismissals=[];
+  const state={
+    state:startState,
+    role:"txp",
+    triggerMessageIds:new Set(["m1","m2"]),
+    pendingMessageIds:new Set(["m1","m2"]),
+    pendingCount:2,
+    pendingIncomingCount:2
+  };
   const context={
     globalOperationalMessageBoxState:state,
     OPERATIONAL_MESSAGE_BOX_STATES:{
@@ -360,11 +506,23 @@ async function proveManualCollapseEvent(startState){
       USER_COLLAPSED:"USER_COLLAPSED"
     },
     transitionGlobalOperationalMessageBox(next){state.state=next;},
-    recordOperationalMessageDismissedAfterAutoPresentation:async id=>calls.push(id)
+    getOperationalMessagesForRole:()=>[
+      {messageId:"m1",sourceRole:"drops",targetRole:"txp"},
+      {messageId:"m2",sourceRole:"agila",targetRole:"txp"},
+      {messageId:"m3",sourceRole:"txp",targetRole:"drops"}
+    ],
+    recordOperationalMessageAutoPresentation:async message=>{
+      presentations.push(message.messageId);
+      state.pendingMessageIds.delete(message.messageId);
+      state.pendingCount=state.pendingMessageIds.size;
+      state.pendingIncomingCount=state.pendingCount;
+      return true;
+    },
+    recordOperationalMessageDismissedAfterAutoPresentation:async id=>dismissals.push(id)
   };
   vm.createContext(context);
   await vm.runInContext(`(${toggleSource})`,context)();
-  return calls;
+  return {presentations,dismissals,pendingCount:state.pendingCount};
 }
 
 const {
@@ -549,8 +707,12 @@ Promise.all([
   proveManualCollapseEvent("AUTO_EXPANDED"),
   proveManualCollapseEvent("USER_EXPANDED")
 ]).then(([autoCalls,userCalls])=>{
-  assert.deepEqual(autoCalls,["m1","m2"]);
-  assert.deepEqual(userCalls,[]);
+  assert.deepEqual(autoCalls.presentations,["m1","m2"]);
+  assert.deepEqual(autoCalls.dismissals,["m1","m2"]);
+  assert.equal(autoCalls.pendingCount,0);
+  assert.deepEqual(userCalls.presentations,["m1","m2"]);
+  assert.deepEqual(userCalls.dismissals,[]);
+  assert.equal(userCalls.pendingCount,0);
   console.log(JSON.stringify({
     schemaVersion:"sde-global-operational-message-inbox-harness-v2",
     canonicalHosts:1,

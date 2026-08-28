@@ -54652,6 +54652,7 @@ const OPERATIONAL_MESSAGE_BOX_STATES = Object.freeze({
   USER_COLLAPSED:"USER_COLLAPSED",
   DEFERRED_AUTO_EXPAND:"DEFERRED_AUTO_EXPAND"
 });
+const OPERATIONAL_MESSAGE_BASELINE_RACE_WINDOW_MS = 10000;
 const globalOperationalMessageBoxState = {
   state:OPERATIONAL_MESSAGE_BOX_STATES.COLLAPSED_DEFAULT,
   role:"",
@@ -54660,6 +54661,7 @@ const globalOperationalMessageBoxState = {
   pendingMessageIds:new Set(),
   knownMessageIds:new Set(),
   baselineInitialized:false,
+  baselineStartedAtMs:Date.now(),
   lastAction:"INITIALIZED",
   lastUserActionAt:null,
   pendingCount:0,
@@ -54782,6 +54784,7 @@ function transitionGlobalOperationalMessageBox(nextState,details={}){
 function syncGlobalOperationalMessageRole(){
   const role=getActiveOperationalMessageRole();
   if(globalOperationalMessageBoxState.role === role) return role;
+  const previousRole=globalOperationalMessageBoxState.role;
   globalOperationalMessageBoxState.role=role;
   globalOperationalMessageBoxState.state=
     OPERATIONAL_MESSAGE_BOX_STATES.COLLAPSED_DEFAULT;
@@ -54790,6 +54793,9 @@ function syncGlobalOperationalMessageRole(){
   globalOperationalMessageBoxState.pendingMessageIds.clear();
   globalOperationalMessageBoxState.knownMessageIds.clear();
   globalOperationalMessageBoxState.baselineInitialized=false;
+  if(previousRole || !globalOperationalMessageBoxState.baselineStartedAtMs){
+    globalOperationalMessageBoxState.baselineStartedAtMs=Date.now();
+  }
   globalOperationalMessageBoxState.pendingCount=0;
   globalOperationalMessageBoxState.pendingIncomingCount=0;
   globalOperationalMessageBoxState.lastUserActionAt=null;
@@ -54881,42 +54887,63 @@ function reconcileGlobalOperationalMessageInbox(readback){
     ? readback.operationalMessages
     : []
   ).filter(message=>String(message?.messageId || ""));
+  const isUnreadIncoming=message=>{
+    const messageId=String(message?.messageId || "");
+    const deliveryState=String(message?.deliveryState || "").toLowerCase();
+    const withdrawn=Boolean(
+      message?.withdrawnAt ||
+      message?.withdrawn === true ||
+      deliveryState === "withdrawn"
+    );
+    return Boolean(
+      messageId &&
+      message?.targetRole === role &&
+      message?.sourceRole !== role &&
+      !withdrawn &&
+      !message?.presentedAt &&
+      !message?.acknowledgedAt &&
+      !["presented","acknowledged"].includes(deliveryState) &&
+      !globalOperationalMessageBoxState.presentedMessageIds.has(messageId)
+    );
+  };
+  const syncUnreadBadge=()=>{
+    globalOperationalMessageBoxState.pendingMessageIds=new Set(
+      messages.filter(isUnreadIncoming).map(message=>String(message.messageId))
+    );
+    globalOperationalMessageBoxState.pendingCount=
+      globalOperationalMessageBoxState.pendingMessageIds.size;
+    globalOperationalMessageBoxState.pendingIncomingCount=
+      globalOperationalMessageBoxState.pendingCount;
+  };
+  let incoming=[];
   if(!globalOperationalMessageBoxState.baselineInitialized){
     messages.forEach(message=>
       globalOperationalMessageBoxState.knownMessageIds.add(String(message.messageId))
     );
     globalOperationalMessageBoxState.baselineInitialized=true;
-    globalOperationalMessageBoxState.pendingCount=messages.filter(message=>
-      message.targetRole === role &&
-      !message.acknowledgedAt &&
-      !String(message.withdrawnAt || "").trim() &&
-      message.deliveryState !== "withdrawn"
-    ).length;
-    globalOperationalMessageBoxState.pendingIncomingCount=
-      globalOperationalMessageBoxState.pendingCount;
-    renderGlobalOperationalMessageBox();
-    return [];
+    const baselineStartedAtMs=Number(
+      globalOperationalMessageBoxState.baselineStartedAtMs || 0
+    );
+    const baselineRaceWindowMs=(typeof OPERATIONAL_MESSAGE_BASELINE_RACE_WINDOW_MS==="number")
+      ? OPERATIONAL_MESSAGE_BASELINE_RACE_WINDOW_MS
+      : 10000;
+    const raceWindowStartedAtMs=
+      baselineStartedAtMs - baselineRaceWindowMs;
+    incoming=messages.filter(message=>{
+      const sentAtMs=Date.parse(String(message?.sentAt || ""));
+      return isUnreadIncoming(message) &&
+        Number.isFinite(sentAtMs) &&
+        sentAtMs >= raceWindowStartedAtMs;
+    });
+  }else{
+    messages.forEach(message=>{
+      const messageId=String(message.messageId);
+      if(globalOperationalMessageBoxState.knownMessageIds.has(messageId)) return;
+      globalOperationalMessageBoxState.knownMessageIds.add(messageId);
+      if(isUnreadIncoming(message)) incoming.push(message);
+    });
   }
-  const incoming=[];
-  messages.forEach(message=>{
-    const messageId=String(message.messageId);
-    if(globalOperationalMessageBoxState.knownMessageIds.has(messageId)) return;
-    globalOperationalMessageBoxState.knownMessageIds.add(messageId);
-    const withdrawn=Boolean(message.withdrawnAt || message.withdrawn === true ||
-      message.deliveryState === "withdrawn");
-    if(message.targetRole === role && message.sourceRole !== role && !withdrawn){
-      incoming.push(message);
-      globalOperationalMessageBoxState.pendingMessageIds.add(messageId);
-    }
-  });
-  globalOperationalMessageBoxState.pendingCount=messages.filter(message=>
-    message.targetRole === role &&
-    !message.acknowledgedAt &&
-    !String(message.withdrawnAt || "").trim() &&
-    message.deliveryState !== "withdrawn"
-  ).length;
-  globalOperationalMessageBoxState.pendingIncomingCount=
-    globalOperationalMessageBoxState.pendingCount;
+  syncUnreadBadge();
   if(!incoming.length){
     renderGlobalOperationalMessageBox();
     return [];
@@ -57477,6 +57504,11 @@ function recordOperationalMessageAutoPresentation(message){
   ).then(result=>{
     if(!result.ok) return false;
     globalOperationalMessageBoxState.presentedMessageIds.add(messageId);
+    globalOperationalMessageBoxState.pendingMessageIds.delete(messageId);
+    globalOperationalMessageBoxState.pendingCount=
+      globalOperationalMessageBoxState.pendingMessageIds.size;
+    globalOperationalMessageBoxState.pendingIncomingCount=
+      globalOperationalMessageBoxState.pendingCount;
     renderGlobalOperationalMessageBox();
     return true;
   }).catch(()=>false);
@@ -57526,10 +57558,18 @@ async function toggleGlobalOperationalMessageBox(){
     const autoPresentedIds=current === OPERATIONAL_MESSAGE_BOX_STATES.AUTO_EXPANDED
       ? [...globalOperationalMessageBoxState.triggerMessageIds]
       : [];
+    const visibleUnreadMessages=getOperationalMessagesForRole(
+      globalOperationalMessageBoxState.role
+    ).filter(message=>globalOperationalMessageBoxState.pendingMessageIds.has(
+      String(message?.messageId || "")
+    ));
     transitionGlobalOperationalMessageBox(
       OPERATIONAL_MESSAGE_BOX_STATES.USER_COLLAPSED,
       {action:"USER_COLLAPSE"}
     );
+    await Promise.all(visibleUnreadMessages.map(
+      recordOperationalMessageAutoPresentation
+    ));
     await Promise.all(autoPresentedIds.map(
       recordOperationalMessageDismissedAfterAutoPresentation
     ));
