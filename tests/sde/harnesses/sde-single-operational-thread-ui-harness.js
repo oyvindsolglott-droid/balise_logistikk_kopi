@@ -37,10 +37,14 @@ function extractFunction(name){
   throw new Error(`unclosed ${name}`);
 }
 
+const unreadFunction = extractFunction("isUnreadIncomingOperationalMessage");
 const groupFunction = extractFunction("getOperationalMessageThreadGroupsForRole");
-const context = {};
+const context = {
+  globalOperationalMessageBoxState:{presentedMessageIds:new Set()}
+};
 vm.createContext(context);
 vm.runInContext(`
+  ${unreadFunction}
   ${groupFunction}
   this.group = getOperationalMessageThreadGroupsForRole;
 `, context);
@@ -57,6 +61,29 @@ assert.deepEqual(
   Array.from(groups[1].messages,message=>message.messageId),
   ["m1","m2","m3"],
   "active transcript is chronological, oldest first"
+);
+
+const unreadGroups = context.group("verksted",[
+  {
+    messageId:"old-presented",threadId:"old-thread",sourceRole:"drops",
+    targetRole:"verksted",message:"Allerede vist",sentAt:"2026-07-01T08:00:00.000Z",
+    presentedAt:"2026-07-01T08:00:01.000Z",deliveryState:"presented"
+  },
+  {
+    messageId:"genuinely-unread",threadId:"unread-thread",sourceRole:"txp",
+    targetRole:"verksted",message:"Faktisk ny",sentAt:"2026-07-30T12:00:00.000Z",
+    deliveryState:"sent"
+  }
+]);
+assert.equal(
+  unreadGroups.find(group=>group.threadId === "old-thread")?.hasUnread,
+  false,
+  "an old presented conversation must not be labelled New"
+);
+assert.equal(
+  unreadGroups.find(group=>group.threadId === "unread-thread")?.hasUnread,
+  true,
+  "a genuinely unread incoming conversation must be labelled New"
 );
 
 const composer = extractFunction("renderOperationalMessageComposers");

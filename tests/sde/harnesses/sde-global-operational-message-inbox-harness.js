@@ -266,7 +266,98 @@ assert.equal(unauthorizedAvailability.checks.correctSurface,false);
 assert.equal(unauthorizedAvailability.checks.roleAllowed,false,
   "the send gate must revalidate the selected role against server-assigned roles");
 
+const unreadSource=extractFunction(frontend,"isUnreadIncomingOperationalMessage");
+const protectedActivitySource=extractFunction(
+  frontend,"hasProtectedOperationalMessageActivity"
+);
 const reconcileSource=extractFunction(frontend,"reconcileGlobalOperationalMessageInbox");
+const reconcilerSource=`(()=>{${unreadSource};return (${reconcileSource});})()`;
+function createReconciler(context){
+  if(!context.operationalMessageActiveThreadByRole){
+    context.operationalMessageActiveThreadByRole=new Map();
+  }
+  if(!context.hasProtectedOperationalMessageActivity){
+    context.hasProtectedOperationalMessageActivity=()=>false;
+  }
+  return vm.runInContext(reconcilerSource,context);
+}
+
+{
+  const role="txp";
+  const oldThread={
+    messageId:"old-message",threadId:"old-thread",rootMessageId:"old-thread",
+    sourceRole:"drops",targetRole:role,sentAt:"2026-08-24T09:00:00.000Z",
+    deliveryState:"presented",presentedAt:"2026-08-24T09:00:01.000Z"
+  };
+  const newerIncoming={
+    messageId:"newer-incoming",threadId:"newer-thread",rootMessageId:"newer-thread",
+    sourceRole:"agila",targetRole:role,sentAt:"2026-08-24T10:02:00.000Z",
+    deliveryState:"sent"
+  };
+  const newIncoming={
+    messageId:"new-incoming",threadId:"new-thread",rootMessageId:"new-thread",
+    sourceRole:"verksted",targetRole:role,sentAt:"2026-08-24T10:01:00.000Z",
+    deliveryState:"sent"
+  };
+  function createThreadSelectionScenario({replyDraft=""}={}){
+    const state={
+      state:"AUTO_EXPANDED",role,triggerMessageIds:new Set(),
+      presentedMessageIds:new Set([oldThread.messageId]),pendingMessageIds:new Set(),
+      knownMessageIds:new Set([oldThread.messageId]),baselineInitialized:true,
+      pendingCount:0,lastAction:""
+    };
+    const activeThreads=new Map([[role,oldThread.threadId]]);
+    const context={
+      globalOperationalMessageBoxState:state,
+      operationalMessageActiveThreadByRole:activeThreads,
+      operationalMessageReplyDrafts:new Map(replyDraft ? [[
+        `${role}|thread:${oldThread.threadId}`,
+        {threadId:oldThread.threadId,message:replyDraft}
+      ]] : []),
+      OPERATIONAL_MESSAGE_NEW_THREAD_KEY:"__new__",
+      getOperationalMessageDraft:()=>({message:""}),
+      document:{activeElement:null},
+      syncGlobalOperationalMessageRole:()=>role,
+      renderGlobalOperationalMessageBox(){},
+      isOperationalMessageInteractionBlockingAutoExpand:()=>false,
+      transitionGlobalOperationalMessageBox(next,details){
+        state.state=next;
+        state.triggerMessageIds=new Set(details.triggerMessageIds || []);
+      },
+      recordOperationalMessageAutoPresentation(){},
+      OPERATIONAL_MESSAGE_BOX_STATES:{
+        DEFERRED_AUTO_EXPAND:"DEFERRED_AUTO_EXPAND",AUTO_EXPANDED:"AUTO_EXPANDED"
+      }
+    };
+    vm.createContext(context);
+    vm.runInContext(protectedActivitySource,context);
+    const reconcile=createReconciler(context);
+    return {activeThreads,reconcile};
+  }
+
+  const unprotected=createThreadSelectionScenario();
+  unprotected.reconcile({
+    ok:true,
+    operationalMessages:[oldThread,newerIncoming,newIncoming]
+  });
+  assert.equal(
+    unprotected.activeThreads.get(role),
+    newerIncoming.threadId,
+    "a newer incoming message in another thread must replace the previously active thread"
+  );
+
+  const protectedScenario=createThreadSelectionScenario({replyDraft:"Påbegynt svar"});
+  protectedScenario.reconcile({
+    ok:true,
+    operationalMessages:[oldThread,newerIncoming,newIncoming]
+  });
+  assert.equal(
+    protectedScenario.activeThreads.get(role),
+    oldThread.threadId,
+    "protected activity in the old thread must prevent an automatic thread switch"
+  );
+}
+
 let clientPairCount=0;
 for(const targetRole of roles){
   for(const sourceRole of roles.filter(role=>role !== targetRole)){
@@ -294,7 +385,7 @@ for(const targetRole of roles){
       }
     };
     vm.createContext(context);
-    const reconcile=vm.runInContext(`(${reconcileSource})`,context);
+    const reconcile=createReconciler(context);
     reconcile({ok:true,operationalMessages:[]});
     const message={
       messageId:`${sourceRole}-${targetRole}-1`,sourceRole,targetRole,
@@ -346,7 +437,7 @@ assert.equal(clientPairCount,20);
     }
   };
   vm.createContext(context);
-  const reconcile=vm.runInContext(`(${reconcileSource})`,context);
+  const reconcile=createReconciler(context);
   const oldHistory={
     messageId:"baseline-old",threadId:"baseline-old",rootMessageId:"baseline-old",
     sourceRole:"drops",targetRole:"txp",sentAt:"2026-08-24T09:59:00.000Z",
@@ -400,7 +491,7 @@ assert.equal(clientPairCount,20);
     }
   };
   vm.createContext(context);
-  const reconcile=vm.runInContext(`(${reconcileSource})`,context);
+  const reconcile=createReconciler(context);
   reconcile({ok:true,operationalMessages:messages});
   assert.equal(state.pendingCount,1,
     "the badge must count only unread/unpresented incoming messages");
@@ -448,7 +539,7 @@ assert.equal(clientPairCount,20);
     }
   };
   vm.createContext(context);
-  const reconcile=vm.runInContext(`(${reconcileSource})`,context);
+  const reconcile=createReconciler(context);
   const incoming=reconcile({
     ok:true,
     operationalMessages:[...previouslyRead,newlyUnread]
@@ -479,7 +570,7 @@ assert.equal(clientPairCount,20);
     }
   };
   vm.createContext(context);
-  const reconcile=vm.runInContext(`(${reconcileSource})`,context);
+  const reconcile=createReconciler(context);
   reconcile({ok:true,operationalMessages:[]});
   reconcile({ok:true,operationalMessages:[{
     messageId:"deferred-1",sourceRole:"drops",targetRole:"txp"

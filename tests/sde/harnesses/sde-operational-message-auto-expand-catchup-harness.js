@@ -43,7 +43,9 @@ function extractFunction(source,name){
   throw new Error(`unclosed function ${name}`);
 }
 
+const unreadSource=extractFunction(frontend,"isUnreadIncomingOperationalMessage");
 const reconcileSource=extractFunction(frontend,"reconcileGlobalOperationalMessageInbox");
+const reconcilerSource=`(()=>{${unreadSource};return (${reconcileSource});})()`;
 const syncRoleSource=extractFunction(frontend,"syncGlobalOperationalMessageRole");
 const interactionBlockSource=extractFunction(
   frontend,"isOperationalMessageInteractionBlockingAutoExpand"
@@ -68,8 +70,10 @@ function createInboxState(role="txp"){
 
 function createReconciler(state){
   const presentations=[];
+  const activeThreads=new Map();
   const context={
     globalOperationalMessageBoxState:state,
+    operationalMessageActiveThreadByRole:activeThreads,
     syncGlobalOperationalMessageRole:()=>state.role,
     renderGlobalOperationalMessageBox(){},
     isOperationalMessageInteractionBlockingAutoExpand:()=>false,
@@ -78,6 +82,7 @@ function createReconciler(state){
       state.lastAction=String(details.action || next);
       state.triggerMessageIds=new Set(details.triggerMessageIds || []);
     },
+    hasProtectedOperationalMessageActivity:()=>false,
     recordOperationalMessageAutoPresentation:message=>presentations.push(message.messageId),
     OPERATIONAL_MESSAGE_BOX_STATES:{
       DEFERRED_AUTO_EXPAND:"DEFERRED_AUTO_EXPAND",
@@ -86,7 +91,7 @@ function createReconciler(state){
   };
   vm.createContext(context);
   return {
-    reconcile:vm.runInContext(`(${reconcileSource})`,context),
+    reconcile:vm.runInContext(reconcilerSource,context),
     presentations
   };
 }

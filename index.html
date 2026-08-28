@@ -54880,6 +54880,27 @@ function renderGlobalOperationalMessageBox(){
   badge.setAttribute("aria-label",`${pending} nye meldinger`);
 }
 
+function isUnreadIncomingOperationalMessage(message,role){
+  role=String(role || "");
+  const messageId=String(message?.messageId || "");
+  const deliveryState=String(message?.deliveryState || "").toLowerCase();
+  const withdrawn=Boolean(
+    message?.withdrawnAt ||
+    message?.withdrawn === true ||
+    deliveryState === "withdrawn"
+  );
+  return Boolean(
+    messageId &&
+    message?.targetRole === role &&
+    message?.sourceRole !== role &&
+    !withdrawn &&
+    !message?.presentedAt &&
+    !message?.acknowledgedAt &&
+    !["presented","acknowledged"].includes(deliveryState) &&
+    !globalOperationalMessageBoxState.presentedMessageIds.has(messageId)
+  );
+}
+
 function reconcileGlobalOperationalMessageInbox(readback){
   const role=syncGlobalOperationalMessageRole();
   if(!role || readback?.ok !== true) return [];
@@ -54887,25 +54908,8 @@ function reconcileGlobalOperationalMessageInbox(readback){
     ? readback.operationalMessages
     : []
   ).filter(message=>String(message?.messageId || ""));
-  const isUnreadIncoming=message=>{
-    const messageId=String(message?.messageId || "");
-    const deliveryState=String(message?.deliveryState || "").toLowerCase();
-    const withdrawn=Boolean(
-      message?.withdrawnAt ||
-      message?.withdrawn === true ||
-      deliveryState === "withdrawn"
-    );
-    return Boolean(
-      messageId &&
-      message?.targetRole === role &&
-      message?.sourceRole !== role &&
-      !withdrawn &&
-      !message?.presentedAt &&
-      !message?.acknowledgedAt &&
-      !["presented","acknowledged"].includes(deliveryState) &&
-      !globalOperationalMessageBoxState.presentedMessageIds.has(messageId)
-    );
-  };
+  const isUnreadIncoming=message=>
+    isUnreadIncomingOperationalMessage(message,role);
   const syncUnreadBadge=()=>{
     globalOperationalMessageBoxState.pendingMessageIds=new Set(
       messages.filter(isUnreadIncoming).map(message=>String(message.messageId))
@@ -54947,6 +54951,26 @@ function reconcileGlobalOperationalMessageInbox(readback){
   if(!incoming.length){
     renderGlobalOperationalMessageBox();
     return [];
+  }
+  const newestIncoming=incoming.slice().sort((left,right)=>
+    String(right?.sentAt || "").localeCompare(String(left?.sentAt || "")) ||
+    String(right?.messageId || "").localeCompare(String(left?.messageId || ""))
+  )[0];
+  const newestIncomingThreadId=String(
+    newestIncoming?.threadId ||
+    newestIncoming?.rootMessageId ||
+    newestIncoming?.messageId ||
+    ""
+  );
+  if(
+    newestIncomingThreadId &&
+    !hasProtectedOperationalMessageActivity(
+      role,
+      newestIncomingThreadId,
+      {protectActiveSelection:false}
+    )
+  ){
+    operationalMessageActiveThreadByRole.set(role,newestIncomingThreadId);
   }
   const triggerMessageIds=incoming.map(message=>String(message.messageId));
   if(isOperationalMessageInteractionBlockingAutoExpand()){
@@ -55104,11 +55128,17 @@ function hasOperationalMessageReplyCapability(role){
   );
 }
 
-function hasProtectedOperationalMessageActivity(role,incomingThreadId=""){
+function hasProtectedOperationalMessageActivity(
+  role,
+  incomingThreadId="",
+  options=null
+){
   role = String(role || "");
   incomingThreadId = String(incomingThreadId || "");
+  const protectActiveSelection=options?.protectActiveSelection !== false;
   const activeThreadId = String(operationalMessageActiveThreadByRole.get(role) || "");
   if(
+    protectActiveSelection &&
     activeThreadId &&
     activeThreadId !== OPERATIONAL_MESSAGE_NEW_THREAD_KEY &&
     activeThreadId !== incomingThreadId
@@ -55186,11 +55216,9 @@ function getOperationalMessageThreadGroupsForRole(role,messages){
       threadId,
       counterpartRole:String(counterpartRole || ""),
       latestAt:String(latest.sentAt || ""),
-      hasUnread:
-        latest.targetRole === role &&
-        latest.deliveryState !== "acknowledged" &&
-        !latest.acknowledgedAt &&
-        !String(latest.withdrawnAt || "").trim(),
+      hasUnread:threadMessages.some(message=>
+        isUnreadIncomingOperationalMessage(message,role)
+      ),
       messages:threadMessages
     };
   }).sort((left,right)=>
