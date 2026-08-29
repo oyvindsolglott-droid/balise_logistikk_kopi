@@ -863,7 +863,7 @@
     if (!htrLogic.supportsLocalRuntime(root)) throw new Error("local_htr_runtime_unavailable");
     ocrAnalyzer = htrRuntime.createLocalHandwritingAnalyzer({
       environment: root,
-      workerUrl: new URL("sde_handwriting_worker.js?v=15c6dc7fe7d7aab08680a45f6808d05e8205dadf3f59c894b629e6ae620a8eb8", document.baseURI).href,
+      workerUrl: new URL("sde_handwriting_worker.js?v=176aa528d74806a7dfa91666abd7219360acc7eb569b486d9e669a2e8b1fb517", document.baseURI).href,
       maximumDimension: 1800,
     });
     return ocrAnalyzer;
@@ -940,8 +940,9 @@
         setStatus("Skjemamappingen feilet. Resultatet er ikke klassifisert som en vellykket import; velg «Endre innhold» for manuell kontroll.", "error");
       }
     } catch (error) {
-      const errorDetail = String((error && (error.stack || error.message)) || error || "").trim();
       const errorMessageOnly = String((error && error.message) || error || "").trim();
+      const errorStack = String((error && error.stack) || "").trim();
+      const errorDetail = errorMessageOnly || errorStack;
       if (generation !== ocrGeneration || /(?:ocr|htr)_cancelled/i.test(errorMessageOnly)) {
         setImportState("IMPORT_FAILED", null);
         setStatus("Bildeanalysen ble avbrutt. Ingen plan ble lagret.", "warn");

@@ -25,9 +25,18 @@ class QuietHandler(http.server.SimpleHTTPRequestHandler):
         return super().guess_type(path)
 
 
+class HeaderlessHtrManifestHandler(QuietHandler):
+    def send_header(self, keyword: str, value: str) -> None:
+        request_path = self.path.split("?", 1)[0]
+        if (keyword.casefold() == "content-length"
+                and request_path.endswith("/assets/models/gigapdf-ocr-handwriting/manifest.json")):
+            return
+        super().send_header(keyword, value)
+
+
 @contextlib.contextmanager
-def static_server():
-    handler = functools.partial(QuietHandler, directory=str(ROOT))
+def static_server(handler_class: type[QuietHandler] = QuietHandler):
+    handler = functools.partial(handler_class, directory=str(ROOT))
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -99,6 +108,35 @@ def quality_metrics(output: dict[str, object], fixture: dict[str, object]) -> di
 
 
 class HandwritingRecognitionBrowserTests(unittest.TestCase):
+    def test_webkit_imports_representative_form_with_headerless_htr_manifest(self) -> None:
+        with static_server(HeaderlessHtrManifestHandler) as base_url, sync_playwright() as playwright:
+            browser = playwright.webkit.launch(headless=True)
+            page = browser.new_page(viewport={"width": 390, "height": 844})
+            page_errors: list[str] = []
+            external_requests: list[str] = []
+            page.on("pageerror", lambda error: page_errors.append(str(error)))
+            page.on("request", lambda request: external_requests.append(request.url) if not request.url.startswith(base_url) else None)
+            page.goto(f"{base_url}/tests/sde/htr-browser-harness.html")
+
+            output = run_fixture(page, "historical-togplassering-skien.png")
+            browser.close()
+
+            manifest_completion = [
+                step for step in output["progress"]
+                if step["status"] == "HTR_ASSET_DOWNLOAD_COMPLETE"
+                and str(step.get("resource", "")).endswith("gigapdf-ocr-handwriting/manifest.json")
+            ]
+            self.assertEqual(len(manifest_completion), 1)
+            self.assertEqual(manifest_completion[0]["contentLengthPresent"], False)
+            self.assertEqual(output["result"]["model"]["hashVerified"], True)
+            self.assertEqual(output["result"]["model"]["modelType"], "REAL_LOCAL_HTR")
+            self.assertIn(
+                output["result"]["mappingReport"]["mappingStatus"],
+                {"FORM_MAPPING_COMPLETE", "FORM_MAPPING_REQUIRES_REVIEW"},
+            )
+            self.assertEqual(page_errors, [])
+            self.assertEqual(external_requests, [])
+
     def test_real_local_model_accuracy_privacy_desktop_mobile_and_webkit(self) -> None:
         with static_server() as base_url, sync_playwright() as playwright:
             aggregate_expected = 0
