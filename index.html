@@ -54880,6 +54880,8 @@ function renderGlobalOperationalMessageBox(){
   badge.setAttribute("aria-label",`${pending} nye meldinger`);
 }
 
+// PROTECTED PRODUCT CONTRACT (PR #51): sole unread authority for badge and "· Ny".
+// Presented (including on collapse), acknowledged, or withdrawn is never unread; do not change without explicit user approval.
 function isUnreadIncomingOperationalMessage(message,role){
   role=String(role || "");
   const messageId=String(message?.messageId || "");
@@ -54901,6 +54903,8 @@ function isUnreadIncomingOperationalMessage(message,role){
   );
 }
 
+// PROTECTED PRODUCT CONTRACT (PR #51): select the newest incoming thread unless draft/editor activity is protected.
+// Never interrupt user work or change this behavior without explicit user approval.
 function reconcileGlobalOperationalMessageInbox(readback){
   const role=syncGlobalOperationalMessageRole();
   if(!role || readback?.ok !== true) return [];
@@ -55188,6 +55192,8 @@ function activateOperationalMessageThreadFromNotification(notification,{force=fa
   return currentThreadId !== messageRecord.threadId;
 }
 
+// PROTECTED PRODUCT CONTRACT (PR #51): "· Ny" must use the shared unread authority.
+// Never add parallel unread logic or change this behavior without explicit user approval.
 function getOperationalMessageThreadGroupsForRole(role,messages){
   role = String(role || "");
   const chronological = (Array.isArray(messages) ? messages : [])
