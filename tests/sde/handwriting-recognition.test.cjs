@@ -54,7 +54,7 @@ function syntheticPhotographedForm(){
   return {width, height, pixels};
 }
 
-function syntheticPhotographedTemplateB(){
+function syntheticPhotographedTemplateB({omittedRules = [], horizontalBoundaryCount = 30} = {}){
   const width = 420;
   const height = 560;
   const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
@@ -71,6 +71,7 @@ function syntheticPhotographedTemplateB(){
   const rules = [17, 44, 73, 110, 144, 180, 220, 316, 407];
   const slopes = [0.045, 0.038, 0.03, 0.022, 0.014, 0.006, -0.002, -0.011, -0.022];
   for(let rule = 0; rule < rules.length; rule += 1){
+    if(omittedRules.includes(rule)) continue;
     const startY = rule === 0 || rule === rules.length - 1 ? 12 : 104;
     for(let y = startY; y <= 546; y += 1){
       const x = rules[rule] + slopes[rule] * (y - 110);
@@ -80,8 +81,8 @@ function syntheticPhotographedTemplateB(){
     }
   }
   for(let x = 13; x <= 409; x += 1) shade(x, 12 + ((409 - x) * 0.014));
-  for(let row = 0; row < 30; row += 1){
-    const y = 104 + ((row / 29) * 442);
+  for(let row = 0; row < horizontalBoundaryCount; row += 1){
+    const y = 104 + ((row / Math.max(1, horizontalBoundaryCount - 1)) * 442);
     const left = rules[0] + slopes[0] * (y - 110);
     const right = rules.at(-1) + slopes.at(-1) * (y - 110);
     for(let x = Math.round(left); x <= Math.round(right); x += 1) shade(x, y);
@@ -458,6 +459,39 @@ test("fotografert Template B registreres som ni regler og 29 x 8 uten rad- eller
   assert.equal(registration.cells.length, 29 * 8);
   assert.deepEqual([...new Set(registration.cells.map(cell => cell.columnId))], subject.TEMPLATE_B_COLUMN_IDS);
   assert.deepEqual(registration.metadataCells.map(cell => cell.columnId), ["clock", "date", "signature"]);
+});
+
+test("Template B med én svak venstre ytterregel registreres bare fra komplett åttereglers indre sekvens", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticPhotographedTemplateB({omittedRules: [0]}));
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_B");
+  assert.equal(detected.verticalLineCount, 9);
+  assert.equal(detected.observedVerticalLineCount, 8);
+  assert.equal(detected.inferredVerticalBoundary, "LEFT");
+  assert.equal(detected.horizontalLineCount, 30);
+  assert.ok(detected.confidence >= 0.55, JSON.stringify(detected));
+
+  const unsafe = subject.detectFormRegistration(syntheticPhotographedTemplateB({omittedRules: [0, 2]}));
+  assert.equal(unsafe.source, "FORM_GRID_REGISTRATION_FAILED", JSON.stringify(unsafe));
+  assert.equal(unsafe.templateId, "TEMPLATE_UNKNOWN");
+});
+
+test("Template B med ufullstendig radnett forblir fail-closed med konkret registreringsfeil", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticPhotographedTemplateB({
+    omittedRules: [0],
+    horizontalBoundaryCount: 26,
+  }));
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_B");
+  assert.equal(detected.verticalLineCount, 9);
+  assert.equal(detected.horizontalLineCount, 26);
+  assert.equal(detected.rowGeometryStable, false);
+  assert.equal(
+    subject.formRegistrationFailureMessage(detected),
+    "form_registration_failed · mal TEMPLATE_B · 9 vertikale linjer (8 observert; venstre yttergrense inferert) · fant 26 av 30 radlinjer · radgeometrien er ustabil · sikkerhet 0.879",
+  );
 });
 
 test("canonical superset bevarer Inn kl og INFO, mens Template A lar dem være tomme", () => {
