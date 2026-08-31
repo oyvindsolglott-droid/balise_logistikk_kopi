@@ -483,6 +483,24 @@ function syntheticPhotographedTemplateBWithClutter(){
   return {width, height, pixels};
 }
 
+function syntheticPhotographedTemplateBWithHeaderBands(){
+  const frame = syntheticPhotographedTemplateB();
+  const {width, height, pixels} = frame;
+  const shade = (x, y, value = 30) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  for(const y of [48, 72]){
+    for(let x = 16; x <= 406; x += 1) shade(x, y, 30);
+  }
+  return frame;
+}
+
 test("tydelig fotografert skjema med ekstra vertikal støy og rader høyt i bildet registreres uten å gjette rader", () => {
   const subject = loadSubject();
   const detected = subject.detectFormRegistration(syntheticPhotographedTemplateBWithClutter());
@@ -493,6 +511,21 @@ test("tydelig fotografert skjema med ekstra vertikal støy og rader høyt i bild
   assert.equal(detected.rowGeometryStable, true);
   assert.ok(detected.confidence >= 0.55, JSON.stringify(detected));
   assert.equal(detected.canonicalRowBoundaries.length, 30);
+});
+
+test("trykt toppfelt over datanettet blir ikke rad 0 på fotografert Template B", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticPhotographedTemplateBWithHeaderBands());
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_B");
+  assert.equal(detected.horizontalLineCount, 30);
+  assert.equal(detected.rowGeometryStable, true);
+  const first = detected.canonicalRowBoundaries[0];
+  const last = detected.canonicalRowBoundaries[29];
+  const spacing = (last - first) / 29;
+  assert.ok(first > 180, JSON.stringify({first, last, spacing}));
+  const secondGap = detected.canonicalRowBoundaries[1] - first;
+  assert.ok(Math.abs(secondGap - spacing) / spacing < 0.2, JSON.stringify({first, secondGap, spacing}));
 });
 
 test("fotografert Template B registreres som ni regler og 29 x 8 uten rad- eller kolonneforskyvning", () => {
