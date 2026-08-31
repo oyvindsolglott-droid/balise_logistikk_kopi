@@ -130,7 +130,12 @@ assert.match(
 assert.match(
   source,
   /\.sporplan-slot-overlay\s+\.slot\.sporplan-status-operational\s*\{[\s\S]{0,220}border-color:\s*rgba\(74,222,128,\.78\)\s*!important/,
-  "authoritative Driftsklar must override the legacy repair-slot border color",
+  "authoritative Driftsklar keeps a green Sporplan frame when the slot is not Rep-marked",
+);
+assert.match(
+  source,
+  /\.sporplan-slot-overlay\s+\.slot\.rep-slot:not\(\.drei-slot\)\s*\{[\s\S]{0,280}border-color:\s*#dc2626\s*!important/,
+  "local Rep marker must keep a thin red Sporplan frame even when DROPS is Driftsklar",
 );
 assert.match(
   source,
@@ -169,17 +174,23 @@ function runRenderedStatusParityGate() {
   <main id="statusParityFixture">
     <section id="sporplanView" aria-label="Sporplan">
       <div class="sporplan-slot-overlay" style="position:relative;width:min(100%,320px);height:320px">
-        <div id="operationalSlot" class="slot filled rep-slot" data-slot="7N"
-             style="position:absolute;left:4px;top:4px;width:144px;height:300px">
+        <div id="operationalSlot" class="slot filled" data-slot="12N"
+             style="position:absolute;left:4px;top:4px;width:144px;height:140px">
           <span class="slot-bottom mat">74-38</span>
           <span class="sporplan-vehicle-status-host"
                 data-sde-sporplan-vehicle-status data-vehicle-text="74-38"></span>
         </div>
         <div id="notOperationalSlot" class="slot filled drei-slot" data-slot="8S"
-             style="position:absolute;left:164px;top:4px;width:144px;height:300px">
+             style="position:absolute;left:164px;top:4px;width:144px;height:140px">
           <span class="slot-bottom mat">74-45</span>
           <span class="sporplan-vehicle-status-host"
                 data-sde-sporplan-vehicle-status data-vehicle-text="74-45"></span>
+        </div>
+        <div id="repairSlot" class="slot filled rep-slot" data-slot="7N"
+             style="position:absolute;left:4px;top:160px;width:144px;height:140px">
+          <span class="slot-bottom mat">74-21</span>
+          <span class="sporplan-vehicle-status-host"
+                data-sde-sporplan-vehicle-status data-vehicle-text="74-21"></span>
         </div>
       </div>
     </section>
@@ -229,6 +240,12 @@ function buildReadback(operationalStatus){
         currentStatus:operationalStatus,
         workshopDisposition:"TIL_REP",
         activeFaults:[{faultId:"fault-74-38",slot:1,status:"ACTIVE",category:"A1"}]
+      },
+      {
+        vehicleId:"74-21",
+        currentStatus:"DRIFTSKLAR",
+        workshopDisposition:"TIL_REP",
+        activeFaults:[{faultId:"fault-74-21",slot:1,status:"ACTIVE",category:"A1"}]
       },
       {
         vehicleId:"74-45",
@@ -292,15 +309,19 @@ window.runStatusParityScenario = function(){
 
   const operationalSlot = document.getElementById("operationalSlot");
   const notOperationalSlot = document.getElementById("notOperationalSlot");
+  const repairSlot = document.getElementById("repairSlot");
   const operationalIdentity = operationalSlot.querySelector(".slot-bottom.mat");
   const notOperationalIdentity = notOperationalSlot.querySelector(".slot-bottom.mat");
+  const repairIdentity = repairSlot.querySelector(".slot-bottom.mat");
   const workshopOperational = document.getElementById("workshop-74-38");
   const workshopNotOperational = document.getElementById("workshop-74-45");
   const initial = {
     sporplanOperational:colorSnapshot(operationalSlot),
     sporplanNotOperational:colorSnapshot(notOperationalSlot),
+    sporplanRepair:colorSnapshot(repairSlot),
     operationalIdentity:colorSnapshot(operationalIdentity),
     notOperationalIdentity:colorSnapshot(notOperationalIdentity),
+    repairIdentity:colorSnapshot(repairIdentity),
     workshopOperational:colorSnapshot(workshopOperational),
     workshopNotOperational:colorSnapshot(workshopNotOperational),
     operationalClasses:Array.from(operationalSlot.classList),
@@ -387,8 +408,10 @@ for result in results:
     initial = result["initial"]
     op = initial["sporplanOperational"]
     nonop = initial["sporplanNotOperational"]
+    repair = initial["sporplanRepair"]
     op_id = initial["operationalIdentity"]
     nonop_id = initial["notOperationalIdentity"]
+    repair_id = initial["repairIdentity"]
     workshop_op = initial["workshopOperational"]
     workshop_nonop = initial["workshopNotOperational"]
 
@@ -400,9 +423,14 @@ for result in results:
         nonop["borderColor"] == "rgba(248, 113, 113, 0.88)",
         f"{label}: Ikke Driftsklar Sporplan frame is not red: {nonop['borderColor']}"
     )
+    require(
+        repair["borderColor"] == "rgb(220, 38, 38)",
+        f"{label}: Rep-marked Sporplan frame is not thin red: {repair['borderColor']}"
+    )
     for identity_name, identity in (
         ("operational", op_id),
         ("not-operational", nonop_id),
+        ("repair", repair_id),
     ):
         require(
             identity["backgroundColor"] == "rgba(0, 0, 0, 0.8)",
@@ -482,6 +510,8 @@ print(json.dumps({
                 result["initial"]["sporplanOperational"]["borderColor"],
             "sporplanNotOperationalBorder":
                 result["initial"]["sporplanNotOperational"]["borderColor"],
+            "sporplanRepairBorder":
+                result["initial"]["sporplanRepair"]["borderColor"],
             "workshopOperationalBorder":
                 result["initial"]["workshopOperational"]["borderColor"],
             "workshopNotOperationalBorder":
