@@ -12698,9 +12698,14 @@ function isRepMarker(value){
   return s === "r" || s === "rep" || s === "j" || s === "ja" || isDreiMarker(s);
 }
 
-function getKveldRepSlots(){
+function getKveldRepSlots(dataRows){
   const slots = new Set();
   const movedFromRepSlots = new Set();
+
+  function isCurrentListRep(slot){
+    const marker = state.grunnoppstillingRep?.[normalizeSlot(slot)];
+    return isRepMarker(marker) && !isDreiMarker(marker);
+  }
 
   getEffectivePlanSkifteRows().forEach(row=>{
     if(!row) return;
@@ -12715,18 +12720,18 @@ function getKveldRepSlots(){
   });
 
   Object.entries(state.grunnoppstillingRep || {}).forEach(([slot,value])=>{
-    if(!isRepMarker(value)) return;
+    if(!isRepMarker(value) || isDreiMarker(value)) return;
     const normalizedSlot = normalizeSlot(slot);
-    if(normalizedSlot && !movedFromRepSlots.has(normalizedSlot)) slots.add(normalizedSlot);
+    if(normalizedSlot) slots.add(normalizedSlot);
   });
 
   (state.turneringKveld || []).forEach(row=>{
     if(!row || row.type) return;
-    if(isRepMarker(row.f)){
+    if(isRepMarker(row.f) && !isDreiMarker(row.f)){
       const slot1 = normalizeSlot(row.e);
       if(slot1) slots.add(slot1);
     }
-    if(isRepMarker(row.j)){
+    if(isRepMarker(row.j) && !isDreiMarker(row.j)){
       const slot2 = normalizeSlot(row.i);
       if(slot2) slots.add(slot2);
     }
@@ -12734,13 +12739,26 @@ function getKveldRepSlots(){
 
   getEffectivePlanSkifteRows().forEach(row=>{
     if(!row) return;
-    if(!isRepMarker(row.tilRep)) return;
+    if(!isRepMarker(row.tilRep) || isDreiMarker(row.tilRep)) return;
     const slot = normalizeSlot(row.toSpor);
     if(slot) slots.add(slot);
   });
 
   movedFromRepSlots.forEach(slot => {
-    slots.delete(slot);
+    if(!isCurrentListRep(slot)) slots.delete(slot);
+  });
+
+  (Array.isArray(dataRows) ? dataRows : []).forEach(row=>{
+    const slot = normalizeSlot(row?.slot);
+    const vehicleId = String(row?.mat || row?.vehicle || row?.vehicleId || "").trim();
+    if(!slot || !vehicleId) return;
+    const token = normalizeVehicleToken(vehicleId);
+    if(!token) return;
+    const listEntry = Object.entries(state.grunnoppstilling || {}).find(([,value])=>
+      normalizeVehicleToken(value) === token
+    );
+    if(!listEntry) return;
+    if(isCurrentListRep(listEntry[0])) slots.add(slot);
   });
 
   return slots;
@@ -16234,7 +16252,7 @@ function buildLegacySporplanRetired(){
   const sharedCommonView = isSharedSporplanDraftActiveForCommonView();
   const dataRows = computeCanonicalActualPlacementViewRows();
   const data=Object.fromEntries(dataRows.map(r=>[r.slot,r]));
-  const repSlots = getKveldRepSlots();
+  const repSlots = getKveldRepSlots(dataRows);
   const dreiSlots = getDreiSlots();
   const suppressLocalVisualOverlay = sharedCommonView;
   const planSkifteMarkers = getPlanSkifteMarkersBySlot();
@@ -16524,7 +16542,7 @@ function buildSporplan(){
   const duplicateVehicles=getDuplicateGrunnoppstillingVehicles();
   const sharedCommonView=isSharedSporplanDraftActiveForCommonView();
   const dataRows = computeCanonicalActualPlacementViewRows();
-  const repSlots=getKveldRepSlots();
+  const repSlots=getKveldRepSlots(dataRows);
   const dreiSlots=getDreiSlots();
   const planSkifteMarkers=getPlanSkifteMarkersBySlot();
   const grid=document.getElementById("yardGrid");
