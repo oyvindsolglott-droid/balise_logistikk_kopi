@@ -1,4 +1,4 @@
-import "./sde_handwriting_recognition.js?v=e8f0178ccbbad3db57d008461d22fb1d217a700226a8f54227907ebbe1307dac";
+import "./sde_handwriting_recognition.js?v=d6d88c3214987c685ee4bcb1bbb90f67481e6a61bdcb30a19353e7001377469d";
 import * as ort from "./assets/vendor/onnxruntime-web/ort.wasm.min.mjs";
 
 const htr = globalThis.SdeHandwritingRecognition;
@@ -792,8 +792,10 @@ async function analyze(message){
   if(detected.source !== "FORM_GRID_RULE_SEQUENCE"
     || !["TEMPLATE_A", "TEMPLATE_B"].includes(detected.templateId)
     || ![7, 9].includes(detected.verticalLineCount)
-    || detected.confidence < 0.55){
-    throw new Error("form_registration_failed");
+    || detected.confidence < 0.55
+    || detected.horizontalLineCount !== 30
+    || detected.rowGeometryStable !== true){
+    throw new Error(htr.formRegistrationFailureMessage(detected));
   }
   const registration = htr.registerTemplate({
     imageWidth: width,

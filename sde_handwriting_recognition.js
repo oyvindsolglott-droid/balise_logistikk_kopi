@@ -323,6 +323,73 @@
     return best;
   }
 
+  function selectFormGridWithInferredLeftBoundary(lines, width, template){
+    const ratios = template.columnBoundaries.map(value => (
+      (value - template.columnBoundaries[0])
+      / (template.columnBoundaries.at(-1) - template.columnBoundaries[0])
+    ));
+    if(ratios.length < 3) return null;
+    const firstObservedRatio = ratios[1];
+    const firstObservedCandidates = lines.candidates.filter(candidate => candidate.xAtReference < width * 0.45);
+    const rightCandidates = lines.candidates.filter(candidate => candidate.xAtReference > width * 0.55);
+    let best = null;
+    for(const firstObserved of firstObservedCandidates){
+      for(const right of rightCandidates){
+        const span = (right.xAtReference - firstObserved.xAtReference) / (1 - firstObservedRatio);
+        const inferredLeftX = right.xAtReference - span;
+        if(span < width * 0.75 || inferredLeftX < width * 0.005 || inferredLeftX > width * 0.2) continue;
+        const tolerance = Math.max(5, span * 0.022);
+        const observed = [firstObserved];
+        let deviation = 0;
+        let lineScore = firstObserved.score;
+        let valid = true;
+        for(const ratio of ratios.slice(2, -1)){
+          const expectedX = inferredLeftX + (span * ratio);
+          const choices = lines.candidates
+            .filter(candidate => Math.abs(candidate.xAtReference - expectedX) <= tolerance)
+            .sort((a, b) => (b.score - (Math.abs(b.xAtReference - expectedX) * 1.5))
+              - (a.score - (Math.abs(a.xAtReference - expectedX) * 1.5)));
+          const choice = choices[0];
+          if(!choice){ valid = false; break; }
+          observed.push(choice);
+          deviation += Math.abs(choice.xAtReference - expectedX) / tolerance;
+          lineScore += choice.score;
+        }
+        if(!valid) continue;
+        observed.push(right);
+        lineScore += right.score;
+        const averageCoverage = observed.reduce((sum, line) => (
+          sum + (line.score / Math.max(1, line.samples))
+        ), 0) / observed.length;
+        const sequenceFit = Math.max(0, 1 - (deviation / Math.max(1, observed.length - 2)));
+        const sortedSlopes = observed.map(line => line.slope).sort((a, b) => a - b);
+        const medianSlope = sortedSlopes[Math.floor(sortedSlopes.length / 2)] || 0;
+        const maximumSlopeDeviation = Math.max(...observed.map(line => Math.abs(line.slope - medianSlope)));
+        if(averageCoverage < 0.45 || sequenceFit < 0.78 || maximumSlopeDeviation > 0.075) continue;
+        const inferredLeft = Object.freeze({
+          xAtReference: inferredLeftX,
+          slope: firstObserved.slope,
+          score: 0,
+          samples: firstObserved.samples,
+          inferred: true,
+        });
+        const selected = [inferredLeft, ...observed];
+        const score = lineScore - (deviation * 200) - (maximumSlopeDeviation * 1000);
+        if(!best || score > best.score){
+          best = {
+            score,
+            selected,
+            lineScore,
+            deviation,
+            observedLineCount: observed.length,
+            inferredBoundary: "LEFT",
+          };
+        }
+      }
+    }
+    return best;
+  }
+
   function verticalLineExtent(pixels, width, height, line, referenceY){
     let best = null;
     let segmentStart = null;
@@ -369,7 +436,7 @@
     return {score, samples};
   }
 
-  function bestHorizontalBoundary(pixels, width, height, edge){
+  function bestHorizontalBoundary(pixels, width, height, edge, expectedSlope = null){
     const referenceX = width * 0.5;
     const start = edge === "top" ? Math.floor(height * 0.015) : Math.floor(height * 0.84);
     const end = edge === "top" ? Math.ceil(height * 0.16) : Math.ceil(height * 0.97);
@@ -382,13 +449,16 @@
         if(candidate.samples > 0 && candidate.score >= candidate.samples * 0.45) candidates.push(candidate);
       }
     }
-    candidates.sort((left, right) => {
+    const slopeCoherentCandidates = Number.isFinite(expectedSlope)
+      ? candidates.filter(candidate => Math.abs(candidate.slope - expectedSlope) <= 0.03)
+      : candidates;
+    slopeCoherentCandidates.sort((left, right) => {
       const edgeOrder = edge === "top"
         ? left.yAtReference - right.yAtReference
         : right.yAtReference - left.yAtReference;
       return edgeOrder || right.score - left.score;
     });
-    return candidates[0] || null;
+    return slopeCoherentCandidates[0] || null;
   }
 
   function intersectVerticalHorizontal(vertical, verticalReferenceY, horizontal){
@@ -399,10 +469,10 @@
     return Object.freeze({x, y: horizontalIntercept + (horizontal.slope * x)});
   }
 
-  function horizontalGridCandidates(pixels, width, height, scanStartX, scanEndX){
+  function horizontalGridCandidates(pixels, width, height, scanStartX, scanEndX, scanStartRatio = 0.14){
     const referenceX = width * 0.5;
     const values = [];
-    for(let y = Math.floor(height * 0.14); y <= Math.ceil(height * 0.995); y += 2){
+    for(let y = Math.floor(height * scanStartRatio); y <= Math.ceil(height * 0.995); y += 2){
       let best = null;
       for(let slopeStep = -12; slopeStep <= 12; slopeStep += 1){
         const slope = slopeStep / 200;
@@ -423,11 +493,14 @@
     return Object.freeze(candidates);
   }
 
-  function selectHorizontalGrid(candidates, perspective, width, height, template){
+  function selectHorizontalGrid(candidates, perspective, width, height, template, diagnostics = null){
     const topCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.12 && candidate.yAtReference <= height * 0.28);
     const bottomCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.9 && candidate.yAtReference <= height * 0.995);
     const canonicalX = template.width * 0.5;
     let best = null;
+    let maximumMatchedLineCount = 0;
+    let maximumMatchedTop = null;
+    let maximumMatchedBottom = null;
     for(const top of topCandidates){
       for(const bottom of bottomCandidates){
         if(bottom.yAtReference - top.yAtReference < height * 0.62) continue;
@@ -453,6 +526,11 @@
             evidenceScore += choice.coverage;
           }
         }
+        if(matched.length > maximumMatchedLineCount){
+          maximumMatchedLineCount = matched.length;
+          maximumMatchedTop = top.yAtReference;
+          maximumMatchedBottom = bottom.yAtReference;
+        }
         if(matched.length < 26) continue;
         const score = (matched.length * 100) + evidenceScore;
         const earlierTop = !best || top.yAtReference < best.topImageY - 3;
@@ -461,6 +539,13 @@
           best = {score, topImageY: top.yAtReference, topCanonicalY: topCanonical.y, bottomCanonicalY: bottomCanonical.y, matched, matchedByRow};
         }
       }
+    }
+    if(diagnostics && typeof diagnostics === "object"){
+      diagnostics.maximumMatchedLineCount = maximumMatchedLineCount;
+      diagnostics.maximumMatchedTop = maximumMatchedTop;
+      diagnostics.maximumMatchedBottom = maximumMatchedBottom;
+      diagnostics.topCandidateCount = topCandidates.length;
+      diagnostics.bottomCandidateCount = bottomCandidates.length;
     }
     if(!best) return null;
     const canonicalRowBoundaries = best.matchedByRow.map(line => line
@@ -512,6 +597,10 @@
       throw new Error("invalid_form_image_frame");
     }
     const lines = bestVerticalLines(pixels, width, height);
+    let diagnosticHorizontalCandidates = Object.freeze([]);
+    const diagnosticHorizontalSelection = {};
+    let diagnosticTopBoundary = null;
+    let diagnosticBottomBoundary = null;
     const gridCandidates = Object.values(TEMPLATES)
       .map(template => {
         const grid = selectFormGrid(lines, width, template);
@@ -525,8 +614,23 @@
         ), 0) / grid.selected.length;
         return {template, grid, formSpanRatio, sequenceFit, averageCoverage};
       })
-      .filter(candidate => candidate.grid && candidate.grid.selected.length === candidate.template.columnBoundaries.length)
-      .sort((left, right) => {
+      .filter(candidate => candidate.grid && candidate.grid.selected.length === candidate.template.columnBoundaries.length);
+    if(!gridCandidates.some(candidate => candidate.template.id === "TEMPLATE_B")){
+      const template = TEMPLATE_B;
+      const grid = selectFormGridWithInferredLeftBoundary(lines, width, template);
+      if(grid){
+        const firstRule = grid.selected[0];
+        const lastRule = grid.selected.at(-1);
+        const formSpanRatio = (lastRule.xAtReference - firstRule.xAtReference) / width;
+        const sequenceFit = Math.max(0, 1 - (grid.deviation / Math.max(1, grid.observedLineCount - 2)));
+        const observedLines = grid.selected.filter(line => line.inferred !== true);
+        const averageCoverage = observedLines.reduce((sum, line) => (
+          sum + (line.score / Math.max(1, line.samples))
+        ), 0) / observedLines.length;
+        gridCandidates.push({template, grid, formSpanRatio, sequenceFit, averageCoverage});
+      }
+    }
+    gridCandidates.sort((left, right) => {
         // The outer rules must describe the whole form, not a visually dense
         // interior subset. This prevents an interior Template-A column rule
         // from being treated as the right edge of a shorter nine-rule form.
@@ -556,12 +660,33 @@
         right = Object.freeze({...right, slope: stableSlope, inferredSlopeFromInteriorRules: true});
         rightExtent = verticalLineExtent(pixels, width, height, right, lines.referenceY);
       }
-      const topBoundary = bestHorizontalBoundary(pixels, width, height, "top");
-      const bottomBoundary = bestHorizontalBoundary(pixels, width, height, "bottom");
+      const scanStartX = Math.min(left.xAtReference, right.xAtReference) + 2;
+      const scanEndX = Math.max(left.xAtReference, right.xAtReference) - 2;
+      diagnosticHorizontalCandidates = horizontalGridCandidates(
+        pixels,
+        width,
+        height,
+        scanStartX,
+        scanEndX,
+        grid.inferredBoundary === "LEFT" ? 0.06 : 0.14,
+      );
+      const horizontalSlopes = diagnosticHorizontalCandidates
+        .filter(line => line.coverage >= 0.45)
+        .map(line => line.slope)
+        .sort((a, b) => a - b);
+      const expectedHorizontalSlope = grid.inferredBoundary === "LEFT"
+        ? horizontalSlopes[Math.floor(horizontalSlopes.length / 2)]
+        : null;
+      const topBoundary = bestHorizontalBoundary(pixels, width, height, "top", expectedHorizontalSlope);
+      const bottomBoundary = bestHorizontalBoundary(pixels, width, height, "bottom", expectedHorizontalSlope);
+      diagnosticTopBoundary = topBoundary;
+      diagnosticBottomBoundary = bottomBoundary;
       const interiorCoverage = grid.selected.slice(1, -1)
         .reduce((sum, line) => sum + (line.score / Math.max(1, line.samples)), 0) / Math.max(1, grid.selected.length - 2);
-      const leftExtentValid = leftExtent && (leftExtent.length > height * 0.76
-        || (left.inferredSlopeFromInteriorRules === true && interiorCoverage >= 0.68));
+      const leftExtentValid = grid.inferredBoundary === "LEFT"
+        ? interiorCoverage >= 0.68
+        : leftExtent && (leftExtent.length > height * 0.76
+          || (left.inferredSlopeFromInteriorRules === true && interiorCoverage >= 0.68));
       const rightExtentValid = rightExtent && (rightExtent.length > height * 0.76
         || (right.inferredSlopeFromInteriorRules === true && interiorCoverage >= 0.68));
       if(leftExtentValid && rightExtentValid
@@ -580,14 +705,13 @@
           intersectVerticalHorizontal(left, lines.referenceY, bottomBoundary),
         ]);
         const perspective = createPerspectiveTransform(corners, templateGridQuadrilateral(template));
-        const scanStartX = Math.min(left.xAtReference, right.xAtReference) + 2;
-        const scanEndX = Math.max(left.xAtReference, right.xAtReference) - 2;
         const horizontalGrid = selectHorizontalGrid(
-          horizontalGridCandidates(pixels, width, height, scanStartX, scanEndX),
+          diagnosticHorizontalCandidates,
           perspective,
           width,
           height,
           template,
+          diagnosticHorizontalSelection,
         );
         if(horizontalGrid) return Object.freeze({
           templateId: template.id,
@@ -603,6 +727,8 @@
             candidateCount: gridCandidates.length,
           }),
           verticalLineCount: grid.selected.length,
+          observedVerticalLineCount: grid.observedLineCount || grid.selected.length,
+          inferredVerticalBoundary: grid.inferredBoundary || "",
           horizontalBoundaryCount: 2,
           horizontalLineCount: horizontalGrid.horizontalLineCount,
           rowGeometryStable: horizontalGrid.rowGeometryStable,
@@ -612,14 +738,13 @@
             xAtReference: line.xAtReference,
             slope: line.slope,
             coverage: line.score / Math.max(1, line.samples),
+            inferred: line.inferred === true,
           }))),
         });
       }
     }
     const insetX = Math.max(1, width * 0.01);
     const insetY = Math.max(1, height * 0.01);
-    const diagnosticTopBoundary = grid ? bestHorizontalBoundary(pixels, width, height, "top") : null;
-    const diagnosticBottomBoundary = grid ? bestHorizontalBoundary(pixels, width, height, "bottom") : null;
     return Object.freeze({
       corners: Object.freeze([
         Object.freeze({x: insetX, y: insetY}),
@@ -641,9 +766,51 @@
         rightExtent: grid ? verticalLineExtent(pixels, width, height, grid.selected.at(-1), lines.referenceY) : null,
         topBoundary: diagnosticTopBoundary,
         bottomBoundary: diagnosticBottomBoundary,
+        horizontalCandidateCount: diagnosticHorizontalCandidates.length,
+        horizontalCandidates: Object.freeze(diagnosticHorizontalCandidates.map(line => Object.freeze({
+          yAtReference: line.yAtReference,
+          slope: line.slope,
+          coverage: line.coverage,
+        }))),
+        horizontalSelection: Object.freeze({...diagnosticHorizontalSelection}),
         candidates: Object.freeze(lines.candidates),
       }),
     });
+  }
+
+  function formRegistrationFailureMessage(detected = {}){
+    const diagnostics = detected?.diagnostics && typeof detected.diagnostics === "object"
+      ? detected.diagnostics
+      : {};
+    const selectedLines = Array.isArray(diagnostics.selectedLines) ? diagnostics.selectedLines : [];
+    const inferredBoundary = String(detected.inferredVerticalBoundary || (
+      selectedLines.some(line => line?.inferred === true) ? "LEFT" : ""
+    ));
+    const templateId = String(detected.templateId || diagnostics.selectedTemplateId || "TEMPLATE_UNKNOWN");
+    const verticalLineCount = Number.isFinite(Number(detected.verticalLineCount)) && Number(detected.verticalLineCount) > 0
+      ? Number(detected.verticalLineCount)
+      : selectedLines.length;
+    const observedVerticalLineCount = Number.isFinite(Number(detected.observedVerticalLineCount))
+      ? Number(detected.observedVerticalLineCount)
+      : selectedLines.filter(line => line?.inferred !== true).length;
+    const maximumMatchedRows = Number(detected.horizontalLineCount
+      ?? diagnostics.horizontalSelection?.maximumMatchedLineCount
+      ?? 0);
+    const confidence = Number.isFinite(Number(detected.confidence)) ? Number(detected.confidence) : 0;
+    const parts = ["form_registration_failed"];
+    if(detected.source !== "FORM_GRID_RULE_SEQUENCE"){
+      const candidateCount = Number(diagnostics.candidateCount || 0);
+      parts.push(`ingen sikker 7-/9-linjers malsekvens; fant ${candidateCount} vertikale kandidater`);
+    }
+    parts.push(`mal ${templateId}`);
+    if(verticalLineCount > 0){
+      const inferred = inferredBoundary === "LEFT" ? "; venstre yttergrense inferert" : "";
+      parts.push(`${verticalLineCount} vertikale linjer (${observedVerticalLineCount} observert${inferred})`);
+    }
+    if(maximumMatchedRows !== 30) parts.push(`fant ${maximumMatchedRows} av 30 radlinjer`);
+    if(detected.rowGeometryStable !== true) parts.push("radgeometrien er ustabil");
+    parts.push(`sikkerhet ${confidence.toFixed(3)}`);
+    return parts.join(" · ");
   }
 
   function registerTemplate(input = {}){
@@ -1802,6 +1969,7 @@
     detectFormRegistration,
     detectTemplateVariant,
     evaluateModelCandidate,
+    formRegistrationFailureMessage,
     isGibberishCandidate,
     normalizeRecognition,
     projectPoint,

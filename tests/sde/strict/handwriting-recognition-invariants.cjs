@@ -212,6 +212,9 @@ invariant("INV-HTR-017", "the worker refuses fallback registration and uses the 
   worker.includes('detected.source !== "FORM_GRID_RULE_SEQUENCE"')
   && worker.includes('!["TEMPLATE_A", "TEMPLATE_B"].includes(detected.templateId)')
   && worker.includes("![7, 9].includes(detected.verticalLineCount)")
+  && worker.includes("detected.horizontalLineCount !== 30")
+  && worker.includes("detected.rowGeometryStable !== true")
+  && worker.includes("htr.formRegistrationFailureMessage(detected)")
   && worker.includes("rowBoundaries: detected.canonicalRowBoundaries,")
 );
 
