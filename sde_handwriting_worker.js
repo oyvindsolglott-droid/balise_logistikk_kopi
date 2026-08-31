@@ -468,8 +468,10 @@ function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell
         : 0.12;
   const hasMeaningfulInk = blankClassification.blank !== true && blankClassification.meaningfulComponentCount > 0;
   const saturatedWithoutContent = inkRatio > 0.68 && !hasMeaningfulInk;
+  const sparseEvidence = hasMeaningfulInk && inkRatio < minimumInkRatio;
   // Sparse but classified handwriting (a few dark glyphs in a wide cell) must
   // still reach the recognizer. The ink-ratio floor only rejects empty noise.
+  // Auto-accept of those crops is blocked later (SPARSE_INK_REQUIRES_REVIEW).
   const blank = blankClassification.blank || saturatedWithoutContent
     || (!hasMeaningfulInk && inkRatio < minimumInkRatio);
   const printPasses = templateAHandwritingOnly
@@ -498,6 +500,8 @@ function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell
     symbolHeight: 48,
     blank,
     inkRatio,
+    minimumInkRatio,
+    sparseEvidence,
     originalCrop,
     cropWidth: resizedWidth,
     cropHeight: 48,
@@ -877,10 +881,15 @@ async function analyze(message){
       const explicitLayerConflict = ["PRINT_HANDWRITING_CONFLICT", "STRIKETHROUGH_OR_CORRECTION"].includes(reconciled.reason);
       const layerReview = explicitLayerConflict || inkLayerConflict;
       const layerReviewReason = inkLayerConflict ? "PRINT_HANDWRITING_INK_CONFLICT" : reconciled.reason;
-      const layerReviewCanSuggest = layerReview && normalized.disposition !== "REJECTED" && Boolean(normalized.normalizedValue);
-      const effectiveDisposition = layerReviewCanSuggest ? "REVIEW_SUGGESTION" : normalized.disposition;
-      const effectiveSelectedValue = layerReview ? "" : normalized.selectedValue;
-      const effectiveSuggestedValue = layerReviewCanSuggest ? normalized.normalizedValue : normalized.suggestedValue;
+      const sparseInkRequiresReview = crop.sparseEvidence === true
+        && !layerReview
+        && normalized.disposition === "AUTO_ACCEPTED"
+        && Boolean(normalized.normalizedValue);
+      const forceReview = layerReview || sparseInkRequiresReview;
+      const reviewCanSuggest = forceReview && normalized.disposition !== "REJECTED" && Boolean(normalized.normalizedValue);
+      const effectiveDisposition = reviewCanSuggest ? "REVIEW_SUGGESTION" : normalized.disposition;
+      const effectiveSelectedValue = forceReview ? "" : normalized.selectedValue;
+      const effectiveSuggestedValue = reviewCanSuggest ? normalized.normalizedValue : normalized.suggestedValue;
       const finalCandidate = Object.freeze({
         text: normalized.normalizedValue,
         confidence: normalized.confidence,
@@ -901,8 +910,8 @@ async function analyze(message){
         disposition: effectiveDisposition,
         confidence: normalized.confidence,
         alternatives: normalized.alternatives,
-        needsReview: recognitionFailed || layerReview || normalized.needsReview || registrationRequiresReview,
-        validationState: recognitionFailed || layerReview || normalized.needsReview || registrationRequiresReview ? "REVIEW_REQUIRED" : normalized.validationState,
+        needsReview: recognitionFailed || forceReview || normalized.needsReview || registrationRequiresReview,
+        validationState: recognitionFailed || forceReview || normalized.needsReview || registrationRequiresReview ? "REVIEW_REQUIRED" : normalized.validationState,
         recognizerVersion: htr.MODEL_SPEC.version,
         recognitionMode: "LOCAL_REAL_HTR_ENSEMBLE",
         sourceBoundingBox: request.boundingBox,
@@ -912,7 +921,9 @@ async function analyze(message){
             ? "NONBLANK_CROP_UNREADABLE"
             : layerReview
               ? layerReviewReason
-              : normalized.normalizationReason,
+              : sparseInkRequiresReview
+                ? "SPARSE_INK_REQUIRES_REVIEW"
+                : normalized.normalizationReason,
         groundTruthSource: "UNCONFIRMED_RECOGNIZER_OUTPUT",
         rawRecognizerIsGroundTruth: false,
         imageEvidence: Object.freeze({
@@ -974,6 +985,7 @@ async function analyze(message){
     const explicitConflict = [
       "PRINT_HANDWRITING_CONFLICT", "PRINT_HANDWRITING_INK_CONFLICT",
       "STRIKETHROUGH_OR_CORRECTION", "ROW_GRID_REQUIRES_REVIEW",
+      "SPARSE_INK_REQUIRES_REVIEW",
     ].includes(cell.normalizationReason);
     const documentPairAccepted = !explicitConflict
       && Number(cell.finalCandidate?.votes || 0) >= 2
