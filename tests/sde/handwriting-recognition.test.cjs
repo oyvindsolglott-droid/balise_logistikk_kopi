@@ -513,6 +513,70 @@ test("tydelig fotografert skjema med ekstra vertikal støy og rader høyt i bild
   assert.equal(detected.canonicalRowBoundaries.length, 30);
 });
 
+function syntheticTemplateAWithPrintedTitleSeparator(){
+  const width = 1200;
+  const height = 1500;
+  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
+  for(let index = 3; index < pixels.length; index += 4) pixels[index] = 255;
+  const shade = (x, y, value = 36) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  const columns = [26, 168, 329, 484, 636, 770, 1174];
+  const dataTop = 285;
+  const dataBottom = 1465;
+  const rowHeight = (dataBottom - dataTop) / 29;
+  for(let x = 1; x <= 1198; x += 1){
+    shade(x, 1);
+    shade(x, 80);
+    shade(x, 150);
+    shade(x, dataTop);
+    shade(x, 1498);
+  }
+  for(let y = 1; y <= 1498; y += 1){
+    shade(1, y);
+    shade(1198, y);
+  }
+  for(const x of columns){
+    for(let y = 150; y <= dataBottom; y += 1) shade(x, y);
+  }
+  for(let row = 0; row < 30; row += 1){
+    const y = Math.round(dataTop + (row * rowHeight));
+    for(let x = columns[0]; x <= columns.at(-1); x += 1) shade(x, y, 85);
+  }
+  return {width, height, pixels};
+}
+
+test("trykt tittellinje blir ikke skjematopp, og datofeltet treffer håndskriften over datanettet", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticTemplateAWithPrintedTitleSeparator());
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_A");
+  assert.equal(detected.horizontalLineCount, 30);
+  assert.equal(detected.rowGeometryStable, true);
+  assert.ok(detected.corners[0].y < 40, JSON.stringify(detected.corners));
+  assert.ok(detected.corners[1].y < 40, JSON.stringify(detected.corners));
+  const first = detected.canonicalRowBoundaries[0];
+  assert.ok(Math.abs(first - 285) < 25, JSON.stringify({first, corners: detected.corners}));
+  const registration = subject.registerTemplate({
+    imageWidth: 1200,
+    imageHeight: 1500,
+    templateId: detected.templateId,
+    quadrilateral: detected.corners,
+    rowBoundaries: detected.canonicalRowBoundaries,
+  });
+  const dateBox = registration.metadataCells.find(cell => cell.columnId === "date").boundingBox;
+  assert.ok(dateBox.y0 < 93 && dateBox.y1 > 93, JSON.stringify(dateBox));
+  assert.ok(dateBox.x0 < 175 && dateBox.x1 > 175, JSON.stringify(dateBox));
+  const firstData = registration.cells.find(cell => cell.rowIndex === 0 && cell.columnId === "fromTrain").boundingBox;
+  assert.ok(firstData.y0 < 293 && firstData.y1 > 293, JSON.stringify(firstData));
+});
+
 test("trykt toppfelt over datanettet blir ikke rad 0 på fotografert Template B", () => {
   const subject = loadSubject();
   const detected = subject.detectFormRegistration(syntheticPhotographedTemplateBWithHeaderBands());

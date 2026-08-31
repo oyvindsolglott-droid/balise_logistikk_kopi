@@ -1,4 +1,4 @@
-import "./sde_handwriting_recognition.js?v=3fb6714f23f22aa2efdfb28d233865edda88db125bec300216148e3634fcfa47";
+import "./sde_handwriting_recognition.js?v=699567f05d79921c003c4c24a43b50687e5069560f40c9493058e9be7ceaca63";
 import * as ort from "./assets/vendor/onnxruntime-web/ort.wasm.min.mjs";
 
 const htr = globalThis.SdeHandwritingRecognition;

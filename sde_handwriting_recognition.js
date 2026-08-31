@@ -666,7 +666,16 @@
           && Math.abs(spacingCost - best.spacingCost) <= 0.05
           && score > best.score;
         if(moreRows || sameRowsMoreRegular || sameRowsBetterEvidence){
-          best = {score, spacingCost, topImageY: top.yAtReference, topCanonicalY: topCanonical.y, bottomCanonicalY: bottomCanonical.y, matched, matchedByRow};
+          best = {
+            score,
+            spacingCost,
+            topImageY: top.yAtReference,
+            bottomImageY: bottom.yAtReference,
+            topCanonicalY: topCanonical.y,
+            bottomCanonicalY: bottomCanonical.y,
+            matched,
+            matchedByRow,
+          };
         }
       }
     }
@@ -707,12 +716,34 @@
       : Array.from({length: 30}, (_unused, row) => (
         best.topCanonicalY + ((best.bottomCanonicalY - best.topCanonicalY) * row / 29)
       ));
+    const matchedSlopes = best.matched.map(line => line.slope).sort((left, right) => left - right);
     return Object.freeze({
       canonicalRowBoundaries: Object.freeze(resolvedBoundaries),
       horizontalLineCount: best.matched.length,
       averageCoverage: best.matched.reduce((sum, line) => sum + line.coverage, 0) / best.matched.length,
       rowGeometryStable,
+      imageDataTopY: best.topImageY,
+      imageDataBottomY: best.bottomImageY,
+      horizontalSlope: matchedSlopes[Math.floor(matchedSlopes.length / 2)] || 0,
     });
+  }
+
+  function reconstructOuterFormCorners(template, left, right, verticalReferenceY, imageDataTopY, imageDataBottomY, horizontalSlope, width){
+    const dataSpanCanonical = template.dataBottom - template.dataTop;
+    const dataSpanImage = imageDataBottomY - imageDataTopY;
+    if(!(dataSpanCanonical > 0) || !(dataSpanImage > 0)) return null;
+    const scale = dataSpanImage / dataSpanCanonical;
+    const topY = imageDataTopY - (template.dataTop * scale);
+    const bottomY = imageDataTopY + ((template.height - template.dataTop) * scale);
+    const referenceX = width * 0.5;
+    const top = {yAtReference: topY, slope: horizontalSlope, referenceX};
+    const bottom = {yAtReference: bottomY, slope: horizontalSlope, referenceX};
+    return Object.freeze([
+      intersectVerticalHorizontal(left, verticalReferenceY, top),
+      intersectVerticalHorizontal(right, verticalReferenceY, top),
+      intersectVerticalHorizontal(right, verticalReferenceY, bottom),
+      intersectVerticalHorizontal(left, verticalReferenceY, bottom),
+    ]);
   }
 
   function detectFormRegistration(input = {}){
@@ -844,34 +875,68 @@
           template,
           diagnosticHorizontalSelection,
         );
-        if(horizontalGrid) return Object.freeze({
-          templateId: template.id,
-          templateVersion: template.version,
-          corners,
-          confidence: clamp((averageLineCoverage * 0.55) + (sequenceFit * 0.25) + (horizontalCoverage * 0.2), 0, 1),
-          source: "FORM_GRID_RULE_SEQUENCE",
-          formSpanRatio: selectedCandidate.formSpanRatio,
-          templateSelectionEvidence: Object.freeze({
+        if(horizontalGrid){
+          const reconstructedCorners = reconstructOuterFormCorners(
+            template,
+            left,
+            right,
+            lines.referenceY,
+            horizontalGrid.imageDataTopY,
+            horizontalGrid.imageDataBottomY,
+            horizontalGrid.horizontalSlope,
+            width,
+          );
+          let outerCorners = corners;
+          let outerPerspective = perspective;
+          if(reconstructedCorners
+            && reconstructedCorners.every(point => Number.isFinite(point.x) && Number.isFinite(point.y))){
+            try{
+              outerPerspective = createPerspectiveTransform(
+                reconstructedCorners,
+                templateGridQuadrilateral(template),
+              );
+              outerCorners = reconstructedCorners;
+            }catch(_error){
+              outerPerspective = perspective;
+              outerCorners = corners;
+            }
+          }
+          const canonicalRowBoundaries = Object.freeze(horizontalGrid.canonicalRowBoundaries.map((canonicalY, row) => {
+            const imageY = Number.isFinite(canonicalY)
+              ? projectPoint(perspective.inverse, {x: template.width * 0.5, y: canonicalY}).y
+              : (horizontalGrid.imageDataTopY
+                + ((horizontalGrid.imageDataBottomY - horizontalGrid.imageDataTopY) * row / 29));
+            return projectPoint(outerPerspective.forward, {x: width * 0.5, y: imageY}).y;
+          }));
+          return Object.freeze({
+            templateId: template.id,
+            templateVersion: template.version,
+            corners: outerCorners,
+            confidence: clamp((averageLineCoverage * 0.55) + (sequenceFit * 0.25) + (horizontalCoverage * 0.2), 0, 1),
+            source: "FORM_GRID_RULE_SEQUENCE",
             formSpanRatio: selectedCandidate.formSpanRatio,
-            sequenceFit: selectedCandidate.sequenceFit,
-            averageCoverage: selectedCandidate.averageCoverage,
-            candidateCount: gridCandidates.length,
-          }),
-          verticalLineCount: grid.selected.length,
-          observedVerticalLineCount: grid.observedLineCount || grid.selected.length,
-          inferredVerticalBoundary: grid.inferredBoundary || "",
-          horizontalBoundaryCount: 2,
-          horizontalLineCount: horizontalGrid.horizontalLineCount,
-          rowGeometryStable: horizontalGrid.rowGeometryStable,
-          canonicalRowBoundaries: horizontalGrid.canonicalRowBoundaries,
-          horizontalLineCoverage: horizontalGrid.averageCoverage,
-          verticalLines: Object.freeze(grid.selected.map(line => Object.freeze({
-            xAtReference: line.xAtReference,
-            slope: line.slope,
-            coverage: line.score / Math.max(1, line.samples),
-            inferred: line.inferred === true,
-          }))),
-        });
+            templateSelectionEvidence: Object.freeze({
+              formSpanRatio: selectedCandidate.formSpanRatio,
+              sequenceFit: selectedCandidate.sequenceFit,
+              averageCoverage: selectedCandidate.averageCoverage,
+              candidateCount: gridCandidates.length,
+            }),
+            verticalLineCount: grid.selected.length,
+            observedVerticalLineCount: grid.observedLineCount || grid.selected.length,
+            inferredVerticalBoundary: grid.inferredBoundary || "",
+            horizontalBoundaryCount: 2,
+            horizontalLineCount: horizontalGrid.horizontalLineCount,
+            rowGeometryStable: horizontalGrid.rowGeometryStable,
+            canonicalRowBoundaries,
+            horizontalLineCoverage: horizontalGrid.averageCoverage,
+            verticalLines: Object.freeze(grid.selected.map(line => Object.freeze({
+              xAtReference: line.xAtReference,
+              slope: line.slope,
+              coverage: line.score / Math.max(1, line.samples),
+              inferred: line.inferred === true,
+            }))),
+          });
+        }
       }
     }
     const insetX = Math.max(1, width * 0.01);
