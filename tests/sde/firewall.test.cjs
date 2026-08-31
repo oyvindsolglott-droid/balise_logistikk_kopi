@@ -294,6 +294,13 @@ test("DROPS operational rollout — registered scope and user-activated notifica
   );
 });
 
+test("DROPS cannot grant Driftsklar — only workshop can clear Ikke driftsklar", () => {
+  assertPassed(
+    runHarness("sde-drops-cannot-grant-driftsklar-harness.js"),
+    "DROPS cannot grant Driftsklar",
+  );
+});
+
 test("SPORPLAN exact background — byte-locked artwork and 31 dynamic slot anchors stay isolated from the menu button", () => {
   assertPassed(
     runHarness("sde-sporplan-exact-background-harness.js"),

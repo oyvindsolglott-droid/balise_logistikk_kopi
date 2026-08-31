@@ -10172,7 +10172,7 @@ button{padding:12px 12px}
   <div class="drops-hero">
     <div class="drops-eyebrow">DROPS</div>
     <div class="drops-title">Materiellstyrer – verkstedstatus og operativ effekt</div>
-    <p class="drops-sub">Verkstedstatus kobles til materiellvalg, sporbruk og anbefalt videre handling, slik at DROPS raskere kan vurdere tursetting, Res., rep-parkering eller utkjøring fra verksted.</p>
+    <p class="drops-sub">Verkstedstatus kobles til materiellvalg, sporbruk og anbefalt videre handling, slik at DROPS raskere kan vurdere tursetting, Res., rep-parkering eller utkjøring fra verksted. Bare verksted kan sette Driftsklar på et kjøretøy som er Ikke driftsklar; DROPS kan ikke gi den statusen.</p>
     <div class="drops-warning">Operativt kontrollark – ikke SDE-motor</div>
     <div id="dropsHeroModeBar"></div>
   </div>
@@ -27443,7 +27443,13 @@ function getSdePhysicalAvailabilityForVehicle(vehicle, departureBinding=null, co
     : [];
 
   const dropsOrder = getSdeDropsOrderForVehicle(cleanVehicle);
-  const dropsReady = !!dropsOrder?.driftsklarAt;
+  const statusReadback = typeof dropsVehicleStatusReadback === "object" && dropsVehicleStatusReadback
+    ? dropsVehicleStatusReadback
+    : {};
+  const workshopReady = typeof isWorkshopReportedDriftsklar === "function"
+    && isWorkshopReportedDriftsklar(cleanVehicle, statusReadback);
+  const notOperational = typeof isAuthoritativeIkkeDriftsklar === "function"
+    && isAuthoritativeIkkeDriftsklar(cleanVehicle, statusReadback);
   const currentSlot = getSdeCurrentSlotForVehicle(cleanVehicle);
   const repDreiValue = getSdeGrunnoppstillingRepDreiValueForVehicle(cleanVehicle);
   const isDrei = isDreiMarker(repDreiValue);
@@ -27454,46 +27460,48 @@ function getSdePhysicalAvailabilityForVehicle(vehicle, departureBinding=null, co
     (need?.isRep || need?.isDrei || need?.needType === "rep" || need?.needType === "drei")
   );
 
-  if(specialNeed && !dropsReady){
-    const statusText = specialNeed?.isDrei || specialNeed?.needType === "drei" ? "DREI" : "REP";
+  if((specialNeed || notOperational) && !workshopReady){
+    const statusText = notOperational
+      ? "Ikke driftsklar"
+      : (specialNeed?.isDrei || specialNeed?.needType === "drei" ? "DREI" : "REP");
     return {
       status:"blocked-special-flow",
       vehicle:cleanVehicle,
       slot:currentSlot,
-      reason:`${cleanVehicle} er markert ${statusText}/verkstedflyt og er ikke meldt driftsklart. Kjøretøyet skal ikke brukes som ordinært trafikkmateriell.`
+      reason:`${cleanVehicle} er markert ${statusText}/verkstedflyt og er ikke meldt driftsklart av verksted. DROPS kan ikke gi status Driftsklar. Kjøretøyet skal ikke brukes som ordinært trafikkmateriell.`
     };
   }
 
-  if(currentSlot && (isRep || isDrei) && !dropsReady){
+  if(currentSlot && (isRep || isDrei || notOperational) && !workshopReady){
     return {
       status:"blocked-special-flow",
       vehicle:cleanVehicle,
       slot:currentSlot,
-      reason:`${cleanVehicle} står i ${currentSlot}, men er markert ${isDrei ? "DREI" : "REP"} og er ikke meldt driftsklart. Kjøretøyet skal ikke brukes som ordinært trafikkmateriell.`
+      reason:`${cleanVehicle} står i ${currentSlot}, men er markert ${notOperational ? "Ikke driftsklar" : (isDrei ? "DREI" : "REP")} og er ikke meldt driftsklart av verksted. DROPS kan ikke gi status Driftsklar. Kjøretøyet skal ikke brukes som ordinært trafikkmateriell.`
     };
   }
 
-  if(currentSlot && isSdeWorkshopSlot(currentSlot) && !dropsReady){
+  if(currentSlot && isSdeWorkshopSlot(currentSlot) && notOperational && !workshopReady){
     return {
       status:"blocked-workshop",
       vehicle:cleanVehicle,
       slot:currentSlot,
-      reason:`${cleanVehicle} står på verkstedspor ${currentSlot} og er ikke meldt driftsklart i DROPS.`
+      reason:`${cleanVehicle} står på verkstedspor ${currentSlot} og er Ikke driftsklar. Bare verksted kan sette Driftsklar.`
     };
   }
 
-  if(dropsOrder && !dropsReady){
+  if(dropsOrder && notOperational && !workshopReady){
     return {
       status:"blocked-drops",
       vehicle:cleanVehicle,
       slot:currentSlot,
-      reason:`${cleanVehicle} finnes i DROPS/verkstedflyt, men er ikke meldt driftsklart.`
+      reason:`${cleanVehicle} er Ikke driftsklar i autoritativ status. Bare verksted kan sette Driftsklar; DROPS-verkstedflyt endrer ikke status.`
     };
   }
 
   if(currentSlot){
-    const readyText = dropsReady
-      ? " Verksted/DROPS har meldt kjøretøyet driftsklart; tidligere REP/DREI-/verkstedstatus sperrer derfor ikke ordinær reserve-/trafikkvurdering."
+    const readyText = workshopReady
+      ? " Verksted har meldt kjøretøyet driftsklart; tidligere REP/DREI-/verkstedstatus sperrer derfor ikke ordinær reserve-/trafikkvurdering."
       : "";
     return {
       status:"available-now",
@@ -52984,6 +52992,21 @@ function getAuthoritativeVehicleStatusPresentation(readback,vehicleId){
   });
 }
 
+function isAuthoritativeIkkeDriftsklar(vehicleId, readback){
+  if(typeof getAuthoritativeVehicleStatusPresentation !== "function") return false;
+  const presentation = getAuthoritativeVehicleStatusPresentation(readback || {}, vehicleId);
+  return presentation?.effectiveStatus === "IKKE_DRIFTSKLAR";
+}
+
+function isWorkshopReportedDriftsklar(vehicleId, readback){
+  if(typeof getAuthoritativeVehicleStatusPresentation !== "function") return false;
+  const presentation = getAuthoritativeVehicleStatusPresentation(readback || {}, vehicleId);
+  return presentation?.kind === "operational"
+    && presentation?.effectiveStatus === "DRIFTSKLAR"
+    && presentation?.explicitStatus === true
+    && presentation?.defaultOperational !== true;
+}
+
 const REGISTERED_VEHICLES_SCOPE = "REGISTERED_VEHICLES";
 
 function getDropsRegisterFaultAvailability(draft,index,viewModel={}){
@@ -58806,7 +58829,7 @@ function buildDropsVerkstedLogToggleHtml(logCount){
   return `<section class="drops-log-control" aria-label="DROPS verkstedlogg">
     <div class="drops-log-control-text">
       <strong>Verkstedlogg</strong>
-      <span>Sporer bestilling, bestilt utkjøring, driftsklart og sletting. ${escapeHtml(countText)} lagret.</span>
+      <span>Sporer bestilling, godkjenning, bestilt utkjøring og sletting. ${escapeHtml(countText)} lagret.</span>
     </div>
     <button class="drops-log-toggle-btn" type="button" data-drops-action="log-toggle" aria-expanded="${dropsVerkstedLogVisible ? "true" : "false"}">
       <span class="drops-log-icon" aria-hidden="true">☰</span>
@@ -58866,8 +58889,15 @@ function getDropsOrderStatus(order){
   const isRep = isRepMarker(repDreiValue) && !isDrei;
 
   if(isDrei || isRep) return {label:isDrei ? "DREI" : "REP", cls:"not-ready"};
+  if(typeof isAuthoritativeIkkeDriftsklar === "function"
+    && isAuthoritativeIkkeDriftsklar(vehicle, dropsVehicleStatusReadback || {})){
+    return {label:"Ikke driftsklar", cls:"not-ready"};
+  }
   if(!approved) return {label:"Ikke driftsklart", cls:"not-ready"};
-  if(order?.driftsklarAt) return {label:"Driftsklart", cls:"ready"};
+  if(typeof isWorkshopReportedDriftsklar === "function"
+    && isWorkshopReportedDriftsklar(vehicle, dropsVehicleStatusReadback || {})){
+    return {label:"Driftsklart", cls:"ready"};
+  }
   if(order?.workCompleteAt) return {label:"Ikke driftsklar", cls:"not-ready"};
   return {label:"Ikke driftsklar", cls:"not-ready"};
 }
@@ -58909,7 +58939,7 @@ function renderDropsWerkstedOrders(){
       </div>
       <p class="drops-work">${escapeHtml(order.work || "")}</p>
       ${order.workCompleteAt ? `<p class="drops-work"><strong>Bestilt utkjøring:</strong> ${escapeHtml(formatDropsTimestamp(order.workCompleteAt))}</p>` : ""}
-      ${order.driftsklarAt ? `<p class="drops-work"><strong>Driftsklart:</strong> ${escapeHtml(formatDropsTimestamp(order.driftsklarAt))}</p>` : ""}
+      ${isWorkshopReportedDriftsklar(order.vehicle, dropsVehicleStatusReadback || {}) ? `<p class="drops-work"><strong>Driftsklart (verksted):</strong> ${escapeHtml(formatDropsTimestamp(getAuthoritativeVehicleStatusPresentation(dropsVehicleStatusReadback || {}, order.vehicle)?.timestamp || ""))}</p>` : ""}
       <div class="drops-actions">
         <button class="drops-status-btn complete ${order.dropsApprovedAt ? "is-done" : ""}" type="button" data-drops-action="approve" data-drops-id="${escapeHtml(order.id)}" ${order.dropsApprovedAt ? "disabled" : ""}>
           <span class="drops-btn-icon">${order.dropsApprovedAt ? "✓" : "!"}</span>
@@ -58918,10 +58948,6 @@ function renderDropsWerkstedOrders(){
         <button class="drops-status-btn complete ${order.workCompleteAt ? "is-done" : ""}" type="button" data-drops-action="complete" data-drops-id="${escapeHtml(order.id)}" ${order.workCompleteAt ? "disabled" : ""}>
           <span class="drops-btn-icon">${order.workCompleteAt ? "✓" : "!"}</span>
           <span class="drops-btn-text">${order.workCompleteAt ? "Bestilt utkjøring" : "Under utbedring"}</span>
-        </button>
-        <button class="drops-status-btn ready ${order.driftsklarAt ? "is-done" : ""}" type="button" data-drops-action="ready" data-drops-id="${escapeHtml(order.id)}" ${order.driftsklarAt ? "disabled" : ""}>
-          <span class="drops-btn-icon">${order.driftsklarAt ? "✓" : "!"}</span>
-          <span class="drops-btn-text">${order.driftsklarAt ? "Driftsklart bekreftet" : "Ikke driftsklar"}</span>
         </button>
         <button class="drops-status-btn delete" type="button" data-drops-action="delete" data-drops-id="${escapeHtml(order.id)}">
           <span class="drops-btn-icon">×</span>
@@ -59024,7 +59050,7 @@ function buildDropsSkienStationOverviewHtml(){
     <div class="drops-station-header">
       <div class="drops-station-title">
         <strong>DROPS Materiellstyrer – Skien stasjon</strong>
-        <span>Oversikten under gjelder kjøretøy som står på Skien stasjon nå. Driftsklart bekreftet materiell vises som tilgjengelig/Res. selv om det fysisk står på verkstedspor.</span>
+        <span>Oversikten under gjelder kjøretøy som står på Skien stasjon nå. Bare verksted kan sette Driftsklar. DROPS kan ikke endre Ikke driftsklar til Driftsklar.</span>
       </div>
       <div class="drops-station-badge">${vehicles.length} registrert</div>
     </div>
@@ -59079,9 +59105,9 @@ function renderDropsMateriellstyrer(){
   const orders = getDropsVerkstedOrders();
   const logEntries = getDropsVerkstedLog();
   const logHtml = buildDropsVerkstedLogToggleHtml(logEntries.length) + buildDropsVerkstedLogPanelHtml(logEntries);
-  const ready = orders.filter(order=>order.driftsklarAt).length;
+  const ready = orders.filter(order=>isWorkshopReportedDriftsklar(order.vehicle, dropsVehicleStatusReadback || {})).length;
   const releaseNeeded = orders.filter(order=>order.workCompleteAt).length;
-  const dropsChoiceNeeded = orders.filter(order=>!order.dropsApprovedAt || order.workCompleteAt || order.driftsklarAt).length;
+  const dropsChoiceNeeded = orders.filter(order=>!order.dropsApprovedAt || order.workCompleteAt).length;
   const sdeActionPossible = orders.filter(order=>order.dropsApprovedAt && normalizeSlot(order.sdeRecommendedSlot || "")).length;
   const decisionMode = getDropsDecisionMode();
   const followSdeMode = decisionMode === "sde";
@@ -59123,7 +59149,7 @@ function renderDropsMateriellstyrer(){
       const isDropsApproved = !!order.dropsApprovedAt;
       const isSpecialStatus = status.label === "REP" || status.label === "DREI";
       const specialStatusLabel = status.label;
-      const isDriftsklar = !!order.driftsklarAt;
+      const isDriftsklar = isWorkshopReportedDriftsklar(order.vehicle, dropsVehicleStatusReadback || {});
       const isWorkComplete = !!order.workCompleteAt;
       const recommendedSlot = normalizeSlot(order.sdeRecommendedSlot || "");
       const routingMode = order.routingMode === "sde" ? "sde" : "manual";
@@ -59144,7 +59170,7 @@ function renderDropsMateriellstyrer(){
         : isDriftsklar
           ? requiresWorkshopRelease
             ? "Bestilt utkjøring – KREVER HANDLING. Kjøretøyet er driftsklart, men verkstedspor må fortsatt frigjøres raskt slik at nytt kjøretøy kan settes inn til reparasjon."
-            : "Driftsklart bekreftet. Behandles som Res./tilgjengelig materiell inntil DROPS eventuelt tursetter."
+            : "Verksted har meldt kjøretøyet driftsklart. Behandles som Res./tilgjengelig materiell inntil DROPS eventuelt tursetter."
           : requiresWorkshopRelease
             ? "Bestilt utkjøring – KREVER HANDLING. Kjøretøyet er fortsatt ikke driftsklart, men verkstedspor må frigjøres raskt slik at nytt kjøretøy kan settes inn til reparasjon."
             : "Under utbedring / ikke driftsklart. Skal ikke vurderes som trafikkklart.";
@@ -59193,7 +59219,7 @@ function renderDropsMateriellstyrer(){
           ? "Verksted har registrert behov. DROPS må ta stilling før kjøretøyet behandles videre i operativ materiellstyring."
           : requiresWorkshopRelease
             ? isDriftsklar
-              ? "Kjøretøyet er meldt driftsklart, men står fortsatt i verkstedflyt. Rask håndtering kan frigjøre kapasitet og gjøre materiellet tilgjengelig for tursetting, Res. eller videre parkering."
+              ? "Kjøretøyet er meldt driftsklart av verksted, men står fortsatt i verkstedflyt. Rask håndtering kan frigjøre kapasitet og gjøre materiellet tilgjengelig for tursetting, Res. eller videre parkering."
               : "Kjøretøyet skal ikke behandles som trafikkklart ennå, men utkjøring kan frigjøre verkstedspor slik at nytt materiell kan tas inn til arbeid."
             : isDriftsklar
               ? "Statusen kan nå omsettes til en DROPS-beslutning: tursett, sett som Res., parker som rep-/reserveflyt eller la kjøretøyet stå."
@@ -59228,7 +59254,7 @@ function renderDropsMateriellstyrer(){
           ? "Verkstedbehov registrert. Avventer at DROPS godkjenner bestilling av kjøretøy til verksted."
         : requiresWorkshopRelease
           ? isDriftsklar
-            ? "KREVER HANDLING: frigjør verkstedspor. Driftsklart bekreftet."
+            ? "KREVER HANDLING: frigjør verkstedspor. Verksted har meldt driftsklart."
             : "KREVER HANDLING: frigjør verkstedspor. Fortsatt ikke driftsklar."
           : isDriftsklar
             ? "Klar for Res.-/tursatt vurdering."
@@ -59295,10 +59321,6 @@ function renderDropsMateriellstyrer(){
             <button class="drops-status-btn complete ${isWorkComplete ? "is-done" : ""}${manualActionLockedClass}" type="button" data-drops-action="complete" data-drops-id="${escapeHtml(order.id)}" ${(isWorkComplete || manualActionsLocked) ? "disabled" : ""}>
               <span class="drops-btn-icon">${isWorkComplete ? "✓" : "!"}</span>
               <span class="drops-btn-text">${isWorkComplete ? "Utkjøring bestilt" : "Bestill utkjøring"}</span>
-            </button>
-            <button class="drops-status-btn ready ${isDriftsklar ? "is-done" : ""}${manualActionLockedClass}" type="button" data-drops-action="ready" data-drops-id="${escapeHtml(order.id)}" ${(isDriftsklar || manualActionsLocked) ? "disabled" : ""}>
-              <span class="drops-btn-icon">${isDriftsklar ? "✓" : "!"}</span>
-              <span class="drops-btn-text">${isDriftsklar ? "Driftsklart bekreftet" : "Bekreft driftsklart"}</span>
             </button>
           </div>`
         : "";
@@ -59703,7 +59725,7 @@ function initDropsPanels(){
     if(!button) return;
 
     const action = button.dataset.dropsAction;
-    if(!["approve","complete","ready","delete","routing-toggle","log-toggle","hero-mode"].includes(action)) return;
+    if(!["approve","complete","delete","routing-toggle","log-toggle","hero-mode"].includes(action)) return;
 
     if(action === "log-toggle"){
       dropsVerkstedLogVisible = !dropsVerkstedLogVisible;
@@ -59736,12 +59758,6 @@ function initDropsPanels(){
         const timestamp = new Date().toISOString();
         orders[index].workCompleteAt = timestamp;
         appendDropsVerkstedLogEvent(orders[index], "work_complete", "Bestilt utkjøring", timestamp);
-      }
-    }else if(action === "ready"){
-      if(!orders[index].driftsklarAt){
-        const timestamp = new Date().toISOString();
-        orders[index].driftsklarAt = timestamp;
-        appendDropsVerkstedLogEvent(orders[index], "ready", "Driftsklart bekreftet", timestamp);
       }
     }else if(action === "routing-toggle"){
       orders[index].routingMode = orders[index].routingMode === "sde" ? "manual" : "sde";
