@@ -9661,6 +9661,10 @@ button{padding:12px 12px}
   border-color:rgba(248,113,113,.88) !important;
   box-shadow:inset 0 0 0 1px rgba(254,202,202,.30),0 0 8px rgba(239,68,68,.30);
 }
+.sporplan-slot-overlay .slot.rep-slot:not(.drei-slot){
+  border-color:#dc2626 !important;
+  box-shadow:inset 0 0 0 1px rgba(254,202,202,.55),0 0 0 1px rgba(185,28,28,.95),0 0 7px rgba(220,38,38,.32);
+}
 .sporplan-slot-overlay .slot.rep-slot::before{
   content:none;
 }
@@ -16471,7 +16475,7 @@ function buildSporplanSlotOverlayModel(dataRows,options){
       info,
       vehicleId,
       filled,
-      isRepair:repSlots.has(normalizeSlot(slot)),
+      isRepair:repSlots.has(normalizeSlot(slot)) && !dreiSlots.has(normalizeSlot(slot)),
       isTurn:dreiSlots.has(normalizeSlot(slot)),
       planMarker:planSkifteMarkers[normalizeSlot(slot)] || null
     };
@@ -16562,7 +16566,7 @@ function buildSporplan(){
     const invalidVehicleMessage=vehicleId ? getVehicleNumberValidationMessage(vehicleId) : "";
     const duplicateVehicleInfo=duplicateVehicles[slot];
     if(invalidVehicleMessage || duplicateVehicleInfo) div.classList.add("invalid-vehicle");
-    if(isRepair) div.classList.add("rep-slot");
+    if(isRepair && !isTurn) div.classList.add("rep-slot");
     if(isTurn) div.classList.add("drei-slot");
     if(sharedCommonView && filled && info?.sharedDraft) div.classList.add("shared-draft-final-slot");
     const statusFrameClass=getSporplanVehicleStatusFrameClass(

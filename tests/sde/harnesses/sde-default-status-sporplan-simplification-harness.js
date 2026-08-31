@@ -101,9 +101,11 @@ assert.match(buildSporplan,/getSporplanVehicleAccessibilityLabel/);
 assert.doesNotMatch(buildSporplan,/>Rep<\/span>/);
 assert.doesNotMatch(buildSporplan,/>Drei<\/span>/);
 
+const overlayStart = source.indexOf(".sporplan-slot-overlay .slot.sporplan-status-operational");
+assert.ok(overlayStart >= 0, "missing Sporplan overlay status CSS");
 const overlayCss = source.slice(
-  source.indexOf(".sporplan-slot-overlay .slot.sporplan-status-operational"),
-  source.indexOf("#sporplan .yard-wrap")
+  overlayStart,
+  source.indexOf("#sporplan .yard-wrap", overlayStart)
 );
 assert.doesNotMatch(
   overlayCss,
@@ -112,6 +114,10 @@ assert.doesNotMatch(
 assert.doesNotMatch(
   overlayCss,
   /sporplan-status-turn,\s*\n?\.sporplan-slot-overlay \.slot\.drei-slot/
+);
+assert.match(
+  overlayCss,
+  /\.slot\.rep-slot:not\(\.drei-slot\)\s*\{[\s\S]{0,280}border-color:\s*#dc2626\s*!important/
 );
 
 assert.match(source,/Siste revisjon: 23\. august 2026/);
