@@ -442,6 +442,58 @@ test("malvariant klassifiseres eksplisitt fra struktur og trykte skjemabevis", (
   assert.equal(subject.detectTemplateVariant({title: "ukjent", verticalLineCount: 8}).templateId, "TEMPLATE_UNKNOWN");
 });
 
+function syntheticPhotographedTemplateBWithClutter(){
+  const width = 420;
+  const height = 560;
+  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
+  for(let index = 3; index < pixels.length; index += 4) pixels[index] = 255;
+  const shade = (x, y, value = 30) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  const rules = [17, 44, 73, 110, 144, 180, 220, 316, 407];
+  const slopes = [0.045, 0.038, 0.03, 0.022, 0.014, 0.006, -0.002, -0.011, -0.022];
+  for(let rule = 0; rule < rules.length; rule += 1){
+    const startY = 18;
+    for(let y = startY; y <= 520; y += 1){
+      const x = rules[rule] + slopes[rule] * (y - 42);
+      shade(x - 1, y);
+      shade(x, y);
+      shade(x + 1, y);
+    }
+  }
+  const extraVerticals = [30, 95, 198, 258];
+  for(const x of extraVerticals){
+    for(let y = 210; y <= 280; y += 1) shade(x, y, 120);
+  }
+  const topY = 42;
+  const spacing = 16;
+  for(let row = 0; row < 30; row += 1){
+    const y = topY + (row * spacing);
+    const left = rules[0] + slopes[0] * (y - 42);
+    const right = rules.at(-1) + slopes.at(-1) * (y - 42);
+    for(let x = Math.round(left); x <= Math.round(right); x += 1) shade(x, y, 30);
+  }
+  return {width, height, pixels};
+}
+
+test("tydelig fotografert skjema med ekstra vertikal støy og rader høyt i bildet registreres uten å gjette rader", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticPhotographedTemplateBWithClutter());
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_B");
+  assert.equal(detected.verticalLineCount, 9);
+  assert.equal(detected.horizontalLineCount, 30);
+  assert.equal(detected.rowGeometryStable, true);
+  assert.ok(detected.confidence >= 0.55, JSON.stringify(detected));
+  assert.equal(detected.canonicalRowBoundaries.length, 30);
+});
+
 test("fotografert Template B registreres som ni regler og 29 x 8 uten rad- eller kolonneforskyvning", () => {
   const subject = loadSubject();
   const detected = subject.detectFormRegistration(syntheticPhotographedTemplateB());
@@ -475,6 +527,14 @@ test("Template B med én svak venstre ytterregel registreres bare fra komplett �
   const unsafe = subject.detectFormRegistration(syntheticPhotographedTemplateB({omittedRules: [0, 2]}));
   assert.equal(unsafe.source, "FORM_GRID_REGISTRATION_FAILED", JSON.stringify(unsafe));
   assert.equal(unsafe.templateId, "TEMPLATE_UNKNOWN");
+
+  const inferredRight = subject.detectFormRegistration(syntheticPhotographedTemplateB({omittedRules: [8]}));
+  assert.equal(inferredRight.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(inferredRight));
+  assert.equal(inferredRight.templateId, "TEMPLATE_B");
+  assert.equal(inferredRight.verticalLineCount, 9);
+  assert.equal(inferredRight.observedVerticalLineCount, 8);
+  assert.equal(inferredRight.inferredVerticalBoundary, "RIGHT");
+  assert.equal(inferredRight.horizontalLineCount, 30);
 });
 
 test("Template B med ufullstendig radnett forblir fail-closed med konkret registreringsfeil", () => {
@@ -490,7 +550,7 @@ test("Template B med ufullstendig radnett forblir fail-closed med konkret regist
   assert.equal(detected.rowGeometryStable, false);
   assert.equal(
     subject.formRegistrationFailureMessage(detected),
-    "form_registration_failed · mal TEMPLATE_B · 9 vertikale linjer (8 observert; venstre yttergrense inferert) · fant 26 av 30 radlinjer · radgeometrien er ustabil · sikkerhet 0.879",
+    "form_registration_failed · mal TEMPLATE_B · 9 vertikale linjer (8 observert; venstre yttergrense inferert) · fant 26 av 30 radlinjer · radgeometrien er ustabil · sikkerhet 0.836",
   );
 });
 
