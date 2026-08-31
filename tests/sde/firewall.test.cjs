@@ -301,6 +301,13 @@ test("DROPS cannot grant Driftsklar — only workshop can clear Ikke driftsklar"
   );
 });
 
+test("Grafisk Rep-ramme følger gjeldende liste-R, også på verkstedspor etter ferdig skifte", () => {
+  assertPassed(
+    runHarness("sde-rep-frame-follows-list-harness.js"),
+    "graphic Rep frame follows current list marker",
+  );
+});
+
 test("SPORPLAN exact background — byte-locked artwork and 31 dynamic slot anchors stay isolated from the menu button", () => {
   assertPassed(
     runHarness("sde-sporplan-exact-background-harness.js"),
