@@ -29,8 +29,8 @@ const buildStart = index.indexOf("function buildOppstilling(){");
 const buildEnd = index.indexOf("function slotKind(", buildStart);
 const buildSource = buildStart >= 0 && buildEnd > buildStart ? index.slice(buildStart, buildEnd) : "";
 
-invariant("INV-TURSATT-LIVE-001", "revision is 23 August 2026", () =>
-  index.includes("Siste revisjon: 23. august 2026")
+invariant("INV-TURSATT-LIVE-001", "revision is 31 August 2026", () =>
+  index.includes("Siste revisjon: 31. august 2026")
 );
 
 invariant("INV-TURSATT-LIVE-002", "the live-arrival module is hash-bound before the inline app", () =>

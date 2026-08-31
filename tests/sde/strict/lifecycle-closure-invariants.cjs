@@ -106,7 +106,7 @@ put("INV-LIFECYCLE-033",fixture.intents.some(item=>item.vehicleId==="75-76"&&ite
 put("INV-LIFECYCLE-034",fixture.emptySlots.includes("VN")&&fixture.emptySlots.includes("VS")&&fixture.emptySlots.length>20,"fixture supplies many empty slots with VN and VS available");
 put("INV-LIFECYCLE-035",/buildSdeCanonicalAutomaticReplanRows/.test(source)&&/originalRequestedTarget/.test(functionSource("buildSdeCanonicalAutomaticReplanRows")),"automatic replan preserves original intent");
 put("INV-LIFECYCLE-036",/rejectedTargets/.test(source),"candidate rejection is tracked without ending the search");
-put("INV-LIFECYCLE-037",/Siste revisjon:\s*23\. august 2026/.test(source),"visible revision date is the actual candidate completion date, 23 August 2026");
+put("INV-LIFECYCLE-037",/Siste revisjon:\s*31\. august 2026/.test(source),"visible revision date is the actual candidate completion date, 31 August 2026");
 put("INV-LIFECYCLE-038",/!\["completed","cancelled"\]\.includes\(actionType\)/.test(productAction)&&/Slett er ikke en operativ handling/.test(productAction)&&!/deleteSdeLocalMoveCard/.test(productAction),"canonical product handler exposes only Utført and Annullert; local deletion is not an operative product action");
 
 const failed = results.filter(item=>item.status==="FAIL");
