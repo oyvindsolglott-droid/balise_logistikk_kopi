@@ -466,8 +466,12 @@ function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell
     : cell.columnId === "notes" || cell.columnId === "info" ? 0.085
       : cell.columnId === "wcWater" ? 0.13
         : 0.12;
-  const saturatedWithoutContent = inkRatio > 0.68 && blankClassification.meaningfulComponentCount === 0;
-  const blank = blankClassification.blank || inkRatio < minimumInkRatio || saturatedWithoutContent;
+  const hasMeaningfulInk = blankClassification.blank !== true && blankClassification.meaningfulComponentCount > 0;
+  const saturatedWithoutContent = inkRatio > 0.68 && !hasMeaningfulInk;
+  // Sparse but classified handwriting (a few dark glyphs in a wide cell) must
+  // still reach the recognizer. The ink-ratio floor only rejects empty noise.
+  const blank = blankClassification.blank || saturatedWithoutContent
+    || (!hasMeaningfulInk && inkRatio < minimumInkRatio);
   const printPasses = templateAHandwritingOnly
     ? adaptivePasses
     : layerPreprocessingPasses(separated.printInk, grayscale);
