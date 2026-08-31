@@ -590,6 +590,34 @@
     return Object.freeze(candidates);
   }
 
+  function consecutiveRowSpacings(matchedByRow){
+    const spacings = [];
+    for(let row = 1; row < matchedByRow.length; row += 1){
+      const previous = matchedByRow[row - 1];
+      const current = matchedByRow[row];
+      if(previous && current){
+        spacings.push(current.yAtReference - previous.yAtReference);
+      }
+    }
+    return spacings;
+  }
+
+  function medianValue(values){
+    if(!values.length) return null;
+    const sorted = [...values].sort((left, right) => left - right);
+    return sorted[Math.floor(sorted.length / 2)];
+  }
+
+  function gridSpacingCost(matchedByRow){
+    const spacings = consecutiveRowSpacings(matchedByRow);
+    if(spacings.length < 8) return Number.POSITIVE_INFINITY;
+    const restMedian = medianValue(spacings.slice(1)) || medianValue(spacings);
+    if(!(restMedian > 0)) return Number.POSITIVE_INFINITY;
+    const firstOutlier = Math.abs(spacings[0] - restMedian) / restMedian;
+    const meanAbs = spacings.reduce((sum, gap) => sum + Math.abs(gap - restMedian), 0) / spacings.length / restMedian;
+    return firstOutlier + (meanAbs * 0.5);
+  }
+
   function selectHorizontalGrid(candidates, perspective, width, height, template, diagnostics = null){
     const topCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.05 && candidate.yAtReference <= height * 0.34);
     const bottomCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.82 && candidate.yAtReference <= height * 0.995);
@@ -630,14 +658,15 @@
         }
         if(matched.length < 26) continue;
         const score = (matched.length * 100) + evidenceScore;
+        const spacingCost = gridSpacingCost(matchedByRow);
         const moreRows = !best || matched.length > best.matched.length;
-        const sameRowsEarlierTop = best && matched.length === best.matched.length
-          && top.yAtReference < best.topImageY - 3;
-        const sameTopBetterEvidence = best && matched.length === best.matched.length
-          && Math.abs(top.yAtReference - best.topImageY) <= 3
+        const sameRowsMoreRegular = best && matched.length === best.matched.length
+          && spacingCost < best.spacingCost - 0.05;
+        const sameRowsBetterEvidence = best && matched.length === best.matched.length
+          && Math.abs(spacingCost - best.spacingCost) <= 0.05
           && score > best.score;
-        if(moreRows || sameRowsEarlierTop || sameTopBetterEvidence){
-          best = {score, topImageY: top.yAtReference, topCanonicalY: topCanonical.y, bottomCanonicalY: bottomCanonical.y, matched, matchedByRow};
+        if(moreRows || sameRowsMoreRegular || sameRowsBetterEvidence){
+          best = {score, spacingCost, topImageY: top.yAtReference, topCanonicalY: topCanonical.y, bottomCanonicalY: bottomCanonical.y, matched, matchedByRow};
         }
       }
     }
@@ -647,6 +676,8 @@
       diagnostics.maximumMatchedBottom = maximumMatchedBottom;
       diagnostics.topCandidateCount = topCandidates.length;
       diagnostics.bottomCandidateCount = bottomCandidates.length;
+      diagnostics.selectedTopImageY = best?.topImageY ?? null;
+      diagnostics.selectedSpacingCost = best?.spacingCost ?? null;
     }
     if(!best) return null;
     const canonicalRowBoundaries = best.matchedByRow.map(line => line
