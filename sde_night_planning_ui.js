@@ -5,7 +5,7 @@
   let htrLogic = root.SdeHandwritingRecognition || null;
   let htrRuntime = root.SdeHandwritingRuntime || null;
   const HTR_MODULE_SOURCES = Object.freeze([
-    Object.freeze({globalName: "SdeHandwritingRecognition", source: "sde_handwriting_recognition.js?v=479dd6d3c7cb1e150f0b89cd99ebca29dca6d975b222d5e8759406994b3e1f52"}),
+    Object.freeze({globalName: "SdeHandwritingRecognition", source: "sde_handwriting_recognition.js?v=2a1d81fbeddcb60dd71f4096f9027b0bf60b3414ea20fbc375f14e0b574b3cbb"}),
     Object.freeze({globalName: "SdeHandwritingRuntime", source: "sde_handwriting_runtime.js?v=fec96bb8077c401ec73b64aaf75642fe53f4a7f010a9bd6632e90f424db29afe"}),
   ]);
   const API_ROOT = "/api/night-plans";
@@ -863,7 +863,7 @@
     if (!htrLogic.supportsLocalRuntime(root)) throw new Error("local_htr_runtime_unavailable");
     ocrAnalyzer = htrRuntime.createLocalHandwritingAnalyzer({
       environment: root,
-      workerUrl: new URL("sde_handwriting_worker.js?v=1ac7f9dba2f0f9ce2bf279da6e890269504f4bb4a4dcab15241d85228a199088", document.baseURI).href,
+      workerUrl: new URL("sde_handwriting_worker.js?v=40372a2f2b5251e40a87ff9c15ac16f4d013555e517126216dc9a2150a33f47b", document.baseURI).href,
       maximumDimension: 1800,
     });
     return ocrAnalyzer;
