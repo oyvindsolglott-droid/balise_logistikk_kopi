@@ -592,6 +592,66 @@ test("trykt toppfelt over datanettet blir ikke rad 0 på fotografert Template B"
   assert.ok(Math.abs(secondGap - spacing) / spacing < 0.2, JSON.stringify({first, secondGap, spacing}));
 });
 
+function syntheticTemplateBWithPaperMargin(){
+  const width = 1200;
+  const height = 1500;
+  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
+  for(let index = 3; index < pixels.length; index += 4) pixels[index] = 255;
+  const shade = (x, y, value = 35) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  const columns = [20, 100, 185, 292, 393, 497, 617, 896, 1178];
+  const formTop = 120;
+  const dataTop = 270;
+  const dataBottom = 1450;
+  const rowHeight = (dataBottom - dataTop) / 29;
+  for(let x = columns[0]; x <= columns.at(-1); x += 1){
+    shade(x, formTop);
+    shade(x, 135);
+    shade(x, 190);
+    shade(x, dataTop);
+    shade(x, dataBottom);
+  }
+  for(let y = formTop; y <= dataBottom; y += 1){
+    shade(columns[0], y);
+    shade(columns.at(-1), y);
+  }
+  for(const x of columns){
+    for(let y = 135; y <= dataBottom; y += 1) shade(x, y);
+  }
+  for(let row = 0; row < 30; row += 1){
+    const y = Math.round(dataTop + (row * rowHeight));
+    for(let x = columns[0]; x <= columns.at(-1); x += 1) shade(x, y, 78);
+  }
+  return {width, height, pixels};
+}
+
+test("Template B med papirmarg over skjemaet beholder Dato i toppfeltet, ikke i margen", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticTemplateBWithPaperMargin());
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_B");
+  assert.ok(detected.corners[0].y > 80 && detected.corners[0].y < 160, JSON.stringify(detected.corners));
+  const registration = subject.registerTemplate({
+    imageWidth: 1200,
+    imageHeight: 1500,
+    templateId: detected.templateId,
+    quadrilateral: detected.corners,
+    rowBoundaries: detected.canonicalRowBoundaries,
+  });
+  const dateBox = registration.metadataCells.find(cell => cell.columnId === "date").boundingBox;
+  assert.ok(dateBox.y0 < 145 && dateBox.y1 > 155, JSON.stringify(dateBox));
+  assert.ok(dateBox.y0 > 90, JSON.stringify(dateBox));
+  const firstData = registration.cells.find(cell => cell.rowIndex === 0 && cell.columnId === "arrivalTime").boundingBox;
+  assert.ok(firstData.y0 < 278 && firstData.y1 > 278, JSON.stringify(firstData));
+});
+
 test("fotografert Template B registreres som ni regler og 29 x 8 uten rad- eller kolonneforskyvning", () => {
   const subject = loadSubject();
   const detected = subject.detectFormRegistration(syntheticPhotographedTemplateB());

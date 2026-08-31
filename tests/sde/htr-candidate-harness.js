@@ -30,7 +30,7 @@ window.inspectCandidate().then(result => {
 });
 
 const analyzer = window.SdeHandwritingRuntime.createLocalHandwritingAnalyzer({
-  workerUrl: new URL("../../sde_handwriting_worker.js?v=178501ce3feff6052afbba8c1ed191664add3e0f1f3971f50f044b467e14647c", document.baseURI).href,
+  workerUrl: new URL("../../sde_handwriting_worker.js?v=a7a608937ab84c25b3cc3d0cd560d6c25cd66f6daa68022138252394a3abc647", document.baseURI).href,
 });
 document.getElementById("privateImage").addEventListener("change", async event => {
   const file = event.target.files && event.target.files[0];

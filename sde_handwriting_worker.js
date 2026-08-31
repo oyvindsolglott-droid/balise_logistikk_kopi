@@ -1,4 +1,4 @@
-import "./sde_handwriting_recognition.js?v=699567f05d79921c003c4c24a43b50687e5069560f40c9493058e9be7ceaca63";
+import "./sde_handwriting_recognition.js?v=84bd8ab88a59ea713015820d520e2ecfb3aade3aebce8f29017dd776ef3993e6";
 import * as ort from "./assets/vendor/onnxruntime-web/ort.wasm.min.mjs";
 
 const htr = globalThis.SdeHandwritingRecognition;
@@ -466,7 +466,8 @@ function cellInputTensor(pixels, imageWidth, imageHeight, inverseTransform, cell
     : cell.columnId === "notes" || cell.columnId === "info" ? 0.085
       : cell.columnId === "wcWater" ? 0.13
         : 0.12;
-  const blank = blankClassification.blank || inkRatio < minimumInkRatio || inkRatio > 0.68;
+  const saturatedWithoutContent = inkRatio > 0.68 && blankClassification.meaningfulComponentCount === 0;
+  const blank = blankClassification.blank || inkRatio < minimumInkRatio || saturatedWithoutContent;
   const printPasses = templateAHandwritingOnly
     ? adaptivePasses
     : layerPreprocessingPasses(separated.printInk, grayscale);

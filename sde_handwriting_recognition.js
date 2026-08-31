@@ -535,7 +535,7 @@
 
   function bestHorizontalBoundary(pixels, width, height, edge, expectedSlope = null, inkThreshold = 145){
     const referenceX = width * 0.5;
-    const start = edge === "top" ? Math.floor(height * 0.012) : Math.floor(height * 0.78);
+    const start = edge === "top" ? Math.max(1, Math.floor(height * 0.001)) : Math.floor(height * 0.78);
     const end = edge === "top" ? Math.ceil(height * 0.22) : Math.ceil(height * 0.995);
     const candidates = [];
     for(let y = start; y <= end; y += 2){
@@ -566,7 +566,7 @@
     return Object.freeze({x, y: horizontalIntercept + (horizontal.slope * x)});
   }
 
-  function horizontalGridCandidates(pixels, width, height, scanStartX, scanEndX, scanStartRatio = 0.05, inkThreshold = 145){
+  function horizontalGridCandidates(pixels, width, height, scanStartX, scanEndX, scanStartRatio = 0, inkThreshold = 145){
     const referenceX = width * 0.5;
     const values = [];
     for(let y = Math.floor(height * scanStartRatio); y <= Math.ceil(height * 0.995); y += 2){
@@ -728,16 +728,47 @@
     });
   }
 
-  function reconstructOuterFormCorners(template, left, right, verticalReferenceY, imageDataTopY, imageDataBottomY, horizontalSlope, width){
+  function snapOuterFormBoundary(candidates, expectedY, dataY, edge, slope, width){
+    const referenceX = width * 0.5;
+    const inferred = Object.freeze({yAtReference: expectedY, slope, referenceX, inferred: true});
+    if(!Array.isArray(candidates) || !candidates.length) return inferred;
+    const margin = 8;
+    const band = candidates.filter(candidate => (
+      candidate.coverage >= 0.45
+      && Number.isFinite(candidate.yAtReference)
+      && (edge === "top"
+        ? candidate.yAtReference < dataY - margin
+        : candidate.yAtReference > dataY + margin)
+    ));
+    if(!band.length) return inferred;
+    return band.sort((left, right) => (
+      Math.abs(left.yAtReference - expectedY) - Math.abs(right.yAtReference - expectedY)
+    ))[0];
+  }
+
+  function outerFormCornersFromDataGrid(template, left, right, verticalReferenceY, horizontalGrid, candidates, width){
     const dataSpanCanonical = template.dataBottom - template.dataTop;
-    const dataSpanImage = imageDataBottomY - imageDataTopY;
+    const dataSpanImage = horizontalGrid.imageDataBottomY - horizontalGrid.imageDataTopY;
     if(!(dataSpanCanonical > 0) || !(dataSpanImage > 0)) return null;
     const scale = dataSpanImage / dataSpanCanonical;
-    const topY = imageDataTopY - (template.dataTop * scale);
-    const bottomY = imageDataTopY + ((template.height - template.dataTop) * scale);
-    const referenceX = width * 0.5;
-    const top = {yAtReference: topY, slope: horizontalSlope, referenceX};
-    const bottom = {yAtReference: bottomY, slope: horizontalSlope, referenceX};
+    const expectedTopY = horizontalGrid.imageDataTopY - (template.dataTop * scale);
+    const expectedBottomY = horizontalGrid.imageDataTopY + ((template.height - template.dataTop) * scale);
+    const top = snapOuterFormBoundary(
+      candidates,
+      expectedTopY,
+      horizontalGrid.imageDataTopY,
+      "top",
+      horizontalGrid.horizontalSlope,
+      width,
+    );
+    const bottom = snapOuterFormBoundary(
+      candidates,
+      expectedBottomY,
+      horizontalGrid.imageDataBottomY,
+      "bottom",
+      horizontalGrid.horizontalSlope,
+      width,
+    );
     return Object.freeze([
       intersectVerticalHorizontal(left, verticalReferenceY, top),
       intersectVerticalHorizontal(right, verticalReferenceY, top),
@@ -827,7 +858,7 @@
         height,
         scanStartX,
         scanEndX,
-        0.05,
+        0,
         inkThreshold,
       );
       const horizontalSlopes = diagnosticHorizontalCandidates
@@ -876,14 +907,13 @@
           diagnosticHorizontalSelection,
         );
         if(horizontalGrid){
-          const reconstructedCorners = reconstructOuterFormCorners(
+          const reconstructedCorners = outerFormCornersFromDataGrid(
             template,
             left,
             right,
             lines.referenceY,
-            horizontalGrid.imageDataTopY,
-            horizontalGrid.imageDataBottomY,
-            horizontalGrid.horizontalSlope,
+            horizontalGrid,
+            diagnosticHorizontalCandidates,
             width,
           );
           let outerCorners = corners;
