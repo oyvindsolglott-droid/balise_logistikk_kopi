@@ -630,9 +630,13 @@
         }
         if(matched.length < 26) continue;
         const score = (matched.length * 100) + evidenceScore;
-        const earlierTop = !best || top.yAtReference < best.topImageY - 3;
-        const sameTopBetterEvidence = best && Math.abs(top.yAtReference - best.topImageY) <= 3 && score > best.score;
-        if(earlierTop || sameTopBetterEvidence){
+        const moreRows = !best || matched.length > best.matched.length;
+        const sameRowsEarlierTop = best && matched.length === best.matched.length
+          && top.yAtReference < best.topImageY - 3;
+        const sameTopBetterEvidence = best && matched.length === best.matched.length
+          && Math.abs(top.yAtReference - best.topImageY) <= 3
+          && score > best.score;
+        if(moreRows || sameRowsEarlierTop || sameTopBetterEvidence){
           best = {score, topImageY: top.yAtReference, topCanonicalY: topCanonical.y, bottomCanonicalY: bottomCanonical.y, matched, matchedByRow};
         }
       }

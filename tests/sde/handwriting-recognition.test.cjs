@@ -471,6 +471,7 @@ function syntheticPhotographedTemplateBWithClutter(){
   for(const x of extraVerticals){
     for(let y = 210; y <= 280; y += 1) shade(x, y, 120);
   }
+  for(let x = 16; x <= 406; x += 1) shade(x, 28);
   const topY = 42;
   const spacing = 16;
   for(let row = 0; row < 30; row += 1){
