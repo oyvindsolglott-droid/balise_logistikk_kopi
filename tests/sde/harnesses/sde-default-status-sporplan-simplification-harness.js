@@ -117,7 +117,7 @@ assert.doesNotMatch(
 );
 assert.match(
   overlayCss,
-  /\.slot\.rep-slot:not\(\.drei-slot\)\s*\{[\s\S]{0,280}border-color:\s*#dc2626\s*!important/
+  /\.slot\.rep-slot:not\(\.drei-slot\)(?:,\s*\.sporplan-slot-overlay \.slot\.rep-slot:not\(\.drei-slot\)\.sporplan-status-operational)?\s*\{[\s\S]{0,280}border-color:\s*#dc2626\s*!important/
 );
 
 assert.match(source,/Siste revisjon: 31\. august 2026/);

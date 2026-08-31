@@ -134,7 +134,7 @@ assert.match(
 );
 assert.match(
   source,
-  /\.sporplan-slot-overlay\s+\.slot\.rep-slot:not\(\.drei-slot\)\s*\{[\s\S]{0,280}border-color:\s*#dc2626\s*!important/,
+  /\.sporplan-slot-overlay\s+\.slot\.rep-slot:not\(\.drei-slot\)(?:,\s*\.sporplan-slot-overlay \.slot\.rep-slot:not\(\.drei-slot\)\.sporplan-status-operational)?\s*\{[\s\S]{0,280}border-color:\s*#dc2626\s*!important/,
   "local Rep marker must keep a thin red Sporplan frame even when DROPS is Driftsklar",
 );
 assert.match(

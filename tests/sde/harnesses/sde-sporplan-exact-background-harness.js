@@ -123,6 +123,7 @@ vm.runInContext(`
   const inputSlots=${JSON.stringify(inputSlots)};
   const SPORPLAN_SLOT_ANCHORS=Object.freeze(${JSON.stringify(anchors)});
   function normalizeSlot(value){ return String(value || "").trim().toUpperCase(); }
+  function normalizeVehicleToken(value){ return String(value || "").trim().toUpperCase().replace(/\\s+/g,""); }
   ${overlayModelSource}
   this.buildSporplanSlotOverlayModel=buildSporplanSlotOverlayModel;
 `, context);

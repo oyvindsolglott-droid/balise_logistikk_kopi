@@ -9661,7 +9661,8 @@ button{padding:12px 12px}
   border-color:rgba(248,113,113,.88) !important;
   box-shadow:inset 0 0 0 1px rgba(254,202,202,.30),0 0 8px rgba(239,68,68,.30);
 }
-.sporplan-slot-overlay .slot.rep-slot:not(.drei-slot){
+.sporplan-slot-overlay .slot.rep-slot:not(.drei-slot),
+.sporplan-slot-overlay .slot.rep-slot:not(.drei-slot).sporplan-status-operational{
   border-color:#dc2626 !important;
   box-shadow:inset 0 0 0 1px rgba(254,202,202,.55),0 0 0 1px rgba(185,28,28,.95),0 0 7px rgba(220,38,38,.32);
 }
@@ -12762,6 +12763,16 @@ function getKveldRepSlots(dataRows){
   });
 
   return slots;
+}
+
+function collectListRepVehicleTokens(){
+  const tokens = new Set();
+  Object.entries(state.grunnoppstilling || {}).forEach(([slot,vehicle])=>{
+    const marker = state.grunnoppstillingRep?.[normalizeSlot(slot)];
+    if(!isRepMarker(marker) || isDreiMarker(marker)) return;
+    splitVehicleList(vehicle).map(normalizeVehicleToken).filter(Boolean).forEach(token=>tokens.add(token));
+  });
+  return tokens;
 }
 
 function getDreiSlots(){
@@ -16254,6 +16265,7 @@ function buildLegacySporplanRetired(){
   const data=Object.fromEntries(dataRows.map(r=>[r.slot,r]));
   const repSlots = getKveldRepSlots(dataRows);
   const dreiSlots = getDreiSlots();
+  const repVehicles = collectListRepVehicleTokens();
   const suppressLocalVisualOverlay = sharedCommonView;
   const planSkifteMarkers = getPlanSkifteMarkersBySlot();
   const grid=document.getElementById("yardGrid");
@@ -16304,8 +16316,8 @@ function buildLegacySporplanRetired(){
       const duplicateVehicleInfo = duplicateVehicles[slot];
       if(invalidVehicleMessage) div.classList.add("invalid-vehicle");
       if(duplicateVehicleInfo) div.classList.add("invalid-vehicle");
-      if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
       if(dreiSlots.has(normalizeSlot(slot))) div.classList.add("drei-slot");
+      else if(repSlots.has(normalizeSlot(slot)) || (info.mat && repVehicles.has(normalizeVehicleToken(info.mat)))) div.classList.add("rep-slot");
       if(sharedCommonView && filled && info.sharedDraft) div.classList.add("shared-draft-final-slot");
 
       const planMarker = suppressLocalVisualOverlay ? null : (planSkifteMarkers[normalizeSlot(slot)] || null);
@@ -16401,8 +16413,8 @@ function buildLegacySporplanRetired(){
       const duplicateVehicleInfo = duplicateVehicles[slot];
       if(invalidVehicleMessage) div.classList.add("invalid-vehicle");
       if(duplicateVehicleInfo) div.classList.add("invalid-vehicle");
-      if(repSlots.has(normalizeSlot(slot))) div.classList.add("rep-slot");
       if(dreiSlots.has(normalizeSlot(slot))) div.classList.add("drei-slot");
+      else if(repSlots.has(normalizeSlot(slot)) || (info.mat && repVehicles.has(normalizeVehicleToken(info.mat)))) div.classList.add("rep-slot");
       if(sharedCommonView && filled && info.sharedDraft) div.classList.add("shared-draft-final-slot");
 
       div.dataset.slot = slot;
@@ -16482,20 +16494,30 @@ function buildSporplanSlotOverlayModel(dataRows,options){
   ]));
   const repSlots=options?.repSlots instanceof Set ? options.repSlots : new Set();
   const dreiSlots=options?.dreiSlots instanceof Set ? options.dreiSlots : new Set();
+  const repVehicles=options?.repVehicles instanceof Set ? options.repVehicles : new Set();
   const planSkifteMarkers=options?.planSkifteMarkers || {};
   return inputSlots.map(slot=>{
     const info=data[slot] || {tog:"",mat:"",wash:false};
     const vehicleId=String(info?.vehicleId || info?.vehicle || info?.mat || "").trim();
     const filled=Boolean(String(info?.tog || "").trim() || vehicleId);
+    const normalizedSlot=normalizeSlot(slot);
+    const isTurn=dreiSlots.has(normalizedSlot);
+    const vehicleToken=typeof normalizeVehicleToken === "function"
+      ? normalizeVehicleToken(vehicleId)
+      : String(vehicleId || "").trim().toUpperCase().replace(/\s+/g,"");
+    const isRepair=!isTurn && (
+      repSlots.has(normalizedSlot) ||
+      Boolean(vehicleToken && repVehicles.has(vehicleToken))
+    );
     return {
       slot,
       anchor:SPORPLAN_SLOT_ANCHORS[slot],
       info,
       vehicleId,
       filled,
-      isRepair:repSlots.has(normalizeSlot(slot)),
-      isTurn:dreiSlots.has(normalizeSlot(slot)),
-      planMarker:planSkifteMarkers[normalizeSlot(slot)] || null
+      isRepair,
+      isTurn,
+      planMarker:planSkifteMarkers[normalizedSlot] || null
     };
   });
 }
@@ -16544,6 +16566,7 @@ function buildSporplan(){
   const dataRows = computeCanonicalActualPlacementViewRows();
   const repSlots=getKveldRepSlots(dataRows);
   const dreiSlots=getDreiSlots();
+  const repVehicles=collectListRepVehicleTokens();
   const planSkifteMarkers=getPlanSkifteMarkersBySlot();
   const grid=document.getElementById("yardGrid");
   const washGrid=document.getElementById("yardWashMachine");
@@ -16557,6 +16580,7 @@ function buildSporplan(){
   const overlayModels=buildSporplanSlotOverlayModel(dataRows,{
     repSlots,
     dreiSlots,
+    repVehicles,
     planSkifteMarkers
   });
 
