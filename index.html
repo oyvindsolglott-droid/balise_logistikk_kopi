@@ -42616,12 +42616,17 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     }
   }
 
+  const acceptedCompleteRelief = assessment.hardPhysicalBlocked === true
+    && Boolean(assessment.freeingMove)
+    && assessment.noSafeReleaseMove !== true;
   getSdeNightPlacementManualOverrides()[key] = override;
   sdeNightPlacementBlockedMoveRequest = null;
   sdeNightPlacementDropMessage = {
-    type:assessment.timeStatus === "OK_TIME_KNOWN" ? "info" : "warning",
+    type:acceptedCompleteRelief || assessment.timeStatus === "OK_TIME_KNOWN" ? "info" : "warning",
     slot:assessment.toSlot,
-    text:assessment.message,
+    text:acceptedCompleteRelief
+      ? `Bestilling opprettet: ${assessment.vehicle} ${originalFromSlot} → ${assessment.toSlot}. Frigjør → hoved → tilbake er planlagt. Bare det første steget kan utføres nå.`
+      : assessment.message,
     timeStatus:assessment.timeStatus
   };
   persist(true);
@@ -43334,6 +43339,9 @@ function buildSdeNightPlacementOverviewData(data=getSdeShiftShowcaseData()){
     })),
     reservePlacements,
     warnings,
+    confirmation:sdeNightPlacementDropMessage && sdeNightPlacementDropMessage.type !== "error"
+      ? sdeNightPlacementDropMessage
+      : null,
     rejectedSlot:sdeNightPlacementDropMessage?.type === "error" && sdeNightPlacementDropMessage?.physicalTargetUnavailable === true
       ? normalizeSlot(sdeNightPlacementDropMessage.slot)
       : "", // SDE_EMPTY_TARGET_NEVER_RED_FOR_RELIEF

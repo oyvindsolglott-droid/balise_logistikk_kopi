@@ -939,11 +939,15 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
             browser.close()
 
 
-class SdeLegacyShadowEmptyDropHandler(http.server.SimpleHTTPRequestHandler):
+class SdeLegacyShadowEmptyDropHandler(SdeEmptyDropHandler):
     server_version = "SdeLegacyShadowDropTest/1"
 
-    def log_message(self, _format: str, *_args: object) -> None:
-        return
+    def do_GET(self) -> None:
+        request_path = urlsplit(self.path).path
+        if request_path in ("/", "/index.html"):
+            http.server.SimpleHTTPRequestHandler.do_GET(self)
+            return
+        super().do_GET()
 
 
 @contextlib.contextmanager
@@ -996,7 +1000,7 @@ class SdeLegacyShadowThreeStepDragTests(unittest.TestCase):
                 [["10N", "VN", "prerequisite"], ["11S", "10S", "dependent"], ["VN", "10N", "return"]],
                 result,
             )
-            self.assertNotEqual(result["messageType"], "error", result)
+            self.assertEqual(result["messageType"], "info", result)
             self.assertFalse(result["blockedRequest"], result)
             self.assertEqual(page.evaluate("JSON.stringify(state.grunnoppstilling)"), actual_before)
             self.assertEqual(page_errors, [])
