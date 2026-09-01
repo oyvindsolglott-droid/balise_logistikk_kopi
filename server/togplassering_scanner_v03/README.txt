@@ -32,4 +32,3 @@ Avgrensning
 v0.3 er spesialisert for den faste «TOGPLASSERING SKIEN»-malen. Ved sterkt beskåret,
 rotert eller delvis skjult skjema skal den heller feile enn å late som geometri er korrekt.
 Det er tilsiktet.
-

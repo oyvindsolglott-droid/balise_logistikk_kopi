@@ -14,4 +14,3 @@ if missing:
 PY
 open "http://127.0.0.1:8788" >/dev/null 2>&1 &
 python app.py
-
