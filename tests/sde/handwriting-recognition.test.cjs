@@ -442,6 +442,216 @@ test("malvariant klassifiseres eksplisitt fra struktur og trykte skjemabevis", (
   assert.equal(subject.detectTemplateVariant({title: "ukjent", verticalLineCount: 8}).templateId, "TEMPLATE_UNKNOWN");
 });
 
+function syntheticPhotographedTemplateBWithClutter(){
+  const width = 420;
+  const height = 560;
+  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
+  for(let index = 3; index < pixels.length; index += 4) pixels[index] = 255;
+  const shade = (x, y, value = 30) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  const rules = [17, 44, 73, 110, 144, 180, 220, 316, 407];
+  const slopes = [0.045, 0.038, 0.03, 0.022, 0.014, 0.006, -0.002, -0.011, -0.022];
+  for(let rule = 0; rule < rules.length; rule += 1){
+    const startY = 18;
+    for(let y = startY; y <= 520; y += 1){
+      const x = rules[rule] + slopes[rule] * (y - 42);
+      shade(x - 1, y);
+      shade(x, y);
+      shade(x + 1, y);
+    }
+  }
+  const extraVerticals = [30, 95, 198, 258];
+  for(const x of extraVerticals){
+    for(let y = 210; y <= 280; y += 1) shade(x, y, 120);
+  }
+  for(let x = 16; x <= 406; x += 1) shade(x, 28);
+  const topY = 42;
+  const spacing = 16;
+  for(let row = 0; row < 30; row += 1){
+    const y = topY + (row * spacing);
+    const left = rules[0] + slopes[0] * (y - 42);
+    const right = rules.at(-1) + slopes.at(-1) * (y - 42);
+    for(let x = Math.round(left); x <= Math.round(right); x += 1) shade(x, y, 30);
+  }
+  return {width, height, pixels};
+}
+
+function syntheticPhotographedTemplateBWithHeaderBands(){
+  const frame = syntheticPhotographedTemplateB();
+  const {width, height, pixels} = frame;
+  const shade = (x, y, value = 30) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  for(const y of [48, 72]){
+    for(let x = 16; x <= 406; x += 1) shade(x, y, 30);
+  }
+  return frame;
+}
+
+test("tydelig fotografert skjema med ekstra vertikal støy og rader høyt i bildet registreres uten å gjette rader", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticPhotographedTemplateBWithClutter());
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_B");
+  assert.equal(detected.verticalLineCount, 9);
+  assert.equal(detected.horizontalLineCount, 30);
+  assert.equal(detected.rowGeometryStable, true);
+  assert.ok(detected.confidence >= 0.55, JSON.stringify(detected));
+  assert.equal(detected.canonicalRowBoundaries.length, 30);
+});
+
+function syntheticTemplateAWithPrintedTitleSeparator(){
+  const width = 1200;
+  const height = 1500;
+  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
+  for(let index = 3; index < pixels.length; index += 4) pixels[index] = 255;
+  const shade = (x, y, value = 36) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  const columns = [26, 168, 329, 484, 636, 770, 1174];
+  const dataTop = 285;
+  const dataBottom = 1465;
+  const rowHeight = (dataBottom - dataTop) / 29;
+  for(let x = 1; x <= 1198; x += 1){
+    shade(x, 1);
+    shade(x, 80);
+    shade(x, 150);
+    shade(x, dataTop);
+    shade(x, 1498);
+  }
+  for(let y = 1; y <= 1498; y += 1){
+    shade(1, y);
+    shade(1198, y);
+  }
+  for(const x of columns){
+    for(let y = 150; y <= dataBottom; y += 1) shade(x, y);
+  }
+  for(let row = 0; row < 30; row += 1){
+    const y = Math.round(dataTop + (row * rowHeight));
+    for(let x = columns[0]; x <= columns.at(-1); x += 1) shade(x, y, 85);
+  }
+  return {width, height, pixels};
+}
+
+test("trykt tittellinje blir ikke skjematopp, og datofeltet treffer håndskriften over datanettet", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticTemplateAWithPrintedTitleSeparator());
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_A");
+  assert.equal(detected.horizontalLineCount, 30);
+  assert.equal(detected.rowGeometryStable, true);
+  assert.ok(detected.corners[0].y < 40, JSON.stringify(detected.corners));
+  assert.ok(detected.corners[1].y < 40, JSON.stringify(detected.corners));
+  const first = detected.canonicalRowBoundaries[0];
+  assert.ok(Math.abs(first - 285) < 25, JSON.stringify({first, corners: detected.corners}));
+  const registration = subject.registerTemplate({
+    imageWidth: 1200,
+    imageHeight: 1500,
+    templateId: detected.templateId,
+    quadrilateral: detected.corners,
+    rowBoundaries: detected.canonicalRowBoundaries,
+  });
+  const dateBox = registration.metadataCells.find(cell => cell.columnId === "date").boundingBox;
+  assert.ok(dateBox.y0 < 93 && dateBox.y1 > 93, JSON.stringify(dateBox));
+  assert.ok(dateBox.x0 < 175 && dateBox.x1 > 175, JSON.stringify(dateBox));
+  const firstData = registration.cells.find(cell => cell.rowIndex === 0 && cell.columnId === "fromTrain").boundingBox;
+  assert.ok(firstData.y0 < 293 && firstData.y1 > 293, JSON.stringify(firstData));
+});
+
+test("trykt toppfelt over datanettet blir ikke rad 0 på fotografert Template B", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticPhotographedTemplateBWithHeaderBands());
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_B");
+  assert.equal(detected.horizontalLineCount, 30);
+  assert.equal(detected.rowGeometryStable, true);
+  const first = detected.canonicalRowBoundaries[0];
+  const last = detected.canonicalRowBoundaries[29];
+  const spacing = (last - first) / 29;
+  assert.ok(first > 180, JSON.stringify({first, last, spacing}));
+  const secondGap = detected.canonicalRowBoundaries[1] - first;
+  assert.ok(Math.abs(secondGap - spacing) / spacing < 0.2, JSON.stringify({first, secondGap, spacing}));
+});
+
+function syntheticTemplateBWithPaperMargin(){
+  const width = 1200;
+  const height = 1500;
+  const pixels = new Uint8ClampedArray(width * height * 4).fill(255);
+  for(let index = 3; index < pixels.length; index += 4) pixels[index] = 255;
+  const shade = (x, y, value = 35) => {
+    const roundedX = Math.round(x);
+    const roundedY = Math.round(y);
+    if(roundedX < 0 || roundedX >= width || roundedY < 0 || roundedY >= height) return;
+    const offset = ((roundedY * width) + roundedX) * 4;
+    pixels[offset] = value;
+    pixels[offset + 1] = value;
+    pixels[offset + 2] = value;
+  };
+  const columns = [20, 100, 185, 292, 393, 497, 617, 896, 1178];
+  const formTop = 120;
+  const dataTop = 270;
+  const dataBottom = 1450;
+  const rowHeight = (dataBottom - dataTop) / 29;
+  for(let x = columns[0]; x <= columns.at(-1); x += 1){
+    shade(x, formTop);
+    shade(x, 135);
+    shade(x, 190);
+    shade(x, dataTop);
+    shade(x, dataBottom);
+  }
+  for(let y = formTop; y <= dataBottom; y += 1){
+    shade(columns[0], y);
+    shade(columns.at(-1), y);
+  }
+  for(const x of columns){
+    for(let y = 135; y <= dataBottom; y += 1) shade(x, y);
+  }
+  for(let row = 0; row < 30; row += 1){
+    const y = Math.round(dataTop + (row * rowHeight));
+    for(let x = columns[0]; x <= columns.at(-1); x += 1) shade(x, y, 78);
+  }
+  return {width, height, pixels};
+}
+
+test("Template B med papirmarg over skjemaet beholder Dato i toppfeltet, ikke i margen", () => {
+  const subject = loadSubject();
+  const detected = subject.detectFormRegistration(syntheticTemplateBWithPaperMargin());
+  assert.equal(detected.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(detected));
+  assert.equal(detected.templateId, "TEMPLATE_B");
+  assert.ok(detected.corners[0].y > 80 && detected.corners[0].y < 160, JSON.stringify(detected.corners));
+  const registration = subject.registerTemplate({
+    imageWidth: 1200,
+    imageHeight: 1500,
+    templateId: detected.templateId,
+    quadrilateral: detected.corners,
+    rowBoundaries: detected.canonicalRowBoundaries,
+  });
+  const dateBox = registration.metadataCells.find(cell => cell.columnId === "date").boundingBox;
+  assert.ok(dateBox.y0 < 145 && dateBox.y1 > 155, JSON.stringify(dateBox));
+  assert.ok(dateBox.y0 > 90, JSON.stringify(dateBox));
+  const firstData = registration.cells.find(cell => cell.rowIndex === 0 && cell.columnId === "arrivalTime").boundingBox;
+  assert.ok(firstData.y0 < 278 && firstData.y1 > 278, JSON.stringify(firstData));
+});
+
 test("fotografert Template B registreres som ni regler og 29 x 8 uten rad- eller kolonneforskyvning", () => {
   const subject = loadSubject();
   const detected = subject.detectFormRegistration(syntheticPhotographedTemplateB());
@@ -475,6 +685,14 @@ test("Template B med én svak venstre ytterregel registreres bare fra komplett �
   const unsafe = subject.detectFormRegistration(syntheticPhotographedTemplateB({omittedRules: [0, 2]}));
   assert.equal(unsafe.source, "FORM_GRID_REGISTRATION_FAILED", JSON.stringify(unsafe));
   assert.equal(unsafe.templateId, "TEMPLATE_UNKNOWN");
+
+  const inferredRight = subject.detectFormRegistration(syntheticPhotographedTemplateB({omittedRules: [8]}));
+  assert.equal(inferredRight.source, "FORM_GRID_RULE_SEQUENCE", JSON.stringify(inferredRight));
+  assert.equal(inferredRight.templateId, "TEMPLATE_B");
+  assert.equal(inferredRight.verticalLineCount, 9);
+  assert.equal(inferredRight.observedVerticalLineCount, 8);
+  assert.equal(inferredRight.inferredVerticalBoundary, "RIGHT");
+  assert.equal(inferredRight.horizontalLineCount, 30);
 });
 
 test("Template B med ufullstendig radnett forblir fail-closed med konkret registreringsfeil", () => {
@@ -490,7 +708,7 @@ test("Template B med ufullstendig radnett forblir fail-closed med konkret regist
   assert.equal(detected.rowGeometryStable, false);
   assert.equal(
     subject.formRegistrationFailureMessage(detected),
-    "form_registration_failed · mal TEMPLATE_B · 9 vertikale linjer (8 observert; venstre yttergrense inferert) · fant 26 av 30 radlinjer · radgeometrien er ustabil · sikkerhet 0.879",
+    "form_registration_failed · mal TEMPLATE_B · 9 vertikale linjer (8 observert; venstre yttergrense inferert) · fant 26 av 30 radlinjer · radgeometrien er ustabil · sikkerhet 0.836",
   );
 });
 
