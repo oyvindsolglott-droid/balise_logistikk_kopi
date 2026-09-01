@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Togplassering Skien – skanner v0.3</title>
+<style>
+:root{--bg:#f2f4f7;--card:#fff;--ink:#17202a;--muted:#697386;--line:#d8dde6;--nav:#111827;--blue:#1e5fb8;--green:#16764a;--orange:#a65b00;--red:#b42318;--soft:#eef4fc}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+header{background:var(--nav);color:#fff;padding:17px 22px;display:flex;gap:18px;justify-content:space-between;align-items:center}header h1{font-size:19px;margin:0}.sub{font-size:12px;color:#cbd5e1;margin-top:3px}
+main{padding:18px;display:grid;grid-template-columns:minmax(390px,.9fr) minmax(640px,1.45fr);gap:16px;max-width:1700px;margin:auto}.card{background:var(--card);border:1px solid #e0e4ea;border-radius:12px;box-shadow:0 1px 3px rgba(16,24,40,.05);overflow:hidden}.pad{padding:15px}.controls{display:grid;gap:13px}
+label{font-weight:650}input[type=file],input[type=password],select{width:100%;border:1px solid #cfd5de;border-radius:8px;padding:9px;background:#fff}button{border:0;border-radius:8px;padding:9px 12px;font-weight:650;cursor:pointer;background:var(--blue);color:#fff}button.secondary{background:#e9eef5;color:#243142}button:disabled{opacity:.45;cursor:not-allowed}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.tiny{font-size:12px;color:var(--muted)}
+.notice{border:1px solid #dde3eb;background:#f7f9fc;border-radius:9px;padding:10px 11px;color:#4b5565}.notice.error{background:#fff0ef;border-color:#f5c3bd;color:#8d2c23}.notice.ok{background:#effaf4;border-color:#b9e5cd;color:#17603d}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.step{padding:9px;border:1px solid var(--line);border-radius:8px;background:#fafbfc}.step strong{display:block;font-size:12px}.step span{font-size:11px;color:var(--muted)}
+.tabs{display:flex;gap:0;overflow-x:auto;border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#fafbfc}.tabs button{border-radius:0;background:transparent;color:#475467;font-weight:600;white-space:nowrap;border-bottom:3px solid transparent}.tabs button.active{color:#174f99;border-bottom-color:#2e6fc2;background:#fff}.viewer{background:#222;min-height:420px;max-height:74vh;overflow:auto;display:flex;align-items:flex-start;justify-content:center}.viewer img{max-width:100%;height:auto;display:block}.viewer .empty{color:#d1d5db;padding:70px 30px;text-align:center}
+.geom{padding:12px 15px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}.badge{display:inline-flex;align-items:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:750;background:#eef1f5;color:#475467}.badge.high{background:#eaf7ef;color:#16643e}.badge.medium{background:#fff5df;color:#8b5600}.badge.low{background:#ffefed;color:#a52b22}.metrics{display:flex;gap:12px;flex-wrap:wrap}.metric{font-size:12px;color:#596273}.metric strong{color:#202936}
+.resulthead{padding:13px 15px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}.tablewrap{overflow:auto;max-height:64vh}table{border-collapse:separate;border-spacing:0;width:100%;min-width:1120px}th{position:sticky;top:0;z-index:2;background:#f7f8fa;border-bottom:1px solid var(--line);padding:7px;font-size:11px;text-align:left}td{border-bottom:1px solid #e6e9ee;border-right:1px solid #eff1f4;padding:3px;vertical-align:top}td:first-child{border-left:1px solid #eff1f4}.idx{width:48px;text-align:center;color:#667085}.rtype{width:55px}.cellwrap{position:relative}.cellwrap input{width:100%;border:1px solid transparent;background:transparent;border-radius:5px;padding:6px;font:inherit;min-width:70px}.cellwrap input:focus{outline:2px solid #8ab7f5;background:#fff}.cellwrap.low input{background:#fff0ef;border-color:#efb8b2}.cellwrap.medium input{background:#fff8e8;border-color:#e8c77e}.dot{position:absolute;right:3px;top:3px;width:7px;height:7px;border-radius:50%;background:var(--red)}.review{min-width:180px;font-size:11px;color:#697386}.toolbar{padding:10px 15px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap}.conflict{background:#fff5f3;border:1px solid #f1c5be;border-radius:8px;padding:7px;margin:5px 0;font-size:12px}.emptyResult{padding:60px 25px;text-align:center;color:#667085}
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;vertical-align:-2px;margin-right:7px;animation:spin .9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:1050px){main{grid-template-columns:1fr}.viewer{max-height:58vh}}
+</style>
+</head>
+<body>
+<header><div><h1>Togplassering Skien – skanner v0.3</h1><div class="sub">Geometri først · faktiske tabellinjer · deretter AI-lesing</div></div><div class="sub">Lokal prototype · ingen automatisk lagring</div></header>
+<main>
+<section class="card">
+  <div class="pad controls">
+    <div class="steps"><div class="step"><strong>1 · Bilde</strong><span>Velg/ta foto</span></div><div class="step"><strong>2 · Geometri</strong><span>9 + 31 linjer</span></div><div class="step"><strong>3 · Lesing</strong><span>AI etter godkjent grid</span></div></div>
+    <div><label>Skjemabilde</label><input id="file" type="file" accept="image/*"><div class="row" style="margin-top:7px"><button id="sample" class="secondary">Bruk eksempelbildet</button><button id="geometry" class="secondary" disabled>Kontroller geometri</button></div></div>
+    <div id="geomMsg" class="notice">v0.3 starter ikke tekstlesing før skjemaets fysiske rutenett er funnet og kontrollert.</div>
+    <div><label>OpenAI API-nøkkel</label><input id="key" type="password" placeholder="sk-… (lagres ikke)" autocomplete="off"><div class="tiny">Kan stå tomt hvis OPENAI_API_KEY er satt i terminalen. Bildet sendes først til API-et når du trykker «Les skjema».</div></div>
+    <div class="row"><select id="model"><option value="gpt-5.6-sol">gpt-5.6-sol – kvalitet</option><option value="gpt-5.6-terra">gpt-5.6-terra – lavere kostnad</option></select><label style="font-weight:500"><input id="double" type="checkbox" checked> Uavhengig andrelesing</label></div>
+    <button id="scan" disabled>Les skjema med AI</button>
+    <div class="tiny">Fail-closed: LOW geometri sperrer AI. Ved uenighet mellom de to AI-lesingene markeres cellen; programmet skjuler ikke konflikten.</div>
+  </div>
+  <div class="geom"><div><strong>Geometrikontroll</strong> <span id="geomBadge" class="badge">venter</span></div><div id="metrics" class="metrics"></div></div>
+  <div class="tabs" id="tabs">
+    <button class="active" data-view="original">Original</button>
+    <button data-view="overlay">Linjer på original</button>
+    <button data-view="rectified">Rettet skjema</button>
+    <button data-view="rectified_overlay">Grid etter retting</button>
+    <button data-view="row_contact">Eksakte rader</button>
+    <button data-view="track_contact">Til spor + Vd/vann</button>
+  </div>
+  <div class="viewer"><div id="viewEmpty" class="empty">Velg et bilde.</div><img id="preview" alt="forhåndsvisning" style="display:none"></div>
+</section>
+
+<section class="card">
+  <div class="resulthead"><div><strong>Digitalt skjema</strong><div id="resultStatus" class="tiny">Ikke lest ennå</div></div><span id="readBadge" class="badge">venter</span></div>
+  <div id="conflicts" class="pad" style="display:none"></div>
+  <div id="result"><div class="emptyResult">Først kontrolleres geometrien. Deretter kan AI lese de eksakt avgrensede radene og cellene.</div></div>
+  <div class="toolbar"><button id="csv" class="secondary" disabled>Eksporter CSV</button><button id="json" class="secondary" disabled>Eksporter JSON</button><button id="copy" class="secondary" disabled>Kopier JSON</button></div>
+</section>
+</main>
+<script>
+const FIELDS=[['klokken','Klokken'],['fra_tog','Fra tog'],['til_tog','Til tog'],['setter','Setter'],['til_spor','Til spor'],['vd_vann','Vd/vann'],['info','INFO'],['merknad','Merknad']];
+const $=id=>document.getElementById(id);let chosen=null,data=null,views={original:'',overlay:'',rectified:'',rectified_overlay:'',row_contact:'',track_contact:''},geometryOK=false;
+function setMsg(t,kind=''){const e=$('geomMsg');e.textContent=t;e.className='notice'+(kind?' '+kind:'')}
+function showView(k){if(!views[k])return;const img=$('preview');$('viewEmpty').style.display='none';img.style.display='block';img.src=views[k];document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('active',b.dataset.view===k))}
+function choose(file){if(views.original&&views.original.startsWith('blob:'))URL.revokeObjectURL(views.original);chosen=file;views={original:URL.createObjectURL(file),overlay:'',rectified:'',rectified_overlay:'',row_contact:'',track_contact:''};geometryOK=false;data=null;$('geometry').disabled=false;$('scan').disabled=true;$('geomBadge').textContent='venter';$('geomBadge').className='badge';$('metrics').innerHTML='';$('result').innerHTML='<div class="emptyResult">Kontroller geometrien før tekstlesing.</div>';$('resultStatus').textContent='Ikke lest ennå';$('readBadge').textContent='venter';$('readBadge').className='badge';$('conflicts').style.display='none';['csv','json','copy'].forEach(id=>$(id).disabled=true);setMsg('Bildet er valgt. Kjør «Kontroller geometri».');showView('original')}
+$('file').onchange=e=>{if(e.target.files[0])choose(e.target.files[0])};
+$('sample').onclick=async()=>{const r=await fetch('/sample.jpg');const b=await r.blob();choose(new File([b],'eksempel_2108.jpg',{type:'image/jpeg'}));};
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>showView(b.dataset.view));
+function renderMetrics(m){$('geomBadge').textContent=m.confidence.toUpperCase();$('geomBadge').className='badge '+m.confidence;$('metrics').innerHTML=`<span class="metric"><strong>${m.vertical_lines}/9</strong> kolonner</span><span class="metric"><strong>${m.horizontal_lines}/31</strong> radlinjer</span><span class="metric">RMSE V <strong>${m.vertical_rmse}px</strong></span><span class="metric">H <strong>${m.horizontal_rmse}px</strong></span>`}
+$('geometry').onclick=async()=>{if(!chosen)return;const b=$('geometry');b.disabled=true;b.innerHTML='<span class="spinner" style="border-color:#aab4c2;border-top-color:#31445c"></span>Finner faktiske linjer …';setMsg('Detekterer tabellstreker og beregner perspektiv.');const fd=new FormData();fd.append('file',chosen);try{const r=await fetch('/api/geometry',{method:'POST',body:fd});const j=await r.json();if(!r.ok)throw new Error(j.detail||'Geometrifeil');Object.assign(views,j.preview);renderMetrics(j.metrics);geometryOK=j.metrics.confidence!=='low';$('scan').disabled=!geometryOK;setMsg(geometryOK?'Geometrien er kvalifisert. Kontroller særlig fanen «Linjer på original» før AI-lesing.':'Geometrien er LOW. AI-lesing er sperret.',geometryOK?'ok':'error');showView('overlay')}catch(e){geometryOK=false;$('scan').disabled=true;$('geomBadge').textContent='FEIL';$('geomBadge').className='badge low';setMsg(e.message,'error')}finally{b.disabled=false;b.textContent='Kontroller geometri'}};
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function renderResult(){if(!data)return;const conflicts=data.conflicts||[];$('readBadge').textContent=data.needs_review?'KONTROLLER':'OK';$('readBadge').className='badge '+(data.needs_review?'medium':'high');$('resultStatus').textContent=`${data.form_title||'TOGPLASSERING SKIEN'} · dato ${data.date_raw||'ukjent'} · ${data.ai_double_checked?'dobbel AI-lesing':'én AI-lesing'}`;
+ const cc=$('conflicts');if(conflicts.length){cc.style.display='block';cc.innerHTML='<strong>AI-uenigheter – ikke automatisk avgjort</strong>'+conflicts.map(c=>`<div class="conflict">${c.row_type==='train'?'Rad':'Notat'} ${c.row}, ${esc(c.field)}: første «${esc(c.first)}» / andre «${esc(c.second)}»</div>`).join('')}else{cc.style.display='none'}
+ let h='<div class="tablewrap"><table><thead><tr><th>#</th><th>Type</th>'+FIELDS.map(f=>`<th>${f[1]}</th>`).join('')+'<th>Kontroll</th></tr></thead><tbody>';
+ (data.rows||[]).forEach((r,ri)=>{h+=`<tr><td class="idx">${r.row_no}</td><td class="rtype">${r.row_type==='train'?'tog':'note'}</td>`;FIELDS.forEach(([f])=>{const c=(r.confidence||{})[f]||'low';const conflict=conflicts.some(x=>x.row_type===r.row_type&&x.row===r.row_no&&x.field===f);h+=`<td><div class="cellwrap ${c}"><input data-ri="${ri}" data-f="${f}" value="${esc(r[f])}" title="confidence: ${c}">${conflict?'<span class="dot" title="AI-uenighet"></span>':''}</div></td>`});h+=`<td class="review">${esc(r.review_reason||'')}${r.row_type==='train'&&r.til_spor&&!r.til_spor_valid?'<br><strong>sporformat må kontrolleres</strong>':''}</td></tr>`});h+='</tbody></table></div>';$('result').innerHTML=h;$('result').querySelectorAll('input').forEach(el=>el.onchange=()=>{data.rows[+el.dataset.ri][el.dataset.f]=el.value});['csv','json','copy'].forEach(id=>$(id).disabled=false)}
+$('scan').onclick=async()=>{if(!chosen||!geometryOK)return;const b=$('scan');b.disabled=true;b.innerHTML='<span class="spinner"></span>Leser eksakte celler …';setMsg('AI-lesing pågår. Geometrien beregnes på nytt og må fortsatt bestå.');const fd=new FormData();fd.append('file',chosen);fd.append('api_key',$('key').value);fd.append('model',$('model').value);fd.append('double_check',$('double').checked?'true':'false');try{const r=await fetch('/api/scan',{method:'POST',body:fd});const j=await r.json();if(!r.ok)throw new Error(j.detail||'Skanning feilet');data=j;Object.assign(views,j.preview||{});renderMetrics(j.geometry);renderResult();setMsg(j.needs_review?'Lesing ferdig. Røde/oransje felt og AI-uenigheter må kontrolleres mot bildet.':'Lesing ferdig. Gjør likevel en visuell sluttkontroll før operativ bruk.','ok');showView('row_contact')}catch(e){setMsg(e.message,'error')}finally{b.disabled=false;b.textContent='Les skjema med AI'}};
+function dl(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+$('json').onclick=()=>dl('togplassering_skien_v03.json',JSON.stringify(data,null,2),'application/json');$('copy').onclick=async()=>{await navigator.clipboard.writeText(JSON.stringify(data,null,2));setMsg('JSON er kopiert.','ok')};$('csv').onclick=()=>{const q=v=>'"'+String(v??'').replaceAll('"','""')+'"';let ls=[['Type','Rad',...FIELDS.map(x=>x[1])].map(q).join(';')];(data.rows||[]).forEach(r=>ls.push([r.row_type,r.row_no,...FIELDS.map(([f])=>r[f])].map(q).join(';')));dl('togplassering_skien_v03.csv','\ufeff'+ls.join('\n'),'text/csv;charset=utf-8')};
+</script>
+</body>
+</html>
+

@@ -58,6 +58,24 @@
   let dirty = false;
   let lastInteractionAt = Date.now();
   let activeEvidenceTarget = null;
+  let geometryReady = false;
+  let v03Views = {};
+  let v03ScanResult = null;
+  let v03CurrentView = "original";
+  let v03Abort = null;
+  const SCANNER_STATUS_URL = "/api/togplassering-scanner/status";
+  const SCANNER_GEOMETRY_URL = "/api/togplassering-scanner/geometry";
+  const SCANNER_SCAN_URL = "/api/togplassering-scanner/scan";
+  const V03_FIELDS = Object.freeze([
+    ["klokken", "time"],
+    ["fra_tog", "arrivalOccurrence"],
+    ["til_tog", "departureOccurrence"],
+    ["setter", "vehicleId"],
+    ["til_spor", "desiredSlot"],
+    ["vd_vann", "taskContext"],
+    ["info", "info"],
+    ["merknad", "notes"],
+  ]);
   const inferenceAuditInMemory = [];
 
   function setImportState(status, report) {
@@ -559,8 +577,12 @@
       },
       image,
       pipeline: {
-        modelVersion: selectedImageOcrCompleted ? String(htrLogic?.MODEL_SPEC?.version || "") : "not-run",
-        pipelineVersion: "sde-night-local-real-htr-ensemble-v3",
+        modelVersion: v03ScanResult
+          ? "togplassering-skien-scanner-v0.3"
+          : (selectedImageOcrCompleted ? String(htrLogic?.MODEL_SPEC?.version || "") : "not-run"),
+        pipelineVersion: v03ScanResult
+          ? "sde-togplassering-scanner-v0.3"
+          : "sde-night-local-real-htr-ensemble-v3",
       },
     };
   }
@@ -723,6 +745,7 @@
     selectedImageMimeType = null;
     selectedImageOcrCompleted = false;
     setImportState("NO_IMAGE", null);
+    resetV03Geometry();
     [el("sdeNightImageInput"), el("sdeNightCameraInput")].forEach(function clear(input) {
       if (input) input.value = "";
     });
@@ -761,7 +784,10 @@
     humanReviewActivated = false;
     markDirty();
     renderDraftRows();
-    setStatus("Bildet er valgt og holdes bare midlertidig i nettleserminnet. Velg «Importer nå» for lokal håndskriftgjenkjenning.", "ok");
+    v03Views = {original: imageObjectUrl};
+    v03CurrentView = "original";
+    showV03View("original");
+    setStatus("Bildet er valgt og holdes bare midlertidig i nettleserminnet. Kjør «Kontroller geometri» før AI-lesing.", "ok");
   }
 
   async function fileFingerprint(file) {
@@ -869,7 +895,371 @@
     return ocrAnalyzer;
   }
 
+  function scannerUnavailableStatus(status) {
+    return status === 404 || status === 405 || status === 501 || status === 401 || status === 403 || status === 503;
+  }
+
+  async function scannerStatusAvailable() {
+    try {
+      const response = await root.fetch(SCANNER_STATUS_URL, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (scannerUnavailableStatus(response.status) || !response.ok) return false;
+      const payload = await response.json().catch(function invalidJson() { return null; });
+      return Boolean(payload && payload.ok === true);
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  function resetV03Geometry() {
+    if (v03Abort && typeof v03Abort.abort === "function") {
+      try { v03Abort.abort(); } catch (_error) {}
+    }
+    v03Abort = null;
+    geometryReady = false;
+    v03ScanResult = null;
+    v03Views = {};
+    v03CurrentView = "original";
+    const scanButton = el("sdeNightScanAiBtn");
+    if (scanButton) scanButton.disabled = true;
+    const badge = el("sdeNightGeomBadge");
+    if (badge) {
+      badge.textContent = "venter";
+      badge.className = "sde-v03-badge";
+    }
+    const metrics = el("sdeNightGeomMetrics");
+    if (metrics) metrics.innerHTML = "";
+    const preview = el("sdeNightV03Preview");
+    if (preview) {
+      preview.hidden = true;
+      preview.removeAttribute("src");
+    }
+    renderV03Conflicts([]);
+    const csvButton = el("sdeNightExportCsvBtn");
+    const jsonButton = el("sdeNightExportJsonBtn");
+    if (csvButton) csvButton.disabled = true;
+    if (jsonButton) jsonButton.disabled = true;
+    document.querySelectorAll("#sdeNightV03Tabs [data-v03-view]").forEach(function tab(button) {
+      button.classList.toggle("active", button.getAttribute("data-v03-view") === "original");
+    });
+  }
+
+  function renderV03Metrics(metrics) {
+    const badge = el("sdeNightGeomBadge");
+    const host = el("sdeNightGeomMetrics");
+    const confidence = String(metrics && metrics.confidence || "").toLowerCase();
+    if (badge) {
+      badge.textContent = confidence ? confidence.toUpperCase() : "venter";
+      badge.className = "sde-v03-badge" + (confidence ? " " + confidence : "");
+    }
+    if (!host) return;
+    if (!metrics) {
+      host.innerHTML = "";
+      return;
+    }
+    host.innerHTML = [
+      "<span><strong>" + html(metrics.vertical_lines) + "/9</strong> kolonner</span>",
+      "<span><strong>" + html(metrics.horizontal_lines) + "/31</strong> radlinjer</span>",
+      "<span>RMSE V <strong>" + html(metrics.vertical_rmse) + "px</strong></span>",
+      "<span>H <strong>" + html(metrics.horizontal_rmse) + "px</strong></span>",
+    ].join("");
+  }
+
+  function showV03View(viewName) {
+    const key = String(viewName || "original");
+    v03CurrentView = key;
+    document.querySelectorAll("#sdeNightV03Tabs [data-v03-view]").forEach(function tab(button) {
+      button.classList.toggle("active", button.getAttribute("data-v03-view") === key);
+    });
+    const preview = el("sdeNightV03Preview");
+    const src = v03Views[key] || (key === "original" ? imageObjectUrl : "");
+    if (!preview) return;
+    if (!src) {
+      preview.hidden = true;
+      preview.removeAttribute("src");
+      return;
+    }
+    preview.hidden = false;
+    preview.src = src;
+  }
+
+  function renderV03Conflicts(conflicts) {
+    const host = el("sdeNightV03Conflicts");
+    if (!host) return;
+    const items = Array.isArray(conflicts) ? conflicts : [];
+    if (!items.length) {
+      host.hidden = true;
+      host.innerHTML = "";
+      return;
+    }
+    host.hidden = false;
+    host.innerHTML = "<strong>AI-uenigheter – ikke automatisk avgjort</strong>" + items.map(function item(conflict) {
+      const kind = conflict.row_type === "note" ? "Notat" : "Rad";
+      return "<div class=\"conflict\">" + html(kind) + " " + html(conflict.row) + ", " + html(conflict.field)
+        + ": første «" + html(conflict.first) + "» / andre «" + html(conflict.second) + "»</div>";
+    }).join("");
+  }
+
+  function v03FieldDescriptor(raw, confidence, conflicted, rowNo) {
+    const text = String(raw == null ? "" : raw);
+    const level = String(confidence || "low").toLowerCase();
+    const uncertain = conflicted || level !== "high";
+    return {
+      rawValue: text,
+      selectedValue: text,
+      normalizedValue: text,
+      suggestedValue: "",
+      confidence: level === "high" ? 0.9 : (level === "medium" ? 0.62 : 0.34),
+      validationState: uncertain ? "REVIEW_REQUIRED" : "MAPPED",
+      needsReview: uncertain,
+      sourceRegion: {line: rowNo},
+    };
+  }
+
+  function applyV03ScanToDraft(result) {
+    const rows = Array.isArray(result && result.rows) ? result.rows : [];
+    const trainRows = rows.filter(function isTrain(row) { return row.row_type !== "note"; }).slice(0, 16);
+    const noteRows = rows.filter(function isNote(row) { return row.row_type === "note"; }).slice(0, 3);
+    const conflicts = Array.isArray(result.conflicts) ? result.conflicts : [];
+    const conflictKey = {};
+    conflicts.forEach(function mark(conflict) {
+      conflictKey[String(conflict.row_type) + ":" + String(conflict.row) + ":" + String(conflict.field)] = true;
+    });
+    const entries = Array.from({length: ROW_COUNT}, function emptyEntry() { return {}; });
+    function fillEntry(targetIndex, row, rowType) {
+      if (!row || targetIndex < 0 || targetIndex >= ROW_COUNT) return;
+      const entry = {};
+      V03_FIELDS.forEach(function mapField(pair) {
+        const source = pair[0];
+        const target = pair[1];
+        const conflicted = Boolean(conflictKey[rowType + ":" + String(row.row_no) + ":" + source]);
+        entry[target] = v03FieldDescriptor(
+          row[source],
+          row.confidence && row.confidence[source],
+          conflicted,
+          targetIndex + 1
+        );
+      });
+      entries[targetIndex] = entry;
+    }
+    trainRows.forEach(function eachTrain(row, index) { fillEntry(index, row, "train"); });
+    noteRows.forEach(function eachNote(row, index) { fillEntry(16 + index, row, "note"); });
+    const date = normalizeImportedDate(result.date_raw, defaultOperationalDate()) || defaultOperationalDate();
+    const plan = logic.createNightPlan({
+      planId: makeId("image-plan"),
+      operationalDate: date,
+      createdAt: new Date().toISOString(),
+      createdBy: "",
+      sourceType: "HUMAN_IMPORTED_PLAN",
+      formTemplateId: "TEMPLATE_B",
+      planStatus: "DRAFT",
+      dataRevision: currentDataRevision(),
+      ocrMetadata: {
+        date: String(result.date_raw || ""),
+        clock: String(trainRows[0] && trainRows[0].klokken || ""),
+        signature: "",
+        ds: "",
+      },
+      entries,
+    });
+    applyImportedMetadata(plan);
+    plan.sdeImportedAt = new Date().toISOString();
+    draft = plan;
+    while (draft.entries.length < ROW_COUNT) draft = logic.addNightPlanEntry(draft);
+    while (draft.entries.length > ROW_COUNT) draft = logic.removeNightPlanEntry(draft, draft.entries.length - 1);
+    editMode = false;
+    humanReviewActivated = false;
+    markDirty();
+    renderDraftRows();
+    renderV03Conflicts(conflicts);
+    const csvButton = el("sdeNightExportCsvBtn");
+    const jsonButton = el("sdeNightExportJsonBtn");
+    if (csvButton) csvButton.disabled = false;
+    if (jsonButton) jsonButton.disabled = false;
+    setImportState(result.needs_review ? "FORM_MAPPING_REQUIRES_REVIEW" : "FORM_MAPPING_COMPLETE", {
+      mappingStatus: result.needs_review ? "FORM_MAPPING_REQUIRES_REVIEW" : "FORM_MAPPING_COMPLETE",
+      templateId: "TEMPLATE_B",
+      engine: "togplassering-skien-scanner-v0.3",
+      conflicts,
+      needsReview: result.needs_review === true,
+      aiDoubleChecked: result.ai_double_checked === true,
+    });
+  }
+
+  function exportV03Json() {
+    if (!v03ScanResult) return;
+    const href = root.URL.createObjectURL(new Blob([JSON.stringify(v03ScanResult, null, 2)], {type: "application/json"}));
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = "togplassering_skien_v03.json";
+    link.click();
+    root.setTimeout(function revoke() { root.URL.revokeObjectURL(href); }, 1000);
+  }
+
+  function exportV03Csv() {
+    if (!v03ScanResult || !Array.isArray(v03ScanResult.rows)) return;
+    const quote = function quote(value) {
+      return "\"" + String(value == null ? "" : value).replaceAll("\"", "\"\"") + "\"";
+    };
+    const header = ["Type", "Rad"].concat(V03_FIELDS.map(function label(pair) { return pair[0]; }));
+    const lines = [header.map(quote).join(";")];
+    v03ScanResult.rows.forEach(function each(row) {
+      lines.push([row.row_type, row.row_no].concat(V03_FIELDS.map(function value(pair) {
+        return row[pair[0]];
+      })).map(quote).join(";"));
+    });
+    const href = root.URL.createObjectURL(new Blob(["\ufeff" + lines.join("\n")], {type: "text/csv;charset=utf-8"}));
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = "togplassering_skien_v03.csv";
+    link.click();
+    root.setTimeout(function revoke() { root.URL.revokeObjectURL(href); }, 1000);
+  }
+
+  async function postScannerCommand(url, generation) {
+    const body = new FormData();
+    body.append("file", selectedImage);
+    const controller = new AbortController();
+    v03Abort = controller;
+    const response = await root.fetch(url, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      body,
+      signal: controller.signal,
+    });
+    if (generation !== ocrGeneration) return null;
+    const payload = await response.json().catch(function invalidJson() { return null; });
+    if (scannerUnavailableStatus(response.status) && url.indexOf("/geometry") !== -1) {
+      const unavailable = new Error("scanner_unavailable");
+      unavailable.fallback = true;
+      throw unavailable;
+    }
+    if (!response.ok || (payload && payload.ok === false)) {
+      const failed = new Error((payload && (payload.detail || payload.error)) || "scanner_failed");
+      failed.status = response.status;
+      throw failed;
+    }
+    return payload;
+  }
+
+  async function checkGeometry() {
+    const validation = validImageFile(selectedImage);
+    if (!validation.ok) {
+      setStatus(validation.message, "error");
+      return;
+    }
+    const generation = ++ocrGeneration;
+    const analyzeButton = el("sdeNightAnalyzeImageBtn");
+    const scanButton = el("sdeNightScanAiBtn");
+    if (analyzeButton) analyzeButton.disabled = true;
+    if (scanButton) scanButton.disabled = true;
+    geometryReady = false;
+    v03ScanResult = null;
+    setImportState("IMAGE_PREPROCESSING", null);
+    setStatus("Detekterer tabellstreker og beregner perspektiv. AI-lesing starter ikke ennå.", "warn");
+    const progress = el("sdeNightOcrProgress");
+    if (progress) progress.textContent = "GEOMETRI · finner 9+31 faktiske linjer";
+    try {
+      const payload = await postScannerCommand(SCANNER_GEOMETRY_URL, generation);
+      if (generation !== ocrGeneration || !payload) return;
+      Object.assign(v03Views, payload.preview || {});
+      if (imageObjectUrl) v03Views.original = imageObjectUrl;
+      renderV03Metrics(payload.metrics);
+      geometryReady = String(payload.metrics && payload.metrics.confidence || "").toLowerCase() !== "low";
+      if (scanButton) scanButton.disabled = !geometryReady;
+      showV03View("overlay");
+      if (geometryReady) {
+        setStatus("Geometrien er kvalifisert. Kontroller særlig fanen «Linjer på original» før AI-lesing.", "ok");
+        if (progress) progress.textContent = "GEOMETRI · " + String(payload.metrics.confidence).toUpperCase() + " · AI-lesing er tilgjengelig";
+      } else {
+        setStatus("Geometrien er LOW. AI-lesing er sperret; kontroller eller ta et nytt bilde først.", "error");
+        if (progress) progress.textContent = "GEOMETRI · LOW · AI-lesing sperret";
+      }
+    } catch (error) {
+      if (generation !== ocrGeneration || (error && error.name === "AbortError")) {
+        setStatus("Bildeanalysen ble avbrutt. Ingen plan ble lagret.", "warn");
+        return;
+      }
+      if (error && error.fallback) {
+        return analyzeSelectedImageLegacy();
+      }
+      geometryReady = false;
+      renderV03Metrics({confidence: "low", vertical_lines: "?", horizontal_lines: "?", vertical_rmse: "–", horizontal_rmse: "–"});
+      setStatus("Geometrikontroll feilet. " + String((error && error.message) || error), "error");
+      if (progress) progress.textContent = "GEOMETRI_FAILED · " + String((error && error.message) || error);
+    } finally {
+      if (generation === ocrGeneration && analyzeButton) analyzeButton.disabled = false;
+    }
+  }
+
+  async function scanSelectedImage() {
+    if (!geometryReady || !selectedImage) {
+      setStatus("Kontroller geometrien først. LOW geometri sperrer AI-lesing.", "error");
+      return;
+    }
+    const generation = ++ocrGeneration;
+    const analyzeButton = el("sdeNightAnalyzeImageBtn");
+    const scanButton = el("sdeNightScanAiBtn");
+    if (analyzeButton) analyzeButton.disabled = true;
+    if (scanButton) scanButton.disabled = true;
+    const doubleCheck = el("sdeNightDoubleCheck") ? el("sdeNightDoubleCheck").checked !== false : true;
+    const progress = el("sdeNightOcrProgress");
+    setStatus("AI-lesing pågår. Geometrien beregnes på nytt og må fortsatt bestå.", "warn");
+    if (progress) progress.textContent = "AI · leser eksakte celler";
+    try {
+      const payload = await postScannerCommand(
+        SCANNER_SCAN_URL + "?double_check=" + (doubleCheck ? "true" : "false"),
+        generation
+      );
+      if (generation !== ocrGeneration || !payload) return;
+      v03ScanResult = payload;
+      Object.assign(v03Views, payload.preview || {});
+      if (imageObjectUrl) v03Views.original = imageObjectUrl;
+      renderV03Metrics(payload.geometry || payload.metrics);
+      applyV03ScanToDraft(payload);
+      showV03View("row_contact");
+      if (payload.needs_review) {
+        setStatus("Lesing ferdig. Røde felt og AI-uenigheter må kontrolleres mot bildet før lagring.", "warn");
+      } else {
+        setStatus("Lesing ferdig. Gjør likevel en visuell sluttkontroll før operativ bruk.", "ok");
+      }
+      if (progress) {
+        progress.textContent = payload.needs_review
+          ? "AI · kontrollpåkrevd · uavhengig andrelesing " + (payload.ai_double_checked ? "på" : "av")
+          : "AI · ferdig · uavhengig andrelesing " + (payload.ai_double_checked ? "på" : "av");
+      }
+    } catch (error) {
+      if (generation !== ocrGeneration || (error && error.name === "AbortError")) {
+        setStatus("Bildeanalysen ble avbrutt. Ingen plan ble lagret.", "warn");
+        return;
+      }
+      setStatus("AI-lesing feilet. " + String((error && error.message) || error), "error");
+      if (progress) progress.textContent = "AI_FAILED · " + String((error && error.message) || error);
+    } finally {
+      if (generation === ocrGeneration) {
+        if (analyzeButton) analyzeButton.disabled = false;
+        if (scanButton) scanButton.disabled = !geometryReady;
+      }
+    }
+  }
+
   async function analyzeSelectedImage() {
+    const validation = validImageFile(selectedImage);
+    if (!validation.ok) {
+      setStatus(validation.message, "error");
+      return;
+    }
+    if (!(await scannerStatusAvailable())) {
+      return analyzeSelectedImageLegacy();
+    }
+    return checkGeometry();
+  }
+
+  async function analyzeSelectedImageLegacy() {
     const validation = validImageFile(selectedImage);
     if (!validation.ok) {
       setStatus(validation.message, "error");
@@ -971,6 +1361,9 @@
 
   async function cancelOcr() {
     ocrGeneration += 1;
+    if (v03Abort && typeof v03Abort.abort === "function") {
+      try { v03Abort.abort(); } catch (_error) {}
+    }
     setImportState("IMPORT_FAILED", null);
     if (ocrAnalyzer && typeof ocrAnalyzer.cancel === "function") {
       try {
@@ -1316,6 +1709,13 @@
       selectImage(event.target.files && event.target.files[0] || null, "DEVICE_FILE");
     });
     el("sdeNightAnalyzeImageBtn") && el("sdeNightAnalyzeImageBtn").addEventListener("click", analyzeSelectedImage);
+    el("sdeNightScanAiBtn") && el("sdeNightScanAiBtn").addEventListener("click", scanSelectedImage);
+    el("sdeNightExportCsvBtn") && el("sdeNightExportCsvBtn").addEventListener("click", exportV03Csv);
+    el("sdeNightExportJsonBtn") && el("sdeNightExportJsonBtn").addEventListener("click", exportV03Json);
+    el("sdeNightV03Tabs") && el("sdeNightV03Tabs").addEventListener("click", function tabClicked(event) {
+      const button = event.target && event.target.closest && event.target.closest("[data-v03-view]");
+      if (button) showV03View(button.getAttribute("data-v03-view"));
+    });
     el("sdeNightCancelOcrBtn") && el("sdeNightCancelOcrBtn").addEventListener("click", cancelOcr);
     el("sdeNightEditBtn")?.addEventListener("click", enableEditing);
     el("sdeNightRemoveImageBtn") && el("sdeNightRemoveImageBtn").addEventListener("click", function removeImage() {

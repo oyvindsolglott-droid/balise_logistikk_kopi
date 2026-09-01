@@ -9848,6 +9848,21 @@ button{padding:12px 12px}
 .sde-night-controls button.danger{border-color:#b91c1c;color:#991b1b}
 .sde-night-controls button.save{background:#15803d;border-color:#15803d;color:#fff}
 .sde-night-controls button:disabled{opacity:.5;cursor:not-allowed}
+.sde-v03-geom{margin:12px 0;border:1px solid #d8dde6;border-radius:12px;background:#fff;overflow:hidden}
+.sde-v03-geom-head{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid #e6e9ee}
+.sde-v03-badge{border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800;background:#eef1f5;color:#475467}
+.sde-v03-badge.high{background:#eaf7ef;color:#16643e}
+.sde-v03-badge.medium{background:#fff5df;color:#8b5600}
+.sde-v03-badge.low{background:#ffefed;color:#a52b22}
+.sde-v03-metrics{display:flex;gap:12px;flex-wrap:wrap;padding:0 12px 8px;font-size:12px;color:#596273}
+.sde-v03-double{display:flex;gap:8px;align-items:center;padding:0 12px 8px;font-size:13px}
+.sde-v03-tabs{display:flex;flex-wrap:wrap;border-top:1px solid #e6e9ee;border-bottom:1px solid #e6e9ee;background:#fafbfc}
+.sde-v03-tabs button{border:0;background:transparent;color:#475467;font-weight:700;padding:8px 10px;cursor:pointer;border-bottom:3px solid transparent}
+.sde-v03-tabs button.active{color:#174f99;border-bottom-color:#2e6fc2;background:#fff}
+.sde-v03-viewer{background:#1e293b;min-height:180px;max-height:52vh;overflow:auto;display:flex;justify-content:center}
+.sde-v03-viewer img{max-width:100%;height:auto;display:block}
+.sde-v03-conflicts{padding:10px 12px;background:#fff5f3;border-top:1px solid #f1c5be}
+.sde-v03-conflicts .conflict{font-size:12px;margin:4px 0}
 .sde-night-file-input{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
 .sde-night-form-head{display:grid;grid-template-columns:1fr 1fr 1fr;gap:18px;margin:20px 0}
 .sde-night-form-head label{display:grid;gap:7px;font-weight:800;color:#1e293b}
@@ -10325,7 +10340,8 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
       <input class="sde-night-file-input" id="sdeNightImageInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png">
       <button id="sdeNightTakePhotoBtn" type="button">Ta bilde</button>
       <button id="sdeNightChooseImageBtn" type="button">Velg bilde fra enheten</button>
-      <button class="primary" id="sdeNightAnalyzeImageBtn" type="button">Importer nå</button>
+      <button class="primary" id="sdeNightAnalyzeImageBtn" type="button">Kontroller geometri</button>
+      <button id="sdeNightScanAiBtn" type="button" disabled>Les skjema med AI</button>
       <button id="sdeNightEditBtn" type="button">Endre innhold</button>
       <button class="danger" id="sdeNightRemoveImageBtn" type="button" disabled>Fjern bilde</button>
       <button id="sdeNightNewManualBtn" type="button">Ny manuell plan</button>
@@ -10333,7 +10349,26 @@ Togplassering-import og gamle testavvik vises ikke lenger her. Dette hindrer at 
       <button id="sdeNightCancelOcrBtn" type="button" disabled hidden>Avbryt analyse</button>
     </div>
     <img class="sde-night-image-preview" id="sdeNightImagePreview" alt="Forhåndsvisning av valgt nattplanbilde">
-    <div class="sde-night-import-note"><span id="sdeNightOcrProgress" aria-live="polite">Lokal OCR er klar. Råbildet lagres ikke.</span><strong>Uten «Lagre» slettes bilde, OCR-data og endringer når siden lukkes eller lastes på nytt.</strong></div>
+    <div class="sde-v03-geom" id="sdeNightV03Geom">
+      <div class="sde-v03-geom-head"><strong>Geometrikontroll v0.3</strong> <span id="sdeNightGeomBadge" class="sde-v03-badge">venter</span></div>
+      <div id="sdeNightGeomMetrics" class="sde-v03-metrics"></div>
+      <label class="sde-v03-double"><input id="sdeNightDoubleCheck" type="checkbox" checked> Uavhengig andrelesing</label>
+      <div class="sde-v03-tabs" id="sdeNightV03Tabs">
+        <button type="button" class="active" data-v03-view="original">Original</button>
+        <button type="button" data-v03-view="overlay">Linjer på original</button>
+        <button type="button" data-v03-view="rectified">Rettet skjema</button>
+        <button type="button" data-v03-view="rectified_overlay">Grid etter retting</button>
+        <button type="button" data-v03-view="row_contact">Eksakte rader</button>
+        <button type="button" data-v03-view="track_contact">Til spor + Vd/vann</button>
+      </div>
+      <div class="sde-v03-viewer"><img id="sdeNightV03Preview" alt="Geometrikontroll" hidden></div>
+      <div id="sdeNightV03Conflicts" class="sde-v03-conflicts" hidden></div>
+      <div class="sde-night-controls">
+        <button id="sdeNightExportCsvBtn" type="button" disabled>Eksporter CSV</button>
+        <button id="sdeNightExportJsonBtn" type="button" disabled>Eksporter JSON</button>
+      </div>
+    </div>
+    <div class="sde-night-import-note"><span id="sdeNightOcrProgress" aria-live="polite">v0.3 starter ikke tekstlesing før de 9+31 faktiske linjene er kontrollert. LOW geometri sperrer AI.</span><strong>Uten «Lagre» slettes bilde, OCR-data og endringer når siden lukkes eller lastes på nytt.</strong></div>
   </section>
 
   <section class="sde-night-card" aria-labelledby="sdeNightCorrectionTitle">
@@ -60164,7 +60199,7 @@ if(!isPublicGithubPagesApp()){
 if(isSdeCanonicalShadowAnalysisRequested()) runSdeCanonicalShadowAnalysis();
 </script>
 
-<script src="sde_night_planning_ui.js?v=6fd50c429ce5ed5180e4572b38f17ae76d57b955cf6d244c24597c6a139e73fb"></script>
+<script src="sde_night_planning_ui.js?v=0dba3594eb975cef2650a5517ab55732495639d44de9433100a4ae3372cdd09a"></script>
 
 <div class="rights-notice" id="rightsNotice">
   <div class="rights-title">© Øyvind Solgløtt. Alle rettigheter reservert.</div>

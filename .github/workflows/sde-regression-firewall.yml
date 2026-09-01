@@ -106,7 +106,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install Python test imports
-        run: python -m pip install -r requirements.txt
+        run: |
+          python -m pip install -r requirements.txt
+          python -m pip install -r server/togplassering_scanner_v03/requirements.txt
 
       - name: Install server contract dependencies
         run: npm ci --prefix server

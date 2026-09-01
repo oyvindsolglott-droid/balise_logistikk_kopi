@@ -1,0 +1,15 @@
+Togplassering Skien Scanner v0.3 baseline, extracted from
+PROMPT_IMPLEMENTER_TOGPLASSERING_SCANNER_V03.md when the original ZIP
+was not attachable.
+
+The prompt remains the functional authority. SHA-256 values printed in
+the prompt refer to the ZIP files; extracted text may differ by trailing
+newlines. Do not redesign geometry, transcription, merge or fail-closed
+behavior.
+
+Host integration notes:
+- Node/Express proxies geometry and scan through cli.py.
+- OpenAI key is read only from OPENAI_API_KEY in the server environment.
+- The host UI must not copy the standalone prototype's API-key field.
+- LOW geometry remains fail-closed. Static e2e servers without the
+  scanner routes keep the previous local HTR path.

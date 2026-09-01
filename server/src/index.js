@@ -79,6 +79,7 @@ const {
 } = require("./vehicleStatusReadModel");
 const {createApprovedStaticAssetHandler} = require("./staticAssetDelivery");
 const {createNightPlanApi} = require("./nightPlanRoutes");
+const {createTogplasseringScannerApi} = require("./togplasseringScannerRoutes");
 const {
   buildAuthorizedSharedSporplanDeletePayload,
   createSharedSporplanDeleteCapabilityGuard
@@ -152,10 +153,13 @@ const CLIENT_READ_CONTRACT = Object.freeze({
     "/api/events",
     "/api/shared-sporplan-draft",
     "/api/night-plans",
+    "/api/togplassering-scanner/status",
     "/api/tursatt/live-arrivals"
   ],
   allowedDocumentationWriteEndpoints: [
-    "POST /api/night-plans"
+    "POST /api/night-plans",
+    "POST /api/togplassering-scanner/geometry",
+    "POST /api/togplassering-scanner/scan"
   ],
   disallowedWriteEndpoints: [
     "/api/actions/server-note",
@@ -375,6 +379,14 @@ try{
 }
 
 app.use("/api/night-plans", nightPlanApi.router);
+let togplasseringScannerApi;
+try{
+  togplasseringScannerApi = createTogplasseringScannerApi({repositoryRoot: REPO_ROOT});
+}catch(error){
+  console.error(`togplassering scanner startup blocked: ${error.message}`);
+  process.exit(1);
+}
+app.use("/api/togplassering-scanner", togplasseringScannerApi.router);
 app.use(express.json({ limit: "1mb" }));
 
 app.use((req, res, next) => {
