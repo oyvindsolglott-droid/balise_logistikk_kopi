@@ -236,15 +236,31 @@
       + (Number(pixels[offset + 2]) * 0.114);
   }
 
-  function darkNear(pixels, width, height, x, y, radius = 1){
+  function estimateInkThreshold(pixels, width, height){
+    const samples = [];
+    const stepX = Math.max(1, Math.floor(width / 64));
+    const stepY = Math.max(1, Math.floor(height / 64));
+    for(let y = 0; y < height; y += stepY){
+      for(let x = 0; x < width; x += stepX){
+        samples.push(grayscaleAtFrame(pixels, width, height, x, y));
+      }
+    }
+    samples.sort((left, right) => left - right);
+    const dark = samples[Math.min(samples.length - 1, Math.floor(samples.length * 0.02))];
+    const paper = samples[Math.min(samples.length - 1, Math.floor(samples.length * 0.80))];
+    if(!(paper - dark > 18) || dark <= 80) return 145;
+    return clamp((dark + paper) * 0.5 + 12, 90, 188);
+  }
+
+  function darkNear(pixels, width, height, x, y, radius = 1, inkThreshold = 145){
     for(let delta = -radius; delta <= radius; delta += 1){
-      if(grayscaleAtFrame(pixels, width, height, x + delta, y) < 145) return true;
+      if(grayscaleAtFrame(pixels, width, height, x + delta, y) < inkThreshold) return true;
     }
     return false;
   }
 
-  function verticalLineScore(pixels, width, height, xAtReference, slope, referenceY){
-    const yStart = Math.floor(height * 0.16);
+  function verticalLineScore(pixels, width, height, xAtReference, slope, referenceY, inkThreshold = 145){
+    const yStart = Math.floor(height * 0.08);
     const yEnd = Math.ceil(height * 0.985);
     let score = 0;
     let samples = 0;
@@ -252,20 +268,35 @@
       const x = xAtReference + (slope * (y - referenceY));
       if(x >= 0 && x < width){
         samples += 1;
-        if(darkNear(pixels, width, height, x, y, 1)) score += 1;
+        if(darkNear(pixels, width, height, x, y, 1, inkThreshold)) score += 1;
       }
     }
     return {score, samples};
   }
 
-  function bestVerticalLines(pixels, width, height){
+  function clusterVerticalCandidates(candidates, width){
+    const sorted = [...candidates].sort((left, right) => left.xAtReference - right.xAtReference);
+    const grouped = [];
+    const mergeDistance = Math.max(4, width * 0.008);
+    for(const candidate of sorted){
+      const previous = grouped.at(-1);
+      if(previous && Math.abs(candidate.xAtReference - previous.xAtReference) <= mergeDistance){
+        if(candidate.score > previous.score) grouped[grouped.length - 1] = candidate;
+      }else{
+        grouped.push(candidate);
+      }
+    }
+    return grouped;
+  }
+
+  function bestVerticalLines(pixels, width, height, inkThreshold = 145){
     const referenceY = height * 0.18;
     const scored = [];
     for(let x = 0; x < width; x += 2){
       let best = {score: -1, samples: 0, slope: 0};
       for(let slopeStep = -14; slopeStep <= 14; slopeStep += 1){
         const slope = slopeStep / 100;
-        const value = verticalLineScore(pixels, width, height, x, slope, referenceY);
+        const value = verticalLineScore(pixels, width, height, x, slope, referenceY, inkThreshold);
         if(value.score > best.score) best = {...value, slope};
       }
       scored.push(Object.freeze({xAtReference: x, ...best}));
@@ -278,7 +309,7 @@
       if(neighborhood.some(item => item.score > candidate.score)) continue;
       candidates.push(candidate);
     }
-    return {referenceY, candidates};
+    return {referenceY, candidates: clusterVerticalCandidates(candidates, width)};
   }
 
   function selectFormGrid(lines, width, template){
@@ -286,14 +317,14 @@
       (value - template.columnBoundaries[0])
       / (template.columnBoundaries.at(-1) - template.columnBoundaries[0])
     ));
-    const leftCandidates = lines.candidates.filter(candidate => candidate.xAtReference < width * 0.3);
-    const rightCandidates = lines.candidates.filter(candidate => candidate.xAtReference > width * 0.55);
+    const leftCandidates = lines.candidates.filter(candidate => candidate.xAtReference < width * 0.38);
+    const rightCandidates = lines.candidates.filter(candidate => candidate.xAtReference > width * 0.48);
     let best = null;
     for(const left of leftCandidates){
       for(const right of rightCandidates){
         const span = right.xAtReference - left.xAtReference;
-        if(span < width * 0.55) continue;
-        const tolerance = Math.max(5, span * 0.022);
+        if(span < width * 0.48) continue;
+        const tolerance = Math.max(5, span * 0.032);
         const selected = [left];
         let deviation = 0;
         let lineScore = left.score;
@@ -390,7 +421,73 @@
     return best;
   }
 
-  function verticalLineExtent(pixels, width, height, line, referenceY){
+  function selectFormGridWithInferredRightBoundary(lines, width, template){
+    const ratios = template.columnBoundaries.map(value => (
+      (value - template.columnBoundaries[0])
+      / (template.columnBoundaries.at(-1) - template.columnBoundaries[0])
+    ));
+    if(ratios.length < 3) return null;
+    const lastObservedRatio = ratios.at(-2);
+    const leftCandidates = lines.candidates.filter(candidate => candidate.xAtReference < width * 0.38);
+    const lastObservedCandidates = lines.candidates.filter(candidate => candidate.xAtReference > width * 0.45);
+    let best = null;
+    for(const left of leftCandidates){
+      for(const lastObserved of lastObservedCandidates){
+        if(!(lastObservedRatio > 0)) continue;
+        const span = (lastObserved.xAtReference - left.xAtReference) / lastObservedRatio;
+        const inferredRightX = left.xAtReference + span;
+        if(span < width * 0.75 || inferredRightX < width * 0.8 || inferredRightX > width * 0.995) continue;
+        const tolerance = Math.max(5, span * 0.032);
+        const observed = [left];
+        let deviation = 0;
+        let lineScore = left.score;
+        let valid = true;
+        for(const ratio of ratios.slice(1, -1)){
+          const expectedX = left.xAtReference + (span * ratio);
+          const choices = lines.candidates
+            .filter(candidate => Math.abs(candidate.xAtReference - expectedX) <= tolerance)
+            .sort((a, b) => (b.score - (Math.abs(b.xAtReference - expectedX) * 1.5))
+              - (a.score - (Math.abs(a.xAtReference - expectedX) * 1.5)));
+          const choice = choices[0];
+          if(!choice){ valid = false; break; }
+          observed.push(choice);
+          deviation += Math.abs(choice.xAtReference - expectedX) / tolerance;
+          lineScore += choice.score;
+        }
+        if(!valid) continue;
+        const averageCoverage = observed.reduce((sum, line) => (
+          sum + (line.score / Math.max(1, line.samples))
+        ), 0) / observed.length;
+        const sequenceFit = Math.max(0, 1 - (deviation / Math.max(1, observed.length - 2)));
+        const sortedSlopes = observed.map(line => line.slope).sort((a, b) => a - b);
+        const medianSlope = sortedSlopes[Math.floor(sortedSlopes.length / 2)] || 0;
+        const maximumSlopeDeviation = Math.max(...observed.map(line => Math.abs(line.slope - medianSlope)));
+        if(averageCoverage < 0.45 || sequenceFit < 0.78 || maximumSlopeDeviation > 0.075) continue;
+        const inferredRight = Object.freeze({
+          xAtReference: inferredRightX,
+          slope: lastObserved.slope,
+          score: 0,
+          samples: lastObserved.samples,
+          inferred: true,
+        });
+        const selected = [...observed, inferredRight];
+        const score = lineScore - (deviation * 200) - (maximumSlopeDeviation * 1000);
+        if(!best || score > best.score){
+          best = {
+            score,
+            selected,
+            lineScore,
+            deviation,
+            observedLineCount: observed.length,
+            inferredBoundary: "RIGHT",
+          };
+        }
+      }
+    }
+    return best;
+  }
+
+  function verticalLineExtent(pixels, width, height, line, referenceY, inkThreshold = 145){
     let best = null;
     let segmentStart = null;
     let lastDark = null;
@@ -405,7 +502,7 @@
     };
     for(let y = 0; y < height; y += 1){
       const x = line.xAtReference + (line.slope * (y - referenceY));
-      if(x >= 0 && x < width && darkNear(pixels, width, height, x, y, 2)){
+      if(x >= 0 && x < width && darkNear(pixels, width, height, x, y, 2, inkThreshold)){
         if(segmentStart == null) segmentStart = y;
         lastDark = y;
         gap = 0;
@@ -418,7 +515,7 @@
     return best;
   }
 
-  function horizontalLineScore(pixels, width, height, yAtReference, slope, referenceX, scanStartX = null, scanEndX = null){
+  function horizontalLineScore(pixels, width, height, yAtReference, slope, referenceX, scanStartX = null, scanEndX = null, inkThreshold = 145){
     let score = 0;
     let samples = 0;
     const xStart = Number.isFinite(scanStartX) ? Math.max(0, Math.floor(scanStartX)) : Math.floor(width * 0.01);
@@ -429,22 +526,22 @@
       samples += 1;
       let dark = false;
       for(let delta = -2; delta <= 2; delta += 1){
-        if(grayscaleAtFrame(pixels, width, height, x, y + delta) < 145){ dark = true; break; }
+        if(grayscaleAtFrame(pixels, width, height, x, y + delta) < inkThreshold){ dark = true; break; }
       }
       if(dark) score += 1;
     }
     return {score, samples};
   }
 
-  function bestHorizontalBoundary(pixels, width, height, edge, expectedSlope = null){
+  function bestHorizontalBoundary(pixels, width, height, edge, expectedSlope = null, inkThreshold = 145){
     const referenceX = width * 0.5;
-    const start = edge === "top" ? Math.floor(height * 0.015) : Math.floor(height * 0.84);
-    const end = edge === "top" ? Math.ceil(height * 0.16) : Math.ceil(height * 0.97);
+    const start = edge === "top" ? Math.floor(height * 0.012) : Math.floor(height * 0.78);
+    const end = edge === "top" ? Math.ceil(height * 0.22) : Math.ceil(height * 0.995);
     const candidates = [];
     for(let y = start; y <= end; y += 2){
       for(let slopeStep = -10; slopeStep <= 10; slopeStep += 1){
         const slope = slopeStep / 200;
-        const value = horizontalLineScore(pixels, width, height, y, slope, referenceX);
+        const value = horizontalLineScore(pixels, width, height, y, slope, referenceX, null, null, inkThreshold);
         const candidate = {yAtReference: y, slope, referenceX, ...value};
         if(candidate.samples > 0 && candidate.score >= candidate.samples * 0.45) candidates.push(candidate);
       }
@@ -469,14 +566,14 @@
     return Object.freeze({x, y: horizontalIntercept + (horizontal.slope * x)});
   }
 
-  function horizontalGridCandidates(pixels, width, height, scanStartX, scanEndX, scanStartRatio = 0.14){
+  function horizontalGridCandidates(pixels, width, height, scanStartX, scanEndX, scanStartRatio = 0.05, inkThreshold = 145){
     const referenceX = width * 0.5;
     const values = [];
     for(let y = Math.floor(height * scanStartRatio); y <= Math.ceil(height * 0.995); y += 2){
       let best = null;
       for(let slopeStep = -12; slopeStep <= 12; slopeStep += 1){
         const slope = slopeStep / 200;
-        const value = horizontalLineScore(pixels, width, height, y, slope, referenceX, scanStartX, scanEndX);
+        const value = horizontalLineScore(pixels, width, height, y, slope, referenceX, scanStartX, scanEndX, inkThreshold);
         const candidate = {yAtReference: y, slope, referenceX, ...value};
         if(!best || candidate.score > best.score) best = candidate;
       }
@@ -493,9 +590,37 @@
     return Object.freeze(candidates);
   }
 
+  function consecutiveRowSpacings(matchedByRow){
+    const spacings = [];
+    for(let row = 1; row < matchedByRow.length; row += 1){
+      const previous = matchedByRow[row - 1];
+      const current = matchedByRow[row];
+      if(previous && current){
+        spacings.push(current.yAtReference - previous.yAtReference);
+      }
+    }
+    return spacings;
+  }
+
+  function medianValue(values){
+    if(!values.length) return null;
+    const sorted = [...values].sort((left, right) => left - right);
+    return sorted[Math.floor(sorted.length / 2)];
+  }
+
+  function gridSpacingCost(matchedByRow){
+    const spacings = consecutiveRowSpacings(matchedByRow);
+    if(spacings.length < 8) return Number.POSITIVE_INFINITY;
+    const restMedian = medianValue(spacings.slice(1)) || medianValue(spacings);
+    if(!(restMedian > 0)) return Number.POSITIVE_INFINITY;
+    const firstOutlier = Math.abs(spacings[0] - restMedian) / restMedian;
+    const meanAbs = spacings.reduce((sum, gap) => sum + Math.abs(gap - restMedian), 0) / spacings.length / restMedian;
+    return firstOutlier + (meanAbs * 0.5);
+  }
+
   function selectHorizontalGrid(candidates, perspective, width, height, template, diagnostics = null){
-    const topCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.12 && candidate.yAtReference <= height * 0.28);
-    const bottomCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.9 && candidate.yAtReference <= height * 0.995);
+    const topCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.05 && candidate.yAtReference <= height * 0.34);
+    const bottomCandidates = candidates.filter(candidate => candidate.coverage >= 0.45 && candidate.yAtReference >= height * 0.82 && candidate.yAtReference <= height * 0.995);
     const canonicalX = template.width * 0.5;
     let best = null;
     let maximumMatchedLineCount = 0;
@@ -533,10 +658,15 @@
         }
         if(matched.length < 26) continue;
         const score = (matched.length * 100) + evidenceScore;
-        const earlierTop = !best || top.yAtReference < best.topImageY - 3;
-        const sameTopBetterEvidence = best && Math.abs(top.yAtReference - best.topImageY) <= 3 && score > best.score;
-        if(earlierTop || sameTopBetterEvidence){
-          best = {score, topImageY: top.yAtReference, topCanonicalY: topCanonical.y, bottomCanonicalY: bottomCanonical.y, matched, matchedByRow};
+        const spacingCost = gridSpacingCost(matchedByRow);
+        const moreRows = !best || matched.length > best.matched.length;
+        const sameRowsMoreRegular = best && matched.length === best.matched.length
+          && spacingCost < best.spacingCost - 0.05;
+        const sameRowsBetterEvidence = best && matched.length === best.matched.length
+          && Math.abs(spacingCost - best.spacingCost) <= 0.05
+          && score > best.score;
+        if(moreRows || sameRowsMoreRegular || sameRowsBetterEvidence){
+          best = {score, spacingCost, topImageY: top.yAtReference, topCanonicalY: topCanonical.y, bottomCanonicalY: bottomCanonical.y, matched, matchedByRow};
         }
       }
     }
@@ -546,6 +676,8 @@
       diagnostics.maximumMatchedBottom = maximumMatchedBottom;
       diagnostics.topCandidateCount = topCandidates.length;
       diagnostics.bottomCandidateCount = bottomCandidates.length;
+      diagnostics.selectedTopImageY = best?.topImageY ?? null;
+      diagnostics.selectedSpacingCost = best?.spacingCost ?? null;
     }
     if(!best) return null;
     const canonicalRowBoundaries = best.matchedByRow.map(line => line
@@ -569,13 +701,7 @@
     const boundariesAreMonotonic = canonicalRowBoundaries.every((value, row) => (
       Number.isFinite(value) && (row === 0 || value > canonicalRowBoundaries[row - 1])
     ));
-    const expectedSpacing = (best.bottomCanonicalY - best.topCanonicalY) / 29;
-    const rowGeometryStable = boundariesAreMonotonic
-      && best.matched.length === 30
-      && canonicalRowBoundaries.slice(1).every((value, row) => {
-        const spacing = value - canonicalRowBoundaries[row];
-        return spacing >= expectedSpacing * 0.68 && spacing <= expectedSpacing * 1.32;
-      });
+    const rowGeometryStable = boundariesAreMonotonic && best.matched.length === 30;
     const resolvedBoundaries = rowGeometryStable
       ? canonicalRowBoundaries
       : Array.from({length: 30}, (_unused, row) => (
@@ -596,7 +722,8 @@
     if(!(width > 0) || !(height > 0) || !pixels || pixels.length !== width * height * 4){
       throw new Error("invalid_form_image_frame");
     }
-    const lines = bestVerticalLines(pixels, width, height);
+    const inkThreshold = estimateInkThreshold(pixels, width, height);
+    const lines = bestVerticalLines(pixels, width, height, inkThreshold);
     let diagnosticHorizontalCandidates = Object.freeze([]);
     const diagnosticHorizontalSelection = {};
     let diagnosticTopBoundary = null;
@@ -617,7 +744,8 @@
       .filter(candidate => candidate.grid && candidate.grid.selected.length === candidate.template.columnBoundaries.length);
     if(!gridCandidates.some(candidate => candidate.template.id === "TEMPLATE_B")){
       const template = TEMPLATE_B;
-      const grid = selectFormGridWithInferredLeftBoundary(lines, width, template);
+      const grid = selectFormGridWithInferredLeftBoundary(lines, width, template)
+        || selectFormGridWithInferredRightBoundary(lines, width, template);
       if(grid){
         const firstRule = grid.selected[0];
         const lastRule = grid.selected.at(-1);
@@ -650,15 +778,15 @@
       let right = grid.selected.at(-1);
       const stableSlopes = grid.selected.slice(1, -1).map(line => line.slope).sort((a, b) => a - b);
       const stableSlope = stableSlopes[Math.floor(stableSlopes.length / 2)] || 0;
-      let leftExtent = verticalLineExtent(pixels, width, height, left, lines.referenceY);
-      let rightExtent = verticalLineExtent(pixels, width, height, right, lines.referenceY);
+      let leftExtent = verticalLineExtent(pixels, width, height, left, lines.referenceY, inkThreshold);
+      let rightExtent = verticalLineExtent(pixels, width, height, right, lines.referenceY, inkThreshold);
       if(!leftExtent || leftExtent.length <= height * 0.76){
         left = Object.freeze({...left, slope: stableSlope, inferredSlopeFromInteriorRules: true});
-        leftExtent = verticalLineExtent(pixels, width, height, left, lines.referenceY);
+        leftExtent = verticalLineExtent(pixels, width, height, left, lines.referenceY, inkThreshold);
       }
       if(!rightExtent || rightExtent.length <= height * 0.76){
         right = Object.freeze({...right, slope: stableSlope, inferredSlopeFromInteriorRules: true});
-        rightExtent = verticalLineExtent(pixels, width, height, right, lines.referenceY);
+        rightExtent = verticalLineExtent(pixels, width, height, right, lines.referenceY, inkThreshold);
       }
       const scanStartX = Math.min(left.xAtReference, right.xAtReference) + 2;
       const scanEndX = Math.max(left.xAtReference, right.xAtReference) - 2;
@@ -668,17 +796,18 @@
         height,
         scanStartX,
         scanEndX,
-        grid.inferredBoundary === "LEFT" ? 0.06 : 0.14,
+        0.05,
+        inkThreshold,
       );
       const horizontalSlopes = diagnosticHorizontalCandidates
         .filter(line => line.coverage >= 0.45)
         .map(line => line.slope)
         .sort((a, b) => a - b);
-      const expectedHorizontalSlope = grid.inferredBoundary === "LEFT"
+      const expectedHorizontalSlope = grid.inferredBoundary
         ? horizontalSlopes[Math.floor(horizontalSlopes.length / 2)]
         : null;
-      const topBoundary = bestHorizontalBoundary(pixels, width, height, "top", expectedHorizontalSlope);
-      const bottomBoundary = bestHorizontalBoundary(pixels, width, height, "bottom", expectedHorizontalSlope);
+      const topBoundary = bestHorizontalBoundary(pixels, width, height, "top", expectedHorizontalSlope, inkThreshold);
+      const bottomBoundary = bestHorizontalBoundary(pixels, width, height, "bottom", expectedHorizontalSlope, inkThreshold);
       diagnosticTopBoundary = topBoundary;
       diagnosticBottomBoundary = bottomBoundary;
       const interiorCoverage = grid.selected.slice(1, -1)
@@ -687,8 +816,10 @@
         ? interiorCoverage >= 0.68
         : leftExtent && (leftExtent.length > height * 0.76
           || (left.inferredSlopeFromInteriorRules === true && interiorCoverage >= 0.68));
-      const rightExtentValid = rightExtent && (rightExtent.length > height * 0.76
-        || (right.inferredSlopeFromInteriorRules === true && interiorCoverage >= 0.68));
+      const rightExtentValid = grid.inferredBoundary === "RIGHT"
+        ? interiorCoverage >= 0.68
+        : rightExtent && (rightExtent.length > height * 0.76
+          || (right.inferredSlopeFromInteriorRules === true && interiorCoverage >= 0.68));
       if(leftExtentValid && rightExtentValid
         && topBoundary && topBoundary.score >= topBoundary.samples * 0.45
         && bottomBoundary && bottomBoundary.score >= bottomBoundary.samples * 0.45){
@@ -762,8 +893,8 @@
         sequenceFound: Boolean(grid),
         selectedTemplateId: template?.id || "TEMPLATE_UNKNOWN",
         selectedLines: Object.freeze((grid?.selected || []).map(line => Object.freeze({...line}))),
-        leftExtent: grid ? verticalLineExtent(pixels, width, height, grid.selected[0], lines.referenceY) : null,
-        rightExtent: grid ? verticalLineExtent(pixels, width, height, grid.selected.at(-1), lines.referenceY) : null,
+        leftExtent: grid ? verticalLineExtent(pixels, width, height, grid.selected[0], lines.referenceY, inkThreshold) : null,
+        rightExtent: grid ? verticalLineExtent(pixels, width, height, grid.selected.at(-1), lines.referenceY, inkThreshold) : null,
         topBoundary: diagnosticTopBoundary,
         bottomBoundary: diagnosticBottomBoundary,
         horizontalCandidateCount: diagnosticHorizontalCandidates.length,
@@ -784,9 +915,16 @@
       : {};
     const selectedLines = Array.isArray(diagnostics.selectedLines) ? diagnostics.selectedLines : [];
     const inferredBoundary = String(detected.inferredVerticalBoundary || (
-      selectedLines.some(line => line?.inferred === true) ? "LEFT" : ""
+      selectedLines.some(line => line?.inferred === true)
+        ? (selectedLines.at(-1)?.inferred === true ? "RIGHT" : "LEFT")
+        : ""
     ));
-    const templateId = String(detected.templateId || diagnostics.selectedTemplateId || "TEMPLATE_UNKNOWN");
+    const templateId = String(
+      (detected.templateId && detected.templateId !== "TEMPLATE_UNKNOWN"
+        ? detected.templateId
+        : diagnostics.selectedTemplateId)
+      || "TEMPLATE_UNKNOWN"
+    );
     const verticalLineCount = Number.isFinite(Number(detected.verticalLineCount)) && Number(detected.verticalLineCount) > 0
       ? Number(detected.verticalLineCount)
       : selectedLines.length;
@@ -804,7 +942,11 @@
     }
     parts.push(`mal ${templateId}`);
     if(verticalLineCount > 0){
-      const inferred = inferredBoundary === "LEFT" ? "; venstre yttergrense inferert" : "";
+      const inferred = inferredBoundary === "LEFT"
+        ? "; venstre yttergrense inferert"
+        : inferredBoundary === "RIGHT"
+          ? "; høyre yttergrense inferert"
+          : "";
       parts.push(`${verticalLineCount} vertikale linjer (${observedVerticalLineCount} observert${inferred})`);
     }
     if(maximumMatchedRows !== 30) parts.push(`fant ${maximumMatchedRows} av 30 radlinjer`);
