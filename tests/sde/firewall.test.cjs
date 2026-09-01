@@ -753,8 +753,10 @@ test("EMPTY-DROP — actual drag intent reaches the planner and keeps physically
   assert.equal(report?.pass, true);
   assert.equal(report?.historical?.tag, "HISTORICAL_RUNTIME_FIXTURE_ONLY");
   assert.deepEqual(report?.results?.map(item=>item.id),
-    Array.from({length:9},(_,index)=>`INV-EMPTY-DROP-${String(index+1).padStart(3,"0")}`));
+    Array.from({length:10},(_,index)=>`INV-EMPTY-DROP-${String(index+1).padStart(3,"0")}`));
   assert.equal(report?.results?.every(item=>item.status==="PASS"), true);
+  assert.equal(report?.legacyShadow?.pass, true);
+  assert.equal(report?.legacyShadow?.mode, "legacy_shadow");
   assert.deepEqual(report?.reports?.map(item=>item.target), ["4M","5M","6S","10S","11S","12S"]);
   assert.equal(report?.reports?.every(item=>item.pass&&item.accepted&&item.plannerCalls===1&&item.rejectedSlot===""), true);
   const oldResult = runHarness(harness, materialize("f2e46ad75cb2a83dd4812a52ac3ec8fff9e5f659", "index.html"));

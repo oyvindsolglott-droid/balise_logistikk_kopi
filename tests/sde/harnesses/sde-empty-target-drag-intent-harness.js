@@ -127,6 +127,28 @@ eval(prefix + String.raw`
   const historicalReader=ctx.buildSdeCanonicalProductionReader();
   const historicalCards=[...(historicalReader.cardProjection?.actionableCards||[]),...(historicalReader.cardProjection?.blockedChainCards||[])];
   const historical={tag:"HISTORICAL_RUNTIME_FIXTURE_ONLY",vehicle:"74-21",source:"11S",target:"12S",accepted:historicalAccepted,cards:historicalCards.length,pass:historicalAccepted===true&&historicalCards.length===3};
+  const previousRuntimeConfig=vm.runInContext("globalThis.__SDE_SERVER_RUNTIME_CONFIG__",ctx);
+  vm.runInContext("delete globalThis.__SDE_SERVER_RUNTIME_CONFIG__;",ctx);
+  resetState([["11S","LEGACY-MAIN"],["10N","LEGACY-BLOCKER"]]);
+  appState.txpUnavailableInfrastructure={slots:[],tracks:[],washRouteUnavailable:false};
+  vm.runInContext("sdeShiftLastRenderedData={moves:[],limitedPlanningMode:true}; sdeNightPlacementDropMessage=null; sdeNightPlacementBlockedMoveRequest=null; renderSdeSkiftebevegelser=()=>{};",ctx);
+  const legacyPayload={vehicle:"LEGACY-MAIN",slot:"11S",fromSlot:"11S",sourceKind:"standing"};
+  const legacyMode=ctx.getSdeProductionReaderMode({search:"",hostname:"example.test"});
+  const legacyAccepted=ctx.applySdeNightPlacementDragOverride(legacyPayload,"10S");
+  const legacyOverrides=Object.values(appState.sdeNightPlacementManualOverrides||{});
+  const legacyGenerated=ctx.buildSdeNightPlacementDragOverrideMoves([]);
+  const legacyRows=ctx.buildSdePhysicalBlockerGuardMoves(legacyGenerated);
+  const legacyRoles=legacyRows.map(row=>String(row?.sdePhysicalDependencyRole||""));
+  const legacyMain=legacyRows.find(row=>row?.sdePhysicalDependencyRole==="dependent");
+  const legacyShadow={
+    mode:legacyMode,
+    accepted:legacyAccepted,
+    overrideCount:legacyOverrides.length,
+    roles:legacyRoles,
+    mainTarget:legacyMain?.toSlot||"",
+    pass:legacyMode==="legacy_shadow"&&legacyAccepted===true&&legacyOverrides.length===1&&legacyRoles.join(",")==="prerequisite,dependent,return"&&legacyMain?.toSlot==="10S"
+  };
+  ctx.__SDE_SERVER_RUNTIME_CONFIG__ = previousRuntimeConfig;
   const invariant=(id,contract,pass,detail)=>({id,contract,status:pass?"PASS":"FAIL",detail});
   const all=predicate=>reports.every(predicate);
   const results=[
@@ -138,16 +160,18 @@ eval(prefix + String.raw`
     invariant("INV-EMPTY-DROP-006","VALID-RELIEF-PRODUCES-COMPLETE-THREE-CARD-PRODUCT-CHAIN",all(item=>item.rows.length===3&&item.cards.length===3&&item.completeProjection),JSON.stringify(reports.map(item=>[item.target,item.rows.length,item.cards.length,item.completeProjection]))),
     invariant("INV-EMPTY-DROP-007","RECOVERY-USES-POST-MAIN-TOPOLOGY",all(item=>item.rows.some(row=>row.role==="return"&&row.postMain)),JSON.stringify(reports.map(item=>[item.target,item.rows.find(row=>row.role==="return")?.to]))),
     invariant("INV-EMPTY-DROP-008","RECOVERY-DOES-NOT-CREATE-TRAPPED-EMPTY-SLOT",all(item=>item.rows.filter(row=>row.role==="return").length===1&&item.completeProjection),JSON.stringify(reports.map(item=>[item.target,item.completeProjection]))),
-    invariant("INV-EMPTY-DROP-009","NO-PARTIAL-OPERATIVE-PROJECTION",all(item=>item.completeProjection&&item.actualUnchanged),JSON.stringify(reports.map(item=>[item.target,item.completeProjection,item.actualUnchanged])))
+    invariant("INV-EMPTY-DROP-009","NO-PARTIAL-OPERATIVE-PROJECTION",all(item=>item.completeProjection&&item.actualUnchanged),JSON.stringify(reports.map(item=>[item.target,item.completeProjection,item.actualUnchanged]))),
+    invariant("INV-EMPTY-DROP-010","LEGACY-SHADOW-ACCEPTS-COMPLETE-THREE-STEP-RELIEF",legacyShadow.pass,JSON.stringify(legacyShadow))
   ];
   const output={
     schemaVersion:"sde-empty-target-drag-intent-harness-v1",
     historical,
+    legacyShadow,
     directReports,
     availabilityCases,
     results,
     reports,
-    pass:reports.every(report=>report.pass)&&historical.pass&&results.every(result=>result.status==="PASS")
+    pass:reports.every(report=>report.pass)&&historical.pass&&legacyShadow.pass&&results.every(result=>result.status==="PASS")
   };
   process.stdout.write(JSON.stringify(output)+"\n");
   process.exitCode=output.pass?0:1;

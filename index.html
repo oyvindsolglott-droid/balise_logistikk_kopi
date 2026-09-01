@@ -42348,7 +42348,7 @@ function applySdeNightPlacementDragOverride(payload, toSlot){
     return false;
   }
 
-  if(assessment.hardPhysicalBlocked && !canonicalReaderMode){
+  if(assessment.hardPhysicalBlocked && !canonicalReaderMode && (assessment.noSafeReleaseMove || !assessment.freeingMove)){
     sdeNightPlacementBlockedMoveRequest = assessment.blockedMoveRequest || null;
     sdeNightPlacementDropMessage = {
       type:"warning",

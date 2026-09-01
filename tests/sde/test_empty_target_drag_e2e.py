@@ -939,5 +939,70 @@ class SdeEmptyTargetDragBrowserTests(unittest.TestCase):
             browser.close()
 
 
+class SdeLegacyShadowEmptyDropHandler(http.server.SimpleHTTPRequestHandler):
+    server_version = "SdeLegacyShadowDropTest/1"
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+
+@contextlib.contextmanager
+def legacy_shadow_static_server():
+    handler = functools.partial(SdeLegacyShadowEmptyDropHandler, directory=str(ROOT))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+class SdeLegacyShadowThreeStepDragTests(unittest.TestCase):
+    def test_production_legacy_shadow_accepts_blocked_empty_target_as_three_step_chain(self) -> None:
+        with legacy_shadow_static_server() as base_url, sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            context = browser.new_context(viewport={"width": 1280, "height": 900})
+            page = context.new_page()
+            page_errors: list[str] = []
+            page.on("pageerror", lambda error: page_errors.append(str(error)))
+            page.goto(base_url, wait_until="domcontentloaded")
+            mode = page.evaluate("getSdeProductionReaderMode(window.location)")
+            self.assertEqual(mode, "legacy_shadow")
+            reset_graphic_fixture(page, [["11S", "movingVehicle"], ["10N", "blockingVehicle"]])
+            actual_before = page.evaluate("JSON.stringify(state.grunnoppstilling)")
+            hover = actual_pointer_drag(page, "11S", "10S")
+            self.assertEqual(hover["state"], "AVAILABLE_WITH_RELIEF_PLANNING", hover)
+            self.assertFalse(hover["red"], hover)
+            result = page.evaluate(
+                """() => {
+                  const overrides=Object.values(state.sdeNightPlacementManualOverrides||{});
+                  const generated=buildSdeNightPlacementDragOverrideMoves([]);
+                  const rows=buildSdePhysicalBlockerGuardMoves(generated);
+                  return {
+                    accepted:overrides.length===1&&overrides[0]?.dragIntentAccepted===true,
+                    roles:rows.map(row=>row.sdePhysicalDependencyRole),
+                    path:rows.map(row=>[row.fromSlot,row.toSlot,row.sdePhysicalDependencyRole]),
+                    messageType:sdeNightPlacementDropMessage?.type||'',
+                    blockedRequest:Boolean(sdeNightPlacementBlockedMoveRequest)
+                  };
+                }"""
+            )
+            self.assertTrue(result["accepted"], result)
+            self.assertEqual(
+                result["path"],
+                [["10N", "VN", "prerequisite"], ["11S", "10S", "dependent"], ["VN", "10N", "return"]],
+                result,
+            )
+            self.assertNotEqual(result["messageType"], "error", result)
+            self.assertFalse(result["blockedRequest"], result)
+            self.assertEqual(page.evaluate("JSON.stringify(state.grunnoppstilling)"), actual_before)
+            self.assertEqual(page_errors, [])
+            context.close()
+            browser.close()
+
+
 if __name__ == "__main__":
     unittest.main()

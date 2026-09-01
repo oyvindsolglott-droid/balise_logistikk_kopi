@@ -17,13 +17,13 @@ if(run.error || ![0,1].includes(run.status)){
   process.exit(2);
 }
 const report = JSON.parse(String(run.stdout || "").trim().split(/\n/).filter(Boolean).at(-1) || "{}");
-const expected = Array.from({length:9},(_,index)=>`INV-EMPTY-DROP-${String(index+1).padStart(3,"0")}`);
+const expected = Array.from({length:10},(_,index)=>`INV-EMPTY-DROP-${String(index+1).padStart(3,"0")}`);
 if(
   report?.schemaVersion !== "sde-empty-target-drag-intent-harness-v1"
   || !Array.isArray(report.results)
   || report.results.map(item=>item.id).join(",") !== expected.join(",")
 ){
-  process.stderr.write("empty-drop harness did not emit exactly INV-EMPTY-DROP-001 through INV-EMPTY-DROP-009\n");
+  process.stderr.write("empty-drop harness did not emit exactly INV-EMPTY-DROP-001 through INV-EMPTY-DROP-010\n");
   process.exit(2);
 }
 process.stdout.write(`${JSON.stringify({category:"empty-drop",results:report.results,reports:report.reports,historical:report.historical})}\n`);
