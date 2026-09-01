@@ -2,8 +2,9 @@
 """Host-process bridge for Togplassering Skien Scanner v0.3.
 
 Does not change geometry, transcription, merge or fail-closed behavior.
-Reads a local image path and prints JSON. OpenAI key is taken only from
-the environment (never from CLI argv) when scanning.
+Reads a local image path and prints JSON. The "read" command transcribes on this
+machine with no network access; "scan" uses the remote model and takes its key
+only from the environment, never from CLI argv.
 """
 from __future__ import annotations
 
@@ -27,6 +28,7 @@ from app import (
     _to_jpeg_data_url,
     _verify_prompt,
 )
+from local_reader import read_form
 
 
 def _geometry_response(im):
@@ -74,9 +76,30 @@ def _scan_response(im, *, double_check: bool, model: str):
     return result
 
 
+def _read_response(im):
+    """Transcribe locally. No API key, no network, no per-read cost."""
+    g = _geometry_from_image(im)
+    if g["metrics"]["confidence"] == "low":
+        raise ValueError("Geometrien er LOW. Lesing er sperret; kontroller/ta nytt bilde først.")
+    result = _merge_reads(read_form(g), None)
+    result["ok"] = True
+    result["engine"] = "local-pp-ocrv5"
+    result["geometry"] = g["metrics"]
+    rows = _make_row_contact(g)
+    tracks = _make_track_contact(g)
+    result["preview"] = {
+        "overlay": _to_jpeg_data_url(_cv_to_pil(g["overlay"]), 88),
+        "rectified": _to_jpeg_data_url(_cv_to_pil(g["rectified"]), 90),
+        "rectified_overlay": _to_jpeg_data_url(_cv_to_pil(g["rect_overlay"]), 88),
+        "row_contact": _to_jpeg_data_url(rows, 88),
+        "track_contact": _to_jpeg_data_url(tracks, 88),
+    }
+    return result
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="v0.3 scanner host bridge")
-    parser.add_argument("command", choices=("geometry", "scan"))
+    parser.add_argument("command", choices=("geometry", "read", "scan"))
     parser.add_argument("image", type=Path)
     parser.add_argument("--double-check", action="store_true", default=True)
     parser.add_argument("--no-double-check", action="store_false", dest="double_check")
@@ -87,6 +110,8 @@ def main(argv: list[str] | None = None) -> int:
         im = _decode_image(raw)
         if args.command == "geometry":
             payload = _geometry_response(im)
+        elif args.command == "read":
+            payload = _read_response(im)
         else:
             payload = _scan_response(im, double_check=args.double_check, model=args.model)
     except Exception as exc:
