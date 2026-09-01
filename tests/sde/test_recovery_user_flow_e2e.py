@@ -67,6 +67,25 @@ def app_server():
                 process.stdout.close()
 
 
+def present_scanner_as_absent(page: Page) -> None:
+    """These flows exercise the legacy local HTR engine end to end.
+
+    The isolated appserver has no access-identity configuration, so the v0.3
+    scanner route answers 503. That is a refusal by a scanner that exists, and
+    the import surface fails closed on it rather than passing off the legacy
+    detector's verdict as v0.3's. Present the route as absent so the test states
+    which engine it is actually exercising.
+    """
+    page.route(
+        "**/api/togplassering-scanner/**",
+        lambda route: route.fulfill(
+            status=404,
+            content_type="application/json",
+            body='{"ok": false, "error": "not_found"}',
+        ),
+    )
+
+
 def reveal_night_plan(page: Page) -> None:
     page.evaluate(
         """
@@ -129,6 +148,7 @@ class RecoveryUserFlowBrowserTests(unittest.TestCase):
                 response.headers.get("content-length", ""),
             )))
             page.on("pageerror", lambda error: page_errors.append(str(error)))
+            present_scanner_as_absent(page)
 
             page.goto(base_url, wait_until="domcontentloaded")
             page.wait_for_function("document.querySelectorAll('#oppstillingTable tbody tr').length > 0")
@@ -232,6 +252,7 @@ class RecoveryUserFlowBrowserTests(unittest.TestCase):
                 writes: list[str] = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 page.on("request", lambda request: writes.append(f"{request.method} {request.url}") if request.method not in {"GET", "HEAD", "OPTIONS"} else None)
+                present_scanner_as_absent(page)
                 page.goto(base_url, wait_until="domcontentloaded")
                 page.wait_for_function("document.querySelectorAll('#oppstillingTable tbody tr').length > 0")
                 before = tursatt_contract(page)

@@ -144,7 +144,7 @@ class TogplasseringScannerV03Tests(unittest.TestCase):
         self.assertIn("Kontroller geometri", html)
         self.assertIn("Les skjema med AI", html)
         self.assertIn("/api/togplassering-scanner/geometry", ui)
-        self.assertIn("scannerStatusAvailable", ui)
+        self.assertIn("scannerStatusDiagnosis", ui)
         self.assertNotIn("api_key", routes)
         self.assertNotIn("args.push(\"--api", routes)
 

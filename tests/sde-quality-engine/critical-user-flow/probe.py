@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from tests.sde.test_recovery_user_flow_e2e import (  # noqa: E402
     FIXTURE,
     app_server,
+    present_scanner_as_absent,
     reveal_night_plan,
     tursatt_contract,
 )
@@ -43,6 +44,7 @@ def inspect_profile(browser_type, base_url: str, width: int, height: int) -> dic
     browser = browser_type.launch(headless=True)
     context = browser.new_context(viewport={"width": width, "height": height})
     page = context.new_page()
+    present_scanner_as_absent(page)
     errors: list[str] = []
     writes: list[str] = []
     page.on("pageerror", lambda error: errors.append(str(error)))
@@ -89,6 +91,7 @@ def inspect_isolation(playwright, base_url: str) -> dict[str, object]:
         """
     )
     page = context.new_page()
+    present_scanner_as_absent(page)
     page_errors: list[str] = []
     writes: list[str] = []
     page.on("pageerror", lambda error: page_errors.append(str(error)))
@@ -133,6 +136,7 @@ def inspect_primary(playwright, base_url: str) -> dict[str, object]:
     browser = playwright.chromium.launch(headless=True)
     context = browser.new_context(viewport={"width": 1440, "height": 900})
     page = context.new_page()
+    present_scanner_as_absent(page)
     page.on("request", lambda request: requests.append((request.method, request.url)))
     page.on(
         "request",

@@ -899,19 +899,88 @@
     return status === 404 || status === 405 || status === 501 || status === 401 || status === 403 || status === 503;
   }
 
-  async function scannerStatusAvailable() {
+  function scannerFailureReason(payload, fallbackReason) {
+    return String((payload && (payload.error || payload.detail)) || fallbackReason);
+  }
+
+  // A missing route means the deployment has no v0.3 engine at all, so the legacy
+  // detector is the only one there is. A present but refused route means the engine
+  // exists and something is wrong with authorization or configuration; running the
+  // legacy detector there would report its verdict on the photo as if v0.3 had
+  // rejected it.
+  function scannerEngineMissing(status) {
+    return status === 0 || status === 404 || status === 405 || status === 501;
+  }
+
+  function scannerDiagnosisTrace(diagnosis) {
+    const status = (diagnosis && diagnosis.status) || 0;
+    const reason = (diagnosis && diagnosis.reason) || "scanner_unavailable";
+    return (status ? "HTTP " + status + " · " : "") + reason;
+  }
+
+  async function scannerStatusDiagnosis() {
+    let response;
     try {
-      const response = await root.fetch(SCANNER_STATUS_URL, {
+      response = await root.fetch(SCANNER_STATUS_URL, {
         method: "GET",
         credentials: "same-origin",
         cache: "no-store",
       });
-      if (scannerUnavailableStatus(response.status) || !response.ok) return false;
-      const payload = await response.json().catch(function invalidJson() { return null; });
-      return Boolean(payload && payload.ok === true);
-    } catch (_error) {
-      return false;
+    } catch (error) {
+      return {available: false, status: 0, reason: String((error && error.message) || "network_error")};
     }
+    const payload = await response.json().catch(function invalidJson() { return null; });
+    if (scannerUnavailableStatus(response.status) || !response.ok) {
+      return {available: false, status: response.status, reason: scannerFailureReason(payload, "scanner_unavailable")};
+    }
+    if (!payload || payload.ok !== true) {
+      return {available: false, status: response.status, reason: scannerFailureReason(payload, "scanner_status_invalid")};
+    }
+    return {available: true, status: response.status, reason: ""};
+  }
+
+  async function runLegacyEngineWithNotice(diagnosis) {
+    const trace = scannerDiagnosisTrace(diagnosis);
+    try {
+      return await analyzeSelectedImageLegacy();
+    } finally {
+      const progress = el("sdeNightOcrProgress");
+      if (progress) {
+        progress.textContent = "V03_UNAVAILABLE (" + trace + ") · GAMMEL DETEKTOR · " + progress.textContent;
+      }
+    }
+  }
+
+  function dispatchScannerUnavailable(diagnosis) {
+    if (scannerEngineMissing((diagnosis && diagnosis.status) || 0)) {
+      return runLegacyEngineWithNotice(diagnosis);
+    }
+    return reportScannerUnavailable(diagnosis);
+  }
+
+  function reportScannerUnavailable(diagnosis) {
+    const status = (diagnosis && diagnosis.status) || 0;
+    const reason = (diagnosis && diagnosis.reason) || "scanner_unavailable";
+    const trace = scannerDiagnosisTrace(diagnosis);
+    geometryReady = false;
+    v03ScanResult = null;
+    const scanButton = el("sdeNightScanAiBtn");
+    if (scanButton) scanButton.disabled = true;
+    renderV03Metrics({
+      confidence: "low",
+      vertical_lines: "–",
+      horizontal_lines: "–",
+      vertical_rmse: "–",
+      horizontal_rmse: "–",
+    });
+    setImportState("SCANNER_UNAVAILABLE", {mappingStatus: "SCANNER_UNAVAILABLE", scannerStatus: status, scannerReason: reason});
+    setStatus(
+      "Skanner v0.3 svarte ikke (" + trace + "). Bildet er ikke vurdert, og AI-lesing er sperret. "
+        + "Dette sier ingenting om bildekvaliteten; kontroller at serveren kjører v0.3 og at du er autorisert.",
+      "error"
+    );
+    const progress = el("sdeNightOcrProgress");
+    if (progress) progress.textContent = "SCANNER_UNAVAILABLE · " + trace;
   }
 
   function resetV03Geometry() {
@@ -1133,9 +1202,11 @@
     });
     if (generation !== ocrGeneration) return null;
     const payload = await response.json().catch(function invalidJson() { return null; });
-    if (scannerUnavailableStatus(response.status) && url.indexOf("/geometry") !== -1) {
+    if (scannerUnavailableStatus(response.status)) {
       const unavailable = new Error("scanner_unavailable");
-      unavailable.fallback = true;
+      unavailable.scannerUnavailable = true;
+      unavailable.status = response.status;
+      unavailable.reason = scannerFailureReason(payload, "scanner_unavailable");
       throw unavailable;
     }
     if (!response.ok || (payload && payload.ok === false)) {
@@ -1184,8 +1255,8 @@
         setStatus("Bildeanalysen ble avbrutt. Ingen plan ble lagret.", "warn");
         return;
       }
-      if (error && error.fallback) {
-        return analyzeSelectedImageLegacy();
+      if (error && error.scannerUnavailable) {
+        return dispatchScannerUnavailable(error);
       }
       geometryReady = false;
       renderV03Metrics({confidence: "low", vertical_lines: "?", horizontal_lines: "?", vertical_rmse: "–", horizontal_rmse: "–"});
@@ -1237,6 +1308,9 @@
         setStatus("Bildeanalysen ble avbrutt. Ingen plan ble lagret.", "warn");
         return;
       }
+      if (error && error.scannerUnavailable) {
+        return reportScannerUnavailable(error);
+      }
       setStatus("AI-lesing feilet. " + String((error && error.message) || error), "error");
       if (progress) progress.textContent = "AI_FAILED · " + String((error && error.message) || error);
     } finally {
@@ -1253,8 +1327,9 @@
       setStatus(validation.message, "error");
       return;
     }
-    if (!(await scannerStatusAvailable())) {
-      return analyzeSelectedImageLegacy();
+    const diagnosis = await scannerStatusDiagnosis();
+    if (!diagnosis.available) {
+      return dispatchScannerUnavailable(diagnosis);
     }
     return checkGeometry();
   }
