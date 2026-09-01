@@ -24,6 +24,7 @@ from app import (
     _make_row_contact,
     _make_track_contact,
     _merge_reads,
+    _require_valid_api_key,
     _to_jpeg_data_url,
     _verify_prompt,
 )
@@ -51,9 +52,7 @@ def _scan_response(im, *, double_check: bool, model: str):
     g = _geometry_from_image(im)
     if g["metrics"]["confidence"] == "low":
         raise ValueError("Geometrien er LOW. AI-lesing er sperret; kontroller/ta nytt bilde først.")
-    key = os.environ.get("OPENAI_API_KEY", "").strip()
-    if not key:
-        raise ValueError("Mangler OpenAI API-nøkkel")
+    key = _require_valid_api_key(os.environ.get("OPENAI_API_KEY", ""))
     rect = _cv_to_pil(g["rectified"])
     rows = _make_row_contact(g)
     tracks = _make_track_contact(g)

@@ -148,6 +148,38 @@ class TogplasseringScannerV03Tests(unittest.TestCase):
         self.assertNotIn("api_key", routes)
         self.assertNotIn("args.push(\"--api", routes)
 
+    def test_a_malformed_key_is_rejected_without_echoing_its_value(self) -> None:
+        # requests reports a rejected header by quoting the whole value, and that
+        # message reaches the browser. A key pasted with a newline must therefore
+        # never get as far as the header.
+        malformed = [
+            "",
+            "   ",
+            "sk-abc def",
+            "sk-abc\ndef",
+            "sk-abc\tdef",
+            "Bearer sk-abc",
+        ]
+        for value in malformed:
+            with self.subTest(value=repr(value)):
+                with self.assertRaises(ValueError) as caught:
+                    ENGINE._require_valid_api_key(value)
+                message = str(caught.exception)
+                stripped = value.strip()
+                if stripped:
+                    self.assertNotIn(stripped, message)
+                    self.assertNotIn(value, message)
+
+        accepted = "sk-proj-AbC123._-xyz"
+        for padded in (f"  {accepted}  ", f"{accepted}\r\n", f"\n{accepted}\n"):
+            self.assertEqual(ENGINE._require_valid_api_key(padded), accepted)
+        self.assertEqual(ENGINE._authorization_header(accepted), f"Bearer {accepted}")
+
+        # The header must be built through the guard, never interpolated directly.
+        source = (ENGINE_DIR / "app.py").read_text(encoding="utf-8")
+        self.assertNotIn('f"Bearer {api_key}"', source)
+        self.assertIn("_authorization_header(api_key)", source)
+
 
 if __name__ == "__main__":
     unittest.main()
