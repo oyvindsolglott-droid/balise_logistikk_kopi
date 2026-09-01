@@ -65,7 +65,7 @@
   let v03Abort = null;
   const SCANNER_STATUS_URL = "/api/togplassering-scanner/status";
   const SCANNER_GEOMETRY_URL = "/api/togplassering-scanner/geometry";
-  const SCANNER_SCAN_URL = "/api/togplassering-scanner/scan";
+  const SCANNER_READ_URL = "/api/togplassering-scanner/read";
   const V03_FIELDS = Object.freeze([
     ["klokken", "time"],
     ["fra_tog", "arrivalOccurrence"],
@@ -787,7 +787,7 @@
     v03Views = {original: imageObjectUrl};
     v03CurrentView = "original";
     showV03View("original");
-    setStatus("Bildet er valgt og holdes bare midlertidig i nettleserminnet. Kjør «Kontroller geometri» før AI-lesing.", "ok");
+    setStatus("Bildet er valgt og holdes bare midlertidig i nettleserminnet. Kjør «Kontroller geometri» før lesing.", "ok");
   }
 
   async function fileFingerprint(file) {
@@ -975,7 +975,7 @@
     });
     setImportState("SCANNER_UNAVAILABLE", {mappingStatus: "SCANNER_UNAVAILABLE", scannerStatus: status, scannerReason: reason});
     setStatus(
-      "Skanner v0.3 svarte ikke (" + trace + "). Bildet er ikke vurdert, og AI-lesing er sperret. "
+      "Skanner v0.3 svarte ikke (" + trace + "). Bildet er ikke vurdert, og lesing er sperret. "
         + "Dette sier ingenting om bildekvaliteten; kontroller at serveren kjører v0.3 og at du er autorisert.",
       "error"
     );
@@ -1231,7 +1231,7 @@
     geometryReady = false;
     v03ScanResult = null;
     setImportState("IMAGE_PREPROCESSING", null);
-    setStatus("Detekterer tabellstreker og beregner perspektiv. AI-lesing starter ikke ennå.", "warn");
+    setStatus("Detekterer tabellstreker og beregner perspektiv. Lesing starter ikke ennå.", "warn");
     const progress = el("sdeNightOcrProgress");
     if (progress) progress.textContent = "GEOMETRI · finner 9+31 faktiske linjer";
     try {
@@ -1244,11 +1244,11 @@
       if (scanButton) scanButton.disabled = !geometryReady;
       showV03View("overlay");
       if (geometryReady) {
-        setStatus("Geometrien er kvalifisert. Kontroller særlig fanen «Linjer på original» før AI-lesing.", "ok");
-        if (progress) progress.textContent = "GEOMETRI · " + String(payload.metrics.confidence).toUpperCase() + " · AI-lesing er tilgjengelig";
+        setStatus("Geometrien er kvalifisert. Kontroller særlig fanen «Linjer på original» før lesing.", "ok");
+        if (progress) progress.textContent = "GEOMETRI · " + String(payload.metrics.confidence).toUpperCase() + " · lesing er tilgjengelig";
       } else {
-        setStatus("Geometrien er LOW. AI-lesing er sperret; kontroller eller ta et nytt bilde først.", "error");
-        if (progress) progress.textContent = "GEOMETRI · LOW · AI-lesing sperret";
+        setStatus("Geometrien er LOW. Lesing er sperret; kontroller eller ta et nytt bilde først.", "error");
+        if (progress) progress.textContent = "GEOMETRI · LOW · lesing sperret";
       }
     } catch (error) {
       if (generation !== ocrGeneration || (error && error.name === "AbortError")) {
@@ -1269,7 +1269,7 @@
 
   async function scanSelectedImage() {
     if (!geometryReady || !selectedImage) {
-      setStatus("Kontroller geometrien først. LOW geometri sperrer AI-lesing.", "error");
+      setStatus("Kontroller geometrien først. LOW geometri sperrer lesing.", "error");
       return;
     }
     const generation = ++ocrGeneration;
@@ -1277,15 +1277,11 @@
     const scanButton = el("sdeNightScanAiBtn");
     if (analyzeButton) analyzeButton.disabled = true;
     if (scanButton) scanButton.disabled = true;
-    const doubleCheck = el("sdeNightDoubleCheck") ? el("sdeNightDoubleCheck").checked !== false : true;
     const progress = el("sdeNightOcrProgress");
-    setStatus("AI-lesing pågår. Geometrien beregnes på nytt og må fortsatt bestå.", "warn");
-    if (progress) progress.textContent = "AI · leser eksakte celler";
+    setStatus("Leser skjemaet på denne maskinen. Geometrien beregnes på nytt og må fortsatt bestå.", "warn");
+    if (progress) progress.textContent = "LESER · eksakte celler, lokalt";
     try {
-      const payload = await postScannerCommand(
-        SCANNER_SCAN_URL + "?double_check=" + (doubleCheck ? "true" : "false"),
-        generation
-      );
+      const payload = await postScannerCommand(SCANNER_READ_URL, generation);
       if (generation !== ocrGeneration || !payload) return;
       v03ScanResult = payload;
       Object.assign(v03Views, payload.preview || {});
@@ -1293,15 +1289,14 @@
       renderV03Metrics(payload.geometry || payload.metrics);
       applyV03ScanToDraft(payload);
       showV03View("row_contact");
+      const engine = String(payload.engine || "lokal");
       if (payload.needs_review) {
-        setStatus("Lesing ferdig. Røde felt og AI-uenigheter må kontrolleres mot bildet før lagring.", "warn");
+        setStatus("Lesing ferdig. Røde felt må kontrolleres mot bildet før lagring.", "warn");
       } else {
         setStatus("Lesing ferdig. Gjør likevel en visuell sluttkontroll før operativ bruk.", "ok");
       }
       if (progress) {
-        progress.textContent = payload.needs_review
-          ? "AI · kontrollpåkrevd · uavhengig andrelesing " + (payload.ai_double_checked ? "på" : "av")
-          : "AI · ferdig · uavhengig andrelesing " + (payload.ai_double_checked ? "på" : "av");
+        progress.textContent = (payload.needs_review ? "LEST · kontrollpåkrevd · " : "LEST · ferdig · ") + engine;
       }
     } catch (error) {
       if (generation !== ocrGeneration || (error && error.name === "AbortError")) {
@@ -1311,8 +1306,8 @@
       if (error && error.scannerUnavailable) {
         return reportScannerUnavailable(error);
       }
-      setStatus("AI-lesing feilet. " + String((error && error.message) || error), "error");
-      if (progress) progress.textContent = "AI_FAILED · " + String((error && error.message) || error);
+      setStatus("Lesing feilet. " + String((error && error.message) || error), "error");
+      if (progress) progress.textContent = "READ_FAILED · " + String((error && error.message) || error);
     } finally {
       if (generation === ocrGeneration) {
         if (analyzeButton) analyzeButton.disabled = false;

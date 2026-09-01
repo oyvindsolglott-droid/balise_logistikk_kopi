@@ -166,7 +166,7 @@ class ScannerUnavailableFailClosedTests(unittest.TestCase):
             result = self._import_attempt(base_url)
 
         self.assertEqual(result["badge"], "HIGH")
-        self.assertIn("AI-lesing er tilgjengelig", result["progress"])
+        self.assertIn("lesing er tilgjengelig", result["progress"])
         self.assertFalse(result["scan_disabled"])
         self.assertEqual(
             result["calls"],

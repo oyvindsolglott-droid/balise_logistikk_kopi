@@ -142,7 +142,11 @@ class TogplasseringScannerV03Tests(unittest.TestCase):
         self.assertNotIn("OPENAI_API_KEY", ui)
         self.assertNotIn("api_key", ui)
         self.assertIn("Kontroller geometri", html)
-        self.assertIn("Les skjema med AI", html)
+        self.assertIn("Les skjema", html)
+        # The import surface reads on this machine; it must not offer a remote read.
+        self.assertNotIn("Les skjema med AI", html)
+        self.assertIn("/api/togplassering-scanner/read", ui)
+        self.assertNotIn("/api/togplassering-scanner/scan", ui)
         self.assertIn("/api/togplassering-scanner/geometry", ui)
         self.assertIn("scannerStatusDiagnosis", ui)
         self.assertNotIn("api_key", routes)

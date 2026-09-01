@@ -157,7 +157,8 @@ function createTogplasseringScannerApi(options = {}) {
         const model = String(req.query.model || "").trim();
         if (model) args.push("--model", model);
       }
-      const payload = await runCli(repositoryRoot, args, env, command === "scan" ? 240000 : 120000);
+      const timeouts = {scan: 240000, read: 180000};
+      const payload = await runCli(repositoryRoot, args, env, timeouts[command] || 120000);
       return res.status(200).json(payload);
     } catch (error) {
       if (error?.status) {
@@ -177,12 +178,16 @@ function createTogplasseringScannerApi(options = {}) {
     res.status(200).json({
       ok: true,
       engine: "togplassering-skien-scanner-v0.3",
+      localReader: "local-pp-ocrv5",
       clientApiKey: false,
       persistsImages: false
     });
   });
   router.post("/geometry", authorizeRead, (req, res, next) => {
     handle("geometry", req, res, next);
+  });
+  router.post("/read", authorizeRead, (req, res, next) => {
+    handle("read", req, res, next);
   });
   router.post("/scan", authorizeRead, (req, res, next) => {
     handle("scan", req, res, next);
