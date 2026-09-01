@@ -6,6 +6,10 @@ const os = require("node:os");
 const path = require("node:path");
 const express = require("express");
 const {createCapabilityGuard} = require("./nightPlanRoutes");
+const {
+  loadIdentityRoleBindingsCatalog,
+  validateIdentityRoleBindingsCatalog
+} = require("./identityRoleBindings");
 const {CAPABILITY_IDS} = require("./runtimeAuthorization");
 
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
@@ -112,12 +116,20 @@ function createTogplasseringScannerApi(options = {}) {
   const env = options.env || process.env;
   const repositoryRoot = options.repositoryRoot;
   if (!repositoryRoot) throw new TypeError("Scanner API requires repositoryRoot.");
+  // Without a catalog the guard cannot resolve any role, so every verified
+  // identity is denied. Load it the same way the night-plan API does.
+  const roleBindingsCatalog = Object.hasOwn(options, "roleBindingsCatalog")
+    ? validateIdentityRoleBindingsCatalog(options.roleBindingsCatalog)
+    : loadIdentityRoleBindingsCatalog({
+        env,
+        readFileSync: options.readRoleBindingsFile
+      });
   const authorizeRead = createCapabilityGuard(CAPABILITY_IDS.NIGHT_PLAN_READ, {
     env,
     jwks: options.jwks,
     verifier: options.verifier,
     verifyIdentityRequest: options.verifyIdentityRequest,
-    roleBindingsCatalog: options.roleBindingsCatalog
+    roleBindingsCatalog
   });
 
   const router = express.Router();
