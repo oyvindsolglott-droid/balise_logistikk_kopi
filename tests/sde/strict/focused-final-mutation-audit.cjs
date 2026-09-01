@@ -551,6 +551,18 @@ const mutations = [
     ),
   },
   {
+    id: "LEGACY_SHADOW_REJECTS_COMPLETE_THREE_STEP_RELIEF",
+    kind: "emptyDrop",
+    expectedInvariant: "INV-EMPTY-DROP-010",
+    apply: source => mutateFunction(
+      source,
+      "applySdeNightPlacementDragOverride",
+      "if(assessment.hardPhysicalBlocked && !canonicalReaderMode && (assessment.noSafeReleaseMove || !assessment.freeingMove)){",
+      "if(assessment.hardPhysicalBlocked && !canonicalReaderMode){ // focused mutation: reject complete three-step relief in legacy_shadow",
+      "legacy shadow rejects complete three-step relief",
+    ),
+  },
+  {
     id: "VN_REMOVED_FROM_RELIEF_CANDIDATES",
     kind: "vnRelief",
     expectedInvariant: "AVAILABLE-VN-IS-NOT-IGNORED",

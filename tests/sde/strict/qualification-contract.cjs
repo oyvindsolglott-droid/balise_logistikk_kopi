@@ -73,6 +73,7 @@ const STRICT_INVARIANT_IDS = Object.freeze([
   "INV-EMPTY-DROP-007",
   "INV-EMPTY-DROP-008",
   "INV-EMPTY-DROP-009",
+  "INV-EMPTY-DROP-010",
   "INV-LIFECYCLE-001",
   "INV-LIFECYCLE-002",
   "INV-LIFECYCLE-003",
@@ -310,8 +311,8 @@ const STRICT_REPLAY_TIMEOUT_MS = 120_000;
 const BASELINE_REPLAY_TIMEOUT_MS = 240_000;
 const CHILD_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 
-if (STRICT_TOTAL !== 300 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
-  throw new Error("active strict invariant catalog must contain exactly 300 unique IDs");
+if (STRICT_TOTAL !== 301 || new Set(STRICT_INVARIANT_IDS).size !== STRICT_TOTAL) {
+  throw new Error("active strict invariant catalog must contain exactly 301 unique IDs");
 }
 
 function canonical(value) {

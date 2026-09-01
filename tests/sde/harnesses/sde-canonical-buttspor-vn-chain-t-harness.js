@@ -296,7 +296,7 @@ assert.equal(chain10.inspected.cards.return.canDelete,false);
 assert.ok(html.includes('entry.aliasType !== "chainId"'));
 assert.ok(html.includes('override?.hardPhysicalBlocked'));
 assert.ok(html.includes('requested_target_with_physical_guard'));
-assert.ok(html.includes('assessment.hardPhysicalBlocked && !canonicalReaderMode'));
+assert.ok(html.includes('assessment.hardPhysicalBlocked && !canonicalReaderMode && (assessment.noSafeReleaseMove || !assessment.freeingMove)'));
 
 console.log(JSON.stringify({
   ok:true,
