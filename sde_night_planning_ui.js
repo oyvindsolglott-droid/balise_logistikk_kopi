@@ -903,6 +903,21 @@
     return String((payload && (payload.error || payload.detail)) || fallbackReason);
   }
 
+  // A missing route means the deployment has no v0.3 engine at all, so the legacy
+  // detector is the only one there is. A present but refused route means the engine
+  // exists and something is wrong with authorization or configuration; running the
+  // legacy detector there would report its verdict on the photo as if v0.3 had
+  // rejected it.
+  function scannerEngineMissing(status) {
+    return status === 0 || status === 404 || status === 405 || status === 501;
+  }
+
+  function scannerDiagnosisTrace(diagnosis) {
+    const status = (diagnosis && diagnosis.status) || 0;
+    const reason = (diagnosis && diagnosis.reason) || "scanner_unavailable";
+    return (status ? "HTTP " + status + " · " : "") + reason;
+  }
+
   async function scannerStatusDiagnosis() {
     let response;
     try {
@@ -924,10 +939,29 @@
     return {available: true, status: response.status, reason: ""};
   }
 
+  async function runLegacyEngineWithNotice(diagnosis) {
+    const trace = scannerDiagnosisTrace(diagnosis);
+    try {
+      return await analyzeSelectedImageLegacy();
+    } finally {
+      const progress = el("sdeNightOcrProgress");
+      if (progress) {
+        progress.textContent = "V03_UNAVAILABLE (" + trace + ") · GAMMEL DETEKTOR · " + progress.textContent;
+      }
+    }
+  }
+
+  function dispatchScannerUnavailable(diagnosis) {
+    if (scannerEngineMissing((diagnosis && diagnosis.status) || 0)) {
+      return runLegacyEngineWithNotice(diagnosis);
+    }
+    return reportScannerUnavailable(diagnosis);
+  }
+
   function reportScannerUnavailable(diagnosis) {
     const status = (diagnosis && diagnosis.status) || 0;
     const reason = (diagnosis && diagnosis.reason) || "scanner_unavailable";
-    const trace = (status ? "HTTP " + status + " · " : "") + reason;
+    const trace = scannerDiagnosisTrace(diagnosis);
     geometryReady = false;
     v03ScanResult = null;
     const scanButton = el("sdeNightScanAiBtn");
@@ -1222,7 +1256,7 @@
         return;
       }
       if (error && error.scannerUnavailable) {
-        return reportScannerUnavailable(error);
+        return dispatchScannerUnavailable(error);
       }
       geometryReady = false;
       renderV03Metrics({confidence: "low", vertical_lines: "?", horizontal_lines: "?", vertical_rmse: "–", horizontal_rmse: "–"});
@@ -1295,7 +1329,7 @@
     }
     const diagnosis = await scannerStatusDiagnosis();
     if (!diagnosis.available) {
-      return reportScannerUnavailable(diagnosis);
+      return dispatchScannerUnavailable(diagnosis);
     }
     return checkGeometry();
   }

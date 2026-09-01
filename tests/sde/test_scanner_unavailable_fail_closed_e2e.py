@@ -1,8 +1,10 @@
 """Browser guard for the v0.3 scanner import path in Registrer Plan i SDE.
 
-An unavailable scanner must be reported as an unavailable scanner. It must never
-be silently downgraded to the legacy detector, whose failure text reads like a
-verdict on the photo and hides the real cause.
+A scanner that exists but refuses us (401/403/503) must fail closed, because the
+legacy detector's failure text reads like a verdict on the photo and would hide
+an authorization or configuration fault. A scanner route that is absent entirely
+(404/501, or no API at all on the static public build) may still fall back, but
+the result must say which engine produced it.
 """
 from __future__ import annotations
 
@@ -143,6 +145,19 @@ class ScannerUnavailableFailClosedTests(unittest.TestCase):
         self.assertNotIn("TEMPLATE_UNKNOWN", result["progress"])
         self.assertNotIn("radlinjer", result["progress"])
         self.assertTrue(result["scan_disabled"])
+        self.assertEqual(result["calls"], ["/api/togplassering-scanner/status"])
+        self.assertEqual(result["errors"], [])
+
+    def test_missing_scanner_route_labels_the_engine_that_produced_the_result(self) -> None:
+        body = {"ok": False, "error": "not_found"}
+        with static_server(404, body) as base_url:
+            result = self._import_attempt(base_url)
+
+        self.assertIn("V03_UNAVAILABLE", result["progress"])
+        self.assertIn("HTTP 404", result["progress"])
+        self.assertIn("GAMMEL DETEKTOR", result["progress"])
+        # The legacy run still reports its own outcome behind the label.
+        self.assertNotIn("SCANNER_UNAVAILABLE", result["progress"])
         self.assertEqual(result["calls"], ["/api/togplassering-scanner/status"])
         self.assertEqual(result["errors"], [])
 
