@@ -560,6 +560,29 @@ def _extract_output_text(payload: dict[str, Any]) -> str:
     raise RuntimeError("AI-svaret manglet output_text")
 
 
+API_KEY_PATTERN = re.compile(r"\A[A-Za-z0-9._\-]+\Z")
+
+
+def _require_valid_api_key(api_key: str) -> str:
+    # requests puts the whole rejected header value in its exception message, and
+    # that message is surfaced to the user. A key pasted with a newline or a stray
+    # space would therefore print itself on screen, so reject the format here and
+    # never let the value reach the exception.
+    key = (api_key or "").strip()
+    if not key:
+        raise ValueError("Mangler OpenAI API-nøkkel")
+    if not API_KEY_PATTERN.match(key):
+        raise ValueError(
+            "OPENAI_API_KEY har ugyldig format. Nøkkelen skal være én sammenhengende "
+            "linje uten mellomrom eller linjeskift. Verdien vises ikke."
+        )
+    return key
+
+
+def _authorization_header(api_key: str) -> str:
+    return f"Bearer {_require_valid_api_key(api_key)}"
+
+
 def _call_openai(api_key: str, model: str, prompt: str, images: list[tuple[Image.Image, str]]) -> dict[str, Any]:
     content: list[dict[str, Any]] = [{"type": "input_text", "text": prompt}]
     for im, detail in images:
@@ -579,7 +602,7 @@ def _call_openai(api_key: str, model: str, prompt: str, images: list[tuple[Image
         },
         "max_output_tokens": 14000,
     }
-    r = requests.post(OPENAI_URL, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=body, timeout=240)
+    r = requests.post(OPENAI_URL, headers={"Authorization": _authorization_header(api_key), "Content-Type": "application/json"}, json=body, timeout=240)
     if r.status_code >= 400:
         raise RuntimeError(f"AI-tjenesten svarte HTTP {r.status_code}: {r.text[:1800]}")
     payload = r.json()
@@ -744,9 +767,7 @@ async def scan(
         g = _geometry_from_image(im)
         if g["metrics"]["confidence"] == "low":
             raise ValueError("Geometrien er LOW. AI-lesing er sperret; kontroller/ta nytt bilde først.")
-        key = (api_key or os.environ.get("OPENAI_API_KEY", "")).strip()
-        if not key:
-            raise ValueError("Mangler OpenAI API-nøkkel")
+        key = _require_valid_api_key(api_key or os.environ.get("OPENAI_API_KEY", ""))
         rect = _cv_to_pil(g["rectified"])
         rows = _make_row_contact(g)
         tracks = _make_track_contact(g)
