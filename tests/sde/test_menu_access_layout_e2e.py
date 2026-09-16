@@ -146,6 +146,23 @@ class SdeMenuAccessLayoutBrowserTests(unittest.TestCase):
                 self.assertEqual(page.locator('[data-tab="sdeNattplanErfaring"]').count(), expected_count)
                 if expected_count:
                     self.assertEqual(page.locator('[data-tab="sdeNattplanErfaring"]').inner_text(), "Registrer Plan i SDE")
+                if level == "2":
+                    placement = page.evaluate(
+                        """() => {
+                          const txp = document.querySelector('[data-tab="grunnoppstilling"]');
+                          const plan = document.querySelector('[data-tab="sdeNattplanErfaring"]');
+                          const kveld = document.querySelector('[data-tab="turneringKveld"]');
+                          const txpRect = txp.getBoundingClientRect();
+                          const planRect = plan.getBoundingClientRect();
+                          const kveldRect = kveld.getBoundingClientRect();
+                          return {
+                            sameRowAsTxp: Math.abs(planRect.top - txpRect.top) < 4,
+                            aboveTurnering: planRect.bottom <= kveldRect.top + 1,
+                          };
+                        }"""
+                    )
+                    self.assertTrue(placement["sameRowAsTxp"], placement)
+                    self.assertTrue(placement["aboveTurnering"], placement)
 
             selector.select_option("3")
             direct_result = page.evaluate(
