@@ -1,37 +1,37 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "28a4a068-1438-43d2-8563-148f9ff30715",
+  "generationId": "bd726269-e40e-4718-9b4d-080751657a2c",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-09-19T07:51:57+02:00",
-  "completedAt": "2026-09-19T08:00:10+02:00",
+  "startedAt": "2026-09-19T16:24:04+02:00",
+  "completedAt": "2026-09-19T16:32:08+02:00",
   "intendedCycle": {
-    "id": "2026-09-19T07:00@Europe/Oslo",
+    "id": "2026-09-19T15:00@Europe/Oslo",
     "date": "2026-09-19",
-    "hour": "07",
+    "hour": "15",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-09-19T07:00:00+02:00",
+    "effectiveBoundary": "2026-09-19T15:00:00+02:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
     "event": "schedule",
-    "runId": "35425054127",
+    "runId": "35448586771",
     "runAttempt": "1",
-    "scheduledFor": "2026-09-19T07:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-09-19T07:51:31+02:00",
-    "actualGeneratorStart": "2026-09-19T07:51:57+02:00",
+    "scheduledFor": "2026-09-19T15:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-09-19T16:23:36+02:00",
+    "actualGeneratorStart": "2026-09-19T16:24:04+02:00",
     "generatorExecuted": true
   },
   "source": {
     "provider": "balise.no",
     "stationEndpointTemplate": "https://balise.no/api/train/stops?route={routeId}",
     "vehicleEndpointTemplate": "https://balise.no/api/train/vehicles?route={routeId}",
-    "observedAt": "2026-09-19T07:58:41+02:00",
-    "rawStationSha256": "b0e9c4598de4452faf39d2ea3b4806a364ba15f4534b3f79edd5d2914f81c0c1",
-    "rawStationBeforeSha256": "b0e9c4598de4452faf39d2ea3b4806a364ba15f4534b3f79edd5d2914f81c0c1",
-    "rawStationAfterSha256": "b0e9c4598de4452faf39d2ea3b4806a364ba15f4534b3f79edd5d2914f81c0c1",
-    "vehicleCount": 10325,
-    "vehicleSha256": "8de83f8da94a03dbbdf361c50df9e5939511475f15d4273431908297f9335d13",
-    "routeCaptureCount": 72,
+    "observedAt": "2026-09-19T16:30:41+02:00",
+    "rawStationSha256": "ab7ab7a65b08b09363a1ce891af27e9f20c46f025f24f25d0b94cdf2ff74edde",
+    "rawStationBeforeSha256": "ab7ab7a65b08b09363a1ce891af27e9f20c46f025f24f25d0b94cdf2ff74edde",
+    "rawStationAfterSha256": "ab7ab7a65b08b09363a1ce891af27e9f20c46f025f24f25d0b94cdf2ff74edde",
+    "vehicleCount": 7125,
+    "vehicleSha256": "c40ef9e399e3040a3134e1af55fa979cc0b40cf8dd2a6a4bfa144d5a7ff961af",
+    "routeCaptureCount": 71,
     "snapshotStable": true,
     "maxCaptureAttempts": 1
   },
@@ -39,16 +39,16 @@
     "idag": {
       "path": "data/api_idag.json",
       "operationalDate": "2026-09-19",
-      "sha256": "210ba32495f719c8e670d3ce4b6f31f3592cef1e8c165fb81051c0911c2a3b6f",
-      "bytes": 43810,
+      "sha256": "152015279448cce2f58d51b891cc7826fe0d14c761d27428bd2037047c4e309c",
+      "bytes": 43976,
       "recordCount": 36
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
-      "operationalDate": "2026-09-19",
-      "sha256": "8342044867dc7844d0970ad5970785715f5d67a410f8577401674e8bb52c3a34",
-      "bytes": 43813,
-      "recordCount": 36
+      "operationalDate": "2026-09-20",
+      "sha256": "26fa2670862432a19e5364cc9643d79c16b3e16362e2d65885165b4901da6d67",
+      "bytes": 44042,
+      "recordCount": 35
     }
   },
   "git": {
