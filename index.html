@@ -2121,6 +2121,17 @@ font-weight:700;
 opacity:1;
 }
 
+#oppstillingTable tr.opp-forced-post-arrival-shunt td:nth-child(-n+7){
+border-top:2px solid #dc2626;
+border-bottom:2px solid #dc2626;
+}
+#oppstillingTable tr.opp-forced-post-arrival-shunt td:first-child{
+border-left:2px solid #dc2626;
+}
+#oppstillingTable tr.opp-forced-post-arrival-shunt td:nth-child(7){
+border-right:2px solid #dc2626;
+}
+
 #oppstillingTable .opp-slot-cell{
 min-width:0;
 width:auto;
@@ -10513,7 +10524,7 @@ Skriv ett tognummer per linje. Hvis samme tog finnes i innlest Balise-data for v
 <script src="sde_canonical_shift_adapter.js?v=584270079e612e9400bddd7b9619201056702c60431b05adc74d16176a5dc973"></script>
 <script src="sde_intelligent_night_planning.js?v=ae80afdb91c70b122aedf202bb7ffc1c78e865cf9bc20dece76652990416b386"></script>
 <meta id="sdeLazyHtrModuleRegistry" data-trigger="sdeNightAnalyzeImageBtn" data-modules="sde_handwriting_recognition.js,sde_handwriting_runtime.js">
-<script src="sde_tursatt_post_arrival.js?v=44f462a93a6a23348cdea2211d10b3ddecc6367da69dedec2fab21be89610795"></script>
+<script src="sde_tursatt_post_arrival.js?v=cbe289c9e598e186d9f09d1285300bebad2661ed993f82a413b538b8a58700b7"></script>
 <script src="sde_tursatt_live_arrival.js?v=9dc712fdcc03479ed038558616b31d1e3aa707bd6f88d15b3a0aac611123cb29"></script>
 <script>
 const STORAGE_KEY="skien_sporplan_iphone_v13";
@@ -15739,6 +15750,12 @@ function appendOppstillingSlotCell(tr, train, side, partIndex, vehicles){
   tr.appendChild(td);
 }
 
+function isSdeTursattForcedPostArrivalShuntTrain(train){
+  const forcedTrains = window.SdeTursattPostArrival?.TURSATT_FORCE_POST_ARRIVAL_SHUNT_TRAINS || [];
+  const normalized = normalizeTognr(train);
+  return Boolean(normalized) && forcedTrains.includes(normalized);
+}
+
 function appendOppstillingSideCells(tr, rowData, side){
   const train = rowData?.train || "";
   const time = rowData?.displayTime || rowData?.time || "";
@@ -15747,6 +15764,9 @@ function appendOppstillingSideCells(tr, rowData, side){
 
   if(vehicleError){
     tr.classList.add("opp-unresolved-departure");
+  }
+  if(side === "arrival" && isSdeTursattForcedPostArrivalShuntTrain(train)){
+    tr.classList.add("opp-forced-post-arrival-shunt");
   }
 
   const tdTrain = document.createElement("td");
@@ -28043,7 +28063,7 @@ function buildSdeArrivalParkingNeeds(manualOverridePreseedNeeds=[]){
 
     if(tursattPostArrivalNeed){
       parkingStrategy = tursattPostArrivalNeed.forcedTrainRule
-        ? "Fast post-arrival-shunt-regel 835/837/839"
+        ? `Fast post-arrival-shunt-regel (tog ${normalizeTognr(arrival.train) || "ukjent"})`
         : "Tursatt post-arrival shift";
       parkingInstruction = String(tursattPostArrivalNeed.reason || parkingInstruction);
     }else if(serviceNeed){

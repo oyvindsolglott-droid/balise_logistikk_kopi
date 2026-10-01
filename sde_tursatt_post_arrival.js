@@ -5,7 +5,9 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function buildSdeTursattPostArrivalApi() {
   "use strict";
 
-  const TURSATT_FORCE_POST_ARRIVAL_SHUNT_TRAINS = Object.freeze(["835", "837", "839"]);
+  const TURSATT_FORCE_POST_ARRIVAL_SHUNT_TRAINS = Object.freeze([
+    "835", "837", "839", "851", "853", "855", "861", "863",
+  ]);
   const FORCE_TRAIN_SET = new Set(TURSATT_FORCE_POST_ARRIVAL_SHUNT_TRAINS);
   const TURSATT_SHIFT_WINDOW_CONTRACT = Object.freeze({
     readinessMinutes: 2,
@@ -206,8 +208,8 @@
     };
   }
 
-  function reasonForNeed({forced, immediate, immediateContainsVehicle, explicit, laterUse}) {
-    if (forced) return "Fast post-arrival-shunt-regel for tog 835/837/839.";
+  function reasonForNeed({forced, immediate, immediateContainsVehicle, explicit, laterUse, train}) {
+    if (forced) return `Fast post-arrival-shunt-regel for tog ${train}.`;
     if (explicit) return "Tursatt markerer at kjøretøyet tas ut, parkeres eller settes igjen etter ankomst.";
     if (immediate && !immediateContainsVehicle) return "Tursatt viser at kjøretøyet tas ut av ankomsttogets umiddelbare fortsettelse.";
     if (!immediate && laterUse) return "Kjøretøyet må skiftes bort etter ankomst før en senere dokumentert bruk.";
@@ -259,7 +261,7 @@
           forcedTrainRule: forced,
           immediateContinuation: immediate,
           nextUseOccurrence: laterUse,
-          reason: reasonForNeed({forced, immediate, immediateContainsVehicle, explicit, laterUse}),
+          reason: reasonForNeed({forced, immediate, immediateContainsVehicle, explicit, laterUse, train: arrival.train}),
           status: missingIdentity.length ? "DATA_AMBIGUOUS" : "REQUIRED",
           missingIdentity,
         };
