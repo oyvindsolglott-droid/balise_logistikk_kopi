@@ -1,24 +1,24 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "c85b3213-76da-46b3-842b-8d2c99256a99",
+  "generationId": "1e1d556d-c620-46ea-95d4-1a5df33b5356",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-10-06T07:04:52+02:00",
-  "completedAt": "2026-10-06T07:15:55+02:00",
+  "startedAt": "2026-10-06T15:01:36+02:00",
+  "completedAt": "2026-10-06T15:11:46+02:00",
   "intendedCycle": {
-    "id": "2026-10-06T07:00@Europe/Oslo",
+    "id": "2026-10-06T15:00@Europe/Oslo",
     "date": "2026-10-06",
-    "hour": "07",
+    "hour": "15",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-10-06T07:00:00+02:00",
+    "effectiveBoundary": "2026-10-06T15:00:00+02:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
     "event": "workflow_dispatch",
-    "runId": "37416719025",
+    "runId": "37467508644",
     "runAttempt": "1",
-    "scheduledFor": "2026-10-06T07:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-10-06T07:04:30+02:00",
-    "actualGeneratorStart": "2026-10-06T07:04:52+02:00",
+    "scheduledFor": "2026-10-06T15:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-10-06T15:01:09+02:00",
+    "actualGeneratorStart": "2026-10-06T15:01:36+02:00",
     "generatorExecuted": true
   },
   "source": {
@@ -39,15 +39,15 @@
     "idag": {
       "path": "data/api_idag.json",
       "operationalDate": "2026-10-06",
-      "sha256": "ac0392c7ff444dc55e7998cdcb5cbc491fd00a3b01492eb88e071e7da32468f8",
-      "bytes": 3154,
+      "sha256": "1b6632bfb195adf3d7cf73676548efb53ecf2ef8d31628685f1c49a20e92cc96",
+      "bytes": 3153,
       "recordCount": 0
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
-      "operationalDate": "2026-10-06",
-      "sha256": "3ba691375b45087b8146babcb4252700de9fb3bba8fb18f7c965bf02e7fbc6a9",
-      "bytes": 3156,
+      "operationalDate": "2026-10-07",
+      "sha256": "39613ce46c1056d32f13caa3965f390d62245f152add23cc29fac84b8e842e1e",
+      "bytes": 4002,
       "recordCount": 0
     }
   },
