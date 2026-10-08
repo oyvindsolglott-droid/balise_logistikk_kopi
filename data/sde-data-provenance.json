@@ -1,24 +1,24 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "698b1a91-28c4-458d-9bf1-f44ed96b8083",
+  "generationId": "9d48d0db-3174-46eb-826d-1342aa339dc9",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-10-07T21:20:04+02:00",
-  "completedAt": "2026-10-07T21:30:16+02:00",
+  "startedAt": "2026-10-08T07:04:38+02:00",
+  "completedAt": "2026-10-08T07:16:02+02:00",
   "intendedCycle": {
-    "id": "2026-10-07T21:00@Europe/Oslo",
-    "date": "2026-10-07",
-    "hour": "21",
+    "id": "2026-10-08T07:00@Europe/Oslo",
+    "date": "2026-10-08",
+    "hour": "07",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-10-07T21:00:00+02:00",
+    "effectiveBoundary": "2026-10-08T07:00:00+02:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
-    "event": "schedule",
-    "runId": "37673466733",
+    "event": "workflow_dispatch",
+    "runId": "37730513073",
     "runAttempt": "1",
-    "scheduledFor": "2026-10-07T21:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-10-07T21:19:06+02:00",
-    "actualGeneratorStart": "2026-10-07T21:20:04+02:00",
+    "scheduledFor": "2026-10-08T07:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-10-08T07:04:11+02:00",
+    "actualGeneratorStart": "2026-10-08T07:04:38+02:00",
     "generatorExecuted": true
   },
   "source": {
@@ -38,16 +38,16 @@
   "datasets": {
     "idag": {
       "path": "data/api_idag.json",
-      "operationalDate": "2026-10-07",
-      "sha256": "eff49e157314e46776d19a6ad279c0858de6794695324c78481b82d34a43a377",
-      "bytes": 3275,
+      "operationalDate": "2026-10-08",
+      "sha256": "1d9620749765dd76ce83cccdd8dc21350177793f7769064931301f1cbe6c9e03",
+      "bytes": 3359,
       "recordCount": 0
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
       "operationalDate": "2026-10-08",
-      "sha256": "7d8713fc17765eb621e9ec02c28a39482f84e4219eb6924918a9a0f2f4f5a8ee",
-      "bytes": 3761,
+      "sha256": "ef1f0eae3b95b32738a435dcecb680c3a93951fb4b7437de7031bfca02c866e1",
+      "bytes": 3363,
       "recordCount": 0
     }
   },
