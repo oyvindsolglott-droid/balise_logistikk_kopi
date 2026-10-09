@@ -1,24 +1,24 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "4458f278-c179-4624-875f-6682074f6c18",
+  "generationId": "ea85326c-188e-4482-8e43-f2893f2bfa2f",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-10-09T04:07:50+02:00",
-  "completedAt": "2026-10-09T04:18:43+02:00",
+  "startedAt": "2026-10-09T07:03:27+02:00",
+  "completedAt": "2026-10-09T07:13:49+02:00",
   "intendedCycle": {
-    "id": "2026-10-09T04:00@Europe/Oslo",
+    "id": "2026-10-09T07:00@Europe/Oslo",
     "date": "2026-10-09",
-    "hour": "04",
+    "hour": "07",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-10-09T04:00:00+02:00",
+    "effectiveBoundary": "2026-10-09T07:00:00+02:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
-    "event": "schedule",
-    "runId": "37873050002",
+    "event": "workflow_dispatch",
+    "runId": "37886714663",
     "runAttempt": "1",
-    "scheduledFor": "2026-10-09T04:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-10-09T04:07:27+02:00",
-    "actualGeneratorStart": "2026-10-09T04:07:50+02:00",
+    "scheduledFor": "2026-10-09T07:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-10-09T07:03:03+02:00",
+    "actualGeneratorStart": "2026-10-09T07:03:27+02:00",
     "generatorExecuted": true
   },
   "source": {
@@ -38,15 +38,15 @@
   "datasets": {
     "idag": {
       "path": "data/api_idag.json",
-      "operationalDate": "2026-10-08",
-      "sha256": "3f05c84770ffa44803e4334d99213fef47100de1b2e112cab637a442e35cea9d",
-      "bytes": 3303,
+      "operationalDate": "2026-10-09",
+      "sha256": "4c88ddb04b4c60d00edf119627d41f080d5a7dc21bc6e0cdde50d13dcd3fe37b",
+      "bytes": 3368,
       "recordCount": 0
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
       "operationalDate": "2026-10-09",
-      "sha256": "1951e0e315a869929ee0c04f12018a381260207d9d5e2e0bba0046a2336df306",
+      "sha256": "fc2912fa05835f6ecc61004b0501caa7c3b65f84db921597afe58c5946b6fa44",
       "bytes": 3341,
       "recordCount": 0
     }
