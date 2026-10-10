@@ -88,7 +88,9 @@ put(
     && planButtonAssetSha256 === "f74058d3cc40f47c4049f962f3a299f7fed725babf685f7e6b9daa16a2761fad"
     && source.includes(`src="sde_intelligent_night_planning.js?v=${nightPlanIntelligenceSha256}"`)
     && source.includes(`src="sde_night_planning_ui.js?v=${nightPlanUiSha256}"`)
-    && /menu\.insertBefore\(button,menu\.querySelector\("\.seg-vaktplan-graphic"\)\);/.test(syncSource)
+    && /menu\.insertBefore\(/.test(syncSource)
+    && /querySelector\("\.seg-turnering-graphic"\)/.test(syncSource)
+    && /querySelector\("\.seg-vaktplan-graphic"\)/.test(syncSource)
     && /button\.remove\(\);/.test(syncSource)
     && !/>\s*Nattplan\s*<br>\s*og erfaring\s*</i.test(menuMarkup),
   "the exact versioned graphic and semantic Registrer Plan i SDE label are dynamically mounted when authorized and removed rather than hidden when unauthorized"
