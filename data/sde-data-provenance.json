@@ -1,24 +1,24 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "bc64f561-7d52-439f-b20a-335884f15c6a",
+  "generationId": "7646d94c-9f29-44f3-91d9-f637993b2b24",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-10-13T21:15:03+02:00",
-  "completedAt": "2026-10-13T21:25:24+02:00",
+  "startedAt": "2026-10-14T07:02:08+02:00",
+  "completedAt": "2026-10-14T07:13:05+02:00",
   "intendedCycle": {
-    "id": "2026-10-13T21:00@Europe/Oslo",
-    "date": "2026-10-13",
-    "hour": "21",
+    "id": "2026-10-14T07:00@Europe/Oslo",
+    "date": "2026-10-14",
+    "hour": "07",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-10-13T21:00:00+02:00",
+    "effectiveBoundary": "2026-10-14T07:00:00+02:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
-    "event": "schedule",
-    "runId": "38453275860",
+    "event": "workflow_dispatch",
+    "runId": "38514437826",
     "runAttempt": "1",
-    "scheduledFor": "2026-10-13T21:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-10-13T21:14:39+02:00",
-    "actualGeneratorStart": "2026-10-13T21:15:03+02:00",
+    "scheduledFor": "2026-10-14T07:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-10-14T07:01:41+02:00",
+    "actualGeneratorStart": "2026-10-14T07:02:08+02:00",
     "generatorExecuted": true
   },
   "source": {
@@ -38,16 +38,16 @@
   "datasets": {
     "idag": {
       "path": "data/api_idag.json",
-      "operationalDate": "2026-10-13",
-      "sha256": "0c82056b0c2a70522836cd5155defd1ca3bf8a32dc3e1ed08291ac31af4b4c3d",
-      "bytes": 3152,
+      "operationalDate": "2026-10-14",
+      "sha256": "ad74253555a33b20793dbe55d364208bcaaf1e2f5379ea010d7349d28a19c945",
+      "bytes": 3534,
       "recordCount": 0
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
       "operationalDate": "2026-10-14",
-      "sha256": "0ce503cbe9bb50548e208ba06d9c5a0efba643d0c8d32c3a3adb9bd6e7572b0e",
-      "bytes": 3791,
+      "sha256": "7a8a31ccd3ac01577cf7df0bc8ba7f62f262c76fa9fba0f00e376517397bbfa5",
+      "bytes": 3537,
       "recordCount": 0
     }
   },
