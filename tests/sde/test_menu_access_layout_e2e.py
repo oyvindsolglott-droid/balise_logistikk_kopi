@@ -278,6 +278,46 @@ class SdeMenuAccessLayoutBrowserTests(unittest.TestCase):
             context.close()
             browser.close()
 
+    def test_nightplan_button_sits_on_the_first_menu_row_at_level_two(self) -> None:
+        probe = """() => {
+          const menu = document.querySelector('.segmented[aria-label="Hovedmeny"]');
+          const buttons = [...menu.querySelectorAll('.seg:not(.level-hidden)')]
+            .filter(button => getComputedStyle(button).display !== 'none');
+          const tops = [];
+          const rowOf = rect => {
+            const known = tops.findIndex(top => Math.abs(top - rect.top) < 8);
+            if (known !== -1) return known + 1;
+            tops.push(rect.top);
+            return tops.length;
+          };
+          const rows = buttons.map(button => ({
+            tab: button.dataset.tab,
+            row: rowOf(button.getBoundingClientRect())
+          }));
+          const plan = rows.find(entry => entry.tab === 'sdeNattplanErfaring');
+          return {planRow: plan ? plan.row : 0, firstRow: rows.filter(entry => entry.row === 1).length};
+        }"""
+        with static_server() as base_url, sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            for width in (1920, 1440, 1280, 1024):
+                context = browser.new_context(viewport={"width": width, "height": 1000})
+                page = context.new_page()
+                page_errors: list[str] = []
+                page.on("pageerror", lambda error: page_errors.append(str(error)))
+                page.goto(base_url, wait_until="domcontentloaded")
+                page.locator('[data-tab="sdeNattplanErfaring"]').wait_for(timeout=30_000)
+                page.locator("#accessLevelSelect").select_option("2")
+                page.wait_for_timeout(50)
+                layout = page.evaluate(probe)
+                self.assertEqual(
+                    layout["planRow"],
+                    1,
+                    f"Registrer Plan i SDE must stay on the first menu row at {width}px",
+                )
+                self.assertEqual(page_errors, [])
+                context.close()
+            browser.close()
+
 
 if __name__ == "__main__":
     unittest.main()
