@@ -1,24 +1,24 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "e1225314-4f63-4595-9499-f445ac7dddda",
+  "generationId": "efe1db02-a57f-4384-b2cd-8cd51657fe37",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-10-23T07:00:58+02:00",
-  "completedAt": "2026-10-23T07:12:21+02:00",
+  "startedAt": "2026-10-23T15:23:59+02:00",
+  "completedAt": "2026-10-23T15:34:15+02:00",
   "intendedCycle": {
-    "id": "2026-10-23T07:00@Europe/Oslo",
+    "id": "2026-10-23T15:00@Europe/Oslo",
     "date": "2026-10-23",
-    "hour": "07",
+    "hour": "15",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-10-23T07:00:00+02:00",
+    "effectiveBoundary": "2026-10-23T15:00:00+02:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
-    "event": "workflow_dispatch",
-    "runId": "39903354461",
+    "event": "schedule",
+    "runId": "39960787329",
     "runAttempt": "1",
-    "scheduledFor": "2026-10-23T07:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-10-23T07:00:31+02:00",
-    "actualGeneratorStart": "2026-10-23T07:00:58+02:00",
+    "scheduledFor": "2026-10-23T15:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-10-23T15:23:33+02:00",
+    "actualGeneratorStart": "2026-10-23T15:23:59+02:00",
     "generatorExecuted": true
   },
   "source": {
@@ -39,15 +39,15 @@
     "idag": {
       "path": "data/api_idag.json",
       "operationalDate": "2026-10-23",
-      "sha256": "5adc260c4e2e7950f2284f880605e692b66fa0076d59e57be33e5457734d509b",
-      "bytes": 3140,
+      "sha256": "e4251a9ff1a532794d35650b35fa2366181924a8a939b3bdf77287c63be02d6e",
+      "bytes": 2974,
       "recordCount": 0
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
-      "operationalDate": "2026-10-23",
-      "sha256": "f814b05d4dcc194aab547c05d224d75dc72f71eafd45d2c077c4394800ec0855",
-      "bytes": 3143,
+      "operationalDate": "2026-10-24",
+      "sha256": "a1d0a39d4795521f2be4476809434b25efe4b3172e8d548beb017a12d692513f",
+      "bytes": 4204,
       "recordCount": 0
     }
   },
