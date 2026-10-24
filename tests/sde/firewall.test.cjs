@@ -1628,6 +1628,13 @@ test("LEVEL-4-MENU — workshop keeps Tursatt and Sporplan without Agilia", () =
   assert.match(currentHtml, /data-tab="agilia" data-levels="0 5"/, "Agilia must remain excluded from level 4");
 });
 
+registerHarnessTest({
+  phase: "TURSATT-FORCED-TRAINS",
+  name: "arrivals on the eight forced post-arrival-shunt trains get the red-border marker and the module list stays the single source of truth",
+  harness: "sde-tursatt-forced-post-arrival-marking-harness.js",
+  baseline: "db3337984e936a60216868c375c7fbe0dd9195cf",
+});
+
 test("Existing generator regressions — all previously tracked data tests stay green", () => {
   assertPassed(
     run("python3", ["-m", "unittest", "test_update_static_data.py"]),
