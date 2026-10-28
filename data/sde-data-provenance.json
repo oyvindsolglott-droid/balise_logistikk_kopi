@@ -1,24 +1,24 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "d080b215-7efd-4d6f-b90f-2bd07a65f698",
+  "generationId": "7748b16c-5c8f-4df7-b194-02f1b769707f",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-10-28T10:33:27+01:00",
-  "completedAt": "2026-10-28T10:44:25+01:00",
+  "startedAt": "2026-10-28T15:04:25+01:00",
+  "completedAt": "2026-10-28T15:15:54+01:00",
   "intendedCycle": {
-    "id": "2026-10-28T07:00@Europe/Oslo",
+    "id": "2026-10-28T15:00@Europe/Oslo",
     "date": "2026-10-28",
-    "hour": "07",
+    "hour": "15",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-10-28T07:00:00+01:00",
+    "effectiveBoundary": "2026-10-28T15:00:00+01:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
-    "event": "schedule",
-    "runId": "40665082612",
+    "event": "workflow_dispatch",
+    "runId": "40702255826",
     "runAttempt": "1",
-    "scheduledFor": "2026-10-28T07:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-10-28T10:33:00+01:00",
-    "actualGeneratorStart": "2026-10-28T10:33:27+01:00",
+    "scheduledFor": "2026-10-28T15:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-10-28T15:03:57+01:00",
+    "actualGeneratorStart": "2026-10-28T15:04:25+01:00",
     "generatorExecuted": true
   },
   "source": {
@@ -39,15 +39,15 @@
     "idag": {
       "path": "data/api_idag.json",
       "operationalDate": "2026-10-28",
-      "sha256": "ca1174a70929c0f0dfb7546c84650c0039fe782dfe72ac82c4ad136c75cf9424",
+      "sha256": "f4c2b0bbf7c388ff49eb265b00960d1892c26e21abd08aa999929e145a9d69fa",
       "bytes": 2958,
       "recordCount": 0
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
-      "operationalDate": "2026-10-28",
-      "sha256": "59560707fbbba755fe3323bc3b89fdf1d0090736aa5d269c704265a18adbbdb0",
-      "bytes": 2961,
+      "operationalDate": "2026-10-29",
+      "sha256": "3a39f339f4299141adcfad7f4ef6ce02707f80705c395e2cb554c19b2168699e",
+      "bytes": 3974,
       "recordCount": 0
     }
   },
