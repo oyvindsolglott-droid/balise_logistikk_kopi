@@ -1,24 +1,24 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "0aebfb07-37f6-4ca9-b44d-f10161a90652",
+  "generationId": "fd402a11-8d59-4f0f-9b6d-018655a4f5f0",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-10-30T21:46:35+01:00",
-  "completedAt": "2026-10-30T21:57:15+01:00",
+  "startedAt": "2026-10-31T07:02:39+01:00",
+  "completedAt": "2026-10-31T07:13:57+01:00",
   "intendedCycle": {
-    "id": "2026-10-30T21:00@Europe/Oslo",
-    "date": "2026-10-30",
-    "hour": "21",
+    "id": "2026-10-31T07:00@Europe/Oslo",
+    "date": "2026-10-31",
+    "hour": "07",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-10-30T21:00:00+01:00",
+    "effectiveBoundary": "2026-10-31T07:00:00+01:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
-    "event": "schedule",
-    "runId": "41125800899",
+    "event": "workflow_dispatch",
+    "runId": "41174927254",
     "runAttempt": "1",
-    "scheduledFor": "2026-10-30T21:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-10-30T21:46:12+01:00",
-    "actualGeneratorStart": "2026-10-30T21:46:35+01:00",
+    "scheduledFor": "2026-10-31T07:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-10-31T07:02:15+01:00",
+    "actualGeneratorStart": "2026-10-31T07:02:39+01:00",
     "generatorExecuted": true
   },
   "source": {
@@ -38,16 +38,16 @@
   "datasets": {
     "idag": {
       "path": "data/api_idag.json",
-      "operationalDate": "2026-10-30",
-      "sha256": "75ce0e68e12535447b7195c220166a79b293ba7bc6b290527499c52bb173f3ca",
-      "bytes": 2874,
+      "operationalDate": "2026-10-31",
+      "sha256": "141fdb67f120da2f68be09dad6851042eac94d5cea02c58b9a351beeca1bfeb2",
+      "bytes": 3585,
       "recordCount": 0
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
       "operationalDate": "2026-10-31",
-      "sha256": "8cd37fd60be1791ae0939fbb4c4fc52dcfa79d5b7988d6b99843ce795e66c21b",
-      "bytes": 3938,
+      "sha256": "bfc3ac8cae3c1f4b87a809b1d76d1442219af2dfca6187ae360f9dcaf073862e",
+      "bytes": 3588,
       "recordCount": 0
     }
   },
