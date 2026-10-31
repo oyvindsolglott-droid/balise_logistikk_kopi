@@ -140,7 +140,10 @@ test("08 train 839 creates a card even when the vehicle is used later", () => {
 test("09 forced train rules contain no fixed vehicle binding", () => {
   const api = subject();
   const source = fs.readFileSync(MODULE_PATH, "utf8");
-  assert.deepEqual([...api.TURSATT_FORCE_POST_ARRIVAL_SHUNT_TRAINS], ["835", "837", "839"]);
+  assert.deepEqual(
+    [...api.TURSATT_FORCE_POST_ARRIVAL_SHUNT_TRAINS],
+    ["835", "837", "839", "851", "853", "855", "861", "863"],
+  );
   assert.doesNotMatch(source, /(?:69|70|72|74|75)-\d{2}/);
 });
 
@@ -299,4 +302,45 @@ test("24 plan structure, order, target and windows differ only by vehicleId", ()
   const right = plan([arrival("835", "23:53", ["75-76", "69-63"], {sortMinutes: 1433})]);
   assert.equal(subject().planStructureSignature(left), subject().planStructureSignature(right));
   assert.notDeepEqual(mainCards(left).map(card => card.vehicleId), mainCards(right).map(card => card.vehicleId));
+});
+
+test("25 train 851 with immediate continuation still creates one MAIN card", () => {
+  assert.equal(mainCards(plan(
+    [arrival("851", "18:09", ["74-40"], {sortMinutes: 1089})],
+    [departure("852", "18:30", ["74-40"], {sortMinutes: 1110})],
+  )).length, 1);
+});
+
+test("26 train 853 with immediate continuation still creates one MAIN card", () => {
+  assert.equal(mainCards(plan(
+    [arrival("853", "19:09", ["74-41"], {sortMinutes: 1149})],
+    [departure("854", "19:30", ["74-41"], {sortMinutes: 1170})],
+  )).length, 1);
+});
+
+test("27 train 855 with immediate continuation still creates one MAIN card", () => {
+  assert.equal(mainCards(plan(
+    [arrival("855", "20:09", ["74-42"], {sortMinutes: 1209})],
+    [departure("10855", "20:14", ["74-42"], {sortMinutes: 1214})],
+  )).length, 1);
+});
+
+test("28 train 861 with immediate continuation still creates one MAIN card", () => {
+  assert.equal(mainCards(plan(
+    [arrival("861", "21:09", ["74-43"], {sortMinutes: 1269})],
+    [departure("862", "21:30", ["74-43"], {sortMinutes: 1290})],
+  )).length, 1);
+});
+
+test("29 train 863 with immediate continuation still creates one MAIN card", () => {
+  assert.equal(mainCards(plan(
+    [arrival("863", "22:09", ["74-44"], {sortMinutes: 1329})],
+    [departure("864", "22:30", ["74-44"], {sortMinutes: 1350})],
+  )).length, 1);
+});
+
+test("30 forced-train reason text names the specific arriving train", () => {
+  const result = plan([arrival("851", "18:09", ["74-40"], {sortMinutes: 1089})]);
+  assert.equal(result.needs.length, 1);
+  assert.match(result.needs[0].reason, /Fast post-arrival-shunt-regel for tog 851\./);
 });
