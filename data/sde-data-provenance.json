@@ -1,24 +1,24 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "003ece7d-3e27-482f-9446-93da29638b2a",
+  "generationId": "27375e74-16c7-491f-b5ab-3d1ed07d0f26",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-11-19T04:23:09+01:00",
-  "completedAt": "2026-11-19T04:34:00+01:00",
+  "startedAt": "2026-11-19T12:30:06+01:00",
+  "completedAt": "2026-11-19T12:39:26+01:00",
   "intendedCycle": {
-    "id": "2026-11-19T04:00@Europe/Oslo",
+    "id": "2026-11-19T07:00@Europe/Oslo",
     "date": "2026-11-19",
-    "hour": "04",
+    "hour": "07",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-11-19T04:00:00+01:00",
+    "effectiveBoundary": "2026-11-19T07:00:00+01:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
     "event": "schedule",
-    "runId": "44450979791",
+    "runId": "44515288132",
     "runAttempt": "1",
-    "scheduledFor": "2026-11-19T04:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-11-19T04:22:40+01:00",
-    "actualGeneratorStart": "2026-11-19T04:23:09+01:00",
+    "scheduledFor": "2026-11-19T07:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-11-19T12:29:42+01:00",
+    "actualGeneratorStart": "2026-11-19T12:30:06+01:00",
     "generatorExecuted": true
   },
   "source": {
@@ -38,16 +38,16 @@
   "datasets": {
     "idag": {
       "path": "data/api_idag.json",
-      "operationalDate": "2026-11-18",
-      "sha256": "d7c179eeb792a41487b8e8127f3bec0040e154ba6ca768cda341cefc66ae7fc3",
-      "bytes": 2832,
+      "operationalDate": "2026-11-19",
+      "sha256": "b68e63272538e6e3165bebc1223c7c56283d18e6c7fc7334b19ec3f6a35448cd",
+      "bytes": 2944,
       "recordCount": 0
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
       "operationalDate": "2026-11-19",
-      "sha256": "ef4dfe6af006f5304aa888a542b082e0fb88965c8eda9012dcb4b004d112967d",
-      "bytes": 3094,
+      "sha256": "2b0cee3154d91dfc65a584e0ed99315ca29daa6742f3437fd259609c25b577a8",
+      "bytes": 2947,
       "recordCount": 0
     }
   },
