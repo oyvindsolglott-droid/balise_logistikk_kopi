@@ -1,24 +1,24 @@
 {
   "schema": "sde-data-provenance/v1",
-  "generationId": "62e8353d-d373-45f8-9ec4-98feab7d214c",
+  "generationId": "58f04280-9d3e-4bc0-ae1b-1229d5b9d5f2",
   "timeZone": "Europe/Oslo",
-  "startedAt": "2026-11-20T21:12:20+01:00",
-  "completedAt": "2026-11-20T21:21:43+01:00",
+  "startedAt": "2026-11-21T10:46:13+01:00",
+  "completedAt": "2026-11-21T10:57:42+01:00",
   "intendedCycle": {
-    "id": "2026-11-20T21:00@Europe/Oslo",
-    "date": "2026-11-20",
-    "hour": "21",
+    "id": "2026-11-21T07:00@Europe/Oslo",
+    "date": "2026-11-21",
+    "hour": "07",
     "firstAttemptMinute": 7,
-    "effectiveBoundary": "2026-11-20T21:00:00+01:00",
+    "effectiveBoundary": "2026-11-21T07:00:00+01:00",
     "derivation": "latest_operational_cycle_or_explicit_manual"
   },
   "workflow": {
     "event": "schedule",
-    "runId": "44809090404",
+    "runId": "44891101143",
     "runAttempt": "1",
-    "scheduledFor": "2026-11-20T21:00@Europe/Oslo",
-    "actualWorkflowStart": "2026-11-20T21:11:44+01:00",
-    "actualGeneratorStart": "2026-11-20T21:12:20+01:00",
+    "scheduledFor": "2026-11-21T07:00@Europe/Oslo",
+    "actualWorkflowStart": "2026-11-21T10:45:53+01:00",
+    "actualGeneratorStart": "2026-11-21T10:46:13+01:00",
     "generatorExecuted": true
   },
   "source": {
@@ -38,16 +38,16 @@
   "datasets": {
     "idag": {
       "path": "data/api_idag.json",
-      "operationalDate": "2026-11-20",
-      "sha256": "75e4a689738fca1ceb383d847bb1883cac3683a5f135807e0327aea641475ca7",
-      "bytes": 2937,
+      "operationalDate": "2026-11-21",
+      "sha256": "cb38b165a9cf334e8ba677f68e92cc22de60401b64f621c179d4a8687a42043d",
+      "bytes": 3599,
       "recordCount": 0
     },
     "imorgen": {
       "path": "data/api_imorgen.json",
       "operationalDate": "2026-11-21",
-      "sha256": "ce334f4edac0cc1f76983e259bc4f092859b66ff57f17cf8e2e6dfea88ff1944",
-      "bytes": 4064,
+      "sha256": "4d27525468c8f7b9a8046c43d12c5aa800b74aae463e197515d22aad62db566c",
+      "bytes": 3602,
       "recordCount": 0
     }
   },
